@@ -5,8 +5,7 @@
 //! advanced beyond that binary's enum vocabulary.
 
 use std::ffi::OsString;
-use std::io::Read;
-use std::path::PathBuf;
+use std::io::{Read, Write};
 
 const MAX_HOOK_INPUT_BYTES: usize = 1024 * 1024;
 const TRACE_ENV: &str = "ASP_HOOK_BOOTSTRAP_TRACE";
@@ -50,15 +49,50 @@ pub fn run_hook_bootstrap_from_env() -> i32 {
     }
 }
 
+/// Terminate after the response owner has flushed its output, without running
+/// process-global exit handlers that could extend the host's strict deadline.
+#[doc(hidden)]
+pub fn terminate_hook_process(code: i32) -> ! {
+    if std::env::var_os(TRACE_ENV).is_some() {
+        eprintln!("[asp-hook] route=bootstrap-immediate-termination");
+    }
+    #[cfg(unix)]
+    {
+        unsafe extern "C" {
+            fn _exit(status: i32) -> !;
+        }
+        // SAFETY: all Hook-owned output is flushed above and `_exit` accepts
+        // the same process status domain as the public command boundary.
+        unsafe { _exit(code) }
+    }
+    #[cfg(not(unix))]
+    std::process::exit(code)
+}
+
 fn run_hook_bootstrap(args: Vec<OsString>) -> Result<i32, String> {
+    let started = std::time::Instant::now();
     validate_hook_args(&args)?;
     let input = read_bounded_stdin()?;
-    if asp_no_agent_passthrough(&input, std::env::var_os("ASP_NO_AGENT").as_deref()) {
-        if std::env::var_os(TRACE_ENV).is_some() {
-            eprintln!("[asp-hook] route=bootstrap-no-agent-passthrough");
+    match crate::hook_break_glass::evaluate_hook_break_glass(&input) {
+        crate::hook_break_glass::HookBreakGlassEvaluation::Authorized(capability) => {
+            if std::env::var_os(TRACE_ENV).is_some() {
+                eprintln!(
+                    "[asp-hook] route=bootstrap-one-shot-break-glass nonce={} defectKind={}",
+                    capability.nonce, capability.defect_kind,
+                );
+            }
+            emit_empty_success()?;
+            return Ok(0);
         }
-        println!("{{}}");
-        return Ok(0);
+        crate::hook_break_glass::HookBreakGlassEvaluation::Rejected(error) => {
+            if std::env::var_os(TRACE_ENV).is_some() {
+                eprintln!(
+                    "[asp-hook] route=bootstrap-break-glass-rejected error={}",
+                    single_line(&error),
+                );
+            }
+        }
+        crate::hook_break_glass::HookBreakGlassEvaluation::NotRequested => {}
     }
     let hook_args = args
         .iter()
@@ -70,26 +104,36 @@ fn run_hook_bootstrap(args: Vec<OsString>) -> Result<i32, String> {
         .collect::<Result<Vec<_>, _>>()?;
     let hook_input = String::from_utf8(input.clone())
         .map_err(|error| format!("hook payload must be UTF-8 JSON: {error}"))?;
-    if hook_event_is_runtime_server_recovery(&args, &input) {
+    if hook_event_is_canonical_recovery(&args, &input) {
         if std::env::var_os(TRACE_ENV).is_some() {
-            eprintln!("[asp-hook] route=bootstrap-runtime-server-recovery");
+            eprintln!("[asp-hook] route=bootstrap-canonical-recovery");
         }
-        println!("{{}}");
+        emit_empty_success()?;
+        return Ok(0);
+    }
+    let event = hook_event(&args).unwrap_or("unknown");
+    if !hook_event_requires_policy_evaluation(event, &input)? {
+        if std::env::var_os(TRACE_ENV).is_some() {
+            eprintln!(
+                "[asp-hook] route=bootstrap-local-action-passthrough elapsedMicros={}",
+                started.elapsed().as_micros()
+            );
+        }
+        emit_empty_success()?;
+        if std::env::var_os(TRACE_ENV).is_some() {
+            eprintln!(
+                "[asp-hook] route=bootstrap-local-action-emitted elapsedMicros={}",
+                started.elapsed().as_micros()
+            );
+        }
         return Ok(0);
     }
 
-    let project_root = server_project_root(&input)?;
-    match crate::command::evaluate_hook_event_via_runtime(
-        hook_event(&args).unwrap_or("unknown"),
-        &project_root,
-        hook_args,
-        hook_input,
-    ) {
-        Ok(output) => {
+    match crate::command::evaluate_hook_event_locally(&hook_args[1..], hook_input) {
+        Ok(()) => {
             if std::env::var_os(TRACE_ENV).is_some() {
-                eprintln!("[asp-hook] route=server-resident-evaluator");
+                eprintln!("[asp-hook] route=local-policy-evaluator");
             }
-            println!("{output}");
             Ok(0)
         }
         Err(error) if event_is_observational(&args) => {
@@ -100,82 +144,69 @@ fn run_hook_bootstrap(args: Vec<OsString>) -> Result<i32, String> {
             );
             Ok(0)
         }
-        Err(error) => Err(runtime_server_hook_unavailable(
-            hook_event(&args).unwrap_or("unknown"),
-            &error,
-        )),
+        Err(error) => {
+            let event = hook_event(&args).unwrap_or("unknown");
+            println!("{}", local_hook_policy_unavailable_deny(event, &error));
+            Ok(0)
+        }
     }
 }
 
-fn asp_no_agent_passthrough(input: &[u8], inherited: Option<&std::ffi::OsStr>) -> bool {
-    if inherited == Some(std::ffi::OsStr::new("1")) {
-        return true;
+fn emit_empty_success() -> Result<(), String> {
+    let mut stdout = std::io::stdout().lock();
+    stdout
+        .write_all(b"{}\n")
+        .and_then(|()| stdout.flush())
+        .map_err(|error| format!("write Hook passthrough response: {error}"))
+}
+
+fn hook_event_requires_policy_evaluation(event: &str, input: &[u8]) -> Result<bool, String> {
+    if !matches!(event, "pre-tool" | "permission-request" | "post-tool") {
+        return Ok(true);
     }
-    let Ok(payload) = serde_json::from_slice::<serde_json::Value>(input) else {
-        return false;
-    };
-    hook_payload_command(&payload).is_some_and(command_has_no_agent_prefix)
+    let payload: serde_json::Value = serde_json::from_slice(input)
+        .map_err(|error| format!("hook payload must be JSON before action routing: {error}"))?;
+    Ok(agent_semantic_hook::codex_tool_event_requires_policy_evaluation(&payload).unwrap_or(true))
 }
 
-fn command_has_no_agent_prefix(command: &str) -> bool {
-    let command = command.trim_start();
-    command == "ASP_NO_AGENT=1"
-        || command
-            .strip_prefix("ASP_NO_AGENT=1")
-            .and_then(|rest| rest.chars().next())
-            .is_some_and(char::is_whitespace)
-}
-
-#[cfg(test)]
-#[test]
-fn no_agent_passthrough_has_explicit_truthy_semantics() {
-    let ordinary = br#"{"tool_input":{"cmd":"cargo test"}}"#;
-    assert!(asp_no_agent_passthrough(
-        ordinary,
-        Some(std::ffi::OsStr::new("1"))
-    ));
-    for value in ["", "0", "true", "yes", "on"] {
-        assert!(!asp_no_agent_passthrough(
-            ordinary,
-            Some(std::ffi::OsStr::new(value))
-        ));
-    }
-    assert!(asp_no_agent_passthrough(
-        br#"{"tool_input":{"cmd":"ASP_NO_AGENT=1 cargo test"}}"#,
-        None
-    ));
-    assert!(asp_no_agent_passthrough(
-        br#"{"tool_input":{"cmd":"  ASP_NO_AGENT=1 cargo test"}}"#,
-        None
-    ));
-    assert!(!asp_no_agent_passthrough(
-        br#"{"tool_input":{"cmd":"cargo test; ASP_NO_AGENT=1 echo late"}}"#,
-        None
-    ));
-    assert!(!asp_no_agent_passthrough(
-        br#"{"tool_input":{"cmd":"ASP_NO_AGENT=10 cargo test"}}"#,
-        None
-    ));
-}
-
-fn runtime_server_hook_unavailable(event: &str, error: &str) -> String {
+fn local_hook_policy_unavailable(event: &str, error: &str) -> String {
     let canonical_install_target = agent_semantic_runtime::resolve_state_home()
         .ok()
         .map(|state_home| state_home.join("runtime/bin/asp"));
     serde_json::json!({
-        "schemaId": "agent.semantic-protocols.hook-control-plane-unavailable.v1",
+        "schemaId": "agent.semantic-protocols.hook-local-policy-unavailable.v1",
         "schemaVersion": "1",
         "surface": "hook",
         "event": event,
         "state": "unavailable",
-        "reasonKind": "runtime-server-hook-authority-unavailable",
-        "recoveryCommand": "asp server reconcile",
+        "reasonKind": "local-hook-policy-authority-unavailable",
+        "recoveryCommand": "asp hook doctor --client codex",
         "recoveryCommands": [
-            "asp server reconcile",
+            "asp hook doctor --client codex",
             "<validated-candidate-asp> install binary --target <canonicalBinaryInstallTarget>"
         ],
         "canonicalBinaryInstallTarget": canonical_install_target,
         "error": single_line(error),
+    })
+    .to_string()
+}
+
+fn local_hook_policy_unavailable_deny(event: &str, error: &str) -> String {
+    let failure = local_hook_policy_unavailable(event, error);
+    let hook_event_name = match event {
+        "pre-tool" => "PreToolUse",
+        "permission-request" => "PermissionRequest",
+        _ => "PreToolUse",
+    };
+    let reason = "ASP local Hook policy authority is unavailable; the enforcing event is denied until canonical recovery completes.";
+    serde_json::json!({
+        "hookSpecificOutput": {
+            "hookEventName": hook_event_name,
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+            "additionalContext": format!("[agent-hook-local-policy-unavailable] {failure}"),
+        },
+        "systemMessage": reason,
     })
     .to_string()
 }
@@ -190,7 +221,7 @@ fn validate_hook_args(args: &[OsString]) -> Result<(), String> {
     Ok(())
 }
 
-fn hook_event_is_runtime_server_recovery(args: &[OsString], input: &[u8]) -> bool {
+fn hook_event_is_canonical_recovery(args: &[OsString], input: &[u8]) -> bool {
     if !matches!(hook_event(args), Some("pre-tool" | "permission-request")) {
         return false;
     }
@@ -229,6 +260,14 @@ fn hook_event_is_runtime_server_recovery(args: &[OsString], input: &[u8]) -> boo
         )
         && words.len() == asp_index + 3;
     if exact_server_control {
+        return true;
+    }
+    let exact_hook_doctor = words.get(asp_index + 1).map(String::as_str) == Some("hook")
+        && words.get(asp_index + 2).map(String::as_str) == Some("doctor")
+        && words.get(asp_index + 3).map(String::as_str) == Some("--client")
+        && words.get(asp_index + 4).map(String::as_str) == Some("codex")
+        && words.len() == asp_index + 5;
+    if exact_hook_doctor {
         return true;
     }
     let Ok(state_home) = agent_semantic_runtime::resolve_state_home() else {
@@ -273,19 +312,6 @@ fn read_bounded_stdin() -> Result<Vec<u8>, String> {
         ));
     }
     Ok(input)
-}
-
-fn server_project_root(input: &[u8]) -> Result<PathBuf, String> {
-    let payload: serde_json::Value = serde_json::from_slice(input)
-        .map_err(|error| format!("hook payload must be JSON before server routing: {error}"))?;
-    for field in ["cwd", "project_root", "projectRoot", "workspace"] {
-        if let Some(path) = payload.get(field).and_then(serde_json::Value::as_str)
-            && !path.trim().is_empty()
-        {
-            return Ok(PathBuf::from(path));
-        }
-    }
-    std::env::current_dir().map_err(|error| format!("failed to resolve hook workspace: {error}"))
 }
 
 fn hook_event(args: &[OsString]) -> Option<&str> {

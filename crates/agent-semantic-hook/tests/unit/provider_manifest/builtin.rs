@@ -1,6 +1,36 @@
 use agent_semantic_hook::builtin_provider_manifests;
 
 #[test]
+fn registered_owner_routes_materialize_the_owner_items_contract() {
+    for (language_id, provider_id) in [
+        ("rust", "rs-harness"),
+        ("typescript", "ts-harness"),
+        ("python", "py-harness"),
+        ("julia", "julia-lang-project-harness"),
+        ("gerbil-scheme", "gerbil-scheme-harness"),
+    ] {
+        let invocation = agent_semantic_hook::registered_provider_method_invocation_v1(
+            language_id,
+            provider_id,
+            "search/owner",
+        )
+        .expect("resolve registered owner route")
+        .unwrap_or_else(|| panic!("missing search/owner for {language_id}/{provider_id}"));
+        let owner_index = invocation
+            .argv
+            .iter()
+            .position(|arg| arg == "{owner}")
+            .unwrap_or_else(|| panic!("missing owner placeholder for {language_id}/{provider_id}"));
+        assert_eq!(
+            invocation.argv.get(owner_index + 1).map(String::as_str),
+            Some("items"),
+            "provider-owned search/owner route must materialize owner items for {language_id}/{provider_id}: {:?}",
+            invocation.argv
+        );
+    }
+}
+
+#[test]
 fn builtin_manifests_include_julia_juliac_provider() {
     let manifests = builtin_provider_manifests();
     let julia = manifests

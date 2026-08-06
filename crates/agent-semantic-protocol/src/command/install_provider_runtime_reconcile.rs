@@ -76,6 +76,27 @@ pub(super) fn reconcile_registered_provider_runtime_binaries(
     )
 }
 
+/// Reconciles the installed provider lattice and republishes its catalog before
+/// the platform supervisor starts a new Runtime Server generation.
+///
+/// The daemon remains a read-only, fail-closed catalog consumer. Repair lives
+/// in the explicit supervisor control path so a stale catalog cannot turn the
+/// platform supervisor into an endless restart loop.
+pub(crate) fn reconcile_global_provider_catalog_for_runtime(
+    state_home: &Path,
+) -> Result<super::global_provider_catalog::GlobalProviderCatalogReadiness, String> {
+    let runtime_root = state_home.join("runtime");
+    let reconciliation = reconcile_registered_provider_runtime_binaries(
+        &runtime_root.join("bin"),
+        &runtime_root.join("artifacts"),
+        &agent_semantic_runtime::provider_receipt_dir(state_home),
+    )?;
+    super::global_provider_catalog::publish_global_provider_catalog(
+        &reconciliation.provider_receipts,
+    )?;
+    super::global_provider_catalog::read_global_provider_catalog_readiness()
+}
+
 fn reconcile_registered_provider_runtime_binaries_from(
     registrations: &[agent_semantic_hook::RegisteredProviderBinaryV1],
     runtime_bin_dir: &Path,
@@ -87,13 +108,39 @@ fn reconcile_registered_provider_runtime_binaries_from(
         .map(|registration| registration.binary().to_string())
         .collect::<std::collections::BTreeSet<_>>();
     let mut reconciled_count = 0;
-    let changed_count = 0;
+    let mut changed_count = 0;
     let mut missing_count = 0;
     let mut receipt_reconciled_count = 0;
     let mut receipt_changed_count = 0;
     let mut receipt_missing_count = 0;
     let mut provider_receipts = Vec::new();
     let mut binary_byte_reads = 0;
+    for binary_name in &binary_names {
+        let target = runtime_bin_dir.join(binary_name);
+        if !registered_provider_binary_exists(&target)? {
+            missing_count += 1;
+            continue;
+        }
+        if registered_provider_binary_is_canonical_lattice_entry(&target, artifact_root)? {
+            reconciled_count += 1;
+            continue;
+        }
+        let binary_identity =
+            super::protocol_binary::RuntimeBinaryIdentityV1::from_registered_provider(binary_name)?;
+        super::protocol_binary::install_protocol_binary_target(
+            &target,
+            &target,
+            artifact_root,
+            &binary_identity,
+        )?;
+        binary_byte_reads += 1;
+        changed_count += 1;
+        reconciled_count += 1;
+    }
+    // A regular runtime entry can be migrated to the immutable digest lattice
+    // above.  Capture receipt currency only after that atomic switch so a lock
+    // that described the former regular file is reconciled to the new symlink
+    // metadata in the same install transaction.
     let current_receipts = registrations
         .iter()
         .filter_map(|registration| {
@@ -112,21 +159,6 @@ fn reconcile_registered_provider_runtime_binaries_from(
             .map(|_| receipt)
         })
         .collect::<Vec<_>>();
-    for binary_name in &binary_names {
-        let target = runtime_bin_dir.join(binary_name);
-        if !registered_provider_binary_exists(&target)? {
-            missing_count += 1;
-            continue;
-        }
-        if registered_provider_binary_is_canonical_lattice_entry(&target, artifact_root)? {
-            reconciled_count += 1;
-            continue;
-        }
-        return Err(format!(
-            "registered provider runtime entry {} is not a canonical digest-lattice symlink",
-            target.display()
-        ));
-    }
     for registration in registrations {
         let binary_path = runtime_bin_dir.join(registration.binary());
         if !registered_provider_binary_exists(&binary_path)? {

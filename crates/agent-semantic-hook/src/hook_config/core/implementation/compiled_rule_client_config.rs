@@ -78,6 +78,10 @@ impl ClientHookConfig {
             &runtime.project_root,
             &self.language_providers,
         )?;
+        let _ = self.policy_receipt.set(super::HookPolicyReceipt {
+            generation_digest: snapshot.generation_digest.clone(),
+            kernel_version: snapshot.kernel_version,
+        });
         Ok(snapshot.generation_digest.clone())
     }
 
@@ -118,6 +122,26 @@ impl ClientHookConfig {
         self.rules.len()
     }
 
+    pub(crate) fn hook_policy_receipt(&self) -> Option<(&str, &'static str)> {
+        self.policy_receipt
+            .get()
+            .map(|receipt| (receipt.generation_digest.as_str(), receipt.kernel_version))
+    }
+
+    fn candidate_rule_indices(&self, platform: &str, event: &str) -> &[usize] {
+        let canonical_event = super::canonical_event(event);
+        let event_candidates = self
+            .rule_candidates
+            .get(canonical_event.as_str())
+            .or_else(|| self.rule_candidates.get("*"))
+            .expect("compiled rule index always contains the wildcard event");
+        let canonical_platform = platform.to_ascii_lowercase();
+        event_candidates
+            .get(canonical_platform.as_str())
+            .or_else(|| event_candidates.get("*"))
+            .expect("compiled rule index always contains the wildcard platform")
+    }
+
     pub(crate) fn semantic_ast_patch_enabled(&self) -> bool {
         !self.semantic_ast_patch_disabled
     }
@@ -156,7 +180,8 @@ impl ClientHookConfig {
         action: &ToolAction,
     ) -> Option<crate::hook_config::HookPolicyCandidate> {
         let mut command_tokens: Option<Option<Cow<'_, [String]>>> = None;
-        for rule in &self.rules {
+        for rule_index in self.candidate_rule_indices(platform, event) {
+            let rule = &self.rules[*rule_index];
             let needs_command_tokens = rule.match_config.needs_command_tokens()
                 || matches!(
                     rule.decision_materializer,
@@ -398,9 +423,12 @@ fn compile_resolved_config(
         .collect::<Result<Vec<_>, _>>()?;
     // `sort_by_key` is stable, so equal-priority rules keep config file order.
     rules.sort_by_key(|rule| std::cmp::Reverse(rule.priority));
+    let rule_candidates = compile_rule_candidate_index(&rules);
     Ok(ClientHookConfig {
         source_config,
         rules,
+        rule_candidates,
+        policy_receipt: std::sync::OnceLock::new(),
         language_providers,
         contract_fingerprint,
         semantic_ast_patch_disabled: !semantic_ast_patch_enabled,
@@ -409,6 +437,49 @@ fn compile_resolved_config(
         agent_session_messages,
         asp_session_policy: AspSessionPolicy::try_from(agents)?,
     })
+}
+
+fn compile_rule_candidate_index(rules: &[CompiledHookRule]) -> super::RuleCandidateIndex {
+    let mut event_keys = std::collections::BTreeSet::from(["*".to_owned()]);
+    let mut platform_keys = std::collections::BTreeSet::from(["*".to_owned()]);
+    for rule in rules {
+        if let Some(event) = rule.canonical_event_key() {
+            event_keys.insert(event);
+        }
+        if let Some(platform) = rule.canonical_platform_key() {
+            platform_keys.insert(platform);
+        }
+    }
+
+    event_keys
+        .into_iter()
+        .map(|event| {
+            let platform_candidates = platform_keys
+                .iter()
+                .map(|platform| {
+                    let indices = rules
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(index, rule)| {
+                            let event_matches = match rule.canonical_event_key() {
+                                Some(rule_event) => event != "*" && rule_event == event,
+                                None => true,
+                            };
+                            let platform_matches = match rule.canonical_platform_key() {
+                                Some(rule_platform) => {
+                                    platform != "*" && rule_platform == *platform
+                                }
+                                None => true,
+                            };
+                            (event_matches && platform_matches).then_some(index)
+                        })
+                        .collect();
+                    (platform.clone(), indices)
+                })
+                .collect();
+            (event, platform_candidates)
+        })
+        .collect()
 }
 
 impl ClientHookConfig {

@@ -48,9 +48,8 @@ pub struct HookClientConfigFile {
     #[serde(default)]
     pub recovery_prompt: HookClientRecoveryPromptConfig,
     #[serde(default)]
-    pub agent_session_guide: HookClientAgentSessionGuideConfig,
-    #[serde(default)]
     pub agent_session_messages: HookClientAgentSessionMessagesConfig,
+    #[serde(default)]
     pub agents: HookClientAgentsConfig,
     #[serde(default)]
     pub command_profiles: Vec<super::profiles::HookClientCommandProfileConfig>,
@@ -85,102 +84,6 @@ pub struct HookClientRecoveryPromptConfig {
     pub claude_agent_flow: Option<String>,
     #[serde(default)]
     pub default_agent_flow: Option<String>,
-}
-
-/// Optional agent-facing guide text for session registry recovery.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HookClientAgentSessionGuideConfig {
-    #[serde(default)]
-    pub(crate) register: Option<String>,
-    #[serde(default)]
-    pub(crate) list: Option<String>,
-    #[serde(default)]
-    pub(crate) show: Option<String>,
-    #[serde(default)]
-    pub(crate) reuse: Option<String>,
-    #[serde(default)]
-    pub(crate) status: Option<String>,
-}
-
-impl HookClientAgentSessionGuideConfig {
-    /// Construct a guide config from explicit optional sections.
-    #[must_use]
-    pub fn new(
-        register: Option<String>,
-        list: Option<String>,
-        show: Option<String>,
-        reuse: Option<String>,
-        status: Option<String>,
-    ) -> Self {
-        Self {
-            register,
-            list,
-            show,
-            reuse,
-            status,
-        }
-    }
-
-    /// Guide command for registering a child session.
-    #[must_use]
-    pub fn register(&self) -> Option<&str> {
-        self.register.as_deref()
-    }
-
-    /// Guide command for listing registered child sessions.
-    #[must_use]
-    pub fn list(&self) -> Option<&str> {
-        self.list.as_deref()
-    }
-
-    /// Guide command for showing one child session.
-    #[must_use]
-    pub fn show(&self) -> Option<&str> {
-        self.show.as_deref()
-    }
-
-    /// Guide command for reusing a registered child session.
-    #[must_use]
-    pub fn reuse(&self) -> Option<&str> {
-        self.reuse.as_deref()
-    }
-
-    /// Guide command for checking child session status.
-    #[must_use]
-    pub fn status(&self) -> Option<&str> {
-        self.status.as_deref()
-    }
-
-    /// Mutable guide command for registering a child session.
-    #[must_use]
-    pub fn register_mut(&mut self) -> Option<&mut String> {
-        self.register.as_mut()
-    }
-
-    /// Mutable guide command for listing registered child sessions.
-    #[must_use]
-    pub fn list_mut(&mut self) -> Option<&mut String> {
-        self.list.as_mut()
-    }
-
-    /// Mutable guide command for showing one child session.
-    #[must_use]
-    pub fn show_mut(&mut self) -> Option<&mut String> {
-        self.show.as_mut()
-    }
-
-    /// Mutable guide command for reusing a registered child session.
-    #[must_use]
-    pub fn reuse_mut(&mut self) -> Option<&mut String> {
-        self.reuse.as_mut()
-    }
-
-    /// Mutable guide command for checking child session status.
-    #[must_use]
-    pub fn status_mut(&mut self) -> Option<&mut String> {
-        self.status.as_mut()
-    }
 }
 
 /// Optional agent-facing hook decision text for session routing.
@@ -241,29 +144,17 @@ pub struct AspProjectDiscoveryConfig {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AspProjectHookConfig {
     #[serde(default)]
-    pub agents: HookClientAgentsConfig,
-    #[serde(default)]
     pub rules: Vec<HookClientRuleConfig>,
 }
 
 /// Merge project hook declarations over the managed v1 config by stable identity.
 ///
-/// Rules replace complete rules with the same `id`; resident agents replace complete
-/// identities with the same `name`. Field-level merging is intentionally unsupported,
-/// so every declaration remains one auditable policy unit.
+/// Rules replace complete rules with the same `id`. Agent identities are owned by
+/// `agents/config.toml` plus the platform projection files and cannot be overlaid here.
 pub fn merge_asp_project_hook_config(
     mut base: HookClientConfigFile,
     project: AspProjectConfigFile,
 ) -> Result<HookClientConfigFile, String> {
-    let mut resident_names = HashSet::new();
-    for resident in &project.hook.agents.resident_agents {
-        if !resident_names.insert(resident.name.as_str()) {
-            return Err(format!(
-                "project hook declares resident agent `{}` more than once",
-                resident.name
-            ));
-        }
-    }
     let mut rule_ids = HashSet::new();
     for rule in &project.hook.rules {
         if !rule_ids.insert(rule.id.as_str()) {
@@ -271,18 +162,6 @@ pub fn merge_asp_project_hook_config(
                 "project hook declares rule `{}` more than once",
                 rule.id
             ));
-        }
-    }
-    for resident in project.hook.agents.resident_agents {
-        if let Some(index) = base
-            .agents
-            .resident_agents
-            .iter()
-            .position(|existing| existing.name == resident.name)
-        {
-            base.agents.resident_agents[index] = resident;
-        } else {
-            base.agents.resident_agents.push(resident);
         }
     }
     for rule in project.hook.rules {
@@ -419,23 +298,57 @@ pub fn render_hook_client_message_template(template: &str, values: &[(&str, &str
 
 /// Load, parse, and validate project-local hook config.
 pub fn load_hook_client_config_file(path: &Path) -> Result<HookClientConfigFile, String> {
+    let parsed = parse_hook_client_config_file(path)?;
+    validate_config(&parsed)?;
+    Ok(parsed)
+}
+
+/// Load a managed hook config while taking agent identities from the canonical
+/// project agent-route registry projection.
+pub fn load_hook_client_config_file_with_agents(
+    path: &Path,
+    agents: HookClientAgentsConfig,
+) -> Result<HookClientConfigFile, String> {
+    let mut parsed = parse_hook_client_config_file(path)?;
+    parsed.agents = agents;
+    validate_config(&parsed)?;
+    Ok(parsed)
+}
+
+fn parse_hook_client_config_file(path: &Path) -> Result<HookClientConfigFile, String> {
     if !path.is_file() {
         return Err(format!(
             "hook client config does not exist: {}",
             path.display()
         ));
     }
-    let parsed = Figment::from(Toml::file(path))
+    Figment::from(Toml::file(path))
         .extract::<HookClientConfigFile>()
-        .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
-    validate_config(&parsed)?;
-    Ok(parsed)
+        .map_err(|error| format!("failed to parse {}: {error}", path.display()))
 }
 
 /// Load an explicit hook config as a typed overlay on the embedded TOML
 /// defaults. Complete managed configs continue to use
 /// [`load_hook_client_config_file`] and remain strict about required tables.
 pub fn load_hook_client_config_overlay_file(path: &Path) -> Result<HookClientConfigFile, String> {
+    let parsed = parse_hook_client_config_overlay_file(path)?;
+    validate_config(&parsed)?;
+    Ok(parsed)
+}
+
+/// Load a hook overlay while taking agent identities from the canonical
+/// project agent-route registry projection.
+pub fn load_hook_client_config_overlay_file_with_agents(
+    path: &Path,
+    agents: HookClientAgentsConfig,
+) -> Result<HookClientConfigFile, String> {
+    let mut parsed = parse_hook_client_config_overlay_file(path)?;
+    parsed.agents = agents;
+    validate_config(&parsed)?;
+    Ok(parsed)
+}
+
+fn parse_hook_client_config_overlay_file(path: &Path) -> Result<HookClientConfigFile, String> {
     if !path.is_file() {
         return Err(format!(
             "hook client config does not exist: {}",
@@ -453,11 +366,9 @@ pub fn load_hook_client_config_overlay_file(path: &Path) -> Result<HookClientCon
     if !overlay_declares_contract_fingerprint && let Some(document) = merged.as_table_mut() {
         document.remove("contractFingerprint");
     }
-    let parsed = merged
+    merged
         .try_into::<HookClientConfigFile>()
-        .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
-    validate_config(&parsed)?;
-    Ok(parsed)
+        .map_err(|error| format!("failed to parse {}: {error}", path.display()))
 }
 
 /// Read only the ownership-bearing contract fingerprint declared by a hook

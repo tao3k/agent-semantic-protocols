@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use tokio::io::BufStream;
 use tokio::net::UnixStream;
 
+use super::graph_facts::{RuntimeGraphFactSource, RuntimeGraphFactsRead};
 use super::transport::{read_frame, write_frame};
 use super::validation::{
     deserialize_changed_paths, deserialize_mutation_id, workspace_db_ipc_read_lane_capacity,
@@ -139,13 +140,21 @@ pub enum WorkspaceDbIpcOperation {
     ReadSourceIndex {
         request: WorkspaceDbSourceIndexLookupRequest,
     },
-    ReadRuntimeSearchGenerationAuthority {
+    ReadRuntimeGraphFacts {
         project_root: String,
+        sources: Vec<RuntimeGraphFactSource>,
     },
     ReadRuntimeSelector {
         project_root: String,
         projection_kind: String,
         structural_selector: String,
+    },
+    ReadRuntimeOwner {
+        project_root: String,
+        owner_path: String,
+    },
+    ReadRuntimeSearchGenerationAuthority {
+        project_root: String,
     },
     PublishRuntimeSelectorOverlay {
         project_root: String,
@@ -172,21 +181,11 @@ pub enum WorkspaceDbIpcOperation {
     EnsureRuntimeGenerationReady {
         project_root: String,
     },
-    EnsureRuntimeGenerationOwnerReady {
-        project_root: String,
-        owner_path: String,
-        admitted_content_digest: String,
-    },
     RepairRuntimeGenerationLocator {
         project_root: String,
     },
     ReadRuntimeGenerationDurability {
         project_root: String,
-    },
-    EvaluateHook {
-        project_root: String,
-        arguments: Vec<String>,
-        input: String,
     },
     EvaluateGraphTurbo {
         project_root: String,
@@ -273,7 +272,6 @@ pub struct WorkspaceDbIpcRequest {
     rename_all = "kebab-case",
     rename_all_fields = "camelCase"
 )]
-// Temporary diff anchor for parser-unavailable contract inspection.
 pub enum WorkspaceDbIpcResult {
     Healthy,
     ShutdownAccepted,
@@ -283,9 +281,8 @@ pub enum WorkspaceDbIpcResult {
     SourceIndex {
         lookup: ClientDbSourceIndexLookupResult,
     },
-    RuntimeSearchGenerationAuthority {
-        receipt:
-            crate::runtime_server_workspace::WorkspaceSearchGenerationAuthorityOpenReceipt,
+    RuntimeGraphFacts {
+        read: RuntimeGraphFactsRead,
     },
     SourceIndexGeneration {
         receipt: crate::ClientDbSourceIndexRefreshReport,
@@ -327,9 +324,6 @@ pub enum WorkspaceDbIpcResult {
     RuntimeGenerationReadiness {
         receipt: crate::runtime_server_admission::WorkspaceGenerationReadinessReceipt,
     },
-    RuntimeOwnerGenerationReadiness {
-        receipt: crate::runtime_server_admission::WorkspaceOwnerGenerationReadinessReceipt,
-    },
     RuntimeGenerationDurability {
         receipt: Option<crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt>,
     },
@@ -338,11 +332,6 @@ pub enum WorkspaceDbIpcResult {
     },
     RuntimeGenerationMutationSubmission {
         receipt: crate::runtime_server_admission::WorkspaceGenerationMutationSubmissionReceipt,
-    },
-    HookEvaluation {
-        workspace_identity: String,
-        project_root: String,
-        output: String,
     },
     GraphTurboEvaluation {
         workspace_identity: String,
@@ -360,6 +349,12 @@ pub enum WorkspaceDbIpcResult {
     },
     RuntimeSelector {
         read: crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead,
+    },
+    RuntimeOwner {
+        read: crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead,
+    },
+    RuntimeSearchGenerationAuthority {
+        authority: Option<crate::runtime_server_workspace::WorkspaceSearchGenerationAuthority>,
     },
     RuntimeSelectorOverlay {
         receipt: crate::runtime_server_workspace::WorkspaceRuntimeSelectorOverlayReceipt,
@@ -432,8 +427,8 @@ pub(super) struct WorkspaceDbIpcSessionState {
     lanes: Vec<tokio::sync::Mutex<Option<BufStream<UnixStream>>>>,
     pub(super) runtime_generation_mutations:
         std::sync::OnceLock<std::sync::Arc<super::runtime_generation::MutationWorkspaceLane>>,
-    pub(super) search_generation_authority: tokio::sync::OnceCell<
-        crate::runtime_server_workspace::SharedWorkspaceSearchGenerationAuthorityPointerClient,
+    pub(super) runtime_search_generation_authority: tokio::sync::OnceCell<
+        std::sync::Arc<super::runtime_generation::RuntimeSearchAuthorityCache>,
     >,
 }
 
@@ -447,6 +442,23 @@ impl Clone for WorkspaceDbIpcSession {
 }
 
 impl WorkspaceDbIpcSession {
+    fn new_state(profile: WorkspaceDbSessionProfile) -> std::sync::Arc<WorkspaceDbIpcSessionState> {
+        let read_lane_capacity = match profile {
+            WorkspaceDbSessionProfile::Full => workspace_db_ipc_read_lane_capacity(),
+            WorkspaceDbSessionProfile::HookReadOnly => 1,
+        };
+        std::sync::Arc::new(WorkspaceDbIpcSessionState {
+            client_id: NEXT_WORKSPACE_DB_IPC_CLIENT_ID
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            next_request_id: std::sync::atomic::AtomicU64::new(1),
+            lanes: (0..read_lane_capacity)
+                .map(|_| tokio::sync::Mutex::new(None))
+                .collect(),
+            runtime_generation_mutations: std::sync::OnceLock::new(),
+            runtime_search_generation_authority: tokio::sync::OnceCell::new(),
+        })
+    }
+
     pub(super) fn from_binding(endpoint: WorkspaceDbSessionBinding) -> Self {
         Self::from_binding_with_profile(endpoint, WorkspaceDbSessionProfile::Full)
     }
@@ -455,22 +467,9 @@ impl WorkspaceDbIpcSession {
         endpoint: WorkspaceDbSessionBinding,
         profile: WorkspaceDbSessionProfile,
     ) -> Self {
-        let read_lane_capacity = match profile {
-            WorkspaceDbSessionProfile::Full => workspace_db_ipc_read_lane_capacity(),
-            WorkspaceDbSessionProfile::HookReadOnly => 1,
-        };
         Self {
             endpoint,
-            shared: std::sync::Arc::new(WorkspaceDbIpcSessionState {
-                client_id: NEXT_WORKSPACE_DB_IPC_CLIENT_ID
-                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-                next_request_id: std::sync::atomic::AtomicU64::new(1),
-                lanes: (0..read_lane_capacity)
-                    .map(|_| tokio::sync::Mutex::new(None))
-                    .collect(),
-                runtime_generation_mutations: std::sync::OnceLock::new(),
-                search_generation_authority: tokio::sync::OnceCell::new(),
-            }),
+            shared: Self::new_state(profile),
         }
     }
 
@@ -501,7 +500,7 @@ impl WorkspaceDbIpcSession {
                 &project_root,
             )
             .ok();
-        Self::from_binding(WorkspaceDbSessionBinding {
+        let endpoint = WorkspaceDbSessionBinding {
             workspace_identity,
             project_root: Some(project_root),
             transport_contract_digest: endpoint.transport_contract_digest.clone(),
@@ -511,7 +510,11 @@ impl WorkspaceDbIpcSession {
             binding_token: endpoint.binding_token.clone(),
             socket_path: endpoint.data_plane_socket_path.clone(),
             generation_pointer_path,
-        })
+        };
+        let shared = super::session_pool::resident_state(&endpoint, || {
+            Self::new_state(WorkspaceDbSessionProfile::Full)
+        });
+        Self { endpoint, shared }
     }
 
     pub(super) fn runtime_project_root(&self) -> Result<&Path, String> {
@@ -520,7 +523,7 @@ impl WorkspaceDbIpcSession {
         })
     }
 
-    pub(super) fn runtime_generation_pointer_path(&self) -> Option<&Path> {
+    pub fn runtime_generation_pointer_path(&self) -> Option<&Path> {
         self.endpoint.generation_pointer_path.as_deref()
     }
 

@@ -1,10 +1,6 @@
 #![recursion_limit = "256"]
 #![deny(dead_code)]
 
-#[path = "unit/command/agent_session_registry_resume_cli.rs"]
-mod agent_session_registry_resume_cli;
-#[path = "unit/command/agent_session_registry_resume_model_create_cli.rs"]
-mod agent_session_registry_resume_model_create_cli;
 #[path = "unit/command/build_profile.rs"]
 mod command_build_profile;
 
@@ -30,8 +26,6 @@ mod codex;
 mod codex_multi_agent_v2_control_plane;
 #[path = "unit/codex_plugin_install.rs"]
 mod codex_plugin_install;
-#[path = "unit/command/agent_session_registry_render.rs"]
-mod command_agent_session_registry_render;
 #[path = "unit/command/ascent_search_router_graph_state.rs"]
 mod command_ascent_search_router_graph_state;
 #[path = "unit/command/dispatch_agent_session_policy.rs"]
@@ -62,6 +56,8 @@ mod graph_render;
 mod healthcheck;
 #[path = "unit/hook_command.rs"]
 mod hook_command;
+#[path = "unit/hook_execution_plane.rs"]
+mod hook_execution_plane;
 #[path = "unit/hook_paths.rs"]
 mod hook_paths;
 #[path = "unit/hook_runtime_skill.rs"]

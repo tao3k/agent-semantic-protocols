@@ -1,0 +1,48 @@
+#+title: Resident Generation Search Consumer
+
+* Status
+
+Normative. This RFC refines the Runtime Server workspace identity, Memory
+Backend, exact projection, and Graph Turbo search contracts.
+
+* Authority boundary
+
+1. A command module is an adapter. It parses the public request, opens one
+   =WorkspaceDbIpcSession=, submits typed operations, and renders the receipt.
+2. Only the Runtime Server workspace registry owns load-once generation
+   handles, Memory Backend mappings, read leases, and the per-workspace writer
+   lane.
+3. A short-lived =asp= process MUST NOT call
+   =WorkspaceGenerationDataPlaneClient::open_state= or
+   =WorkspaceExactProjectionDataPlaneClient::open_state= for search/query.
+   Process-local =OnceCell= state is not resident state.
+4. Exact projection uses =read_runtime_selector=. Missing generation uses the
+   same session's =ensure_runtime_generation_ready= operation and then performs
+   one typed read. It never publishes or repairs generation state locally.
+5. Graph evaluation uses the same admitted session and
+   =evaluate_graph_turbo=. Generation authority, candidate memory, and graph
+   ranker lifetime remain daemon-owned.
+6. Workspace identity is resolved once for the session binding. Concurrent
+   reads share the workspace read pool; mutations enter only that workspace's
+   serial writer lane. No global cross-workspace lock is permitted.
+
+* Performance invariants
+
+- warm exact and graph operations perform zero Turso opens, zero canonical
+  binary reads, zero manifest writes, and zero provider process starts;
+- one workspace generation is cold-opened at most once per daemon epoch;
+- concurrent cold requests coalesce on the same resident admission future;
+- pointer epoch replacement invalidates only the matching workspace handle;
+- command adapters never wait on filesystem lock probing;
+- every declared wall-budget failure is admitted through the typed Runtime
+  Performance ingress and is queryable from Turso.
+
+* Acceptance
+
+- cold, warm, epoch replacement, and moved-owner cases use the same session
+  API and return canonical generation identities;
+- multi-workspace and multi-session pressure proves independent progress and
+  zero leaked Tokio tasks;
+- source inspection rejects direct generation open from command owners;
+- installed exact and Graph Turbo paths remain within their declared
+  millisecond gates and report zero budget failures.

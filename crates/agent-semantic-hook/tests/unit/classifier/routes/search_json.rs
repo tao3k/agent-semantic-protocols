@@ -71,6 +71,7 @@ fn search_json_owner_routes_to_provider_owner_query() {
             "search",
             "owner",
             "cli/agent-hooks.ts",
+            "items",
             "--workspace",
             "src",
             "--view",
@@ -79,7 +80,7 @@ fn search_json_owner_routes_to_provider_owner_query() {
     );
     assert_eq!(
         decision.message,
-        "agent-search-json denied; route: asp typescript search owner cli/agent-hooks.ts --workspace src --view seeds"
+        "agent-search-json denied; route: asp typescript search owner cli/agent-hooks.ts items --workspace src --view seeds"
     );
 }
 

@@ -44,9 +44,9 @@ pub struct HookClientRuleConfig {
 
 /// Stable responsibility key resolved through `agents.placeholders`.
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct HookClientAgentPlaceholder(String);
+pub struct HookClientAgentRoleSelector(String);
 
-impl HookClientAgentPlaceholder {
+impl HookClientAgentRoleSelector {
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -65,7 +65,8 @@ impl HookClientReceiptKind {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientRuleDispatchConfig {
     pub transport: HookClientRuleDispatchTransport,
-    pub agent: HookClientAgentPlaceholder,
+    /// Semantic role resolved through the registry-derived `agents.placeholders` projection.
+    pub role: HookClientAgentRoleSelector,
     pub receipt_kind: HookClientReceiptKind,
     #[serde(default)]
     pub lazy_provider: Option<HookClientLazyProviderPolicy>,
@@ -178,6 +179,11 @@ pub struct HookClientRuleMatchConfig {
     /// Match when a parsed command stage carries a regular file owned by the workspace.
     #[serde(default)]
     pub argv_workspace_regular_file: bool,
+    /// Match when a parsed command stage carries a supported structured document
+    /// owned by the workspace. The format set is the same typed set used by
+    /// structured projector capabilities, rather than provider language sources.
+    #[serde(default)]
+    pub argv_structured_document_file: bool,
     /// Match source paths owned by any activated language harness coverage contract.
     #[serde(default)]
     pub argv_registered_source_file: bool,

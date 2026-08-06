@@ -50,8 +50,8 @@ pub(super) struct GlobalProviderCatalogPublication {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct GlobalProviderCatalogReadiness {
     pub(crate) catalog_generation: String,
-    pub(super) provider_count: usize,
-    pub(super) elapsed_micros: u128,
+    pub(crate) provider_count: usize,
+    pub(crate) elapsed_micros: u128,
 }
 
 fn catalog_path() -> Result<PathBuf, String> {

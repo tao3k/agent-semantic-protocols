@@ -162,9 +162,7 @@ name = "agent-semantic-config"
 version = "0.1.0"
 dependencies = [
  "figment",
- "jsonschema",
  "serde",
- "serde_json",
  "tempfile",
  "toml 0.9.12+spec-1.1.0",
 ]
@@ -195,7 +193,6 @@ dependencies = [
  "agent-semantic-command-match",
  "agent-semantic-config",
  "agent-semantic-content-identity",
- "agent-semantic-loop",
  "agent-semantic-runtime",
  "aho-corasick",
  "asp-rust-project-harness-policy",
@@ -251,6 +248,7 @@ dependencies = [
  "insta",
  "jsonschema",
  "libc",
+ "memmap2",
  "orgize",
  "proc-macro2",
  "rs-harness",

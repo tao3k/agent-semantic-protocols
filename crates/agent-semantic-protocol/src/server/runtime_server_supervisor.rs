@@ -3,6 +3,122 @@ use std::path::{Path, PathBuf};
 const SUPERVISOR_COMMAND_BOUNDARY: std::time::Duration = std::time::Duration::from_millis(900);
 const SUPERVISOR_COMMAND_EXECUTION_BUDGET: std::time::Duration =
     std::time::Duration::from_millis(800);
+const OPERATOR_STOP_MARKER_FILE: &str = "operator-stop.v1.json";
+const RUN_INTENT_MARKER_FILE: &str = "run-intent.v1";
+
+fn run_intent_marker_path(protocol_home: &Path) -> PathBuf {
+    protocol_home
+        .join("runtime")
+        .join("server")
+        .join(RUN_INTENT_MARKER_FILE)
+}
+
+pub(crate) async fn create_runtime_server_run_intent(protocol_home: &Path) -> Result<(), String> {
+    let path = run_intent_marker_path(protocol_home);
+    let parent = path
+        .parent()
+        .ok_or_else(|| "run-intent marker has no parent".to_owned())?;
+    tokio::fs::create_dir_all(parent)
+        .await
+        .map_err(|e| format!("create run-intent parent: {e}"))?;
+    let staged = path.with_extension(format!("stage-{}", std::process::id()));
+    let file = tokio::fs::File::create(&staged)
+        .await
+        .map_err(|e| format!("create run-intent: {e}"))?;
+    file.sync_all()
+        .await
+        .map_err(|e| format!("sync run-intent: {e}"))?;
+    drop(file);
+    tokio::fs::rename(&staged, &path)
+        .await
+        .map_err(|e| format!("publish run-intent: {e}"))?;
+    let directory = tokio::fs::File::open(parent)
+        .await
+        .map_err(|e| format!("open run-intent parent: {e}"))?;
+    directory
+        .sync_all()
+        .await
+        .map_err(|e| format!("sync run-intent parent: {e}"))
+}
+
+pub(crate) async fn remove_runtime_server_run_intent(protocol_home: &Path) -> Result<(), String> {
+    let path = run_intent_marker_path(protocol_home);
+    match tokio::fs::remove_file(&path).await {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("remove run-intent: {e}")),
+    }
+    if let Some(parent) = path.parent() {
+        let directory = tokio::fs::File::open(parent)
+            .await
+            .map_err(|e| format!("open run-intent parent: {e}"))?;
+        directory
+            .sync_all()
+            .await
+            .map_err(|e| format!("sync run-intent parent: {e}"))?;
+    }
+    Ok(())
+}
+
+fn operator_stop_marker_path(protocol_home: &Path) -> PathBuf {
+    protocol_home
+        .join("runtime")
+        .join("server")
+        .join(OPERATOR_STOP_MARKER_FILE)
+}
+
+pub(crate) async fn mark_runtime_server_operator_stopped(
+    protocol_home: &Path,
+) -> Result<(), String> {
+    let path = operator_stop_marker_path(protocol_home);
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Runtime Server operator-stop marker has no parent".to_owned())?;
+    tokio::fs::create_dir_all(parent)
+        .await
+        .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    let staged = path.with_extension(format!("json.stage-{}", std::process::id()));
+    let marker = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.runtime-server-operator-stop",
+        "schemaVersion": "1",
+        "state": "stopped",
+    });
+    tokio::fs::write(
+        &staged,
+        serde_json::to_vec(&marker)
+            .map_err(|error| format!("encode Runtime Server operator-stop marker: {error}"))?,
+    )
+    .await
+    .map_err(|error| format!("failed to write {}: {error}", staged.display()))?;
+    tokio::fs::rename(&staged, &path)
+        .await
+        .map_err(|error| format!("failed to publish {}: {error}", path.display()))
+}
+
+async fn clear_runtime_server_operator_stop(protocol_home: &Path) -> Result<(), String> {
+    let path = operator_stop_marker_path(protocol_home);
+    match tokio::fs::remove_file(&path).await {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("failed to clear {}: {error}", path.display())),
+    }
+}
+
+async fn require_runtime_server_not_operator_stopped(protocol_home: &Path) -> Result<(), String> {
+    let path = operator_stop_marker_path(protocol_home);
+    match tokio::fs::try_exists(&path).await {
+        Ok(false) => Ok(()),
+        Ok(true) => Err(serde_json::json!({
+            "schemaId": "agent.semantic-protocols.runtime-server-operator-stop",
+            "schemaVersion": "1",
+            "state": "stopped",
+            "reasonKind": "operator-stop-is-authoritative",
+            "nextCommand": "asp server reconcile",
+        })
+        .to_string()),
+        Err(error) => Err(format!("failed to inspect {}: {error}", path.display())),
+    }
+}
 
 fn supervisor_command_boundary_error(elapsed: std::time::Duration) -> String {
     serde_json::json!({
@@ -119,10 +235,6 @@ use super::runtime_server_service_catalog::runtime_server_service_catalog;
 #[cfg(target_os = "linux")]
 const LINUX_SERVICE_NAME: &str = "asp-runtime-server.service";
 
-pub(crate) fn install_runtime_server_supervisor(protocol_home: &Path) -> Result<(), String> {
-    super::runtime_server::block_on_runtime_server_client(install(protocol_home))?
-}
-
 pub(crate) async fn reconcile_runtime_server_supervisor(
     protocol_home: &Path,
 ) -> Result<(), String> {
@@ -155,10 +267,22 @@ pub(crate) async fn reconcile_runtime_server_supervisor(
     }
 }
 
-/// Removes the Runtime Server from the platform supervisor without addressing
-/// an implementation PID directly. The supervisor remains the sole lifecycle
-/// authority and a later explicit reconcile may install the latest generation.
-pub(crate) async fn stop_runtime_server_supervisor() -> Result<(), String> {
+/// Reconcile requested by the explicit `asp server reconcile|restart` control
+/// surface. Automatic Hook/health callers must use
+/// `reconcile_runtime_server_supervisor` and therefore cannot clear an
+/// operator stop.
+pub(crate) async fn reconcile_runtime_server_supervisor_explicit(
+    protocol_home: &Path,
+) -> Result<(), String> {
+    clear_runtime_server_operator_stop(protocol_home).await?;
+    create_runtime_server_run_intent(protocol_home).await?;
+    reconcile_runtime_server_supervisor(protocol_home).await
+}
+
+/// Requests daemon drain while keeping the launchd job loaded. This prevents
+/// launchd from treating the intentional drain as an unexpected exit and
+/// respawning a replacement before the terminal receipt is published.
+pub(crate) async fn request_runtime_server_drain() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let service = format!(
@@ -166,22 +290,12 @@ pub(crate) async fn stop_runtime_server_supervisor() -> Result<(), String> {
             unsafe { libc::getuid() },
             runtime_server_service_catalog().active_macos_label
         );
-        let inspection = Command::new("/bin/launchctl")
-            .args(["print", &service])
-            .output()
-            .await
-            .map_err(|error| {
-                supervisor_command_error(error, "inspect ASP Runtime Server launchd service")
-            })?;
-        if !inspection.status.success() {
-            return Ok(());
-        }
         return require_command_success(
             Command::new("/bin/launchctl")
-                .args(["bootout", &service])
+                .args(["kill", "SIGTERM", &service])
                 .output()
                 .await,
-            "stop ASP Runtime Server launchd service",
+            "request ASP Runtime Server daemon drain",
         );
     }
     #[cfg(target_os = "linux")]
@@ -191,11 +305,33 @@ pub(crate) async fn stop_runtime_server_supervisor() -> Result<(), String> {
                 .args(["--user", "stop", LINUX_SERVICE_NAME])
                 .output()
                 .await,
-            "stop ASP Runtime Server systemd user service",
+            "request ASP Runtime Server daemon drain",
         );
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     Err("ASP Runtime Server supervisor is unsupported on this platform".to_owned())
+}
+
+pub(crate) async fn unload_runtime_server_supervisor() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let service = format!(
+            "gui/{}/{}",
+            unsafe { libc::getuid() },
+            runtime_server_service_catalog().active_macos_label
+        );
+        return require_command_success(
+            Command::new("/bin/launchctl")
+                .args(["bootout", &service])
+                .output()
+                .await,
+            "stop ASP Runtime Server launchd service",
+        );
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(())
+    }
 }
 
 /// Reconcile the platform supervisor and return only after the latest Runtime
@@ -203,6 +339,8 @@ pub(crate) async fn stop_runtime_server_supervisor() -> Result<(), String> {
 pub(crate) async fn reconcile_healthy_runtime_server(
     protocol_home: &Path,
 ) -> Result<agent_semantic_client_db::runtime_server_control::RuntimeServerControlReceipt, String> {
+    require_runtime_server_not_operator_stopped(protocol_home).await?;
+    create_runtime_server_run_intent(protocol_home).await?;
     install(protocol_home).await?;
     super::runtime_server::await_healthy_runtime_server(protocol_home).await
 }
@@ -332,7 +470,11 @@ async fn install(protocol_home: &Path) -> Result<(), String> {
             "../../templates/server/dev.tao3k.agent-semantic-protocols.asp-runtime-server.plist"
         )
         .replace("@ASP_RUNTIME@", &runtime_artifact.to_string_lossy())
-        .replace("@ASP_STATE_HOME@", &protocol_home.to_string_lossy());
+        .replace("@ASP_STATE_HOME@", &protocol_home.to_string_lossy())
+        .replace(
+            "@ASP_RUN_INTENT@",
+            &run_intent_marker_path(protocol_home).to_string_lossy(),
+        );
         let definition_changed = atomic_write_if_changed(&target, rendered.as_bytes()).await?;
         if let Ok(receipt) = &runtime_reconciliation
             && server_owned_restart_is_authoritative(definition_changed, receipt.state)
@@ -358,7 +500,11 @@ async fn install(protocol_home: &Path) -> Result<(), String> {
             .join(LINUX_SERVICE_NAME);
         let rendered = include_str!("../../templates/server/asp-runtime-server.service")
             .replace("@ASP_RUNTIME@", &runtime_artifact.to_string_lossy())
-            .replace("@ASP_STATE_HOME@", &protocol_home.to_string_lossy());
+            .replace("@ASP_STATE_HOME@", &protocol_home.to_string_lossy())
+            .replace(
+                "@ASP_RUN_INTENT@",
+                &run_intent_marker_path(protocol_home).to_string_lossy(),
+            );
         let definition_changed = atomic_write_if_changed(&target, rendered.as_bytes()).await?;
         if let Ok(receipt) = &runtime_reconciliation
             && server_owned_restart_is_authoritative(definition_changed, receipt.state)
@@ -514,16 +660,21 @@ fn launchd_reconcile_plan(present: bool, definition_changed: bool) -> LaunchdRec
 }
 
 #[cfg(target_os = "macos")]
+fn launchd_service_target() -> String {
+    format!(
+        "gui/{}/{}",
+        unsafe { libc::getuid() },
+        runtime_server_service_catalog().active_macos_label
+    )
+}
+
+#[cfg(target_os = "macos")]
 async fn reconcile_launchd(
     plist: &Path,
     runtime_artifact: &Path,
     definition_changed: bool,
 ) -> Result<(), String> {
-    let service = format!(
-        "gui/{}/{}",
-        unsafe { libc::getuid() },
-        runtime_server_service_catalog().active_macos_label
-    );
+    let service = launchd_service_target();
     let inspection = Command::new("/bin/launchctl")
         .args(["print", &service])
         .output()
@@ -584,6 +735,14 @@ fn launchd_loaded_program_matches(output: &[u8], runtime_artifact: &Path) -> boo
 
 #[cfg(target_os = "macos")]
 async fn bootstrap_launchd(plist: &Path) -> Result<(), String> {
+    let service = launchd_service_target();
+    require_command_success(
+        Command::new("/bin/launchctl")
+            .args(["enable", &service])
+            .output()
+            .await,
+        "enable ASP Runtime Server launchd service",
+    )?;
     require_command_success(
         Command::new("/bin/launchctl")
             .args([
@@ -622,6 +781,10 @@ fn home_directory() -> Result<PathBuf, String> {
 #[cfg(all(test, target_os = "macos"))]
 #[path = "../../tests/unit/runtime_server_supervisor.rs"]
 mod runtime_server_supervisor_tests;
+
+#[cfg(test)]
+#[path = "../../tests/unit/server/runtime_server_supervisor_operator_stop.rs"]
+mod runtime_server_supervisor_operator_stop_tests;
 
 #[cfg(target_os = "linux")]
 fn linux_user_service_directory() -> Result<PathBuf, String> {

@@ -446,8 +446,17 @@ fn ensure_within(path: &Path, root: &Path, label: &str) -> Result<(), String> {
 fn artifact_snapshot(root: &Path) -> Result<(String, usize), String> {
     let mut leaves = Vec::new();
     if root.is_file() {
+        let leaf_name = root
+            .file_name()
+            .and_then(std::ffi::OsStr::to_str)
+            .ok_or_else(|| {
+                format!(
+                    "provider workspace file artifact has no normalized UTF-8 leaf name: {}",
+                    root.display()
+                )
+            })?;
         leaves.push((
-            ".".to_string(),
+            leaf_name.to_owned(),
             agent_semantic_content_identity::file_content_digest_v1(root)?,
         ));
     } else if root.is_dir() {

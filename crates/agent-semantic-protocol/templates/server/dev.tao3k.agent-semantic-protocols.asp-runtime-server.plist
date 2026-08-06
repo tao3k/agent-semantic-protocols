@@ -19,7 +19,13 @@
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
-  <true/>
+  <dict>
+    <key>PathState</key>
+    <dict>
+      <key>@ASP_RUN_INTENT@</key>
+      <true/>
+    </dict>
+  </dict>
   <key>ThrottleInterval</key>
   <integer>1</integer>
   <key>ProcessType</key>

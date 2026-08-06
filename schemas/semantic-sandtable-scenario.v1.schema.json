@@ -100,7 +100,7 @@
       "minLength": 1
     },
     "coverage": {
-      "$ref": "#/$defs/coverageList"
+      "$ref": "semantic-sandtable-definitions.v1.schema.json#/$defs/coverageList"
     },
     "tags": {
       "$ref": "#/$defs/stringList"
@@ -320,13 +320,13 @@
         "querySetOpportunities": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/querySetOpportunity"
+            "$ref": "semantic-sandtable-definitions.v1.schema.json#/$defs/querySetOpportunity"
           }
         },
         "findings": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/evidenceFinding"
+            "$ref": "semantic-sandtable-definitions.v1.schema.json#/$defs/evidenceFinding"
           }
         },
         "qualityFindings": {
@@ -702,98 +702,6 @@
             "higher",
             "unknown"
           ]
-        }
-      }
-    },
-    "querySetOpportunity": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "view",
-        "queries",
-        "saveCommands"
-      ],
-      "properties": {
-        "view": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "queries": {
-          "type": "integer",
-          "minimum": 2
-        },
-        "saveCommands": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "selector": {
-          "enum": [
-            "exact-set",
-            "prefix-set",
-            "stdin-path-set"
-          ]
-        },
-        "reason": {
-          "type": "string",
-          "minLength": 1
-        },
-        "terms": {
-          "$ref": "#/$defs/stringList"
-        },
-        "scope": {
-          "$ref": "#/$defs/queryScope"
-        },
-        "beforeCommandIds": {
-          "$ref": "#/$defs/stringList"
-        },
-        "recommendedCommand": {
-          "$ref": "#/$defs/argv"
-        }
-      }
-    },
-    "queryScope": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "projectRoot": {
-          "type": "string",
-          "minLength": 1
-        },
-        "packageName": {
-          "type": "string",
-          "minLength": 1
-        },
-        "ownerPath": {
-          "type": "string",
-          "minLength": 1
-        },
-        "roots": {
-          "$ref": "#/$defs/stringList"
-        }
-      }
-    },
-    "evidenceFinding": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "kind",
-        "message"
-      ],
-      "properties": {
-        "kind": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "severity": {
-          "enum": [
-            "info",
-            "warning",
-            "error"
-          ]
-        },
-        "message": {
-          "type": "string",
-          "minLength": 1
         }
       }
     },
@@ -1237,7 +1145,7 @@
           ]
         },
         "coverage": {
-          "$ref": "#/$defs/coverageList"
+          "$ref": "semantic-sandtable-definitions.v1.schema.json#/$defs/coverageList"
         },
         "tags": {
           "$ref": "#/$defs/stringList"
@@ -1833,29 +1741,6 @@
     "envName": {
       "type": "string",
       "pattern": "^[A-Z][A-Z0-9_]*$"
-    },
-    "coverageList": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {
-        "enum": [
-          "language-registry",
-          "json-schema",
-          "search-flow",
-          "deps-query",
-          "policy-blackbox",
-          "policy-whitebox",
-          "performance",
-          "security",
-          "codex-hooks",
-          "codex-wrapper",
-          "evidence-assurance",
-          "desktop-hooks",
-          "cli-hooks",
-          "real-trigger",
-          "large-library"
-        ]
-      }
     },
     "stringMap": {
       "type": "object",

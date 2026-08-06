@@ -74,35 +74,24 @@ fn generic_wrapper_testing_resident_dispatch_matches_git_snapshot() {
             "{command}"
         );
         assert_eq!(
-            decision
-                .fields
-                .get("residentName")
-                .and_then(serde_json::Value::as_str),
-            expected["residentName"].as_str(),
+            decision.fields["choicePlaneOwner"].as_str(),
+            Some("org-contract:agent-interactive"),
             "{command}"
         );
         assert_eq!(
-            decision
-                .fields
-                .get("receiptKind")
-                .and_then(serde_json::Value::as_str),
-            expected["receiptKind"].as_str(),
+            decision.fields["agentWindowCommand"].as_str(),
+            Some("asp session --agents choice-plane"),
             "{command}"
         );
-        let loop_command = decision
-            .configured_resident_interactive_command_line()
-            .expect("configured resident interactive command");
+        for forbidden in ["residentName", "targetAgentName", "receiptKind"] {
+            assert!(
+                !decision.fields.contains_key(forbidden),
+                "{command}: {forbidden}"
+            );
+        }
         assert!(
-            loop_command.starts_with(
-                expected["loopCommandPrefix"]
-                    .as_str()
-                    .expect("loop command prefix")
-            ),
-            "{command}: {loop_command}"
-        );
-        assert!(
-            loop_command.contains(command),
-            "interactive loop lost exact denied command: {loop_command}"
+            !decision.message.contains("asp session @"),
+            "classifier must not preselect a ChoicePlane role: {command}"
         );
     }
 }

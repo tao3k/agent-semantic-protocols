@@ -15,19 +15,25 @@ mod dependency_index;
 pub mod engine;
 pub mod graph_turbo_cache;
 mod runtime_concurrency;
+pub mod runtime_generation_cancellation;
+pub mod runtime_telemetry_bus;
 pub mod runtime_server;
 pub mod runtime_server_admission;
+mod runtime_server_admission_builder_supervisor;
 pub mod runtime_server_admission_catalog;
 mod runtime_server_agent_control_plane;
+mod runtime_server_agent_session_status;
 pub mod runtime_server_control;
 pub mod runtime_server_diagnostics;
 mod runtime_server_generation_admission;
+mod runtime_server_graph_turbo_status;
 pub mod runtime_server_health;
 pub mod runtime_server_hook_admission_locator;
 pub mod runtime_server_observability;
 pub mod runtime_server_opentelemetry;
 pub mod runtime_server_runtime;
 pub mod runtime_server_workspace;
+pub mod search_incident;
 pub mod seqlock_json_memory;
 mod source_index;
 pub mod storage_contract;
@@ -40,9 +46,13 @@ pub mod turso_encrypted_storage;
 mod turso_mvcc_keyset;
 pub mod workspace_project_resolution;
 pub use runtime_server_control::{
-    RuntimeServerControlReceipt, RuntimeServerEndpoint, RuntimeServerOperation,
-    acquire_runtime_server_election, call_runtime_server, prepare_runtime_server_endpoint,
-    read_runtime_server_endpoint, runtime_server_endpoint_path, runtime_server_runtime_base,
+    AgentSessionControlPlaneState, RuntimeServerAgentSessionLifecycleState,
+    RuntimeServerAgentSessionStatus, RuntimeServerControlReceipt, RuntimeServerEndpoint,
+    RuntimeServerOperation, acquire_runtime_server_election, call_runtime_server,
+    prepare_runtime_server_endpoint, prepare_runtime_server_endpoint_with_workspace_store,
+    read_runtime_server_agent_sessions, read_runtime_server_endpoint,
+    resolve_runtime_server_agent_session_status, runtime_server_endpoint_path,
+    runtime_server_runtime_base,
 };
 pub use turso_mvcc_keyset::{
     TursoMvccEventId, TursoMvccPageCursor, TursoMvccPageLimit, TursoMvccPartitionKey,

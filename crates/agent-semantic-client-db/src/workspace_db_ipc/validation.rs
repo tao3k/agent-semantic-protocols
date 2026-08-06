@@ -3,7 +3,7 @@
 use serde::Deserialize;
 
 pub(super) fn workspace_db_ipc_read_lane_capacity() -> usize {
-    crate::runtime_concurrency::RuntimeConcurrencyPlan::current().reader_limit()
+    crate::runtime_concurrency::RuntimeConcurrencyPlan::current().ipc_read_lane_capacity()
 }
 
 pub(super) fn deserialize_changed_paths<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>

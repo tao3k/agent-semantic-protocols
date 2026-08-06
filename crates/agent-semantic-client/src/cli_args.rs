@@ -81,7 +81,7 @@ pub(crate) fn parse_client_args(
 }
 
 fn accepts_workspace_flag(command: Option<&str>) -> bool {
-    matches!(command, Some("search" | "query" | "check"))
+    matches!(command, Some("search" | "query" | "check" | "cache"))
 }
 
 fn resolve_project_root(value: &str, invocation_root: &Path) -> PathBuf {

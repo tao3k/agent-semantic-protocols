@@ -4,6 +4,10 @@ pub(super) fn payload_indicates_subagent_context(payload: &Value) -> bool {
     let Some(object) = payload.as_object() else {
         return false;
     };
+    object_has_codex_agent_identity(object) || object_indicates_subagent_context(object)
+}
+
+fn object_indicates_subagent_context(object: &Map<String, Value>) -> bool {
     object_has_true_bool(
         object,
         &[
@@ -36,7 +40,22 @@ pub(super) fn payload_indicates_subagent_context(payload: &Value) -> bool {
     ) || ["agent", "thread", "context", "_meta"]
         .iter()
         .filter_map(|key| object.get(*key))
-        .any(payload_indicates_subagent_context)
+        .filter_map(Value::as_object)
+        .any(object_indicates_subagent_context)
+}
+
+fn object_has_codex_agent_identity(object: &Map<String, Value>) -> bool {
+    ["agent_id", "agentId"].iter().any(|key| {
+        object
+            .get(*key)
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty())
+    }) && ["agent_type", "agentType"].iter().any(|key| {
+        object
+            .get(*key)
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty())
+    })
 }
 
 fn object_has_true_bool(object: &Map<String, Value>, keys: &[&str]) -> bool {

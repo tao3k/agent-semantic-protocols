@@ -19,7 +19,7 @@ fn mutation_rebuild_does_not_attempt_to_restore_the_superseded_materialization()
     assert!(!WorkspaceGenerationBuildMode::RebuildAfterMutation.attempts_durable_restore());
 }
 
-fn candidate_identity() -> WorkspaceGenerationCandidateIdentity {
+pub(super) fn candidate_identity() -> WorkspaceGenerationCandidateIdentity {
     candidate_identity_for(
         "blake3:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
     )
@@ -71,6 +71,18 @@ fn committed_generation()
         source_root_digest:
             "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(),
     }
+}
+
+fn completed_generation(
+    candidate: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
+) -> Result<
+    agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildCompletion,
+    String,
+> {
+    agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildCompletion::new(
+        candidate,
+        committed_generation(),
+    )
 }
 
 #[test]
@@ -138,9 +150,13 @@ async fn mutation_admission_rejects_non_normalized_paths_and_workspace_identity_
         })
         .await
         .expect("record parent workspace");
-    let admission = WorkspaceGenerationAdmission::new(Arc::new(|_, _, _, _| {
-        Box::pin(async { panic!("invalid mutation admission must not start a generation build") })
-    }))
+    let admission = WorkspaceGenerationAdmission::new(Arc::new(
+        |_, _, _, _, _cancellation, _absolute_deadline| {
+            Box::pin(async {
+                panic!("invalid mutation admission must not start a generation build")
+            })
+        },
+    ))
     .with_catalog(catalog);
 
     let path_error = admission
@@ -170,7 +186,7 @@ async fn mutation_admission_rejects_non_normalized_paths_and_workspace_identity_
 
 #[test]
 fn cold_restore_publishes_committed_generation_without_live_checkout_probe() {
-    let source = include_str!("../../src/runtime_server.rs");
+    let source = include_str!("../../src/runtime_server/mod.rs");
     assert!(source.contains("canonical_materialization_matches_admitted_generation"));
     assert!(!source.contains("canonical_materialization_matches_candidate_generation"));
     assert!(!source.contains("discover_repository_candidate_snapshot"));
@@ -185,13 +201,18 @@ async fn concurrent_workspace_admission_is_single_flight() {
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
         let release = Arc::clone(&release);
-        move |_workspace_identity, _project_root, _candidate, _build_mode| {
+        move |_workspace_identity,
+              _project_root,
+              candidate,
+              _build_mode,
+              _cancellation,
+              _absolute_deadline| {
             let build_count = Arc::clone(&build_count);
             let release = Arc::clone(&release);
             Box::pin(async move {
                 *build_count.lock().await += 1;
                 release.wait().await;
-                Ok(committed_generation())
+                completed_generation(candidate)
             })
         }
     }));
@@ -249,11 +270,16 @@ async fn project_roots_have_independent_admission_flights() {
     let roots = Arc::new(Mutex::new(Vec::new()));
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let roots = Arc::clone(&roots);
-        move |_workspace_identity, project_root, _candidate, _build_mode| {
+        move |_workspace_identity,
+              project_root,
+              candidate,
+              _build_mode,
+              _cancellation,
+              _absolute_deadline| {
             let roots = Arc::clone(&roots);
             Box::pin(async move {
                 roots.lock().await.push(project_root);
-                Ok(committed_generation())
+                completed_generation(candidate)
             })
         }
     }));
@@ -333,11 +359,16 @@ async fn changed_paths_fan_out_to_each_workspace_resident_without_git_rediscover
     let builds = Arc::new(Mutex::new(Vec::new()));
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let builds = Arc::clone(&builds);
-        move |workspace_identity, project_root, _candidate, _build_mode| {
+        move |workspace_identity,
+              project_root,
+              candidate,
+              _build_mode,
+              _cancellation,
+              _absolute_deadline| {
             let builds = Arc::clone(&builds);
             Box::pin(async move {
                 builds.lock().await.push((workspace_identity, project_root));
-                Ok(committed_generation())
+                completed_generation(candidate)
             })
         }
     }))
@@ -417,7 +448,7 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
         let release = Arc::clone(&release);
-        move |_, _, _, _| {
+        move |_, _, candidate, _, _cancellation, _absolute_deadline| {
             let build_count = Arc::clone(&build_count);
             let release = Arc::clone(&release);
             Box::pin(async move {
@@ -427,7 +458,7 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
                     .await
                     .map_err(|_| "mutation queue release closed".to_owned())?
                     .forget();
-                Ok(committed_generation())
+                completed_generation(candidate)
             })
         }
     }));
@@ -550,7 +581,7 @@ async fn multi_workspace_multi_session_admission_is_in_process_single_flight_and
         let peak_builds = Arc::clone(&peak_builds);
         let build_count = Arc::clone(&build_count);
         let release = Arc::clone(&release);
-        move |_, _, _, _| {
+        move |_, _, candidate, _, _cancellation, _absolute_deadline| {
             let active_builds = Arc::clone(&active_builds);
             let peak_builds = Arc::clone(&peak_builds);
             let build_count = Arc::clone(&build_count);
@@ -565,7 +596,7 @@ async fn multi_workspace_multi_session_admission_is_in_process_single_flight_and
                     .map_err(|_| "in-process admission release closed".to_owned())?
                     .forget();
                 active_builds.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
-                Ok(committed_generation())
+                completed_generation(candidate)
             })
         }
     })));
@@ -660,11 +691,16 @@ async fn ensure_observes_ready_attempt_without_starting_another_build() {
     let build_count = Arc::new(Mutex::new(0_u32));
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
-        move |_workspace_identity, _project_root, _candidate, _build_mode| {
+        move |_workspace_identity,
+              _project_root,
+              candidate,
+              _build_mode,
+              _cancellation,
+              _absolute_deadline| {
             let build_count = Arc::clone(&build_count);
             Box::pin(async move {
                 *build_count.lock().await += 1;
-                Ok(committed_generation())
+                completed_generation(candidate)
             })
         }
     }));
@@ -703,13 +739,18 @@ async fn ensure_schedules_once_without_waiting_for_generation_build() {
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
         let release = Arc::clone(&release);
-        move |_workspace_identity, _project_root, _candidate, _build_mode| {
+        move |_workspace_identity,
+              _project_root,
+              candidate,
+              _build_mode,
+              _cancellation,
+              _absolute_deadline| {
             let build_count = Arc::clone(&build_count);
             let release = Arc::clone(&release);
             Box::pin(async move {
                 *build_count.lock().await += 1;
                 release.wait().await;
-                Ok(committed_generation())
+                completed_generation(candidate)
             })
         }
     }));
@@ -805,7 +846,7 @@ async fn supervisor_fails_closed_for_registered_workspaces_without_git_candidate
         let maximum_active = Arc::clone(&maximum_active);
         let build_count = Arc::clone(&build_count);
         let restore_only_build_count = Arc::clone(&restore_only_build_count);
-        move |_, _, _, build_mode| {
+        move |_, _, candidate, build_mode, _cancellation, _absolute_deadline| {
             let active = Arc::clone(&active);
             let maximum_active = Arc::clone(&maximum_active);
             let build_count = Arc::clone(&build_count);
@@ -821,7 +862,7 @@ async fn supervisor_fails_closed_for_registered_workspaces_without_git_candidate
                 tokio::time::sleep(std::time::Duration::from_millis(2)).await;
                 active.fetch_sub(1, Ordering::SeqCst);
                 build_count.fetch_add(1, Ordering::SeqCst);
-                Ok(committed_generation())
+                completed_generation(candidate)
             })
         }
     }))
@@ -859,7 +900,12 @@ async fn failed_generation_build_retries_only_on_explicit_admission() {
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
         let failed = Arc::clone(&failed);
-        move |_workspace_identity, _project_root, _candidate, _build_mode| {
+        move |_workspace_identity,
+              _project_root,
+              _candidate,
+              _build_mode,
+              _cancellation,
+              _absolute_deadline| {
             let build_count = Arc::clone(&build_count);
             let failed = Arc::clone(&failed);
             Box::pin(async move {
@@ -914,37 +960,5 @@ async fn failed_generation_build_retries_only_on_explicit_admission() {
         .expect("drain failed generation admission lane");
 }
 
-#[tokio::test]
-async fn shutdown_cancels_tracked_generation_builds() {
-    let started = Arc::new(tokio::sync::Notify::new());
-    let admission = WorkspaceGenerationAdmission::new(Arc::new({
-        let started = Arc::clone(&started);
-        move |_workspace_identity, _project_root, _candidate, _build_mode| {
-            let started = Arc::clone(&started);
-            Box::pin(async move {
-                started.notify_one();
-                std::future::pending::<
-                    Result<
-                        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt,
-                        String,
-                    >,
-                >()
-                .await
-            })
-        }
-    }));
-    admission
-        .admit(
-            "workspace-shutdown",
-            std::env::temp_dir().join("asp-generation-admission-shutdown"),
-            candidate_identity(),
-        )
-        .await
-        .expect("schedule tracked builder");
-    started.notified().await;
-
-    assert_eq!(
-        admission.shutdown().await.expect("cancel tracked builder"),
-        1
-    );
-}
+#[path = "runtime_server_generation_admission_failure.rs"]
+mod runtime_server_generation_admission_failure;

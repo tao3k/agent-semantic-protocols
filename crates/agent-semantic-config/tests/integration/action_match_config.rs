@@ -15,13 +15,38 @@ fn git_source_read_rule_dispatches_to_testing_resident() {
         .as_ref()
         .expect("git source read rule should declare a resident dispatch");
 
-    assert_eq!(dispatch.agent.as_str(), "testing");
+    assert_eq!(dispatch.role.as_str(), "testing");
     assert_eq!(dispatch.receipt_kind.as_str(), "asp-testing-execution-v1");
     assert!(
         rule.message
             .as_deref()
-            .is_some_and(|message| message.contains("ASP Testing"))
+            .is_some_and(|message| message.contains("asp session --agents choice-plane"))
     );
+}
+
+#[test]
+fn source_deny_rules_have_one_explore_role_dispatch_for_the_choice_plane() {
+    let config =
+        toml::from_str::<HookClientConfigFile>(include_str!("../../templates/hooks/config.toml"))
+            .expect("default hook config template should parse");
+
+    for rule_id in [
+        "deny-uncontrolled-source-search-commands",
+        "deny-uncontrolled-source-materialization-commands",
+    ] {
+        let rule = config
+            .rules
+            .iter()
+            .find(|rule| rule.id == rule_id)
+            .unwrap_or_else(|| panic!("{rule_id} should exist"));
+        let dispatch = rule
+            .dispatch
+            .as_ref()
+            .unwrap_or_else(|| panic!("{rule_id} should declare one dispatch"));
+
+        assert_eq!(dispatch.role.as_str(), "explore");
+        assert_eq!(dispatch.receipt_kind.as_str(), "asp-explore-search-v1");
+    }
 }
 
 #[test]

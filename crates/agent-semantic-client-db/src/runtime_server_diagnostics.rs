@@ -16,7 +16,7 @@ struct RuntimeServerDiagnosticReceipt<'a> {
     schema_id: &'static str,
     schema_version: &'static str,
     sequence: u64,
-    event: &'a RuntimeServerEvent,
+    event: &'a serde_json::Value,
 }
 
 #[derive(Serialize)]
@@ -51,7 +51,13 @@ pub struct RuntimeServerDiagnostics {
 impl RuntimeServerDiagnostics {
     pub async fn start(
         receipt_path: PathBuf,
-    ) -> Result<(mpsc::UnboundedSender<RuntimeServerEvent>, Self), String> {
+    ) -> Result<
+        (
+            crate::runtime_server_observability::RuntimeServerEventPublisher,
+            Self,
+        ),
+        String,
+    > {
         if let Some(parent) = receipt_path.parent() {
             tokio::fs::create_dir_all(parent).await.map_err(|error| {
                 format!(
@@ -62,19 +68,31 @@ impl RuntimeServerDiagnostics {
         }
         let journal_path = receipt_path.with_file_name("runtime-server-diagnostic-journal.v1.json");
         let (initial_sequence, initial_journal) = load_journal(&journal_path).await?;
-        let (sender, mut receiver) = mpsc::unbounded_channel();
+        let worker_count = tokio::runtime::Handle::current().metrics().num_workers();
+        let capacity = worker_count.saturating_mul(32).clamp(256, 4_096);
+        let (sender, mut receiver) = mpsc::channel(capacity);
+        let publisher =
+            crate::runtime_server_observability::RuntimeServerEventPublisher::new(sender, capacity);
         let task = tokio::spawn(async move {
             let mut sequence = initial_sequence;
             let mut journal = initial_journal;
             while let Some(event) = receiver.recv().await {
-                sequence = sequence.saturating_add(1);
-                write_latest_event(&receipt_path, sequence, &event).await?;
-                append_journal_event(&mut journal, sequence, event)?;
+                let mut batch = Vec::with_capacity(64);
+                batch.push(event);
+                receiver.recv_many(&mut batch, 63).await;
+                for event in batch {
+                    sequence = sequence.saturating_add(1);
+                    append_journal_event(&mut journal, sequence, event)?;
+                }
+                let latest = journal.back().ok_or_else(|| {
+                    "Runtime Server diagnostic batch produced no event".to_owned()
+                })?;
+                write_latest_journal_event(&receipt_path, latest).await?;
                 write_journal(&journal_path, &journal).await?;
             }
             Ok(())
         });
-        Ok((sender, Self { task }))
+        Ok((publisher, Self { task }))
     }
 
     pub async fn join(self) -> Result<(), String> {
@@ -193,16 +211,15 @@ async fn write_journal(
     })
 }
 
-async fn write_latest_event(
+async fn write_latest_journal_event(
     path: &Path,
-    sequence: u64,
-    event: &RuntimeServerEvent,
+    latest: &RuntimeServerDiagnosticJournalEntry,
 ) -> Result<(), String> {
     let bytes = serde_json::to_vec(&RuntimeServerDiagnosticReceipt {
         schema_id: DIAGNOSTIC_SCHEMA_ID,
         schema_version: "1",
-        sequence,
-        event,
+        sequence: latest.sequence,
+        event: &latest.event,
     })
     .map_err(|error| format!("failed to encode Runtime Server diagnostic receipt: {error}"))?;
     let temporary = path.with_extension("json.tmp");

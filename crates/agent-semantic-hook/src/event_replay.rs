@@ -119,7 +119,7 @@ pub(crate) fn compact_source_access_deny_message(
             return message;
         }
         return format!(
-            "ASP denied source access again (`{reason}`). Stay in the configured resident-child interactive loop with `asp agent session bootstrap`; choose one number and re-enter until state=Ready.\nrecoveryRef={recovery_ref}"
+            "ASP denied source access again (`{reason}`). Open the canonical Org-backed ChoicePlane with `asp session --agents choice-plane` and execute its admitted host-native action.\nrecoveryRef={recovery_ref}"
         );
     }
 
@@ -151,7 +151,7 @@ pub(crate) fn compact_source_access_deny_message(
         return message;
     }
     format!(
-        "ASP denied source access (`{reason}`). Enter the configured resident-child interactive loop with `asp agent session bootstrap`; choose one number, perform the native platform action, then re-enter until state=Ready.\nrecoveryRef={recovery_ref}"
+        "ASP denied source access (`{reason}`). Open the canonical Org-backed ChoicePlane with `asp session --agents choice-plane` and execute its admitted host-native action.\nrecoveryRef={recovery_ref}"
     )
 }
 
@@ -190,7 +190,7 @@ pub(crate) fn repeated_deny_message(decision: &HookDecision) -> String {
             .to_string(),
         String::new(),
         "## ASP Hook Recovery".to_string(),
-        "Enter the configured resident-child interactive loop with `asp agent session bootstrap`; choose one number and re-enter until state=Ready.".to_string(),
+        "Open the canonical Org-backed ChoicePlane with `asp session --agents choice-plane` and execute its admitted host-native action.".to_string(),
         String::new(),
         "## Stop".to_string(),
         "Do not switch to another evidence channel. The hook has already denied this lane."

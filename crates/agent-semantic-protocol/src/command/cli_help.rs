@@ -35,12 +35,6 @@ pub(crate) fn install_plugin_command() -> Command {
                 .action(ArgAction::SetTrue)
                 .help("Enable and cache the plugin only in PROJECT_ROOT"),
         )
-        .arg(
-            Arg::new("subagent-model")
-                .long("subagent-model")
-                .value_name("MODEL")
-                .help("Override the configured ASP resident subagent model"),
-        )
 }
 
 fn paths_command() -> Command {
@@ -418,6 +412,9 @@ pub(crate) fn selected_command(args: &[String]) -> Command {
             install_binary_command()
         }
         [install, hook, ..] if install == "install" && hook == "hook" => install_hook_command(),
+        [hook, break_glass, ..] if hook == "hook" && break_glass == "break-glass" => {
+            super::hook_break_glass::break_glass_command()
+        }
         [install, plugin, ..] if install == "install" && plugin == "plugin" => {
             install_plugin_command()
         }
@@ -443,10 +440,11 @@ fn selected_command_default(args: &[String]) -> Command {
         (Some("install"), Some("plugin")) => install_plugin_command(),
         (Some("install"), _) => install_command(),
         (Some("hook"), Some("doctor")) => hook_doctor_command(),
+        (Some("hook"), Some("break-glass")) => super::hook_break_glass::break_glass_command(),
         (Some("hook"), _) => hook_command(),
-        (Some("agent"), Some("session")) => agent_session_command(),
         (Some("agent"), Some("config")) => agent_config_command(),
         (Some("agent"), _) => agent_command(),
+        (Some("session"), _) => session_control_plane_command(),
         (Some("providers"), _) => providers_command(),
         (Some("tools"), _) => tools_command(),
         (Some("wrap"), _) => wrap_command(),
@@ -490,9 +488,6 @@ fn selected_command_default(args: &[String]) -> Command {
             facade_subcommand(language, command)
         }
         (Some(language), _) if is_language_facade(language) => root_facade_command(language),
-        (Some("guide"), _) => Command::new("guide")
-            .bin_name("asp guide")
-            .about("Show the ASP command and routing guide"),
         (Some("fd"), _) => Command::new("fd")
             .bin_name("asp fd")
             .about("Run the ASP fd compatibility surface"),

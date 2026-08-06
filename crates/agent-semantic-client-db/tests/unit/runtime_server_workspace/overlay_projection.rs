@@ -834,24 +834,34 @@ async fn process_cold_owner_identity_is_independent_of_unrelated_selector_volume
     let pointer = resident_pointer(temporary.path(), "workspace-owner-identity-performance");
 
     let mut samples = Vec::with_capacity(SAMPLE_COUNT);
+    let mut open_samples = Vec::with_capacity(SAMPLE_COUNT);
+    let mut lookup_samples = Vec::with_capacity(SAMPLE_COUNT);
     for _ in 0..SAMPLE_COUNT {
         let started = Instant::now();
         let client = WorkspaceExactProjectionDataPlaneClient::open(&pointer)
             .await
             .expect("open process-cold exact owner index");
+        let opened = Instant::now();
         assert!(
             client
                 .contains_owner(&target)
                 .expect("compare target owner"),
             "target owner identity must match"
         );
-        samples.push(started.elapsed().as_nanos());
+        let completed = Instant::now();
+        open_samples.push(opened.duration_since(started).as_nanos());
+        lookup_samples.push(completed.duration_since(opened).as_nanos());
+        samples.push(completed.duration_since(started).as_nanos());
     }
     samples.sort_unstable();
+    open_samples.sort_unstable();
+    lookup_samples.sort_unstable();
     let p99 = samples[(SAMPLE_COUNT * 99).div_ceil(100) - 1];
+    let open_p99 = open_samples[(SAMPLE_COUNT * 99).div_ceil(100) - 1];
+    let lookup_p99 = lookup_samples[(SAMPLE_COUNT * 99).div_ceil(100) - 1];
     let max = *samples.last().expect("at least one owner identity sample");
     eprintln!(
-        "[workspace-owner-identity-performance] unrelatedSelectors={UNRELATED_SELECTOR_COUNT} samples={SAMPLE_COUNT} p99Nanos={p99} maxNanos={max} budgetNanos={P99_BUDGET_NANOS}"
+        "[workspace-owner-identity-performance] unrelatedSelectors={UNRELATED_SELECTOR_COUNT} samples={SAMPLE_COUNT} openP99Nanos={open_p99} lookupP99Nanos={lookup_p99} p99Nanos={p99} maxNanos={max} budgetNanos={P99_BUDGET_NANOS}"
     );
     assert!(
         p99 < P99_BUDGET_NANOS,

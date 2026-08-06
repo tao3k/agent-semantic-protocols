@@ -70,3 +70,34 @@ fn invalid_and_duplicate_paths_are_rejected() {
         Err(WorkspaceMerkleV1Error::DuplicatePath)
     );
 }
+
+#[test]
+fn all_owner_proofs_reuse_precomputed_levels_within_wall_budget() {
+    let entries = (0..256)
+        .map(|index| {
+            (
+                format!("crates/member-{index:03}/src/lib.rs"),
+                ContentDigestV1::parse(format!("{index:064x}")).expect("valid digest"),
+            )
+        })
+        .collect::<Vec<_>>();
+    let tree = WorkspacePathMerkleTreeV1::from_file_digests(entries.clone()).expect("tree");
+    let started = std::time::Instant::now();
+
+    for (path, source_digest) in entries {
+        let proof = tree.inclusion_proof(&path).expect("owner proof");
+        assert!(verify_owner_inclusion_v1(
+            &path,
+            &source_digest,
+            tree.owner_subtree_digest(&path).expect("owner leaf"),
+            &proof,
+            tree.root_digest(),
+        ));
+    }
+
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(1),
+        "cached owner proofs must not rebuild the complete tree per owner: {:?}",
+        started.elapsed(),
+    );
+}

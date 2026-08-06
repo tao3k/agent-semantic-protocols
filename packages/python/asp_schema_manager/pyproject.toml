@@ -1,0 +1,23 @@
+[project]
+name = "asp-schema-manager"
+version = "0.1.0"
+description = "Deterministic JSON Schema reference, Rust usage, and lifecycle auditor for ASP."
+requires-python = ">=3.12"
+dependencies = [
+  "jsonschema>=4.23,<5",
+]
+
+[project.scripts]
+asp-schema-manager = "asp_schema_manager.cli:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=9,<10",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/asp_schema_manager"]

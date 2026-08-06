@@ -2,19 +2,23 @@
 
 mod agent_session_registry;
 mod codex_control_plane;
+mod graph_facts;
 mod protocol;
 mod provider_owner;
 mod runtime_generation;
 mod runtime_locator;
+mod session_pool;
 pub(crate) mod transport;
 mod validation;
 
 pub use crate::workspace_db_ipc_server::serve_workspace_db_session_until_shutdown;
 pub use crate::workspace_db_owner_election::try_acquire_workspace_db_owner_election;
 pub use agent_session_registry::{
-    AgentSessionModelObservationIpc, AgentSessionRegisterIpcRequest,
-    AgentSessionRegistryIpcOperation, AgentSessionRegistryIpcResult,
+    AgentHostLifecycleEventIpc, AgentHostLifecycleEventKind, AgentSessionModelObservationIpc,
+    AgentSessionRegisterIpcRequest, AgentSessionRegistryIpcOperation,
+    AgentSessionRegistryIpcResult,
 };
+pub use graph_facts::{RuntimeGraphFactSource, RuntimeGraphFactsRead};
 pub use protocol::{
     RuntimeCacheControlReceipt, RuntimeCacheControlRequest, RuntimeCacheGenerationState,
     RuntimeCacheInvalidationScope, WORKSPACE_DB_OWNER_ENDPOINT_SCHEMA_ID,

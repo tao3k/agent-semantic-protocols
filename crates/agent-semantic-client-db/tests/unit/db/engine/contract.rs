@@ -165,6 +165,14 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
         "../../../../../../schemas/semantic-db-engine-report.v1.schema.json"
     ))
     .expect("parse db engine report schema");
+    let db_definitions: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../../schemas/semantic-db-definitions.v1.schema.json"
+    ))
+    .expect("parse shared semantic db definitions schema");
+    assert_eq!(
+        db_definitions["$id"],
+        "https://agent-semantic-protocols.local/schemas/semantic-db-definitions.v1.schema.json"
+    );
     assert_eq!(
         schema["$id"],
         "https://agent-semantic-protocols.local/schemas/semantic-db-engine-report.v1.schema.json"
@@ -177,20 +185,21 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     );
     assert_eq!(
         schema["properties"]["features"]["$ref"],
-        "#/$defs/tursoFeatures"
+        "semantic-db-definitions.v1.schema.json#/$defs/tursoFeatures"
     );
     assert_eq!(
-        schema["$defs"]["tursoFeatures"]["properties"]["concurrentWrites"]["const"],
+        db_definitions["$defs"]["tursoFeatures"]["properties"]["concurrentWrites"]["const"],
         true
     );
     assert_eq!(
-        schema["$defs"]["tursoFeatures"]["properties"]["mvcc"]["const"],
+        db_definitions["$defs"]["tursoFeatures"]["properties"]["mvcc"]["const"],
         true
     );
     assert_eq!(
-        schema["$defs"]["tursoFeatures"]["properties"]["beginConcurrent"]["const"],
+        db_definitions["$defs"]["tursoFeatures"]["properties"]["beginConcurrent"]["const"],
         false
     );
+    assert!(schema["$defs"].get("tursoFeatures").is_none());
     assert!(schema["properties"].get("sqliteReport").is_none());
     assert!(schema["$defs"].get("activeEngineFeatures").is_none());
     assert!(schema["$defs"].get("engineFeatures").is_none());
@@ -229,20 +238,21 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     );
     assert_eq!(
         manifest_schema["properties"]["features"]["$ref"],
-        "#/$defs/tursoFeatures"
+        "semantic-db-definitions.v1.schema.json#/$defs/tursoFeatures"
     );
     assert_eq!(
-        manifest_schema["$defs"]["tursoFeatures"]["properties"]["concurrentWrites"]["const"],
+        db_definitions["$defs"]["tursoFeatures"]["properties"]["concurrentWrites"]["const"],
         true
     );
     assert_eq!(
-        manifest_schema["$defs"]["tursoFeatures"]["properties"]["mvcc"]["const"],
+        db_definitions["$defs"]["tursoFeatures"]["properties"]["mvcc"]["const"],
         true
     );
     assert_eq!(
-        manifest_schema["$defs"]["tursoFeatures"]["properties"]["beginConcurrent"]["const"],
+        db_definitions["$defs"]["tursoFeatures"]["properties"]["beginConcurrent"]["const"],
         false
     );
+    assert!(manifest_schema["$defs"].get("tursoFeatures").is_none());
     for retired_field in ["sqliteControlDbPath", "sqliteReport"] {
         assert!(
             !manifest_required

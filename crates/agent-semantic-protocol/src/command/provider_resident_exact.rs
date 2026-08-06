@@ -71,82 +71,12 @@ async fn resident_exact_projection(
     project_root: &Path,
     exact: &super::provider_exact_args::ExactQueryArgs,
 ) -> Result<WorkspaceRuntimeSelectorRead, String> {
-    let owner_path = exact_owner_path(&exact.structural_selector)?;
-    let mut client =
-        crate::server::runtime_server::runtime_server_workspace_exact_projection_client_async(
-            project_root,
-        )
-        .await?;
-    crate::exact_projection_trace::generation("owner-freshness-before", client.generation_digest());
-    if let Some(admitted_content_digest) = client.owner_content_digest(owner_path)? {
-        let readiness = crate::server::runtime_server_generation::ensure_runtime_generation_owner_ready_for_projection_async(
-            project_root,
-            owner_path,
-            &admitted_content_digest,
-        )
-        .await?;
-        crate::exact_projection_trace::generation(
-            "owner-freshness-ready",
-            &readiness.commit.generation_digest,
-        );
-        client =
-            crate::server::runtime_server::runtime_server_workspace_exact_projection_client_async(
-                project_root,
-            )
-            .await?;
-        crate::exact_projection_trace::generation(
-            "owner-freshness-after",
-            client.generation_digest(),
-        );
-        let mapped_owner_content_digest = client.owner_content_digest(owner_path)?;
-        if !reopened_generation_covers_ready_owner(
-            readiness.owner_content_digest.as_deref(),
-            mapped_owner_content_digest.as_deref(),
-        ) {
-            return Err(format!(
-                "resident exact pointer does not cover the daemon-ready owner: ownerPath={} readyOwnerDigest={:?} mappedOwnerDigest={:?} readyGeneration={} mappedGeneration={}",
-                owner_path,
-                readiness.owner_content_digest,
-                mapped_owner_content_digest,
-                readiness.commit.generation_digest,
-                client.generation_digest(),
-            ));
-        }
-    }
-    let mut read = client.read_runtime_selector(&exact.projection, &exact.structural_selector)?;
-    if matches!(
-        read,
-        WorkspaceRuntimeSelectorRead::GenerationMissing
-            | WorkspaceRuntimeSelectorRead::OwnerMissing { .. }
-    ) {
-        crate::server::runtime_server_generation::ensure_runtime_generation_ready_for_projection_async(
-            project_root,
-        )
-        .await?;
-        client =
-            crate::server::runtime_server::runtime_server_workspace_exact_projection_client_async(
-                project_root,
-            )
-            .await?;
-        read = client.read_runtime_selector(&exact.projection, &exact.structural_selector)?;
-    }
-    Ok(read)
-}
-
-fn reopened_generation_covers_ready_owner(
-    ready_owner_content_digest: Option<&str>,
-    mapped_owner_content_digest: Option<&str>,
-) -> bool {
-    mapped_owner_content_digest == ready_owner_content_digest
-}
-
-fn exact_owner_path(structural_selector: &str) -> Result<&str, String> {
-    structural_selector
-        .split_once("://")
-        .and_then(|(_, selector)| selector.split_once('#'))
-        .map(|(owner_path, _)| owner_path)
-        .filter(|owner_path| !owner_path.is_empty())
-        .ok_or_else(|| "exact structural selector is missing its owner path".to_owned())
+    crate::server::runtime_server::runtime_server_workspace_exact_projection_async(
+        project_root,
+        &exact.projection,
+        &exact.structural_selector,
+    )
+    .await
 }
 
 fn registered_provider_id(language_id: &str) -> Result<String, String> {
@@ -156,7 +86,3 @@ fn registered_provider_id(language_id: &str) -> Result<String, String> {
         .map(|manifest| manifest.provider_id().as_str().to_owned())
         .ok_or_else(|| format!("no registered provider manifest for language {language_id}"))
 }
-
-#[cfg(test)]
-#[path = "../../tests/unit/provider_resident_exact.rs"]
-mod tests;

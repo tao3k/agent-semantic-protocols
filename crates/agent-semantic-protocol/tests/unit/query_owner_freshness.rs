@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[tokio::test(flavor = "multi_thread")]
-async fn exact_source_projection_reconciles_unadmitted_owner_change_before_cached_hit() {
+async fn exact_source_projection_consumes_the_pretool_admitted_owner_change() {
     let root = temp_project_root("exact-selector-freshness");
     establish_rust_package(&root);
     let owner = root.join("src/lib.rs");
@@ -18,6 +18,9 @@ async fn exact_source_projection_reconciles_unadmitted_owner_change_before_cache
     assert!(first.contains("let value = 1;"), "{first}");
 
     fs::write(&owner, "pub fn alpha() {\n    let value = 2;\n}\n").expect("write second source");
+    runtime
+        .admit("alpha-pretool-rewrite", vec!["src/lib.rs".to_owned()])
+        .await;
 
     let refresh_started = std::time::Instant::now();
     let second = run_exact_selector_query(&root, &runtime.state_home).await;
@@ -29,7 +32,7 @@ async fn exact_source_projection_reconciles_unadmitted_owner_change_before_cache
     );
     assert!(
         refresh_elapsed < std::time::Duration::from_millis(250),
-        "unadmitted owner refresh exceeded the 250ms atomic publication budget: {refresh_elapsed:?}"
+        "pre-tool admitted owner refresh exceeded the 250ms atomic publication budget: {refresh_elapsed:?}"
     );
     let warm_started = std::time::Instant::now();
     let warm = run_exact_selector_query(&root, &runtime.state_home).await;
@@ -40,7 +43,7 @@ async fn exact_source_projection_reconciles_unadmitted_owner_change_before_cache
         "unchanged owner exact query exceeded the 100ms warm budget: {warm_elapsed:?}"
     );
     println!(
-        "[exact-owner-freshness-performance] reconcileMicros={} reconcileBudgetMicros=250000 warmMicros={} warmBudgetMicros=100000",
+        "[pretool-admitted-exact-performance] reconcileMicros={} reconcileBudgetMicros=250000 warmMicros={} warmBudgetMicros=100000",
         refresh_elapsed.as_micros(),
         warm_elapsed.as_micros()
     );

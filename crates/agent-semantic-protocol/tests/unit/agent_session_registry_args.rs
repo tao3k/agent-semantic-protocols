@@ -15,11 +15,13 @@ fn agent_session_state_root_is_not_a_client_option() {
 }
 
 #[test]
-fn agent_session_bootstrap_keeps_the_runtime_server_route() {
-    let args = SessionArgs::parse(&["bootstrap".to_string()])
-        .expect("bootstrap must remain a valid session command");
+fn legacy_bootstrap_is_rejected_by_the_registry_cli() {
+    let error = SessionArgs::parse(&["bootstrap".to_string()])
+        .err()
+        .expect("the Rust-owned ChoicePlane command must not parse");
 
-    assert!(matches!(args.command, SessionCommand::Bootstrap));
+    assert_eq!(error, "unknown session flag `bootstrap`");
+    assert!(!session_usage().contains("bootstrap"));
 }
 
 #[test]

@@ -1,15 +1,8 @@
 //! Top-level command dispatch for protocol subcommands.
 
-use std::{
-    env,
-    path::{Path, PathBuf},
-};
+use std::{env, path::PathBuf};
 
-use agent_semantic_hook::{
-    ClientHookConfig, default_client_config_path, load_client_config_for_project,
-};
-
-use super::agent_session_registry::run_agent_command;
+use super::agent_control_plane::{run_agent_command, run_session_control_plane_command};
 use super::ast_patch::run_ast_patch_command;
 use super::dispatch_agent_session_policy::is_agent_session_control_json_command;
 use super::document_provider;
@@ -30,10 +23,9 @@ pub(crate) fn run_protocol_command(args: Vec<String>) -> Result<(), String> {
 }
 
 pub(crate) fn run_protocol_command_started(
-    mut args: Vec<String>,
+    args: Vec<String>,
     process_started: tokio::time::Instant,
 ) -> Result<(), String> {
-    normalize_agent_session_command_args(&mut args)?;
     if super::cli_help::print_help_if_requested(&args)? {
         return Ok(());
     }
@@ -49,10 +41,7 @@ pub(crate) fn run_protocol_command_started(
             println!("{}", agent_semantic_config::hook_client_contract_fingerprint());
             Ok(())
         }
-        Some(
-            "guide" | "providers" | "doctor" | "cache" | "cloud" | "tools" | "wrap" | "fd"
-            | "rg",
-        ) => {
+        Some("providers" | "doctor" | "cache" | "cloud" | "tools" | "wrap" | "fd" | "rg") => {
             run_client_command(args)
         }
         Some("search") if args.get(1).is_some_and(|arg| arg == "history") => {
@@ -73,6 +62,7 @@ pub(crate) fn run_protocol_command_started(
         ),
         Some("hook") => run_hook_command(&args[1..]),
         Some("agent") => run_agent_command(&args[1..]),
+        Some("session") => run_session_control_plane_command(&args[1..]),
         Some("install") => run_install_command(&args[1..]),
         Some("paths") => run_paths_command(&args[1..]),
         Some("healthcheck") => run_healthcheck_command(&args[1..]),
@@ -175,49 +165,6 @@ fn arg_option_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
             args.windows(2)
                 .find_map(|window| (window[0] == flag).then_some(window[1].as_str()))
         })
-}
-
-fn normalize_agent_session_command_args(args: &mut Vec<String>) -> Result<(), String> {
-    if !super::has_current_agent_session() || !is_org_search_memory_command(args) {
-        return Ok(());
-    }
-    if option_is_present(args, "--session") {
-        return Ok(());
-    }
-    let project_root = std::env::current_dir()
-        .map_err(|error| format!("failed to resolve current project directory: {error}"))?;
-    let hook_config = load_dispatch_hook_config(&project_root)?;
-    let resident_child_name = hook_config.resident_asp_explore_child_name();
-    let now = agent_semantic_client_db::agent_session_unix_timestamp()?;
-    let Some(session) = super::current_registered_session(&project_root)? else {
-        return Ok(());
-    };
-    if session.name == resident_child_name && session.is_routable_at(now) {
-        args.push("--session".to_string());
-        args.push(session.root_session_id.to_string());
-    }
-    Ok(())
-}
-
-fn load_dispatch_hook_config(project_root: &Path) -> Result<ClientHookConfig, String> {
-    let config_path = default_client_config_path(&project_root.to_string_lossy());
-    load_client_config_for_project(&config_path, project_root)
-        .map_err(|error| format!("failed to load ASP hook config for agent session: {error}"))
-}
-
-fn is_org_search_memory_command(args: &[String]) -> bool {
-    matches!(
-        (
-            args.first().map(String::as_str),
-            args.get(1).map(String::as_str),
-            args.get(2).map(String::as_str),
-        ),
-        (Some("org"), Some("search"), Some("memory"))
-    )
-}
-
-fn option_is_present(args: &[String], option: &str) -> bool {
-    args.iter().any(|arg| arg == option)
 }
 
 fn usage() -> String {

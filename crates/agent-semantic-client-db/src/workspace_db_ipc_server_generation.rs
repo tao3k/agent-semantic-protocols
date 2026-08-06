@@ -4,6 +4,45 @@ use crate::runtime_server_admission::WorkspaceGenerationAdmission;
 use crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry;
 use crate::workspace_db_ipc::WorkspaceDbIpcResult;
 
+const GENERATION_DISCOVERY_DEADLINE: std::time::Duration = std::time::Duration::from_millis(800);
+const GENERATION_DISCOVERY_SCHEMA_ID: &str =
+    "agent.semantic-protocols.runtime-server-workspace-generation-discovery.v1";
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WorkspaceGenerationDiscoveryState {
+    Discovering,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceGenerationDiscoveryReceipt {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub workspace_identity: String,
+    pub project_root: String,
+    pub state: WorkspaceGenerationDiscoveryState,
+    pub attempt: u64,
+    pub started_at_unix_ms: u64,
+    pub deadline_unix_ms: u64,
+    pub finished_at_unix_ms: Option<u64>,
+    pub reason_kind: Option<String>,
+    pub error: Option<String>,
+}
+
+static GENERATION_DISCOVERY_RECEIPTS: std::sync::LazyLock<
+    dashmap::DashMap<GenerationDiscoveryKey, WorkspaceGenerationDiscoveryReceipt>,
+> = std::sync::LazyLock::new(dashmap::DashMap::new);
+
+fn unix_time_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or_default()
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct SubmittedMutationKey {
     workspace_identity: String,
@@ -13,6 +52,158 @@ struct SubmittedMutationKey {
 
 static SUBMITTED_MUTATIONS: std::sync::LazyLock<dashmap::DashSet<SubmittedMutationKey>> =
     std::sync::LazyLock::new(dashmap::DashSet::new);
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct GenerationDiscoveryKey {
+    workspace_identity: String,
+    project_root: PathBuf,
+}
+
+static GENERATION_DISCOVERY_TASKS: std::sync::LazyLock<dashmap::DashSet<GenerationDiscoveryKey>> =
+    std::sync::LazyLock::new(dashmap::DashSet::new);
+
+fn generation_is_active(
+    state: &crate::runtime_server_admission::WorkspaceGenerationAdmissionState,
+) -> bool {
+    match state {
+        crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Building
+        | crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready => true,
+        crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Failed
+        | crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Cancelled => false,
+    }
+}
+
+struct GenerationDiscoveryTaskGuard {
+    key: GenerationDiscoveryKey,
+    finished: bool,
+}
+
+impl Drop for GenerationDiscoveryTaskGuard {
+    fn drop(&mut self) {
+        GENERATION_DISCOVERY_TASKS.remove(&self.key);
+        if !self.finished {
+            if let Some(mut receipt) = GENERATION_DISCOVERY_RECEIPTS.get_mut(&self.key) {
+                receipt.state = WorkspaceGenerationDiscoveryState::Cancelled;
+                receipt.finished_at_unix_ms = Some(unix_time_ms());
+                receipt.reason_kind = Some("discovery-cancelled".to_owned());
+                receipt.error = Some("workspace candidate discovery task was cancelled".to_owned());
+            }
+        }
+    }
+}
+
+fn schedule_single_flight_discovery(
+    admission: std::sync::Arc<WorkspaceGenerationAdmission>,
+    workspace_identity: &str,
+    project_root: &std::path::Path,
+) -> bool {
+    if let Some(receipt) = admission.current(workspace_identity, project_root)
+        && generation_is_active(&receipt.state)
+    {
+        return false;
+    }
+    let key = GenerationDiscoveryKey {
+        workspace_identity: workspace_identity.to_owned(),
+        project_root: project_root.to_path_buf(),
+    };
+    if !GENERATION_DISCOVERY_TASKS.insert(key.clone()) {
+        return false;
+    }
+    let started_at_unix_ms = unix_time_ms();
+    GENERATION_DISCOVERY_RECEIPTS.insert(
+        key.clone(),
+        WorkspaceGenerationDiscoveryReceipt {
+            schema_id: GENERATION_DISCOVERY_SCHEMA_ID.to_owned(),
+            schema_version: "1".to_owned(),
+            workspace_identity: key.workspace_identity.clone(),
+            project_root: key.project_root.display().to_string(),
+            state: WorkspaceGenerationDiscoveryState::Discovering,
+            attempt: 1,
+            started_at_unix_ms,
+            deadline_unix_ms: started_at_unix_ms
+                .saturating_add(GENERATION_DISCOVERY_DEADLINE.as_millis() as u64),
+            finished_at_unix_ms: None,
+            reason_kind: None,
+            error: None,
+        },
+    );
+    let task_admission = std::sync::Arc::clone(&admission);
+    let task = tokio::spawn(async move {
+        let mut guard = GenerationDiscoveryTaskGuard {
+            key,
+            finished: false,
+        };
+        let result = run_discovery(
+            task_admission,
+            guard.key.workspace_identity.clone(),
+            guard.key.project_root.clone(),
+            GENERATION_DISCOVERY_DEADLINE,
+        )
+        .await;
+        let failure = match result {
+            Ok(_) => None,
+            Err(error) => {
+                let reason = if error.contains("exceeded") {
+                    "discovery-timeout"
+                } else {
+                    "discovery-failed"
+                };
+                Some((reason, error))
+            }
+        };
+        if let Some((reason_kind, error)) = failure {
+            if let Some(mut receipt) = GENERATION_DISCOVERY_RECEIPTS.get_mut(&guard.key) {
+                receipt.state = WorkspaceGenerationDiscoveryState::Failed;
+                receipt.finished_at_unix_ms = Some(unix_time_ms());
+                receipt.reason_kind = Some(reason_kind.to_owned());
+                receipt.error = Some(error.clone());
+            }
+            eprintln!(
+                "[runtime-server-generation-discovery] workspaceIdentity={} projectRoot={} state=failed error={error}",
+                guard.key.workspace_identity,
+                guard.key.project_root.display()
+            );
+        }
+        guard.finished = true;
+    });
+    admission.track_submission_task(task);
+    true
+}
+
+async fn run_discovery(
+    admission: std::sync::Arc<WorkspaceGenerationAdmission>,
+    workspace_identity: String,
+    project_root: PathBuf,
+    deadline: std::time::Duration,
+) -> Result<crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt, String> {
+    tokio::time::timeout(deadline, async move {
+        let candidate =
+            crate::runtime_server_admission::discover_workspace_generation_candidate(&project_root)
+                .await?;
+        admission
+            .ensure(&workspace_identity, &project_root, candidate)
+            .await
+    })
+    .await
+    .map_err(|_| format!("workspace candidate discovery exceeded {deadline:?}"))?
+}
+
+fn discovery_in_progress(
+    workspace_identity: &str,
+    project_root: &std::path::Path,
+) -> WorkspaceDbIpcResult {
+    WorkspaceDbIpcResult::Failed {
+        code: "runtime-server-generation-discovery-in-progress".to_owned(),
+        message: format!(
+            "Runtime Server owns workspace candidate discovery: workspaceIdentity={workspace_identity} projectRoot={}",
+            project_root.display()
+        ),
+    }
+}
+
+#[cfg(test)]
+#[path = "../tests/unit/workspace_db_ipc_server_generation_discovery.rs"]
+mod discovery_task_tests;
 
 pub(super) fn submit_mutation(
     memory_registry: std::sync::Arc<RuntimeServerWorkspaceRegistry>,
@@ -155,7 +346,7 @@ pub(super) async fn admit_mutation(
 }
 
 pub(super) async fn ensure_current_or_build(
-    generation_admission: Option<&WorkspaceGenerationAdmission>,
+    generation_admission: Option<std::sync::Arc<WorkspaceGenerationAdmission>>,
     workspace_identity: &str,
     project_root: String,
 ) -> WorkspaceDbIpcResult {
@@ -166,37 +357,49 @@ pub(super) async fn ensure_current_or_build(
         };
     };
     let project_root = PathBuf::from(project_root);
-    if let Some(receipt) = admission.current(workspace_identity, &project_root) {
-        return WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt };
-    }
-    let candidate = match crate::runtime_server_admission::discover_workspace_generation_candidate(
-        &project_root,
-    )
-    .await
+    if let Some(receipt) = GENERATION_DISCOVERY_RECEIPTS
+        .get(&GenerationDiscoveryKey {
+            workspace_identity: workspace_identity.to_owned(),
+            project_root: project_root.clone(),
+        })
+        .filter(|receipt| receipt.state != WorkspaceGenerationDiscoveryState::Discovering)
     {
-        Ok(candidate) => candidate,
-        Err(message) => {
+        return WorkspaceDbIpcResult::Failed {
+            code: "runtime-server-generation-discovery-failed".to_owned(),
+            message: serde_json::to_string(&*receipt)
+                .unwrap_or_else(|_| "runtime generation discovery failed".to_owned()),
+        };
+    }
+    if let Some(receipt) = admission.current(workspace_identity, &project_root) {
+        if matches!(
+            receipt.state,
+            crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Failed
+                | crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Cancelled
+        ) {
             return WorkspaceDbIpcResult::Failed {
-                code: "runtime-server-generation-candidate-discovery-failed".to_owned(),
-                message,
+                code: "runtime-server-generation-admission-failed".to_owned(),
+                message: serde_json::to_string(&receipt)
+                    .unwrap_or_else(|_| "runtime generation admission failed".to_owned()),
             };
         }
-    };
-    match admission
-        .ensure(workspace_identity, &project_root, candidate)
-        .await
-    {
-        Ok(receipt) => WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt },
-        Err(message) => WorkspaceDbIpcResult::Failed {
-            code: "runtime-server-generation-ensure-failed".to_owned(),
-            message,
-        },
+        return WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt };
+    }
+    schedule_single_flight_discovery(
+        std::sync::Arc::clone(&admission),
+        workspace_identity,
+        &project_root,
+    );
+    match admission.current(workspace_identity, &project_root) {
+        Some(receipt) if generation_is_active(&receipt.state) => {
+            WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt }
+        }
+        _ => discovery_in_progress(workspace_identity, &project_root),
     }
 }
 
 pub(super) async fn ensure_terminal_ready(
     memory_registry: &RuntimeServerWorkspaceRegistry,
-    generation_admission: Option<&WorkspaceGenerationAdmission>,
+    generation_admission: Option<std::sync::Arc<WorkspaceGenerationAdmission>>,
     workspace_identity: &str,
     project_root: String,
 ) -> WorkspaceDbIpcResult {
@@ -207,32 +410,23 @@ pub(super) async fn ensure_terminal_ready(
         };
     };
     let project_root = PathBuf::from(project_root);
-    let candidate = match crate::runtime_server_admission::discover_workspace_generation_candidate(
-        &project_root,
-    )
-    .await
-    {
-        Ok(candidate) => candidate,
-        Err(message) => {
-            return WorkspaceDbIpcResult::Failed {
-                code: "runtime-server-generation-candidate-discovery-failed".to_owned(),
-                message,
-            };
+    let receipt = match admission.current(workspace_identity, &project_root) {
+        Some(receipt) if generation_is_active(&receipt.state) => receipt,
+        _ => {
+            schedule_single_flight_discovery(
+                std::sync::Arc::clone(&admission),
+                workspace_identity,
+                &project_root,
+            );
+            return discovery_in_progress(workspace_identity, &project_root);
         }
     };
+    if receipt.state == crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Building
+    {
+        return discovery_in_progress(workspace_identity, &project_root);
+    }
     let ensured = async {
-        let receipt = admission
-            .ensure(workspace_identity, &project_root, candidate)
-            .await?;
-        let terminal = if receipt.state
-            == crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Building
-        {
-            admission
-                .wait_terminal(workspace_identity, &project_root)
-                .await?
-        } else {
-            receipt
-        };
+        let terminal = receipt;
         terminal.validate()?;
         if terminal.state
             != crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
@@ -308,187 +502,6 @@ pub(super) async fn ensure_terminal_ready(
         Ok(receipt) => WorkspaceDbIpcResult::RuntimeGenerationReadiness { receipt },
         Err(message) => WorkspaceDbIpcResult::Failed {
             code: "runtime-server-generation-ready-gate-failed".to_owned(),
-            message,
-        },
-    }
-}
-
-pub(super) async fn ensure_owner_terminal_ready(
-    memory_registry: &RuntimeServerWorkspaceRegistry,
-    generation_admission: Option<&WorkspaceGenerationAdmission>,
-    workspace_identity: &str,
-    project_root: String,
-    owner_path: String,
-    admitted_content_digest: String,
-) -> WorkspaceDbIpcResult {
-    let project_root_path = PathBuf::from(&project_root);
-    let live_content_digest = match crate::runtime_server_workspace::current_owner_content_digest(
-        &project_root_path,
-        &owner_path,
-    )
-    .await
-    {
-        Ok(digest) => digest,
-        Err(message) => {
-            return WorkspaceDbIpcResult::Failed {
-                code: "runtime-server-owner-freshness-read-failed".to_owned(),
-                message,
-            };
-        }
-    };
-    if live_content_digest.as_deref() == Some(admitted_content_digest.as_str()) {
-        match memory_registry.lease(workspace_identity, &project_root_path) {
-            Ok(generation) => {
-                let commit = crate::runtime_server_admission::WorkspaceGenerationCommitReceipt {
-                    active_epoch: generation.epoch(),
-                    generation_digest: generation.runtime_generation_digest(),
-                    source_root_digest: generation.generation().source_snapshot.root_digest.clone(),
-                };
-                return match crate::runtime_server_admission::WorkspaceOwnerGenerationReadinessReceipt::new(
-                    workspace_identity.to_owned(),
-                    owner_path,
-                    live_content_digest,
-                    commit,
-                    false,
-                ) {
-                    Ok(receipt) => WorkspaceDbIpcResult::RuntimeOwnerGenerationReadiness { receipt },
-                    Err(message) => WorkspaceDbIpcResult::Failed {
-                        code: "runtime-server-owner-freshness-receipt-failed".to_owned(),
-                        message,
-                    },
-                };
-            }
-            Err(_) => {}
-        }
-    }
-    let Some(generation_admission) = generation_admission else {
-        return WorkspaceDbIpcResult::Failed {
-            code: "runtime-server-owner-projection-builder-unavailable".to_owned(),
-            message: "runtime owner freshness requires the ServerProcess owner projection builder"
-                .to_owned(),
-        };
-    };
-    let mutation_id = format!(
-        "exact-owner-freshness:{}:{}",
-        owner_path,
-        live_content_digest.as_deref().unwrap_or("missing")
-    );
-    let publication = if live_content_digest.is_some() {
-        let language_id = memory_registry
-            .lease(workspace_identity, &project_root_path)
-            .ok()
-            .and_then(|lease| lease.runtime_owner_snapshot(&owner_path))
-            .and_then(|(_, owner)| {
-                owner.selectors.into_iter().find_map(|selector| {
-                    selector
-                        .selector
-                        .split_once("://")
-                        .map(|(language_id, _)| language_id.to_owned())
-                })
-            });
-        let Some(language_id) = language_id else {
-            return WorkspaceDbIpcResult::Failed {
-                code: "runtime-server-owner-language-unavailable".to_owned(),
-                message: format!(
-                    "runtime owner freshness cannot derive parser language: ownerPath={owner_path}"
-                ),
-            };
-        };
-        let owner = match generation_admission
-            .project_owner(
-                workspace_identity.to_owned(),
-                project_root_path.clone(),
-                owner_path.clone(),
-                language_id,
-            )
-            .await
-        {
-            Ok(owner) => owner,
-            Err(message) => {
-                return WorkspaceDbIpcResult::Failed {
-                    code: "runtime-server-owner-projection-failed".to_owned(),
-                    message,
-                };
-            }
-        };
-        memory_registry
-            .publish_owner_overlay(
-                mutation_id.clone(),
-                workspace_identity,
-                &project_root_path,
-                owner,
-            )
-            .await
-    } else {
-        memory_registry
-            .tombstone_owner_overlay(
-                mutation_id.clone(),
-                workspace_identity,
-                &project_root_path,
-                owner_path.clone(),
-            )
-            .await
-    };
-    let published = match publication {
-        Ok(receipt) => receipt,
-        Err(message) => {
-            return WorkspaceDbIpcResult::Failed {
-                code: "runtime-server-owner-incremental-publication-failed".to_owned(),
-                message,
-            };
-        }
-    };
-    let candidate = match crate::runtime_server_admission::discover_workspace_generation_candidate(
-        &project_root_path,
-    )
-    .await
-    {
-        Ok(candidate) => candidate,
-        Err(message) => {
-            return WorkspaceDbIpcResult::Failed {
-                code: "runtime-server-owner-freshness-candidate-discovery-failed".to_owned(),
-                message,
-            };
-        }
-    };
-    let admission = admit_mutation(
-        memory_registry,
-        Some(generation_admission),
-        workspace_identity,
-        mutation_id,
-        project_root.clone(),
-        vec![owner_path.clone()],
-        candidate,
-    )
-    .await;
-    if !matches!(
-        admission,
-        WorkspaceDbIpcResult::RuntimeGenerationMutationAdmission { .. }
-    ) {
-        return admission;
-    }
-    let commit =
-        match crate::runtime_server_admission::WorkspaceGenerationCommitReceipt::from_recovery(
-            &published,
-        ) {
-            Ok(commit) => commit,
-            Err(message) => {
-                return WorkspaceDbIpcResult::Failed {
-                    code: "runtime-server-owner-publication-receipt-failed".to_owned(),
-                    message,
-                };
-            }
-        };
-    match crate::runtime_server_admission::WorkspaceOwnerGenerationReadinessReceipt::new(
-        workspace_identity.to_owned(),
-        owner_path,
-        live_content_digest,
-        commit,
-        true,
-    ) {
-        Ok(receipt) => WorkspaceDbIpcResult::RuntimeOwnerGenerationReadiness { receipt },
-        Err(message) => WorkspaceDbIpcResult::Failed {
-            code: "runtime-server-owner-freshness-receipt-failed".to_owned(),
             message,
         },
     }

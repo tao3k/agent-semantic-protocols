@@ -1,0 +1,43 @@
+{
+  "schemaId": "agent.semantic-protocols.multi-agent-session-control-plane-pane",
+  "schemaVersion": "1",
+  "orgInteractive": {
+    "contractId": "agent.multi-agent-session-control-plane.v1",
+    "panelId": "multi-agent-session-control-plane",
+    "method": "choice",
+    "stage": "presentation"
+  },
+  "hookRoute": {
+    "configRuleId": "resident-testing-dispatch",
+    "targetAgentName": "asp_testing",
+    "targetAgentRole": "asp_testing",
+    "receiptKind": "asp-testing-execution-v1",
+    "commandDigest": "sha256:fedcba9876543210",
+    "reasonKind": "subagent-receipt-required"
+  },
+  "pane": {
+    "paneId": "session",
+    "nodeId": "registration-required",
+    "generation": 0,
+    "historyCursor": "repo:test-root:session:0",
+    "reasonKind": null,
+    "failure": null
+  },
+  "agent": {
+    "routeKey": "asp_testing",
+    "sessionName": "asp_testing",
+    "sessionLifetime": "resident",
+    "platform": "codex",
+    "hostAgentName": "asp_testing",
+    "roles": ["build", "subagent", "testing"],
+    "roleDescription": "ASP test/build execution lane."
+  },
+  "choices": [
+    {
+      "id": "CREATE_AND_REGISTER",
+      "instruction": "Create @asp_testing from its configured profile — ASP test/build execution lane. The Host owns the child identity and ASP Runtime Server records the resulting lifecycle event.",
+      "presentation": "pane",
+      "why": "the Hook-selected role is configured and has no resident registration"
+    }
+  ]
+}

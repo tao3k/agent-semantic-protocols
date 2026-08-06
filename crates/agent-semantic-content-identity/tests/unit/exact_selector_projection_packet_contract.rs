@@ -105,6 +105,32 @@ fn packet_v1_enrichment_binds_current_workspace_membership() {
 }
 
 #[test]
+fn packet_v1_reuses_owner_proof_without_changing_the_record() {
+    let packet = packet();
+    let tree = WorkspacePathMerkleTreeV1::from_file_digests([
+        (
+            packet.owner_path().as_str().to_owned(),
+            packet.source_blob_digest.clone(),
+        ),
+        ("crates/other/src/lib.rs".to_owned(), digest('e')),
+    ])
+    .expect("workspace tree");
+    let owner_proof = tree
+        .inclusion_proof(packet.owner_path().as_str())
+        .expect("owner proof");
+
+    let direct = packet
+        .clone()
+        .enrich_projection_record(&tree)
+        .expect("direct enrichment");
+    let reused = packet
+        .enrich_projection_record_with_owner_inclusion_proof(&tree, &owner_proof)
+        .expect("owner-proof enrichment");
+
+    assert_eq!(reused, direct);
+}
+
+#[test]
 fn activation_identity_digests_bind_content_not_labels() {
     let parser = derive_parser_identity_digest_v1(
         &"rs-harness".to_owned().into(),

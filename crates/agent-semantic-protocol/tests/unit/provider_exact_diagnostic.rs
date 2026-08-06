@@ -30,8 +30,8 @@ fn resident_exact_adapter_does_not_own_diagnostic_policy() {
         );
     }
     assert!(adapter_source.contains("crate::exact_projection_diagnostic_io::"));
-    assert!(adapter_source.contains("ensure_runtime_generation_ready_for_projection_async"));
     assert!(adapter_source.contains("runtime_server_workspace_exact_projection_client_async"));
+    assert!(!adapter_source.contains("ensure_runtime_generation_ready"));
     assert!(
         !adapter_source.contains("runtime_server_workspace_session_async"),
         "exact read hot path must use the mmap generation and never a workspace IPC session"
@@ -42,7 +42,7 @@ fn resident_exact_adapter_does_not_own_diagnostic_policy() {
 }
 
 #[test]
-fn resident_owner_search_cold_miss_uses_typed_generation_admission_without_source_read() {
+fn resident_owner_search_cold_miss_is_a_read_only_failure_without_source_read() {
     let adapter_source = include_str!("../../src/command/search_pipe_owner_items.rs");
     assert!(adapter_source.contains("runtime_server_workspace_exact_projection_client_async"));
     for forbidden in [
@@ -53,13 +53,13 @@ fn resident_owner_search_cold_miss_uses_typed_generation_admission_without_sourc
         "tokio::fs::read",
         "UnixStream",
         "run_provider_owner_native",
+        "ensure_runtime_generation_ready",
     ] {
         assert!(
             !adapter_source.contains(forbidden),
             "owner search hot path contains forbidden I/O token: {forbidden}"
         );
     }
-    assert!(adapter_source.contains("ensure_runtime_generation_ready_for_projection_async"));
     assert!(adapter_source.contains("let provider_invocations = 0;"));
     assert!(adapter_source.contains("controlRoundtrips={}"));
 }

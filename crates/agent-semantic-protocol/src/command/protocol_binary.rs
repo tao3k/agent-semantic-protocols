@@ -205,7 +205,9 @@ impl ProtocolBinaryInstallPlan {
         let canonical_target = resolve_protocol_binary_install_target(None, &artifact_root)?;
         let mut managed_path_aliases =
             managed_protocol_binary_path_aliases(&artifact_root, &canonical_target, &path_dirs())?;
-        if target != canonical_target && !managed_path_aliases.contains(&target) {
+        if !same_protocol_binary_entry(&target, &canonical_target)
+            && !managed_path_aliases.contains(&target)
+        {
             managed_path_aliases.push(target);
         }
         Ok(Self {
@@ -241,6 +243,9 @@ fn install_protocol_binary_alias(
     canonical_target: &Path,
     _artifact_root: &Path,
 ) -> Result<(), String> {
+    if same_protocol_binary_entry(alias, canonical_target) {
+        return Ok(());
+    }
     let expected = fs::canonicalize(canonical_target).map_err(|error| {
         format!(
             "failed to resolve current Lattice profile {}: {error}",
@@ -559,7 +564,9 @@ fn managed_protocol_binary_path_aliases(
     for candidate in path_dirs
         .iter()
         .map(|dir| dir.join(SEMANTIC_AGENT_PROTOCOL_BIN))
-        .filter(|candidate| candidate != primary_target && candidate.is_file())
+        .filter(|candidate| {
+            !same_protocol_binary_entry(candidate, primary_target) && candidate.is_file()
+        })
     {
         let identity = fs::canonicalize(&candidate).map_err(|error| {
             format!(
@@ -829,5 +836,17 @@ fn same_dir(left: &Path, right: &Path) -> bool {
     match (fs::canonicalize(left), fs::canonicalize(right)) {
         (Ok(left), Ok(right)) => left == right,
         _ => left == right,
+    }
+}
+
+fn same_protocol_binary_entry(left: &Path, right: &Path) -> bool {
+    if left == right {
+        return true;
+    }
+    match (left.parent(), right.parent()) {
+        (Some(left_parent), Some(right_parent)) => {
+            same_dir(left_parent, right_parent) && left.file_name() == right.file_name()
+        }
+        _ => false,
     }
 }

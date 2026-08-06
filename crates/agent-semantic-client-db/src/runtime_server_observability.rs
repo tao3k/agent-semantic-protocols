@@ -1,5 +1,33 @@
 use tokio::sync::mpsc;
 
+#[derive(Clone)]
+pub struct RuntimeServerEventPublisher {
+    sender: mpsc::Sender<RuntimeServerEvent>,
+    capacity: usize,
+    dropped: std::sync::Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl RuntimeServerEventPublisher {
+    pub(crate) fn new(sender: mpsc::Sender<RuntimeServerEvent>, capacity: usize) -> Self {
+        Self {
+            sender,
+            capacity,
+            dropped: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        }
+    }
+
+    pub fn dropped(&self) -> u64 {
+        self.dropped.load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    pub fn send(
+        &self,
+        event: RuntimeServerEvent,
+    ) -> Result<(), mpsc::error::TrySendError<RuntimeServerEvent>> {
+        self.sender.try_send(event)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 #[serde(tag = "kind", content = "detail", rename_all = "kebab-case")]
 pub enum RuntimeServerEvent {
@@ -31,10 +59,27 @@ pub enum RuntimeServerEvent {
 }
 
 pub(crate) fn publish_event(
-    events: Option<&mpsc::UnboundedSender<RuntimeServerEvent>>,
+    events: Option<&RuntimeServerEventPublisher>,
     event: RuntimeServerEvent,
 ) {
     if let Some(events) = events {
-        let _ = events.send(event);
+        if events.sender.try_send(event).is_err() {
+            let dropped = events
+                .dropped
+                .fetch_add(1, std::sync::atomic::Ordering::AcqRel)
+                .saturating_add(1);
+            let mut observation =
+                crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
+                    "runtime-server-diagnostics",
+                    "diagnostic-queue-saturated",
+                    0,
+                    1,
+                    "budget-exceeded",
+                );
+            observation.runtime_diagnostic_queue_depth = Some(events.capacity as u64);
+            observation.runtime_diagnostic_queue_capacity = Some(events.capacity as u64);
+            observation.runtime_dropped_diagnostics = Some(dropped);
+            let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
+        }
     }
 }

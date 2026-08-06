@@ -360,3 +360,30 @@ fn doctor_parser_does_not_reinterpret_workspace_as_project_root() {
         vec!["--workspace".to_string(), "/tmp/project".to_string()]
     );
 }
+
+#[test]
+fn cache_refresh_workspace_is_client_scope_not_a_forwarded_mutation_argument() {
+    let cwd = temp_dir("cache-refresh-workspace");
+    let workspace = cwd.join("workspace");
+    fs::create_dir_all(&workspace).expect("create workspace");
+
+    let parsed = parse_client_args(
+        vec![
+            "cache".to_string(),
+            "source-index".to_string(),
+            "refresh".to_string(),
+            "--workspace".to_string(),
+            "workspace".to_string(),
+        ],
+        cwd.clone(),
+        None,
+    )
+    .expect("cache refresh accepts one explicit workspace scope");
+
+    assert_eq!(
+        parsed.project_root,
+        fs::canonicalize(&workspace).expect("canonical workspace")
+    );
+    assert_eq!(parsed.forwarded_args, vec!["source-index", "refresh"]);
+    let _ = fs::remove_dir_all(cwd);
+}

@@ -186,7 +186,7 @@ argvPrefixAny = [[]]
 }
 
 #[test]
-fn configured_git_diff_routes_to_testing_resident() {
+fn configured_git_diff_opens_org_choice_plane_without_preselecting_a_resident() {
     let config = ClientHookConfig::default();
     let registry = registry();
     let payload = json!({
@@ -212,23 +212,46 @@ fn configured_git_diff_routes_to_testing_resident() {
     assert_eq!(
         decision
             .fields
-            .get("targetAgentName")
+            .get("requiredAction")
             .and_then(serde_json::Value::as_str),
-        Some("asp_testing")
+        Some("open-org-interactive-resident-agent-window")
     );
     assert_eq!(
         decision
             .fields
-            .get("requiredAction")
+            .get("agentWindowCommand")
             .and_then(serde_json::Value::as_str),
-        Some("route-exact-command-to-hook-selected-resident")
+        Some("asp session --agents choice-plane")
     );
+    assert_eq!(
+        decision
+            .fields
+            .get("choicePlaneOwner")
+            .and_then(serde_json::Value::as_str),
+        Some("org-contract:agent-interactive")
+    );
+    for forbidden in [
+        "residentName",
+        "residentChildName",
+        "targetAgentName",
+        "targetAgentRole",
+        "canonicalTarget",
+        "targetAgentSelectionSource",
+    ] {
+        assert!(
+            !decision.fields.contains_key(forbidden),
+            "Hook policy must not preselect an Agent through {forbidden}"
+        );
+    }
     assert_eq!(
         decision.subject.command.as_deref(),
         Some("git diff --check")
     );
     let decision_json = serde_json::to_value(&decision).expect("serialize hook decision");
-    assert_eq!(decision_json["interactiveCommand"]["schemaVersion"], "1");
+    assert!(
+        decision_json.get("interactiveCommand").is_none(),
+        "Hook decisions must not serialize a Rust-owned ChoicePlane command"
+    );
     assert_eq!(
         decision_json["fields"]["normalizedActions"],
         json!([{
@@ -237,24 +260,6 @@ fn configured_git_diff_routes_to_testing_resident() {
             "operationIntent": "shell-command",
             "paths": ["diff", "--check"]
         }])
-    );
-    let receipt_kind = decision_json["fields"]["receiptKind"]
-        .as_str()
-        .expect("configured resident dispatch receipt kind");
-    assert_eq!(
-        decision_json["interactiveCommand"]["argv"],
-        json!([
-            "asp",
-            "agent",
-            "session",
-            "bootstrap",
-            "--name",
-            "asp_testing",
-            "--receipt-kind",
-            receipt_kind,
-            "--command-json",
-            "[\"/bin/sh\",\"-c\",\"git diff --check\"]"
-        ])
     );
     let decision_schema: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../../schemas/semantic-agent-hook-decision.v1.schema.json"
@@ -297,17 +302,13 @@ fn configured_git_diff_routes_to_testing_resident() {
     );
     let rendered = agent_semantic_hook::render_platform_response(&decision)
         .expect("render configured resident deny");
-    assert_eq!(
-        rendered["hookSpecificOutput"]["permissionDecisionReason"],
-        "asp agent session bootstrap --name asp_testing --receipt-kind \
-asp-testing-execution-v1 --command-json '[\"/bin/sh\",\"-c\",\"git diff --check\"]'"
-    );
     assert!(
-        rendered["hookSpecificOutput"]
-            .get("additionalContext")
-            .is_none()
+        rendered["hookSpecificOutput"]["permissionDecisionReason"]
+            .as_str()
+            .is_some_and(|message| message.contains("asp session")),
+        "configured resident deny must reference the Org-backed Agent window: {rendered}"
     );
-    assert!(rendered.get("systemMessage").is_none());
+    assert!(rendered.get("systemMessage").is_some());
 }
 
 #[test]

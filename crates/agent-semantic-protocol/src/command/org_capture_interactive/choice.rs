@@ -1,8 +1,8 @@
 use orgize::Org;
 use std::{fs, path::Path};
 
-pub(in crate::command) struct AgentInteractiveChoice {
-    pub(in crate::command) id: String,
+pub(crate) struct AgentInteractiveChoice {
+    pub(crate) id: String,
     method: String,
     stage: String,
     target: Option<String>,
@@ -17,13 +17,31 @@ struct AgentInteractiveChoiceEntry {
     id: String,
     contract: Option<String>,
     full: String,
+    when: Option<String>,
+    presentation: String,
     use_if: String,
+}
+
+#[derive(Debug)]
+pub(crate) struct AdmittedAgentInteractiveChoice {
+    pub(crate) id: String,
+    pub(crate) instruction: String,
+    pub(crate) presentation: String,
+    pub(crate) use_if: String,
 }
 
 impl AgentInteractiveChoice {
     pub(in crate::command) fn read(path: &Path, expected_stage: &str) -> Result<Self, String> {
         let source = fs::read_to_string(path)
             .map_err(|error| format!("failed to read Org contract {}: {error}", path.display()))?;
+        Self::from_source(&source, &path.display().to_string(), expected_stage)
+    }
+
+    pub(crate) fn from_source(
+        source: &str,
+        source_label: &str,
+        expected_stage: &str,
+    ) -> Result<Self, String> {
         let org = Org::parse(&source);
         for record in org.document().source_block_records() {
             if record.language.as_deref() != Some("org-contract") {
@@ -43,8 +61,7 @@ impl AgentInteractiveChoice {
             }
         }
         Err(format!(
-            "Org contract {} must declare `#+BEGIN_SRC org-contract :type agent-interactive` with `method: choice` and `stage: {expected_stage}`",
-            path.display()
+            "Org contract {source_label} must declare `#+BEGIN_SRC org-contract :type agent-interactive` with `method: choice` and `stage: {expected_stage}`",
         ))
     }
 
@@ -110,7 +127,10 @@ impl AgentInteractiveChoice {
                 self.id, self.method
             ));
         }
-        if !matches!(self.stage.as_str(), "pre-capture" | "post-materialize") {
+        if !matches!(
+            self.stage.as_str(),
+            "pre-capture" | "post-materialize" | "presentation"
+        ) {
             return Err(format!(
                 "agent-interactive `{}` has unsupported `stage: {}`",
                 self.id, self.stage
@@ -175,20 +195,89 @@ impl AgentInteractiveChoice {
             "{}\nnext: choose --choice {}=N|ID | ask-user\nguard: choose only with task-specific confidence\n{}",
             self.render_interactive_header("[agent-interactive-detail]", None),
             self.id,
-            "|n|id|contract|full|use-if|"
+            "|n|id|contract|full|when|presentation|use-if|"
         );
         for entry in &self.entries {
             output.push('\n');
             output.push_str(&format!(
-                "|{}|{}|{}|{}|{}|",
+                "|{}|{}|{}|{}|{}|{}|{}|",
                 entry.number,
                 entry.id,
                 entry.contract.as_deref().unwrap_or_default(),
                 entry.full,
+                entry.when.as_deref().unwrap_or_default(),
+                entry.presentation,
                 entry.use_if
             ));
         }
         output
+    }
+
+    pub(crate) fn admit_matching(
+        &self,
+        bindings: &[(&str, &str)],
+    ) -> Result<Vec<AdmittedAgentInteractiveChoice>, String> {
+        let mut admitted = Vec::new();
+        for entry in &self.entries {
+            if !interactive_condition_matches(entry.when.as_deref(), bindings)? {
+                continue;
+            }
+            admitted.push(AdmittedAgentInteractiveChoice {
+                id: entry.id.clone(),
+                instruction: render_interactive_template(&entry.full, bindings)?,
+                presentation: entry.presentation.clone(),
+                use_if: entry.use_if.clone(),
+            });
+        }
+        if admitted.is_empty() {
+            return Err(format!(
+                "agent-interactive `{}` admitted no row for the supplied typed bindings",
+                self.id
+            ));
+        }
+        Ok(admitted)
+    }
+
+    pub(crate) fn render_admitted_pane(
+        &self,
+        contract_id: &str,
+        choices: &[(&str, &str, &str)],
+        pane_context: &str,
+    ) -> String {
+        let mut output = format!(
+            "{}\ncontext: {pane_context}",
+            self.render_interactive_header("[agent-interactive]", Some(contract_id)),
+        );
+        for (selection, instruction, why) in choices {
+            let number = self
+                .entries
+                .iter()
+                .find(|entry| entry.id == *selection)
+                .map(|entry| entry.number.as_str())
+                .unwrap_or("?");
+            output.push_str(&format!(
+                "\n{}. {}\n   selection: {}\n   why: {}",
+                number, instruction, selection, why,
+            ));
+        }
+        output.push_str(
+            "\nnext: choose exactly one admitted host action, then re-enter the same control plane\nguard: preserve the exact registered role identity; do not attach a task payload",
+        );
+        output
+    }
+
+    pub(crate) fn render_admitted_action(
+        &self,
+        contract_id: &str,
+        choice: &AdmittedAgentInteractiveChoice,
+        pane_context: &str,
+    ) -> String {
+        format!(
+            "{}\ncontext: {pane_context}\naction: {}\nwhy: {}\nnext: execute this host action and return its typed receipt\nguard: preserve the Hook-selected registered role identity; do not attach a task payload",
+            self.render_interactive_header("[agent-interactive]", Some(contract_id)),
+            choice.instruction,
+            choice.use_if,
+        )
     }
 
     fn render_interactive_header(&self, label: &str, contract_id: Option<&str>) -> String {
@@ -252,28 +341,100 @@ impl AgentInteractiveChoice {
 impl AgentInteractiveChoiceEntry {
     fn parse_table_row(line: &str) -> Result<Option<Self>, String> {
         let cells: Vec<&str> = line.trim_matches('|').split('|').map(str::trim).collect();
-        if cells.len() != 5 {
+        if !matches!(cells.len(), 5 | 6 | 7) {
             return Err(format!(
-                "agent-interactive choice detail row must have 5 cells `n|id|contract|full|use-if`: {line}"
+                "agent-interactive choice detail row must have 5 cells `n|id|contract|full|use-if`, 6 cells `n|id|contract|full|when|use-if`, or 7 cells `n|id|contract|full|when|presentation|use-if`: {line}"
             ));
         }
         if cells == ["n", "id", "contract", "full", "use-if"] {
             return Ok(None);
+        }
+        if cells == ["n", "id", "contract", "full", "when", "use-if"] {
+            return Ok(None);
+        }
+        if cells
+            == [
+                "n",
+                "id",
+                "contract",
+                "full",
+                "when",
+                "presentation",
+                "use-if",
+            ]
+        {
+            return Ok(None);
+        }
+        let (when, presentation, use_if) = match cells.len() {
+            7 => (optional_cell(cells[4]), cells[5], cells[6]),
+            6 => (optional_cell(cells[4]), "pane", cells[5]),
+            _ => (None, "pane", cells[4]),
+        };
+        if !matches!(presentation, "action" | "pane") {
+            return Err(format!(
+                "agent-interactive choice presentation must be `action` or `pane`, got `{presentation}`"
+            ));
         }
         Ok(Some(Self {
             number: cells[0].to_string(),
             id: cells[1].to_string(),
             contract: optional_cell(cells[2]),
             full: cells[3].to_string(),
-            use_if: cells[4].to_string(),
+            when,
+            presentation: presentation.to_string(),
+            use_if: use_if.to_string(),
         }))
     }
+}
+
+fn interactive_condition_matches(
+    condition: Option<&str>,
+    bindings: &[(&str, &str)],
+) -> Result<bool, String> {
+    let Some(condition) = condition else {
+        return Ok(true);
+    };
+    condition.split('&').try_fold(true, |matches, clause| {
+        let (key, expected) = clause.trim().split_once('=').ok_or_else(|| {
+            format!("agent-interactive `when` clause must use TYPED_BINDING=value: {clause}")
+        })?;
+        let key = key.trim();
+        let expected = expected.trim();
+        let actual = bindings
+            .iter()
+            .find(|(binding, _)| *binding == key)
+            .map(|(_, value)| *value)
+            .ok_or_else(|| {
+                format!("agent-interactive `when` clause requires missing binding `{key}`")
+            })?;
+        Ok(matches && actual == expected)
+    })
 }
 
 fn optional_cell(value: &str) -> Option<String> {
     let value = value.trim();
     (!value.is_empty() && value != "-").then(|| value.to_string())
 }
+
+fn render_interactive_template(
+    template: &str,
+    bindings: &[(&str, &str)],
+) -> Result<String, String> {
+    let mut rendered = template.to_owned();
+    for (key, value) in bindings {
+        rendered = rendered.replace(&format!("{{{{{key}}}}}"), value);
+    }
+    if rendered.contains("{{") || rendered.contains("}}") {
+        return Err(format!(
+            "agent-interactive instruction contains an unresolved typed placeholder: {rendered}"
+        ));
+    }
+    Ok(rendered)
+}
+
+#[cfg(test)]
+#[path = "../../../tests/unit/command/org_capture_interactive_choice.rs"]
+mod tests;
 
 fn required_interactive_field(value: Option<String>, field: &str) -> Result<String, String> {
     value

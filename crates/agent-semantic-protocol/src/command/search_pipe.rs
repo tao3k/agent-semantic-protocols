@@ -53,16 +53,15 @@ pub(super) struct FastSearchContext<'a> {
     pub(super) provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
     pub(super) frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
     pub(super) source_index_snapshot:
-        Option<&'a agent_semantic_client::source_index::CurrentSourceIndexSnapshot>,
-    pub(super) source_index_client: Option<
-        &'a agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneClient,
-    >,
+        Option<&'a crate::server::runtime_server::RuntimeServerSearchSnapshot>,
+    pub(super) search_data_plane:
+        Option<&'a crate::server::runtime_server::RuntimeServerSearchDataPlane>,
 }
 
 impl FastSearchContext<'_> {
     fn required_source_index_snapshot(
         &self,
-    ) -> Result<&agent_semantic_client::source_index::CurrentSourceIndexSnapshot, String> {
+    ) -> Result<&crate::server::runtime_server::RuntimeServerSearchSnapshot, String> {
         self.source_index_snapshot
             .ok_or_else(|| "search route requires an admitted source-index generation".to_owned())
     }
@@ -117,7 +116,7 @@ pub(super) fn is_asp_fast_search(args: &[String]) -> bool {
         || is_search_owner_items_query(args)
 }
 
-pub(super) fn run_asp_fast_search_command(
+pub(super) async fn run_asp_fast_search_command(
     args: &[String],
     context: FastSearchContext<'_>,
 ) -> Result<(), String> {
@@ -132,7 +131,7 @@ pub(super) fn run_asp_fast_search_command(
         );
     }
     if is_search_pipe(args) {
-        return run_search_pipe_command(args, &context);
+        return run_search_pipe_command(args, &context).await;
     }
     if is_search_suggest(args) {
         return run_search_suggest_command(context.language_id, args);
@@ -141,7 +140,7 @@ pub(super) fn run_asp_fast_search_command(
         return reject_unsupported_search_pipeline_command();
     }
     if is_search_ingest(args) {
-        return run_search_ingest_command(args, &context);
+        return run_search_ingest_command(args, &context).await;
     }
     if is_search_owner_items_query(args) {
         match preflight_search_command_args(&context.language_id.into(), args, context.project_root)
@@ -163,7 +162,7 @@ pub(super) fn run_asp_fast_search_command(
         );
     }
     if is_search_lexical(args) {
-        return run_search_lexical_command(args, &context);
+        return run_search_lexical_command(args, &context).await;
     }
     if is_search_failure(args) {
         return run_search_failure_command(
@@ -276,7 +275,10 @@ fn explicit_view(args: &[String]) -> Option<&str> {
     None
 }
 
-fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> Result<(), String> {
+async fn run_search_pipe_command(
+    args: &[String],
+    context: &FastSearchContext<'_>,
+) -> Result<(), String> {
     let pipe_args = parse_search_pipe_args(args)?;
     let project_root = search_workspace_root(
         context.project_root,
@@ -322,15 +324,14 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         return Ok(());
     }
     let current_snapshot = context.required_source_index_snapshot()?;
-    let source_index_client = context.source_index_client.ok_or_else(|| {
-        "search pipe requires the resident workspace generation client".to_owned()
+    let search_data_plane = context.search_data_plane.ok_or_else(|| {
+        "search pipe requires the resident Runtime Server search data plane".to_owned()
     })?;
-    let generation_lease = source_index_client.lease();
     let acquisition = collect_search_pipe_candidates(CollectSearchPipeCandidatesRequest {
         language_id: context.language_id,
         project_root: &project_root,
         current_snapshot,
-        source_index_client,
+        search_data_plane,
         locator_root: context.locator_root,
         intent: &pipe_args.seed_query,
         scopes: &pipe_args.scopes,
@@ -338,7 +339,8 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         config: context.config,
         provider_context: context.provider_context,
         require_multi_clause: true,
-    })?;
+    })
+    .await?;
     let provider_facts_started_at = Instant::now();
     let provider_facts = collect_provider_graph_facts(
         context.language_id,
@@ -346,8 +348,9 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         Some(&pipe_args.seed_query),
         &acquisition.candidates,
         context.provider_context,
-        context.source_index_client,
-    )?;
+        context.search_data_plane,
+    )
+    .await?;
     let source_trace = source_trace_with_provider_facts(
         &acquisition.source_trace,
         provider_facts_started_at.elapsed(),
@@ -376,7 +379,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         surface: "search-pipe",
         query: Some(&pipe_args.seed_query),
         candidates: &acquisition.candidates,
-        project_resolutions: &generation_lease.generation().project_resolutions,
+        project_resolutions: search_data_plane.project_resolutions(),
         pipes: &surfaces,
         source: &rendered_source,
         candidate_sources: &acquisition.candidate_sources,
@@ -647,7 +650,7 @@ fn run_reasoning_owner_tests_command(
     Ok(())
 }
 
-fn run_search_ingest_command(
+async fn run_search_ingest_command(
     args: &[String],
     context: &FastSearchContext<'_>,
 ) -> Result<(), String> {
@@ -668,20 +671,19 @@ fn run_search_ingest_command(
     }
     let candidates =
         parse_ingest_candidates(context.project_root, context.locator_root, stdin.as_slice());
-    let current_snapshot =
-        agent_semantic_client::source_index::current_source_index_snapshot(context.project_root)?;
+    let current_snapshot = context.required_source_index_snapshot()?;
     let provider_facts = collect_provider_graph_facts(
         context.language_id,
         context.project_root,
         None,
         &candidates,
         context.provider_context,
-        context.source_index_client,
-    )?;
-    let generation_lease = context.source_index_client.map(|client| client.lease());
-    let project_resolutions = generation_lease
-        .as_ref()
-        .map(|lease| lease.generation().project_resolutions.as_slice())
+        context.search_data_plane,
+    )
+    .await?;
+    let project_resolutions = context
+        .search_data_plane
+        .map(|data_plane| data_plane.project_resolutions())
         .unwrap_or(&[]);
     let generation =
         agent_semantic_search::graph_generation_authority::AdmittedGraphGenerationV1::admit(
@@ -722,7 +724,7 @@ fn run_search_ingest_command(
     Ok(())
 }
 
-fn run_search_lexical_command(
+async fn run_search_lexical_command(
     args: &[String],
     context: &FastSearchContext<'_>,
 ) -> Result<(), String> {
@@ -769,15 +771,14 @@ fn run_search_lexical_command(
     let current_snapshot = context.source_index_snapshot.ok_or_else(|| {
         "search lexical requires the provider-dispatch source-index snapshot".to_string()
     })?;
-    let source_index_client = context.source_index_client.ok_or_else(|| {
-        "search lexical requires the resident workspace generation client".to_owned()
+    let search_data_plane = context.search_data_plane.ok_or_else(|| {
+        "search lexical requires the resident Runtime Server search data plane".to_owned()
     })?;
-    let generation_lease = source_index_client.lease();
     let acquisition = collect_search_pipe_candidates(CollectSearchPipeCandidatesRequest {
         language_id: context.language_id,
         project_root: &project_root,
         current_snapshot,
-        source_index_client,
+        search_data_plane,
         locator_root: context.locator_root,
         intent: &pipe_args.query,
         scopes: &pipe_args.owners,
@@ -785,15 +786,17 @@ fn run_search_lexical_command(
         config: context.config,
         provider_context: context.provider_context,
         require_multi_clause: false,
-    })?;
+    })
+    .await?;
     let provider_facts = collect_provider_graph_facts(
         context.language_id,
         &project_root,
         Some(&pipe_args.query),
         &acquisition.candidates,
         context.provider_context,
-        context.source_index_client,
-    )?;
+        context.search_data_plane,
+    )
+    .await?;
     let source_label = acquisition
         .candidate_sources
         .first()
@@ -816,7 +819,7 @@ fn run_search_lexical_command(
         surface: "search-lexical",
         query: Some(&pipe_args.query),
         candidates: &acquisition.candidates,
-        project_resolutions: &generation_lease.generation().project_resolutions,
+        project_resolutions: search_data_plane.project_resolutions(),
         pipes: &pipe_args.pipes,
         source: source_label,
         candidate_sources: &acquisition.candidate_sources,

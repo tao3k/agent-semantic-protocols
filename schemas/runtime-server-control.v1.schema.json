@@ -373,6 +373,7 @@
         "artifactCatalogDigest",
         "transportContractDigest",
         "workspaceEntryCount",
+        "agentSessions",
         "ownerEpoch"
       ],
       "properties": {
@@ -412,6 +413,33 @@
         "workspaceEntryCount": {
           "type": "integer",
           "minimum": 0
+        },
+        "agentSessions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "workspaceIdentity",
+              "projectId",
+              "rootSessionId",
+              "sessionId",
+              "name",
+              "physicalGeneration",
+              "lifecycleState"
+            ],
+            "properties": {
+              "workspaceIdentity": { "type": "string", "minLength": 1 },
+              "projectId": { "type": "string", "minLength": 1 },
+              "rootSessionId": { "type": "string", "minLength": 1 },
+              "sessionId": { "type": "string", "minLength": 1 },
+              "name": { "type": "string", "minLength": 1 },
+              "physicalGeneration": { "type": "integer", "minimum": 0 },
+              "lifecycleState": {
+                "enum": ["routable", "expired", "archived", "invalid"]
+              }
+            }
+          }
         },
         "ownerEpoch": {
           "type": "integer",

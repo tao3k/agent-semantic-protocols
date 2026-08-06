@@ -1,0 +1,283 @@
+#+title: RFC 10.15.02.10 - Hook Execution Plane and Stateful Runtime Boundary
+#+property: RFC_ID ASP-RFC-10.15-HOOK-EXECUTION-PLANE
+#+property: LEAN_MODULE ASPProof.HookExecutionPlane
+#+property: AXLE_AUDIT packages/proofs/receipts/hook-execution-plane-audit-v1.json
+
+* Status
+
+Implementation contract. This RFC replaces the removed server-resident Hook
+evaluator and its generic =EvaluateHook= IPC operation. There is no compatibility
+route back to that evaluator.
+
+* Architecture
+
+Codex may dispatch every locally supported Hook through host matcher =*=. That
+host matcher is transport coverage, not ASP policy. The ASP binary MUST decode
+the typed action envelope and select an execution plane before socket,
+filesystem, supervisor, or durable-state I/O.
+
+The installed Codex production transport is exactly one enabled ASP plugin Hook
+bundle using canonical event table names such as =PreToolUse=. The plugin
+manifest owns its =hooks= entry, =hooks/hooks.json=, and executable Hook adapter.
+Native inline =~/.codex/config.toml= Hook injection is a separate, explicit
+debug/test mode. Production installation MUST remove that inline block without
+removing or rewriting the Codex host's plugin trust record. Production plugin
+and native-inline debug/test modes MUST NOT be active simultaneously. Plugin
+installation publishes only the Hook transport and host-owned plugin
+registration. It MUST NOT install, start, reconcile, or retire a Runtime Server
+supervisor; Runtime lifecycle is an independent control-plane operation.
+
+Structured-document tools are classified by their argv grammar before generic
+shell path projection. A bounded scalar predicate such as =jq -e 'type ==
+"object"' file.json= is an admitted structured read: flags and the filter are
+not source paths, and only =file.json= enters the action subject set. Identity,
+recursive, iteration, compound, and arbitrary filters remain separately
+classified and MUST NOT inherit this admission.
+
+The emitted Hook decision is the authoritative transaction result. The
+=events.jsonl= record is a diagnostic projection, not a commit prerequisite.
+The decision path MUST use a single non-blocking writer-lock attempt for that
+projection; lock contention, compaction failure, rename failure, or storage
+failure MUST NOT change, suppress, or delay the already-computed decision and
+MUST NOT contact or reconcile the Runtime Server. A separate maintenance or
+checkpoint path MAY use the longer bounded lock budget for durable compaction.
+
+* Hook conformance witness framework
+
+Conformance is a four-layer obligation: the plugin host matcher must admit the
+host tool name, action-envelope normalization must produce the typed action,
+the canonical compiled configuration must select an enabled rule witness, and
+the registered provider must expose both the source extension and its owner
+route. Generated cases MUST be derived from the installed plugin artifact,
+canonical config/template, and builtin provider manifests/routes. Handwritten
+single-language examples are regression cases only and MUST NOT establish
+completeness. Compact native reads and nested =commandActions= envelopes are
+separate generated envelope families; an outer aggregator such as
+=functions.exec= is normalization coverage, not a required host matcher alias.
+
+The assurance model treats a missing normalization witness as an executable
+counterexample: host admission alone does not imply policy admission. Every
+enabled canonical rule and every registered provider extension therefore needs
+at least one executable generated witness before the conformance report is
+complete.
+
+#+begin_src mermaid
+flowchart LR
+    Host[Host matcher = *] --> Project[In-process typed action projection]
+    Project -->|unrelated| Pass[Local empty success]
+    Project -->|source command nested missing identity| Policy[Local policy evaluator]
+    Policy --> Emit[Host response]
+#+end_src
+
+The planes are:
+
+1. =local-passthrough=: unrelated UI, planning, collaboration, and other
+   non-policy actions return an empty success response with zero Runtime calls.
+2. =local-policy=: source reads, shell commands, nested =functions.exec=
+   commands, and missing typed action identity are classified in the Hook
+   process. Missing identity fails closed here; Runtime availability is not a
+   prerequisite for a deny.
+
+There is no =stateful-runtime= Hook plane. A policy-bearing Hook event MUST NOT
+open Agent Session persistence, scan Codex rollout history, infer a current
+resident, or schedule a Codex Agent. Session lifecycle is a separate control
+plane and consumes host lifecycle evidence outside the synchronous source and
+command policy path. Workspace generation freshness is owned by the Runtime
+Server's watcher, Merkle authority, and query-side reconciliation; an ASP
+command establishes its own readiness after Hook admission. Hook never opens a
+Runtime Server endpoint or submits a generation mutation.
+
+The typed action identity is authoritative for this first projection. A
+path-shaped field on an unrelated action (for example an image viewer) MUST
+NOT be reinterpreted as a source read. Path and extension matching begins only
+after the typed action has been classified as Read, Search, Execute, or another
+policy-bearing action. A missing typed identity remains local and fail-closed;
+an explicitly unrelated typed identity is local passthrough.
+
+The Runtime Server MUST NOT expose a generic Hook-policy evaluation operation,
+materialize resident Hook snapshots, compile every admitted workspace's Hook
+configuration at daemon startup, or return a final Hook platform response.
+
+* ChoicePlane boundary
+
+The ChoicePlane is not implemented by the Hook execution router. Declarative
+choice panels are owned by canonical =org-contract= blocks qualified with
+=:type agent-interactive=. The =org-interactive= projection may describe the
+current pane and advertised choices, while ASP remains the authority that
+revalidates pane identity, graph revision, policy, provider bindings, budget,
+and lifecycle before admitting the chosen transition.
+
+A host matcher, Hook action classifier, Rust heuristic, or Runtime Server MUST
+NOT invent or persist a ChoicePlane selection. Once ASP has validated a choice
+and emitted a typed action, the Hook execution plane may route that action; it
+does not reinterpret the choice. Mechanical selection between local
+passthrough and local policy is therefore not an interactive user choice
+and MUST NOT create an =agent-interactive= prompt for every Hook event.
+
+When a denied action requires the registered multi-agent control plane, Hook
+recovery may reference only the public Org-backed window
+=asp session=. It MUST NOT preselect a registered role, render a choice pane,
+name a bootstrap-pane transition, or expose the legacy
+=asp agent session bootstrap= transport. The referenced Agent window loads the
+canonical =org-contract :type agent-interactive= block and ASP admits its typed
+row; the Hook decision contains no independent choice description.
+
+The legacy Rust ChoicePlane has no compatibility surface. The Hook
+=interactiveCommand= field, =ResidentInteractiveCommand=, client-db
+=AgentSessionInteractiveMenu=/loop builders, and the public
+=asp agent session bootstrap= command are removed. Reintroducing any of these
+creates a second choice authority and is a compile/test failure, not a fallback.
+
+* Action projection
+
+The projection reuses the parser-owned ASP action normalization that handles
+direct tool envelopes and nested =functions.exec= calls. It MUST NOT enumerate
+host tools in =hooks.json= or create a second string-matching policy engine.
+Unknown tool names are local passthrough only when a valid typed tool identity
+was present and normalization produced no policy-bearing action. An absent or
+malformed typed identity enters local fail-closed policy evaluation.
+
+Structured-document matching and provider-language-source matching are
+disjoint typed axes. =argvStructuredDocumentFile= is limited to formats owned
+by configured structured projector capabilities; =argvRegisteredSourceFile=
+is resolved from activated provider extension contracts. A jq/yq command over
+a provider source therefore remains a provider-source materialization policy
+case and cannot be captured accidentally by a structured-document rule.
+
+The installed =PreToolUse= and =PermissionRequest= matchers remain =*= so new
+host actions cannot bypass projection. =PostToolUse= may also be dispatched
+broadly, but its mutation record remains local Hook evidence. Runtime freshness
+must be discovered independently and cannot depend on Hook delivery.
+
+* Runtime boundary
+
+The Hook data path MUST NOT install a binary, reconcile/restart a supervisor,
+or wait for launchd/systemd. Canonical recovery commands are admitted locally
+so an unavailable Runtime cannot block its own repair, but recovery execution
+is an explicit user/tool action outside Hook evaluation.
+
+A local matcher/configuration failure is not a Runtime Server failure. Its
+typed failure is =hook-local-policy-unavailable.v1= with
+=reasonKind=local-hook-policy-authority-unavailable=. It MUST NOT recommend
+=asp server reconcile=. The exact =asp hook doctor --client codex= command is
+admitted by the configuration-independent bootstrap, as is the digest-targeted
+canonical binary install. Chained commands, extra arguments, alternate clients,
+and non-canonical install targets remain policy-bearing.
+
+There is no Hook-originated Runtime state call, Tokio client executor, socket
+timeout, supervisor recovery, or generation-admission closure. Runtime resource
+and deadline policy belongs to the Runtime Server control plane and cannot be
+used to extend a Hook deadline. The Hook process owns only bounded stdin,
+configuration reads, local classification, local evidence publication, output
+flush, and immediate termination.
+
+The same boundary excludes synchronous Agent Session and rollout discovery.
+The action payload is the only host identity evidence admitted by the policy
+path. Hook MUST NOT scan transcript history, open an Agent Session registry, or
+convert a deny into allow because Rust inferred a configured resident. It may
+reference =asp session=, but the Org ChoicePlane and Codex host own the later
+selection and scheduling transition.
+
+Hook matcher compilation is a process-independent local artifact, not a
+resident service. The normalized configuration and parser-compiled matcher
+automata are serialized as one versioned, digest-protected artifact under the
+workspace Hook cache. A cold local invocation MAY compile that artifact and
+MUST publish it by immutable atomic rename. A warm invocation opens the
+content-addressed generation and maps it read-only with =memmap2=; it MUST
+validate the artifact schema, content digest, rule inventory, and source
+generation before classification. A process-local =OnceLock= or resident
+=HashMap= is not a cache authority for one-shot Hook processes.
+
+A missing or invalid snapshot never authorizes Runtime, Session, rollout, or
+supervisor recovery. If the source configuration is valid, the Hook process may
+perform the bounded cold compile and atomic publication locally. If the source
+configuration or durable artifact is invalid, Hook returns the local typed
+failure and directs explicit =asp hook install --client codex= recovery. There
+is no embedded-config or Runtime fallback.
+
+Hook event evidence is bounded independently from matcher snapshots. Replay
+reads at most the final 1 MiB and 4096 lines; =events.jsonl= is compacted before
+it exceeds 4 MiB. Because Codex may launch matching command hooks concurrently,
+an in-process mutex is not an event-writer authority. Append and compaction MUST
+hold the workspace's OS-backed =events.jsonl.lock=, acquisition MUST terminate
+within 100 ms for maintenance/durable writer transactions, and lock release MUST
+follow process/file-descriptor lifetime. The Hook decision projection uses one
+non-blocking acquisition attempt instead: contention fails that diagnostic
+transaction only and cannot suppress the decision, wait for, or shut down a
+Runtime service. Compaction writes a new file and atomically renames it while
+holding the same cross-process lock.
+
+The Runtime Server control endpoint is a readiness authority, while the Turso
+OpenTelemetry lane is optional observation infrastructure. Daemon bootstrap
+MUST bind and publish the control endpoint before starting that telemetry lane.
+Telemetry database initialization, exporter recovery, or query-socket startup
+MUST NOT withhold endpoint publication or become a control-plane readiness
+prerequisite. This ordering does not make an uninitialized server healthy: the
+published status memory remains =Starting= until the server-owned readiness
+transition completes.
+
+* Output and termination boundary
+
+The owner that emits a Hook response MUST flush that response before returning.
+After the owner returns, the Hook entry point MUST terminate immediately and
+MUST NOT wait for process-global exit handlers or acquire a second global
+stdout/stderr flush lock. This makes response ownership explicit and prevents
+unrelated library cleanup from extending the host deadline.
+
+Performance evidence distinguishes two clocks. =entryExecutionMicros= starts
+after the platform loader transfers control to the ASP entry point and ends
+after the response-owner flush. =endToEndMicros= includes executable loading.
+Cargo tests over a freshly linked debug executable gate the first clock because
+macOS dyld/code-signature work is outside Rust execution; the canonical
+installed release-binary replay gates the second clock. Neither clock may be
+substituted for the other in a closure receipt.
+
+* Lifecycle isolation
+
+A global install test MUST isolate =HOME=, =ASP_STATE_HOME=, and supervisor
+commands before materializing launchd/systemd definitions. Stubbing
+=launchctl= alone is insufficient because writing =~/Library/LaunchAgents=
+already mutates real authority.
+
+For Codex, =CODEX_THREAD_ID= is recorded as =hostRootSessionId= without
+overwriting the payload =sessionId=. Installation, Runtime readiness, and host
+session activation remain distinct states.
+
+* Performance and regression gates
+
+The local projection and local-policy warm path have a release p99 budget below
+1,000 microseconds. A Cargo regression MUST reject an unrelated local path at
+or above 100,000 =entryExecutionMicros=. The installed release-binary replay
+MUST complete below 1,000,000 =endToEndMicros=. No Runtime budget can weaken
+the local path because the Hook event plane has zero Runtime calls.
+
+=cargo test= MUST block publication when any of these regress:
+
+- unrelated typed actions do not return local empty success;
+- Read/Bash/nested command actions bypass typed local policy;
+- the Hook command or bootstrap references a generic Runtime Hook evaluator;
+- any Hook event owner imports a Runtime Server client, workspace session,
+  generation ensure, mutation submission, or supervisor command;
+- a policy-bearing Hook event scans Agent Session/rollout state, enforces a
+  configured resident spawn, or changes allow/deny from inferred resident
+  identity;
+- a warm Hook invocation rebuilds matcher automata instead of loading the
+  validated read-only mmap artifact, or a process-local resident cache is
+  reintroduced;
+- the cold publisher mutates an artifact in place, accepts a digest/schema/rule
+  inventory mismatch, or invokes Runtime/Session recovery;
+- event append/compaction uses only a process-local mutex, waits at or above the
+  host deadline, scans beyond the bounded tail, or exceeds the 4 MiB state cap;
+- the Runtime IPC schema exposes =EvaluateHook= or a final Hook response;
+- daemon startup materializes a resident Hook snapshot authority;
+- optional OpenTelemetry initialization precedes control endpoint publication;
+- timeout cancellation leaves an active task or descriptor above baseline;
+- a response owner does not flush before immediate process termination;
+- plugin =*= coverage, local action classification, or provider language
+  extension projection drifts.
+
+The Lean model =ASPProof.HookExecutionPlane= proves the execution-plane
+partition, zero Runtime Server calls for every Hook action, the
+ChoicePlane/ExecutionPlane authority separation, the supervisor/install
+prohibition, nested-deadline cleanup slack, terminal timeout semantics,
+resource-leak detection, and isolated supervisor authority.

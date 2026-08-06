@@ -16,7 +16,7 @@ pub const ROOT_BLOCK_BEGIN: &str = "# BEGIN agent-semantic-protocol agent hooks"
 /// End marker for the managed project-level Codex hook block.
 pub const ROOT_BLOCK_END: &str = "# END agent-semantic-protocol agent hooks";
 
-const TOOL_SURFACE_MATCHER: &str = r"Read|read|readFile|readDirectory|read_file|read_directory|FsReadFile|FsReadDirectory|fs\.read|fs\.readFile|fs\.readDirectory|fs/read|fs/readFile|fs/readDirectory|fs\\read|fs\\readFile|fs\\readDirectory|functions\.read|functions\.read_file|functions\.readFile|mcp__.*__read|mcp__.*__read_file|mcp__.*__readFile|functions\.exec_command|exec_command|command_execution|multi_tool_use\.parallel|Bash|Shell";
+pub(super) const ALL_TOOL_ACTION_MATCHER: &str = "*";
 const ASP_EXPLORER_ROLE_NAME: &str = "asp_explorer";
 
 #[derive(Debug)]
@@ -38,6 +38,7 @@ pub struct CodexUserTrustStatus {
 
 #[derive(Debug, Clone, Copy)]
 struct CodexHookEvent {
+    config_name: &'static str,
     state_label: &'static str,
     matcher: Option<&'static str>,
     status: &'static str,
@@ -216,48 +217,56 @@ pub fn remove_codex_managed_hook_config(existing: &str) -> String {
 fn codex_hook_events() -> [CodexHookEvent; 8] {
     [
         CodexHookEvent {
+            config_name: "SessionStart",
             state_label: "session_start",
             matcher: Some("startup|resume|clear|compact"),
             status: "Loading semantic agent hook activation",
             hook_event: "session-start",
         },
         CodexHookEvent {
+            config_name: "UserPromptSubmit",
             state_label: "user_prompt_submit",
             matcher: None,
             status: "Planning semantic search flow",
             hook_event: "user-prompt",
         },
         CodexHookEvent {
+            config_name: "PreToolUse",
             state_label: "pre_tool_use",
-            matcher: Some(TOOL_SURFACE_MATCHER),
+            matcher: Some(ALL_TOOL_ACTION_MATCHER),
             status: "Checking semantic search flow",
             hook_event: "pre-tool",
         },
         CodexHookEvent {
+            config_name: "PermissionRequest",
             state_label: "permission_request",
-            matcher: Some(TOOL_SURFACE_MATCHER),
+            matcher: Some(ALL_TOOL_ACTION_MATCHER),
             status: "Checking semantic approval flow",
             hook_event: "permission-request",
         },
         CodexHookEvent {
+            config_name: "PostToolUse",
             state_label: "post_tool_use",
             matcher: None,
             status: "Updating semantic search flow state",
             hook_event: "post-tool",
         },
         CodexHookEvent {
+            config_name: "SubagentStart",
             state_label: "subagent_start",
-            matcher: Some(TOOL_SURFACE_MATCHER),
+            matcher: Some(ALL_TOOL_ACTION_MATCHER),
             status: "Preparing semantic subagent context",
             hook_event: "subagent-start",
         },
         CodexHookEvent {
+            config_name: "SubagentStop",
             state_label: "subagent_stop",
-            matcher: Some(TOOL_SURFACE_MATCHER),
+            matcher: Some(ALL_TOOL_ACTION_MATCHER),
             status: "Checking semantic subagent evidence",
             hook_event: "subagent-stop",
         },
         CodexHookEvent {
+            config_name: "Stop",
             state_label: "stop",
             matcher: None,
             status: "Checking semantic changed files",
@@ -277,8 +286,8 @@ fn codex_hook_event_block(
         .unwrap_or_else(|| "\n".to_string());
     let command = codex_hook_command(event.hook_event, project_root, asp_binary);
     format!(
-        "[[hooks.{event_name}]]\n{matcher_line}[[hooks.{event_name}.hooks]]\ntype = \"command\"\ntimeout = 5\nstatusMessage = \"{status}\"\ncommand = '''\n{command}'''",
-        event_name = event.state_label,
+        "[[hooks.{event_name}]]\n{matcher_line}[[hooks.{event_name}.hooks]]\ntype = \"command\"\ntimeout = 1\nstatusMessage = \"{status}\"\ncommand = '''\n{command}'''",
+        event_name = event.config_name,
         status = event.status,
     )
 }
@@ -465,12 +474,12 @@ fn claude_hook_events() -> [ClaudeHookEvent; 7] {
         },
         ClaudeHookEvent {
             event: "PreToolUse",
-            matcher: Some(TOOL_SURFACE_MATCHER),
+            matcher: Some(ALL_TOOL_ACTION_MATCHER),
             hook_event: "pre-tool",
         },
         ClaudeHookEvent {
             event: "PostToolUse",
-            matcher: Some(TOOL_SURFACE_MATCHER),
+            matcher: Some(ALL_TOOL_ACTION_MATCHER),
             hook_event: "post-tool",
         },
         ClaudeHookEvent {

@@ -1,23 +1,20 @@
-//! Compact search authority admission for a resident workspace generation.
-
 use std::path::Path;
 
 use super::RuntimeServerWorkspaceRegistry;
-use crate::runtime_server_workspace::{
-    WorkspaceSearchGenerationAuthority, WorkspaceSearchGenerationAuthorityOpenReceipt,
-    workspace_generation_pointer_path,
-};
+use crate::runtime_server_workspace::WorkspaceSearchGenerationAuthority;
 
 impl RuntimeServerWorkspaceRegistry {
-    pub fn search_generation_authority_open_receipt(
+    pub fn read_search_generation_authority(
         &self,
         workspace_identity: &str,
         project_root: &Path,
-    ) -> Result<WorkspaceSearchGenerationAuthorityOpenReceipt, String> {
-        let lease = self.lease(workspace_identity, project_root)?;
+    ) -> Result<Option<WorkspaceSearchGenerationAuthority>, String> {
+        let lease = match self.lease(workspace_identity, project_root) {
+            Ok(lease) => lease,
+            Err(_) => return Ok(None),
+        };
         let authority = WorkspaceSearchGenerationAuthority::from_lease(&lease);
-        let pointer_path =
-            workspace_generation_pointer_path(&self.root, workspace_identity, project_root)?;
-        WorkspaceSearchGenerationAuthorityOpenReceipt::new(authority, &pointer_path)
+        authority.validate_binding(workspace_identity, &project_root.display().to_string())?;
+        Ok(Some(authority))
     }
 }

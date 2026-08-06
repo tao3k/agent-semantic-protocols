@@ -180,6 +180,12 @@
         "quality"
       ]
     },
+    "effectClass": {
+      "enum": [
+        "read-only",
+        "idempotent-keyed"
+      ]
+    },
     "contextBinding": {
       "type": "object",
       "additionalProperties": false,

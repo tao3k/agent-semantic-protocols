@@ -13,7 +13,6 @@ asp-rust-project-harness-policy = { path = "../../build-support/asp-rust-project
 agent-semantic-command-match = { path = "../agent-semantic-command-match" }
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-content-identity = { path = "../agent-semantic-content-identity" }
-agent-semantic-loop = { path = "../agent-semantic-loop" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
 aho-corasick.workspace = true
 base64.workspace = true

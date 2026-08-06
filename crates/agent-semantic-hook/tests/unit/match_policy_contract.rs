@@ -6,16 +6,146 @@ use agent_semantic_hook::{
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, fs, path::PathBuf, process::Command};
 
-use super::classifier::registry;
+use super::classifier::{builtin_programming_runtime, registry};
 
 const CAPABILITY_CHILD_ENV: &str = "ASP_HOOK_MATCH_POLICY_CAPABILITY_CHILD";
 const CONTRACT_TEST_NAME: &str = "match_policy_contract::production_match_policy_contract";
 
 fn temp_project_root() -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "agent-semantic-hook-match-policy-contract-{}",
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("match-policy fixture clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "agent-semantic-hook-match-policy-contract-{}-{nonce}",
         std::process::id()
+    ));
+    let agents_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("agents");
+    let fixture_agents = root.join("agents");
+    fs::create_dir_all(&fixture_agents).expect("create match-policy fixture agent registry");
+    for name in [
+        "config.toml",
+        "asp_explorer_codex.toml",
+        "asp_explorer_claude.md",
+        "asp_testing_codex.toml",
+        "asp_testing_claude.md",
+    ] {
+        fs::copy(agents_root.join(name), fixture_agents.join(name))
+            .expect("copy match-policy fixture agent registry entry");
+    }
+    root
+}
+
+#[test]
+fn canonical_config_covers_builtin_programming_native_read_matrix() {
+    let root = temp_project_root();
+    fs::create_dir_all(&root).expect("matrix root");
+    let config_path = root.join("config.toml");
+    fs::write(&config_path, default_client_config_template()).expect("write config");
+    let config = load_client_config_for_project(&config_path, &root).expect("compile config");
+    let mut runtime = builtin_programming_runtime();
+    runtime.project_root = root.to_string_lossy().into_owned();
+    let mut count = 0usize;
+    for provider in &runtime.providers {
+        for extension in &provider.source_extensions {
+            let path = format!("src/witness{extension}");
+            let mut inputs = vec![json!({"type":"read", "path": path})];
+            for key in [
+                "path",
+                "file",
+                "file_path",
+                "filePath",
+                "absolute_path",
+                "absolutePath",
+                "relative_path",
+                "relativePath",
+                "uri",
+            ] {
+                inputs.push(json!({"toolName":"Read", "toolInput":{key: path}}));
+            }
+            for (tool_name, input_key) in [("toolName", "toolInput"), ("tool_name", "tool_input")] {
+                inputs.push(json!({tool_name:"Read", input_key:{"path":path}}));
+            }
+            for input in inputs {
+                let payload =
+                    json!({"toolName":"functions.exec", "toolInput":{"commandActions":[input]}});
+                let decision = classify_hook_with_config(HookClassificationRequest {
+                    registry: &runtime,
+                    config: &config,
+                    platform: "codex",
+                    event: "pre-tool",
+                    payload: &payload,
+                });
+                assert_eq!(
+                    decision.fields.get("configRuleId").and_then(Value::as_str),
+                    Some("materialize-registered-source-read-action"),
+                    "{payload}"
+                );
+                assert_eq!(decision.decision, DecisionKind::Deny);
+                assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
+                assert_eq!(decision.language_ids, [provider.language_id.as_str()]);
+                assert!(
+                    decision
+                        .fields
+                        .get("normalizedActions")
+                        .is_some_and(|v| v.to_string().contains("direct-read"))
+                );
+                assert!(
+                    decision
+                        .routes
+                        .iter()
+                        .any(|route| route.provider_id == provider.provider_id)
+                );
+                count += 1;
+            }
+        }
+    }
+    assert!(count > 0);
+    fs::remove_dir_all(root).expect("cleanup matrix root");
+}
+
+#[test]
+fn restored_plugin_matcher_corpus_covers_canonical_host_names() {
+    let hooks: Value = serde_json::from_str(include_str!(
+        "../../../../asp-codex-plugin/hooks/hooks.json"
     ))
+    .expect("plugin hooks JSON");
+    let matcher = hooks["hooks"]["PreToolUse"][0]["matcher"]
+        .as_str()
+        .expect("PreToolUse matcher");
+    for name in [
+        "Read",
+        "readFile",
+        "read_file",
+        "mcp__",
+        "Bash",
+        "exec_command",
+        "command_execution",
+        "multi_tool_use\\.parallel",
+    ] {
+        assert!(matcher.contains(name), "missing host matcher token {name}");
+    }
+    for outer in [
+        "Read",
+        "mcp__server__read",
+        "Bash",
+        "exec_command",
+        "command_execution",
+        "multi_tool_use.parallel",
+    ] {
+        let nested = json!({"toolName": outer, "toolInput": {"commandActions": [{"toolName": "Read", "toolInput": {"path": "src/witness.py"}}]}});
+        assert!(
+            nested["toolName"].as_str().is_some_and(|name| {
+                matcher.contains(name)
+                    || (name.starts_with("mcp__") && matcher.contains("mcp__.*__read"))
+                    || (name == "multi_tool_use.parallel"
+                        && matcher.contains("multi_tool_use\\.parallel"))
+            }),
+            "nested host corpus {outer}"
+        );
+    }
 }
 
 fn run_with_projection_capabilities() {
@@ -146,14 +276,14 @@ fn production_match_policy_contract() {
         MatchCase {
             name: "javascript inline source materialization",
             payload: shell("node -e 'require(\"fs\").readFileSync(\"src/app.ts\", \"utf8\")'"),
-            rule_id: "deny-uncontrolled-javascript-inline-source-materialization",
+            rule_id: "materialize-source-access-policy",
             decision: DecisionKind::Deny,
             reason: ReasonKind::BulkSourceDump,
         },
         MatchCase {
             name: "legacy python inline source materialization",
             payload: shell("python -c 'print(open(\"src/app.ts\").read())'"),
-            rule_id: "deny-uncontrolled-python-inline-source-materialization",
+            rule_id: "materialize-source-access-policy",
             decision: DecisionKind::Deny,
             reason: ReasonKind::BulkSourceDump,
         },
@@ -318,6 +448,11 @@ fn production_match_policy_contract() {
     if !report.is_complete() {
         failures.push(format!(
             "production conformance receipt incomplete: {report:?}"
+        ));
+    }
+    if let Err(error) = agent_semantic_hook::validate_match_policy_rule_coverage(&config) {
+        failures.push(format!(
+            "runtime-free mmap rule coverage gate rejected production config: {error}"
         ));
     }
     fs::remove_dir_all(root).expect("cleanup match-policy contract root");

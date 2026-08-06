@@ -260,28 +260,12 @@ impl WorkspaceGenerationPublisher {
             previous_epoch_readable,
         };
         snapshot.validate()?;
+        super::publish_search_generation_authority_segment(state.pointer.path(), &generation)
+            .await?;
         state.pointer.publish(&snapshot).await?;
         super::WorkspaceGenerationDataPlaneClient::invalidate_committed_pointer(
             state.pointer.path(),
         );
-        super::WorkspaceSearchGenerationAuthorityPointerClient::invalidate_committed_pointer(
-            state.pointer.path(),
-            &generation.workspace_identity,
-            &generation.project_root,
-        );
-        if super::WorkspaceSearchGenerationAuthorityPointerClient::shared_open_path_optional(
-            state.pointer.path(),
-            &generation.workspace_identity,
-            &generation.project_root,
-        )
-        .await?
-        .is_none()
-        {
-            return Err(
-                "published workspace generation pointer was not available for load-once admission"
-                    .to_owned(),
-            );
-        }
         state
             .owner_identity_journal
             .rebase(&snapshot.workspace_identity, &snapshot.generation_digest)

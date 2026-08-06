@@ -1,0 +1,41 @@
+#+title: Runtime Server Lifecycle and Drain Receipt
+#+date: 2026-08-05
+
+* Status
+
+Normative design for the Tokio Runtime Server lifecycle. The platform
+supervisor is responsible only for admission and unload; the daemon owns all
+Tokio tasks, provider children, workspace builders, and service drain.
+
+* State machine
+
+#+begin_example
+starting -> building -> ready
+                     -> failed
+                     -> cancelled
+ready -> draining -> exited
+#+end_example
+
+Each workspace and owner epoch has at most one generation builder. Readers
+observe a watch-backed terminal receipt; cancellation publishes ~cancelled~,
+clears ~building~, and wakes every waiter. ~draining~ rejects new admission.
+
+* Receipt ordering
+
+The daemon joins every owned task and child before atomically publishing
+~daemon-drain~. The receipt contains owner epoch, per-service elapsed time and
+errors, active task/child counts, and ~cleanDrain~. The daemon then publishes
+the owner exit receipt. Only after that may endpoint/socket cleanup and
+supervisor unload occur. An exit receipt is valid only when the drain receipt
+preceded it and both counts are zero.
+
+* Invariants
+
+1. Ready implies a canonical generation.
+2. One builder exists per workspace and owner epoch.
+3. Cancelled is terminal and wakes all waiters.
+4. Stopping rejects admission.
+5. Exited implies zero tasks/children and a prior drain receipt.
+
+The executable Rust receipt and the Lean model
+~ASPProof.RuntimeServerLifecycle~ are refinement witnesses for these claims.

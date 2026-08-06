@@ -13,6 +13,7 @@ struct RuntimeServerStopReceipt {
     request_id: String,
     state: &'static str,
     lifecycle_authority: &'static str,
+    operator_stop_recorded: bool,
     endpoint_path: String,
     endpoint_removed: bool,
     control_socket_removed: bool,
@@ -27,7 +28,25 @@ pub(super) async fn run_stop() -> Result<(), String> {
         crate::server::runtime_server_endpoint_io::read_supervisor_endpoint(&endpoint_path)
             .await
             .ok();
-    crate::server::runtime_server_supervisor::stop_runtime_server_supervisor().await?;
+    crate::server::runtime_server_exit_receipt::remove_stale(&state_home).await?;
+    crate::server::runtime_server_supervisor::remove_runtime_server_run_intent(&state_home).await?;
+    crate::server::runtime_server_supervisor::request_runtime_server_drain().await?;
+    if let Some(endpoint) = &endpoint {
+        let exit = crate::server::runtime_server_exit_receipt::await_owner_exit(
+            &state_home,
+            endpoint.owner_epoch,
+        )
+        .await?;
+        if !exit.clean_drain {
+            return Err(format!(
+                "Runtime Server owner {} exited after a failed service drain",
+                exit.owner_epoch
+            ));
+        }
+    }
+    crate::server::runtime_server_supervisor::unload_runtime_server_supervisor().await?;
+    crate::server::runtime_server_supervisor::mark_runtime_server_operator_stopped(&state_home)
+        .await?;
     let receipt = finalize_stopped_runtime_server(
         &state_home,
         endpoint.as_ref(),
@@ -83,6 +102,7 @@ async fn finalize_stopped_runtime_server(
         request_id,
         state: "stopped",
         lifecycle_authority: "platform-supervisor",
+        operator_stop_recorded: true,
         endpoint_path: endpoint_path.to_string_lossy().into_owned(),
         endpoint_removed,
         control_socket_removed,

@@ -180,4 +180,37 @@ theorem canonical_warm_receipt_is_resident :
     residentWarmPath ⟨0, 0, 0, 0, 0⟩ := by
   simp [residentWarmPath]
 
+structure ProviderRuntimeState where
+  entryIsDigestLattice : Bool
+  receiptMatchesEntry : Bool
+  deriving DecidableEq, Repr
+
+def migrateProviderEntry (state : ProviderRuntimeState) : ProviderRuntimeState :=
+  if state.entryIsDigestLattice then state
+  else ⟨true, false⟩
+
+def reconcileProviderReceipt (state : ProviderRuntimeState) : ProviderRuntimeState :=
+  { state with receiptMatchesEntry := true }
+
+def providerRuntimeInstallReady (state : ProviderRuntimeState) : Bool :=
+  state.entryIsDigestLattice && state.receiptMatchesEntry
+
+theorem regular_provider_migration_invalidates_the_pre_switch_receipt
+    (receiptWasCurrent : Bool) :
+    providerRuntimeInstallReady
+      (migrateProviderEntry ⟨false, receiptWasCurrent⟩) = false := by
+  rfl
+
+theorem provider_receipt_reconciliation_after_migration_closes_install
+    (receiptWasCurrent : Bool) :
+    providerRuntimeInstallReady
+      (reconcileProviderReceipt
+        (migrateProviderEntry ⟨false, receiptWasCurrent⟩)) = true := by
+  rfl
+
+theorem external_non_lattice_entry_cannot_be_declared_ready
+    (receiptMatches : Bool) :
+    providerRuntimeInstallReady ⟨false, receiptMatches⟩ = false := by
+  cases receiptMatches <;> rfl
+
 end ASPProof.RuntimeArtifactAuthority

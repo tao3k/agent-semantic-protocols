@@ -171,7 +171,7 @@ reference, or no longer corresponds to the named clause.
 | bounded Tokio child ownership | =crates/agent-semantic-runtime/src/hook_process_runtime.rs= |
 | exact stdin replay | =hook_runtime_stdin::with_hook_stdin_override= |
 | digest-addressed single-binary publication | =protocol_binary::ensure_protocol_binary_installed= |
-| Codex command surface | =asp-codex-plugin/hooks/hooks.json= |
+| Codex command surface | user-level inline =~/.codex/config.toml= Hook dispatcher |
 | server generation reuse | =hook_runtime_generation_admission= |
 
 * Acceptance evidence

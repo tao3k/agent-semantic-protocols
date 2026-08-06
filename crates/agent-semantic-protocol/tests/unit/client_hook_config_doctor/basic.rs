@@ -1,6 +1,7 @@
 use super::{
     run_doctor, run_doctor_with_env, stderr, stdout, temp_project_root, write_activation,
-    write_client_config, write_codex_project_plugin_config, write_executable,
+    write_client_config, write_codex_global_inline_config, write_codex_project_plugin_config,
+    write_executable,
 };
 
 #[test]
@@ -105,7 +106,7 @@ decision = "deny"
 }
 
 #[test]
-fn doctor_treats_project_plugin_hooks_as_hook_present() {
+fn doctor_reports_native_inline_debug_mode() {
     let root = temp_project_root("doctor-project-plugin-hook-present");
     let activation_path = write_activation(&root);
     write_codex_project_plugin_config(&root);
@@ -120,18 +121,22 @@ tool = "Bash"
 "#,
     );
     let bin_dir = root.join(".test-bin");
-    write_executable(&bin_dir, "asp", "#!/bin/sh\nexit 0\n");
+    let asp_binary = write_executable(&bin_dir, "asp", "#!/bin/sh\nexit 0\n");
+    write_codex_global_inline_config(&root, &asp_binary);
 
     let output = run_doctor_with_env(&root, &activation_path, &[], &[], Some(&bin_dir));
 
     assert!(output.status.success(), "stderr: {}", stderr(&output));
     let stdout = stdout(&output);
     assert!(stdout.contains("hook=true"), "{stdout}");
-    assert!(stdout.contains("hookMode=codex-plugin"), "{stdout}");
-    assert!(stdout.contains("pluginHook=true"), "{stdout}");
-    assert!(stdout.contains("trust=false"), "{stdout}");
+    assert!(
+        stdout.contains("hookMode=codex-native-inline-debug"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("pluginHook=false"), "{stdout}");
+    assert!(stdout.contains("trust=true"), "{stdout}");
     assert!(stdout.contains("projectTrust=false"), "{stdout}");
-    assert!(stdout.contains("hookStateTrust=false"), "{stdout}");
+    assert!(stdout.contains("hookStateTrust=true"), "{stdout}");
     assert!(stdout.contains("trustMissing=0"), "{stdout}");
     assert!(stdout.contains("enforcement=unproven"), "{stdout}");
     assert!(
@@ -156,12 +161,12 @@ tool = "Bash"
 }
 
 #[test]
-fn codex_plugin_hooks_use_stable_public_surface_and_bounded_timeout() {
-    let hooks: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../../asp-codex-plugin/hooks/hooks.json"
-    ))
-    .expect("parse hooks.json");
-    let hooks = hooks["hooks"].as_object().expect("hooks object");
+fn codex_global_inline_hooks_use_stable_public_surface_and_bounded_timeout() {
+    let rendered = agent_semantic_hook::codex_global_hook_block_with_binary(Some(
+        std::path::Path::new("/state/runtime/bin/asp"),
+    ));
+    let hooks: toml::Value = toml::from_str(&rendered).expect("parse inline Hook config");
+    let hooks = hooks["hooks"].as_table().expect("hooks table");
 
     for event in [
         "SessionStart",
@@ -174,13 +179,13 @@ fn codex_plugin_hooks_use_stable_public_surface_and_bounded_timeout() {
         "Stop",
     ] {
         let command_hook = hooks[event][0]["hooks"][0]
-            .as_object()
+            .as_table()
             .unwrap_or_else(|| panic!("{event} command hook object"));
         let command = command_hook["command"]
             .as_str()
             .unwrap_or_else(|| panic!("{event} command string"));
         assert!(
-            command.starts_with("asp hook "),
+            command.contains("exec '/state/runtime/bin/asp' hook "),
             "{event} command must use the stable public hook surface: {command}"
         );
         assert!(
@@ -188,8 +193,8 @@ fn codex_plugin_hooks_use_stable_public_surface_and_bounded_timeout() {
             "{event} command must not wrap through project direnv: {command}"
         );
         assert_eq!(
-            command_hook["timeout"].as_i64(),
-            Some(5),
+            command_hook["timeout"].as_integer(),
+            Some(1),
             "{event} hook timeout must stay bounded"
         );
     }

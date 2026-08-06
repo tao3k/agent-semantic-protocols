@@ -11,20 +11,18 @@ pub use active_artifact_receipt::{
 };
 mod classifier;
 mod codex_config;
-mod codex_plugin_trust;
 pub use codex_config::codex_hook_block_with_binary;
-pub use codex_plugin_trust::install_codex_user_plugin_trust_state;
-pub use codex_plugin_trust::{CodexPluginTrustStatus, codex_user_plugin_trust_state_status};
 mod codex_global_config;
 pub use codex_global_config::{
-    codex_global_hook_block_with_binary, merge_codex_global_hook_trust_config,
-    remove_codex_global_hook_trust_config,
+    CodexGlobalHookTrustStatus, codex_global_hook_binary_path, codex_global_hook_block_with_binary,
+    codex_global_hook_config_present, codex_global_hook_trust_state_status,
+    merge_codex_global_hook_trust_config, remove_codex_global_hook_trust_config,
 };
 mod codex_project_trust;
 mod codex_trust;
 mod command;
 pub use command::semantic_shell_tokens;
-pub use tool_action::direct_source_read_paths;
+pub use tool_action::{codex_tool_event_requires_policy_evaluation, direct_source_read_paths};
 mod event_replay;
 mod event_state;
 mod event_state_subagent_model_drift;
@@ -97,8 +95,9 @@ pub use codex_config::{
 pub use codex_project_trust::install_codex_user_project_trust;
 pub use dev_context::{ActiveContextRecord, record_active_context};
 pub use event_state::{
-    append_hook_event_state, apply_repeated_deny_replay, has_recorded_subagent_context,
-    remove_incompatible_hook_event_state,
+    HookSessionAgentRoute, append_hook_event_state, apply_repeated_deny_replay,
+    has_recorded_subagent_context, latest_hook_session_agent_route,
+    remove_incompatible_hook_event_state, try_append_hook_event_state,
 };
 pub use event_state_subagent_model_drift::{
     SubagentModelDriftObservation, SubagentProfileDriftObservation,
@@ -117,6 +116,7 @@ pub use hook_config::{
 pub use hook_config_global::default_global_client_config_path;
 pub use match_policy_conformance::{
     MatchPolicyConformanceReport, evaluate_match_policy_conformance,
+    validate_match_policy_rule_coverage,
 };
 pub use protocol::{
     ActionPolicy, AgentHookError, CANONICAL_SCHEMA_AUTHORITY, CommandTemplate, DecisionKind,

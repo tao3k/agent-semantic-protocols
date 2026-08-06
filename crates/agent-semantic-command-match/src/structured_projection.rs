@@ -18,6 +18,10 @@ pub enum StructuredFilterClassificationV1 {
         segments: Vec<BoundedPathSegmentV1>,
         source_operands: Vec<String>,
     },
+    BoundedScalarPredicate {
+        predicate: String,
+        source_operands: Vec<String>,
+    },
     Identity,
     RecursiveDescent,
     ArrayIteration,
@@ -143,6 +147,12 @@ fn classify_bounded_path_words(
                 source_operands,
             }
         }
+        StructuredFilterClassificationV1::BoundedScalarPredicate { predicate, .. } => {
+            StructuredFilterClassificationV1::BoundedScalarPredicate {
+                predicate,
+                source_operands,
+            }
+        }
         classification => classification,
     }
 }
@@ -152,6 +162,18 @@ pub fn classify_bounded_path_filter(filter: &str) -> StructuredFilterClassificat
     let filter = filter.trim();
     if filter == "." {
         return StructuredFilterClassificationV1::Identity;
+    }
+    if let Some((left, right)) = filter.split_once("==")
+        && left.trim() == "type"
+        && matches!(
+            right.trim(),
+            "\"object\"" | "\"array\"" | "\"string\"" | "\"number\"" | "\"boolean\"" | "\"null\""
+        )
+    {
+        return StructuredFilterClassificationV1::BoundedScalarPredicate {
+            predicate: filter.to_owned(),
+            source_operands: Vec::new(),
+        };
     }
     if !filter.starts_with('.') {
         return StructuredFilterClassificationV1::Invalid;

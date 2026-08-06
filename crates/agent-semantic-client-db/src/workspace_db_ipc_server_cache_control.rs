@@ -137,7 +137,8 @@ pub(super) async fn evaluate(
                                 WorkspaceGenerationAdmissionState::Ready => {
                                     RuntimeCacheGenerationState::Ready
                                 }
-                                WorkspaceGenerationAdmissionState::Failed => {
+                                WorkspaceGenerationAdmissionState::Failed
+                                | WorkspaceGenerationAdmissionState::Cancelled => {
                                     RuntimeCacheGenerationState::Stale
                                 }
                             },

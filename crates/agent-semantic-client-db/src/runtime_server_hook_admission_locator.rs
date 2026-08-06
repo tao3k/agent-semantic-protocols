@@ -263,27 +263,67 @@ impl RuntimeHookAdmissionLocatorAuthority {
     }
 }
 
+struct RuntimeHookAdmissionLocatorReader {
+    mapping: SeqlockJsonMemoryReader,
+    document: RwLock<Option<(u64, Arc<RuntimeHookAdmissionLocatorDocument>)>>,
+}
+
+impl RuntimeHookAdmissionLocatorReader {
+    async fn open(path: &Path) -> Result<Self, String> {
+        Ok(Self {
+            mapping: SeqlockJsonMemoryReader::open(path).await?,
+            document: RwLock::new(None),
+        })
+    }
+
+    fn read_document(&self) -> Result<(u64, Arc<RuntimeHookAdmissionLocatorDocument>), String> {
+        if let Some(generation) = self.mapping.stable_generation()
+            && let Some((cached_generation, document)) = self
+                .document
+                .read()
+                .map_err(|_| "Hook admission locator document cache is poisoned".to_owned())?
+                .as_ref()
+            && *cached_generation == generation
+        {
+            return Ok((generation, Arc::clone(document)));
+        }
+        let (generation, document) = self
+            .mapping
+            .read_postcard::<RuntimeHookAdmissionLocatorDocument>()?;
+        let mut cached = self
+            .document
+            .write()
+            .map_err(|_| "Hook admission locator document cache is poisoned".to_owned())?;
+        if let Some((cached_generation, document)) = cached.as_ref()
+            && *cached_generation == generation
+        {
+            return Ok((generation, Arc::clone(document)));
+        }
+        let document = Arc::new(document);
+        *cached = Some((generation, Arc::clone(&document)));
+        Ok((generation, document))
+    }
+}
+
 static LOCATOR_READERS: OnceLock<
-    RwLock<std::collections::BTreeMap<PathBuf, Arc<SeqlockJsonMemoryReader>>>,
+    dashmap::DashMap<PathBuf, Arc<RuntimeHookAdmissionLocatorReader>>,
 > = OnceLock::new();
 
-async fn locator_reader(path: &Path) -> Result<(Arc<SeqlockJsonMemoryReader>, bool), String> {
-    if let Some(reader) = LOCATOR_READERS
-        .get_or_init(Default::default)
-        .read()
-        .map_err(|_| "Hook admission locator reader cache is poisoned".to_owned())?
-        .get(path)
-        .cloned()
-    {
-        return Ok((reader, false));
+async fn locator_reader(
+    path: &Path,
+) -> Result<(Arc<RuntimeHookAdmissionLocatorReader>, bool), String> {
+    let readers = LOCATOR_READERS.get_or_init(Default::default);
+    if let Some(reader) = readers.get(path) {
+        return Ok((Arc::clone(reader.value()), false));
     }
-    let reader = Arc::new(SeqlockJsonMemoryReader::open(path).await?);
-    LOCATOR_READERS
-        .get_or_init(Default::default)
-        .write()
-        .map_err(|_| "Hook admission locator reader cache is poisoned".to_owned())?
-        .insert(path.to_path_buf(), Arc::clone(&reader));
-    Ok((reader, true))
+    let candidate = Arc::new(RuntimeHookAdmissionLocatorReader::open(path).await?);
+    match readers.entry(path.to_path_buf()) {
+        dashmap::mapref::entry::Entry::Occupied(reader) => Ok((Arc::clone(reader.get()), false)),
+        dashmap::mapref::entry::Entry::Vacant(entry) => {
+            entry.insert(Arc::clone(&candidate));
+            Ok((candidate, true))
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -316,7 +356,7 @@ pub async fn connect_hook_workspace_session_with_receipt(
     let (reader, opened) = locator_reader(&runtime_hook_admission_locator_path(state_home)).await?;
     let locator_open_nanos = open_started.elapsed().as_nanos() as u64;
     let read_started = std::time::Instant::now();
-    let (generation, document) = reader.read_postcard::<RuntimeHookAdmissionLocatorDocument>()?;
+    let (generation, document) = reader.read_document()?;
     document.validate_runtime_lookup()?;
     if generation != document.generation {
         return Err(format!(
@@ -378,9 +418,18 @@ pub async fn spawn_runtime_hook_admission_locator(
         loop {
             tokio::select! {
                 changed = admissions.changed() => {
-                    changed.map_err(|_| {
-                        "Runtime Server Hook admission catalog publisher closed".to_owned()
-                    })?;
+                    // Catalog closure is a normal terminal condition during
+                    // Runtime Server shutdown: the admission owner is already
+                    // being dropped and no further locator publication can be
+                    // observed. Do not turn that cancellation race into a
+                    // failed daemon drain receipt.
+                    if changed.is_err() {
+                        // The admission owner is dropped as part of the
+                        // RuntimeServer shutdown join. Its watch closes before
+                        // this auxiliary publisher observes the shutdown bit;
+                        // that ordering is the normal terminal bridge.
+                        return Ok(());
+                    }
                     authority.publish(admissions.borrow_and_update().as_ref())?;
                 }
                 changed = shutdown_requested.changed() => {

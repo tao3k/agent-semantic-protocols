@@ -1,18 +1,27 @@
 //! User-level Codex hook config rendering.
 
 use std::path::Path;
+use std::{fs, path::PathBuf};
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::codex_config::{ROOT_BLOCK_BEGIN, ROOT_BLOCK_END};
+use crate::codex_config::{ALL_TOOL_ACTION_MATCHER, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END};
 
-const TOOL_SURFACE_MATCHER: &str = r"Read|read|readFile|readDirectory|read_file|read_directory|FsReadFile|FsReadDirectory|fs\.read|fs\.readFile|fs\.readDirectory|fs/read|fs/readFile|fs/readDirectory|fs\\read|fs\\readFile|fs\\readDirectory|functions\.read|functions\.read_file|functions\.readFile|mcp__.*__read|mcp__.*__read_file|mcp__.*__readFile|functions\.exec_command|exec_command|command_execution|multi_tool_use\.parallel|Bash|Shell";
 const TRUST_BLOCK_BEGIN_PREFIX: &str = "# BEGIN agent-semantic-protocol trusted hook state: ";
 const TRUST_BLOCK_END: &str = "# END agent-semantic-protocol trusted hook state";
 
+#[derive(Debug)]
+pub struct CodexGlobalHookTrustStatus {
+    pub trust_config_path: PathBuf,
+    pub trusted: bool,
+    pub missing_events: Vec<String>,
+    pub stale_events: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct CodexGlobalHookEvent {
+    config_name: &'static str,
     state_label: &'static str,
     matcher: Option<&'static str>,
     status: &'static str,
@@ -60,51 +69,161 @@ pub fn remove_codex_global_hook_trust_config(existing: &str, config_source_path:
     }
 }
 
+pub fn codex_global_hook_config_present(content: &str) -> bool {
+    if !content.contains(ROOT_BLOCK_BEGIN) || !content.contains(ROOT_BLOCK_END) {
+        return false;
+    }
+    let Ok(parsed) = toml::from_str::<toml::Value>(content) else {
+        return false;
+    };
+    let Some(hooks) = parsed.get("hooks").and_then(toml::Value::as_table) else {
+        return false;
+    };
+    if hooks.contains_key("pre_tool_use") || hooks.contains_key("permission_request") {
+        return false;
+    }
+    codex_global_hook_events().iter().all(|event| {
+        let Some(groups) = hooks.get(event.config_name).and_then(toml::Value::as_array) else {
+            return false;
+        };
+        if groups.len() != 1 {
+            return false;
+        }
+        let group = &groups[0];
+        if group.get("matcher").and_then(toml::Value::as_str) != event.matcher {
+            return false;
+        }
+        let Some(commands) = group.get("hooks").and_then(toml::Value::as_array) else {
+            return false;
+        };
+        commands.len() == 1
+            && commands[0].get("type").and_then(toml::Value::as_str) == Some("command")
+            && commands[0].get("timeout").and_then(toml::Value::as_integer) == Some(1)
+    })
+}
+
+pub fn codex_global_hook_binary_path(content: &str) -> Option<PathBuf> {
+    let parsed = toml::from_str::<toml::Value>(content).ok()?;
+    let command = parsed
+        .get("hooks")?
+        .get("PreToolUse")?
+        .as_array()?
+        .first()?
+        .get("hooks")?
+        .as_array()?
+        .first()?
+        .get("command")?
+        .as_str()?;
+    let line = command
+        .lines()
+        .find(|line| line.trim_start().starts_with("exec "))?
+        .trim_start()
+        .strip_prefix("exec ")?;
+    let binary = line.strip_suffix(" hook pre-tool --client codex")?.trim();
+    let binary = binary
+        .strip_prefix('\'')
+        .and_then(|binary| binary.strip_suffix('\''))?;
+    (!binary.is_empty() && !binary.contains("'\"'\"'")).then(|| PathBuf::from(binary))
+}
+
+pub fn codex_global_hook_trust_state_status(
+    config_path: &Path,
+) -> Result<CodexGlobalHookTrustStatus, String> {
+    let content = fs::read_to_string(config_path)
+        .map_err(|error| format!("failed to read {}: {error}", config_path.display()))?;
+    let parsed = toml::from_str::<toml::Value>(&content)
+        .map_err(|error| format!("invalid Codex config {}: {error}", config_path.display()))?;
+    let asp_binary = codex_global_hook_binary_path(&content).ok_or_else(|| {
+        format!(
+            "global Codex Hook config {} omitted canonical ASP binary command",
+            config_path.display()
+        )
+    })?;
+    let state = parsed
+        .get("hooks")
+        .and_then(toml::Value::as_table)
+        .and_then(|hooks| hooks.get("state"))
+        .and_then(toml::Value::as_table);
+    let mut missing_events = Vec::new();
+    let mut stale_events = Vec::new();
+    for event in codex_global_hook_events() {
+        let key = format!("{}:{}:0:0", config_path.display(), event.state_label);
+        let actual = state
+            .and_then(|state| state.get(&key))
+            .and_then(toml::Value::as_table)
+            .and_then(|entry| entry.get("trusted_hash"))
+            .and_then(toml::Value::as_str);
+        let expected = codex_global_hook_trusted_hash(&event, Some(&asp_binary));
+        match actual {
+            None => missing_events.push(event.hook_event.to_owned()),
+            Some(actual) if actual != expected => stale_events.push(event.hook_event.to_owned()),
+            Some(_) => {}
+        }
+    }
+    let trusted = codex_global_hook_config_present(&content)
+        && missing_events.is_empty()
+        && stale_events.is_empty();
+    Ok(CodexGlobalHookTrustStatus {
+        trust_config_path: config_path.to_path_buf(),
+        trusted,
+        missing_events,
+        stale_events,
+    })
+}
+
 fn codex_global_hook_events() -> [CodexGlobalHookEvent; 8] {
     [
         CodexGlobalHookEvent {
+            config_name: "SessionStart",
             state_label: "session_start",
             matcher: Some("startup|resume|clear|compact"),
             status: "Loading semantic agent hook activation",
             hook_event: "session-start",
         },
         CodexGlobalHookEvent {
+            config_name: "UserPromptSubmit",
             state_label: "user_prompt_submit",
             matcher: None,
             status: "Planning semantic search flow",
             hook_event: "user-prompt",
         },
         CodexGlobalHookEvent {
+            config_name: "PreToolUse",
             state_label: "pre_tool_use",
-            matcher: Some(TOOL_SURFACE_MATCHER),
+            matcher: Some(ALL_TOOL_ACTION_MATCHER),
             status: "Checking semantic search flow",
             hook_event: "pre-tool",
         },
         CodexGlobalHookEvent {
+            config_name: "PermissionRequest",
             state_label: "permission_request",
-            matcher: Some(TOOL_SURFACE_MATCHER),
+            matcher: Some(ALL_TOOL_ACTION_MATCHER),
             status: "Checking semantic approval flow",
             hook_event: "permission-request",
         },
         CodexGlobalHookEvent {
+            config_name: "PostToolUse",
             state_label: "post_tool_use",
             matcher: None,
             status: "Updating semantic search flow state",
             hook_event: "post-tool",
         },
         CodexGlobalHookEvent {
+            config_name: "SubagentStart",
             state_label: "subagent_start",
-            matcher: Some(TOOL_SURFACE_MATCHER),
+            matcher: Some(ALL_TOOL_ACTION_MATCHER),
             status: "Preparing semantic subagent context",
             hook_event: "subagent-start",
         },
         CodexGlobalHookEvent {
+            config_name: "SubagentStop",
             state_label: "subagent_stop",
-            matcher: Some(TOOL_SURFACE_MATCHER),
+            matcher: Some(ALL_TOOL_ACTION_MATCHER),
             status: "Checking semantic subagent evidence",
             hook_event: "subagent-stop",
         },
         CodexGlobalHookEvent {
+            config_name: "Stop",
             state_label: "stop",
             matcher: None,
             status: "Checking semantic changed files",
@@ -123,8 +242,8 @@ fn codex_global_hook_event_block(
         .unwrap_or_else(|| "\n".to_string());
     let command = codex_global_hook_command(event.hook_event, asp_binary);
     format!(
-        "[[hooks.{event_name}]]\n{matcher_line}[[hooks.{event_name}.hooks]]\ntype = \"command\"\ntimeout = 5\nstatusMessage = \"{status}\"\ncommand = '''\n{command}'''",
-        event_name = event.state_label,
+        "[[hooks.{event_name}]]\n{matcher_line}[[hooks.{event_name}.hooks]]\ntype = \"command\"\ntimeout = 1\nstatusMessage = \"{status}\"\ncommand = '''\n{command}'''",
+        event_name = event.config_name,
         status = event.status,
     )
 }
@@ -185,7 +304,7 @@ fn codex_global_hook_trusted_hash(
         Value::Array(vec![json!({
             "type": "command",
             "command": codex_global_hook_command(event.hook_event, asp_binary),
-            "timeout": 5,
+            "timeout": 1,
             "async": false,
             "statusMessage": event.status,
         })]),

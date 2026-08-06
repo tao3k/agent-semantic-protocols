@@ -47,3 +47,5 @@ mod rust_project_harness_gate;
 mod source_access;
 #[path = "unit/test_process_env.rs"]
 mod test_process_env;
+#[path = "unit/tool_action.rs"]
+mod tool_action;

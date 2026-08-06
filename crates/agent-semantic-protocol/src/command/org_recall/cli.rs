@@ -1,5 +1,5 @@
 use super::{checkpoint, memory, render, scan};
-use crate::command::{agent_session, agent_session_registry};
+use crate::command::agent_session;
 use agent_semantic_runtime::project_state_paths;
 use std::{
     env,
@@ -211,8 +211,8 @@ fn resolve_current_recall_session(
     {
         return Ok(root_session_id);
     }
-    agent_session_registry::registered_root_session_id(project_root, &session.id)
-        .map(|root_id| root_id.unwrap_or_else(|| session.recall_session_id().to_string()))
+    let _ = project_root;
+    Ok(session.recall_session_id().to_string())
 }
 
 fn session_scoped_candidates(

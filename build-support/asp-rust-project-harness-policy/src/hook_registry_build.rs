@@ -43,7 +43,7 @@ fn resolve_language_descriptors(schema_dir: &Path, registry: &mut serde_json::Va
         );
         let language_id = required_string(registration, "languageId");
         let provider_id = required_string(registration, "providerId");
-        let descriptor_path = resolve_reference(&schema_dir, reference);
+        let descriptor_path = resolve_reference(schema_dir, reference);
         println!("cargo:rerun-if-changed={}", descriptor_path.display());
         let descriptor_source = fs::read_to_string(&descriptor_path).unwrap_or_else(|error| {
             panic!(

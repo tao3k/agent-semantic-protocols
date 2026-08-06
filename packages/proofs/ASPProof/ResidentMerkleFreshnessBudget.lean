@@ -248,64 +248,65 @@ theorem stale_cached_hit_cannot_be_returned
     ¬ exactProjectionAllowed kind evidence := by
   simpa [exactProjectionAllowed, ownerFresh] using hStale
 
-inductive OwnerFreshnessAuthority where
-  | client
-  | runtimeServer
+inductive ExactFreshnessStage where
+  | preToolAdmission
+  | queryDataPlane
   deriving DecidableEq, Repr
 
 structure ExactOwnerReadTransition where
-  authority : OwnerFreshnessAuthority
+  stage : ExactFreshnessStage
   admittedContentDigest : Nat
   liveContentDigest : Nat
   reopenedOwnerContentDigest : Nat
-  readyGenerationDigest : Nat
-  reopenedGenerationDigest : Nat
   terminalReady : Bool
   pointerPublished : Bool
   generationReopened : Bool
   deriving DecidableEq, Repr
 
-def daemonExactReadAllowed (transition : ExactOwnerReadTransition) : Prop :=
-  transition.authority = .runtimeServer ∧
-    (transition.admittedContentDigest = transition.liveContentDigest ∨
-      (transition.terminalReady = true ∧ transition.pointerPublished = true ∧
-        transition.generationReopened = true ∧
-        transition.reopenedOwnerContentDigest = transition.liveContentDigest))
-
-theorem client_owned_freshness_check_is_rejected
-    (transition : ExactOwnerReadTransition)
-    (hClient : transition.authority = .client) :
-    ¬ daemonExactReadAllowed transition := by
-  intro hAllowed
-  exact OwnerFreshnessAuthority.noConfusion (hClient.symm.trans hAllowed.1)
-
-theorem stale_owner_requires_terminal_reconcile_before_reopen
-    (transition : ExactOwnerReadTransition)
-    (hAllowed : daemonExactReadAllowed transition)
-    (hStale : transition.admittedContentDigest ≠ transition.liveContentDigest) :
+def preToolAdmissionClosed (transition : ExactOwnerReadTransition) : Prop :=
+  transition.stage = .preToolAdmission ∧
     transition.terminalReady = true ∧ transition.pointerPublished = true ∧
       transition.generationReopened = true ∧
-        transition.reopenedOwnerContentDigest = transition.liveContentDigest := by
-  exact hAllowed.2.resolve_left hStale
+        transition.reopenedOwnerContentDigest = transition.liveContentDigest
 
-theorem terminal_ready_exact_reconcile_requires_pointer_publication
+def queryDataPlaneAllowed (transition : ExactOwnerReadTransition) : Prop :=
+  transition.stage = .queryDataPlane ∧
+    transition.admittedContentDigest = transition.liveContentDigest ∧
+      transition.pointerPublished = true ∧ transition.generationReopened = true ∧
+        transition.reopenedOwnerContentDigest = transition.admittedContentDigest
+
+def handoffAdmissionToQuery
+    (transition : ExactOwnerReadTransition) : ExactOwnerReadTransition :=
+  { transition with
+    stage := .queryDataPlane
+    admittedContentDigest := transition.liveContentDigest }
+
+theorem stale_query_cannot_repair_its_generation
     (transition : ExactOwnerReadTransition)
-    (hAllowed : daemonExactReadAllowed transition)
     (hStale : transition.admittedContentDigest ≠ transition.liveContentDigest) :
-    transition.pointerPublished = true := by
-  exact (stale_owner_requires_terminal_reconcile_before_reopen transition hAllowed hStale).2.1
+    ¬ queryDataPlaneAllowed transition := by
+  intro hAllowed
+  exact hStale hAllowed.2.1
 
-theorem superseding_generation_is_admitted_by_owner_content_identity
+theorem pretool_admission_handoff_is_query_ready
     (transition : ExactOwnerReadTransition)
-    (hAuthority : transition.authority = .runtimeServer)
-    (_hStale : transition.admittedContentDigest ≠ transition.liveContentDigest)
-    (hReady : transition.terminalReady = true)
-    (hPublished : transition.pointerPublished = true)
-    (hReopened : transition.generationReopened = true)
-    (hOwner : transition.reopenedOwnerContentDigest = transition.liveContentDigest)
-    (_hSuperseded : transition.readyGenerationDigest ≠ transition.reopenedGenerationDigest) :
-    daemonExactReadAllowed transition := by
-  exact ⟨hAuthority, Or.inr ⟨hReady, hPublished, hReopened, hOwner⟩⟩
+    (hClosed : preToolAdmissionClosed transition) :
+    queryDataPlaneAllowed (handoffAdmissionToQuery transition) := by
+  rcases hClosed with ⟨_, _, hPublished, hReopened, hOwner⟩
+  exact ⟨rfl, rfl, hPublished, hReopened, hOwner⟩
+
+theorem query_data_plane_requires_a_published_pointer
+    (transition : ExactOwnerReadTransition)
+    (hAllowed : queryDataPlaneAllowed transition) :
+    transition.pointerPublished = true := by
+  exact hAllowed.2.2.1
+
+theorem pretool_admission_is_not_a_query_read
+    (transition : ExactOwnerReadTransition)
+    (hAdmission : transition.stage = .preToolAdmission) :
+    ¬ queryDataPlaneAllowed transition := by
+  intro hAllowed
+  exact ExactFreshnessStage.noConfusion (hAdmission.symm.trans hAllowed.1)
 
 inductive MutationAdmissionObservation where
   | observed

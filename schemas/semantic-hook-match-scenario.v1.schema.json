@@ -37,15 +37,13 @@
         "ruleId",
         "decision",
         "residentName",
-        "receiptKind",
-        "loopCommandPrefix"
+        "receiptKind"
       ],
       "properties": {
         "ruleId": { "type": "string", "minLength": 1 },
         "decision": { "const": "deny" },
         "residentName": { "type": "string", "minLength": 1 },
-        "receiptKind": { "type": "string", "minLength": 1 },
-        "loopCommandPrefix": { "type": "string", "minLength": 1 }
+        "receiptKind": { "type": "string", "minLength": 1 }
       }
     },
     "performance": {

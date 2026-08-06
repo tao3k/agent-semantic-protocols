@@ -20,5 +20,8 @@ open ASPProof.RuntimeArtifactAuthority
 #check staging_domain_does_not_admit_checkout_only
 #check provenance_uses_provider_owned_source_root
 #check canonical_warm_receipt_is_resident
+#check regular_provider_migration_invalidates_the_pre_switch_receipt
+#check provider_receipt_reconciliation_after_migration_closes_install
+#check external_non_lattice_entry_cannot_be_declared_ready
 
 end ASPProof.Audit.RuntimeArtifactAuthority

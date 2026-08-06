@@ -10,6 +10,19 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
 
+pub(crate) async fn spawn_workspace_resolution<F>(
+    state_home: PathBuf,
+    project_root: PathBuf,
+    resolver: F,
+) -> Result<ResolvedState, String>
+where
+    F: FnOnce(PathBuf, PathBuf) -> Result<ResolvedState, String> + Send + 'static,
+{
+    tokio::task::spawn_blocking(move || resolver(project_root, state_home))
+        .await
+        .map_err(|error| format!("workspace state resolution task failed: {error}"))?
+}
+
 use super::ProviderIncrementalScoped;
 use super::workspace_db_owner::{
     WorkspaceDbWriteOperation, WorkspaceDbWriteRequest, WorkspaceDbWriteResult,
@@ -67,6 +80,8 @@ pub struct WorkspaceDbRegistry {
     registry_hit_count: AtomicU64,
     workspace_resolution_count: AtomicU64,
     project_root_canonicalization_count: AtomicU64,
+    workspace_contexts:
+        Mutex<HashMap<String, Arc<crate::runtime_server_workspace::WorkspaceRuntimeContext>>>,
 }
 
 impl Default for WorkspaceDbRegistry {
@@ -98,9 +113,7 @@ struct WorkspaceDbEntry {
             )>,
         >,
     >,
-    active_materializations:
-        Mutex<HashMap<String, crate::runtime_server_workspace::WorkspaceCanonicalMaterialization>>,
-    provider_owner_cache: Mutex<HashMap<ProviderOwnerCacheKey, ProviderOwnerCacheEntry>>,
+    provider_owner_cache: dashmap::DashMap<ProviderOwnerCacheKey, ProviderOwnerCacheEntry>,
     writer_client: WorkspaceDbWriterClient,
     writer_task: tokio::task::JoinHandle<()>,
     next_request_id: AtomicU64,
@@ -186,15 +199,44 @@ impl WorkspaceDbRegistry {
             registry_hit_count: AtomicU64::default(),
             workspace_resolution_count: AtomicU64::default(),
             project_root_canonicalization_count: AtomicU64::default(),
+            workspace_contexts: Mutex::default(),
         }
     }
 
-    fn resolve_workspace_state(&self, project_root: &Path) -> Result<ResolvedState, String> {
+    /// Associate the admitted runtime context with one workspace identity.
+    pub fn register_workspace_context(
+        &self,
+        context: Arc<crate::runtime_server_workspace::WorkspaceRuntimeContext>,
+    ) {
+        self.workspace_contexts
+            .lock()
+            .insert(context.workspace_identity().to_owned(), context);
+    }
+
+    /// Resolve the lifecycle context for an admitted workspace.
+    pub fn workspace_context(
+        &self,
+        workspace_identity: &str,
+    ) -> Option<Arc<crate::runtime_server_workspace::WorkspaceRuntimeContext>> {
+        self.workspace_contexts
+            .lock()
+            .get(workspace_identity)
+            .cloned()
+    }
+
+    async fn resolve_workspace_state_async(
+        &self,
+        project_root: PathBuf,
+    ) -> Result<ResolvedState, String> {
         let state_home = self
             .state_home
             .as_ref()
-            .map_err(|error| format!("failed to resolve resident registry State Root: {error}"))?;
-        ResolvedState::resolve_with_state_home(project_root, state_home)
+            .map_err(|error| format!("failed to resolve resident registry State Root: {error}"))?
+            .to_path_buf();
+        spawn_workspace_resolution(state_home, project_root, |project_root, state_home| {
+            ResolvedState::resolve_with_state_home(project_root, state_home)
+        })
+        .await
     }
 
     pub fn workspace_entry_counts(&self) -> (usize, usize) {
@@ -243,7 +285,9 @@ impl WorkspaceDbRegistry {
             .get_or_try_init(|| async {
                 self.workspace_resolution_count
                     .fetch_add(1, Ordering::Relaxed);
-                let resolved = self.resolve_workspace_state(project_root)?;
+                let resolved = self
+                    .resolve_workspace_state_async(project_root.to_path_buf())
+                    .await?;
                 self.acquire_resolved(project_root, scope, resolved).await
             })
             .await?;
@@ -256,7 +300,9 @@ impl WorkspaceDbRegistry {
     ) -> Result<ProviderSearchWorkspaceSession, String> {
         self.workspace_resolution_count
             .fetch_add(1, Ordering::Relaxed);
-        let resolved = self.resolve_workspace_state(project_root.as_ref())?;
+        let resolved = self
+            .resolve_workspace_state_async(project_root.as_ref().to_path_buf())
+            .await?;
         let entry = self
             .entry_for_resolved(
                 resolved.workspace.workspace_id.as_str(),
@@ -397,8 +443,12 @@ impl WorkspaceDbRegistry {
         let entry = slot
             .entry
             .get_or_try_init(|| async {
-                let prepared_db_path =
-                    crate::engine::turso::prepare_turso_client_db_path(&client_db_path)?;
+                let prepared_db_path = tokio::task::spawn_blocking({
+                    let client_db_path = client_db_path.clone();
+                    move || crate::engine::turso::prepare_turso_client_db_path(&client_db_path)
+                })
+                .await
+                .map_err(|error| format!("workspace Turso path preparation task failed: {error}"))??;
                 if prepared_db_path != client_db_path {
                     return Err(format!(
                         "workspace registry client DB path is not canonical: requested={} prepared={}",
@@ -423,27 +473,40 @@ impl WorkspaceDbRegistry {
                     })?;
                 self.database_open_count.fetch_add(1, Ordering::Relaxed);
                 let read_parallelism = workspace_db_reader_connection_limit();
-                let mut read_connections = Vec::with_capacity(read_parallelism);
-                for _ in 0..read_parallelism {
-                    read_connections.push(Arc::new(database.connect().map_err(|error| {
-                        format!(
-                            "failed to create canonical workspace Turso read connection {}: {error}",
-                            client_db_path.display()
-                        )
-                    })?));
-                }
-                let writer_connection = database.connect().map_err(|error| {
-                    format!(
-                        "failed to create canonical workspace Turso writer connection {}: {error}",
-                        client_db_path.display()
-                    )
-                })?;
+                let connection_path = client_db_path.clone();
+                let (database, read_connections, writer_connection) = tokio::task::spawn_blocking(
+                    move || {
+                        let mut read_connections = Vec::with_capacity(read_parallelism);
+                        for _ in 0..read_parallelism {
+                            read_connections.push(Arc::new(database.connect().map_err(|error| {
+                                format!(
+                                    "failed to create canonical workspace Turso read connection {}: {error}",
+                                    connection_path.display()
+                                )
+                            })?));
+                        }
+                        let writer_connection = database.connect().map_err(|error| {
+                            format!(
+                                "failed to create canonical workspace Turso writer connection {}: {error}",
+                                connection_path.display()
+                            )
+                        })?;
+                        Ok::<_, String>((database, read_connections, writer_connection))
+                    },
+                )
+                .await
+                .map_err(|error| format!("workspace Turso connection task failed: {error}"))??;
                 self.connection_create_count.fetch_add(
                     u64::try_from(read_parallelism.saturating_add(1)).unwrap_or(u64::MAX),
                     Ordering::Relaxed,
                 );
                 super::bootstrap_turso_source_index_schema(&writer_connection).await?;
-                crate::engine::turso::write_turso_0_7_format_receipt(&prepared_db_path)?;
+                let receipt_path = prepared_db_path.clone();
+                tokio::task::spawn_blocking(move || {
+                    crate::engine::turso::write_turso_0_7_format_receipt(&receipt_path)
+                })
+                .await
+                .map_err(|error| format!("workspace Turso format receipt task failed: {error}"))??;
                 self.schema_bootstrap_count.fetch_add(1, Ordering::Relaxed);
                 let (writer_queue_capacity, writer_batch_limit) =
                     workspace_db_writer_concurrency_plan();
@@ -464,8 +527,7 @@ impl WorkspaceDbRegistry {
                     source_index_read_cache: (0..read_parallelism)
                         .map(|_| tokio::sync::Mutex::new(None))
                         .collect(),
-                    active_materializations: Mutex::new(HashMap::new()),
-                    provider_owner_cache: Mutex::new(HashMap::new()),
+                    provider_owner_cache: dashmap::DashMap::new(),
                     writer_client,
                     writer_task,
                     next_request_id: AtomicU64::new(0),
@@ -573,7 +635,13 @@ impl ProviderSearchWorkspaceSession {
         &self,
         request: crate::ClientDbSourceIndexRefreshRequest,
         materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
-    ) -> Result<crate::ClientDbSourceIndexRefreshReport, String> {
+    ) -> Result<
+        (
+            crate::ClientDbSourceIndexRefreshReport,
+            crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
+        ),
+        String,
+    > {
         if materialization.workspace_identity != self.workspace_identity() {
             return Err(format!(
                 "workspace materialization identity mismatch: admitted={} requested={}",
@@ -581,28 +649,21 @@ impl ProviderSearchWorkspaceSession {
                 materialization.workspace_identity,
             ));
         }
-        let project_root = materialization.project_root.clone();
-        let committed_materialization = materialization.clone();
-        let receipt = match self
+        match self
             .submit_write(WorkspaceDbWriteOperation::CommitSourceIndexGeneration {
                 request,
                 materialization,
             })
             .await?
         {
-            WorkspaceDbWriteResult::SourceIndexGeneration(receipt) => receipt,
-            _ => {
-                return Err(
-                    "workspace writer returned an unexpected source-index generation result"
-                        .to_owned(),
-                );
-            }
-        };
-        self.entry
-            .active_materializations
-            .lock()
-            .insert(project_root, committed_materialization);
-        Ok(receipt)
+            WorkspaceDbWriteResult::SourceIndexGeneration {
+                receipt,
+                materialization,
+            } => Ok((receipt, materialization)),
+            _ => Err(
+                "workspace writer returned an unexpected source-index generation result".to_owned(),
+            ),
+        }
     }
 
     pub async fn load_active_workspace_generation_materialization(
@@ -630,26 +691,6 @@ impl ProviderSearchWorkspaceSession {
     ) -> Result<crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad, String>
     {
         let project_root_key = crate::types::normalized_project_root(project_root)?;
-        if let Some(materialization) = self
-            .entry
-            .active_materializations
-            .lock()
-            .get(project_root_key.as_str())
-            .cloned()
-        {
-            if let Err(reason) = materialization.validate_persisted(self.workspace_identity()) {
-                return Ok(
-                    crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Incompatible {
-                        reason,
-                    },
-                );
-            }
-            return Ok(
-                crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Ready(
-                    materialization,
-                ),
-            );
-        }
         let read_lease = self.read_connection();
         super::materialization::load_active_workspace_generation_materialization(
             read_lease.shared_connection().as_ref(),
@@ -674,7 +715,7 @@ impl ProviderSearchWorkspaceSession {
                 return Err("workspace owner returned mismatched provider owner receipt".to_owned());
             }
         };
-        self.entry.provider_owner_cache.lock().insert(
+        self.entry.provider_owner_cache.insert(
             ProviderOwnerCacheKey {
                 scope: request.scope.clone(),
                 owner_path: request.owner_path.clone(),
@@ -742,7 +783,7 @@ impl ProviderSearchWorkspaceSession {
         owners: &[ProviderOwnerBatchProbeRequest],
     ) -> Result<ProviderOwnerBatchProbeReceipt, String> {
         let cached = {
-            let cache = self.entry.provider_owner_cache.lock();
+            let cache = &self.entry.provider_owner_cache;
             owners
                 .iter()
                 .map(|owner| {
@@ -751,7 +792,7 @@ impl ProviderSearchWorkspaceSession {
                             scope: scope.clone(),
                             owner_path: owner.owner_path.clone(),
                         })
-                        .cloned()
+                        .map(|entry| entry.value().clone())
                 })
                 .collect::<Vec<_>>()
         };
@@ -799,7 +840,7 @@ impl ProviderSearchWorkspaceSession {
             scope: scope.clone(),
             owner_path: owner_path.to_owned(),
         };
-        if let Some(cached) = self.entry.provider_owner_cache.lock().get(&key) {
+        if let Some(cached) = self.entry.provider_owner_cache.get(&key) {
             return Ok(Some(cached.snapshot.clone()));
         }
         let read_lease = self.read_connection();
@@ -810,7 +851,7 @@ impl ProviderSearchWorkspaceSession {
         )
         .await?;
         if let Some(snapshot) = &snapshot {
-            self.entry.provider_owner_cache.lock().insert(
+            self.entry.provider_owner_cache.insert(
                 key,
                 ProviderOwnerCacheEntry {
                     snapshot: snapshot.clone(),

@@ -80,11 +80,15 @@ fn cli_doctor_reports_deny_for_codex_exec_command_source_dump() {
     assert!(stdout.contains("classifierReason=bulk-source-dump"));
     assert!(stdout.contains("classifierRule=deny-uncontrolled-source-materialization-commands"));
     assert!(stdout.contains("matchPolicyStatus=partial"), "{stdout}");
-    assert!(stdout.contains("matchPolicyRules=18"));
+    assert!(stdout.contains("matchPolicyRules=16"));
     assert!(stdout.contains("matchPolicyCases=18"));
     let covered = doctor_count(&stdout, "matchPolicyCovered");
     let failures = doctor_count(&stdout, "matchPolicyFailures");
-    assert_eq!(covered + failures, 18, "{stdout}");
+    assert_eq!(
+        covered + failures,
+        16,
+        "coverage is counted by unique production rule, not witness case: {stdout}"
+    );
     assert!(covered > 0, "{stdout}");
     assert!(stdout.contains("enforcement="), "{stdout}");
     assert!(stdout.contains("enforcementProbe="));

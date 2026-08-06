@@ -8,9 +8,6 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod hook_runtime {
-    #[derive(Default)]
-    pub(crate) struct HookGenerationAdmissionObservation;
-
     pub(crate) fn read_hook_input_bounded() -> Result<String, String> {
         Ok("{}".to_string())
     }
@@ -19,29 +16,14 @@ mod hook_runtime {
         Ok(())
     }
 
-    pub(crate) fn observe_runtime_generation_for_hook_client(
-        _event: &str,
-        _project_root: &std::path::Path,
-        _payload: &serde_json::Value,
-    ) -> (bool, HookGenerationAdmissionObservation) {
-        (false, HookGenerationAdmissionObservation)
-    }
-
-    pub(crate) fn materialize_runtime_generation_observation(
-        _decision: &mut agent_semantic_hook::HookDecision,
-        _explicit_asp_workspace: bool,
-        _observation: HookGenerationAdmissionObservation,
-    ) {
+    pub(crate) fn run_hook_from_bootstrap(_args: &[String], _input: String) -> Result<(), String> {
+        Ok(())
     }
 }
 
-mod runtime_server {
-    pub(crate) fn runtime_server_hook_evaluation_client(
-        _project_root: &std::path::Path,
-        _arguments: Vec<String>,
-        _input: String,
-    ) -> Result<String, String> {
-        Ok(String::new())
+mod hook_break_glass {
+    pub(crate) fn run_hook_break_glass(_args: &[String]) -> Result<(), String> {
+        Ok(())
     }
 }
 
@@ -268,6 +250,10 @@ fn payload_subagent_detection_accepts_explicit_context_flags() {
     assert!(payload_indicates_subagent_context(
         &json!({"thread": {"threadKind": "child-agent"}})
     ));
+    assert!(payload_indicates_subagent_context(&json!({
+        "agent_id": "019f-child",
+        "agent_type": "asp_testing"
+    })));
 }
 
 #[test]
@@ -282,6 +268,18 @@ fn payload_subagent_detection_ignores_main_thread_payloads() {
     assert!(!payload_indicates_subagent_context(
         &json!({"isSubagent": false})
     ));
+    assert!(!payload_indicates_subagent_context(&json!({
+        "agent_id": "019f-child"
+    })));
+    assert!(!payload_indicates_subagent_context(&json!({
+        "agent_type": "asp_testing"
+    })));
+    assert!(!payload_indicates_subagent_context(&json!({
+        "tool_input": {
+            "agent_id": "business-record-id",
+            "agent_type": "business-record-type"
+        }
+    })));
 }
 
 #[test]

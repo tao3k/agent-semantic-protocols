@@ -23,6 +23,21 @@ fn workspace_artifact_snapshot_covers_sibling_runtime_tree() {
 }
 
 #[test]
+fn workspace_artifact_snapshot_single_file_uses_normalized_filename_leaf() {
+    let temporary = tempfile::tempdir().expect("temporary directory");
+    let artifact = temporary.path().join("provider.bin");
+    fs::write(&artifact, b"provider").expect("provider artifact");
+
+    let (first_digest, first_leaf_count) = artifact_snapshot(&artifact).expect("snapshot");
+    let (second_digest, second_leaf_count) = artifact_snapshot(&artifact).expect("snapshot");
+
+    assert_eq!(first_leaf_count, 1);
+    assert_eq!(second_leaf_count, 1);
+    assert!(!first_digest.is_empty());
+    assert_eq!(first_digest, second_digest);
+}
+
+#[test]
 fn workspace_artifact_copy_preserves_tree_identity() {
     let temporary = tempfile::tempdir().expect("temporary directory");
     let source = temporary.path().join("source");

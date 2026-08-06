@@ -22,14 +22,18 @@ fn target_debug_asp() -> Option<PathBuf> {
     Some(asp)
 }
 
-pub(super) fn asp_bin_dir() -> PathBuf {
-    asp_binary_path()
-        .parent()
-        .expect("asp binary must have parent directory")
-        .to_path_buf()
+pub(super) fn asp_bin_dir(root: &Path) -> PathBuf {
+    let bin_dir = root.join(".asp-test-bin");
+    std::fs::create_dir_all(&bin_dir).expect("create isolated ASP bin dir");
+    std::fs::copy(
+        asp_binary_path(),
+        bin_dir.join(format!("asp{}", std::env::consts::EXE_SUFFIX)),
+    )
+    .expect("copy isolated ASP bin");
+    bin_dir
 }
 
-fn asp_binary_path() -> PathBuf {
+pub(super) fn asp_binary_path() -> PathBuf {
     if let Ok(path) = std::env::var("ASP_TEST_ASP_BIN") {
         return checked_asp_path(PathBuf::from(path), "ASP_TEST_ASP_BIN");
     }
@@ -92,6 +96,21 @@ pub(super) fn temp_project_root(name: &str) -> PathBuf {
         "git init failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let agents_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("agents");
+    let fixture_agents = root.join("agents");
+    std::fs::create_dir_all(&fixture_agents).expect("create fixture agent registry");
+    for name in [
+        "config.toml",
+        "asp_explorer_codex.toml",
+        "asp_explorer_claude.md",
+        "asp_testing_codex.toml",
+        "asp_testing_claude.md",
+    ] {
+        std::fs::copy(agents_root.join(name), fixture_agents.join(name))
+            .expect("copy fixture agent registry entry");
+    }
     root
 }
 

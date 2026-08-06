@@ -35,14 +35,11 @@ fn source_expansion_rule_rejects_non_read_effect_contract() {
         .expect("source deny rule should exist");
     let mut rule = config.rules.remove(rule_index);
     rule.match_config.effect_any = vec![agent_semantic_config::HookClientActionKind::Edit];
-    let resident_agents = config.agents.resident_agents;
+    let agents = config.agents;
 
     let error = match CompiledHookRule::try_from_with_agents(
         rule,
-        &agent_semantic_config::HookClientAgentsConfig {
-            placeholders: std::collections::BTreeMap::new(),
-            resident_agents,
-        },
+        &agents,
         &[],
         agent_semantic_config::WrapperMatchMode::Enable,
     ) {
@@ -104,6 +101,25 @@ fn workspace_regular_file_matching_does_not_use_language_extensions() {
     std::fs::write(root.join("Cargo.toml"), "[workspace]\n").expect("write TOML fixture");
     assert!(rule.matches_argv_source_path(&root, "Cargo.toml"));
     assert!(!rule.matches_argv_source_path(&root, "missing.toml"));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn structured_document_file_matching_excludes_provider_language_sources() {
+    let rule = RuleMatch::try_from(agent_semantic_config::HookClientRuleMatchConfig {
+        argv_structured_document_file: true,
+        ..Default::default()
+    })
+    .expect("compile structured document rule");
+    let root = std::env::temp_dir().join(format!(
+        "asp-structured-document-file-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).expect("create workspace");
+    std::fs::write(root.join("package.json"), "{}\n").expect("write JSON fixture");
+    std::fs::write(root.join("provider.rs"), "fn provider() {}\n").expect("write Rust fixture");
+    assert!(rule.matches_argv_source_path(&root, "package.json"));
+    assert!(!rule.matches_argv_source_path(&root, "provider.rs"));
     let _ = std::fs::remove_dir_all(root);
 }
 

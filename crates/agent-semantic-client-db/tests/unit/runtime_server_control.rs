@@ -14,6 +14,11 @@ fn runtime_transport_identity_binds_control_and_workspace_data_plane_contracts()
     let domain = b"agent.semantic-protocols.runtime-server-transport.v1";
     let control = include_bytes!("../../../../schemas/runtime-server-control.v1.schema.json");
     let data_plane = include_bytes!("../../../../schemas/workspace-db-owner-ipc.v1.schema.json");
+    let performance_observation =
+        include_bytes!("../../../../schemas/runtime-server-performance-observation.v1.schema.json");
+    let performance_ingress_receipt = include_bytes!(
+        "../../../../schemas/runtime-server-performance-ingress-receipt.v1.schema.json"
+    );
     let mut expected = blake3::Hasher::new();
     expected.update(domain);
     for (contract_name, contract_bytes) in [
@@ -21,6 +26,14 @@ fn runtime_transport_identity_binds_control_and_workspace_data_plane_contracts()
         (
             b"workspace-db-owner-ipc.v1".as_slice(),
             data_plane.as_slice(),
+        ),
+        (
+            b"runtime-server-performance-observation.v1".as_slice(),
+            performance_observation.as_slice(),
+        ),
+        (
+            b"runtime-server-performance-ingress-receipt.v1".as_slice(),
+            performance_ingress_receipt.as_slice(),
         ),
     ] {
         expected.update(&(contract_name.len() as u64).to_le_bytes());

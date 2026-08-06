@@ -41,6 +41,9 @@ pub(super) async fn run_operation(
         };
 
         match operation {
+            Operation::RecordHostLifecycleEvent { event } => {
+                record_host_lifecycle_event(&registry, event)
+            }
             Operation::Register { request } => {
                 let model_source = request
                     .model_observation
@@ -203,3 +206,63 @@ pub(super) async fn run_operation(
     .await
     .map_err(|error| format!("agent-session registry owner task failed: {error}"))?
 }
+
+fn record_host_lifecycle_event(
+    registry: &crate::AgentSessionRegistry,
+    event: crate::workspace_db_ipc::AgentHostLifecycleEventIpc,
+) -> Result<crate::workspace_db_ipc::AgentSessionRegistryIpcResult, String> {
+    use crate::workspace_db_ipc::{
+        AgentHostLifecycleEventKind as EventKind, AgentSessionRegistryIpcResult as IpcResult,
+    };
+
+    match event.kind {
+        EventKind::Started => {
+            let metadata_json = serde_json::json!({
+                "event": "subagent-start",
+                "native": true,
+                "platform": event.platform,
+                "rootSessionId": event.root_session_id,
+                "parentSessionId": event.parent_session_id,
+                "childSessionId": event.child_session_id,
+                "agentType": event.platform_host_agent_name,
+                "profileDigest": event.profile_digest,
+                "transcriptPath": event.transcript_path,
+            })
+            .to_string();
+            let model_observation = event.model.as_deref().map(|model| {
+                crate::agent_session_registry::AgentSessionModelObservationRef {
+                    model,
+                    source: crate::agent_session_registry::AgentSessionModelObservationSource::CodexSubagentStart,
+                    observed_at: event.observed_at,
+                    evidence_ref: event.transcript_path.as_deref(),
+                }
+            });
+            let session = registry.register_session(crate::AgentSessionRegisterRequest {
+                project_id: event.project_id.into(),
+                root_session_id: event.root_session_id.clone().into(),
+                session_id: event.child_session_id.clone().into(),
+                message_target_id: Some(event.child_session_id.into()),
+                parent_session_id: Some(event.parent_session_id.into()),
+                name: event.platform_host_agent_name.into(),
+                role: event.role.into(),
+                model_observation,
+                status: "active".into(),
+                expires_at: None,
+                metadata_json: metadata_json.into(),
+                now: event.observed_at,
+            })?;
+            Ok(IpcResult::Registered { session })
+        }
+        EventKind::Stopped => Ok(IpcResult::Changed {
+            changed: registry.archive_session(
+                event.project_id,
+                event.child_session_id,
+                event.observed_at,
+            )?,
+        }),
+    }
+}
+
+#[cfg(test)]
+#[path = "../tests/unit/workspace_db_ipc_server_agent_session_registry.rs"]
+mod tests;

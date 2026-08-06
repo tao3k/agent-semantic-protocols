@@ -53,15 +53,18 @@ pub struct RuntimePerformanceQueryReceipt {
     pub workspace_identity: String,
     pub surface: String,
     pub stage: String,
+    pub observation_count: u64,
     pub budget_failure_count: u64,
+    pub p50_micros: Option<u64>,
+    pub p95_micros: Option<u64>,
+    pub p99_micros: Option<u64>,
     pub latest_attributes_json: Option<String>,
 }
 
 impl RuntimePerformanceQueryReceipt {
     pub(super) fn new(
         query: RuntimePerformanceQuery,
-        budget_failure_count: u64,
-        latest_attributes_json: Option<String>,
+        summary: super::live_store::LivePerformanceSummary,
     ) -> Self {
         Self {
             schema_id: QUERY_RECEIPT_SCHEMA_ID.to_owned(),
@@ -69,8 +72,12 @@ impl RuntimePerformanceQueryReceipt {
             workspace_identity: query.workspace_identity,
             surface: query.surface,
             stage: query.stage,
-            budget_failure_count,
-            latest_attributes_json,
+            observation_count: summary.observation_count,
+            budget_failure_count: summary.budget_failure_count,
+            p50_micros: summary.p50_micros,
+            p95_micros: summary.p95_micros,
+            p99_micros: summary.p99_micros,
+            latest_attributes_json: summary.latest_attributes_json,
         }
     }
 
@@ -103,10 +110,11 @@ pub async fn query_runtime_performance(
         .write_all(&packet)
         .await
         .map_err(|error| format!("failed to write Runtime Server performance query: {error}"))?;
-    writer
-        .shutdown()
-        .await
-        .map_err(|error| format!("failed to finish Runtime Server performance query: {error}"))?;
+    // The newline is the complete request frame. Do not race the resident
+    // server's response/close with a redundant SHUT_WR: on macOS that can
+    // surface ENOTCONN after the request was accepted but before its receipt
+    // is read.
+    drop(writer);
     let mut receipt_line = String::new();
     BufReader::new(reader)
         .read_line(&mut receipt_line)

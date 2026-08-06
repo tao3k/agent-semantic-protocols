@@ -220,6 +220,25 @@ pub enum WorkspaceRuntimeSelectorRead {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "state",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
+pub enum WorkspaceRuntimeOwnerRead {
+    GenerationMissing,
+    Owner {
+        generation_digest: String,
+        root_digest: String,
+        owner: WorkspaceOwnerSnapshot,
+    },
+    OwnerMissing {
+        generation_digest: String,
+        root_digest: String,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceGenerationBuild {
     pub workspace_identity: String,

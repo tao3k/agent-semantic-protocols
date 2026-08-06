@@ -119,6 +119,39 @@ fn codex_payload_surfaces_are_equivalent() {
             forbidden_rule: None,
         },
         Scenario {
+            name: "functions.exec nested single-quoted cmd",
+            payload: json!({
+                "tool_name": "functions.exec",
+                "tool_input": {
+                    "code": "await tools.exec_command({cmd: 'sed -n 1,8p src/app.ts'});"
+                },
+            }),
+            expected_rule: Some("deny-uncontrolled-source-materialization-commands"),
+            forbidden_rule: None,
+        },
+        Scenario {
+            name: "functions.exec current codex envelope",
+            payload: json!({
+                "tool_name": "functions.exec",
+                "tool_input": {
+                    "code": "const r = await tools.exec_command({cmd: \"sed -n '1,8p' src/app.ts\", workdir: \"/workspace\", yield_time_ms: 10000}); text(JSON.stringify(r));"
+                },
+            }),
+            expected_rule: Some("deny-uncontrolled-source-materialization-commands"),
+            forbidden_rule: None,
+        },
+        Scenario {
+            name: "functions.exec multiple nested calls",
+            payload: json!({
+                "tool_name": "functions.exec",
+                "tool_input": {
+                    "code": "await tools.exec_command({cmd: \"true\"}); await tools.exec_command({cmd: \"cat src/app.ts\"});"
+                },
+            }),
+            expected_rule: Some("deny-uncontrolled-source-materialization-commands"),
+            forbidden_rule: None,
+        },
+        Scenario {
             name: "structured Read",
             payload: json!({
                 "tool_name": "Read",
@@ -158,10 +191,6 @@ fn functions_exec_code_parser_rejects_near_misses() {
         (
             "call text inside a string",
             "\"await tools.exec_command({cmd: \\\"sed -n '1,8p' src/app.ts\\\"})\"",
-        ),
-        (
-            "multiple calls",
-            "await tools.exec_command({cmd: \"sed -n '1,8p' src/app.ts\"}); await tools.exec_command({cmd: \"cat src/app.ts\"})",
         ),
         (
             "dynamic cmd",
@@ -239,14 +268,6 @@ fn every_rule_has_a_near_miss() {
             "deny-uncontrolled-source-materialization-commands",
             shell("sed -n '1,8p' README.md"),
         ),
-        (
-            "deny-uncontrolled-python-inline-source-materialization",
-            shell("python -c 'print(1)'"),
-        ),
-        (
-            "deny-uncontrolled-javascript-inline-source-materialization",
-            shell("node -e 'console.log(1)'"),
-        ),
         ("deny-uncontrolled-git-source-reads", shell("git status")),
     ]
     .map(|(rule, payload)| Scenario {
@@ -280,7 +301,7 @@ fn priority_overlaps_have_explicit_winners() {
         (
             "javascript inline over generic materialization",
             shell("node -e 'require(\"fs\").readFileSync(\"src/app.ts\", \"utf8\")'"),
-            "deny-uncontrolled-javascript-inline-source-materialization",
+            "materialize-source-access-policy",
         ),
         (
             "materialization over raw action",

@@ -86,6 +86,10 @@ impl WorkspaceGenerationPointerReader {
         self.inner.read()
     }
 
+    pub(crate) fn committed_generation(&self) -> Option<u64> {
+        self.inner.committed_generation()
+    }
+
     pub(crate) fn read_previous_valid_optional(&self) -> Option<WorkspaceGenerationSnapshot> {
         self.inner.read_previous_valid_optional()
     }

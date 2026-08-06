@@ -81,3 +81,23 @@ fn hook_evaluation_uses_the_agent_facing_boundary_not_the_supervisor_boundary() 
     assert!(failure.contains("\"stage\":\"runtime-server-hook-evaluation\""));
     assert!(!failure.contains("runtime-server-supervisor-boundary-exceeded"));
 }
+
+#[test]
+fn explicit_reconcile_repairs_provider_catalog_before_supervisor_start() {
+    let source = include_str!("../../../src/server/runtime_server.rs");
+    let reconcile = source
+        .find("if operation == RuntimeServerOperation::Reconcile")
+        .expect("explicit Runtime Server reconcile branch");
+    let branch = &source[reconcile..];
+    let provider_catalog = branch
+        .find("reconcile_global_provider_catalog_for_runtime")
+        .expect("provider catalog reconciliation");
+    let supervisor = branch
+        .find("reconcile_runtime_server_supervisor")
+        .expect("platform supervisor reconciliation");
+
+    assert!(
+        provider_catalog < supervisor,
+        "provider catalog must be current before starting a daemon generation"
+    );
+}

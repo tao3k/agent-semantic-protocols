@@ -1,0 +1,20 @@
+{
+  "name": "asp-project",
+  "interface": {
+    "displayName": "Agent Semantic Protocol"
+  },
+  "plugins": [
+    {
+      "name": "asp-codex-plugin",
+      "source": {
+        "source": "local",
+        "path": "./asp-codex-plugin"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

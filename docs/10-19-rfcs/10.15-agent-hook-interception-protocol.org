@@ -173,8 +173,8 @@ bootstrap transfers only the bounded event envelope and final platform
 response.  Workspace and activation identities participate in the generation
 key, and a server miss falls back to the local evaluator without weakening
 hook policy.  The normative contract is
-[[file:10.15.02.10-server-resident-hook-evaluator.org][10.15.02.10 Server-Resident Hook Evaluator Generations]].  Its formal audit
-clause is =ASP-RFC-10.15-SERVER-HOOK-EVALUATOR=.
+[[file:10.15.02.10-hook-execution-plane.org][10.15.02.10 Hook Execution Plane and Stateful Runtime Boundary]]. Its formal audit
+clause is =ASP-RFC-10.15-HOOK-EXECUTION-PLANE=.
 
 Claude Code hook documentation describes command hooks as JSON on stdin plus
 stdout/stderr/exit-code or structured JSON decisions.  =PreToolUse= receives
@@ -409,7 +409,7 @@ The classifier must operate primarily at the action layer:
   while top-level =subject.paths= contains only the path-like subjects selected
   for the decision.  Command flags and non-file operands therefore remain
   available to matcher facts without leaking into the decision subject;
-- an unknown tool with a source selector path is treated as source access and
+- a typed Read tool with a source selector path is treated as source access and
   routed through the same direct-source-read policy as Codex's built-in =Read=;
 - known tool names are hints for platform surface reporting, not the policy
   authority;

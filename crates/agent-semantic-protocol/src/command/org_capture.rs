@@ -69,7 +69,7 @@ pub(crate) fn run_org_state_sync(project_root: &Path) -> Result<OrgStateSync, St
     if matches!(sync.status, "updated" | "cloned") {
         let revision = git_output(&["rev-parse", "HEAD"], Some(&state_root))?;
         let mutation_id = format!("org-state-sync:{}", revision.trim());
-        match super::hook_runtime::request_runtime_generation_admission(
+        match crate::server::runtime_server_generation::submit_runtime_generation_mutation(
             &state_root,
             mutation_id,
             vec![".".to_owned()],

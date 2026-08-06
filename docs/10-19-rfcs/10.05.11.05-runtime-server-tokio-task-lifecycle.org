@@ -1,0 +1,60 @@
+#+TITLE: Runtime Server Tokio Task Lifecycle and Telemetry Isolation
+#+RFC_ID: ASP-RFC-10.05.11.05
+#+STATUS: normative
+
+* Purpose
+
+The Runtime Server is one long-lived Tokio daemon serving many workspaces and
+many agent sessions.  Throughput alone is insufficient: every background actor
+must have one owner, one cancellation path, one join path, and one terminal
+receipt.  Telemetry is observability and MUST NOT become data-plane authority
+or a source of read-only request latency.
+
+* Normative lifecycle
+
+The daemon and each resident component move monotonically through
+=accepting -> draining -> terminated=.  Once draining begins, no new owned task
+may be admitted.  Every admitted task must reach exactly one terminal outcome:
+=completed=, =cancelled=, or =failed=.
+
+A successful shutdown publishes
+=agent.semantic-protocols.runtime-server-task-lifecycle-receipt= version =1=
+and satisfies:
+
+#+begin_example
+started = completed + cancelled + failed
+active = 0
+leaked = 0
+#+end_example
+
+Dropping a task handle is cancellation, never detachment.  A component that
+cannot prove the equations above must fail shutdown and remain diagnostically
+visible; it must not claim a healthy terminal state.
+
+* Telemetry isolation
+
+Agent-facing control, search, and exact-query paths may only submit telemetry
+with a bounded non-blocking enqueue.  They MUST NOT await telemetry capacity,
+open a telemetry database, acquire its writer lock, flush an exporter, or probe
+process state.  Queue overflow is represented by an explicit dropped counter.
+
+The resident telemetry component owns its ingress, query, process sampler, and
+exporter tasks.  Shutdown first closes admission, then drains accepted
+observations, stops sampling and query admission, flushes the exporter, joins
+all owned tasks, removes sockets, and finally publishes the lifecycle receipt.
+
+* Required observations
+
+The resident telemetry store must expose success and failure distributions and
+the lifecycle dimensions needed to diagnose host stalls: enqueue latency,
+queue depth/high-water/drops, active and terminal task counts, Tokio event-loop
+lag, process RSS and peak RSS, disk bytes, page-ins, and open descriptors.
+
+* Empirical qualification
+
+The strong gate runs multiple sessions over multiple workspaces with telemetry
+enabled.  It requires sub-millisecond request-side telemetry enqueue p99,
+bounded event-loop lag and resource growth, zero lifecycle leaks after repeated
+start/stop cycles, and no surviving Runtime Server socket or task after the
+terminal receipt.  Passing a focused throughput test alone is not closure.
+

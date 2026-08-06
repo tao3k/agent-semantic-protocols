@@ -1,14 +1,14 @@
 use clap::{Arg, ArgAction, Command};
 
 const ROOT_COMMANDS: &[(&str, &str)] = &[
-    ("guide", "Show the ASP command and routing guide"),
     ("providers", "Inspect registered language providers"),
     ("tools", "Inspect and run ASP support tools"),
     ("wrap", "Run an ASP-owned tool wrapper"),
     ("cache", "Inspect and maintain ASP caches"),
     ("cloud", "Inspect optional cloud state"),
     ("hook", "Run and inspect host hook integration"),
-    ("agent", "Manage ASP agent sessions and configuration"),
+    ("session", "Open the Multi-Agent Lifecycle control plane"),
+    ("agent", "Manage ASP-owned agent configuration projections"),
     (
         "install",
         "Install ASP binaries, hooks, plugins, or providers",
@@ -189,6 +189,7 @@ fn hook_command() -> Command {
         &[
             ("doctor", "Diagnose host hook integration"),
             ("paths", "Resolve hook-owned paths"),
+            ("break-glass", "Mint a bound one-shot defect capability"),
             ("pre-tool", "Handle a pre-tool event"),
             ("post-tool", "Handle a post-tool event"),
             ("stop", "Handle a stop event"),
@@ -226,9 +227,26 @@ fn hook_doctor_command() -> Command {
 fn agent_command() -> Command {
     Command::new("agent")
         .bin_name("asp agent")
-        .about("Manage ASP agent sessions and configuration")
-        .subcommand(agent_session_command())
+        .about("Manage ASP-owned agent configuration projections")
         .subcommand(agent_config_command())
+}
+
+fn session_control_plane_command() -> Command {
+    Command::new("session")
+        .bin_name("asp session")
+        .about("Open the current Hook-selected Multi-Agent Lifecycle ChoicePlane")
+        .arg(
+            Arg::new("agents")
+                .long("agents")
+                .value_parser(["choice-plane"])
+                .required(true),
+        )
+        .arg(
+            Arg::new("json")
+                .long("json")
+                .help("Render the typed control-plane receipt")
+                .action(ArgAction::SetTrue),
+        )
 }
 
 fn agent_config_command() -> Command {
@@ -242,91 +260,6 @@ fn agent_config_sync_command() -> Command {
     Command::new("sync")
         .bin_name("asp agent config sync")
         .about("Reconcile global host agent configuration projections")
-}
-
-fn agent_session_command() -> Command {
-    let mut command = command_with_subcommands(
-        "session",
-        "asp agent session",
-        "Manage the ASP resident-agent session lifecycle",
-        &[
-            ("bootstrap", "Enter the resident lifecycle loop"),
-            ("observe-host-capability", "Record host capability evidence"),
-            ("observe-host-tree", "Record host agent-tree evidence"),
-            ("observe-host-ack", "Record a live host acknowledgement"),
-            ("dispatch-claim", "Claim an exactly-once resident dispatch"),
-            ("dispatch-execute", "Execute a claimed resident dispatch"),
-            ("dispatch-complete", "Complete a resident dispatch"),
-            (
-                "dispatch-mark-orphaned",
-                "Mark a resident dispatch orphaned",
-            ),
-            ("register", "Register a resident session"),
-            ("list", "List resident sessions"),
-            ("show", "Show a resident session"),
-            ("status", "Show resident session status"),
-            ("smoke", "Run the resident session smoke check"),
-            ("resume", "Resume a resident session"),
-            ("fork", "Fork a resident session"),
-            ("archive", "Archive a resident session"),
-            ("close", "Close a resident session"),
-            ("gc", "Garbage-collect resident state"),
-            ("reconcile", "Reconcile resident state"),
-            ("delete", "Delete resident state"),
-            ("unarchive", "Unarchive a resident session"),
-            ("switch-model", "Switch the resident model"),
-        ],
-    )
-    .subcommand(
-        Command::new("lifecycle")
-            .about("Inspect resident lifecycle state")
-            .subcommand(Command::new("audit").about("Audit resident lifecycle state")),
-    );
-
-    for (name, value_name) in [
-        ("state-root", "PATH"),
-        ("name", "NAME"),
-        ("canonical-target", "PATH"),
-        ("dispatch-identity", "ID"),
-        ("command-digest", "DIGEST"),
-        ("command-json", "JSON"),
-        ("evidence-ref", "REF"),
-        ("schema-digest", "DIGEST"),
-        ("child-session-id", "ID"),
-        ("message-target-id", "ID"),
-        ("root-session-id", "ID"),
-        ("parent-session-id", "ID"),
-        ("roles", "ROLE[,ROLE...]"),
-        ("model", "MODEL"),
-        ("status", "STATUS"),
-        ("expires-at", "UNIX_TS"),
-    ] {
-        command = command.arg(
-            Arg::new(name)
-                .long(name)
-                .value_name(value_name)
-                .help("Resident session control value"),
-        );
-    }
-
-    for flag in [
-        "guide",
-        "resident-bridge",
-        "active",
-        "replace",
-        "force",
-        "activity",
-        "heartbeat",
-        "json",
-    ] {
-        command = command.arg(
-            Arg::new(flag)
-                .long(flag)
-                .action(ArgAction::SetTrue)
-                .help("Resident session control flag"),
-        );
-    }
-    command
 }
 
 fn install_command() -> Command {

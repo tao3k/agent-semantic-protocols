@@ -12,18 +12,21 @@ MultiAgentLifeSession
 
 ResidentProfile
   route_key
-  session_name
   platform_host_agent_name
+  profile_digest
+  model_digest
 
 ResidentSlot
   profile
   occupancy: Vacant | Incumbent | Replacement
 #+end_example
 
-The three identity fields must be distinct newtypes.  Registry lookup uses
-=session_name=; configuration/policy uses =route_key=; native dispatch uses
-=platform_host_agent_name=.  No =unknown-resident-agent-kind=, hard-coded name
-mapping, legacy menu choice, or string fallback is admitted.
+The route key and platform Agent name are distinct newtypes.
+=agents/config.toml= owns the route key and orchestration metadata; the
+referenced platform profile's schema-owned =name= is the single registry lookup
+key and native =@name= address. No duplicated =session_name= field,
+=unknown-resident-agent-kind=, hard-coded name mapping, legacy menu choice, or
+string fallback is admitted.
 
 * Configuration authority
 
@@ -35,19 +38,314 @@ Codex agents-config-schema.json
   -> agents/*_codex.toml
 Claude agent frontmatter contract
   -> agents/*_claude.md
-  -> ASP AgentsConfigRegistry
+  -> ASP AgentsRegistry
   -> immutable Hook agent-route projection
 #+end_example
 
-=agents/config.toml= only relates ASP route/session/lifetime/roles to explicit
-platform projection paths.  The loader reads every referenced platform file,
-validates its platform schema, and checks that the projected host name matches
-the typed registry identity.  Hook placeholders and resident entries are
-generated from that receipt; their names must never be literal Rust constants
-or manually duplicated template tables.
+=agents/config.toml= is the overall scheduling registry. It relates route keys,
+lifetimes, roles, and exact platform matchers such as =*_codex.toml= and
+=*_claude.md=, but does not declare a second Agent name. The loader eagerly reads
+every file admitted by the active platform matcher,
+validates the Codex =agents-config-schema.json= or corresponding Claude
+frontmatter contract, and compiles every schema-owned =name= into
+=AgentsRegistry=. Hook placeholders and resident entries are generated from
+that compiled registry; their names must never be literal Rust constants or
+manually duplicated template tables.
+
+Hook config parsing therefore has two phases: parse the policy document without
+requiring an embedded agent table, then inject the typed projection derived from
+=agents/config.toml= before validating dispatch placeholders.  The legacy
+=.agents/asp.toml [hook.agents]= overlay is rejected as an unknown field.  It
+cannot shadow roles, lifetimes, permissions, or platform profile names compiled
+into =AgentsRegistry=.
+
+A Hook rule selects a semantic =role= such as =explore= or =testing=; it never
+binds a concrete subagent identity.  The deny event records only its
+=configRuleId=, policy reason, the generic =asp session --agents choice-plane=
+window, and a natural-language instruction to open that window.  The
+session control plane reloads the managed Hook snapshot, obtains that rule's
+role, resolves =agents.placeholders= through =AgentsRegistry=, and then selects
+the unique platform profile. Missing and multiply-owned roles or profile names
+fail closed. Hook decisions MUST NOT preselect =targetAgentName=,
+=targetAgentRole=, resident identity, a lifecycle receipt kind, a completion
+receipt, or a Rust-owned required-action token.
+
+Lifecycle lookup uses the exact schema-owned =name= from the active platform
+profile. It
+does not normalize hyphens into underscores, probe historical agent files, or
+choose an explorer/testing branch in Rust. A registered session inherits its
+declared =session_lifetime= and platform target from the same compiled route.
+An exact platform profile name absent from the registry is explicitly temporary; it
+cannot consume a resident slot or inherit a resident profile by fallback.
+Every interactive lifecycle action uses that exact name as its native =@symbol=
+address, so adding or renaming an agent does not require a Rust string branch.
+
+* One public interactive agent control plane
+
+The Agent-facing lifecycle API is one Hook-selected control-plane pane:
+
+#+begin_example
+asp session --agents choice-plane
+#+end_example
+
+The command accepts neither =@name= nor a task payload. The immediately
+preceding denied Hook event carries the route selected by =config.toml=, and
+=asp session --agents choice-plane= opens only that role's pane. For example,
+=explore= owns evidence
+and owner discovery while =build/testing= owns focused compilation and scenario
+gates. The projected profile =description= is the only short natural-language
+role explanation shown with the resolved host address. Any positional argument
+is rejected instead of becoming agent or task authority.
+
+The command is not a status query and does not execute a host action itself.
+The control plane, not the caller, owns status lookup, resident-slot
+classification, target selection, history, generation CAS, and recovery state.
+The former =asp agent session ...= commands are internal diagnostic/state
+transport and MUST NOT appear in public help, Hook guidance, or an admitted Org
+action. Host-native =@profile.name= actions create, resume, and archive
+subagents. Runtime Server consumes the resulting Host lifecycle event and
+records child/message identities without asking the Agent to relay them through
+CLI flags.
+
+There is no session guide surface, guide configuration, or transport-guide
+contract. Progressive disclosure is the ChoicePlane itself; duplicating it as
+guide text creates a second lifecycle model. =asp session --help= owns only the
+thin CLI syntax and entrypoint description. The =command/agent_window.rs=
+module parses that syntax, derives host identity, calls the domain service, and
+prints its receipt. Route resolution, Runtime observation, Org admission,
+history, and rendering live outside =command/= under =multi_agent_session=.
+
+The host platform is derived from the active session identity. A non-empty
+=CODEX_SESSION_ID= or =CODEX_THREAD_ID= selects Codex; a non-empty
+=CLAUDE_CODE_SESSION_ID= or =CLAUDE_CODE_REMOTE_SESSION_ID= selects Claude. The public CLI does not accept =--client=,
+and simultaneous identities fail closed as an ambiguous host.
+
+Those process-environment identities select only the Host platform. They do
+not authorize the ChoicePlane's root/session lookup. A denied Hook event owns
+the current root identity in its typed =fields.sessionId= and the read-only
+=HookSessionAgentRoute= must preserve that identity together with the selected
+policy rule. =asp session --agents choice-plane= resolves the newest current
+project Hook route and submits its root identity to Runtime status memory with
+no ambient observed-child identity. A long-lived Codex app-server process may
+retain a thread id from another task or worktree; that value MUST NOT override
+the Hook route, select another workspace, or trigger a workspace-mismatch
+failure. The CLI exposes no root/session selector.
+
+Every pane receipt identifies =paneId=, =nodeId=, =generation=, and
+=historyCursor=, the originating Hook rule/receipt/digest, and a bounded
+=choices= projection. Reopening =asp session --agents choice-plane= for the
+same Hook route resumes
+that node; selecting or revisiting a prior node uses its typed cursor and never
+replays the entire lifecycle loop. A registered route emits one direct natural
+host action rather than presenting a redundant menu.
+
+The ChoicePlane is declarative Org interaction, not a Rust-owned menu. The
+=agent.multi-agent-session-control-plane.v1= contract declares one canonical
+=org-contract :type agent-interactive= block at =stage: presentation=. Its rows
+own choice ids, natural-language instructions, applicability explanations, and
+the generic presentation directive (=action= or =pane=).
+Rust supplies only the Hook-selected typed identity and =description= bindings
+from =AgentsRegistry= plus the server-owned lifecycle observation. It
+admits the applicable contract rows and renders them through the shared =AgentInteractiveChoice=
+adapter. Rust MUST NOT duplicate those sentences or invent a second compact
+pane format. JSON mode is an audit projection of the same Org interaction and
+must carry its contract id, panel id, stage, Hook route, and admitted row ids.
+
+Applicability is contract data too. Each Org detail row may declare a typed
+=when= predicate such as =SESSION_STATE=registered=. The generic bridge matches
+that predicate against Runtime bindings and renders the admitted rows. Command
+code MUST NOT contain a parallel list of lifecycle row ids, a
+=match session_state= branch that selects Org rows, or a choice-count/state
+heuristic that decides whether a row is rendered as an action or a pane.
+The JSON schema validates only the generic interactive envelope and the
+=action|pane= directive; it MUST NOT enumerate contract row ids, row counts, or
+state-to-row mappings.
+
+Because this ChoicePlane is required to recover an unavailable State Home or
+Runtime, its canonical Org source is embedded in the ASP binary at build time.
+The embedded bytes remain generated directly from the contract file and are
+parsed by the same Org interactive adapter; they are not a Rust-authored
+fallback menu. The session entrypoint therefore does not require =asp sync= or
+a pre-existing materialized Org checkout before it can render recovery.
+
+The control plane derives choices as follows:
+
+| lifecycle observation | pane choice |
+|-
+| Hook-selected route has a routable registration | directly return =Call/resume @name — description= |
+| configured route has no resident registration | offer creation of =@name= from the configured profile; Runtime records the Host event |
+| Hook route, registry identity, root task, or Runtime authority is unavailable | typed =blocked=; no default explorer and no fallback agent |
+
+Each admitted row carries a compact natural-language host instruction such as
+=Call/resume @asp_explorer — ASP search/query evidence explorer.= The =@= symbol
+plus the platform profile's exact =name= is the native Multiple Agent V2
+address; ASP does not expose a Host tool name or session-id flag as a public
+action. A compatible registration jumps directly to that address in one step.
+A missing resident registration offers creation of the same =@name=; it does
+not speculate that an unregistered reusable Host child exists. Runtime Server
+consumes the resulting Host event. If the profile
+or model digest changed, the old generation is archived before the Host creates
+and Runtime records a distinct generation. The Agent is never asked to run
+observe, dispatch, GC, register, close, or repair subcommands.
+
+Choice cardinality is not globally fixed. The Org contract admits all and only
+rows whose typed =when= predicates match the current Runtime observation; a
+state may legitimately expose several applicable outgoing actions for Agent
+reasoning. Most current lifecycle states admit one row. Rust MUST NOT enforce
+singleton output, but the contract MUST NOT expose resume, archive, or recreate
+merely because those actions exist elsewhere in the lifecycle. Archive requires
+an identified resident generation; recreate requires its archived successor
+state. Every re-entry exposes the new state, its evidence, and only its
+currently admitted outgoing choices.
+
+** Lean ChoicePlane model
+
+The formal owner is
+=packages/proofs/ASPProof/MultiAgentChoicePlane.lean= with no-axiom audit
+=packages/proofs/ASPProof/Audit/MultiAgentChoicePlane.lean=. It models Runtime
+observations separately from contract rows and Host requests. The proof surface
+must establish:
+
+- observation classification from Runtime authority, root identity, resident
+  identity/generation, profile/model digests, routability, and archive state;
+- admission soundness and completeness for every matching Org row;
+- non-singleton admissibility, so a state may expose several justified edges;
+- absence of speculative resume when no resident registration is observed;
+- archive ownership by an identified resident generation and monotonic,
+  distinct-identity recreation after archive;
+- read-only Host choice requests and history-independent re-entry from the
+  newest Runtime observation.
+
+Lean does not own the presentation prose or impose a fixed choice count. Org
+owns the graph rows and their natural-language actions; Rust refines Runtime
+facts into the formal observation and executes the generic admission function.
+
+*** Progressive inference, convergence, and break-glass escape
+
+A pane is a local reasoning projection, not a serialization of the whole
+lifecycle graph. For its current node it discloses exactly the facts required
+to assess the admitted outgoing choices: root and Runtime authority, the
+relevant resident identity/generation state, applicability reason, and the
+typed expected Host outcome. Facts owned only by future nodes remain hidden.
+Every choice states the postcondition the next observation must prove, such as
+resident registration, archive of the identified generation, or publication
+of a distinct higher generation. This gives the Agent enough information to
+reason locally without expanding the complete playbook.
+
+Re-entry is progress only when the Host action completes or the typed cursor,
+node, or generation advances. An unchanged cursor consumes a finite retry
+budget. Budget exhaustion is not another loop edge: it yields a typed blocked
+result and requires defect review. The control plane therefore cannot recurse
+indefinitely on the same observation.
+
+Pass-through is outside the Org choice graph. It is admitted only by a verified
+ChoicePlane invariant-defect receipt, such as a state/row contradiction,
+missing required disclosure, invalid cursor, or exhausted non-progress cycle.
+Ordinary registration absence, Runtime unavailability, profile mismatch, and
+provider failure are lifecycle facts, not authorization for pass-through. A
+verified pass-through authorization is single-use and auditable; after
+consumption it cannot be reused. =ASP_NO_AGENT=1= is the implementation's
+operator break-glass spelling for this defect path and MUST NOT appear as an
+Agent-facing normal choice or an automatic fallback.
+
+The Agent-facing lifecycle CLI has exactly one public entry:
+=asp session --agents choice-plane=. Registration, call/resume, archive, and
+recreate are Host actions admitted by the current Org pane; they are not public
+ASP lifecycle subcommands. In particular, =asp agent session= and direct
+=register/resume/archive/close/reconcile/delete= adapters are not discoverable
+or executable public surfaces. ASP Runtime Server may retain typed IPC
+operations for Host event refinement, but an internal operation is not CLI
+authority. This keeps progressive disclosure honest: the Agent cannot skip the
+current pane by guessing a lifecycle command.
+
+The Codex =PreToolUse= envelope owns current executor identity.  A non-empty
+=agent_id= and =agent_type= pair is one atomic child-executor proof; either
+field alone is not proof.  When =agent_type= equals the selected resident's
+platform host name, that resident executes its selected lane directly.  The
+Hook must not dispatch the command back to the same resident.  This comparison
+is performed against the =AgentsRegistry= platform-profile projection, never a literal
+=asp_testing= or =asp_explorer= branch.
+
+Codex Host lifecycle events use three distinct identities and MUST NOT collapse
+them. Hook payload =session_id= is the root identity shared by the root task and
+all descendants. Hook payload =agent_id= identifies the current physical child.
+The Hook command inherits the Host process environment, so =CODEX_THREAD_ID= is
+optional Codex platform corroboration, not child identity authority, and MUST
+NOT be required or compared with =agent_id=. The typed Hook event/client schema
+already owns platform identity. The child rollout's typed =parent_thread_id= supplies
+the immediate parent edge. If typed =root_session_id= is present it must agree
+with payload =session_id=; current Codex rollouts may omit that redundant field,
+so a direct parent edge to payload =session_id= or a bounded, cycle-free typed
+parent chain reaching it is the equivalent proof. The immediate parent may
+differ from the root for nested subagents. Missing parent metadata, a root
+mismatch, a parent chain that cannot reach the payload root, a
+collapsed root/child identity, or a child that names itself as parent fails closed.
+The Runtime lifecycle event carries root, parent, and child as separate fields;
+it never reconstructs parent as root and never treats the current child id as
+root authority.
+
+* Runtime Server session lookup authority
+
+The CLI forwards only the root identity captured by the current typed Hook
+route; it does not forward an ambient process session, open Turso, derive
+=project_id=, refresh expiry, or query =session_name= itself. The Runtime Server
+is the only registry owner. It publishes a bounded
+minimal session-status projection inside the existing generation-scoped
+seqlock status memory: project identity, root/session identity, configured
+session name, physical generation, and routability.  Registry mutations and
+expiry sweeps refresh that projection before the next status publication.
+
+=asp session --agents choice-plane= performs one read-only mmap snapshot and
+resolves exactly one of
+=registered=, =registration-required=, =archive-required=, =archived=, or
+=blocked=.  It MUST NOT connect to
+the workspace owner socket, issue a =ResolveSessionControlPlane= IPC operation,
+open the registry database, publish freshness, or require workspace-generation
+admission.  An endpoint binding, transport digest, session/root identity, or
+workspace mismatch fails closed.  The projection is Runtime-owned typed fact
+transport only; it does not contain Org row ids, menu text, applicability, or
+presentation decisions.
+
+An observed root session with no projected child row is not an authority
+failure. The stable Git worktree workspace identity is the initial project
+session scope, so the result is =registration-required= with generation zero.
+Only a missing root identity, workspace mismatch, ambiguous host, or unavailable
+Runtime authority may produce =blocked=.
+
+The Runtime projection carries one typed lifecycle observation per generation:
+=routable=, =expired=, =archived=, or =invalid=, together with the platform
+profile and model digests used to admit that generation. A digest mismatch is
+=invalid= and therefore archives before replacement. The CLI maps =routable= to a
+direct call/resume action, =expired|invalid= to a direct archive-stale action,
+and =archived= to create/register a new generation. Rust never owns the action
+text or row selection; the Org contract does.
 
 * Boundary
 
 CLI and Hook are adapters.  They submit typed commands to the Runtime Server
 owner and render typed receipts.  They do not open the registry directly and do
 not derive authority from process health.
+
+* Verification ownership
+
+Unit and smoke tests MUST follow the same ownership split:
+
+- client installation smoke owns only generated Hook configuration, plugin
+  cache placement, configured agent projection, and fail-closed PATH identity;
+- immutable Hook policy behavior is evaluated through a resident snapshot
+  owned by the Runtime Server evaluator tests;
+- resident occupancy, replacement, and temporary-agent behavior is evaluated
+  through =MultiAgentLifeSession= and registry transition tests.
+
+An installation smoke MUST NOT create a private daemon, mutate the host
+LaunchAgent, or restore the retired inline Hook evaluator.  A unit test cannot
+claim a second Runtime Server merely by selecting another temporary State Home.
+Host-supervisor integration belongs to a serialized sandtable with an explicit
+runtime identity.
+
+Legacy =asp-explore= session names, manual menu contracts, rollout inference,
+and CLI fixtures that open or bootstrap the resident lifecycle independently
+are not compatibility coverage.  They must be removed rather than kept as a
+parallel lifecycle model. The canonical configured identities are read only
+from the platform profiles referenced by =agents/config.toml=, such as
+=asp_explorer= and =asp_testing=.

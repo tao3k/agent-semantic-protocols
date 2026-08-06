@@ -1,0 +1,43 @@
+{
+  "schemaId": "agent.semantic-protocols.multi-agent-session-control-plane-pane",
+  "schemaVersion": "1",
+  "orgInteractive": {
+    "contractId": "agent.multi-agent-session-control-plane.v1",
+    "panelId": "multi-agent-session-control-plane",
+    "method": "choice",
+    "stage": "presentation"
+  },
+  "hookRoute": {
+    "configRuleId": "registered-asp-reasoning-search",
+    "targetAgentName": "asp_explorer",
+    "targetAgentRole": "asp_explorer",
+    "receiptKind": "asp-explore-search-v1",
+    "commandDigest": "sha256:0123456789abcdef",
+    "reasonKind": "subagent-receipt-required"
+  },
+  "pane": {
+    "paneId": "session",
+    "nodeId": "registered",
+    "generation": 4,
+    "historyCursor": "repo:test-root:session:4",
+    "reasonKind": null,
+    "failure": null
+  },
+  "agent": {
+    "routeKey": "asp_explorer",
+    "sessionName": "asp_explorer",
+    "sessionLifetime": "resident",
+    "platform": "codex",
+    "hostAgentName": "asp_explorer",
+    "roles": ["explore", "subagent"],
+    "roleDescription": "ASP search/query evidence explorer."
+  },
+  "choices": [
+    {
+      "id": "CALL_RESUME_REGISTERED",
+      "instruction": "Call/resume @asp_explorer — ASP search/query evidence explorer.",
+      "presentation": "action",
+      "why": "the Hook-selected subagent has a routable registration"
+    }
+  ]
+}

@@ -97,3 +97,14 @@ fn healthy_or_draining_daemon_owns_unchanged_definition_restart() {
         RuntimeServerState::Degraded
     ));
 }
+
+#[test]
+fn launchd_bootstrap_enables_the_canonical_user_service_target() {
+    assert_eq!(
+        super::launchd_service_target(),
+        format!(
+            "gui/{}/dev.tao3k.agent-semantic-protocols.asp-runtime-server",
+            unsafe { libc::getuid() }
+        )
+    );
+}

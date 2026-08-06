@@ -52,7 +52,10 @@ pub struct SearchPipeAutoAcquisitionRequest<'a> {
     pub owners: &'a [PathBuf],
     pub ignore_dirs: &'a [String],
     pub include_hidden_dirs: &'a [String],
-    pub base_snapshot: &'a agent_semantic_artifacts::WorkspaceSnapshot,
+    /// Full path authority is needed only by the filesystem overlay. A
+    /// resident/source-index terminal route omits it so a CLI process never
+    /// receives the complete workspace path map.
+    pub base_snapshot: Option<&'a agent_semantic_artifacts::WorkspaceSnapshot>,
     pub base_source_snapshot: &'a agent_semantic_artifacts::SourceSnapshotEvidence,
     pub provider_digest: &'a str,
     pub require_multi_clause: bool,
@@ -165,7 +168,10 @@ pub fn collect_search_pipe_auto_acquisition(
             owners: &proof_scopes,
             ignore_dirs: request.ignore_dirs,
             include_hidden_dirs: request.include_hidden_dirs,
-            base_snapshot: request.base_snapshot,
+            base_snapshot: request.base_snapshot.ok_or_else(|| {
+                "resident memory search is required when source-index evidence is not terminal"
+                    .to_owned()
+            })?,
             provider_digest: request.provider_digest,
             require_multi_clause: request.require_multi_clause,
             limit: request.limit,
@@ -173,7 +179,9 @@ pub fn collect_search_pipe_auto_acquisition(
     )?;
     ensure_search_overlay_snapshot_matches(
         &acquisition.base_source_snapshot,
-        request.base_snapshot,
+        request
+            .base_snapshot
+            .expect("overlay route validated a base snapshot"),
         request.provider_digest,
     )?;
     let source_snapshot = acquisition.result_source_snapshot;

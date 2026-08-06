@@ -18,7 +18,7 @@ mod resident_target;
 #[doc = "Matches structured projection contracts."]
 mod structured_projection;
 
-pub use implementation::{ClientHookConfig, DurableHookConfigArtifact};
 pub(super) use implementation::compile_config;
+pub use implementation::{ClientHookConfig, DurableHookConfigArtifact};
 pub(crate) use policy_candidate::HookPolicyCandidate;
 pub use resident_target::ConfiguredResidentTarget;

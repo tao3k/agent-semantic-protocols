@@ -32,10 +32,9 @@ pub fn run_cli_args(
     let parsed = parse_client_args(args, cwd, language_id_text.as_deref())?;
     match parsed.command.as_deref() {
         None | Some("help" | "--help" | "-h") => {
-            print_guide();
+            print_help();
             Ok(())
         }
-        Some("guide") => run_guide(parsed, language_id),
         Some("tools") => crate::tools_cli::run_tools(&parsed.project_root, &parsed.forwarded_args),
         Some("wrap") => crate::tools_cli::run_wrap(&parsed.forwarded_args),
         Some("providers") => run_providers(parsed),
@@ -78,17 +77,6 @@ pub fn run_cli_args(
         Some(command) => Err(format!("unknown client command: {command}")),
     }
 }
-fn run_guide(
-    parsed: ParsedArgs,
-    language_id: Option<agent_semantic_client_core::LanguageId>,
-) -> Result<(), String> {
-    let Some(language_id) = language_id else {
-        print_guide();
-        return Ok(());
-    };
-    run_provider_method(parsed, ClientMethod::Guide, language_id)
-}
-
 fn provider_language_required(command: &str) -> String {
     format!(
         "asp {command} requires a language facade; use asp <language> {command} ...; run asp providers for active facades"
@@ -214,7 +202,6 @@ fn run_doctor(parsed: ParsedArgs) -> Result<(), String> {
             );
             println!("|reason provider-activation-unavailable");
             println!("|cmd install=asp install plugin --codex .");
-            println!("|cmd guide=asp guide");
             eprintln!("[asp-doctor] activation unavailable: {error}");
         }
     }
@@ -251,37 +238,6 @@ fn run_cloud(parsed: ParsedArgs) -> Result<(), String> {
     }
 }
 
-fn print_guide() {
-    println!("[asp-guide] backend=local prompt=compact json=artifact-only");
-    println!("|cmd doctor=asp doctor");
-    println!("|cmd providers=asp providers");
-    println!("|cmd tools-doctor=asp tools doctor");
-    println!("|cmd graph-turbo=asp wrap asp-graph-turbo -- help");
-    println!(
-        "|cmd graph-turbo-search=asp <language> search lexical --query <seed> --query <seed> owner tests ."
-    );
-    println!("|cmd search-history=asp search history audit .");
-    println!("|cmd guide=asp <language> guide --workspace .");
-    println!("|cmd search-guide=asp <language> search guide --workspace .");
-    println!("|ref query-guide=asp <language> query guide --workspace .");
-    println!("|ref treesitter-query-guide=asp <language> query guide treesitter .");
-    println!("|cmd search=asp <language> search <provider-search-args>");
-    println!("|cmd query=asp <language> query <provider-query-args>");
-    println!("|cmd check=asp <language> check <provider-check-args>");
-    println!("|cmd cache=asp cache status");
-    println!("|cmd cache-import=asp cache import");
-    println!("|cmd cache-invalidate=asp cache invalidate");
-    println!("|cmd cloud=asp cloud status");
-    println!(
-        "|facades active=run asp providers known=rust|typescript|python|julia|gerbil-scheme|org|md"
-    );
-    println!(
-        "|rule provider-guide-contract=run asp <language> guide --workspace . before provider-specific search axes"
-    );
-    println!(
-        "|rule provider-knowledge-axes=asp <language> search env|runtime-source|lang|std|capability|extension|pattern|compare ..."
-    );
-    println!(
-        "|rule route=local-native cache=probe-first cloud=optional nativeProviderFacts=required"
-    );
+fn print_help() {
+    println!("usage: asp <command> [options]");
 }

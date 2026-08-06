@@ -291,6 +291,23 @@ impl ExactSelectorProjectionPacketV1 {
         self,
         workspace_tree: &WorkspacePathMerkleTreeV1,
     ) -> Result<ExactSelectorProjectionRecordV1, ExactSelectorProjectionPacketV1Error> {
+        let owner_inclusion_proof = workspace_tree
+            .inclusion_proof(self.owner_path.as_str())
+            .ok_or(ExactSelectorProjectionPacketV1Error::OwnerNotInSnapshot)?;
+        self.enrich_projection_record_with_owner_inclusion_proof(
+            workspace_tree,
+            &owner_inclusion_proof,
+        )
+    }
+
+    /// Enrich a selector with a proof already resolved for its immutable owner.
+    /// This preserves the wire proof while avoiding repeated owner-level work
+    /// when a provider emits many selectors for one source file.
+    pub fn enrich_projection_record_with_owner_inclusion_proof(
+        self,
+        workspace_tree: &WorkspacePathMerkleTreeV1,
+        owner_inclusion_proof: &[crate::exact_selector_merkle::MerkleInclusionStepV1],
+    ) -> Result<ExactSelectorProjectionRecordV1, ExactSelectorProjectionPacketV1Error> {
         self.validate_shape()?;
         let projection_payload = decode_canonical_base64(self.projection_payload_base64.as_str())
             .ok_or(ExactSelectorProjectionPacketV1Error::ProjectionPayload)?;
@@ -302,9 +319,15 @@ impl ExactSelectorProjectionPacketV1 {
         if owner_subtree_digest != &expected_owner_subtree_digest {
             return Err(ExactSelectorProjectionPacketV1Error::SourceSnapshotMismatch);
         }
-        let owner_inclusion_proof = workspace_tree
-            .inclusion_proof(self.owner_path.as_str())
-            .ok_or(ExactSelectorProjectionPacketV1Error::OwnerNotInSnapshot)?;
+        if !crate::workspace_merkle_v1::verify_owner_inclusion_v1(
+            self.owner_path.as_str(),
+            &self.source_blob_digest,
+            &expected_owner_subtree_digest,
+            owner_inclusion_proof,
+            workspace_tree.root_digest(),
+        ) {
+            return Err(ExactSelectorProjectionPacketV1Error::SourceSnapshotMismatch);
+        }
         let projection_digest = derive_projection_digest_v1(
             &self.canonical_item_selector,
             self.structural_selector.as_str(),
@@ -320,7 +343,7 @@ impl ExactSelectorProjectionPacketV1 {
                     workspace_root_digest: workspace_tree.root_digest().clone(),
                     owner_path: self.owner_path.as_str().to_string(),
                     owner_subtree_digest: expected_owner_subtree_digest,
-                    owner_inclusion_proof,
+                    owner_inclusion_proof: owner_inclusion_proof.to_vec(),
                     source_blob_digest: self.source_blob_digest,
                     parser_identity_digest: self.parser_identity_digest,
                     query_pack_digest: self.query_pack_digest,

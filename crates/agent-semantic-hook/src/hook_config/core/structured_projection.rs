@@ -12,9 +12,7 @@ pub(super) fn match_source_operands(
     projection: &HookClientStructuredProjectionMatchConfig,
     action: &ToolAction,
 ) -> Option<Vec<String>> {
-    let Some(command) = action.command.as_deref() else {
-        return None;
-    };
+    let command = action.command.as_deref()?;
     let classification = match projection.filter_grammar {
         HookClientStructuredFilterGrammar::BoundedPathV1 => {
             crate::command_match::structured::classify_single_bounded_path_command(
@@ -28,12 +26,16 @@ pub(super) fn match_source_operands(
             )
         }
     };
-    let crate::command_match::structured::StructuredFilterClassificationV1::BoundedPath {
-        source_operands,
-        ..
-    } = classification
-    else {
-        return None;
+    let source_operands = match classification {
+        crate::command_match::structured::StructuredFilterClassificationV1::BoundedPath {
+            source_operands,
+            ..
+        }
+        | crate::command_match::structured::StructuredFilterClassificationV1::BoundedScalarPredicate {
+            source_operands,
+            ..
+        } => source_operands,
+        _ => return None,
     };
     if resolve_executable_with_status(&projection.binary).status != ExecutableStatus::Available {
         return None;

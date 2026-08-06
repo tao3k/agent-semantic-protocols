@@ -17,7 +17,6 @@ fn assert_selected(parts: &[&str], expected_name: &str, usage: &str) {
 fn root_and_first_level_paths_select_their_own_commands() {
     assert_selected(&["--help"], "asp", "asp");
     for command in [
-        "guide",
         "providers",
         "tools",
         "wrap",
@@ -46,10 +45,30 @@ fn root_and_first_level_paths_select_their_own_commands() {
         assert_selected(&[command, "--help"], command, &format!("asp {command}"));
     }
     assert_selected(&["agent", "config", "--help"], "config", "asp agent config");
+    let mut agent = help_model::selected_command(&owned_args(&["agent", "--help"]));
+    let agent_help = agent.render_long_help().to_string();
+    assert!(agent_help.contains("config"));
+    assert!(!agent_help.contains("session"));
     assert_selected(
         &["agent", "config", "sync", "--help"],
         "sync",
         "asp agent config sync",
+    );
+}
+
+#[test]
+fn hook_break_glass_help_is_a_public_typed_command() {
+    assert_selected(
+        &["hook", "break-glass", "--help"],
+        "asp hook break-glass",
+        "asp hook break-glass",
+    );
+    let mut command = help_model::selected_command(&owned_args(&["hook", "break-glass", "--help"]));
+    let help = command.render_long_help().to_string();
+    assert!(help.contains("mint"), "help={help}");
+    assert!(
+        help.contains("one-shot Hook defect capability"),
+        "help={help}"
     );
 }
 

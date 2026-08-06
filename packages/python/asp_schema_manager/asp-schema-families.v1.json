@@ -1,0 +1,191 @@
+{
+  "schemaId": "asp.schema-family-registry.v1",
+  "schemaVersion": "1",
+  "families": [
+    {
+      "familyId": "asp.schema-family.semantic-assurance",
+      "owner": "schemas",
+      "rationale": "Assurance cases, determinism readiness, evidence graphs, review packets, and formal-proof pilot contracts.",
+      "priority": 300,
+      "parentFamilyId": "asp.schema-family.semantic",
+      "namespace": {
+        "filenamePrefixes": [
+          "semantic-assurance-",
+          "semantic-determinism-",
+          "semantic-evidence-",
+          "semantic-review-",
+          "semantic-formal-proof-"
+        ]
+      },
+      "definitionSchemaPath": "schemas/semantic-assurance-definitions.v1.schema.json",
+      "definitionVisibility": "family"
+    },
+    {
+      "familyId": "asp.schema-family.semantic-proof",
+      "owner": "schemas",
+      "rationale": "Proof obligations, recipes, receipts, and formal verification contracts.",
+      "priority": 200,
+      "parentFamilyId": "asp.schema-family.semantic",
+      "definitionSchemaPath": "schemas/semantic-proof-definitions.v1.schema.json",
+      "definitionVisibility": "family",
+      "namespace": {
+        "filenamePrefixes": ["semantic-proof-", "semantic-formal-"]
+      }
+    },
+    {
+      "familyId": "asp.schema-family.semantic-policy",
+      "owner": "schemas",
+      "rationale": "Semantic policy facts and executable policy recipe contracts.",
+      "priority": 200,
+      "parentFamilyId": "asp.schema-family.semantic",
+      "definitionSchemaPath": "schemas/semantic-policy-definitions.v1.schema.json",
+      "definitionVisibility": "family",
+      "namespace": {
+        "filenamePrefixes": ["semantic-policy-"]
+      }
+    },
+    {
+      "familyId": "asp.schema-family.semantic-ast-patch",
+      "owner": "schemas",
+      "rationale": "Semantic AST patch request and receipt contracts.",
+      "priority": 200,
+      "parentFamilyId": "asp.schema-family.semantic",
+      "namespace": {
+        "filenamePrefixes": ["semantic-ast-patch"]
+      }
+    },
+    {
+      "familyId": "asp.schema-family.semantic-graph-turbo",
+      "owner": "schemas",
+      "rationale": "Graph Turbo request, result, lifecycle, cache, benchmark, and assurance contracts.",
+      "priority": 300,
+      "parentFamilyId": "asp.schema-family.semantic-graph",
+      "namespace": {
+        "filenamePrefixes": ["semantic-graph-turbo-"]
+      }
+    },
+    {
+      "familyId": "asp.schema-family.semantic-graph",
+      "owner": "schemas",
+      "rationale": "Semantic graph contracts outside the narrower Graph Turbo namespace.",
+      "priority": 200,
+      "parentFamilyId": "asp.schema-family.semantic",
+      "namespace": {
+        "filenamePrefixes": ["semantic-graph-"]
+      },
+      "membershipOverrides": {
+        "includeSchemaPaths": ["schemas/semantic-graph.v1.schema.json"]
+      }
+    },
+    {
+      "familyId": "asp.schema-family.semantic-agent",
+      "owner": "schemas",
+      "rationale": "Agent hook, session, search, policy, and runtime profile contracts.",
+      "priority": 200,
+      "parentFamilyId": "asp.schema-family.semantic",
+      "namespace": {
+        "filenamePrefixes": ["semantic-agent-"]
+      }
+    },
+    {
+      "familyId": "asp.schema-family.semantic-sandtable",
+      "owner": "schemas",
+      "rationale": "Semantic sandtable scenario, receipt, report, and comparison contracts.",
+      "priority": 200,
+      "parentFamilyId": "asp.schema-family.semantic",
+      "definitionSchemaPath": "schemas/semantic-sandtable-definitions.v1.schema.json",
+      "definitionVisibility": "family",
+      "namespace": {
+        "filenamePrefixes": ["semantic-sandtable-"]
+      }
+    },
+    {
+      "familyId": "asp.schema-family.semantic-db",
+      "owner": "schemas",
+      "rationale": "Semantic DB engine manifest, report, route, and shared definition contracts.",
+      "priority": 200,
+      "parentFamilyId": "asp.schema-family.semantic",
+      "definitionSchemaPath": "schemas/semantic-db-definitions.v1.schema.json",
+      "definitionVisibility": "family",
+      "namespace": {
+        "filenamePrefixes": ["semantic-db-"]
+      }
+    },
+    {
+      "familyId": "asp.schema-family.semantic-fact",
+      "owner": "schemas",
+      "rationale": "Semantic fact graph, ontology, frontier, and benchmark contracts.",
+      "priority": 200,
+      "parentFamilyId": "asp.schema-family.semantic",
+      "namespace": {
+        "filenamePrefixes": ["semantic-fact-"]
+      }
+    },
+    {
+      "familyId": "asp.schema-family.semantic-artifact",
+      "owner": "schemas",
+      "rationale": "Semantic artifact identity, edge, and repair-chain contracts.",
+      "priority": 200,
+      "parentFamilyId": "asp.schema-family.semantic",
+      "namespace": {
+        "filenamePrefixes": ["semantic-artifact-"]
+      }
+    },
+    {
+      "familyId": "asp.schema-family.semantic-search",
+      "owner": "schemas",
+      "rationale": "Search packet, projection, trace, and evidence contracts under the semantic-search namespace.",
+      "priority": 200,
+      "parentFamilyId": "asp.schema-family.semantic",
+      "namespace": {
+        "filenamePrefixes": ["semantic-search-"]
+      }
+    },
+    {
+      "familyId": "asp.schema-family.semantic",
+      "owner": "schemas",
+      "rationale": "Broad semantic contract namespace pending narrower family promotion.",
+      "priority": 100,
+      "namespace": {
+        "filenamePrefixes": ["semantic-"]
+      }
+    },
+    {
+      "familyId": "asp.schema-family.provider",
+      "owner": "schemas",
+      "rationale": "Provider registration, dispatch, resolution, and projection contracts.",
+      "priority": 100,
+      "namespace": {
+        "filenamePrefixes": ["provider-"]
+      }
+    },
+    {
+      "familyId": "asp.schema-family.runtime-server",
+      "owner": "schemas",
+      "rationale": "Runtime Server authority, lifecycle, performance, and workspace contracts.",
+      "priority": 200,
+      "parentFamilyId": "asp.schema-family.runtime",
+      "namespace": {
+        "filenamePrefixes": ["runtime-server-"]
+      }
+    },
+    {
+      "familyId": "asp.schema-family.runtime",
+      "owner": "schemas",
+      "rationale": "Runtime contracts outside the narrower Runtime Server namespace.",
+      "priority": 100,
+      "namespace": {
+        "filenamePrefixes": ["runtime-"]
+      }
+    },
+    {
+      "familyId": "asp.schema-family.exact",
+      "owner": "schemas",
+      "rationale": "Exact query, selector, source, projection, and materialization contracts.",
+      "priority": 100,
+      "namespace": {
+        "filenamePrefixes": ["exact-"]
+      }
+    }
+  ]
+}

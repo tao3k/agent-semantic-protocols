@@ -1,31 +1,23 @@
-//! Runtime Server generation readiness bridges for exact projection reads.
+//! Runtime Server generation mutation control-plane adapters.
 
 use std::path::Path;
 
-use super::runtime_server::runtime_server_workspace_session_async;
-
-pub(crate) async fn ensure_runtime_generation_ready_for_projection_async(
+pub(crate) fn submit_runtime_generation_mutation(
     project_root: &Path,
-) -> Result<
-    agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationReadinessReceipt,
-    String,
-> {
-    runtime_server_workspace_session_async(project_root)
-        .await?
-        .ensure_runtime_generation_ready()
-        .await
-}
-
-pub(crate) async fn ensure_runtime_generation_owner_ready_for_projection_async(
-    project_root: &Path,
-    owner_path: &str,
-    admitted_content_digest: &str,
-) -> Result<
-    agent_semantic_client_db::runtime_server_admission::WorkspaceOwnerGenerationReadinessReceipt,
-    String,
-> {
-    runtime_server_workspace_session_async(project_root)
-        .await?
-        .ensure_runtime_generation_owner_ready(owner_path, admitted_content_digest)
-        .await
+    mutation_id: String,
+    changed_paths: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    let project_root = project_root.to_path_buf();
+    let receipt = super::runtime_server::block_on_runtime_server_client(async move {
+        let session = super::runtime_server::runtime_server_workspace_session_for_admission_async(
+            &project_root,
+        )
+        .await?;
+        session
+            .submit_runtime_generation_mutation(mutation_id, changed_paths)
+            .await
+    })??;
+    receipt.validate()?;
+    serde_json::to_value(receipt)
+        .map_err(|error| format!("failed to encode runtime generation admission: {error}"))
 }

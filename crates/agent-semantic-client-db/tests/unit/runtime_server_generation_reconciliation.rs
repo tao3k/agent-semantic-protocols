@@ -4,7 +4,7 @@ use agent_semantic_client_db::runtime_server_admission::{
     WorkspaceGenerationAdmission, WorkspaceGenerationAdmissionState,
 };
 
-use super::{candidate_identity, committed_generation};
+use super::{candidate_identity, completed_generation};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_generation_rebuild_admission_is_single_flight_and_sub_millisecond() {
@@ -14,7 +14,7 @@ async fn concurrent_generation_rebuild_admission_is_single_flight_and_sub_millis
     let admission = Arc::new(WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
         let release_repair = Arc::clone(&release_repair);
-        move |_, _, _, _| {
+        move |_, _, candidate, _, _cancellation, _absolute_deadline| {
             let build_count = Arc::clone(&build_count);
             let release_repair = Arc::clone(&release_repair);
             Box::pin(async move {
@@ -22,7 +22,7 @@ async fn concurrent_generation_rebuild_admission_is_single_flight_and_sub_millis
                 if attempt == 2 {
                     release_repair.notified().await;
                 }
-                Ok(committed_generation())
+                completed_generation(candidate)
             })
         }
     })));
@@ -96,7 +96,7 @@ async fn concurrent_ready_generation_receipts_are_checkout_free_and_sub_millisec
             let started = tokio::time::Instant::now();
             let receipt = agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationReadinessReceipt::new(
                 "workspace-ready-generation",
-                committed_generation(),
+                crate::runtime_server_generation_admission::committed_generation(),
                 false,
             );
             (receipt, started.elapsed())

@@ -12,6 +12,12 @@ const NODE_DOMAIN: &[u8] = b"asp.workspace-merkle-node.v1";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspacePathMerkleTreeV1 {
     leaves: Vec<WorkspaceMerkleLeafV1>,
+    /// Immutable Merkle levels, from owner leaves through the root.
+    ///
+    /// Exact projection emits many selectors for the same workspace snapshot.
+    /// Keeping the levels makes each inclusion proof O(log owners) instead of
+    /// rebuilding the complete tree for every selector.
+    levels: Vec<Vec<ContentDigestV1>>,
     root_digest: ContentDigestV1,
 }
 
@@ -37,14 +43,20 @@ impl WorkspacePathMerkleTreeV1 {
             });
         }
 
-        let root_digest = merkle_root(
+        let levels = merkle_levels(
             leaves
                 .iter()
                 .map(|leaf| leaf.owner_subtree_digest.clone())
                 .collect(),
         );
+        let root_digest = levels
+            .last()
+            .and_then(|level| level.first())
+            .cloned()
+            .unwrap_or_else(|| canonical_digest_v1(EMPTY_DOMAIN, &[]));
         Ok(Self {
             leaves,
+            levels,
             root_digest,
         })
     }
@@ -65,14 +77,9 @@ impl WorkspacePathMerkleTreeV1 {
 
     pub fn inclusion_proof(&self, path: &str) -> Option<Vec<MerkleInclusionStepV1>> {
         let mut target_index = self.leaf_index(path)?;
-        let mut level = self
-            .leaves
-            .iter()
-            .map(|leaf| leaf.owner_subtree_digest.clone())
-            .collect::<Vec<_>>();
-        let mut proof = Vec::new();
+        let mut proof = Vec::with_capacity(self.levels.len().saturating_sub(1));
 
-        while level.len() > 1 {
+        for level in self.levels.iter().take(self.levels.len().saturating_sub(1)) {
             let target_is_left = target_index % 2 == 0;
             let sibling_index = if target_is_left {
                 (target_index + 1).min(level.len() - 1)
@@ -87,7 +94,6 @@ impl WorkspacePathMerkleTreeV1 {
                 },
                 digest: level[sibling_index].clone(),
             });
-            level = next_level(&level);
             target_index /= 2;
         }
         Some(proof)
@@ -180,14 +186,16 @@ fn encode_lower_hex(digest: &[u8; 32], output: &mut [u8; 64]) {
     }
 }
 
-fn merkle_root(mut level: Vec<ContentDigestV1>) -> ContentDigestV1 {
-    if level.is_empty() {
-        return canonical_digest_v1(EMPTY_DOMAIN, &[]);
+fn merkle_levels(mut level: Vec<ContentDigestV1>) -> Vec<Vec<ContentDigestV1>> {
+    let mut levels = Vec::new();
+    while !level.is_empty() {
+        levels.push(level);
+        if levels.last().is_some_and(|level| level.len() == 1) {
+            break;
+        }
+        level = next_level(levels.last().expect("a Merkle level was just added"));
     }
-    while level.len() > 1 {
-        level = next_level(&level);
-    }
-    level.remove(0)
+    levels
 }
 
 fn next_level(level: &[ContentDigestV1]) -> Vec<ContentDigestV1> {

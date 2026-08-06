@@ -6,7 +6,7 @@ import json
 import unittest
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -17,11 +17,12 @@ def _load_json(path: Path) -> dict[str, object]:
 
 
 class SemanticSandtableScenarioSchemaTests(unittest.TestCase):
-    def setUp(self) -> None:
+    @classmethod
+    def setUpClass(cls) -> None:
         schema_path = (
             _REPO_ROOT / "schemas" / "semantic-sandtable-scenario.v1.schema.json"
         )
-        self.validator = Draft202012Validator(_load_json(schema_path))
+        cls.validator = schema_validator_for(schema_path)
 
     def validation_errors(self, scenario: dict[str, object]) -> list[str]:
         return [error.message for error in self.validator.iter_errors(scenario)]

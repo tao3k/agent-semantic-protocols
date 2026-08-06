@@ -109,7 +109,5 @@ fn asp_agent_session_rejects_removed_session_id_flag() {
         "{stderr}"
     );
     assert!(!stderr.contains("deprecated"), "{stderr}");
-    assert!(!stderr.contains("register --guide"), "{stderr}");
-
     let _ = std::fs::remove_dir_all(root);
 }

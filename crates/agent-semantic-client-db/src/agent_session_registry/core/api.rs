@@ -3,10 +3,11 @@
 use super::AgentSessionRegistry;
 use super::storage::{
     block_on_agent_session_registry_async, turso_claim_resident_session, turso_delete_session,
-    turso_query_sessions, turso_record_tool_event, turso_refresh_expired_sessions,
-    turso_register_session, turso_session_by_id, turso_session_by_id_any_project,
-    turso_session_by_name, turso_session_for_root_session_id_any_project,
-    turso_set_archived_status, turso_update_session_status,
+    turso_query_all_sessions, turso_query_sessions, turso_record_tool_event,
+    turso_refresh_expired_sessions, turso_register_session, turso_session_by_id,
+    turso_session_by_id_any_project, turso_session_by_name,
+    turso_session_for_root_session_id_any_project, turso_set_archived_status,
+    turso_update_session_status,
 };
 use crate::agent_session_registry::types::{
     AGENT_SESSION_STATUS_ACTIVE, AGENT_SESSION_STATUS_ARCHIVED, AGENT_SESSION_STATUS_INVALID,
@@ -18,6 +19,55 @@ use crate::agent_session_registry::types::{
 };
 
 impl AgentSessionRegistry {
+    pub(crate) async fn query_all_sessions_local(&self) -> Result<Vec<AgentSessionRecord>, String> {
+        turso_query_all_sessions(&self.db_path).await
+    }
+
+    /// Resolve the complete Hook-selected session pane state in one Runtime Server call.
+    pub fn resolve_session_control_plane(
+        &self,
+        observed_session_id: Option<&str>,
+        observed_root_session_id: Option<&str>,
+        name: &str,
+    ) -> Result<crate::runtime_server_control::AgentSessionControlPlaneState, String> {
+        let project_root = self.runtime_project_root.as_deref().ok_or_else(|| {
+            "session control-plane resolution requires the Runtime Server owner".to_owned()
+        })?;
+        Self::resolve_project_session_control_plane(
+            project_root,
+            observed_session_id,
+            observed_root_session_id,
+            name,
+        )
+    }
+
+    /// Resolve the Hook-selected pane from the Runtime Server status-memory projection.
+    ///
+    /// This read-only path does not require workspace admission, a Runtime IPC proxy, or a
+    /// direct registry/database open. A root task with no projected child is therefore a valid
+    /// `registration-required` state.
+    pub fn resolve_project_session_control_plane(
+        project_root: &std::path::Path,
+        observed_session_id: Option<&str>,
+        observed_root_session_id: Option<&str>,
+        name: &str,
+    ) -> Result<crate::runtime_server_control::AgentSessionControlPlaneState, String> {
+        let state = agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)?;
+        let endpoint = crate::read_runtime_server_endpoint(&state.state_home)?
+            .ok_or_else(|| "Runtime Server endpoint is unavailable".to_owned())?;
+        let workspace_id = Self::workspace_id(project_root)?;
+        let sessions = block_on_agent_session_registry_async(
+            crate::read_runtime_server_agent_sessions(&endpoint),
+        )?;
+        crate::resolve_runtime_server_agent_session_status(
+            &sessions,
+            &workspace_id,
+            observed_session_id,
+            observed_root_session_id,
+            name,
+        )
+    }
+
     pub fn register_session(
         &self,
         request: AgentSessionRegisterRequest<'_>,
@@ -69,6 +119,19 @@ impl AgentSessionRegistry {
             };
         }
         block_on_agent_session_registry_async(turso_register_session(&self.db_path, request))
+    }
+
+    /// Publish one Host-native child lifecycle event through the Runtime Server owner.
+    pub fn record_host_lifecycle_event(
+        &self,
+        event: crate::workspace_db_ipc::AgentHostLifecycleEventIpc,
+    ) -> Result<crate::workspace_db_ipc::AgentSessionRegistryIpcResult, String> {
+        self.runtime_operation(
+            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::RecordHostLifecycleEvent {
+                event,
+            },
+        )?
+        .ok_or_else(|| "Host lifecycle events require the Runtime Server registry proxy".to_owned())
     }
 
     /// Claim a resident route without replacing the child that already owns it.

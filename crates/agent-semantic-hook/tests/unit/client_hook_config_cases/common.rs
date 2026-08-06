@@ -17,38 +17,40 @@ pub(super) fn temp_root(label: &str) -> PathBuf {
         .as_nanos();
     let root = std::env::temp_dir().join(format!("agent-semantic-hook-{label}-{nonce}"));
     fs::create_dir_all(&root).expect("create temp root");
+    materialize_agent_registry(&root);
     canonical(&root)
 }
 
 pub(super) fn with_required_resident_agents(config: &str) -> String {
-    format!(
-        "{config}\n{}",
-        r#"
-[agents]
-
-[agents.placeholders]
-explore = "asp-explore"
-testing = "asp_testing"
-
-[[agents.residentAgents]]
-enabled = true
-name = "asp-explore"
-role = "asp_explorer"
-roles = []
-permissions = []
-codexAgentName = "asp_explorer"
-sessionLifetime = "resident"
-
-[[agents.residentAgents]]
-enabled = true
-name = "asp_testing"
-role = "asp_testing"
-roles = []
-permissions = []
-codexAgentName = "asp_testing"
-sessionLifetime = "resident"
-"#
+    let projection = agent_semantic_config::agent_route_registry::render_hook_agent_routes(
+        &canonical_agent_registry_root(),
     )
+    .expect("render canonical Hook agent routes");
+    format!("{config}\n{projection}")
+}
+
+fn materialize_agent_registry(root: &Path) {
+    let target = root.join("agents");
+    fs::create_dir_all(&target).expect("create fixture agent registry");
+    for name in [
+        "config.toml",
+        "asp_explorer_codex.toml",
+        "asp_explorer_claude.md",
+        "asp_testing_codex.toml",
+        "asp_testing_claude.md",
+    ] {
+        fs::copy(
+            canonical_agent_registry_root().join(name),
+            target.join(name),
+        )
+        .expect("copy canonical fixture agent registry entry");
+    }
+}
+
+fn canonical_agent_registry_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("agents")
 }
 
 fn canonical(path: &Path) -> PathBuf {

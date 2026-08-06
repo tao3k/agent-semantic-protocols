@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-server-performance-ingress-receipt.v1.schema.json",
+  "title": "Runtime Server Performance Ingress Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "workspaceIdentity",
+    "surface",
+    "stage",
+    "eventIdentity"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-server-performance-ingress-receipt"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "state": {
+      "enum": ["recorded", "duplicate"]
+    },
+    "workspaceIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "surface": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stage": {
+      "type": "string",
+      "minLength": 1
+    },
+    "eventIdentity": {
+      "type": ["string", "null"]
+    }
+  }
+}

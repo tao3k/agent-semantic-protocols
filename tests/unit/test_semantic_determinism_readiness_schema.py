@@ -2,26 +2,20 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 
 _ROOT = Path(__file__).resolve().parents[2]
 
 
-def _load_schema() -> dict:
-    return json.loads(
-        (_ROOT / "schemas" / "semantic-determinism-readiness.v1.schema.json").read_text(
-            encoding="utf-8"
-        )
-    )
+def _schema_path() -> Path:
+    return _ROOT / "schemas" / "semantic-determinism-readiness.v1.schema.json"
 
 
 def test_determinism_readiness_schema_accepts_direct_clock_observation() -> None:
-    schema = _load_schema()
-    validator = Draft202012Validator(schema)
+    validator = schema_validator_for(_schema_path())
 
     validator.validate(
         {
@@ -67,8 +61,7 @@ def test_determinism_readiness_schema_accepts_direct_clock_observation() -> None
 
 
 def test_determinism_readiness_rejects_absolute_observation_paths() -> None:
-    schema = _load_schema()
-    validator = Draft202012Validator(schema)
+    validator = schema_validator_for(_schema_path())
 
     errors = list(
         validator.iter_errors(

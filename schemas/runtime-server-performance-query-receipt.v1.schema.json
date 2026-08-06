@@ -10,7 +10,12 @@
     "workspaceIdentity",
     "surface",
     "stage",
-    "budgetFailureCount"
+    "observationCount",
+    "budgetFailureCount",
+    "p50Micros",
+    "p95Micros",
+    "p99Micros",
+    "latestAttributesJson"
   ],
   "properties": {
     "schemaId": {
@@ -20,6 +25,11 @@
     "workspaceIdentity": { "type": "string", "minLength": 1 },
     "surface": { "type": "string", "minLength": 1 },
     "stage": { "type": "string", "minLength": 1 },
-    "budgetFailureCount": { "type": "integer", "minimum": 0 }
+    "observationCount": { "type": "integer", "minimum": 0 },
+    "budgetFailureCount": { "type": "integer", "minimum": 0 },
+    "p50Micros": { "type": ["integer", "null"], "minimum": 0 },
+    "p95Micros": { "type": ["integer", "null"], "minimum": 0 },
+    "p99Micros": { "type": ["integer", "null"], "minimum": 0 },
+    "latestAttributesJson": { "type": ["string", "null"] }
   }
 }

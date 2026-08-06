@@ -281,7 +281,7 @@ fn production_branch_atom_inventory_is_derived_from_the_template() {
     let policy = parse_production_policy();
     assert_eq!(
         policy.rules.len(),
-        18,
+        16,
         "production rule discovery drifted: {:?}",
         policy.rules
     );
@@ -429,32 +429,6 @@ fn command_for_atom(atom: &CoverageKey, policy: &ProductionPolicy) -> String {
                 format!("{prefix} {}", source_path_for(alt))
             }
         }
-        "deny-uncontrolled-python-inline-source-materialization" => {
-            let prefix = if matcher.ends_with("argvPrefixAny") {
-                alt
-            } else {
-                "python"
-            };
-            let contains = if matcher.ends_with("commandContainsAny") {
-                alt
-            } else {
-                ".read("
-            };
-            format!("{prefix} -c 'from pathlib import Path; print(Path(\"src/app.ts\"){contains})'")
-        }
-        "deny-uncontrolled-javascript-inline-source-materialization" => {
-            let prefix = if matcher.ends_with("argvPrefixAny") {
-                alt
-            } else {
-                "node"
-            };
-            let contains = if matcher.ends_with("commandContainsAny") {
-                alt
-            } else {
-                "readFileSync("
-            };
-            format!("{prefix} -e 'require(\"fs\").{contains}\"src/app.ts\")'")
-        }
         "deny-uncontrolled-git-metadata-reads" => {
             if matches!(alt, "git show --stat" | "git ls-tree") {
                 format!("{alt} HEAD")
@@ -481,6 +455,18 @@ fn payload_for_atom(atom: &CoverageKey, policy: &ProductionPolicy) -> Value {
             "src/app.ts"
         };
         return match atom.alternative.as_str() {
+            "raw-host-action"
+                if matches!(
+                    atom.rule_id.as_str(),
+                    "materialize-registered-source-read-action"
+                        | "materialize-structured-document-read-action"
+                ) =>
+            {
+                json!({
+                    "tool_name": "Read",
+                    "tool_input": {"file_path": path},
+                })
+            }
             "raw-host-action" => json!({
                 "tool_name": "execute",
                 "tool_input": {"path": path, "command": command},

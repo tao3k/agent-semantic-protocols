@@ -308,7 +308,7 @@ fn append_provider_scope_dirs(
     dirs: &mut BTreeSet<String>,
 ) {
     for package_root in &provider.package_roots {
-        insert_existing_scope_dir(project_root, &project_root.join(&package_root), dirs);
+        insert_existing_scope_dir(project_root, &project_root.join(package_root), dirs);
     }
     for config_file in &provider.config_files {
         if let Some(parent) = project_root.join(config_file).parent() {

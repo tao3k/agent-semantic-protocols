@@ -77,14 +77,18 @@ project-language activation before dispatch.
 The hook MUST resolve bootstrap control-plane intent before loading any
 activation artifact.
 
-=ASP_NO_AGENT=1= MUST be recognized from both:
+=ASP_NO_AGENT=1= is recognized as a break-glass request from both:
 
 - the inherited PreToolUse process environment; and
 - a command-wrapper environment assignment parsed before shell execution.
 
-The override disables agent dispatch and activation-dependent routing for the
-current command. It MUST emit a compact typed bootstrap receipt. It MUST NOT
-silently mutate project configuration.
+The request disables nothing unless the same invocation presents a valid,
+unexpired, command/workspace/root-bound, one-shot
+=ASP_BREAK_GLASS_CAPABILITY= nonce issued by the operator-approved Hook
+break-glass control plane. The bootstrap atomically consumes the capability and
+emits a compact typed receipt. A naked request, reused nonce, or mismatched
+binding follows ordinary fail-closed routing. It MUST NOT silently mutate
+project configuration.
 
 Health, install, and runtime-repair commands MUST remain reachable when a
 generated activation cannot be parsed.

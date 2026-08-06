@@ -406,10 +406,10 @@ impl WorkspaceCanonicalMaterialization {
     }
 
     pub fn finalize_generation_evidence(
-        mut self,
+        &mut self,
         workspace_snapshot: agent_semantic_content_identity::WorkspaceSnapshot,
         source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
-    ) -> Result<Self, String> {
+    ) -> Result<(), String> {
         if workspace_snapshot.root_digest() != source_snapshot.root_digest {
             return Err(format!(
                 "workspace generation finalization snapshot drift: workspaceRoot={} sourceRoot={}",
@@ -421,7 +421,7 @@ impl WorkspaceCanonicalMaterialization {
             Self::generation_evidence(&source_snapshot, self.root_depth, self.owners.len())?;
         self.workspace_snapshot = workspace_snapshot;
         self.source_snapshot = source_snapshot;
-        Ok(self)
+        Ok(())
     }
 
     pub fn validate_against(

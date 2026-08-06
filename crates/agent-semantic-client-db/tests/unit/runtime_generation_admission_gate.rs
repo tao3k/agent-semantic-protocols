@@ -28,7 +28,7 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_sub_millis
         let peak_builds = Arc::clone(&peak_builds);
         let build_count = Arc::clone(&build_count);
         let release = Arc::clone(&release);
-        move |_, _, _, _| {
+        move |_, _, candidate, _, _cancellation, _absolute_deadline| {
             let active_builds = Arc::clone(&active_builds);
             let peak_builds = Arc::clone(&peak_builds);
             let build_count = Arc::clone(&build_count);
@@ -43,7 +43,8 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_sub_millis
                     .map_err(|_| "admission fixture release closed".to_owned())?
                     .forget();
                 active_builds.fetch_sub(1, Ordering::AcqRel);
-                Ok(
+                agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildCompletion::new(
+                    candidate,
                     agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
                         active_epoch: 1,
                         generation_digest: "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),

@@ -346,7 +346,7 @@ pub(crate) fn run_language_command(
         // the executable; canonical identity equality binds the built-in
         // ranker to the currently running ASP artifact.
         exact_query_trace("ranker-admitted", exact_query_started);
-        let current_generation_client =
+        let current_search_data_plane =
             super::search_pipe::fast_search_requires_source_index_snapshot(&provider_args)
                 .then(|| {
                     crate::server::runtime_server::block_on_agent_facing_runtime_server_client(
@@ -354,15 +354,15 @@ pub(crate) fn run_language_command(
                         "search",
                         "graph-turbo-generation-open",
                         &project_root,
-                        crate::server::runtime_server::runtime_server_workspace_generation_client_async(
+                        crate::server::runtime_server::runtime_server_search_data_plane_async(
                             &project_root,
                         ),
                     )
                 })
                 .transpose()?;
-        let current_snapshot = current_generation_client
+        let current_snapshot = current_search_data_plane
             .as_ref()
-            .map(crate::server::runtime_server::runtime_server_current_source_index_snapshot_from_client)
+            .map(crate::server::runtime_server::RuntimeServerSearchDataPlane::current_snapshot)
             .transpose()?;
         let provider_context_required =
             fast_search_needs_provider_context(&provider_args, provider)?;
@@ -374,7 +374,35 @@ pub(crate) fn run_language_command(
                 provider,
                 profiles: &runtime_profiles,
             };
-            return run_asp_fast_search_command(
+            return crate::server::runtime_server::block_on_agent_facing_runtime_server_client(
+                exact_query_started,
+                "search",
+                "resident-search-evaluation",
+                &project_root,
+                run_asp_fast_search_command(
+                    &provider_args,
+                    FastSearchContext {
+                        started: exact_query_started,
+                        language_id,
+                        project_root: &project_root,
+                        locator_root: search_locator_root,
+                        cache_home: &cache_home,
+                        config: &config,
+                        provider_context: Some(&provider_context),
+                        frontier_receipt: frontier_receipt.as_ref(),
+                        source_index_snapshot: current_snapshot.as_ref(),
+                        search_data_plane: current_search_data_plane.as_ref(),
+                    },
+                ),
+            );
+        }
+        exact_query_trace("provider-context-not-required", exact_query_started);
+        return crate::server::runtime_server::block_on_agent_facing_runtime_server_client(
+            exact_query_started,
+            "search",
+            "resident-search-evaluation",
+            &project_root,
+            run_asp_fast_search_command(
                 &provider_args,
                 FastSearchContext {
                     started: exact_query_started,
@@ -383,28 +411,12 @@ pub(crate) fn run_language_command(
                     locator_root: search_locator_root,
                     cache_home: &cache_home,
                     config: &config,
-                    provider_context: Some(&provider_context),
+                    provider_context: None,
                     frontier_receipt: frontier_receipt.as_ref(),
                     source_index_snapshot: current_snapshot.as_ref(),
-                    source_index_client: current_generation_client.as_ref(),
+                    search_data_plane: current_search_data_plane.as_ref(),
                 },
-            );
-        }
-        exact_query_trace("provider-context-not-required", exact_query_started);
-        return run_asp_fast_search_command(
-            &provider_args,
-            FastSearchContext {
-                started: exact_query_started,
-                language_id,
-                project_root: &project_root,
-                locator_root: search_locator_root,
-                cache_home: &cache_home,
-                config: &config,
-                provider_context: None,
-                frontier_receipt: frontier_receipt.as_ref(),
-                source_index_snapshot: current_snapshot.as_ref(),
-                source_index_client: current_generation_client.as_ref(),
-            },
+            ),
         );
     }
     if frontier_receipt

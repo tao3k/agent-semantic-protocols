@@ -177,26 +177,6 @@ positiveCommands = [
 negativeCommands = ["cat Cargo.lock", "wc -l Cargo.lock"]
 
 [[rules]]
-id = "deny-uncontrolled-python-inline-source-materialization"
-positiveCommands = [
-  "uv run python -c \"open('crates/agent-semantic-hook/src/lib.rs').read()\"",
-]
-negativeCommands = [
-  "python3 -c \"from pathlib import Path; Path('crates/agent-semantic-hook/src/lib.rs').read_text()\"",
-  "python3 -c \"from pathlib import Path; Path('Cargo.lock').read_text()\"",
-]
-
-[[rules]]
-id = "deny-uncontrolled-javascript-inline-source-materialization"
-positiveCommands = [
-  "node -e \"require('fs').readFileSync('crates/agent-semantic-hook/src/lib.rs','utf8')\"",
-  "bun -e \"Bun.file('crates/agent-semantic-hook/src/lib.rs').text()\"",
-]
-negativeCommands = [
-  "node -e \"require('fs').readFileSync('Cargo.lock','utf8')\"",
-]
-
-[[rules]]
 id = "deny-uncontrolled-git-metadata-reads"
 positiveCommands = ["git diff --check", "git show --stat HEAD", "git ls-tree -r HEAD"]
 negativeCommands = ["git show HEAD", "git diff", "git status --short"]

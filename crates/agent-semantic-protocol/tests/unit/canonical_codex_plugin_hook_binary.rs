@@ -1,134 +1,91 @@
 use super::{
-    ASP_CODEX_PLUGIN_HOOKS_JSON, render_codex_plugin_hooks_json,
-    validate_codex_plugin_hooks_manifest,
+    ASP_CODEX_PLUGIN_HOOKS_JSON, ASP_CODEX_PLUGIN_MANIFEST_JSON, ASP_CODEX_PLUGIN_MARKETPLACE_JSON,
+    remove_codex_managed_global_hook_config, validate_codex_plugin_source_payload,
 };
+use std::path::PathBuf;
 
-#[test]
-fn rendered_codex_hooks_keep_every_event_on_the_plugin_path_command() {
-    let rendered = render_codex_plugin_hooks_json().expect("render Codex hooks");
-    let hooks: serde_json::Value = serde_json::from_str(&rendered).expect("decode Codex hooks");
-    let events = hooks["hooks"].as_object().expect("hook event map");
-    let mut command_count = 0;
-    let mut pre_tool_count = 0;
-
-    for (event, handlers) in events {
-        for handler in handlers.as_array().expect("hook handlers") {
-            for hook in handler["hooks"].as_array().expect("hook commands") {
-                let command = hook["command"].as_str().expect("hook command");
-                assert!(
-                    command.starts_with("asp hook "),
-                    "plugin hook command escaped the plugin PATH contract: {command}"
-                );
-                if event == "PreToolUse" {
-                    assert_eq!(command, "asp hook pre-tool --client codex");
-                    pre_tool_count += 1;
-                }
-                command_count += 1;
-            }
-        }
-    }
-    assert!(command_count > 0, "Codex plugin must define hook commands");
-    assert_eq!(
-        pre_tool_count, 1,
-        "Codex plugin must define one pre-tool hook"
-    );
-}
-
-#[test]
-fn codex_hook_manifest_gate_rejects_absolute_binary_commands() {
-    let mut hooks: serde_json::Value =
-        serde_json::from_str(ASP_CODEX_PLUGIN_HOOKS_JSON).expect("decode canonical Codex hooks");
-    hooks["hooks"]["PreToolUse"][0]["hooks"][0]["command"] = serde_json::Value::String(
-        "/Users/example/.agent-semantic-protocols/runtime/bin/asp hook pre-tool --client codex"
-            .to_string(),
-    );
-
-    let error = validate_codex_plugin_hooks_manifest(&hooks)
-        .expect_err("absolute command must be rejected");
-    assert!(
-        error.contains("asp hook pre-tool --client codex"),
-        "schema gate must identify the required bare plugin PATH command: {error}"
-    );
-}
-
-use crate::command::hook_runtime::hook_runtime_codex_plugin::{
-    codex_plugin_source_root, write_codex_plugin_file,
-};
-
-#[test]
-fn unchanged_codex_plugin_file_is_a_zero_write_noop() {
-    let temp = unique_plugin_test_directory("zero-write");
-    let path = temp.join("hooks").join("hooks.json");
-    write_codex_plugin_file(&path, "{\"version\": 1}").expect("write initial plugin file");
-
-    let mut permissions = std::fs::metadata(&path)
-        .expect("read initial plugin metadata")
-        .permissions();
-    permissions.set_readonly(true);
-    std::fs::set_permissions(&path, permissions).expect("make plugin file read-only");
-
-    write_codex_plugin_file(&path, "{\"version\": 1}")
-        .expect("unchanged plugin content must not attempt a write");
-    assert_eq!(
-        std::fs::read_to_string(&path).expect("read unchanged plugin file"),
-        "{\"version\": 1}\n"
-    );
-    std::fs::remove_dir_all(&temp).expect("remove plugin test directory");
-}
-
-#[test]
-fn plugin_source_root_does_not_escape_the_explicit_project_root() {
-    let temp = unique_plugin_test_directory("explicit-root");
-    let error = codex_plugin_source_root(&temp)
-        .expect_err("an invalid explicit project root must not fall back to cwd or build source");
-    assert!(error.contains("is not an ASP Codex plugin marketplace source root"));
-    std::fs::remove_dir_all(&temp).expect("remove plugin test directory");
-}
-
-fn unique_plugin_test_directory(label: &str) -> std::path::PathBuf {
+fn unique_plugin_test_directory(label: &str) -> PathBuf {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock after Unix epoch")
+        .expect("clock must be after epoch")
         .as_nanos();
-    let path = std::env::temp_dir().join(format!(
-        "asp-codex-plugin-{label}-{}-{nonce}",
+    std::env::temp_dir().join(format!(
+        "asp-canonical-plugin-{label}-{}-{nonce}",
         std::process::id()
-    ));
-    std::fs::create_dir_all(&path).expect("create plugin test directory");
-    path
-}
-
-#[test]
-fn codex_hook_manifest_gate_rejects_unknown_events_and_fields() {
-    let canonical: serde_json::Value =
-        serde_json::from_str(ASP_CODEX_PLUGIN_HOOKS_JSON).expect("decode canonical Codex hooks");
-
-    let mut unknown_event = canonical.clone();
-    unknown_event["hooks"]["BeforeToolUse"] = unknown_event["hooks"]["PreToolUse"].clone();
-    let error = validate_codex_plugin_hooks_manifest(&unknown_event)
-        .expect_err("unknown event must be rejected");
-    assert!(!error.is_empty(), "gate must reject schema drift: {error}");
-
-    let mut unknown_field = canonical;
-    unknown_field["hooks"]["PreToolUse"][0]["unexpectedField"] =
-        serde_json::Value::String("*".to_string());
-    let error = validate_codex_plugin_hooks_manifest(&unknown_field)
-        .expect_err("unknown handler field must be rejected");
-    assert!(
-        !error.is_empty(),
-        "gate must reject unknown handler fields: {error}"
-    );
-}
-
-#[test]
-fn codex_hook_schema_document_is_v1_and_machine_readable() {
-    let schema: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../schemas/codex-plugin-hooks.v1.schema.json"
     ))
-    .expect("decode Codex hook schema");
+}
+
+#[test]
+fn canonical_plugin_payload_is_marketplace_owned_and_complete() {
+    let digest = validate_codex_plugin_source_payload().expect("validate canonical plugin payload");
+    assert_eq!(digest.len(), 64);
+
+    let manifest: serde_json::Value =
+        serde_json::from_str(ASP_CODEX_PLUGIN_MANIFEST_JSON).expect("valid plugin manifest");
     assert_eq!(
-        schema["$id"],
-        "https://agent-semantic-protocols.dev/schemas/codex-plugin-hooks.v1.schema.json"
+        manifest.get("hooks").and_then(serde_json::Value::as_str),
+        Some("./hooks/hooks.json")
     );
-    assert_eq!(schema["additionalProperties"], false);
+    let marketplace: serde_json::Value = serde_json::from_str(ASP_CODEX_PLUGIN_MARKETPLACE_JSON)
+        .expect("valid marketplace manifest");
+    assert_eq!(
+        marketplace["plugins"][0]["source"]["path"].as_str(),
+        Some("./asp-codex-plugin")
+    );
+}
+
+#[test]
+fn plugin_hook_shape_uses_internal_action_classification() {
+    let hooks: serde_json::Value =
+        serde_json::from_str(ASP_CODEX_PLUGIN_HOOKS_JSON).expect("valid plugin hooks");
+    assert_eq!(
+        hooks["hooks"]["PreToolUse"][0]["matcher"].as_str(),
+        Some("*")
+    );
+    assert_eq!(
+        hooks["hooks"]["PreToolUse"][0]["hooks"][0]["timeout"].as_u64(),
+        Some(1)
+    );
+}
+
+#[test]
+fn production_cleanup_is_idempotent_and_preserves_plugin_enablement() {
+    let root = unique_plugin_test_directory("cleanup");
+    std::fs::create_dir_all(&root).expect("create isolated plugin fixture");
+    let config_path = root.join("config.toml");
+    let project_config_path = root.join("project.toml");
+    let inline = agent_semantic_hook::codex_global_hook_block_with_binary(None);
+    let original = format!(
+        "[plugins.\"asp-codex-plugin@asp-project\"]\nenabled = true\n\n[hooks.state.\"asp-codex-plugin@asp-project:hooks/hooks.json:pre_tool_use:0:0\"]\ntrusted_hash = \"authorized\"\n\n{inline}\n"
+    );
+    std::fs::write(&config_path, original).expect("write isolated Codex config");
+
+    let first = remove_codex_managed_global_hook_config(&config_path, &project_config_path)
+        .expect("remove inline Hook");
+    let second = remove_codex_managed_global_hook_config(&config_path, &project_config_path)
+        .expect("repeat inline Hook cleanup");
+    let cleaned = std::fs::read_to_string(&config_path).expect("read cleaned Codex config");
+    assert!(first.changed);
+    assert!(!second.changed);
+    assert!(cleaned.contains("asp-codex-plugin@asp-project"));
+    assert!(cleaned.contains("trusted_hash = \"authorized\""));
+    assert!(!cleaned.contains(agent_semantic_hook::ROOT_BLOCK_BEGIN));
+    std::fs::remove_dir_all(&root).expect("remove isolated plugin fixture");
+}
+
+#[test]
+fn invalid_global_config_is_never_replaced() {
+    let root = unique_plugin_test_directory("invalid");
+    std::fs::create_dir_all(&root).expect("create isolated plugin fixture");
+    let config_path = root.join("config.toml");
+    let project_config_path = root.join("project.toml");
+    let invalid = "[plugins\nenabled = true\n";
+    std::fs::write(&config_path, invalid).expect("write invalid isolated config");
+
+    assert!(remove_codex_managed_global_hook_config(&config_path, &project_config_path,).is_err());
+    assert_eq!(
+        std::fs::read_to_string(&config_path).expect("read unchanged invalid config"),
+        invalid
+    );
+    std::fs::remove_dir_all(&root).expect("remove isolated plugin fixture");
 }

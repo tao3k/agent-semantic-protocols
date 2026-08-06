@@ -223,20 +223,20 @@ fn simple_command_words(command: &str) -> Option<Vec<String>> {
 fn command_script_arguments(words: &[String]) -> Vec<&str> {
     let mut scripts = Vec::new();
     for (index, word) in words.iter().enumerate() {
-        if matches!(word.as_str(), "bash" | "sh" | "zsh") {
-            if let Some(script) = words[index + 1..]
+        if matches!(word.as_str(), "bash" | "sh" | "zsh")
+            && let Some(script) = words[index + 1..]
                 .windows(2)
                 .find_map(|pair| shell_command_flag(pair[0].as_str()).then_some(pair[1].as_str()))
-            {
-                scripts.push(script);
-            }
+        {
+            scripts.push(script);
         }
-        if word == "rtk" && words.get(index + 1).is_some_and(|next| next == "run") {
-            if let Some(script) = words[index + 2..].windows(2).find_map(|pair| {
+        if word == "rtk"
+            && words.get(index + 1).is_some_and(|next| next == "run")
+            && let Some(script) = words[index + 2..].windows(2).find_map(|pair| {
                 (pair[0] == "-c" || pair[0] == "--command").then_some(pair[1].as_str())
-            }) {
-                scripts.push(script);
-            }
+            })
+        {
+            scripts.push(script);
         }
     }
     scripts

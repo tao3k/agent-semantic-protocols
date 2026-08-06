@@ -1,4 +1,23 @@
 use std::sync::Arc;
+use tokio::sync::oneshot;
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn delayed_resolver_does_not_block_scheduler_heartbeat() {
+    let (release_tx, release_rx) = oneshot::channel::<()>();
+    let resolver = tokio::task::spawn_blocking(move || {
+        let _ = release_rx.blocking_recv();
+        Ok::<_, String>(())
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    let heartbeat = tokio::time::timeout(
+        std::time::Duration::from_millis(100),
+        tokio::time::sleep(std::time::Duration::from_millis(1)),
+    )
+    .await;
+    assert!(heartbeat.is_ok());
+    let _ = release_tx.send(());
+    assert!(resolver.await.expect("resolver task").is_ok());
+}
 
 use agent_semantic_client_db::{
     ProviderIncrementalOwnerWrite, ProviderOwnerFingerprint, ProviderOwnerMetadata,

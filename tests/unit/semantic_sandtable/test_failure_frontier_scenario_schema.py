@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -59,11 +61,14 @@ def _failure_frontier_comparison(
 
 
 def _validation_errors(scenario: dict[str, object]) -> list[str]:
-    schema = _load_json(
+    return [error.message for error in _validator().iter_errors(scenario)]
+
+
+@lru_cache(maxsize=1)
+def _validator() -> Draft202012Validator:
+    return schema_validator_for(
         _REPO_ROOT / "schemas" / "semantic-sandtable-scenario.v1.schema.json"
     )
-    validator = Draft202012Validator(schema)
-    return [error.message for error in validator.iter_errors(scenario)]
 
 
 def _load_json(path: Path) -> dict[str, object]:

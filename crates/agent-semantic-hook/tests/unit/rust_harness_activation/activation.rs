@@ -99,5 +99,6 @@ fn rust_harness_activation_routes_source_glob_search_to_lexical_frontier() {
             .and_then(|value| value.as_str()),
         Some("deny-uncontrolled-source-search-commands")
     );
-    assert!(decision.message.contains("ASP Explore"));
+    assert!(decision.message.contains("asp session"));
+    assert!(!decision.message.contains("ASP Explore"));
 }

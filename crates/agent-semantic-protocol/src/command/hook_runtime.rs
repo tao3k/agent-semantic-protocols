@@ -1,35 +1,23 @@
 //! Runtime for the `asp hook` command surface.
 
-#[path = "hook_runtime_activation_failure.rs"]
-mod hook_runtime_activation_failure;
-#[path = "hook_runtime_activation_path.rs"]
-mod hook_runtime_activation_path;
-#[path = "hook_runtime_agent_session.rs"]
-mod hook_runtime_agent_session;
 #[path = "hook_runtime_agent_session_dispatch.rs"]
 mod hook_runtime_agent_session_dispatch;
-#[path = "hook_runtime_bootstrap.rs"]
-mod hook_runtime_bootstrap;
 #[path = "hook_runtime_cli_args.rs"]
 mod hook_runtime_cli_args;
 #[path = "hook_runtime_codex_plugin.rs"]
 mod hook_runtime_codex_plugin;
-#[path = "hook_runtime_codex_plugin_identity.rs"]
-mod hook_runtime_codex_plugin_identity;
 #[path = "hook_runtime_config_recovery.rs"]
 mod hook_runtime_config_recovery;
 #[path = "hook_runtime_decision_render.rs"]
 mod hook_runtime_decision_render;
 #[path = "hook_runtime_doctor.rs"]
 mod hook_runtime_doctor;
-#[path = "hook_runtime_generation_admission.rs"]
-mod hook_runtime_generation_admission;
-pub(super) use hook_runtime_generation_admission::HookGenerationAdmissionObservation;
-pub(super) use hook_runtime_generation_admission::request as request_runtime_generation_admission;
+#[path = "hook_runtime_host_lifecycle.rs"]
+mod hook_runtime_host_lifecycle;
 #[path = "hook_runtime_install.rs"]
 mod hook_runtime_install;
-#[path = "hook_runtime_resident_permissions.rs"]
-mod hook_runtime_resident_permissions;
+#[path = "hook_runtime_performance_failure.rs"]
+mod hook_runtime_performance_failure;
 #[path = "hook_runtime_skill.rs"]
 mod hook_runtime_skill;
 #[path = "hook_runtime_source_access_materialize.rs"]
@@ -46,48 +34,24 @@ mod hook_runtime_workspace_candidate;
 mod hook_workspace_candidate_tests;
 
 use super::{codex_enforcement_report, payload_indicates_subagent_context};
-use agent_semantic_client_db::{AgentSessionLookupRequest, AgentSessionRegistry};
 use agent_semantic_hook::{
-    ActiveContextRecord, DecisionKind, HookClassificationRequest, HookDecision, ReasonKind,
-    append_hook_event_state, apply_repeated_deny_replay, classify_hook_with_config,
-    default_client_config_path, has_recorded_subagent_context, load_activation, parse_payload,
-    record_active_context, subagent_deny_message,
+    HookClassificationRequest, HookDecision, apply_repeated_deny_replay, classify_hook_with_config,
+    default_client_config_path, parse_payload,
 };
 use agent_semantic_runtime::project_state_paths;
-use hook_runtime_activation_failure::emit_activation_load_failure;
-use hook_runtime_activation_path::default_or_discovered_activation_path;
-use hook_runtime_agent_session::{classify_main_session_asp_exploration, load_asp_session_policy};
-pub(crate) use hook_runtime_agent_session_dispatch::{
-    enforce_configured_resident_spawn_contract as enforce_resident_spawn_from_snapshot,
-    materialize_resident_dispatch_wrapper as materialize_resident_dispatch_from_snapshot,
-};
 use hook_runtime_cli_args::{display_path, optional_flag_value};
-use hook_runtime_codex_plugin::codex_project_plugin_hooks_present;
-use hook_runtime_config_recovery::annotate_hook_config_repair;
-pub(crate) use hook_runtime_config_recovery::{
-    apply_language_provider_projection as apply_resident_language_provider_projection,
-    load_fresh_hook_config as load_resident_hook_config,
-};
 use hook_runtime_decision_render::{emit_decision, emit_hook_runtime_failure};
 use hook_runtime_doctor::run_doctor;
 pub(super) use hook_runtime_install::run_codex_plugin_install_args;
 use hook_runtime_install::run_install;
-use hook_runtime_resident_permissions::{
-    classify_read_only_resident_receipt, classify_read_only_resident_write,
-};
 use hook_runtime_source_access_materialize::materialize_source_access_deny_message;
-pub(crate) use hook_runtime_source_access_materialize::materialize_source_access_deny_message as materialize_source_access_from_snapshot;
 pub(crate) fn read_hook_input_bounded() -> Result<String, String> {
     hook_runtime_stdin::read_hook_stdin_bounded()
         .map_err(|error| format!("failed to read hook payload from stdin: {error}"))
 }
-#[cfg(test)]
-use hook_runtime_workspace_candidate::activation_repair_project_root;
 use hook_runtime_workspace_candidate::hook_workspace_candidate;
-pub(super) use hook_runtime_workspace_candidate::requests_explicit_asp_workspace;
-use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub(super) fn run_hook_runtime_args<I, S>(args: I) -> Result<(), String>
 where
@@ -95,47 +59,6 @@ where
     S: Into<String>,
 {
     run(args.into_iter().map(Into::into).collect())
-}
-
-pub(super) fn observe_runtime_generation_for_hook_client(
-    event: &str,
-    project_root: &Path,
-    payload: &serde_json::Value,
-) -> (bool, HookGenerationAdmissionObservation) {
-    let explicit_asp_workspace = requests_explicit_asp_workspace(payload);
-    if event != "post-tool" && !explicit_asp_workspace {
-        return (
-            explicit_asp_workspace,
-            HookGenerationAdmissionObservation::default(),
-        );
-    }
-    let changed_paths = hook_runtime_generation_admission::payload_changed_paths(payload);
-    let workspace_mutated = !changed_paths.is_empty();
-    let mutation_id = hook_runtime_generation_admission::payload_mutation_id(payload);
-    let observation = hook_runtime_generation_admission::observe(
-        event,
-        workspace_mutated,
-        mutation_id,
-        changed_paths,
-        explicit_asp_workspace,
-        |mutation_id, changed_paths| {
-            hook_runtime_generation_admission::request(project_root, mutation_id, changed_paths)
-        },
-        || hook_runtime_generation_admission::ensure_ready(project_root),
-    );
-    (explicit_asp_workspace, observation)
-}
-
-pub(super) fn materialize_runtime_generation_observation(
-    decision: &mut HookDecision,
-    explicit_asp_workspace: bool,
-    observation: HookGenerationAdmissionObservation,
-) {
-    hook_runtime_generation_admission::materialize_explicit_query_gate(
-        decision,
-        explicit_asp_workspace,
-        observation,
-    );
 }
 
 fn run(args: Vec<String>) -> Result<(), String> {
@@ -172,12 +95,6 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     ensure_supported_client(client)?;
     let emit = flag_value(args, "--emit").unwrap_or("platform");
     let event = first_positional(args).ok_or_else(|| "missing hook event".to_string())?;
-    let classification_event = if client == "codex" && event == "permission-request" {
-        "pre-tool"
-    } else {
-        event
-    };
-    let explicit_activation_path = flag_value(args, "--activation").map(PathBuf::from);
     let stdin = match hook_runtime_stdin::read_hook_stdin_bounded() {
         Ok(stdin) => stdin,
         Err(error) => {
@@ -188,6 +105,40 @@ fn run_hook(args: &[String]) -> Result<(), String> {
                 &format!("failed to read hook payload from stdin: {error}"),
             )?;
             return Ok(());
+        }
+    };
+    run_hook_from_bootstrap(args, stdin)
+}
+
+pub(crate) fn run_hook_from_bootstrap(args: &[String], stdin: String) -> Result<(), String> {
+    let client = flag_value(args, "--client")
+        .ok_or_else(|| "missing required --client <client>".to_string())?;
+    ensure_supported_client(client)?;
+    let emit = flag_value(args, "--emit").unwrap_or("platform");
+    let event = first_positional(args).ok_or_else(|| "missing hook event".to_string())?;
+    let classification_event = if client == "codex" && event == "permission-request" {
+        "pre-tool"
+    } else {
+        event
+    };
+    run_hook_with_input(args, client, event, emit, classification_event, stdin)
+}
+
+fn run_hook_with_input(
+    args: &[String],
+    client: &str,
+    event: &str,
+    emit: &str,
+    classification_event: &str,
+    stdin: String,
+) -> Result<(), String> {
+    let hook_started = std::time::Instant::now();
+    let trace_stage = |stage: &str| {
+        if std::env::var_os("ASP_HOOK_BOOTSTRAP_TRACE").is_some() {
+            eprintln!(
+                "[asp-hook] route=local-policy-evaluator stage={stage} elapsedMicros={}",
+                hook_started.elapsed().as_micros()
+            );
         }
     };
     let payload = match parse_payload(&stdin) {
@@ -202,390 +153,120 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             return Ok(());
         }
     };
-    if hook_runtime_bootstrap::emit_asp_no_agent_receipt_if_requested(
-        client, event, emit, &payload,
-    )? {
-        return Ok(());
+    let payload_root = payload
+        .get("cwd")
+        .and_then(serde_json::Value::as_str)
+        .filter(|cwd| !cwd.trim().is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| PathBuf::from("."));
+    let payload_root = fs::canonicalize(&payload_root).unwrap_or(payload_root);
+    let project_root = hook_workspace_candidate(&payload, &payload_root);
+    let project_root = fs::canonicalize(&project_root).unwrap_or(project_root);
+    match hook_runtime_host_lifecycle::record_host_lifecycle_event(
+        client,
+        event,
+        &payload,
+        &project_root,
+    ) {
+        Ok(true) => return Ok(()),
+        Ok(false) => {}
+        Err(error) => {
+            emit_hook_runtime_failure(client, event, emit, &error)?;
+            return Ok(());
+        }
     }
-    let activation_path =
-        explicit_activation_path.unwrap_or_else(|| default_or_discovered_activation_path(&payload));
-    let mut activation_auto_refresh = None;
-    let direct_read_project_root =
-        hook_runtime_workspace_candidate::direct_read_policy_project_root(&payload);
-    let mut runtime = if let Some(project_root) = direct_read_project_root.as_ref() {
-        // Direct reads are classified from the provider-registry Hook snapshot.
-        // Executable activation is irrelevant and may perform cold provider
-        // identity work that cannot fit the resident decision boundary.
-        agent_semantic_hook::HookRuntime {
-            project_root: project_root.display().to_string(),
-            rankers: Vec::new(),
-            providers: Vec::new(),
-        }
-    } else {
-        match load_activation(&activation_path) {
-            Ok(registry) => registry,
-            Err(initial_error) => {
-                let repair_project_root =
-                    match hook_runtime_workspace_candidate::activation_repair_project_root(
-                        &payload,
-                        &activation_path,
-                    ) {
-                        Ok(project_root) => project_root,
-                        Err(identity_error) => {
-                            emit_activation_load_failure(
-                                client,
-                                event,
-                                emit,
-                                &activation_path,
-                                &format!(
-                                    "initial load failed: {initial_error}; activation repair identity resolution failed: {identity_error}"
-                                ),
-                                &stdin,
-                            )?;
-                            return Ok(());
-                        }
-                    };
-                match agent_semantic_hook::load_or_sync_activation(
-                    &activation_path,
-                    &repair_project_root,
-                ) {
-                    Ok(registry) => {
-                        activation_auto_refresh = Some("completed:activation-refresh".to_string());
-                        registry
-                    }
-                    Err(reload_error) => {
-                        emit_activation_load_failure(
-                            client,
-                            event,
-                            emit,
-                            &activation_path,
-                            &format!(
-                                "initial load failed: {initial_error}; automatic activation refresh failed: {reload_error}"
-                            ),
-                            &stdin,
-                        )?;
-                        return Ok(());
-                    }
-                }
-            }
-        }
+    hook_runtime_performance_failure::relay_post_tool_wall_failure(event, &payload, &project_root)?;
+    let mut runtime = agent_semantic_hook::HookRuntime {
+        project_root: project_root.display().to_string(),
+        rankers: Vec::new(),
+        providers: Vec::new(),
     };
-    let activation_project_root = direct_read_project_root.unwrap_or_else(|| {
-        hook_runtime_activation_path::hook_runtime_project_root(
-            &activation_path,
-            &runtime.project_root,
-        )
-    });
-    let project_root = hook_workspace_candidate(&payload, &activation_project_root);
-    runtime.project_root = project_root.display().to_string();
     let config_path = flag_value(args, "--config")
         .map(PathBuf::from)
         .unwrap_or_else(|| default_client_config_path(&project_root.to_string_lossy()));
     let (loaded_hook_config, hook_matcher_generation_status) =
-        hook_runtime_config_recovery::load_fresh_hook_config(
-            &config_path,
-            &project_root,
-            &runtime,
-        )?;
+        hook_runtime_config_recovery::load_fresh_hook_config(&config_path, &project_root)?;
+    trace_stage("config-loaded");
     let hook_config = &loaded_hook_config.config;
-    let asp_session_policy = &loaded_hook_config.asp_session_policy;
-    let hook_config_repair_reasons = &loaded_hook_config.repair_reasons;
-    let hook_config_auto_refresh = loaded_hook_config.auto_refresh.as_deref();
-    let hook_config_refresh_receipt = hook_config_auto_refresh.unwrap_or("not-required");
     hook_runtime_config_recovery::apply_language_provider_projection(
         hook_config,
         &mut runtime,
         &config_path,
-        hook_config_refresh_receipt,
     )?;
-    let agent_session_decision = if classification_event == "pre-tool" {
-        None
-    } else {
-        classify_main_session_asp_exploration(
-            &project_root,
-            client,
-            classification_event,
-            asp_session_policy,
-            &payload,
-        )?
-    };
-    let classified_decision = classify_hook_with_config(HookClassificationRequest {
+    let mut decision = classify_hook_with_config(HookClassificationRequest {
         registry: &runtime,
         config: hook_config,
         platform: client,
         event: classification_event,
         payload: &payload,
     });
-    let changed_paths = hook_runtime_generation_admission::payload_changed_paths(&payload);
-    let workspace_mutated = !changed_paths.is_empty();
-    let mutation_id = hook_runtime_generation_admission::payload_mutation_id(&payload);
-    let mut decision = if let Some(read_only_decision) = classify_read_only_resident_receipt(
-        &project_root,
-        client,
-        classification_event,
-        asp_session_policy,
-        &payload,
-    ) {
-        read_only_decision
-    } else if let Some(read_only_decision) = classify_read_only_resident_write(
-        &project_root,
-        client,
-        classification_event,
-        asp_session_policy,
-        &payload,
-    ) {
-        read_only_decision
-    } else if let Some(agent_session_decision) = agent_session_decision {
-        agent_session_decision
-    } else {
-        classified_decision
-    };
+    trace_stage("classified");
     decision.fields.insert(
         "hookMatcherGeneration".to_owned(),
         serde_json::Value::String(hook_matcher_generation_status.to_owned()),
     );
     decision.event = event.to_string();
-    hook_runtime_agent_session_dispatch::enforce_configured_resident_spawn_contract(
-        hook_config,
-        client,
-        classification_event,
-        &payload,
-        &mut decision,
-    );
-    hook_runtime_agent_session_dispatch::materialize_resident_dispatch_wrapper(
-        &payload,
-        &mut decision,
-    );
-    let explicit_asp_workspace = requests_explicit_asp_workspace(&payload);
-    let runtime_generation_admission = hook_runtime_generation_admission::observe(
-        classification_event,
-        workspace_mutated,
-        mutation_id,
-        changed_paths,
-        explicit_asp_workspace,
-        |mutation_id, changed_paths| {
-            hook_runtime_generation_admission::request(&project_root, mutation_id, changed_paths)
-        },
-        || {
-            if explicit_asp_workspace {
-                hook_runtime_generation_admission::ensure_ready(&project_root)
-            } else {
-                hook_runtime_generation_admission::ensure(&project_root)
-            }
-        },
-    );
-    if let Some(auto_refresh) = hook_config_auto_refresh {
-        annotate_hook_config_repair(
-            &mut decision,
-            &config_path,
-            hook_config_repair_reasons.as_slice(),
-            auto_refresh,
-        );
-    }
-    if let Some(receipt) = activation_auto_refresh {
-        decision.fields.insert(
-            "activationAutoRefresh".to_string(),
-            serde_json::Value::String(receipt),
-        );
-        decision.fields.insert(
-            "activationRecoveryStatus".to_string(),
-            serde_json::Value::String("reloaded-and-classified".to_string()),
-        );
-    }
-    hook_runtime_generation_admission::materialize_explicit_query_gate(
-        &mut decision,
-        explicit_asp_workspace,
-        runtime_generation_admission,
-    );
-    if matches!(event, "subagent-start" | "subagent-stop") {
-        let mut payload_keys = payload
-            .as_object()
-            .map(|object| object.keys().cloned().collect::<Vec<_>>())
-            .unwrap_or_default();
-        payload_keys.sort();
-        decision.fields.insert(
-            "hookPayloadKeys".to_string(),
-            serde_json::json!(payload_keys),
-        );
-        for (payload_key, field_key) in [
-            ("agent_id", "hookObservedChildId"),
-            ("session_id", "hookObservedRootSessionId"),
-            ("agent_type", "hookObservedAgentType"),
-            ("model", "hookObservedModel"),
-            ("reasoning_effort", "hookObservedReasoningEffort"),
-            ("permission_mode", "hookObservedPermissionMode"),
-        ] {
-            if let Some(value) = payload.get(payload_key).and_then(serde_json::Value::as_str) {
-                decision.fields.insert(
-                    field_key.to_string(),
-                    serde_json::Value::String(value.to_string()),
-                );
-            }
-        }
-    }
-    if event == "subagent-stop"
-        && let Some(session_id) =
-            archive_stopped_managed_child(client, &project_root, &payload, asp_session_policy)?
-    {
-        decision.decision = DecisionKind::Allow;
-        decision.reason_kind = ReasonKind::None;
-        decision.message = if client == "codex" {
-            "ASP preserved the completed managed resident as idle; allow the native child turn to finish."
-                    .to_string()
-        } else {
-            "ASP archived the stopped managed child; allow native subagent shutdown.".to_string()
-        };
-        decision.fields.insert(
-            "agentSessionAction".to_string(),
-            serde_json::Value::String(if client == "codex" {
-                "subagent-stop-preserved-resident-idle".to_string()
-            } else {
-                "subagent-stop-archived-managed-child".to_string()
-            }),
-        );
-        decision.fields.insert(
-            "childSessionId".to_string(),
-            serde_json::Value::String(session_id),
-        );
-    }
-    if let Err(error) = annotate_payload_context(&project_root, &mut decision, &payload) {
-        eprintln!("[agent-semantic-hook] failed to annotate hook payload context: {error}");
-    }
-    materialize_source_access_deny_message(&mut decision, hook_config);
+    annotate_payload_context(&mut decision, &payload);
+    materialize_source_access_deny_message(&mut decision);
     if let Err(error) = apply_repeated_deny_replay(&project_root, &mut decision) {
         eprintln!("[agent-semantic-hook] failed to inspect hook replay state: {error}");
     }
-    if let Err(error) = enforce_resident_child_deny_contract(
-        &project_root,
-        asp_session_policy,
-        &payload,
-        &mut decision,
-    ) {
-        eprintln!("[agent-semantic-hook] failed to enforce resident child deny contract: {error}");
+    hook_runtime_agent_session_dispatch::materialize_org_choice_plane_reference(&mut decision);
+    let decision_elapsed_micros =
+        u64::try_from(hook_started.elapsed().as_micros()).unwrap_or(u64::MAX);
+    let decision_budget_micros = 1_000_000_u64;
+    decision.fields.insert(
+        "hookDecisionElapsedMicros".to_owned(),
+        serde_json::json!(decision_elapsed_micros),
+    );
+    decision.fields.insert(
+        "hookDecisionBudgetMicros".to_owned(),
+        serde_json::json!(decision_budget_micros),
+    );
+    decision.fields.insert(
+        "hookDecisionBudgetStatus".to_owned(),
+        serde_json::Value::String(
+            if decision_elapsed_micros <= decision_budget_micros {
+                "within-budget"
+            } else {
+                "budget-exceeded"
+            }
+            .to_owned(),
+        ),
+    );
+    decision.fields.insert(
+        "hookEventProjectionStatus".to_owned(),
+        serde_json::Value::String("recorded".to_owned()),
+    );
+    let event_projection_started = std::time::Instant::now();
+    // The decision plane is authoritative; the JSONL event file is only a
+    // diagnostic projection. A contended or damaged telemetry sink must never
+    // suppress an already-computed allow/deny decision.
+    if let Err(error) = agent_semantic_hook::try_append_hook_event_state(&project_root, &decision) {
+        decision.fields.insert(
+            "hookEventProjectionStatus".to_owned(),
+            serde_json::Value::String("unavailable".to_owned()),
+        );
+        eprintln!(
+            "[agent-semantic-hook] event projection unavailable; decision remains authoritative: {error}"
+        );
     }
-    record_active_context(ActiveContextRecord {
-        activation_path: &activation_path,
-        platform: client,
-        event,
-        payload: &payload,
-        decision: &decision,
-    });
-    append_hook_event_state(&project_root, &decision).map_err(|error| {
-        format!("hook decision transaction did not commit its event projection: {error}")
-    })?;
-    let result = emit_decision(emit, &decision);
-    result
+    decision.fields.insert(
+        "hookEventProjectionLockWaitMicros".to_owned(),
+        serde_json::json!(
+            u64::try_from(event_projection_started.elapsed().as_micros()).unwrap_or(u64::MAX)
+        ),
+    );
+    trace_stage("complete");
+    emit_decision(emit, &decision)
 }
 
-fn archive_stopped_managed_child(
-    platform: &str,
-    project_root: &Path,
-    payload: &serde_json::Value,
-    asp_session_policy: &hook_runtime_agent_session::AspSessionPolicy,
-) -> Result<Option<String>, String> {
-    let session_id = if platform == "codex" {
-        if payload
-            .get("hook_event_name")
-            .and_then(serde_json::Value::as_str)
-            != Some("SubagentStop")
-        {
-            return Ok(None);
-        }
-        let Some(agent_type) = string_field(payload, &["agent_type", "agentType"]) else {
-            return Ok(None);
-        };
-        if agent_type != asp_session_policy.resident_agent_role() {
-            return Ok(None);
-        }
-        let Some(agent_id) = string_field(payload, &["agent_id", "agentId"]) else {
-            return Ok(None);
-        };
-        agent_id
-    } else {
-        let Some(session_id) = string_field(
-            payload,
-            &[
-                "child_session_id",
-                "childSessionId",
-                "session_id",
-                "sessionId",
-            ],
-        ) else {
-            return Ok(None);
-        };
-        session_id
-    };
-    let Some(registry) = AgentSessionRegistry::open_existing_project(project_root)? else {
-        return Ok(None);
-    };
-    let project_id = AgentSessionRegistry::workspace_id(project_root)?;
-    let Some(session) = registry.lookup_session(AgentSessionLookupRequest {
-        project_id: (&project_id).into(),
-        session_id: Some((&session_id).into()),
-        root_session_id: None,
-        name: None,
-    })?
-    else {
-        return Ok(None);
-    };
-    if !hook_runtime_agent_session::session_matches_resident_agent(
-        &session,
-        asp_session_policy.resident_child_name(),
-        asp_session_policy.resident_agent_role(),
-    ) {
-        return Ok(None);
-    }
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|error| format!("failed to read subagent-stop timestamp: {error}"))?
-        .as_secs() as i64;
-    // Codex emits SubagentStop when one child turn finishes, while the native
-    // collaboration target remains addressable through followup_task. A
-    // resident therefore becomes idle here; archiving it would confuse turn
-    // completion with resident identity termination.
-    let updated = if platform == "codex" {
-        registry.update_session_status(&project_id, &session_id, "idle", now)?
-    } else {
-        registry.archive_session(&project_id, &session_id, now)?
-    };
-    if updated {
-        return Ok(Some(session_id));
-    }
-    Ok(None)
-}
-
-fn resident_asp_explore_sandbox_mode() -> Option<String> {
-    let Some(path) = std::env::var_os("ASP_AGENTS_HOME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|home| {
-                std::path::PathBuf::from(home)
-                    .join(".agent-semantic-protocols")
-                    .join("agents")
-            })
-        })
-        .map(|path| path.join("asp-explorer_codex.toml"))
-    else {
-        return Some("read-only".to_string());
-    };
-    let Some(contents) = std::fs::read_to_string(path).ok() else {
-        return Some("read-only".to_string());
-    };
-    let Some(config) = toml::from_str::<toml::Value>(&contents).ok() else {
-        return Some("read-only".to_string());
-    };
-    config
-        .get("sandbox_mode")
-        .and_then(toml::Value::as_str)
-        .map(str::to_string)
-        .or_else(|| Some("read-only".to_string()))
-}
-
-fn annotate_payload_context(
-    project_root: &Path,
-    decision: &mut HookDecision,
-    payload: &serde_json::Value,
-) -> Result<(), String> {
+fn annotate_payload_context(decision: &mut HookDecision, payload: &serde_json::Value) {
+    annotate_host_root_session_identity(
+        &mut decision.fields,
+        std::env::var("CODEX_THREAD_ID").ok().as_deref(),
+    );
     for (field, keys) in [
         ("sessionId", &["session_id", "sessionId"][..]),
         ("transcriptPath", &["transcript_path", "transcriptPath"][..]),
@@ -601,287 +282,24 @@ fn annotate_payload_context(
                 .insert(field.to_string(), serde_json::Value::String(value));
         }
     }
-    let subagent_context = payload_indicates_subagent_context(payload)
-        || has_recorded_subagent_context(
-            project_root,
-            decision
-                .fields
-                .get("sessionId")
-                .and_then(serde_json::Value::as_str)
-                .map(Into::into),
-            decision
-                .fields
-                .get("transcriptPath")
-                .and_then(serde_json::Value::as_str)
-                .map(Into::into),
-        )
-        .map_err(|error| error.to_string())?;
+    let subagent_context = payload_indicates_subagent_context(payload);
     if !decision.fields.contains_key("subagentContext") && subagent_context {
         decision
             .fields
             .insert("subagentContext".to_string(), serde_json::Value::Bool(true));
     }
-    if decision.decision == DecisionKind::Deny
-        && subagent_context
-        && !hook_selected_resident_execution(decision)
-    {
-        decision.message = subagent_deny_message(&decision.message);
-    }
-    Ok(())
 }
 
-fn hook_selected_resident_execution(decision: &HookDecision) -> bool {
-    decision.has_configured_resident_dispatch()
-        || decision.fields.contains_key("executionLane")
-            && decision
-                .fields
-                .get("executionTransport")
-                .and_then(serde_json::Value::as_str)
-                == Some("resident-agent")
-}
-
-fn enforce_resident_child_deny_contract(
-    project_root: &Path,
-    asp_session_policy: &hook_runtime_agent_session::AspSessionPolicy,
-    payload: &serde_json::Value,
-    decision: &mut HookDecision,
-) -> Result<(), String> {
-    if decision.decision != DecisionKind::Deny {
-        return Ok(());
-    }
-    let payload_agent_id = ["agent_id", "agentId"]
-        .iter()
-        .find_map(|field| payload.get(*field).and_then(serde_json::Value::as_str));
-    let payload_session_id = ["session_id", "sessionId"]
-        .iter()
-        .find_map(|field| payload.get(*field).and_then(serde_json::Value::as_str));
-    let transcript_matches_payload_session = ["transcript_path", "transcriptPath"]
-        .iter()
-        .find_map(|field| payload.get(*field).and_then(serde_json::Value::as_str))
-        .and_then(|path| Path::new(path).file_name())
-        .and_then(|name| name.to_str())
-        .zip(payload_session_id)
-        .map(|(name, session_id)| name.contains(session_id));
-    let codex_root_thread_id = env::var("CODEX_THREAD_ID").ok();
-    if payload_agent_id.is_none()
-        && payload_session_id.is_some()
-        && (payload_session_id == codex_root_thread_id.as_deref()
-            || transcript_matches_payload_session == Some(true))
-        && transcript_matches_payload_session != Some(false)
-    {
-        decision.fields.insert(
-            "payloadLiveTargetIdentityProofStatus".to_string(),
-            serde_json::Value::String("root-hook-envelope".to_string()),
-        );
-        return Ok(());
-    }
-    let configured_resident_name = decision
-        .fields
-        .get("residentChildName")
-        .or_else(|| decision.fields.get("residentName"))
-        .and_then(serde_json::Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| asp_session_policy.resident_child_name())
-        .to_string();
-    let configured_resident_role = decision
-        .fields
-        .get("targetAgentRole")
-        .and_then(serde_json::Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| asp_session_policy.resident_agent_role())
-        .to_string();
-    let configured_resident_agent_name = decision
-        .fields
-        .get("targetAgentName")
-        .and_then(serde_json::Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| asp_session_policy.resident_codex_agent_name())
-        .to_string();
-    for (decision_field, payload_fields) in [
-        ("codexHookAgentId", ["agent_id", "agentId"]),
-        ("codexHookAgentType", ["agent_type", "agentType"]),
-    ] {
-        if let Some(value) = payload_fields
-            .iter()
-            .find_map(|field| payload.get(*field).and_then(serde_json::Value::as_str))
-        {
-            decision.fields.insert(
-                decision_field.to_string(),
-                serde_json::Value::String(value.to_string()),
-            );
-        }
-    }
-    let mut identity_proof =
-        hook_runtime_agent_session::current_session_configured_resident_identity_proof(
-            project_root,
-            payload,
-            &configured_resident_name,
-            &configured_resident_role,
-            &configured_resident_agent_name,
-        )?;
-    let root_session_id = decision
-        .fields
-        .get("sessionId")
-        .and_then(serde_json::Value::as_str)
-        .filter(|session_id| !session_id.trim().is_empty())
-        .map(str::to_string);
-    if identity_proof.is_none()
-        && let Some(root_session_id) = root_session_id.as_deref()
-    {
-        identity_proof =
-            crate::command::agent_session_registry::payload_live_target_resident_identity_proof(
-                project_root,
-                payload_agent_id,
-                root_session_id,
-                &configured_resident_name,
-                &configured_resident_role,
-                &configured_resident_agent_name,
-            )?;
-        if identity_proof.is_none() {
-            let status =
-                crate::command::agent_session_registry::payload_live_target_resident_identity_status(
-                    project_root,
-                    payload_agent_id,
-                    root_session_id,
-                    &configured_resident_name,
-                    &configured_resident_role,
-                    &configured_resident_agent_name,
-                )?;
-            decision.fields.insert(
-                "payloadLiveTargetIdentityProofStatus".to_string(),
-                serde_json::Value::String(status.to_string()),
-            );
-        }
-    }
-    if identity_proof.is_none() {
-        return Ok(());
-    }
-    let serialized_reason_kind = serde_json::to_value(&*decision).ok().and_then(|value| {
-        value
-            .get("reasonKind")
-            .and_then(serde_json::Value::as_str)
-            .map(ToOwned::to_owned)
-    });
-    let parser_owned_stage = decision
-        .fields
-        .get("blockedAspStage")
-        .and_then(serde_json::Value::as_str)
-        .is_some_and(|stage| matches!(stage, "search" | "query" | "-search" | "-query"))
-        || decision
-            .fields
-            .get("aspCommandRoute")
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|route| route.starts_with("search") || route.starts_with("query"));
-    let resident_parser_owned_search = identity_proof.is_some()
-        && serialized_reason_kind.as_deref() == Some("asp-reasoning-routed")
-        && parser_owned_stage;
-    let configured_resident_dispatch = identity_proof.is_some()
-        && decision
-            .fields
-            .get("agentSessionAction")
-            .and_then(serde_json::Value::as_str)
-            == Some("dispatch-configured-resident")
-        && decision
-            .fields
-            .get("residentName")
-            .and_then(serde_json::Value::as_str)
-            == Some(configured_resident_name.as_str())
-        && decision
-            .fields
-            .get("receiptKind")
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|value| !value.trim().is_empty());
-    for field in [
-        "requiredAction",
-        "nextAction",
-        "agentSessionLoopCommand",
-        "agentSessionBootstrap",
-        "agentSessionBootstrapGuideCommand",
-        "agentSessionBootstrapCommand",
-    ] {
-        decision.fields.remove(field);
-    }
-    decision
-        .fields
-        .insert("subagentContext".to_string(), serde_json::Value::Bool(true));
-    let reason = serde_json::to_value(decision.reason_kind)
-        .ok()
-        .and_then(|value| value.as_str().map(str::to_string))
-        .unwrap_or_else(|| "source-access".to_string());
-    let recovery_ref = decision
-        .fields
-        .get("recoveryRef")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("resident-child-direct-route");
-    let compact_message = format!(
-        "ASP denied source access (`{reason}`) inside `{configured_resident_name}`. Next: execute the selected parser-owned ASP route and return `asp.search.playbook-receipt`. recoveryRef={recovery_ref}"
-    );
-    decision.fields.insert(
-        "registeredResidentChild".to_string(),
-        serde_json::Value::Bool(matches!(
-            identity_proof,
-            Some(
-                crate::command::ResidentChildIdentityProof::RegistryExact
-                    | crate::command::ResidentChildIdentityProof::CodexTranscriptRegistryExact
-                    | crate::command::ResidentChildIdentityProof::CodexHookPayloadLiveTarget
-            )
-        )),
-    );
-    if let Some(identity_proof) = identity_proof {
-        decision.fields.insert(
-            "residentChildIdentityProof".to_string(),
-            serde_json::Value::String(
-                match identity_proof {
-                    crate::command::ResidentChildIdentityProof::CodexHookPayload => {
-                        "codex-hook-payload"
-                    }
-                    crate::command::ResidentChildIdentityProof::RegistryExact => "registry-exact",
-                    crate::command::ResidentChildIdentityProof::CodexTranscriptRegistryExact => {
-                        "codex-transcript-registry-exact"
-                    }
-                    crate::command::ResidentChildIdentityProof::CodexRolloutMetadata => {
-                        "codex-rollout-metadata"
-                    }
-                    crate::command::ResidentChildIdentityProof::CodexHookPayloadLiveTarget => {
-                        "codex-hook-payload-live-target"
-                    }
-                }
-                .to_string(),
-            ),
-        );
-    }
-    if resident_parser_owned_search || configured_resident_dispatch {
-        decision.decision = DecisionKind::Allow;
-        decision.reason_kind = ReasonKind::None;
-        decision.fields.insert(
-            "agentSessionAction".to_string(),
-            serde_json::Value::String("active-hook-selected-resident".to_string()),
-        );
-        decision.fields.insert(
-            "executionLane".to_string(),
-            serde_json::Value::String(
-                if configured_resident_name == "asp_testing" {
-                    "testing"
-                } else {
-                    "search"
-                }
-                .to_string(),
-            ),
-        );
-        hook_runtime_agent_session::append_terminal_execution_fields(
-            &mut decision.fields,
-            "active-hook-selected-resident",
-        );
-        decision.fields.insert(
-            "residentChildConfiguredCommand".to_string(),
-            serde_json::Value::Bool(true),
-        );
-        decision.message = "Registered resident child may execute the command selected for its configured profile directly."
-            .to_string();
-        return Ok(());
-    }
-    decision.message = compact_message;
-    Ok(())
+fn annotate_host_root_session_identity(
+    fields: &mut std::collections::BTreeMap<String, serde_json::Value>,
+    host_root: Option<&str>,
+) {
+    let Some(host_root) = host_root.filter(|value| !value.trim().is_empty()) else {
+        return;
+    };
+    fields
+        .entry("hostRootSessionId".to_string())
+        .or_insert_with(|| serde_json::Value::String(host_root.to_string()));
 }
 
 fn string_field(value: &serde_json::Value, keys: &[&str]) -> Option<String> {

@@ -92,7 +92,7 @@ fn infer_agent_action_subject_kind(
                     || normalized
                         .strip_prefix(root)
                         .is_some_and(|suffix| suffix.starts_with('/'))
-                    || contains_path_component_sequence(&normalized, root)
+                    || contains_path_component_sequence(normalized, root)
             })
     });
     if registered_source_scope
@@ -105,54 +105,8 @@ fn infer_agent_action_subject_kind(
         return AgentActionSubjectKind::Directory;
     }
 
-    let Some((_, suffix)) = leaf.rsplit_once('.') else {
-        return AgentActionSubjectKind::Other;
-    };
-    if suffix.is_empty()
-        || !suffix
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '*' | '?' | '[' | ']' | '-'))
-    {
-        return AgentActionSubjectKind::Other;
-    }
-
-    let registered = if suffix
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
-    {
-        crate::hook_policy_kernel::snapshot_supports_source_file(
-            &registry.project_root,
-            std::path::Path::new(value),
-        )
-        .unwrap_or_else(|| {
-            registry.providers.iter().any(|provider| {
-                let extension_matches =
-                    agent_semantic_config::source_extension::source_extensions_support_file(
-                        &provider.source_extensions,
-                        std::path::Path::new(value),
-                    );
-                let ignored = std::iter::empty::<&String>().any(|prefix| {
-                    normalized == prefix
-                        || normalized
-                            .strip_prefix(prefix)
-                            .is_some_and(|suffix| suffix.starts_with('/'))
-                });
-                let root_matches = !normalized.contains('/')
-                    || provider.package_roots.is_empty()
-                    || provider.package_roots.iter().any(|root| {
-                        root == "."
-                            || normalized == root
-                            || normalized
-                                .strip_prefix(root)
-                                .is_some_and(|suffix| suffix.starts_with('/'))
-                            || contains_path_component_sequence(&normalized, root)
-                    });
-                extension_matches && !ignored && root_matches
-            })
-        })
-    } else {
-        !collect_source_selector_matches(registry, std::iter::once(value), |_| true).is_empty()
-    };
+    let registered =
+        !collect_source_selector_matches(registry, std::iter::once(value), |_| true).is_empty();
     if !registered {
         return AgentActionSubjectKind::Other;
     }

@@ -1,4 +1,4 @@
-use crate::rust_harness_activation::support::{asp_command, temp_project_root};
+use crate::rust_harness_activation::support::{asp_binary_path, temp_project_root};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
@@ -16,16 +16,21 @@ pub(super) fn write_real_asp_launcher(bin_dir: &Path) {
     let command = protocol_command();
     let binary = std::fs::canonicalize(command.get_program()).expect("resolve test ASP binary");
     std::fs::create_dir_all(bin_dir).expect("create test agent bin dir");
-    #[cfg(unix)]
-    std::os::unix::fs::symlink(&binary, bin_dir.join("asp")).expect("link test ASP launcher");
-    #[cfg(not(unix))]
-    std::fs::copy(&binary, bin_dir.join("asp.exe")).expect("copy test ASP launcher");
+    std::fs::hard_link(
+        &binary,
+        bin_dir.join(format!("asp{}", std::env::consts::EXE_SUFFIX)),
+    )
+    .expect("hard-link immutable test ASP launcher");
 }
 
 pub(super) fn protocol_command() -> Command {
     let org_repo = local_test_org_repo();
     let state_home = isolated_asp_state_home();
-    let mut command = asp_command();
+    let input_bin_dir = state_home.join("test-input-bin");
+    std::fs::create_dir_all(&input_bin_dir).expect("create isolated ASP input bin dir");
+    let input_binary = input_bin_dir.join(format!("asp{}", std::env::consts::EXE_SUFFIX));
+    std::fs::copy(asp_binary_path(), &input_binary).expect("copy isolated ASP input binary");
+    let mut command = Command::new(input_binary);
     command.env("ASP_ORG_REPO_URL", org_repo);
     command.env("ASP_STATE_HOME", state_home);
     command.env("GIT_CONFIG_NOSYSTEM", "1");
@@ -85,22 +90,6 @@ pub(super) fn codex_plugin_install_args(root: &Path) -> [String; 5] {
     ]
 }
 
-pub(super) fn codex_plugin_install_args_with_subagent_model(
-    root: &Path,
-    model: &str,
-) -> [String; 7] {
-    prepare_project_state(root);
-    [
-        "install".to_string(),
-        "plugin".to_string(),
-        "--codex".to_string(),
-        "--project".to_string(),
-        "--subagent-model".to_string(),
-        model.to_string(),
-        root.to_str().expect("utf8 temp root").to_string(),
-    ]
-}
-
 fn write_test_codex_plugin(root: &Path) {
     let plugin_root = root.join("asp-codex-plugin");
     let manifest = plugin_root.join(".codex-plugin/plugin.json");
@@ -114,16 +103,11 @@ fn write_test_codex_plugin(root: &Path) {
   "description": "Test ASP Codex plugin",
   "author": {"name": "ASP"},
   "skills": "./skills/",
-  "hooks": "./hooks/hooks.json",
   "interface": {"displayName": "ASP Test"}
 }
 "#,
     )
     .expect("write plugin manifest");
-    let hooks = plugin_root.join("hooks/hooks.json");
-    std::fs::create_dir_all(hooks.parent().expect("plugin hooks parent"))
-        .expect("create plugin hooks dir");
-    std::fs::write(&hooks, r#"{"hooks":{}}"#).expect("write plugin hooks");
 }
 
 fn local_test_org_repo() -> PathBuf {

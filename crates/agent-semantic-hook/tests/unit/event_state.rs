@@ -1,17 +1,19 @@
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::OsString;
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::path::PathBuf;
 use std::sync::MutexGuard;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use agent_semantic_hook::{
     DecisionKind, DecisionRoute, DecisionRouteKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
     ReasonKind, StdinMode, append_hook_event_state, has_recorded_subagent_context,
+    latest_hook_session_agent_route,
 };
+use fs2::FileExt;
 use serde_json::Value;
 
 #[test]
@@ -67,30 +69,65 @@ fn concurrent_hook_event_appends_write_valid_json_lines() {
 }
 
 #[test]
-fn legacy_lock_path_is_not_hook_event_authority() {
+fn event_writer_lock_contention_is_bounded_and_fail_closed() {
     let project_root = unique_project_root();
     let state_home = unique_state_home(&project_root);
     let _state_home_guard = AspStateHomeGuard::activate(state_home);
-    let run_id = project_root
-        .file_name()
-        .and_then(|name| name.to_str())
-        .expect("temp project root name")
-        .to_string();
-
-    let event_path = append_hook_event_state(&project_root, &decision(&run_id, 0))
+    let event_path = append_hook_event_state(&project_root, &decision("lock-owner", 0))
         .expect("first event transaction should commit");
-    let legacy_lock_path = event_path.with_file_name("events.jsonl.lock");
-    fs::create_dir_all(&legacy_lock_path).expect("legacy lock obstruction");
+    let lock_path = event_path.with_file_name("events.jsonl.lock");
+    assert!(
+        lock_path.is_file(),
+        "cross-process lock file must be durable"
+    );
+    let lock = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .expect("open event writer lock");
+    lock.lock_exclusive().expect("hold event writer lock");
+    let started = Instant::now();
+    let error = append_hook_event_state(&project_root, &decision("contended", 1))
+        .expect_err("contended event transaction must fail closed");
+    let elapsed = started.elapsed();
+    assert!(error.contains("exceeded 100ms"), "{error}");
+    assert!(
+        elapsed >= Duration::from_millis(100) && elapsed < Duration::from_millis(500),
+        "event writer lock boundary drifted: {elapsed:?}"
+    );
+    FileExt::unlock(&lock).expect("release event writer lock");
 
-    append_hook_event_state(&project_root, &decision(&run_id, 1))
-        .expect("legacy lock path must not participate in event authority");
+    fs::remove_dir_all(&project_root).ok();
+}
 
-    let committed = fs::read_to_string(&event_path)
-        .expect("event projection")
-        .lines()
-        .filter(|line| line.contains(&run_id))
-        .count();
-    assert_eq!(committed, 2);
+#[test]
+fn decision_event_projection_never_waits_for_a_contended_writer() {
+    let project_root = unique_project_root();
+    let state_home = unique_state_home(&project_root);
+    let _state_home_guard = AspStateHomeGuard::activate(state_home);
+    let event_path = append_hook_event_state(&project_root, &decision("lock-owner", 0))
+        .expect("first event transaction should commit");
+    let lock_path = event_path.with_file_name("events.jsonl.lock");
+    let lock = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .expect("open event writer lock");
+    lock.lock_exclusive().expect("hold event writer lock");
+
+    let started = Instant::now();
+    let error = agent_semantic_hook::try_append_hook_event_state(
+        &project_root,
+        &decision("contended-decision", 1),
+    )
+    .expect_err("diagnostic projection must be dropped under contention");
+    let elapsed = started.elapsed();
+    assert!(error.contains("exceeded 0ms"), "{error}");
+    assert!(
+        elapsed < Duration::from_millis(20),
+        "decision projection waited behind telemetry: {elapsed:?}"
+    );
+    FileExt::unlock(&lock).expect("release event writer lock");
 
     fs::remove_dir_all(&project_root).ok();
 }
@@ -366,31 +403,10 @@ fn configured_resident_dispatch_requires_complete_canonical_fields() {
 
     insert_configured_resident_dispatch(&mut decision);
     assert!(decision.has_configured_resident_dispatch());
-    let command = decision
-        .configured_resident_interactive_command()
-        .expect("configured resident command");
-    assert_eq!(
-        command.argv(),
-        [
-            "asp",
-            "agent",
-            "session",
-            "bootstrap",
-            "--name",
-            "asp_testing",
-            "--root-session-id",
-            "root-session-test",
-            "--receipt-kind",
-            "asp-testing-execution-v1",
-        ]
-    );
-    assert_eq!(
-        decision
-            .configured_resident_interactive_command_line()
-            .as_deref(),
-        Some(
-            "asp agent session bootstrap --name asp_testing --root-session-id root-session-test --receipt-kind asp-testing-execution-v1"
-        )
+    let serialized = serde_json::to_value(&decision).expect("serialize configured dispatch");
+    assert!(
+        serialized.get("interactiveCommand").is_none(),
+        "configured dispatch must not synthesize a Rust-owned ChoicePlane"
     );
 
     decision.fields.insert(
@@ -407,6 +423,9 @@ fn insert_configured_resident_dispatch(decision: &mut HookDecision) {
         ("residentName", "asp_testing"),
         ("receiptKind", "asp-testing-execution-v1"),
         ("targetAgentName", "asp_testing"),
+        ("targetAgentRole", "asp_testing"),
+        ("configRuleId", "resident-testing-dispatch"),
+        ("commandDigest", "sha256:test-command"),
         ("sessionId", "root-session-test"),
     ] {
         decision.fields.insert(
@@ -414,6 +433,51 @@ fn insert_configured_resident_dispatch(decision: &mut HookDecision) {
             serde_json::Value::String(value.to_string()),
         );
     }
+}
+
+#[test]
+fn latest_session_route_is_read_only_and_config_selected() {
+    let _state_home = AspStateHomeGuard::activate_isolated();
+    let project_root = unique_project_root();
+    let mut unrelated = decision("unrelated-route", 0);
+    insert_configured_resident_dispatch(&mut unrelated);
+    unrelated.fields.insert(
+        "sessionId".to_string(),
+        Value::String("another-root".to_string()),
+    );
+    append_hook_event_state(&project_root, &unrelated).expect("append unrelated route");
+
+    let mut selected = decision("selected-route", 1);
+    insert_configured_resident_dispatch(&mut selected);
+    for preselected_field in [
+        "transport",
+        "residentName",
+        "targetAgentName",
+        "targetAgentRole",
+        "agentSessionAction",
+        "receiptKind",
+    ] {
+        selected.fields.remove(preselected_field);
+    }
+    selected.fields.insert(
+        "agentWindowCommand".to_owned(),
+        Value::String("asp session --agents choice-plane".to_owned()),
+    );
+    selected.fields.insert(
+        "choicePlaneOwner".to_owned(),
+        Value::String("org-contract:agent-interactive".to_owned()),
+    );
+    append_hook_event_state(&project_root, &selected).expect("append selected route");
+
+    let route = latest_hook_session_agent_route(&project_root)
+        .expect("read route")
+        .expect("configured route");
+    assert_eq!(route.command_digest.as_deref(), Some("sha256:test-command"));
+    assert_eq!(route.config_rule_id, "resident-testing-dispatch");
+    assert_eq!(route.root_session_id, "root-session-test");
+    assert_eq!(route.subject_command.as_deref(), Some("cargo test"));
+
+    fs::remove_dir_all(project_root).ok();
 }
 
 #[test]

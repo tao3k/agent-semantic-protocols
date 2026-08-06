@@ -6,6 +6,12 @@ use crate::runtime_server_workspace::{WorkspaceGenerationSnapshot, WorkspaceGene
 
 fn snapshot(active_epoch: u64) -> WorkspaceGenerationSnapshot {
     let digest = || format!("blake3-256:{active_epoch:064x}");
+    let workspace_snapshot =
+        agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes([(
+            "src/lib.rs",
+            format!("epoch-{active_epoch}"),
+        )]);
+    let source_root_digest = format!("blake3-256:{}", workspace_snapshot.root_digest());
     WorkspaceGenerationSnapshot {
         schema_id: WORKSPACE_GENERATION_SCHEMA_ID.to_owned(),
         schema_version: "1".to_owned(),
@@ -18,7 +24,7 @@ fn snapshot(active_epoch: u64) -> WorkspaceGenerationSnapshot {
         leaf_count: 1,
         owner_count: 1,
         provider_schema_digest: digest(),
-        source_root_digest: digest(),
+        source_root_digest,
         base_root_digest: None,
         source_provider_digest: digest(),
         dirty_paths_digest: None,

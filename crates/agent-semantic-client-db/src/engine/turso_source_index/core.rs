@@ -145,7 +145,7 @@ use super::readiness::turso_source_index_projection_ready;
 pub async fn refresh_turso_source_index_import_on_connection(
     connection: &mut turso::Connection,
     request: ClientDbSourceIndexRefreshRequest,
-    materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
+    materialization: &mut crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
 ) -> Result<ClientDbSourceIndexRefreshReport, String> {
     let trace_started = std::time::Instant::now();
     let requested_source_snapshot = request.source_snapshot;
@@ -235,8 +235,7 @@ pub async fn refresh_turso_source_index_import_on_connection(
         &source_snapshot,
         &membership_change_set,
     )?;
-    let materialization = materialization
-        .finalize_generation_evidence(workspace_snapshot, source_snapshot.clone())?;
+    materialization.finalize_generation_evidence(workspace_snapshot, source_snapshot.clone())?;
     materialization.validate_against(
         materialization.workspace_identity.as_str(),
         &source_snapshot,

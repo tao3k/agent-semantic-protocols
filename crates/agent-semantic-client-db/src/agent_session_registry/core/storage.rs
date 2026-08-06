@@ -664,6 +664,32 @@ pub(super) async fn turso_query_sessions(
     Ok(records)
 }
 
+pub(super) async fn turso_query_all_sessions(
+    db_path: &Path,
+) -> Result<Vec<AgentSessionRecord>, String> {
+    let connection = connect_turso_agent_session_registry(db_path).await?;
+    let sql = super::record::select_sql("ORDER BY project_id, root_session_id, name");
+    let mut rows = run_turso_operation(
+        || async {
+            connection
+                .query(&sql, ())
+                .await
+                .map_err(|error| error.to_string())
+        },
+        "failed to query all Turso sessions for Runtime status projection",
+    )
+    .await?;
+    let mut records = Vec::new();
+    while let Some(row) = rows
+        .next()
+        .await
+        .map_err(|error| format!("failed to read Runtime status session projection row: {error}"))?
+    {
+        records.push(super::record::from_turso_row(&row)?);
+    }
+    Ok(records)
+}
+
 pub(super) async fn turso_session_by_id(
     db_path: &Path,
     project_id: &str,

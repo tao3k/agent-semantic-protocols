@@ -49,7 +49,7 @@
       "const": "turso-local-file"
     },
     "features": {
-      "$ref": "#/$defs/tursoFeatures"
+      "$ref": "semantic-db-definitions.v1.schema.json#/$defs/tursoFeatures"
     },
     "clientDir": {
       "type": "string",
@@ -73,54 +73,6 @@
     }
   },
   "$defs": {
-    "tursoFeatures": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "asyncIo",
-        "concurrentWrites",
-        "fts",
-        "ftsIndexMethod",
-        "vector",
-        "overlaySearch",
-        "sync",
-      "encryption",
-        "mvcc",
-        "beginConcurrent"
-      ],
-      "properties": {
-        "asyncIo": {
-          "const": true
-        },
-      "concurrentWrites": {
-        "const": true
-        },
-        "fts": {
-          "const": true
-        },
-        "ftsIndexMethod": {
-          "const": true
-        },
-        "vector": {
-          "const": false
-        },
-        "overlaySearch": {
-          "const": true
-        },
-        "sync": {
-          "const": false
-        },
-        "encryption": {
-          "const": false
-        },
-      "mvcc": {
-        "const": true
-        },
-        "beginConcurrent": {
-          "const": false
-        }
-      }
-    },
     "tursoReport": {
       "type": "object",
       "additionalProperties": false,
@@ -168,7 +120,7 @@
           "const": "turso-local-file"
         },
         "features": {
-          "$ref": "#/$defs/tursoFeatures"
+          "$ref": "semantic-db-definitions.v1.schema.json#/$defs/tursoFeatures"
         },
         "dbPath": {
           "type": "string",

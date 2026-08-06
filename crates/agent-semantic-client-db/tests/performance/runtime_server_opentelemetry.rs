@@ -2,7 +2,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_db::runtime_server_opentelemetry::{
     RuntimePerformanceObservation, RuntimePerformanceQuery, RuntimeServerOpenTelemetry,
-    TursoOpenTelemetrySpanExporter, emit_to_runtime, query_runtime_performance,
+    TursoOpenTelemetrySpanExporter, admit_to_runtime, query_runtime_performance,
 };
 
 fn short_unix_socket_path(label: &str) -> std::path::PathBuf {
@@ -16,8 +16,259 @@ fn short_unix_socket_path(label: &str) -> std::path::PathBuf {
     ))
 }
 
-#[test]
-fn failure_adapter_uses_tokio_unix_datagram_io() {
+#[tokio::test(flavor = "multi_thread")]
+async fn repeated_runtime_telemetry_lifecycle_returns_to_task_and_socket_baseline() {
+    let _performance = crate::test_support::performance_lock();
+    let baseline_alive_tasks = tokio::runtime::Handle::current()
+        .metrics()
+        .num_alive_tasks();
+
+    for cycle in 0..16 {
+        let fixture_root = std::env::temp_dir().join(format!(
+            "asp-runtime-otel-lifecycle-{}-{cycle}",
+            std::process::id()
+        ));
+        tokio::fs::create_dir_all(&fixture_root)
+            .await
+            .expect("lifecycle fixture root should exist");
+        let socket_path = short_unix_socket_path("lifecycle-ingress");
+        let query_socket_path = short_unix_socket_path("lifecycle-query");
+        let telemetry = RuntimeServerOpenTelemetry::start(
+            fixture_root.join("performance.turso"),
+            socket_path.clone(),
+            query_socket_path.clone(),
+        )
+        .await
+        .expect("Telemetry lifecycle should start");
+        let mut observation = RuntimePerformanceObservation::new(
+            "runtime-server",
+            "lifecycle-soak",
+            100,
+            1_000,
+            "within-budget",
+        );
+        observation.workspace_identity = Some(format!("workspace-lifecycle-{cycle}"));
+        assert!(
+            telemetry.handle().try_record(observation),
+            "one lifecycle observation must fit the adaptive bounded queue"
+        );
+        let receipt = telemetry
+            .shutdown()
+            .await
+            .expect("Telemetry lifecycle must drain");
+        assert_eq!(receipt.state, "terminated");
+        assert_eq!(
+            receipt.started,
+            receipt.completed + receipt.cancelled + receipt.failed
+        );
+        assert_eq!(receipt.active, 0);
+        assert_eq!(receipt.leaked, 0);
+        assert!(
+            !tokio::fs::try_exists(&socket_path)
+                .await
+                .expect("ingress socket state should be readable"),
+            "Telemetry component must remove its own ingress socket"
+        );
+        assert!(
+            !tokio::fs::try_exists(&query_socket_path)
+                .await
+                .expect("query socket state should be readable"),
+            "Telemetry component must remove its own query socket"
+        );
+        tokio::fs::remove_dir_all(fixture_root)
+            .await
+            .expect("lifecycle fixture should be removable after shutdown");
+    }
+
+    tokio::task::yield_now().await;
+    let final_alive_tasks = tokio::runtime::Handle::current()
+        .metrics()
+        .num_alive_tasks();
+    assert!(
+        final_alive_tasks <= baseline_alive_tasks.saturating_add(1),
+        "repeated Telemetry lifecycle leaked Tokio tasks: baseline={baseline_alive_tasks} final={final_alive_tasks}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn multi_workspace_multi_session_telemetry_remains_nonblocking_and_drains() {
+    let _performance = crate::test_support::performance_lock();
+    const WORKSPACES: usize = 5;
+    const SESSIONS_PER_WORKSPACE: usize = 16;
+    const OBSERVATIONS_PER_SESSION: usize = 32;
+    let fixture_root = std::env::temp_dir().join(format!(
+        "asp-runtime-otel-multi-workspace-{}",
+        std::process::id()
+    ));
+    tokio::fs::create_dir_all(&fixture_root)
+        .await
+        .expect("multi-workspace fixture root should exist");
+    let socket_path = short_unix_socket_path("multi-workspace-ingress");
+    let query_socket_path = short_unix_socket_path("multi-workspace-query");
+    let telemetry = RuntimeServerOpenTelemetry::start(
+        fixture_root.join("performance.turso"),
+        socket_path,
+        query_socket_path.clone(),
+    )
+    .await
+    .expect("multi-workspace Telemetry should start");
+    let handle = telemetry.handle();
+    let producer_count = WORKSPACES * SESSIONS_PER_WORKSPACE;
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(producer_count + 1));
+    let mut producers = Vec::with_capacity(producer_count);
+    for workspace in 0..WORKSPACES {
+        for session in 0..SESSIONS_PER_WORKSPACE {
+            let handle = handle.clone();
+            let barrier = std::sync::Arc::clone(&barrier);
+            producers.push(tokio::spawn(async move {
+                barrier.wait().await;
+                let mut accepted = 0_u64;
+                let mut latencies = Vec::with_capacity(OBSERVATIONS_PER_SESSION);
+                for sequence in 0..OBSERVATIONS_PER_SESSION {
+                    let mut observation = RuntimePerformanceObservation::new(
+                        "query",
+                        "multi-workspace-read-only",
+                        100,
+                        1_000,
+                        "within-budget",
+                    );
+                    observation.workspace_identity = Some(format!("workspace-{workspace}"));
+                    observation.operation_id =
+                        Some(format!("session-{session}-observation-{sequence}"));
+                    let started = Instant::now();
+                    accepted += u64::from(handle.try_record(observation));
+                    latencies.push(started.elapsed());
+                }
+                (accepted, latencies)
+            }));
+        }
+    }
+    barrier.wait().await;
+    let mut accepted = 0_u64;
+    let mut enqueue_latencies = Vec::with_capacity(producer_count * OBSERVATIONS_PER_SESSION);
+    for producer in producers {
+        let (producer_accepted, producer_latencies) = producer
+            .await
+            .expect("multi-workspace producer should join");
+        accepted += producer_accepted;
+        enqueue_latencies.extend(producer_latencies);
+    }
+    let submitted = u64::try_from(producer_count * OBSERVATIONS_PER_SESSION)
+        .expect("submitted observation count should fit u64");
+    assert_eq!(
+        accepted + handle.dropped_observation_count(),
+        submitted,
+        "bounded Telemetry ingress must account for all sessions and workspaces"
+    );
+    enqueue_latencies.sort_unstable();
+    let p99 = enqueue_latencies[enqueue_latencies.len() * 99 / 100];
+    assert!(
+        p99 < Duration::from_millis(1),
+        "multi-workspace Telemetry enqueue p99 must remain sub-millisecond: {p99:?}"
+    );
+
+    tokio::task::yield_now().await;
+    let mut visible_prefix = 0_u64;
+    for workspace in 0..WORKSPACES {
+        let receipt = query_runtime_performance(
+            &query_socket_path,
+            &RuntimePerformanceQuery::new(
+                format!("workspace-{workspace}"),
+                "query",
+                "multi-workspace-read-only",
+            ),
+        )
+        .await
+        .expect("resident live query must not wait for a Turso flush");
+        visible_prefix = visible_prefix.saturating_add(receipt.observation_count);
+        assert_eq!(receipt.budget_failure_count, 0);
+        if receipt.observation_count > 0 {
+            assert_eq!(receipt.p99_micros, Some(100));
+        }
+    }
+    assert!(
+        visible_prefix > 0 && visible_prefix <= accepted,
+        "resident queries must expose a monotonic in-memory prefix"
+    );
+
+    let lifecycle = telemetry
+        .shutdown()
+        .await
+        .expect("multi-workspace Telemetry should drain");
+    assert_eq!(
+        lifecycle.started,
+        lifecycle.completed + lifecycle.cancelled + lifecycle.failed
+    );
+    assert_eq!(lifecycle.active, 0);
+    assert_eq!(lifecycle.leaked, 0);
+    drop(handle);
+    tokio::fs::remove_dir_all(fixture_root)
+        .await
+        .expect("multi-workspace fixture should release all Turso files");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn duplicate_budget_failure_identity_is_recorded_once() {
+    let _performance = crate::test_support::performance_lock();
+    let fixture_root = std::env::temp_dir().join(format!(
+        "asp-runtime-otel-failure-dedupe-{}",
+        std::process::id()
+    ));
+    tokio::fs::create_dir_all(&fixture_root)
+        .await
+        .expect("failure de-duplication fixture root should exist");
+    let socket_path = short_unix_socket_path("failure-dedupe-ingress");
+    let query_socket_path = short_unix_socket_path("failure-dedupe-query");
+    let telemetry = RuntimeServerOpenTelemetry::start(
+        fixture_root.join("performance.turso"),
+        socket_path,
+        query_socket_path.clone(),
+    )
+    .await
+    .expect("failure de-duplication Telemetry should start");
+    let handle = telemetry.handle();
+    let mut observation = RuntimePerformanceObservation::new(
+        "search",
+        "graph-turbo-generation-open",
+        802_357,
+        800_000,
+        "budget-exceeded",
+    );
+    observation.workspace_identity = Some("workspace-failure-dedupe".to_owned());
+    observation.failure_reason = Some("agent-facing-search-wall-budget-exceeded".to_owned());
+    observation.seal_budget_failure_identity();
+    assert!(handle.try_record(observation.clone()));
+    assert!(handle.try_record(observation));
+    tokio::task::yield_now().await;
+
+    let receipt = query_runtime_performance(
+        &query_socket_path,
+        &RuntimePerformanceQuery::new(
+            "workspace-failure-dedupe",
+            "search",
+            "graph-turbo-generation-open",
+        ),
+    )
+    .await
+    .expect("failure de-duplication query should remain resident");
+    assert_eq!(receipt.observation_count, 1);
+    assert_eq!(receipt.budget_failure_count, 1);
+
+    let lifecycle = telemetry
+        .shutdown()
+        .await
+        .expect("failure de-duplication Telemetry should drain");
+    assert_eq!(lifecycle.active, 0);
+    assert_eq!(lifecycle.leaked, 0);
+    drop(handle);
+    tokio::fs::remove_dir_all(fixture_root)
+        .await
+        .expect("failure de-duplication fixture should release Turso files");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn failure_adapter_requires_resident_typed_ack_and_is_idempotent() {
+    let _performance = crate::test_support::performance_lock();
     let fixture_root = std::env::temp_dir().join(format!(
         "asp-runtime-otel-adapter-{}-{}",
         std::process::id(),
@@ -26,38 +277,105 @@ fn failure_adapter_uses_tokio_unix_datagram_io() {
             .expect("fixture clock should follow Unix epoch")
             .as_nanos()
     ));
-    std::fs::create_dir_all(&fixture_root).expect("adapter fixture root should exist");
-    let socket_path = short_unix_socket_path("adapter");
-    let receiver = std::os::unix::net::UnixDatagram::bind(&socket_path)
-        .expect("adapter fixture receiver should bind");
-    receiver
-        .set_read_timeout(Some(Duration::from_millis(100)))
-        .expect("adapter fixture receiver should be bounded");
-    let observation = RuntimePerformanceObservation::new(
+    tokio::fs::create_dir_all(&fixture_root)
+        .await
+        .expect("adapter fixture root should exist");
+    let socket_path = short_unix_socket_path("adapter-ingress");
+    let query_socket_path = short_unix_socket_path("adapter-query");
+    let telemetry = RuntimeServerOpenTelemetry::start(
+        fixture_root.join("performance.turso"),
+        socket_path.clone(),
+        query_socket_path.clone(),
+    )
+    .await
+    .expect("adapter resident should start");
+    let mut observation = RuntimePerformanceObservation::new(
         "query",
         "resident-exact-generation-open",
         801_000,
         800_000,
         "budget-exceeded",
     );
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("Tokio adapter fixture runtime should build");
-    assert!(runtime.block_on(emit_to_runtime(&socket_path, &observation)));
-    let mut packet = [0_u8; 4_096];
-    let received = receiver
-        .recv(&mut packet)
-        .expect("adapter fixture should receive one observation");
-    let decoded: serde_json::Value =
-        serde_json::from_slice(&packet[..received]).expect("observation should be JSON");
+    observation.workspace_identity = Some("workspace-adapter".to_owned());
+    observation.failure_reason = Some("fixture-budget-exceeded".to_owned());
+    observation.seal_budget_failure_identity();
+    let event_identity = observation
+        .event_identity
+        .clone()
+        .expect("budget failure identity should be sealed");
+    let recorded = admit_to_runtime(&socket_path, &observation)
+        .await
+        .expect("first submission must receive a canonical ACK");
+    assert_eq!(recorded.state, "recorded");
+    assert_eq!(recorded.workspace_identity, "workspace-adapter");
+    assert_eq!(recorded.surface, "query");
+    assert_eq!(recorded.stage, "resident-exact-generation-open");
+    assert_eq!(recorded.event_identity, observation.event_identity);
+    let duplicate = admit_to_runtime(&socket_path, &observation)
+        .await
+        .expect("duplicate submission must receive an idempotent ACK");
+    assert_eq!(duplicate.state, "duplicate");
+    let receipt = query_runtime_performance(
+        &query_socket_path,
+        &RuntimePerformanceQuery::new(
+            "workspace-adapter",
+            "query",
+            "resident-exact-generation-open",
+        ),
+    )
+    .await
+    .expect("typed ACK must follow resident admission");
+    assert_eq!(receipt.observation_count, 1);
+    assert_eq!(receipt.budget_failure_count, 1);
+    let lifecycle = telemetry.shutdown().await.expect("adapter should drain");
+    assert_eq!(lifecycle.active, 0);
+    assert_eq!(lifecycle.leaked, 0);
+    let durable = TursoOpenTelemetrySpanExporter::open(&fixture_root.join("performance.turso"))
+        .await
+        .expect("durable event identity reader should open");
     assert_eq!(
-        decoded.get("schemaId").and_then(serde_json::Value::as_str),
-        Some("agent.semantic-protocols.runtime-server-performance-observation")
+        durable
+            .budget_failure_count_for_event_identity(&event_identity)
+            .await
+            .expect("event identity should be directly queryable from Turso"),
+        1
     );
-    drop(receiver);
-    let _ = std::fs::remove_file(socket_path);
-    let _ = std::fs::remove_dir_all(fixture_root);
+    drop(durable);
+    tokio::fs::remove_dir_all(fixture_root)
+        .await
+        .expect("adapter fixture should release Turso files");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn socket_write_without_resident_ack_is_not_delivery_evidence() {
+    let socket_path = short_unix_socket_path("missing-ack");
+    let listener =
+        tokio::net::UnixListener::bind(&socket_path).expect("missing-ACK fixture should bind");
+    let peer = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.expect("fixture should accept");
+        let mut bytes = [0_u8; 4_096];
+        let _ = tokio::io::AsyncReadExt::read(&mut stream, &mut bytes)
+            .await
+            .expect("fixture should observe the submitted frame");
+    });
+    let mut observation = RuntimePerformanceObservation::new(
+        "search",
+        "graph-turbo-generation-open",
+        802_357,
+        800_000,
+        "budget-exceeded",
+    );
+    observation.workspace_identity = Some("workspace-missing-ack".to_owned());
+    observation.failure_reason = Some("fixture-budget-exceeded".to_owned());
+    observation.seal_budget_failure_identity();
+    assert!(
+        admit_to_runtime(&socket_path, &observation).await.is_err(),
+        "a successful socket write without the resident typed ACK must fail closed"
+    );
+    peer.await.expect("missing-ACK fixture should join");
+    tokio::fs::remove_file(socket_path)
+        .await
+        .expect("missing-ACK socket should be removable");
 }
 
 #[test]
@@ -151,8 +469,13 @@ fn concurrent_runtime_telemetry_is_nonblocking_and_turso_queryable() {
         .await
         .expect("resident telemetry query should reuse its reader lane");
         assert_eq!(empty_receipt.budget_failure_count, 0);
+        assert_eq!(empty_receipt.observation_count, 0);
+        assert_eq!(empty_receipt.p50_micros, None);
+        assert_eq!(empty_receipt.p95_micros, None);
+        assert_eq!(empty_receipt.p99_micros, None);
         assert!(empty_receipt.latest_attributes_json.is_none());
         let handle = telemetry.handle();
+        let dropped_before = handle.dropped_observation_count();
         let observations_per_worker = 64;
         let submitted = worker_count.saturating_mul(observations_per_worker);
         let start_barrier = std::sync::Arc::new(tokio::sync::Barrier::new(worker_count));
@@ -185,6 +508,13 @@ fn concurrent_runtime_telemetry_is_nonblocking_and_turso_queryable() {
                     observation.process_peak_resident_bytes = Some(768 * 1024 * 1024);
                     observation.process_memory_budget_bytes = Some(1024 * 1024 * 1024);
                     observation.process_memory_budget_status = Some("within-budget".to_owned());
+                    observation.runtime_active_connections = Some(2);
+                    observation.runtime_connection_limit = Some(32);
+                    observation.runtime_connection_high_watermark = Some(2);
+                    observation.runtime_rejected_connections = Some(0);
+                    observation.runtime_diagnostic_queue_depth = Some(1);
+                    observation.runtime_diagnostic_queue_capacity = Some(256);
+                    observation.runtime_dropped_diagnostics = Some(0);
                     observation.failure_reason = Some("fixture-budget-exceeded".to_owned());
                     let was_accepted = worker_handle.try_record(observation);
                     latencies.push(started.elapsed());
@@ -202,11 +532,13 @@ fn concurrent_runtime_telemetry_is_nonblocking_and_turso_queryable() {
             accepted += worker_accepted;
             enqueue_latencies.extend(worker_latencies);
         }
-        let dropped = handle.dropped_observation_count();
-        assert_eq!(
-            accepted + dropped,
-            submitted as u64,
-            "the bounded ingress must account for every observation"
+        let rejected = (submitted as u64).saturating_sub(accepted);
+        let dropped_delta = handle
+            .dropped_observation_count()
+            .saturating_sub(dropped_before);
+        assert!(
+            dropped_delta >= rejected,
+            "the bounded ingress must account for every rejected batch observation: rejected={rejected} droppedDelta={dropped_delta}"
         );
         enqueue_latencies.sort_unstable();
         let p99_index = enqueue_latencies
@@ -234,6 +566,13 @@ fn concurrent_runtime_telemetry_is_nonblocking_and_turso_queryable() {
                 && populated_receipt.budget_failure_count <= accepted,
             "live query must expose a monotonic persisted prefix"
         );
+        assert_eq!(
+            populated_receipt.observation_count, populated_receipt.budget_failure_count,
+            "the fixture submits only budget failures"
+        );
+        assert_eq!(populated_receipt.p50_micros, Some(801_000));
+        assert_eq!(populated_receipt.p95_micros, Some(801_000));
+        assert_eq!(populated_receipt.p99_micros, Some(801_000));
         let latest_attributes: serde_json::Value = serde_json::from_str(
             populated_receipt
                 .latest_attributes_json
@@ -276,6 +615,27 @@ fn concurrent_runtime_telemetry_is_nonblocking_and_turso_queryable() {
             })
         );
         assert_eq!(event_loop_budget, 10_000);
+        assert!(
+            latest_attributes
+                .get("asp.runtime.worker_threads")
+                .and_then(serde_json::Value::as_u64)
+                .is_some_and(|workers| workers > 0),
+            "resident Telemetry must publish its adaptive Tokio worker count"
+        );
+        assert!(
+            latest_attributes
+                .get("asp.runtime.alive_tasks")
+                .and_then(serde_json::Value::as_u64)
+                .is_some(),
+            "resident Telemetry must expose live Tokio task pressure"
+        );
+        assert!(
+            latest_attributes
+                .get("asp.runtime.global_queue_depth")
+                .and_then(serde_json::Value::as_u64)
+                .is_some(),
+            "resident Telemetry must expose scheduler queue pressure"
+        );
         #[cfg(target_os = "macos")]
         {
             assert!(
@@ -300,10 +660,22 @@ fn concurrent_runtime_telemetry_is_nonblocking_and_turso_queryable() {
                 "macOS Runtime telemetry must expose process page-ins"
             );
         }
-        telemetry
+        let lifecycle = telemetry
             .shutdown()
             .await
             .expect("resident telemetry should drain accepted observations");
+        assert_eq!(lifecycle.state, "terminated");
+        assert!(
+            lifecycle.started >= 7,
+            "root, sampler, exporter and every accepted query connection must be owned"
+        );
+        assert_eq!(
+            lifecycle.started,
+            lifecycle.completed + lifecycle.cancelled + lifecycle.failed,
+            "every admitted Telemetry task must have one terminal outcome"
+        );
+        assert_eq!(lifecycle.active, 0);
+        assert_eq!(lifecycle.leaked, 0);
         drop(handle);
         let reader = TursoOpenTelemetrySpanExporter::open(&database_path)
             .await
@@ -317,9 +689,71 @@ fn concurrent_runtime_telemetry_is_nonblocking_and_turso_queryable() {
             .await
             .expect("persisted budget failures should be queryable");
         assert_eq!(persisted, accepted);
+        let pressure_rows = reader
+            .runtime_pressure_count_for_workspace("workspace-telemetry-fixture")
+            .await
+            .expect("typed Runtime Server pressure rows should be queryable from Turso");
+        assert_eq!(
+            pressure_rows, accepted,
+            "every accepted pressure observation must have one typed Turso row"
+        );
         drop(reader);
         let _ = tokio::fs::remove_file(socket_path).await;
         let _ = tokio::fs::remove_file(query_socket_path).await;
         let _ = tokio::fs::remove_dir_all(fixture_root).await;
     });
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn stalled_query_connections_are_bounded_and_drain_without_leaks() {
+    let fixture_root = std::env::temp_dir().join(format!(
+        "asp-runtime-otel-stalled-query-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("fixture clock")
+            .as_nanos()
+    ));
+    let socket_path = short_unix_socket_path("stalled-query-ingress");
+    let query_socket_path = short_unix_socket_path("stalled-query");
+    let telemetry = RuntimeServerOpenTelemetry::start(
+        fixture_root.join("performance.turso"),
+        socket_path.clone(),
+        query_socket_path.clone(),
+    )
+    .await
+    .expect("resident telemetry should start");
+    let connection_limit =
+        agent_semantic_client_db::runtime_server_runtime::runtime_server_connection_limit(
+            tokio::runtime::Handle::current().metrics().num_workers(),
+        );
+    let mut stalled = Vec::with_capacity(connection_limit);
+    for _ in 0..connection_limit {
+        stalled.push(
+            tokio::time::timeout(
+                Duration::from_millis(100),
+                tokio::net::UnixStream::connect(&query_socket_path),
+            )
+            .await
+            .expect("bounded fixture connect should not stall")
+            .expect("fixture should connect to telemetry query socket"),
+        );
+    }
+
+    let shutdown_started = Instant::now();
+    let lifecycle = telemetry
+        .shutdown()
+        .await
+        .expect("stalled query connections must be expired and drained");
+    assert!(
+        shutdown_started.elapsed() < Duration::from_millis(200),
+        "bounded connection expiry must keep shutdown below 200ms: {:?}",
+        shutdown_started.elapsed()
+    );
+    assert_eq!(lifecycle.state, "terminated");
+    assert_eq!(lifecycle.active, 0);
+    assert_eq!(lifecycle.leaked, 0);
+    drop(stalled);
+    let _ = tokio::fs::remove_file(socket_path).await;
+    let _ = tokio::fs::remove_file(query_socket_path).await;
+    let _ = tokio::fs::remove_dir_all(fixture_root).await;
 }

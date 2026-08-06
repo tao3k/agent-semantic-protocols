@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator
+from unit.schema_validation import schema_validator_for
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -33,8 +33,9 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 class DeepQuestionCaseTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.validator = Draft202012Validator(_load_json(SCHEMA_PATH))
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.validator = schema_validator_for(SCHEMA_PATH)
 
     def assert_valid_scenario(self, scenario: dict[str, Any]) -> None:
         errors = [error.message for error in self.validator.iter_errors(scenario)]

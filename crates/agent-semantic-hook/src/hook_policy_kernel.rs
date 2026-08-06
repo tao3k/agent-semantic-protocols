@@ -1,7 +1,6 @@
 use agent_semantic_config::HookClientLanguageProviderConfig;
 use agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest_v1;
 use std::collections::{BTreeSet, HashMap};
-use std::path::Path;
 use std::sync::{Arc, OnceLock, RwLock};
 
 pub(crate) const HOOK_POLICY_KERNEL_VERSION: &str = "hook-enforcement-kernel-v1";
@@ -10,7 +9,6 @@ pub(crate) const HOOK_POLICY_KERNEL_VERSION: &str = "hook-enforcement-kernel-v1"
 pub(crate) struct HookPolicySnapshot {
     pub kernel_version: &'static str,
     pub generation_digest: String,
-    pub language_providers: Vec<HookClientLanguageProviderConfig>,
     pub provider_projections:
         Vec<crate::protocol_activation::protocol_activation_manifest::HookProviderProjection>,
 }
@@ -125,7 +123,6 @@ fn compile_language_provider_snapshot(
     Ok(HookPolicySnapshot {
         kernel_version: HOOK_POLICY_KERNEL_VERSION,
         generation_digest: format!("blake3-256:{}", digest.as_str()),
-        language_providers: providers,
         provider_projections,
     })
 }
@@ -158,17 +155,6 @@ pub(crate) fn active_provider_projections(
     project_root: &str,
 ) -> Option<Vec<crate::protocol_activation::protocol_activation_manifest::HookProviderProjection>> {
     active_policy_snapshot(project_root).map(|snapshot| snapshot.provider_projections.clone())
-}
-
-pub(crate) fn snapshot_supports_source_file(project_root: &str, path: &Path) -> Option<bool> {
-    let snapshot = active_policy_snapshot(project_root)?;
-    debug_assert_eq!(snapshot.kernel_version, HOOK_POLICY_KERNEL_VERSION);
-    Some(snapshot.language_providers.iter().any(|provider| {
-        agent_semantic_config::source_extension::source_extensions_support_file(
-            &provider.source_extensions,
-            path,
-        )
-    }))
 }
 
 #[cfg(test)]

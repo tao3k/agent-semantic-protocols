@@ -1,21 +1,44 @@
 #[test]
 fn query_data_plane_never_invokes_generation_reconciliation() {
     let query_adapter = include_str!("../../src/server/runtime_server.rs");
+    let data_plane = include_str!("../../src/server/runtime_server_generation_data_plane.rs");
+    let readiness = include_str!("../../src/server/runtime_server_generation.rs");
     assert!(
         !query_adapter.contains("repair_runtime_generation_locator"),
         "query adapter reintroduced supervisor-owned generation reconciliation"
     );
     assert!(
-        !query_adapter.contains("ensure_runtime_generation_admitted_for_projection_async"),
-        "query adapter reintroduced the non-terminal generation admission bridge"
+        !readiness.contains("ensure_runtime_generation_admitted_for_projection_async"),
+        "generation owner reintroduced the non-terminal admission bridge"
     );
+    assert!(!data_plane.contains("ensure_runtime_generation_ready"));
+    assert!(data_plane.contains("connect_hook_workspace_session"));
+    assert!(!data_plane.contains("connect_runtime_server_workspace_session"));
     assert_eq!(
-        query_adapter
-            .matches("ensure_runtime_generation_ready_for_projection_async")
+        data_plane
+            .matches("reasonKind=active-workspace-generation-required")
             .count(),
         2,
-        "source and exact projection misses must both await the typed Ready gate"
+        "source and exact projection misses must remain read-only typed failures"
     );
+}
+
+#[test]
+fn exact_projection_is_a_read_only_generation_consumer() {
+    let source = include_str!("../../src/command/provider_resident_exact.rs");
+    for forbidden in [
+        "ensure_runtime_generation_owner_ready",
+        "owner-freshness-before",
+        "owner-freshness-ready",
+        "publish_owner_overlay",
+        "tombstone_owner_overlay",
+        "ensure_runtime_generation_ready",
+    ] {
+        assert!(
+            !source.contains(forbidden),
+            "exact projection reintroduced query-time generation mutation: {forbidden}"
+        );
+    }
 }
 
 #[test]
@@ -43,4 +66,27 @@ fn owner_items_is_a_pre_activation_resident_read() {
             "legacy owner dispatch surface reintroduced: {legacy}"
         );
     }
+}
+
+#[test]
+fn search_adapter_never_decodes_the_complete_resident_generation() {
+    let dispatch = include_str!("../../src/command/provider_dispatch.rs");
+    let data_plane = include_str!("../../src/server/runtime_server_generation_data_plane.rs");
+    let source = include_str!("../../src/command/search_pipe_source.rs");
+    let facts = include_str!("../../src/command/search_pipe_provider_facts.rs");
+
+    assert!(!dispatch.contains("runtime_server_workspace_generation_client_async"));
+    assert!(!dispatch.contains("WorkspaceGenerationDataPlaneClient"));
+    assert!(dispatch.contains("runtime_server_search_data_plane_async"));
+    assert!(data_plane.contains("runtime_search_generation_authority"));
+    assert!(source.contains("read_source_index"));
+    assert!(facts.contains("read_graph_facts"));
+    assert!(
+        !source.contains(".lease().read_source_index"),
+        "short-lived search reintroduced a complete process-local generation lease"
+    );
+    assert!(
+        !facts.contains(".relations_from("),
+        "short-lived search reintroduced process-local relation graph decoding"
+    );
 }

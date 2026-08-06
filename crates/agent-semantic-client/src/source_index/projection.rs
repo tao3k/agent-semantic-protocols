@@ -22,8 +22,8 @@ use agent_semantic_content_identity::{
     workspace_merkle_v1::WorkspacePathMerkleTreeV1,
 };
 use agent_semantic_provider_transport::projection_batch::{
-    ProviderProjectedOwner, ProviderProjectionBatchRequest, ProviderProjectionOwner,
-    provider_projection_batch_ranges, run_provider_projection_batch,
+    ProviderProjectedItem, ProviderProjectedOwner, ProviderProjectionBatchRequest,
+    ProviderProjectionOwner, provider_projection_batch_ranges, run_provider_projection_batch,
 };
 
 pub(super) async fn project_generation(
@@ -172,6 +172,12 @@ fn selector_receipts(
     parser_identity_digest: &agent_semantic_content_identity::exact_selector_merkle::ContentDigestV1,
     query_pack_digest: &agent_semantic_content_identity::exact_selector_merkle::ContentDigestV1,
 ) -> Result<Vec<ClientDbSourceIndexSelector>, String> {
+    let owner_inclusion_proof = tree.inclusion_proof(&owner.owner_path).ok_or_else(|| {
+        format!(
+            "projection owner is absent from Merkle tree: {}",
+            owner.owner_path
+        )
+    })?;
     owner
         .items
         .iter()
@@ -188,8 +194,7 @@ fn selector_receipts(
                         item.selector
                     )
                 })?;
-            let normalized_facts = serde_json::to_vec(&(item, &owner.relations))
-                .map_err(|error| format!("encode provider parser facts: {error}"))?;
+            let normalized_facts = normalized_item_parser_facts(item)?;
             let language_id = ProjectionPacketLanguageIdV1::from(provider.language_id.as_str());
             let provider_id = ProjectionPacketProviderIdV1::from(provider.provider_id.as_str());
             let owner_path = ProjectionPacketOwnerPathV1::from(owner.owner_path.as_str());
@@ -211,7 +216,10 @@ fn selector_receipts(
                     normalized_parser_facts: &normalized_facts,
                     projection,
                 })
-                .enrich_projection_record(tree)
+                .enrich_projection_record_with_owner_inclusion_proof(
+                    tree,
+                    &owner_inclusion_proof,
+                )
                 .map_err(|error| format!("enrich provider projection record: {error:?}"))?;
             let mut query_keys = vec![ClientDbSourceIndexQueryKey::from(item.name.as_str())];
             query_keys.extend(
@@ -249,6 +257,14 @@ fn selector_receipts(
         })
         .collect()
 }
+
+fn normalized_item_parser_facts(item: &ProviderProjectedItem) -> Result<Vec<u8>, String> {
+    serde_json::to_vec(item).map_err(|error| format!("encode provider item parser facts: {error}"))
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/source_index_projection_memory.rs"]
+mod tests;
 
 fn provider_command_argv(provider: &ResolvedProvider) -> Result<Vec<String>, String> {
     provider

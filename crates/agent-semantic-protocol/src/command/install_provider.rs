@@ -147,13 +147,13 @@ fn run_install_binary(args: &[String]) -> Result<(), String> {
         .map_err(|error| format!("failed to resolve current project root: {error}"))?;
     let runtime_state = agent_semantic_runtime::project_runtime_state(&project_root)?;
     super::install_binary_config_admission::admit_embedded_hook_config()?;
-    let _reconciliation_guard = super::protocol_binary::ProtocolBinaryReconciliationGuard::acquire(
-        &runtime_state.protocol_home,
-    )?;
     let artifact_root = runtime_state.protocol_home.join("runtime/artifacts");
     let plan = super::protocol_binary::ProtocolBinaryInstallPlan::capture_for_target(
         artifact_root.clone(),
         target,
+    )?;
+    let reconciliation_guard = super::protocol_binary::ProtocolBinaryReconciliationGuard::acquire(
+        &runtime_state.protocol_home,
     )?;
     let installed = super::protocol_binary::ensure_protocol_binary_installed(&plan)?;
     let active_artifact_receipt = agent_semantic_hook::rebind_active_asp_binary_receipt_if_present(
@@ -161,12 +161,27 @@ fn run_install_binary(args: &[String]) -> Result<(), String> {
         &installed.artifact_digest,
         &runtime_state.activation_path,
     )?;
+    drop(reconciliation_guard);
+    let runtime_server_reconcile =
+        agent_semantic_client_db::runtime_server_runtime::RuntimeServerClientExecutor::get()
+            .and_then(|executor| {
+                executor.block_on(
+                    crate::server::runtime_server_supervisor::reconcile_healthy_runtime_server(
+                        &runtime_state.protocol_home,
+                    ),
+                )
+            });
     println!(
-        "[asp-install-binary] binaryPath={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic providerReconciliation=not-on-binary-install globalProviderCatalog=not-on-binary-install activeArtifactReceipt={}",
+        "[asp-install-binary] binaryPath={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic runtimeServerReconcile={} providerReconciliation=not-on-binary-install globalProviderCatalog=not-on-binary-install activeArtifactReceipt={} installSource=current-executable",
         installed.path.display(),
         installed.status,
         installed.artifact_digest,
         installed.path.display(),
+        if runtime_server_reconcile.is_ok() {
+            "complete"
+        } else {
+            "deferred"
+        },
         active_artifact_receipt.as_str(),
     );
     Ok(())

@@ -34,51 +34,44 @@ pub(super) fn run_search_owner_items_query_command(
         search_owner_items_workspace(args).as_deref(),
     );
     let owner_path = normalized_owner_key(&project_root, &owner_query_args.owner)?;
-    let (client, owner, project_resolutions, control_roundtrips) =
+    let (owner_read, project_resolutions) =
         crate::server::runtime_server::block_on_agent_facing_runtime_server_client(
             tokio::time::Instant::now(),
             "search",
             "resident-exact-generation-open",
             &project_root,
             async {
-                let mut client =
-                    crate::server::runtime_server::runtime_server_workspace_exact_projection_client_async(
+                let data_plane =
+                    crate::server::runtime_server::runtime_server_search_data_plane_async(
                         &project_root,
                     )
                     .await?;
-                let mut owner = client.owner_snapshot(&owner_path)?;
-                let mut project_resolutions = Vec::new();
-                let mut control_roundtrips = 0;
-                if owner.is_none() {
-                    crate::server::runtime_server_generation::ensure_runtime_generation_ready_for_projection_async(
-                        &project_root,
-                    )
-                    .await?;
-                    control_roundtrips = 1;
-                    client = crate::server::runtime_server::runtime_server_workspace_exact_projection_client_async(
-                    &project_root,
-                )
-                .await?;
-                    owner = client.owner_snapshot(&owner_path)?;
-                    if owner.is_none() {
-                        let generation_client = crate::server::runtime_server::runtime_server_workspace_generation_client_async(
-                            &project_root,
-                        )
-                        .await?;
-                        project_resolutions = generation_client
-                            .lease()
-                            .generation()
-                            .project_resolutions
-                            .clone();
-                    }
-                }
-                Ok((client, owner, project_resolutions, control_roundtrips))
+                let project_resolutions = data_plane.project_resolutions().to_vec();
+                let owner_read = data_plane.read_owner(&owner_path).await?;
+                Ok((owner_read, project_resolutions))
             },
         )?;
     // The CLI remains a pure client. Filesystem observation and provider
     // projection belong to the watcher and workspace writer lane; this path
     // only reads the admitted immutable MemoryBackend generation.
     let provider_invocations = 0;
+    let (owner, generation_digest, root_digest) = match owner_read {
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::GenerationMissing => {
+            return Err(format!(
+                "resident workspace generation is not admitted: reasonKind=active-workspace-generation-required workspace={}",
+                project_root.display()
+            ));
+        }
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::Owner {
+            generation_digest,
+            root_digest,
+            owner,
+        } => (Some(owner), generation_digest, root_digest),
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::OwnerMissing {
+            generation_digest,
+            root_digest,
+        } => (None, generation_digest, root_digest),
+    };
     let owner = owner.ok_or_else(|| {
         render_owner_missing_diagnostic(OwnerMissingDiagnosticRequest {
             language_id: context.language_id,
@@ -87,8 +80,8 @@ pub(super) fn run_search_owner_items_query_command(
                 .and_then(Path::to_str)
                 .unwrap_or("."),
             owner_path: &owner_path,
-            generation_digest: client.generation_digest(),
-            root_digest: client.root_digest(),
+            generation_digest: &generation_digest,
+            root_digest: &root_digest,
             project_resolutions: &project_resolutions,
         })
     })?;
@@ -145,11 +138,11 @@ pub(super) fn run_search_owner_items_query_command(
     println!(
         "entries={} generation={} rootDigest={} rootDepth=1,0 ownerChanged={} providerInvocations={} databaseOpens=0 controlRoundtrips={}",
         items.len(),
-        client.generation_digest(),
-        client.root_digest(),
+        generation_digest,
+        root_digest,
         false,
         provider_invocations,
-        control_roundtrips
+        0
     );
     let _ = context.started;
     let _ = context.provider_context;

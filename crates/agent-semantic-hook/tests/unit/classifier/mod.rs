@@ -42,6 +42,32 @@ pub(crate) fn rust_registry() -> HookRuntime {
     }
 }
 
+pub(crate) fn builtin_programming_runtime() -> HookRuntime {
+    let providers = agent_semantic_hook::builtin_provider_manifests()
+        .into_iter()
+        .filter_map(|manifest| {
+            let descriptor = manifest.project_resolution()?;
+            let routes = agent_semantic_hook::materialize_provider_routes(&manifest).ok()?;
+            let mut activated = provider(
+                &manifest,
+                ProviderFixtureLayout {
+                    source_extensions: &[],
+                    config_files: &[],
+                },
+                routes,
+            );
+            activated.source_extensions = descriptor.source_extensions.clone();
+            activated.config_files = descriptor.entry_markers.clone();
+            Some(activated)
+        })
+        .collect();
+    HookRuntime {
+        rankers: Vec::new(),
+        project_root: ".".to_string(),
+        providers,
+    }
+}
+
 pub(super) fn builtin_provider_manifest(language_id: &str, provider_id: &str) -> ProviderManifest {
     builtin_provider_manifests()
         .into_iter()

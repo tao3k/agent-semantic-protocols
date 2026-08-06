@@ -60,10 +60,12 @@ async fn daemon_startup_does_not_eagerly_restore_registered_workspaces() {
     let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 31).await;
     let build_count = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let builder_count = Arc::clone(&build_count);
-    let admission = WorkspaceGenerationAdmission::new(Arc::new(move |_, _, _, _| {
-        builder_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        Box::pin(async move { Err("fixture canonical generation missing".to_owned()) })
-    }))
+    let admission = WorkspaceGenerationAdmission::new(Arc::new(
+        move |_, _, _, _, _cancellation, _absolute_deadline| {
+            builder_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Box::pin(async move { Err("fixture canonical generation missing".to_owned()) })
+        },
+    ))
     .with_catalog(catalog);
     let server = RuntimeServer::bind_with_catalog(
         endpoint.clone(),

@@ -142,6 +142,56 @@ PATCH
 }
 
 #[test]
+fn hook_decision_survives_an_unavailable_event_projection_lock() {
+    fn find_event_state(root: &std::path::Path) -> Option<std::path::PathBuf> {
+        for entry in std::fs::read_dir(root).ok()?.flatten() {
+            let path = entry.path();
+            if path.file_name().and_then(|name| name.to_str()) == Some("events.jsonl") {
+                return Some(path);
+            }
+            if path.is_dir()
+                && let Some(found) = find_event_state(&path)
+            {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    let root = temp_project_root("event-projection-unavailable");
+    let activation_path = write_rust_activation(&root);
+    write_config(&root, "");
+    let payload = json!({
+        "tool_name": "Read",
+        "tool_input": { "file_path": "src/lib.rs" }
+    });
+    let first = run_hook_decision(&root, &activation_path, payload.clone());
+    let event_path = find_event_state(&root).expect("first Hook run must create event projection");
+    let lock_path = event_path.with_file_name("events.jsonl.lock");
+    std::fs::remove_file(&lock_path).expect("remove event projection lock file");
+    std::fs::create_dir(&lock_path).expect("make event projection lock unavailable");
+
+    let second = run_hook_decision(&root, &activation_path, payload);
+    assert_eq!(second["decision"], first["decision"]);
+    assert_eq!(second["reasonKind"], first["reasonKind"]);
+    assert_eq!(second["schemaId"], first["schemaId"]);
+    assert_eq!(second["fields"]["hookEventProjectionStatus"], "unavailable");
+    assert_eq!(second["fields"]["hookDecisionBudgetMicros"], 1_000_000);
+    assert_eq!(
+        second["fields"]["hookDecisionBudgetStatus"],
+        "within-budget"
+    );
+    assert!(
+        second["fields"]["hookEventProjectionLockWaitMicros"]
+            .as_u64()
+            .is_some_and(|micros| micros < 100_000),
+        "diagnostic projection must remain below its maintenance lock budget: {second}"
+    );
+
+    std::fs::remove_dir_all(root).expect("remove temp project root");
+}
+
+#[test]
 fn client_config_event_platform_and_language_filters_must_match() {
     let root = temp_project_root("client-config-filter");
     let activation_path = write_rust_activation(&root);
@@ -327,7 +377,28 @@ fn temp_project_root(name: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("agent-semantic-hook-{name}-{unique}"));
     std::fs::create_dir_all(&root).expect("create temp project root");
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    copy_agent_registry_fixture(&root);
     root
+}
+
+fn copy_agent_registry_fixture(root: &std::path::Path) {
+    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../agents");
+    for target in [
+        root.join("agents"),
+        root.join(".agent-semantic-protocols/agents"),
+    ] {
+        std::fs::create_dir_all(&target).expect("create fixture agent registry");
+        for name in [
+            "config.toml",
+            "asp_explorer_codex.toml",
+            "asp_explorer_claude.md",
+            "asp_testing_codex.toml",
+            "asp_testing_claude.md",
+        ] {
+            std::fs::copy(source.join(name), target.join(name))
+                .expect("copy fixture agent registry entry");
+        }
+    }
 }
 
 fn write_rust_activation(root: &std::path::Path) -> PathBuf {

@@ -1,9 +1,10 @@
 use std::path::{Path, PathBuf};
 
+use agent_semantic_config::agent_route_registry::render_hook_agent_routes;
 use agent_semantic_config::{
     default_hook_client_config_template, load_asp_project_config_file,
-    load_hook_client_config_file, load_hook_client_config_overlay_file,
-    merge_asp_project_hook_config,
+    load_hook_client_config_file, load_hook_client_config_file_with_agents,
+    load_hook_client_config_overlay_file_with_agents, merge_asp_project_hook_config,
 };
 
 use crate::hook_config::core::{ClientHookConfig, compile_config};
@@ -19,6 +20,11 @@ const EMBEDDED_AGENT_ROUTES: &str =
 #[serde(rename_all = "camelCase")]
 struct ManagedLanguageProviderProjection {
     language_providers: Vec<agent_semantic_config::HookClientLanguageProviderConfig>,
+}
+
+#[derive(serde::Deserialize)]
+struct ManagedAgentRouteProjection {
+    agents: agent_semantic_config::HookClientAgentsConfig,
 }
 
 /// Return the default global hook config path.
@@ -87,7 +93,8 @@ pub fn load_client_config_for_project(
     path: &Path,
     project_root: &Path,
 ) -> Result<ClientHookConfig, String> {
-    let parsed = load_hook_client_config_file(path)?;
+    let parsed =
+        load_hook_client_config_file_with_agents(path, load_project_agent_routes(project_root)?)?;
     let agent_config_path = project_agent_config_path(project_root);
     let project = load_asp_project_config_file(&agent_config_path)?;
     compile_config(merge_asp_project_hook_config(parsed, project)?)
@@ -99,7 +106,10 @@ pub fn load_client_config_overlay_for_project(
     path: &Path,
     project_root: &Path,
 ) -> Result<ClientHookConfig, String> {
-    let parsed = load_hook_client_config_overlay_file(path)?;
+    let parsed = load_hook_client_config_overlay_file_with_agents(
+        path,
+        load_project_agent_routes(project_root)?,
+    )?;
     let agent_config_path = project_agent_config_path(project_root);
     let project = load_asp_project_config_file(&agent_config_path)?;
     compile_config(merge_asp_project_hook_config(parsed, project)?)
@@ -109,8 +119,18 @@ pub fn load_client_config_overlay_for_project(
 pub fn load_embedded_client_config_for_project(
     project_root: &Path,
 ) -> Result<ClientHookConfig, String> {
-    let parsed = default_client_config_file()?;
+    let mut parsed = default_client_config_file()?;
+    parsed.agents = load_project_agent_routes(project_root)?;
     let agent_config_path = project_agent_config_path(project_root);
     let project = load_asp_project_config_file(&agent_config_path)?;
     compile_config(merge_asp_project_hook_config(parsed, project)?)
+}
+
+fn load_project_agent_routes(
+    project_root: &Path,
+) -> Result<agent_semantic_config::HookClientAgentsConfig, String> {
+    let rendered = render_hook_agent_routes(&project_root.join("agents"))?;
+    toml::from_str::<ManagedAgentRouteProjection>(&rendered)
+        .map(|projection| projection.agents)
+        .map_err(|error| format!("failed to parse project agent route projection: {error}"))
 }

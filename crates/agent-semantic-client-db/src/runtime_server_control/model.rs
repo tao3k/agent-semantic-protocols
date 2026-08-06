@@ -19,6 +19,10 @@ const RUNTIME_SERVER_CONTROL_CONTRACT: &[u8] =
     include_bytes!("../../../../schemas/runtime-server-control.v1.schema.json");
 const WORKSPACE_DB_OWNER_IPC_CONTRACT: &[u8] =
     include_bytes!("../../../../schemas/workspace-db-owner-ipc.v1.schema.json");
+const RUNTIME_PERFORMANCE_OBSERVATION_CONTRACT: &[u8] =
+    include_bytes!("../../../../schemas/runtime-server-performance-observation.v1.schema.json");
+const RUNTIME_PERFORMANCE_INGRESS_RECEIPT_CONTRACT: &[u8] =
+    include_bytes!("../../../../schemas/runtime-server-performance-ingress-receipt.v1.schema.json");
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -173,7 +177,41 @@ pub struct RuntimeServerStatusSnapshot {
     pub workspace_entry_count: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub graph_turbo_resident: Option<GraphTurboResidentStatus>,
+    #[serde(default)]
+    pub agent_sessions: Vec<RuntimeServerAgentSessionStatus>,
     pub owner_epoch: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RuntimeServerAgentSessionLifecycleState {
+    Routable,
+    Expired,
+    Archived,
+    Invalid,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeServerAgentSessionStatus {
+    pub workspace_identity: String,
+    pub project_id: String,
+    pub root_session_id: String,
+    pub session_id: String,
+    pub name: String,
+    pub physical_generation: u64,
+    pub lifecycle_state: RuntimeServerAgentSessionLifecycleState,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentSessionControlPlaneState {
+    pub project_id: Option<String>,
+    pub root_session_id: Option<String>,
+    pub name: String,
+    pub state: String,
+    pub generation: u64,
+    pub reason_kind: Option<String>,
 }
 
 impl RuntimeServerStatusSnapshot {
@@ -194,6 +232,7 @@ impl RuntimeServerStatusSnapshot {
             transport_contract_digest: endpoint.transport_contract_digest.clone(),
             workspace_entry_count,
             graph_turbo_resident: None,
+            agent_sessions: Vec::new(),
             owner_epoch: endpoint.owner_epoch,
         }
     }
@@ -386,6 +425,14 @@ fn runtime_server_transport_contract_digest_ref() -> &'static str {
                 (
                     b"workspace-db-owner-ipc.v1".as_slice(),
                     WORKSPACE_DB_OWNER_IPC_CONTRACT,
+                ),
+                (
+                    b"runtime-server-performance-observation.v1".as_slice(),
+                    RUNTIME_PERFORMANCE_OBSERVATION_CONTRACT,
+                ),
+                (
+                    b"runtime-server-performance-ingress-receipt.v1".as_slice(),
+                    RUNTIME_PERFORMANCE_INGRESS_RECEIPT_CONTRACT,
                 ),
             ] {
                 hasher.update(&(contract_name.len() as u64).to_le_bytes());

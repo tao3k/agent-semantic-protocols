@@ -58,7 +58,7 @@ impl MemorySearchFixture {
             return Err("Memory Search fixture schema identity mismatch".to_string());
         }
         let session = registry.acquire(&self.project_root, &self.scope).await?;
-        let refresh = session
+        let (refresh, _) = session
             .commit_source_index_generation(
                 self.refresh_request.clone(),
                 self.materialization.clone(),

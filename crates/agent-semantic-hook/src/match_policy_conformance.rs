@@ -36,9 +36,7 @@ pub struct MatchPolicyConformanceReport {
 
 impl MatchPolicyConformanceReport {
     pub fn is_complete(&self) -> bool {
-        self.failures.is_empty()
-            && self.case_count == self.configured_rule_count
-            && self.covered_rule_ids.len() == self.configured_rule_count
+        self.failures.is_empty() && self.covered_rule_ids.len() == self.configured_rule_count
     }
 }
 
@@ -132,6 +130,40 @@ pub fn evaluate_match_policy_conformance(
     }
 }
 
+/// Reject a compiled matcher whose configured rule identities do not cover the
+/// canonical production witness set. This check is intentionally runtime-free
+/// so every short-lived Hook process can validate an mmap snapshot before it
+/// is allowed to classify an action.
+pub fn validate_match_policy_rule_coverage(config: &ClientHookConfig) -> Result<(), String> {
+    let configured = config
+        .rule_ids()
+        .map(str::to_owned)
+        .collect::<BTreeSet<_>>();
+    let witnessed = production_cases()
+        .into_iter()
+        .map(|case| case.rule_id.to_owned())
+        .collect::<BTreeSet<_>>();
+    validate_match_policy_rule_sets(&configured, &witnessed)
+}
+
+fn validate_match_policy_rule_sets(
+    configured: &BTreeSet<String>,
+    witnessed: &BTreeSet<String>,
+) -> Result<(), String> {
+    if configured == witnessed {
+        return Ok(());
+    }
+    Err(format!(
+        "configured and witnessed rule IDs differ: configOnly={:?} witnessOnly={:?}",
+        configured.difference(&witnessed).collect::<Vec<_>>(),
+        witnessed.difference(&configured).collect::<Vec<_>>()
+    ))
+}
+
+#[cfg(test)]
+#[path = "../tests/unit/match_policy_conformance.rs"]
+mod tests;
+
 fn production_cases() -> Vec<MatchPolicyCase> {
     vec![
         MatchPolicyCase {
@@ -158,14 +190,14 @@ fn production_cases() -> Vec<MatchPolicyCase> {
         MatchPolicyCase {
             name: "javascript inline source materialization",
             payload: shell("node -e 'require(\"fs\").readFileSync(\"src/app.ts\", \"utf8\")'"),
-            rule_id: "deny-uncontrolled-javascript-inline-source-materialization",
+            rule_id: "materialize-source-access-policy",
             decision: DecisionKind::Deny,
             reason: ReasonKind::BulkSourceDump,
         },
         MatchPolicyCase {
             name: "python inline source materialization",
             payload: shell("python -c 'print(open(\"src/app.ts\").read())'"),
-            rule_id: "deny-uncontrolled-python-inline-source-materialization",
+            rule_id: "materialize-source-access-policy",
             decision: DecisionKind::Deny,
             reason: ReasonKind::BulkSourceDump,
         },

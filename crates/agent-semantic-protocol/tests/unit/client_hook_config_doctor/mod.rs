@@ -2,8 +2,6 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use agent_semantic_hook::{codex_hook_block, merge_codex_config};
-
 const PROBE_SENTINEL: &str = "ASP_CODEX_HOOK_ENFORCEMENT_PROBE_SENTINEL_DO_NOT_LEAK";
 
 mod basic;
@@ -11,44 +9,44 @@ mod runtime;
 mod trust;
 
 fn write_client_config(root: &std::path::Path, content: &str) {
+    write_agent_registry(root);
     let config_path = asp_state_home(root).join("hooks/config.toml");
     std::fs::create_dir_all(config_path.parent().expect("config parent"))
         .expect("create config dir");
-    std::fs::write(
-        config_path,
-        format!(
-            r#"{content}
-[agents]
+    std::fs::write(config_path, content).expect("write client config");
+}
 
-[[agents.residentAgents]]
-name = "asp-explore"
-role = "asp_explorer"
-codexAgentName = "asp_explorer"
-roles = ["subagent", "search"]
-permissions = ["read-only"]
-
-[[agents.residentAgents]]
-name = "asp-testing"
-role = "asp_testing"
-codexAgentName = "asp_testing"
-roles = ["subagent", "testing", "build"]
-permissions = ["workspace-write"]
-"#
+fn write_agent_registry(root: &std::path::Path) {
+    let agents = root.join("agents");
+    std::fs::create_dir_all(&agents).expect("create project agent registry");
+    for (name, bytes) in [
+        (
+            "config.toml",
+            include_bytes!("../../../../../agents/config.toml").as_slice(),
         ),
-    )
-    .expect("write client config");
+        (
+            "asp_explorer_codex.toml",
+            include_bytes!("../../../../../agents/asp_explorer_codex.toml").as_slice(),
+        ),
+        (
+            "asp_explorer_claude.md",
+            include_bytes!("../../../../../agents/asp_explorer_claude.md").as_slice(),
+        ),
+        (
+            "asp_testing_codex.toml",
+            include_bytes!("../../../../../agents/asp_testing_codex.toml").as_slice(),
+        ),
+        (
+            "asp_testing_claude.md",
+            include_bytes!("../../../../../agents/asp_testing_claude.md").as_slice(),
+        ),
+    ] {
+        std::fs::write(agents.join(name), bytes).expect("write project agent registry entry");
+    }
 }
 
 fn asp_state_home(root: &std::path::Path) -> std::path::PathBuf {
     root.join(".agent-semantic-protocols")
-}
-
-fn write_codex_project_config(root: &std::path::Path) {
-    let config_path = root.join(".codex/config.toml");
-    std::fs::create_dir_all(config_path.parent().expect("project config parent"))
-        .expect("create project config dir");
-    std::fs::write(config_path, merge_codex_config("", &codex_hook_block(root)))
-        .expect("write project Codex config");
 }
 
 fn write_codex_project_plugin_config(root: &std::path::Path) {
@@ -62,18 +60,39 @@ enabled = true
 "#,
     )
     .expect("write project plugin Codex config");
-    let hooks_path = root
-        .join(".codex")
-        .join("plugins")
-        .join("cache")
-        .join("asp-project")
-        .join("asp-codex-plugin")
-        .join("0.1.0")
-        .join("hooks")
-        .join("hooks.json");
-    std::fs::create_dir_all(hooks_path.parent().expect("plugin hooks parent"))
-        .expect("create project plugin hooks dir");
-    std::fs::write(hooks_path, "{}\n").expect("write project plugin hooks");
+}
+
+fn write_codex_plugin_fixture(root: &std::path::Path) {
+    let plugin_root = root.join("asp-codex-plugin");
+    for (relative, bytes) in [
+        (
+            ".codex-plugin/plugin.json",
+            include_bytes!("../../../../../asp-codex-plugin/.codex-plugin/plugin.json").as_slice(),
+        ),
+        (
+            "hooks/hooks.json",
+            include_bytes!("../../../../../asp-codex-plugin/hooks/hooks.json").as_slice(),
+        ),
+    ] {
+        let path = plugin_root.join(relative);
+        std::fs::create_dir_all(path.parent().expect("plugin fixture parent"))
+            .expect("create plugin fixture dir");
+        std::fs::write(path, bytes).expect("write plugin fixture artifact");
+    }
+    write_codex_project_plugin_config(root);
+}
+
+fn write_codex_global_inline_config(root: &std::path::Path, asp_binary: &std::path::Path) {
+    let codex_home = root.join(".codex-home");
+    std::fs::create_dir_all(&codex_home).expect("create isolated Codex home");
+    let config_path = codex_home.join("config.toml");
+    let block = agent_semantic_hook::codex_global_hook_block_with_binary(Some(asp_binary));
+    let config = agent_semantic_hook::merge_codex_global_hook_trust_config(
+        &format!("[features]\nhooks = true\nunified_exec = true\n\n{block}\n"),
+        &config_path,
+        Some(asp_binary),
+    );
+    std::fs::write(config_path, config).expect("write global inline Hook config");
 }
 
 fn write_stale_codex_home_config(root: &std::path::Path) {

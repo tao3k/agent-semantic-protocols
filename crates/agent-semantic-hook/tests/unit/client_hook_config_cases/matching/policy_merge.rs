@@ -204,12 +204,14 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
         Some("reasoning-search")
     );
     assert_eq!(
-        asp_search_decision
-            .fields
-            .get("residentName")
-            .and_then(|value| value.as_str()),
-        Some("asp-explore")
+        asp_search_decision.fields["choicePlaneOwner"].as_str(),
+        Some("org-contract:agent-interactive")
     );
+    assert_eq!(
+        asp_search_decision.fields["agentWindowCommand"].as_str(),
+        Some("asp session --agents choice-plane")
+    );
+    assert!(!asp_search_decision.fields.contains_key("residentName"));
     assert_eq!(
         asp_search_decision
             .fields

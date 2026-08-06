@@ -31,7 +31,10 @@ pub enum WorkspaceDbWriteOperation {
 /// A committed result returned for one typed mutation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WorkspaceDbWriteResult {
-    SourceIndexGeneration(crate::ClientDbSourceIndexRefreshReport),
+    SourceIndexGeneration {
+        receipt: crate::ClientDbSourceIndexRefreshReport,
+        materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
+    },
     ProviderOwner(ProviderIncrementalWriteReceipt),
     ProviderInventory(ProviderOwnerInventoryWriteReceipt),
     TreeSitterOwner(ProviderTreeSitterOwnerWriteReceipt),
@@ -69,17 +72,13 @@ pub struct WorkspaceDbWriteBatch {
 }
 
 impl WorkspaceDbWriteBatch {
-    /// Return the number of mutations admitted to this batch.
-    pub fn len(&self) -> usize {
-        self.submissions.len()
-    }
-
     /// Return whether this batch contains no mutations.
     pub fn is_empty(&self) -> bool {
         self.submissions.is_empty()
     }
 
     /// Inspect requests and actor-assigned ordering without exposing transport handles.
+    #[allow(dead_code)]
     pub fn requests(
         &self,
     ) -> impl ExactSizeIterator<Item = (&WorkspaceDbWriteRequest, WorkspaceDbWriteAdmission)> {
@@ -89,6 +88,7 @@ impl WorkspaceDbWriteBatch {
     }
 
     /// Complete every admitted request after the owner commits or rejects the batch.
+    #[allow(dead_code)]
     pub fn complete(self, results: Vec<Result<WorkspaceDbWriteResult, String>>) {
         assert_eq!(
             self.submissions.len(),
@@ -211,40 +211,32 @@ pub async fn run_workspace_db_writer_actor(
         if batch.is_empty() {
             continue;
         }
-        let batch_size = batch.len();
-        let valid_admission = batch.requests().enumerate().all(|(index, (_, admission))| {
-            admission.batch_sequence == batch.batch_sequence
-                && admission.batch_index == u32::try_from(index).unwrap_or(u32::MAX)
-        });
-        if !valid_admission {
-            batch.complete(vec![
-                Err(
-                    "workspace database writer admission ordering drift".to_owned()
-                );
-                batch_size
-            ]);
-            continue;
+        for (index, submission) in batch.submissions.into_iter().enumerate() {
+            let expected_index = u32::try_from(index).unwrap_or(u32::MAX);
+            let result = if submission.admission.batch_sequence != batch.batch_sequence
+                || submission.admission.batch_index != expected_index
+            {
+                Err("workspace database writer admission ordering drift".to_owned())
+            } else {
+                execute_operation(&mut connection, submission.request).await
+            }
+            .map(|result| WorkspaceDbWriteResponse {
+                admission: submission.admission,
+                result,
+            });
+            let _ = submission.response.send(result);
         }
-        let requests = batch
-            .requests()
-            .map(|(request, _)| request.clone())
-            .collect::<Vec<_>>();
-        let mut completed = Vec::with_capacity(batch_size);
-        for request in &requests {
-            completed.push(execute_operation(&mut connection, request).await);
-        }
-        batch.complete(completed);
     }
 }
 
 async fn execute_operation(
     connection: &mut turso::Connection,
-    request: &WorkspaceDbWriteRequest,
+    request: WorkspaceDbWriteRequest,
 ) -> Result<WorkspaceDbWriteResult, String> {
-    match &request.operation {
+    match request.operation {
         WorkspaceDbWriteOperation::CommitSourceIndexGeneration {
             request: refresh,
-            materialization,
+            mut materialization,
         } => {
             if materialization.workspace_identity != request.workspace_identity {
                 return Err(format!(
@@ -254,34 +246,37 @@ async fn execute_operation(
             }
             super::core::refresh_turso_source_index_import_on_connection(
                 connection,
-                refresh.clone(),
-                materialization.clone(),
+                refresh,
+                &mut materialization,
             )
             .await
-            .map(WorkspaceDbWriteResult::SourceIndexGeneration)
+            .map(|receipt| WorkspaceDbWriteResult::SourceIndexGeneration {
+                receipt,
+                materialization,
+            })
         }
         WorkspaceDbWriteOperation::WriteProviderOwner(request) => {
             super::provider_incremental::write_provider_incremental_owner_on_connection(
-                connection, request,
+                connection, &request,
             )
             .await
             .map(WorkspaceDbWriteResult::ProviderOwner)
         }
         WorkspaceDbWriteOperation::UpsertProviderInventory(request) => {
             super::provider_treesitter_write::upsert_provider_owner_inventory_on_connection(
-                connection, request,
+                connection, &request,
             )
             .await
             .map(WorkspaceDbWriteResult::ProviderInventory)
         }
         WorkspaceDbWriteOperation::WriteTreeSitterOwner { query, result } => {
             super::provider_treesitter_write::write_provider_treesitter_owner_result_on_connection(
-                connection, query, result,
+                connection, &query, &result,
             )
             .await
             .map(WorkspaceDbWriteResult::TreeSitterOwner)
         }
-        WorkspaceDbWriteOperation::FinishWrites(mode) => finish_writes(connection, *mode)
+        WorkspaceDbWriteOperation::FinishWrites(mode) => finish_writes(connection, mode)
             .await
             .map(WorkspaceDbWriteResult::WriteFinish),
     }

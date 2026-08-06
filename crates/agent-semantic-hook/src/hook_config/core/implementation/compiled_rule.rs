@@ -27,6 +27,8 @@ use crate::tool_action::{ToolAction, subject_for_action};
 pub struct ClientHookConfig {
     source_config: agent_semantic_config::HookClientConfigFile,
     pub(in crate::hook_config) rules: Vec<CompiledHookRule>,
+    rule_candidates: RuleCandidateIndex,
+    policy_receipt: std::sync::OnceLock<HookPolicyReceipt>,
     language_providers: Vec<agent_semantic_config::HookClientLanguageProviderConfig>,
     contract_fingerprint: Option<String>,
     semantic_ast_patch_disabled: bool,
@@ -35,6 +37,15 @@ pub struct ClientHookConfig {
     asp_session_policy: AspSessionPolicy,
     agent_session_messages: agent_semantic_config::HookClientAgentSessionMessagesConfig,
 }
+
+#[derive(Debug)]
+struct HookPolicyReceipt {
+    generation_digest: String,
+    kernel_version: &'static str,
+}
+
+type RuleCandidateIndex =
+    std::collections::BTreeMap<String, std::collections::BTreeMap<String, Vec<usize>>>;
 
 #[derive(Debug)]
 pub(in crate::hook_config) struct CompiledHookRule {
@@ -79,6 +90,7 @@ pub(super) struct RuleMatch {
     pub(super) argv_source_glob_any: CompiledPathGlobs,
     pub(super) argv_source_exclude_flag_any: Vec<String>,
     pub(super) argv_workspace_regular_file: bool,
+    pub(super) argv_structured_document_file: bool,
     pub(super) argv_registered_source_file: bool,
     structured_projection: Option<agent_semantic_config::HookClientStructuredProjectionMatchConfig>,
 }
@@ -94,6 +106,16 @@ struct RuleRoute {
 }
 
 impl CompiledHookRule {
+    fn canonical_event_key(&self) -> Option<String> {
+        self.event.as_deref().map(canonical_event)
+    }
+
+    fn canonical_platform_key(&self) -> Option<String> {
+        self.platform
+            .as_ref()
+            .map(|value| value.to_ascii_lowercase())
+    }
+
     fn durable_matcher_artifact(&self) -> DurableRuleMatcherArtifact {
         self.match_config.durable_matcher_artifact()
     }
@@ -106,20 +128,10 @@ impl CompiledHookRule {
         let Some(template) = self.message.as_deref() else {
             return fallback;
         };
-        let Some(dispatch) = self.dispatch.as_ref() else {
-            return template.to_string();
-        };
-        let canonical_target = format!("/root/{}", dispatch.resident_codex_agent_name);
         let execution_lane = self.fields.get("executionLane").map_or("", String::as_str);
         agent_semantic_config::render_hook_client_message_template(
             template,
-            &[
-                ("executionLane", execution_lane),
-                ("residentName", &dispatch.resident_name),
-                ("targetAgentName", &dispatch.resident_codex_agent_name),
-                ("canonicalTarget", &canonical_target),
-                ("receiptKind", &dispatch.receipt_kind),
-            ],
+            &[("executionLane", execution_lane)],
         )
     }
 
@@ -230,34 +242,23 @@ impl CompiledHookRule {
             decision_fields.insert("agentAction".to_string(), agent_action);
         }
         if let Some(dispatch) = self.dispatch.as_ref() {
-            decision_fields.insert(
-                "transport".to_string(),
-                serde_json::Value::String(dispatch.transport.as_str().to_string()),
-            );
-            decision_fields.insert(
-                "residentName".to_string(),
-                serde_json::Value::String(dispatch.resident_name.clone()),
-            );
-            decision_fields.insert(
-                "residentChildName".to_string(),
-                serde_json::Value::String(dispatch.resident_name.clone()),
-            );
-            decision_fields.insert(
-                "targetAgentName".to_string(),
-                serde_json::Value::String(dispatch.resident_codex_agent_name.clone()),
-            );
-            decision_fields.insert(
-                "targetAgentRole".to_string(),
-                serde_json::Value::String(dispatch.resident_role.clone()),
-            );
-            decision_fields.insert(
-                "agentSessionAction".to_string(),
-                serde_json::Value::String("dispatch-configured-resident".to_string()),
-            );
-            decision_fields.insert(
-                "receiptKind".to_string(),
-                serde_json::Value::String(dispatch.receipt_kind.clone()),
-            );
+            for (field, value) in [
+                ("transport", dispatch.transport.as_str()),
+                ("residentName", dispatch.resident_name.as_str()),
+                (
+                    "targetAgentName",
+                    dispatch.resident_codex_agent_name.as_str(),
+                ),
+                ("targetAgentRole", dispatch.resident_role.as_str()),
+                ("agentSessionAction", "dispatch-configured-resident"),
+                ("receiptKind", dispatch.receipt_kind.as_str()),
+                ("targetAgentSelectionSource", "hook-config-rule-dispatch"),
+            ] {
+                decision_fields.insert(
+                    field.to_string(),
+                    serde_json::Value::String(value.to_string()),
+                );
+            }
             if let Some(command) = action.command.as_deref() {
                 use sha2::{Digest, Sha256};
                 decision_fields.insert(
@@ -269,14 +270,20 @@ impl CompiledHookRule {
                 );
             }
             decision_fields.insert(
-                "canonicalTarget".to_string(),
-                serde_json::Value::String(format!("/root/{}", dispatch.resident_codex_agent_name)),
+                "requiredAction".to_string(),
+                serde_json::Value::String("open-org-interactive-resident-agent-window".to_string()),
             );
             decision_fields.insert(
-                "requiredAction".to_string(),
-                serde_json::Value::String(
-                    "route-exact-command-to-hook-selected-resident".to_string(),
-                ),
+                "nextAction".to_string(),
+                serde_json::Value::String("run-asp-session-agent-window".to_string()),
+            );
+            decision_fields.insert(
+                "agentWindowCommand".to_string(),
+                serde_json::Value::String("asp session --agents choice-plane".to_string()),
+            );
+            decision_fields.insert(
+                "choicePlaneOwner".to_string(),
+                serde_json::Value::String("org-contract:agent-interactive".to_string()),
             );
         }
         let registered_asp = crate::hook_config::core::registered_asp::match_registered_asp_command(
@@ -381,6 +388,7 @@ impl RuleMatch {
             argv_source_glob_any,
             argv_source_exclude_flag_any: config.argv_source_exclude_flag_any,
             argv_workspace_regular_file: config.argv_workspace_regular_file,
+            argv_structured_document_file: config.argv_structured_document_file,
             argv_registered_source_file: config.argv_registered_source_file,
             structured_projection: config.structured_projection,
         })
@@ -444,6 +452,7 @@ impl RuleMatch {
             || !self.argv_source_any.is_empty()
             || !self.argv_source_glob_any.is_empty()
             || self.argv_workspace_regular_file
+            || self.argv_structured_document_file
             || self.argv_registered_source_file
             || self.structured_projection.is_some()
     }
@@ -458,6 +467,7 @@ impl RuleMatch {
             || !self.argv_source_any.is_empty()
             || !self.argv_source_glob_any.is_empty()
             || self.argv_workspace_regular_file
+            || self.argv_structured_document_file
             || self.argv_registered_source_file
     }
 
@@ -465,6 +475,7 @@ impl RuleMatch {
         !self.argv_source_any.is_empty()
             || !self.argv_source_glob_any.is_empty()
             || self.argv_workspace_regular_file
+            || self.argv_structured_document_file
             || self.argv_registered_source_file
     }
 
@@ -567,14 +578,14 @@ impl RuleMatch {
     }
 
     fn matches_workspace_regular_file(&self, project_root: &std::path::Path, path: &str) -> bool {
-        if !self.argv_workspace_regular_file {
+        if !self.argv_workspace_regular_file && !self.argv_structured_document_file {
             return false;
         }
         let candidate = std::path::Path::new(path);
         if crate::match_policy_conformance::synthetic_match_environment_active()
             && matches!(path, "package.json" | "Cargo.toml")
         {
-            return self.matches_structured_projection_format(candidate);
+            return self.matches_configured_document_format(candidate);
         }
         let candidate = if candidate.is_absolute() {
             candidate.to_path_buf()
@@ -594,23 +605,36 @@ impl RuleMatch {
         {
             return false;
         }
-        self.matches_structured_projection_format(&candidate)
+        self.matches_configured_document_format(&candidate)
+    }
+
+    fn matches_configured_document_format(&self, candidate: &std::path::Path) -> bool {
+        if self.argv_structured_document_file && structured_document_format(candidate).is_none() {
+            return false;
+        }
+        self.matches_structured_projection_format(candidate)
     }
 
     fn matches_structured_projection_format(&self, candidate: &std::path::Path) -> bool {
         let Some(projection) = self.structured_projection.as_ref() else {
             return true;
         };
-        let format = candidate
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .and_then(|extension| match extension.to_ascii_lowercase().as_str() {
-                "json" => Some(agent_semantic_config::HookClientStructuredFormat::Json),
-                "toml" => Some(agent_semantic_config::HookClientStructuredFormat::Toml),
-                _ => None,
-            });
+        let format = structured_document_format(candidate);
         format.is_some_and(|format| format == projection.document_format)
     }
+}
+
+fn structured_document_format(
+    candidate: &std::path::Path,
+) -> Option<agent_semantic_config::HookClientStructuredFormat> {
+    candidate
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .and_then(|extension| match extension.to_ascii_lowercase().as_str() {
+            "json" => Some(agent_semantic_config::HookClientStructuredFormat::Json),
+            "toml" => Some(agent_semantic_config::HookClientStructuredFormat::Toml),
+            _ => None,
+        })
 }
 
 fn fast_path_token(token: &str) -> Option<&str> {
@@ -743,16 +767,17 @@ impl CompiledHookRule {
         let dispatch = config
             .dispatch
             .map(|dispatch| {
-                let resident_name = agents
-                    .placeholders
-                    .get(dispatch.agent.as_str())
-                    .ok_or_else(|| {
-                        format!(
-                            "rule `{}` dispatch references unavailable agent placeholder `{}`",
-                            config.id,
-                            dispatch.agent.as_str()
-                        )
-                    })?;
+                let resident_name =
+                    agents
+                        .placeholders
+                        .get(dispatch.role.as_str())
+                        .ok_or_else(|| {
+                            format!(
+                                "rule `{}` dispatch references unavailable agent placeholder `{}`",
+                                config.id,
+                                dispatch.role.as_str()
+                            )
+                        })?;
                 let resident = agents
                     .resident_agents
                     .iter()

@@ -1,5 +1,4 @@
 mod authoritative_state;
-mod choice;
 mod graph_router;
 mod ports;
 mod receipt;
@@ -15,7 +14,6 @@ pub use ports::SearchLoopRuntimeStore;
 mod transitions;
 
 pub use authoritative_state::ValidatedContextProductStateV1;
-pub use choice::{Choice, ChoicePane, ResidentInteractiveCommand, ResidentName, RootSessionId};
 pub use graph_router::{AdmitRouteProgramRequest, GraphRouter, GraphRouterError};
 pub use ports::{
     AuthoritativeStateRecord, CompareAndAppendOutcome, PortFuture, ProofResolver,

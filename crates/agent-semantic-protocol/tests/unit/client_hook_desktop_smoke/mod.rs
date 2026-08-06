@@ -39,7 +39,10 @@ fn codex_desktop_read_aliases_reach_runtime_policy() {
 
         assert_eq!(decision["decision"], "deny", "{tool_name}");
         assert_eq!(decision["reasonKind"], "direct-source-read", "{tool_name}");
-        assert_eq!(decision["routes"][0]["providerId"], "rs-harness");
+        assert_eq!(
+            decision["routes"][0]["providerId"], "rs-harness",
+            "Read alias must retain the provider-owned recovery route: {decision}"
+        );
         assert_route_mentions(&decision, "src/lib.rs");
         assert_route_uses_owner_items_recovery(&decision);
     }
@@ -66,7 +69,10 @@ fn codex_desktop_shell_read_wrappers_reach_runtime_policy() {
 
         assert_eq!(decision["decision"], "deny", "{command}");
         assert_eq!(decision["reasonKind"], "bulk-source-dump", "{command}");
-        assert_eq!(decision["routes"][0]["providerId"], "rs-harness");
+        assert_eq!(
+            decision["routes"][0]["providerId"], "rs-harness",
+            "shell Read wrapper must retain the provider-owned recovery route: {decision}"
+        );
         assert_route_mentions(&decision, "src/lib.rs");
         assert_route_uses_owner_items_recovery(&decision);
     }
@@ -128,10 +134,40 @@ fn write_hook_fixture(root: &Path) {
     crate::state_home_fixture::install_provider_script(&state_home, "rust", "#!/bin/sh\nexit 0\n");
     crate::state_home_fixture::write_activation(root, &state_home, &["rust"]);
 
+    let agents = root.join("agents");
+    let state_agents = state_home.join("agents");
+    fs::create_dir_all(&agents).expect("create agent registry");
+    fs::create_dir_all(&state_agents).expect("create state agent registry");
+    for (name, bytes) in [
+        (
+            "config.toml",
+            include_bytes!("../../../../../agents/config.toml").as_slice(),
+        ),
+        (
+            "asp_explorer_codex.toml",
+            include_bytes!("../../../../../agents/asp_explorer_codex.toml").as_slice(),
+        ),
+        (
+            "asp_explorer_claude.md",
+            include_bytes!("../../../../../agents/asp_explorer_claude.md").as_slice(),
+        ),
+        (
+            "asp_testing_codex.toml",
+            include_bytes!("../../../../../agents/asp_testing_codex.toml").as_slice(),
+        ),
+        (
+            "asp_testing_claude.md",
+            include_bytes!("../../../../../agents/asp_testing_claude.md").as_slice(),
+        ),
+    ] {
+        fs::write(agents.join(name), bytes).expect("write agent registry fixture");
+        fs::write(state_agents.join(name), bytes).expect("write state agent registry fixture");
+    }
+
     fs::create_dir_all(root.join(".agent-semantic-protocols/hooks")).expect("create config dir");
     fs::write(
         root.join(".agent-semantic-protocols/hooks/config.toml"),
-        CLIENT_CONFIG,
+        agent_semantic_hook::default_client_config_template(),
     )
     .expect("write client config");
 }
@@ -318,7 +354,7 @@ fn decision_from_stdout(stdout: &str) -> Value {
         .unwrap_or_else(|| panic!("additional context missing: {envelope}"));
     let decision_json = context
         .strip_prefix("[agent-hook-decision] ")
-        .expect("decision prefix");
+        .unwrap_or_else(|| panic!("decision prefix missing: {context}"));
     serde_json::from_str(decision_json).expect("decision json")
 }
 
@@ -357,10 +393,3 @@ fn assert_route_uses_owner_items_recovery(decision: &Value) {
         "owner recovery route must not request --code: {args:?}"
     );
 }
-
-const CLIENT_CONFIG: &str = r#"
-schemaId = "agent.semantic-protocols.hook.client-config"
-schemaVersion = "1"
-protocolId = "agent.semantic-protocols.hook"
-protocolVersion = "1"
-"#;

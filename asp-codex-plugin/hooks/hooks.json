@@ -7,7 +7,7 @@
           {
             "type": "command",
           "command": "asp hook session-start --client codex",
-            "timeout": 5,
+            "timeout": 1,
             "statusMessage": "Loading Agent Semantic Protocol activation"
           }
         ]
@@ -19,7 +19,7 @@
           {
             "type": "command",
           "command": "asp hook user-prompt --client codex",
-            "timeout": 5,
+            "timeout": 1,
             "statusMessage": "Planning Agent Semantic Protocol search flow"
           }
         ]
@@ -32,7 +32,7 @@
           {
             "type": "command",
           "command": "asp hook pre-tool --client codex",
-            "timeout": 5,
+            "timeout": 1,
             "statusMessage": "Checking Agent Semantic Protocol search policy"
           }
         ]
@@ -45,7 +45,7 @@
           {
             "type": "command",
           "command": "asp hook permission-request --client codex",
-            "timeout": 5,
+            "timeout": 1,
             "statusMessage": "Checking Agent Semantic Protocol approval policy"
           }
         ]
@@ -57,7 +57,7 @@
           {
             "type": "command",
           "command": "asp hook post-tool --client codex",
-            "timeout": 5,
+            "timeout": 1,
             "statusMessage": "Updating Agent Semantic Protocol search state"
           }
         ]
@@ -69,7 +69,7 @@
           {
             "type": "command",
           "command": "asp hook subagent-start --client codex",
-            "timeout": 5,
+            "timeout": 1,
             "statusMessage": "Preparing Agent Semantic Protocol subagent context"
           }
         ]
@@ -81,7 +81,7 @@
           {
             "type": "command",
           "command": "asp hook subagent-stop --client codex",
-            "timeout": 5,
+            "timeout": 1,
             "statusMessage": "Checking Agent Semantic Protocol subagent evidence"
           }
         ]
@@ -93,7 +93,7 @@
           {
             "type": "command",
           "command": "asp hook stop --client codex",
-            "timeout": 5,
+            "timeout": 1,
             "statusMessage": "Checking Agent Semantic Protocol changed files"
           }
         ]

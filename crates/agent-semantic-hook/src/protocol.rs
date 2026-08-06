@@ -177,8 +177,6 @@ impl serde::Serialize for HookDecision {
             message: &'a str,
             #[serde(skip_serializing_if = "BTreeMap::is_empty")]
             fields: &'a BTreeMap<String, Value>,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            interactive_command: Option<agent_semantic_loop::ResidentInteractiveCommand>,
         }
 
         SerializedHookDecision {
@@ -195,7 +193,6 @@ impl serde::Serialize for HookDecision {
             routes: &self.routes,
             message: &self.message,
             fields: &self.fields,
-            interactive_command: self.configured_resident_interactive_command(),
         }
         .serialize(serializer)
     }
@@ -223,8 +220,6 @@ impl<'de> serde::Deserialize<'de> for HookDecision {
             message: String,
             #[serde(default)]
             fields: BTreeMap<String, Value>,
-            #[serde(default)]
-            interactive_command: Option<de::IgnoredAny>,
         }
 
         let wire = DeserializedHookDecision::deserialize(deserializer)?;
@@ -248,8 +243,6 @@ impl<'de> serde::Deserialize<'de> for HookDecision {
             &wire.protocol_version,
             HOOK_PROTOCOL_VERSION,
         )?;
-        let _ = wire.interactive_command;
-
         Ok(Self {
             schema_id: HOOK_DECISION_SCHEMA_ID,
             schema_version: HOOK_DECISION_SCHEMA_VERSION,
@@ -297,42 +290,6 @@ impl HookDecision {
                         .and_then(Value::as_str)
                         .is_some_and(|value| !value.is_empty())
                 })
-    }
-
-    /// Build the single v1 command that enters the configured resident loop.
-    pub fn configured_resident_interactive_command(
-        &self,
-    ) -> Option<agent_semantic_loop::ResidentInteractiveCommand> {
-        if !self.has_configured_resident_dispatch() {
-            return None;
-        }
-        let resident_name = self.fields.get("residentName")?.as_str()?;
-        let root_session_id = self
-            .fields
-            .get("rootSessionId")
-            .or_else(|| self.fields.get("sessionId"))
-            .and_then(Value::as_str);
-        let receipt_kind = self.fields.get("receiptKind").and_then(Value::as_str);
-        let command_json = self
-            .subject
-            .command
-            .as_deref()
-            .and_then(|command| serde_json::to_string(&["/bin/sh", "-c", command]).ok());
-        let resident_name = agent_semantic_loop::ResidentName::from(resident_name);
-        let root_session_id = root_session_id.map(agent_semantic_loop::RootSessionId::from);
-        Some(
-            agent_semantic_loop::ResidentInteractiveCommand::bootstrap_with_dispatch(
-                &resident_name,
-                root_session_id.as_ref(),
-                receipt_kind,
-                command_json.as_deref(),
-            ),
-        )
-    }
-
-    pub fn configured_resident_interactive_command_line(&self) -> Option<String> {
-        let command = self.configured_resident_interactive_command()?;
-        Some(crate::classifier::command_line(command.argv()))
     }
 }
 
@@ -484,17 +441,6 @@ pub fn parse_payload(input: &str) -> Result<Value, AgentHookError> {
 /// Render a shared hook decision into the selected platform response envelope.
 pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentHookError> {
     let message = platform_decision_message(decision);
-    if decision.decision == DecisionKind::Deny
-        && decision.configured_resident_interactive_command().is_some()
-    {
-        return Ok(json!({
-            "hookSpecificOutput": {
-                "hookEventName": platform_hook_event_name(&decision.event),
-                "permissionDecision": "deny",
-                "permissionDecisionReason": message.as_ref(),
-            }
-        }));
-    }
     let mut decision_value =
         serde_json::to_value(decision).map_err(AgentHookError::InvalidOutput)?;
     if message.as_ref() != decision.message
@@ -582,11 +528,7 @@ fn decision_has_warning(decision: &HookDecision) -> bool {
 }
 
 fn platform_decision_message(decision: &HookDecision) -> Cow<'_, str> {
-    if decision.decision == DecisionKind::Deny
-        && let Some(command) = decision.configured_resident_interactive_command_line()
-    {
-        Cow::Owned(command)
-    } else if decision.decision == DecisionKind::Deny && is_subagent_context(decision) {
+    if decision.decision == DecisionKind::Deny && is_subagent_context(decision) {
         Cow::Owned(subagent_deny_message(&decision.message))
     } else {
         Cow::Borrowed(&decision.message)

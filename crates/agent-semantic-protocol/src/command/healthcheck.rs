@@ -31,6 +31,10 @@ fn usage() -> String {
 
 pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
     let options = HealthcheckOptions::parse(args)?;
+    let state_home = crate::server::runtime_server::state_home()?;
+    crate::server::runtime_server::block_on_runtime_server_client(
+        crate::server::runtime_server::await_healthy_runtime_server(&state_home),
+    )??;
     let health = agent_semantic_client_db::runtime_server_health::cached_runtime_server_health()?;
     if options.json {
         println!(

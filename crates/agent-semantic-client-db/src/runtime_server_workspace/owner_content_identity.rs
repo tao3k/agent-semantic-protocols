@@ -31,15 +31,6 @@ pub(super) async fn read(
     Ok(Some(RuntimeOwnerContentIdentity { digest }))
 }
 
-pub(crate) async fn current_owner_content_digest(
-    project_root: &Path,
-    owner_path: &str,
-) -> Result<Option<String>, String> {
-    read(project_root, owner_path)
-        .await
-        .map(|identity| identity.map(|identity| identity.digest))
-}
-
 pub(super) fn normalized_owner_path(owner_path: &str) -> Result<PathBuf, String> {
     let relative = Path::new(owner_path);
     if relative.is_absolute()

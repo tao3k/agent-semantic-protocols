@@ -343,7 +343,7 @@ check-language-evidence-smoke-all: check-language-evidence-smoke-all-setup
     protocol_home="$(PATH="$PWD/.bin:$PATH" .bin/asp hook paths . | awk -F= '$1=="protocolHome"{print substr($0, 14)}')" && \
       cat "$protocol_home/language-evidence-smoke-all-providers.json"
 
-provider-gate: check-rust-warnings check-schema-profiles check-rfc-docs check-tree-sitter-query-contracts check-language-workspace-search-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia
+provider-gate: check-rust-warnings check-schema-profiles check-schema-manager check-rfc-docs check-tree-sitter-query-contracts check-language-workspace-search-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia
 
 check-rust-warnings:
     env RUSTFLAGS="-D warnings" cargo check -q -p agent-semantic-protocol
@@ -351,6 +351,12 @@ check-rust-warnings:
 
 check-schema-profiles:
     uv run --project packages/python python -m tools schema profiles validate
+
+check-schema-manager:
+    uv run --project packages/python --frozen asp-schema-manager check --workspace-root .
+
+report-schema-manager:
+    uv run --project packages/python --frozen asp-schema-manager audit --workspace-root .
 
 check-tree-sitter-query-contracts:
     uv run --project packages/python --frozen python -m tools tree-sitter validate contracts

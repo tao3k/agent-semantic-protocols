@@ -17,10 +17,10 @@ fn agent_session_control_json_command_is_whitelisted() {
         "asp-explore",
         "--json",
     ]);
-    let guide_command = args(&["agent", "session", "register", "--guide"]);
+    let help_command = args(&["agent", "session", "--help"]);
 
     assert!(is_agent_session_control_json_command(&status_command));
-    assert!(is_agent_session_control_json_command(&guide_command));
+    assert!(is_agent_session_control_json_command(&help_command));
 }
 
 #[test]

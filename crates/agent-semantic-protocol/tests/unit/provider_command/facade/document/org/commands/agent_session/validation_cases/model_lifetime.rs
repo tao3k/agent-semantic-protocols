@@ -28,7 +28,7 @@ capacityThreshold = 0.8
 
 [[agents.residentAgents]]
 enabled = true
-name = "asp-explore"
+name = "asp_explorer"
 role = "asp_explorer"
 roles = ["subagent", "search"]
 permissions = ["read-only"]
@@ -47,7 +47,7 @@ sessionLifetime = "resident"
             "session",
             "register",
             "--name",
-            "asp-explore",
+            "asp_explorer",
             "--child-session-id",
             "codex-child-thread",
             "--root-session-id",
@@ -76,7 +76,7 @@ sessionLifetime = "resident"
             "session",
             "status",
             "--name",
-            "asp-explore",
+            "asp_explorer",
             "--root-session-id",
             "codex-root-thread",
             "--json",
@@ -138,25 +138,28 @@ fn asp_agent_session_reads_dynamic_agent_table_session_lifetime() {
     std::fs::create_dir_all(&agents_dir).expect("create ASP agents dir");
     std::fs::write(
         agents_dir.join("config.toml"),
-        r#"[agents.asp_explorer]
-session_name = "asp-explore"
-host_agent_name = "asp_explorer"
-profile = "asp-explorer_codex.toml"
-projection = "asp-explorer.toml"
+        r#"schema_id = "agent.semantic-protocols.agent-route-registry"
+schema_version = 1
+
+[platforms.codex]
+matcher = "*_codex.toml"
+
+[agents.asp_explorer]
 session_lifetime = "resident"
 roles = ["subagent", "search"]
-permissions = ["read-only"]
+
 "#,
     )
     .expect("write ASP dynamic agents config");
 
     std::fs::write(
-        agents_dir.join("asp-explorer_codex.toml"),
+        agents_dir.join("asp_explorer_codex.toml"),
         r#"name = "asp_explorer"
+description = "ASP search/query evidence explorer."
 model = "gpt-5.4-mini"
 model_reasoning_effort = "low"
 sandbox_mode = "read-only"
-session_lifetime = "resident"
+developer_instructions = "Run parser-owned ASP evidence queries."
 "#,
     )
     .expect("write dynamic agent Codex profile");
@@ -184,7 +187,7 @@ session_lifetime = "resident"
             "session",
             "status",
             "--name",
-            "asp-explore",
+            "asp_explorer",
             "--root-session-id",
             "codex-root-thread",
             "--json",
@@ -234,7 +237,7 @@ fn asp_agent_session_model_mismatch_is_warning_not_invalid() {
             "session",
             "register",
             "--name",
-            "asp-explore",
+            "asp_explorer",
             "--child-session-id",
             "codex-child-thread",
             "--root-session-id",
@@ -267,7 +270,7 @@ fn asp_agent_session_model_mismatch_is_warning_not_invalid() {
             "session",
             "status",
             "--name",
-            "asp-explore",
+            "asp_explorer",
             "--json",
         ])
         .output()
@@ -285,77 +288,6 @@ fn asp_agent_session_model_mismatch_is_warning_not_invalid() {
     assert!(
         status_stdout.contains("\"routable\": false"),
         "{status_stdout}"
-    );
-
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
-fn asp_agent_session_reads_codex_agent_file_session_lifetime() {
-    let root = temp_project_root("agent-command-session-codex-agent-file-lifetime");
-    install_rust_marker_provider(&state_home(&root));
-    let home = root.join("home");
-    write_codex_asp_explorer_fixture_with_actual_profile(
-        &home,
-        "codex-root-thread",
-        "codex-child-thread",
-        "gpt-5.3-codex-spark",
-        "gpt-5.3-codex-spark",
-        "read-only",
-        "read-only",
-    );
-
-    let agents_dir = home.join(".agent-semantic-protocols").join("agents");
-    std::fs::create_dir_all(&agents_dir).expect("create ASP agents dir");
-    std::fs::write(
-        agents_dir.join("asp-explorer_codex.toml"),
-        r#"name = "asp_explorer"
-model = "gpt-5.3-codex-spark"
-sandbox_mode = "read-only"
-session_lifetime = "resident"
-"#,
-    )
-    .expect("write codex agent file");
-
-    let sync = asp_command(&root)
-        .env("HOME", &home)
-        .env("CODEX_HOME", home.join(".codex"))
-        .env("ASP_AGENTS_HOME", &agents_dir)
-        .env("CODEX_THREAD_ID", "codex-root-thread")
-        .arg("sync")
-        .output()
-        .expect("sync agent-file lifecycle fixture");
-    assert!(
-        sync.status.success(),
-        "{}",
-        String::from_utf8_lossy(&sync.stderr)
-    );
-
-    let output = asp_command(&root)
-        .env("HOME", &home)
-        .env("CODEX_HOME", home.join(".codex"))
-        .env("ASP_AGENTS_HOME", &agents_dir)
-        .args([
-            "agent",
-            "session",
-            "status",
-            "--name",
-            "asp-explore",
-            "--json",
-        ])
-        .output()
-        .expect("run asp agent session status");
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "{stdout}");
-    assert!(
-        stdout.contains("\"sessionLifetime\": \"resident\""),
-        "{stdout}"
-    );
-    assert!(stdout.contains("\"resident\": true"), "{stdout}");
-    assert!(
-        stdout.contains("\"sessionLifetimeSource\": \"agent-file\""),
-        "{stdout}"
     );
 
     let _ = std::fs::remove_dir_all(root);

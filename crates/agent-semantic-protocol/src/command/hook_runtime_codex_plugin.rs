@@ -1,18 +1,36 @@
 //! Codex plugin installation path for `asp install plugin --codex`.
 
-use super::hook_runtime_subagent::install_codex_resident_agents;
 use agent_semantic_hook::validate_codex_config_toml;
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const ASP_CODEX_PLUGIN_NAME: &str = "asp-codex-plugin";
 const ASP_CODEX_PLUGIN_MARKETPLACE_NAME: &str = "asp-project";
-const ASP_CODEX_PLUGIN_MANIFEST_JSON: &str =
-    include_str!("../../../../asp-codex-plugin/.codex-plugin/plugin.json");
-const ASP_CODEX_PLUGIN_HOOKS_JSON: &str =
-    include_str!("../../../../asp-codex-plugin/hooks/hooks.json");
+#[path = "hook_runtime_codex_plugin_authority.rs"]
+mod authority;
+#[cfg(test)]
+pub(in crate::command) use authority::{
+    ASP_CODEX_PLUGIN_HOOKS_JSON, ASP_CODEX_PLUGIN_MARKETPLACE_JSON,
+};
+pub(in crate::command) use authority::{
+    ASP_CODEX_PLUGIN_MANIFEST_JSON, codex_plugin_hook_present,
+    remove_codex_managed_global_hook_config, validate_codex_plugin_source_payload,
+};
+
+#[cfg(test)]
+#[path = "../../tests/unit/plugin_hook_authority.rs"]
+mod plugin_hook_authority_tests;
+static CODEX_CONFIG_PUBLISH_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Debug)]
+pub(super) struct CodexHookConfigInstallReceipt {
+    pub(super) changed: bool,
+    pub(super) digest: String,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum CodexPluginScope {
@@ -36,175 +54,53 @@ mod plugin_path;
 mod install;
 pub(super) use install::install_codex_plugin_hooks;
 
-fn remove_codex_user_managed_hook_config(
-    config_path: &Path,
-    project_config_path: &Path,
-) -> Result<(), String> {
-    let existing = fs::read_to_string(config_path).unwrap_or_default();
-    validate_codex_config_toml(&existing)
-        .map_err(|error| format!("refusing to clean invalid Codex config TOML: {error}"))?;
-    let cleaned = agent_semantic_hook::remove_codex_managed_hook_config(&existing);
-    let cleaned =
-        agent_semantic_hook::remove_codex_global_hook_trust_config(&cleaned, project_config_path);
-    let cleaned = agent_semantic_hook::remove_codex_global_hook_trust_config(&cleaned, config_path);
-    if cleaned != existing {
-        validate_codex_config_toml(&cleaned).map_err(|error| {
-            format!("refusing to write invalid cleaned Codex config TOML: {error}")
-        })?;
-        fs::write(config_path, cleaned.as_bytes())
-            .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
-    }
-    Ok(())
-}
-
-fn write_codex_plugin_file(path: &Path, content: &str) -> Result<(), String> {
-    let desired = format!("{}\n", content.trim_end());
+fn write_codex_config_atomically(path: &Path, bytes: &[u8]) -> Result<bool, String> {
     if path.is_file() {
         let existing = fs::read(path)
             .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
-        if existing == desired.as_bytes() {
-            return Ok(());
+        if blake3::hash(&existing) == blake3::hash(bytes) {
+            return Ok(false);
         }
     }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    fs::write(path, desired.as_bytes())
-        .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
-    Ok(())
-}
-
-const ASP_CODEX_PLUGIN_HOOKS_SCHEMA_JSON: &str =
-    include_str!("../../../../schemas/codex-plugin-hooks.v1.schema.json");
-
-fn validate_codex_plugin_hooks_manifest(hooks: &serde_json::Value) -> Result<(), String> {
-    let schema = serde_json::from_str::<serde_json::Value>(ASP_CODEX_PLUGIN_HOOKS_SCHEMA_JSON)
-        .map_err(|error| format!("invalid ASP Codex plugin hooks v1 schema: {error}"))?;
-    let validator = jsonschema::validator_for(&schema)
-        .map_err(|error| format!("invalid ASP Codex plugin hooks v1 schema: {error}"))?;
-    let errors = validator
-        .iter_errors(hooks)
-        .map(|error| error.to_string())
-        .collect::<Vec<_>>();
-    if errors.is_empty() {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("Codex config path has no parent: {}", path.display()))?;
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    let sequence = CODEX_CONFIG_PUBLISH_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let temporary = parent.join(format!(
+        ".config.toml.{}.{}.tmp",
+        std::process::id(),
+        sequence
+    ));
+    let publish = (|| -> Result<(), String> {
+        let mut file = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&temporary)
+            .map_err(|error| format!("failed to create {}: {error}", temporary.display()))?;
+        file.write_all(bytes)
+            .map_err(|error| format!("failed to write {}: {error}", temporary.display()))?;
+        file.sync_all()
+            .map_err(|error| format!("failed to sync {}: {error}", temporary.display()))?;
+        fs::rename(&temporary, path).map_err(|error| {
+            format!(
+                "failed to publish {} to {}: {error}",
+                temporary.display(),
+                path.display()
+            )
+        })?;
         Ok(())
-    } else {
-        Err(errors.join("; "))
+    })();
+    if publish.is_err() {
+        let _ = fs::remove_file(&temporary);
     }
-}
-
-fn render_codex_plugin_hooks_json() -> Result<String, String> {
-    let hooks = serde_json::from_str::<serde_json::Value>(ASP_CODEX_PLUGIN_HOOKS_JSON)
-        .map_err(|error| format!("invalid ASP Codex plugin hooks JSON: {error}"))?;
-    validate_codex_plugin_hooks_manifest(&hooks)
-        .map_err(|error| format!("invalid ASP Codex plugin hooks manifest: {error}"))?;
-    serde_json::to_string_pretty(&hooks)
-        .map_err(|error| format!("failed to render ASP Codex plugin hooks JSON: {error}"))
+    publish.map(|()| true)
 }
 
 #[cfg(test)]
 #[path = "../../tests/unit/canonical_codex_plugin_hook_binary.rs"]
 mod canonical_codex_plugin_hook_binary_tests;
-
-fn validate_codex_plugin_manifest_hooks_path(plugin_root: &Path) -> Result<(), String> {
-    let manifest_path = plugin_root.join(".codex-plugin").join("plugin.json");
-    let manifest = fs::read_to_string(&manifest_path)
-        .map_err(|error| format!("failed to read {}: {error}", manifest_path.display()))?;
-    let manifest = serde_json::from_str::<serde_json::Value>(&manifest)
-        .map_err(|error| format!("invalid ASP Codex plugin manifest JSON: {error}"))?;
-    let hooks_path = manifest
-        .get("hooks")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| "ASP Codex plugin manifest `hooks` must be a string path".to_string())?;
-    if hooks_path.trim().is_empty() {
-        return Err("ASP Codex plugin manifest `hooks` path must not be empty".to_string());
-    }
-    if !hooks_path.starts_with("./") {
-        return Err(
-            "ASP Codex plugin manifest `hooks` path must start with `./` relative to plugin root"
-                .to_string(),
-        );
-    }
-    let resolved_hooks_path = plugin_root.join(hooks_path);
-    if !resolved_hooks_path.is_file() {
-        return Err(format!(
-            "ASP Codex plugin manifest `hooks` path does not resolve to a file: {}",
-            resolved_hooks_path.display()
-        ));
-    }
-    Ok(())
-}
-
-pub(super) fn sync_codex_project_plugin_cache(
-    project_root: &Path,
-) -> Result<Option<PathBuf>, String> {
-    let cache_root = ensure_codex_project_plugin_cache_static_files(project_root)?;
-    Ok(Some(cache_root))
-}
-
-fn ensure_codex_project_plugin_cache_static_files(project_root: &Path) -> Result<PathBuf, String> {
-    ensure_codex_plugin_cache_static_files(&codex_project_plugin_cache_path(project_root)?)
-}
-
-fn ensure_codex_global_plugin_cache_static_files(codex_home: &Path) -> Result<PathBuf, String> {
-    let cache_root = codex_home
-        .join("plugins")
-        .join("cache")
-        .join(ASP_CODEX_PLUGIN_MARKETPLACE_NAME)
-        .join(ASP_CODEX_PLUGIN_NAME)
-        .join(asp_codex_plugin_version()?);
-    ensure_codex_plugin_cache_static_files(&cache_root)
-}
-
-fn ensure_codex_plugin_cache_static_files(cache_root: &Path) -> Result<PathBuf, String> {
-    if !cache_root.is_dir() {
-        if cache_root.exists() {
-            return Err(format!(
-                "Codex plugin cache path {} exists but is not a directory",
-                cache_root.display()
-            ));
-        }
-        fs::create_dir_all(cache_root)
-            .map_err(|error| format!("failed to create {}: {error}", cache_root.display()))?;
-    }
-    write_codex_plugin_file(
-        &cache_root.join(".codex-plugin").join("plugin.json"),
-        ASP_CODEX_PLUGIN_MANIFEST_JSON,
-    )?;
-    write_codex_plugin_file(
-        &cache_root.join("hooks").join("hooks.json"),
-        &render_codex_plugin_hooks_json()?,
-    )?;
-    validate_codex_plugin_manifest_hooks_path(cache_root)?;
-    Ok(cache_root.to_path_buf())
-}
-
-pub(super) fn codex_project_plugin_cache_skill_path(
-    project_root: &Path,
-) -> Result<PathBuf, String> {
-    Ok(codex_project_plugin_cache_path(project_root)?.join(codex_plugin_skill_relative_path()))
-}
-
-pub(super) fn codex_project_plugin_hooks_present(project_root: &Path) -> bool {
-    match codex_project_plugin_hooks_json_path(project_root) {
-        Ok(path) => path.is_file(),
-        Err(_) => false,
-    }
-}
-
-pub(super) fn codex_global_plugin_hooks_present() -> bool {
-    match codex_global_plugin_hooks_json_path() {
-        Ok(path) => path.is_file(),
-        Err(_) => false,
-    }
-}
-
-pub(super) fn codex_project_plugin_hooks_json_path(project_root: &Path) -> Result<PathBuf, String> {
-    Ok(codex_project_plugin_cache_path(project_root)?
-        .join("hooks")
-        .join("hooks.json"))
-}
 
 fn codex_project_plugin_cache_path(project_root: &Path) -> Result<PathBuf, String> {
     Ok(project_root.join(codex_project_plugin_cache_relative_path()?))
@@ -217,12 +113,6 @@ fn codex_project_plugin_cache_relative_path() -> Result<PathBuf, String> {
         .join(ASP_CODEX_PLUGIN_MARKETPLACE_NAME)
         .join(ASP_CODEX_PLUGIN_NAME)
         .join(asp_codex_plugin_version()?))
-}
-
-fn codex_plugin_skill_relative_path() -> PathBuf {
-    Path::new("skills")
-        .join("agent-semantic-protocols")
-        .join("SKILL.org")
 }
 
 fn asp_codex_plugin_version() -> Result<String, String> {
@@ -363,38 +253,6 @@ fn toml_table_header(trimmed: &str) -> bool {
     trimmed.starts_with('[') && trimmed.ends_with(']') && !trimmed.starts_with("[[")
 }
 
-fn ensure_codex_project_plugin_enabled(config_path: &Path, plugin_id: &str) -> Result<(), String> {
-    let existing = fs::read_to_string(config_path).unwrap_or_default();
-    validate_codex_config_toml(&existing)
-        .map_err(|error| format!("refusing to update invalid Codex plugin config TOML: {error}"))?;
-    let parsed = toml::from_str::<toml::Value>(&existing)
-        .map_err(|error| format!("invalid Codex plugin config TOML: {error}"))?;
-    let enabled = parsed
-        .get("plugins")
-        .and_then(toml::Value::as_table)
-        .and_then(|plugins| plugins.get(plugin_id))
-        .and_then(toml::Value::as_table)
-        .and_then(|plugin| plugin.get("enabled"))
-        .and_then(toml::Value::as_bool)
-        .unwrap_or(false);
-    if enabled {
-        return Ok(());
-    }
-    let content = remove_codex_project_plugin_section(&existing, plugin_id);
-    let plugin_section = format!("[plugins.{}]\nenabled = true", toml_basic_string(plugin_id));
-    let content = content.trim_end();
-    let merged = if content.is_empty() {
-        format!("{plugin_section}\n")
-    } else {
-        format!("{content}\n\n{plugin_section}\n")
-    };
-    validate_codex_config_toml(&merged)
-        .map_err(|error| format!("refusing to write invalid Codex plugin config TOML: {error}"))?;
-    fs::write(config_path, merged.as_bytes())
-        .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
-    Ok(())
-}
-
 fn remove_codex_project_plugin_section(existing: &str, plugin_id: &str) -> String {
     let section_plain = format!("[plugins.{plugin_id}]");
     let section_quoted = format!("[plugins.{}]", toml_basic_string(plugin_id));
@@ -463,6 +321,13 @@ fn ensure_codex_plugin_marketplace_registered(
     codex_home: Option<&Path>,
     marketplace_name: &str,
 ) -> Result<(), String> {
+    if codex_marketplace_config_points_to_source_root(
+        plugin_source_root,
+        codex_home,
+        marketplace_name,
+    )? {
+        return Ok(());
+    }
     let source = plugin_source_root.to_str().unwrap_or(".").to_string();
     let add_args = [
         "plugin".to_string(),
@@ -493,6 +358,48 @@ fn ensure_codex_plugin_marketplace_registered(
         }
         Err(error) => Err(error),
     }
+}
+
+fn codex_marketplace_config_points_to_source_root(
+    plugin_source_root: &Path,
+    codex_home: Option<&Path>,
+    marketplace_name: &str,
+) -> Result<bool, String> {
+    let config_path = codex_home
+        .map(|home| home.join("config.toml"))
+        .map_or_else(global_codex_config_path, Ok)?;
+    let contents = match fs::read_to_string(&config_path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => {
+            return Err(format!(
+                "failed to read Codex marketplace config {}: {error}",
+                config_path.display()
+            ));
+        }
+    };
+    let config = toml::from_str::<toml::Value>(&contents)
+        .map_err(|error| format!("invalid Codex marketplace config TOML: {error}"))?;
+    let Some(source) = config
+        .get("marketplaces")
+        .and_then(toml::Value::as_table)
+        .and_then(|marketplaces| marketplaces.get(marketplace_name))
+        .and_then(toml::Value::as_table)
+        .and_then(|marketplace| marketplace.get("source"))
+        .and_then(toml::Value::as_str)
+    else {
+        return Ok(false);
+    };
+    let Ok(configured_source) = fs::canonicalize(source) else {
+        return Ok(false);
+    };
+    let canonical_source = fs::canonicalize(plugin_source_root).map_err(|error| {
+        format!(
+            "failed to resolve Codex plugin marketplace source {}: {error}",
+            plugin_source_root.display()
+        )
+    })?;
+    Ok(configured_source == canonical_source)
 }
 
 fn codex_marketplace_points_to_source_root(
@@ -588,6 +495,3 @@ fn global_codex_config_path() -> Result<PathBuf, String> {
         .map(|home| PathBuf::from(home).join(".codex").join("config.toml"))
         .ok_or_else(|| "missing CODEX_HOME and HOME; cannot locate Codex config".to_string())
 }
-use super::hook_runtime_codex_plugin_identity::{
-    codex_global_plugin_hooks_json_path, codex_plugin_hook_key_source,
-};

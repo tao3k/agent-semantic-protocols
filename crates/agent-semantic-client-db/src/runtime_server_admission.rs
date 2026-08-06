@@ -7,9 +7,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 
 pub use candidate::{
-    WorkspaceGenerationBuild, WorkspaceGenerationBuildFuture, WorkspaceGenerationBuildMode,
-    WorkspaceGenerationBuilder, WorkspaceGenerationCandidateBuildFuture,
-    WorkspaceGenerationCandidateBuilder, WorkspaceGenerationCandidateIdentity,
+    WorkspaceGenerationBuild, WorkspaceGenerationBuildCompletion, WorkspaceGenerationBuildFailure,
+    WorkspaceGenerationBuildFuture, WorkspaceGenerationBuildMode, WorkspaceGenerationBuilder,
+    WorkspaceGenerationCandidateBuildFuture, WorkspaceGenerationCandidateBuilder,
+    WorkspaceGenerationCandidateIdentity, WorkspaceGenerationFailureStage,
     WorkspaceOwnerProjectionBuildFuture, WorkspaceOwnerProjectionBuilder,
     discover_workspace_generation_candidate,
 };
@@ -26,11 +27,9 @@ mod candidate;
 mod mutation;
 
 pub const WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID: &str =
-    "agent.semantic-protocols.runtime-server-workspace-generation-admission.v1";
+    "agent.semantic-protocols.runtime-server-workspace-generation-admission.v2";
 pub const WORKSPACE_GENERATION_READINESS_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-workspace-generation-readiness.v1";
-pub const WORKSPACE_OWNER_GENERATION_READINESS_RECEIPT_SCHEMA_ID: &str =
-    "agent.semantic-protocols.runtime-server-workspace-owner-generation-readiness.v1";
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct WorkspaceGenerationAdmissionKey {
@@ -44,6 +43,7 @@ pub enum WorkspaceGenerationAdmissionState {
     Building,
     Ready,
     Failed,
+    Cancelled,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -59,6 +59,7 @@ pub struct WorkspaceGenerationAdmissionReceipt {
     pub attempt: u64,
     pub commit: Option<WorkspaceGenerationCommitReceipt>,
     pub error: Option<String>,
+    pub failure_stage: Option<WorkspaceGenerationFailureStage>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -93,7 +94,7 @@ impl WorkspaceGenerationReadinessReceipt {
     ) -> Result<Self, String> {
         let receipt = Self {
             schema_id: WORKSPACE_GENERATION_READINESS_RECEIPT_SCHEMA_ID.to_owned(),
-            schema_version: "1".to_owned(),
+            schema_version: "2".to_owned(),
             workspace_identity: workspace_identity.into(),
             commit,
             reconciled,
@@ -104,69 +105,12 @@ impl WorkspaceGenerationReadinessReceipt {
 
     pub fn validate(&self) -> Result<(), String> {
         if self.schema_id != WORKSPACE_GENERATION_READINESS_RECEIPT_SCHEMA_ID
-            || self.schema_version != "1"
+            || self.schema_version != "2"
         {
             return Err("workspace generation readiness receipt schema mismatch".to_owned());
         }
         if self.workspace_identity.trim().is_empty() {
             return Err("workspace generation readiness identity must be non-empty".to_owned());
-        }
-        self.commit.validate()
-    }
-}
-
-/// Read-side proof that the Runtime Server published the current projection
-/// for one exact owner. A newer whole-workspace generation may supersede the
-/// commit before the client reopens it, so consumers admit by owner content
-/// identity rather than strict generation-digest equality.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WorkspaceOwnerGenerationReadinessReceipt {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub workspace_identity: String,
-    pub owner_path: String,
-    pub owner_content_digest: Option<String>,
-    pub commit: WorkspaceGenerationCommitReceipt,
-    pub reconciled: bool,
-}
-
-impl WorkspaceOwnerGenerationReadinessReceipt {
-    pub fn new(
-        workspace_identity: impl Into<String>,
-        owner_path: impl Into<String>,
-        owner_content_digest: Option<String>,
-        commit: WorkspaceGenerationCommitReceipt,
-        reconciled: bool,
-    ) -> Result<Self, String> {
-        let receipt = Self {
-            schema_id: WORKSPACE_OWNER_GENERATION_READINESS_RECEIPT_SCHEMA_ID.to_owned(),
-            schema_version: "1".to_owned(),
-            workspace_identity: workspace_identity.into(),
-            owner_path: owner_path.into(),
-            owner_content_digest,
-            commit,
-            reconciled,
-        };
-        receipt.validate()?;
-        Ok(receipt)
-    }
-
-    pub fn validate(&self) -> Result<(), String> {
-        if self.schema_id != WORKSPACE_OWNER_GENERATION_READINESS_RECEIPT_SCHEMA_ID
-            || self.schema_version != "1"
-        {
-            return Err("workspace owner generation readiness receipt schema mismatch".to_owned());
-        }
-        if self.workspace_identity.trim().is_empty() || self.owner_path.trim().is_empty() {
-            return Err("workspace owner generation readiness identity is incomplete".to_owned());
-        }
-        if self
-            .owner_content_digest
-            .as_deref()
-            .is_some_and(str::is_empty)
-        {
-            return Err("workspace owner generation readiness digest is empty".to_owned());
         }
         self.commit.validate()
     }
@@ -226,10 +170,13 @@ impl WorkspaceGenerationAdmissionReceipt {
             policy_overlay_digest: self.policy_overlay_digest.clone(),
         }
         .validate()?;
-        match (&self.state, &self.commit, &self.error) {
-            (WorkspaceGenerationAdmissionState::Building, None, None)
-            | (WorkspaceGenerationAdmissionState::Failed, None, Some(_)) => Ok(()),
-            (WorkspaceGenerationAdmissionState::Ready, Some(commit), None) => commit.validate(),
+        match (&self.state, &self.commit, &self.error, &self.failure_stage) {
+            (WorkspaceGenerationAdmissionState::Building, None, None, None) => Ok(()),
+            (WorkspaceGenerationAdmissionState::Failed, None, Some(_), Some(_))
+            | (WorkspaceGenerationAdmissionState::Cancelled, None, Some(_), Some(_)) => Ok(()),
+            (WorkspaceGenerationAdmissionState::Ready, Some(commit), None, None) => {
+                commit.validate()
+            }
             _ => Err("workspace generation admission receipt state is inconsistent".to_owned()),
         }
     }
@@ -243,6 +190,7 @@ pub struct WorkspaceGenerationAdmission {
     entries: Arc<dashmap::DashMap<WorkspaceGenerationAdmissionKey, Arc<AdmissionEntry>>>,
     changes: Arc<tokio::sync::Notify>,
     submission_tasks: Arc<parking_lot::Mutex<Vec<tokio::task::JoinHandle<()>>>>,
+    telemetry_sender: crate::runtime_telemetry_bus::RuntimeTelemetryBusSender,
 }
 
 struct PendingWorkspaceMutation {
@@ -272,6 +220,7 @@ struct AdmissionEntry {
     transition: tokio::sync::Mutex<()>,
     mutations: tokio::sync::Mutex<WorkspaceMutationLane>,
     task: parking_lot::Mutex<Option<tokio::task::JoinHandle<()>>>,
+    cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
 }
 
 impl AdmissionEntry {
@@ -290,6 +239,7 @@ impl AdmissionEntry {
             transition: tokio::sync::Mutex::new(()),
             mutations: tokio::sync::Mutex::new(WorkspaceMutationLane::default()),
             task: parking_lot::Mutex::new(None),
+            cancellation: crate::runtime_generation_cancellation::GenerationCancellation::new(),
         }
     }
 
@@ -302,6 +252,14 @@ impl AdmissionEntry {
 
 impl WorkspaceGenerationAdmission {
     pub fn new(builder: WorkspaceGenerationBuilder) -> Self {
+        let bus = crate::runtime_telemetry_bus::RuntimeTelemetryBus::new();
+        Self::new_with_telemetry_sender(builder, bus.sender)
+    }
+
+    pub fn new_with_telemetry_sender(
+        builder: WorkspaceGenerationBuilder,
+        telemetry_sender: crate::runtime_telemetry_bus::RuntimeTelemetryBusSender,
+    ) -> Self {
         Self {
             builder,
             owner_projection_builder: None,
@@ -309,6 +267,7 @@ impl WorkspaceGenerationAdmission {
             entries: Arc::new(dashmap::DashMap::new()),
             changes: Arc::new(tokio::sync::Notify::new()),
             submission_tasks: Arc::new(parking_lot::Mutex::new(Vec::new())),
+            telemetry_sender,
         }
     }
 
@@ -429,6 +388,7 @@ impl WorkspaceGenerationAdmission {
             state: WorkspaceGenerationAdmissionState::Building,
             accepted: true,
             attempt: 1,
+            failure_stage: None,
             commit: None,
             error: None,
         };
@@ -509,6 +469,20 @@ impl WorkspaceGenerationAdmission {
         };
         receipt.validate()?;
         entry.receipt.send_replace(receipt.clone());
+        self.telemetry_sender.try_send_transition(
+            crate::runtime_server_opentelemetry::RuntimeLifecycleEvent {
+                owner_epoch: attempt,
+                workspace_identity: Some(workspace_identity.clone()),
+                generation_digest: None,
+                transition: "generation-building".to_owned(),
+                state: "building".to_owned(),
+                elapsed_micros: 0,
+                read_bytes: 0,
+                retained_bytes: 0,
+                active_task_count: 1,
+                active_child_count: 0,
+            },
+        );
         drop(transition);
         self.spawn_build(
             entry,
@@ -532,28 +506,34 @@ impl WorkspaceGenerationAdmission {
     ) {
         let builder = Arc::clone(&self.builder);
         let changes = Arc::clone(&self.changes);
+        let telemetry_sender = self.telemetry_sender.clone();
+        let cancellation = entry.cancellation.clone();
         let completed_entry = Arc::clone(&entry);
         let task = tokio::spawn(async move {
             let mut attempt = attempt;
             loop {
-                let completed = match builder(
+                let build_started = std::time::Instant::now();
+                let completed = match crate::runtime_server_admission_builder_supervisor::run(
+                    Arc::clone(&builder),
                     workspace_identity.clone(),
                     project_root.clone(),
                     candidate.clone(),
                     build_mode,
+                    cancellation.clone(),
                 )
                 .await
                 {
-                    Ok(commit) => WorkspaceGenerationAdmissionReceipt {
-                        commit: Some(commit),
+                    Ok(completion) => WorkspaceGenerationAdmissionReceipt {
+                        commit: Some(completion.commit),
                         schema_id: WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID.to_owned(),
-                        schema_version: "1".to_owned(),
+                        schema_version: "2".to_owned(),
                         workspace_identity: workspace_identity.clone(),
-                        candidate_generation: candidate.candidate_generation.clone(),
-                        policy_overlay_digest: candidate.policy_overlay_digest.clone(),
+                        candidate_generation: completion.candidate.candidate_generation,
+                        policy_overlay_digest: completion.candidate.policy_overlay_digest,
                         state: WorkspaceGenerationAdmissionState::Ready,
                         accepted: false,
                         attempt,
+                        failure_stage: Some(WorkspaceGenerationFailureStage::GenerationBuilder),
                         error: None,
                     },
                     Err(error) => WorkspaceGenerationAdmissionReceipt {
@@ -586,21 +566,53 @@ impl WorkspaceGenerationAdmission {
                         .receipt
                         .send_replace(WorkspaceGenerationAdmissionReceipt {
                             schema_id: WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID.to_owned(),
-                            schema_version: "1".to_owned(),
+                            schema_version: "2".to_owned(),
                             workspace_identity: workspace_identity.clone(),
                             candidate_generation: candidate.candidate_generation.clone(),
                             policy_overlay_digest: candidate.policy_overlay_digest.clone(),
                             state: WorkspaceGenerationAdmissionState::Building,
                             accepted: false,
+                            failure_stage: None,
                             attempt,
                             commit: None,
                             error: None,
                         });
+                    let _ = telemetry_sender.try_send_transition(
+                        crate::runtime_server_opentelemetry::RuntimeLifecycleEvent {
+                            owner_epoch: attempt,
+                            workspace_identity: Some(workspace_identity.clone()),
+                            generation_digest: None,
+                            transition: "generation-rebuilding".to_owned(),
+                            state: "building".to_owned(),
+                            elapsed_micros: 0,
+                            read_bytes: 0,
+                            retained_bytes: 0,
+                            active_task_count: 1,
+                            active_child_count: 0,
+                        },
+                    );
                     drop(mutations);
                     drop(transition);
                     changes.notify_waiters();
                     continue;
                 }
+                telemetry_sender.try_send_transition(
+                    crate::runtime_server_opentelemetry::RuntimeLifecycleEvent {
+                        owner_epoch: attempt,
+                        workspace_identity: Some(workspace_identity.clone()),
+                        generation_digest: completed
+                            .commit
+                            .as_ref()
+                            .map(|commit| commit.source_root_digest.clone()),
+                        transition: "generation-terminal".to_owned(),
+                        state: format!("{:?}", completed.state).to_lowercase(),
+                        elapsed_micros: build_started.elapsed().as_micros() as u64,
+                        read_bytes: 0,
+                        retained_bytes: 0,
+                        active_task_count: 1,
+                        active_child_count: 0,
+                    },
+                );
                 completed_entry.receipt.send_replace(completed);
                 completed_entry.building.store(false, Ordering::Release);
                 drop(mutations);
@@ -669,7 +681,8 @@ impl WorkspaceGenerationAdmission {
             };
             match receipt.state {
                 WorkspaceGenerationAdmissionState::Ready => report.ready.push(receipt),
-                WorkspaceGenerationAdmissionState::Failed => {
+                WorkspaceGenerationAdmissionState::Failed
+                | WorkspaceGenerationAdmissionState::Cancelled => {
                     report.failed.push(WorkspaceGenerationRestoreFailure {
                         workspace_identity: receipt.workspace_identity,
                         error: receipt
@@ -727,8 +740,11 @@ impl WorkspaceGenerationAdmission {
         }
         match self.status(workspace_identity, project_root).await {
             Some(receipt)
-                if receipt.state != WorkspaceGenerationAdmissionState::Failed
-                    && receipt.candidate_generation == candidate.candidate_generation
+                if !matches!(
+                    receipt.state,
+                    WorkspaceGenerationAdmissionState::Failed
+                        | WorkspaceGenerationAdmissionState::Cancelled
+                ) && receipt.candidate_generation == candidate.candidate_generation
                     && receipt.policy_overlay_digest == candidate.policy_overlay_digest =>
             {
                 Ok(receipt)
@@ -789,14 +805,42 @@ impl WorkspaceGenerationAdmission {
             .iter()
             .map(|entry| Arc::clone(entry.value()))
             .collect::<Vec<_>>();
+        let telemetry_sender = self.telemetry_sender.clone();
         let mut tasks = Vec::new();
         tasks.extend(self.submission_tasks.lock().drain(..));
         for entry in entries {
+            let mut cancelled = entry.observed();
+            if cancelled.state == WorkspaceGenerationAdmissionState::Building {
+                cancelled.state = WorkspaceGenerationAdmissionState::Cancelled;
+                cancelled.error = Some(
+                    "workspace generation admission cancelled during Runtime Server shutdown"
+                        .to_owned(),
+                );
+                cancelled.commit = None;
+                entry.receipt.send_replace(cancelled);
+                let _ = telemetry_sender.try_send_transition(
+                    crate::runtime_server_opentelemetry::RuntimeLifecycleEvent {
+                        owner_epoch: entry.attempt.load(Ordering::Acquire),
+                        workspace_identity: Some(entry.observed().workspace_identity),
+                        generation_digest: None,
+                        transition: "generation-cancelled".to_owned(),
+                        state: "cancelled".to_owned(),
+                        elapsed_micros: 0,
+                        read_bytes: 0,
+                        retained_bytes: 0,
+                        active_task_count: 0,
+                        active_child_count: 0,
+                    },
+                );
+            }
+            entry.building.store(false, Ordering::Release);
+            entry.cancellation.cancel();
             if let Some(task) = entry.task.lock().take() {
                 task.abort();
                 tasks.push(task);
             }
         }
+        self.changes.notify_waiters();
         let task_count = tasks.len();
         for task in tasks {
             let result = task.await;

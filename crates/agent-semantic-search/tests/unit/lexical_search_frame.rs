@@ -270,7 +270,7 @@ fn lexical_search_frame_trace_skips_overlay_when_source_index_is_selector_ready(
         require_multi_clause: false,
         limit: 5,
         source_index_lookup: Some(&lookup),
-        base_snapshot: &fixture.workspace,
+        base_snapshot: Some(&fixture.workspace),
         base_source_snapshot: &fixture.evidence,
         provider_digest: fixture.provider_digest.as_str(),
     })
@@ -335,7 +335,7 @@ fn lexical_search_frame_uses_source_index_owner_evidence_before_overlay() {
         require_multi_clause: false,
         limit: 5,
         source_index_lookup: Some(&lookup),
-        base_snapshot: &fixture.workspace,
+        base_snapshot: Some(&fixture.workspace),
         base_source_snapshot: &fixture.evidence,
         provider_digest: fixture.provider_digest.as_str(),
     })

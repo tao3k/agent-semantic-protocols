@@ -3,6 +3,7 @@ use agent_semantic_hook::{
     HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision, ReasonKind, render_platform_response,
 };
 use std::collections::BTreeMap;
+use std::io::Write;
 
 pub(super) fn emit_decision(emit: &str, decision: &HookDecision) -> Result<(), String> {
     let output_value = match emit {
@@ -18,8 +19,10 @@ pub(super) fn emit_decision(emit: &str, decision: &HookDecision) -> Result<(), S
     };
     let output = serde_json::to_string(&output_value)
         .map_err(|error| format!("failed to serialize hook response: {error}"))?;
-    println!("{output}");
-    Ok(())
+    let mut stdout = std::io::stdout().lock();
+    writeln!(stdout, "{output}")
+        .and_then(|()| stdout.flush())
+        .map_err(|error| format!("failed to write hook response: {error}"))
 }
 
 pub(super) fn emit_hook_runtime_failure(

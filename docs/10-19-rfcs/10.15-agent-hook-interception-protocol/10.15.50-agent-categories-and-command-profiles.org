@@ -92,8 +92,11 @@ literal executable, resident name, or allow decision.
 The Codex plugin hook manifest is a schema-owned installed artifact.  JSON
 syntax alone is not sufficient evidence that it can be installed.
 
-- =schemas/codex-plugin-hooks.v1.schema.json= is the single v1 owner for the
-  installed =hooks/hooks.json= shape.
+- Codex production transport is one enabled plugin Hook bundle. The plugin owns
+  =hooks/hooks.json= and its manifest =hooks= entry. Native inline =config.toml=
+  injection is a separate explicit debug/test mode and MUST NOT be active with
+  the production plugin. Canonical event names and matcher semantics follow the
+  Codex host contract; ASP owns typed action classification after delivery.
 - The installer MUST validate the rendered hook manifest against that schema
   before any installed artifact is replaced.
 - Hook commands MUST use the plugin PATH contract.  In particular, the

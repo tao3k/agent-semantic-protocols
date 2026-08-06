@@ -85,7 +85,10 @@ pub(crate) fn resolve(
             }));
         }
         WorkspaceRuntimeSelectorRead::GenerationMissing => {
-            return Err("runtime workspace generation is not admitted".to_owned());
+            return Err(
+                "exact source query state=source-unavailable reasonKind=active-workspace-generation-required"
+                    .to_owned(),
+            );
         }
     };
     let Some(owner) = owner else {

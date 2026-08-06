@@ -1,7 +1,113 @@
 use agent_semantic_hook::{DecisionKind, DecisionRouteKind, ReasonKind, classify_hook};
 use serde_json::json;
 
-use super::registry_with_python;
+use super::{ProviderFixtureLayout, provider, registry_with_python};
+
+fn assert_python_direct_read(payload: serde_json::Value) {
+    let decision = classify_hook(&registry_with_python(), "codex", "pre-tool", &payload);
+    assert_eq!(decision.decision, DecisionKind::Deny, "{payload}");
+    assert_eq!(
+        decision.reason_kind,
+        ReasonKind::DirectSourceRead,
+        "{payload}"
+    );
+    assert_eq!(decision.language_ids, ["python"], "{payload}");
+}
+
+#[test]
+fn python_registered_extensions_cover_codex_read_path_field_shapes() {
+    for field in [
+        "path",
+        "file",
+        "file_path",
+        "filePath",
+        "absolutePath",
+        "relativePath",
+        "uri",
+    ] {
+        assert_python_direct_read(json!({
+            "toolName": "Read",
+            "toolInput": {field: "src/tools/semantic_sandtable/receipt_reports.py"}
+        }));
+    }
+}
+
+#[test]
+fn python_registered_extensions_cover_json_string_and_nested_command_shapes() {
+    assert_python_direct_read(json!({
+        "toolName": "Read",
+        "toolInput": "{\"filePath\":\"src/tools/semantic_sandtable/receipt_reports.py\"}"
+    }));
+    assert_python_direct_read(json!({
+        "toolName": "functions.exec",
+        "toolInput": {"commandActions": [{"toolName": "Read", "toolInput": {"path": "src/tools/semantic_sandtable/receipt_reports.py"}}]}
+    }));
+}
+
+#[test]
+fn programming_provider_manifests_cover_compact_and_nested_native_reads() {
+    let providers = agent_semantic_hook::builtin_provider_manifests()
+        .into_iter()
+        .filter_map(|manifest| {
+            let descriptor = manifest.project_resolution()?;
+            let source_extensions = descriptor.source_extensions.clone();
+            let config_files = descriptor.entry_markers.clone();
+            let routes = agent_semantic_hook::materialize_provider_routes(&manifest)
+                .expect("provider routes");
+            let mut provider = provider(
+                &manifest,
+                ProviderFixtureLayout {
+                    source_extensions: &[],
+                    config_files: &[],
+                },
+                routes,
+            );
+            provider.source_extensions = source_extensions;
+            provider.config_files = config_files;
+            Some(provider)
+        })
+        .collect::<Vec<_>>();
+    assert!(!providers.is_empty());
+    for provider in &providers {
+        for extension in &provider.source_extensions {
+            let path = format!("src/witness{extension}");
+            let runtime = agent_semantic_hook::HookRuntime {
+                rankers: Vec::new(),
+                project_root: ".".to_string(),
+                providers: vec![provider.clone()],
+            };
+            for tool_input in [
+                json!({"type":"read", "path": path}),
+                json!({"toolName":"Read", "toolInput":{"path": path}}),
+            ] {
+                let decision = classify_hook(
+                    &runtime,
+                    "codex",
+                    "pre-tool",
+                    &json!({"toolName":"functions.exec", "toolInput":{"commandActions":[tool_input]}}),
+                );
+                assert_eq!(
+                    decision.decision,
+                    DecisionKind::Deny,
+                    "{} {path}",
+                    provider.language_id
+                );
+                assert_eq!(
+                    decision.reason_kind,
+                    ReasonKind::DirectSourceRead,
+                    "{} {path}",
+                    provider.language_id
+                );
+                assert_eq!(
+                    decision.language_ids,
+                    [provider.language_id.as_str()],
+                    "{} {path}",
+                    provider.language_id
+                );
+            }
+        }
+    }
+}
 
 #[test]
 fn namespaced_python_explicit_read_routes_to_owner_frontier() {
@@ -73,6 +179,17 @@ fn exact_document_reads_route_to_owner_discovery_without_projection_flags() {
         assert!(
             route.argv.iter().any(|arg| arg == path),
             "{path}: {:?}",
+            route.argv
+        );
+        let path_index = route
+            .argv
+            .iter()
+            .position(|arg| arg == path)
+            .expect("document owner path");
+        assert_eq!(
+            route.argv.get(path_index + 1).map(String::as_str),
+            Some("items"),
+            "document owner recovery must materialize owner items for {path}: {:?}",
             route.argv
         );
         assert!(

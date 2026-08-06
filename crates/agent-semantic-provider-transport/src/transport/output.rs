@@ -63,7 +63,17 @@ pub(super) async fn collect_provider_output(
                 return Err(ProviderProcessError::Timeout {
                     timeout,
                     receipt: Box::new(provider_process_receipt(
-                        start, admission_wait, None, stdout, stderr, true, false, false, limits,
+                        None,
+                        &ProviderProcessCompletion {
+                            start,
+                            admission_wait,
+                            stdout,
+                            stderr,
+                            timed_out: true,
+                            memory_limit_exceeded: false,
+                            descendant_cleanup_required: false,
+                            limits,
+                        },
                     )),
                 });
                 }
@@ -83,7 +93,17 @@ pub(super) async fn collect_provider_output(
                 return Err(ProviderProcessError::MemoryLimit {
                     limit_bytes,
                     receipt: Box::new(provider_process_receipt(
-                        start, admission_wait, None, stdout, stderr, false, true, false, limits,
+                        None,
+                        &ProviderProcessCompletion {
+                            start,
+                            admission_wait,
+                            stdout,
+                            stderr,
+                            timed_out: false,
+                            memory_limit_exceeded: true,
+                            descendant_cleanup_required: false,
+                            limits,
+                        },
                     )),
                 });
             }
@@ -109,7 +129,17 @@ pub(super) async fn collect_provider_output(
                 return Err(ProviderProcessError::MemoryLimit {
                     limit_bytes,
                     receipt: Box::new(provider_process_receipt(
-                        start, admission_wait, None, stdout, stderr, false, true, false, limits,
+                        None,
+                        &ProviderProcessCompletion {
+                            start,
+                            admission_wait,
+                            stdout,
+                            stderr,
+                            timed_out: false,
+                            memory_limit_exceeded: true,
+                            descendant_cleanup_required: false,
+                            limits,
+                        },
                     )),
                 });
             }
@@ -138,15 +168,17 @@ pub(super) async fn collect_provider_output(
     let stdout = join_transport_task(stdout_task, "stdout").await?;
     let stderr = join_transport_task(stderr_task, "stderr").await?;
     Ok(provider_process_output(
-        start,
-        admission_wait,
         status,
-        stdout,
-        stderr,
-        false,
-        false,
-        descendant_cleanup_required,
-        limits,
+        ProviderProcessCompletion {
+            start,
+            admission_wait,
+            stdout,
+            stderr,
+            timed_out: false,
+            memory_limit_exceeded: false,
+            descendant_cleanup_required,
+            limits,
+        },
     ))
 }
 
@@ -185,55 +217,52 @@ pub(super) fn kill_provider_process_group(_process_group_id: Option<i32>) -> boo
     false
 }
 
-fn provider_process_output(
+struct ProviderProcessCompletion {
     start: Instant,
     admission_wait: Duration,
-    status: ExitStatus,
     stdout: LimitedRead,
     stderr: LimitedRead,
     timed_out: bool,
     memory_limit_exceeded: bool,
     descendant_cleanup_required: bool,
     limits: ProviderProcessLimits,
+}
+
+fn provider_process_output(
+    status: ExitStatus,
+    completion: ProviderProcessCompletion,
 ) -> ProviderProcessOutput {
-    let receipt = provider_process_receipt(
-        start,
-        admission_wait,
-        Some(status),
-        stdout.clone(),
-        stderr.clone(),
-        timed_out,
-        memory_limit_exceeded,
-        descendant_cleanup_required,
-        limits,
-    );
+    let receipt = provider_process_receipt(Some(&status), &completion);
     ProviderProcessOutput {
         status,
         receipt,
-        stdout: stdout.bytes,
-        stderr: stderr.bytes,
+        stdout: completion.stdout.bytes,
+        stderr: completion.stderr.bytes,
     }
 }
 
 fn provider_process_receipt(
-    start: Instant,
-    admission_wait: Duration,
-    status: Option<ExitStatus>,
-    stdout: LimitedRead,
-    stderr: LimitedRead,
-    timed_out: bool,
-    memory_limit_exceeded: bool,
-    descendant_cleanup_required: bool,
-    limits: ProviderProcessLimits,
+    status: Option<&ExitStatus>,
+    completion: &ProviderProcessCompletion,
 ) -> ProviderProcessReceipt {
-    let exit_signal = provider_exit_signal(status.as_ref());
+    let ProviderProcessCompletion {
+        start,
+        admission_wait,
+        stdout,
+        stderr,
+        timed_out,
+        memory_limit_exceeded,
+        descendant_cleanup_required,
+        limits,
+    } = completion;
+    let exit_signal = provider_exit_signal(status);
     let status_success = status.is_some_and(|status| status.success());
     let memory_limit_enforced = cfg!(unix) && limits.memory_limit_bytes().is_some();
     let memory_limit_suspected =
         memory_limit_enforced && exit_signal.is_some_and(memory_limit_failure_signal);
-    let termination_reason = if memory_limit_exceeded {
+    let termination_reason = if *memory_limit_exceeded {
         "memory-limit-exceeded"
-    } else if timed_out {
+    } else if *timed_out {
         "timeout"
     } else if memory_limit_suspected {
         "memory-limit-suspected"
@@ -246,23 +275,23 @@ fn provider_process_receipt(
     };
     ProviderProcessReceipt::from_input(crate::process_contract::ProviderProcessReceiptInput {
         elapsed: start.elapsed(),
-        admission_wait,
-        status_code: status.and_then(|status| status.code()),
+        admission_wait: *admission_wait,
+        status_code: status.and_then(ExitStatus::code),
         status_success,
         stdout_bytes: stdout.total_bytes,
         stderr_bytes: stderr.total_bytes,
-        stdout_sha256: stdout.sha256,
-        stderr_sha256: stderr.sha256,
+        stdout_sha256: stdout.sha256.clone(),
+        stderr_sha256: stderr.sha256.clone(),
         stdout_truncated: stdout.truncated,
         stderr_truncated: stderr.truncated,
-        timed_out,
-        memory_limit_exceeded,
+        timed_out: *timed_out,
+        memory_limit_exceeded: *memory_limit_exceeded,
         exit_signal,
         memory_limit_bytes: limits.memory_limit_bytes(),
         memory_limit_enforced,
         process_group_isolation_enforced: cfg!(unix),
-        descendant_cleanup_required,
-        abnormal_termination: timed_out || memory_limit_exceeded || !status_success,
+        descendant_cleanup_required: *descendant_cleanup_required,
+        abnormal_termination: *timed_out || *memory_limit_exceeded || !status_success,
         termination_reason: termination_reason.to_string(),
     })
 }

@@ -26,6 +26,15 @@ impl RuntimeConcurrencyPlan {
         self.worker_count
     }
 
+    pub(crate) fn ipc_read_lane_capacity(self) -> usize {
+        self.worker_count
+            .saturating_mul(2)
+            .max(self.runnable_task_count)
+            .checked_next_power_of_two()
+            .unwrap_or(usize::MAX)
+            .clamp(1, 256)
+    }
+
     pub(crate) fn writer_batch_limit(self) -> usize {
         let pressure_units = self.runnable_task_count.div_ceil(self.worker_count);
         self.worker_count

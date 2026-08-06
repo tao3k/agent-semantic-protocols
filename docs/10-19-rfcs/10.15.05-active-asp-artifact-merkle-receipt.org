@@ -31,15 +31,30 @@ the activation are additional leaves.
 
 * Digest-addressed materialization
 
-The ASP executable MUST be installed beneath a digest-addressed target:
+Every ASP and provider executable MUST be installed beneath the shared
+digest-addressed artifact lattice:
 
 #+begin_example
-runtime/bin/by-digest/<binary-digest>/asp
+runtime/artifacts/blake3-256/<binary-digest>/<binary-name>
 #+end_example
 
 The public runtime path is a link or atomic pointer to that immutable target.
 The receipt is published atomically only after the target and activation are
 durable.
+
+A regular provider executable discovered at =runtime/bin/<binary-name>= is a
+pre-lattice runtime state, not an unmanaged external artifact.  The installer
+MUST migrate it by staging the same verified bytes in the artifact lattice and
+atomically switching the public runtime entry.  An external symlink that
+resolves outside the lattice remains invalid and MUST fail closed.
+
+Binary switching and provider-lock reconciliation form one ordered install
+transition.  Receipt currency MUST be evaluated after the public entry has
+been switched.  A receipt snapshot captured before migration cannot authorize
+the post-migration symlink metadata; the same install invocation MUST update
+the typed provider lock before activation or active-artifact publication reads
+it.  This is self-repair of a registered runtime generation, not a query-path
+fallback and not a provider rebuild.
 
 * Multi-session publication CAS
 

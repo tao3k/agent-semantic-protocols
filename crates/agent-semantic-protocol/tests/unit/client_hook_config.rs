@@ -478,7 +478,28 @@ fn temp_project_root(name: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("agent-semantic-hook-{name}-{unique}"));
     std::fs::create_dir_all(&root).expect("create temp project root");
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    copy_agent_registry_fixture(&root);
     root
+}
+
+fn copy_agent_registry_fixture(root: &std::path::Path) {
+    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../agents");
+    for target in [
+        root.join("agents"),
+        root.join(".agent-semantic-protocols/agents"),
+    ] {
+        std::fs::create_dir_all(&target).expect("create fixture agent registry");
+        for name in [
+            "config.toml",
+            "asp_explorer_codex.toml",
+            "asp_explorer_claude.md",
+            "asp_testing_codex.toml",
+            "asp_testing_claude.md",
+        ] {
+            std::fs::copy(source.join(name), target.join(name))
+                .expect("copy fixture agent registry entry");
+        }
+    }
 }
 
 fn root_owned_rust_activation_json(root: &std::path::Path) -> String {

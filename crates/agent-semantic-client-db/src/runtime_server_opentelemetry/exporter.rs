@@ -19,11 +19,36 @@ const PERFORMANCE_SPAN_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-opentelemetry-performance-event";
 const PERFORMANCE_SPAN_SCHEMA_VERSION: &str = "1";
 
+fn optional_u64(row: &turso::Row, index: usize, label: &str) -> Result<Option<u64>, String> {
+    let value = row
+        .get::<Option<i64>>(index)
+        .map_err(|error| format!("failed to decode {label}: {error}"))?;
+    value
+        .map(|value| u64::try_from(value).map_err(|_| format!("{label} is negative: {value}")))
+        .transpose()
+}
+
 #[derive(Clone)]
 pub struct TursoOpenTelemetrySpanExporter {
     _database: Arc<turso::Database>,
     writer: Arc<Mutex<turso::Connection>>,
     reader: Arc<Mutex<turso::Connection>>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ActiveSearchIncident {
+    pub incident_id: String,
+    pub workspace_identity: String,
+    pub language_id: Option<String>,
+    pub generation_digest: Option<String>,
+    pub canonical_request_digest: Option<String>,
+    pub reason_kind: Option<String>,
+    pub incident_state: String,
+    pub incident_transition: String,
+    pub requested_projection: Option<String>,
+    pub observed_at_unix_micros: u64,
+    pub elapsed_micros: Option<u64>,
+    pub budget_micros: Option<u64>,
 }
 
 impl fmt::Debug for TursoOpenTelemetrySpanExporter {
@@ -78,6 +103,33 @@ impl TursoOpenTelemetrySpanExporter {
             .get::<i64>(0)
             .map_err(|error| format!("failed to decode OpenTelemetry budget count: {error}"))?;
         u64::try_from(count).map_err(|_| format!("OpenTelemetry budget count is negative: {count}"))
+    }
+
+    pub async fn runtime_pressure_count_for_workspace(
+        &self,
+        workspace_identity: &str,
+    ) -> Result<u64, String> {
+        let connection = self.reader.lock().await;
+        let mut rows = connection
+            .query(
+                "SELECT COUNT(*) FROM asp_otel_runtime_pressure
+                 WHERE workspace_identity = ?1",
+                [workspace_identity],
+            )
+            .await
+            .map_err(|error| format!("failed to query OpenTelemetry runtime pressure: {error}"))?;
+        let row = rows
+            .next()
+            .await
+            .map_err(|error| {
+                format!("failed to read OpenTelemetry runtime pressure count: {error}")
+            })?
+            .ok_or_else(|| "OpenTelemetry runtime pressure count returned no row".to_owned())?;
+        let count = row.get::<i64>(0).map_err(|error| {
+            format!("failed to decode OpenTelemetry runtime pressure count: {error}")
+        })?;
+        u64::try_from(count)
+            .map_err(|_| format!("OpenTelemetry runtime pressure count is negative: {count}"))
     }
 
     pub async fn budget_failure_count_for_workspace(
@@ -139,6 +191,97 @@ impl TursoOpenTelemetrySpanExporter {
             .map_err(|error| format!("failed to decode OpenTelemetry attributes JSON: {error}"))
     }
 
+    pub async fn active_search_incidents(
+        &self,
+        workspace_identity: &str,
+        limit: u64,
+    ) -> Result<Vec<ActiveSearchIncident>, String> {
+        let connection = self.reader.lock().await;
+        let limit = i64::try_from(limit.max(1)).unwrap_or(i64::MAX);
+        let mut rows = connection
+            .query(
+                "SELECT incident_id, workspace_identity, language_id, generation_digest,
+                        operation_id, failure_reason, incident_state, incident_transition,
+                        requested_projection, observed_at_unix_micros, elapsed_micros, budget_micros
+                 FROM asp_otel_active_search_incident
+                 WHERE workspace_identity = ?1
+                 ORDER BY observed_at_unix_micros DESC
+                 LIMIT ?2",
+                (workspace_identity, limit),
+            )
+            .await
+            .map_err(|error| format!("failed to query active search incidents: {error}"))?;
+        let mut incidents = Vec::new();
+        while let Some(row) = rows
+            .next()
+            .await
+            .map_err(|error| format!("failed to read active search incident: {error}"))?
+        {
+            let observed_at = row
+                .get::<i64>(9)
+                .map_err(|error| format!("failed to decode incident observation time: {error}"))?;
+            incidents.push(ActiveSearchIncident {
+                incident_id: row
+                    .get(0)
+                    .map_err(|error| format!("failed to decode incident id: {error}"))?,
+                workspace_identity: row
+                    .get(1)
+                    .map_err(|error| format!("failed to decode incident workspace: {error}"))?,
+                language_id: row
+                    .get(2)
+                    .map_err(|error| format!("failed to decode incident language: {error}"))?,
+                generation_digest: row
+                    .get(3)
+                    .map_err(|error| format!("failed to decode incident generation: {error}"))?,
+                canonical_request_digest: row
+                    .get(4)
+                    .map_err(|error| format!("failed to decode incident request: {error}"))?,
+                reason_kind: row
+                    .get(5)
+                    .map_err(|error| format!("failed to decode incident reason: {error}"))?,
+                incident_state: row
+                    .get(6)
+                    .map_err(|error| format!("failed to decode incident state: {error}"))?,
+                incident_transition: row
+                    .get(7)
+                    .map_err(|error| format!("failed to decode incident transition: {error}"))?,
+                requested_projection: row
+                    .get(8)
+                    .map_err(|error| format!("failed to decode requested projection: {error}"))?,
+                observed_at_unix_micros: u64::try_from(observed_at)
+                    .map_err(|_| format!("incident observation time is negative: {observed_at}"))?,
+                elapsed_micros: optional_u64(&row, 10, "incident elapsed time")?,
+                budget_micros: optional_u64(&row, 11, "incident budget")?,
+            });
+        }
+        Ok(incidents)
+    }
+
+    pub async fn budget_failure_count_for_event_identity(
+        &self,
+        event_identity: &str,
+    ) -> Result<u64, String> {
+        let connection = self.reader.lock().await;
+        let mut rows = connection
+            .query(
+                "SELECT COUNT(*) FROM asp_otel_performance_span
+                 WHERE event_identity = ?1 AND budget_status = 'budget-exceeded'",
+                (event_identity,),
+            )
+            .await
+            .map_err(|error| format!("failed to query OpenTelemetry event identity: {error}"))?;
+        let row = rows
+            .next()
+            .await
+            .map_err(|error| format!("failed to read event identity count: {error}"))?
+            .ok_or_else(|| "OpenTelemetry event identity count returned no row".to_owned())?;
+        let count = row.get::<i64>(0).map_err(|error| {
+            format!("failed to decode OpenTelemetry event identity count: {error}")
+        })?;
+        u64::try_from(count)
+            .map_err(|_| format!("OpenTelemetry event identity count is negative: {count}"))
+    }
+
     async fn export_batch(&self, batch: &[SpanData]) -> Result<(), String> {
         if batch.is_empty() {
             return Ok(());
@@ -163,9 +306,40 @@ impl TursoOpenTelemetrySpanExporter {
                 optional_string_attribute(&attributes, semconv::TRANSPORT_CONTRACT_DIGEST);
             let failure_reason = optional_string_attribute(&attributes, semconv::FAILURE_REASON);
             let retry_after_ms = optional_integer_attribute(&attributes, semconv::RETRY_AFTER_MS);
+            let event_identity = optional_string_attribute(&attributes, semconv::EVENT_IDENTITY);
+            let observed_at_unix_micros =
+                optional_integer_attribute(&attributes, semconv::OBSERVED_AT_UNIX_MICROS);
             let budget_status = string_attribute(&attributes, semconv::BUDGET_STATUS);
             let elapsed_micros = integer_attribute(&attributes, semconv::ELAPSED_MICROS);
             let budget_micros = integer_attribute(&attributes, semconv::BUDGET_MICROS);
+            let process_resident_bytes =
+                optional_integer_attribute(&attributes, semconv::PROCESS_RESIDENT_MEMORY);
+            let process_peak_resident_bytes =
+                optional_integer_attribute(&attributes, semconv::PROCESS_PEAK_RESIDENT_MEMORY);
+            let process_memory_budget_bytes =
+                optional_integer_attribute(&attributes, semconv::PROCESS_MEMORY_BUDGET);
+            let process_memory_budget_status =
+                optional_string_attribute(&attributes, semconv::PROCESS_MEMORY_BUDGET_STATUS);
+            let runtime_event_loop_lag_micros =
+                optional_integer_attribute(&attributes, semconv::RUNTIME_EVENT_LOOP_LAG);
+            let runtime_alive_tasks =
+                optional_integer_attribute(&attributes, semconv::RUNTIME_ALIVE_TASKS);
+            let runtime_global_queue_depth =
+                optional_integer_attribute(&attributes, semconv::RUNTIME_GLOBAL_QUEUE_DEPTH);
+            let runtime_active_connections =
+                optional_integer_attribute(&attributes, semconv::RUNTIME_ACTIVE_CONNECTIONS);
+            let runtime_connection_limit =
+                optional_integer_attribute(&attributes, semconv::RUNTIME_CONNECTION_LIMIT);
+            let runtime_connection_high_watermark =
+                optional_integer_attribute(&attributes, semconv::RUNTIME_CONNECTION_HIGH_WATERMARK);
+            let runtime_rejected_connections =
+                optional_integer_attribute(&attributes, semconv::RUNTIME_REJECTED_CONNECTIONS);
+            let runtime_diagnostic_queue_depth =
+                optional_integer_attribute(&attributes, semconv::RUNTIME_DIAGNOSTIC_QUEUE_DEPTH);
+            let runtime_diagnostic_queue_capacity =
+                optional_integer_attribute(&attributes, semconv::RUNTIME_DIAGNOSTIC_QUEUE_CAPACITY);
+            let runtime_dropped_diagnostics =
+                optional_integer_attribute(&attributes, semconv::RUNTIME_DROPPED_DIAGNOSTICS);
             let attributes_json = serde_json::to_string(&attributes)
                 .map_err(|error| format!("failed to encode OpenTelemetry attributes: {error}"))?;
             let (status_code, status_description) = status_projection(&span.status);
@@ -179,15 +353,16 @@ impl TursoOpenTelemetrySpanExporter {
                         workspace_identity, language_id, generation_digest,
                         runtime_artifact_digest, transport_contract_digest,
                         failure_reason, retry_after_ms,
+                        event_identity, observed_at_unix_micros,
                         elapsed_micros, budget_micros, budget_status, attributes_json
                     ) VALUES (
                         'agent.semantic-protocols.runtime-server-opentelemetry-performance-event',
                         '1',
                         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
                         ?11, ?12, ?13, ?14, ?15, ?16, ?17,
-                        ?18, ?19, ?20, ?21
+                        ?18, ?19, ?20, ?21, ?22, ?23
                     )
-                    ON CONFLICT(trace_id, span_id) DO NOTHING",
+                    ON CONFLICT DO NOTHING",
                     turso::params![
                         span.span_context.trace_id().to_string(),
                         span.span_context.span_id().to_string(),
@@ -199,13 +374,15 @@ impl TursoOpenTelemetrySpanExporter {
                         status_description,
                         surface,
                         stage,
-                        workspace_identity,
+                        workspace_identity.as_deref(),
                         language_id,
                         generation_digest,
                         runtime_artifact_digest,
                         transport_contract_digest,
                         failure_reason,
                         retry_after_ms,
+                        event_identity,
+                        observed_at_unix_micros,
                         elapsed_micros,
                         budget_micros,
                         budget_status,
@@ -214,6 +391,68 @@ impl TursoOpenTelemetrySpanExporter {
                 )
                 .await
                 .map_err(|error| format!("failed to persist OpenTelemetry span: {error}"))?;
+            let pressure_present = [
+                process_resident_bytes,
+                process_peak_resident_bytes,
+                process_memory_budget_bytes,
+                runtime_event_loop_lag_micros,
+                runtime_alive_tasks,
+                runtime_global_queue_depth,
+                runtime_active_connections,
+                runtime_connection_limit,
+                runtime_connection_high_watermark,
+                runtime_rejected_connections,
+                runtime_diagnostic_queue_depth,
+                runtime_diagnostic_queue_capacity,
+                runtime_dropped_diagnostics,
+            ]
+            .into_iter()
+            .any(|value| value.is_some());
+            if pressure_present {
+                transaction
+                    .execute(
+                        "INSERT INTO asp_otel_runtime_pressure (
+                            trace_id, span_id, observed_at_unix_nanos, surface, stage,
+                            workspace_identity,
+                            process_resident_bytes, process_peak_resident_bytes,
+                            process_memory_budget_bytes, process_memory_budget_status,
+                            runtime_event_loop_lag_micros, runtime_alive_tasks,
+                            runtime_global_queue_depth, runtime_active_connections,
+                            runtime_connection_limit, runtime_connection_high_watermark,
+                            runtime_rejected_connections, runtime_diagnostic_queue_depth,
+                            runtime_diagnostic_queue_capacity, runtime_dropped_diagnostics
+                        ) VALUES (
+                            ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+                            ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20
+                        ) ON CONFLICT(trace_id, span_id) DO NOTHING",
+                        turso::params![
+                            span.span_context.trace_id().to_string(),
+                            span.span_context.span_id().to_string(),
+                            unix_nanos(span.start_time)?,
+                            string_attribute(&attributes, semconv::SURFACE),
+                            string_attribute(&attributes, semconv::STAGE),
+                            workspace_identity.as_deref(),
+                            process_resident_bytes,
+                            process_peak_resident_bytes,
+                            process_memory_budget_bytes,
+                            process_memory_budget_status,
+                            runtime_event_loop_lag_micros,
+                            runtime_alive_tasks,
+                            runtime_global_queue_depth,
+                            runtime_active_connections,
+                            runtime_connection_limit,
+                            runtime_connection_high_watermark,
+                            runtime_rejected_connections,
+                            runtime_diagnostic_queue_depth,
+                            runtime_diagnostic_queue_capacity,
+                            runtime_dropped_diagnostics,
+                        ],
+                    )
+                    .await
+                    .map_err(|error| {
+                        format!("failed to persist OpenTelemetry runtime pressure: {error}")
+                    })?;
+            }
         }
         transaction
             .commit()
@@ -255,6 +494,8 @@ async fn bootstrap_schema(connection: &turso::Connection) -> Result<(), String> 
             transport_contract_digest TEXT,
             failure_reason TEXT,
             retry_after_ms INTEGER,
+            event_identity TEXT,
+            observed_at_unix_micros INTEGER,
             elapsed_micros INTEGER,
             budget_micros INTEGER,
             budget_status TEXT,
@@ -266,6 +507,85 @@ async fn bootstrap_schema(connection: &turso::Connection) -> Result<(), String> 
         .await
         .map_err(|error| format!("failed to create Runtime Server telemetry table: {error}"))?;
     ensure_performance_span_columns(connection).await?;
+    connection
+        .execute(
+            "CREATE INDEX IF NOT EXISTS asp_otel_search_incident_timeline_idx
+             ON asp_otel_performance_span(
+                 json_extract(attributes_json, '$.\"asp.search.incident.id\"'),
+                 observed_at_unix_micros DESC
+             )
+             WHERE json_extract(attributes_json, '$.\"asp.search.incident.id\"') IS NOT NULL",
+            (),
+        )
+        .await
+        .map_err(|error| format!("failed to create search incident timeline index: {error}"))?;
+    connection
+        .execute(
+            "CREATE VIEW IF NOT EXISTS asp_otel_active_search_incident AS
+             WITH ranked AS (
+                 SELECT
+                     workspace_identity,
+                     language_id,
+                     generation_digest,
+                     json_extract(attributes_json, '$.\"asp.operation.id\"') AS operation_id,
+                     failure_reason,
+                     observed_at_unix_micros,
+                     elapsed_micros,
+                     budget_micros,
+                     attributes_json,
+                     json_extract(attributes_json, '$.\"asp.search.incident.id\"') AS incident_id,
+                     json_extract(attributes_json, '$.\"asp.search.incident.state\"') AS incident_state,
+                     json_extract(attributes_json, '$.\"asp.search.incident.transition\"') AS incident_transition,
+                     json_extract(attributes_json, '$.\"asp.search.requested_projection\"') AS requested_projection,
+                     ROW_NUMBER() OVER (
+                         PARTITION BY workspace_identity,
+                             json_extract(attributes_json, '$.\"asp.search.incident.id\"')
+                         ORDER BY observed_at_unix_micros DESC,
+                             json_extract(attributes_json, '$.\"asp.search.incident.transition_sequence\"') DESC,
+                             start_time_unix_nanos DESC
+                     ) AS incident_rank
+                 FROM asp_otel_performance_span
+                 WHERE json_extract(attributes_json, '$.\"asp.search.incident.id\"') IS NOT NULL
+             )
+             SELECT * FROM ranked
+             WHERE incident_rank = 1
+               AND incident_state IN (
+                   'open', 'repairing', 'verification-pending', 'failed-verification'
+               )",
+            (),
+        )
+        .await
+        .map_err(|error| format!("failed to create active search incident view: {error}"))?;
+    connection
+        .execute(
+            "CREATE TABLE IF NOT EXISTS asp_otel_runtime_pressure (
+                trace_id TEXT NOT NULL,
+                span_id TEXT NOT NULL,
+                observed_at_unix_nanos INTEGER NOT NULL,
+                surface TEXT NOT NULL,
+                stage TEXT NOT NULL,
+                workspace_identity TEXT,
+                process_resident_bytes INTEGER,
+                process_peak_resident_bytes INTEGER,
+                process_memory_budget_bytes INTEGER,
+                process_memory_budget_status TEXT,
+                runtime_event_loop_lag_micros INTEGER,
+                runtime_alive_tasks INTEGER,
+                runtime_global_queue_depth INTEGER,
+                runtime_active_connections INTEGER,
+                runtime_connection_limit INTEGER,
+                runtime_connection_high_watermark INTEGER,
+                runtime_rejected_connections INTEGER,
+                runtime_diagnostic_queue_depth INTEGER,
+                runtime_diagnostic_queue_capacity INTEGER,
+                runtime_dropped_diagnostics INTEGER,
+                PRIMARY KEY (trace_id, span_id)
+            )",
+            (),
+        )
+        .await
+        .map_err(|error| format!("failed to create Runtime pressure telemetry table: {error}"))?;
+    ensure_runtime_pressure_columns(connection).await?;
     for statement in [
         "CREATE INDEX IF NOT EXISTS asp_otel_performance_stage_idx
             ON asp_otel_performance_span(surface, stage, budget_status, start_time_unix_nanos)",
@@ -275,10 +595,46 @@ async fn bootstrap_schema(connection: &turso::Connection) -> Result<(), String> 
             )",
         "CREATE INDEX IF NOT EXISTS asp_otel_performance_timeline_idx
             ON asp_otel_performance_span(start_time_unix_nanos, trace_id, span_id)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS asp_otel_performance_event_identity_idx
+            ON asp_otel_performance_span(event_identity)
+            WHERE event_identity IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS asp_otel_runtime_pressure_timeline_idx
+            ON asp_otel_runtime_pressure(observed_at_unix_nanos, surface, stage)",
+        "CREATE INDEX IF NOT EXISTS asp_otel_runtime_pressure_workspace_timeline_idx
+            ON asp_otel_runtime_pressure(workspace_identity, observed_at_unix_nanos)",
     ] {
         connection.execute(statement, ()).await.map_err(|error| {
             format!("failed to bootstrap Runtime Server OpenTelemetry schema: {error}")
         })?;
+    }
+    Ok(())
+}
+
+async fn ensure_runtime_pressure_columns(connection: &turso::Connection) -> Result<(), String> {
+    let mut rows = connection
+        .query("PRAGMA table_info(asp_otel_runtime_pressure)", ())
+        .await
+        .map_err(|error| format!("failed to inspect Runtime pressure telemetry schema: {error}"))?;
+    let mut columns = BTreeSet::new();
+    while let Some(row) = rows
+        .next()
+        .await
+        .map_err(|error| format!("failed to read Runtime pressure telemetry schema: {error}"))?
+    {
+        columns.insert(row.get::<String>(1).map_err(|error| {
+            format!("failed to decode Runtime pressure telemetry column name: {error}")
+        })?);
+    }
+    if !columns.contains("workspace_identity") {
+        connection
+            .execute(
+                "ALTER TABLE asp_otel_runtime_pressure ADD COLUMN workspace_identity TEXT",
+                (),
+            )
+            .await
+            .map_err(|error| {
+                format!("failed to add Runtime pressure telemetry workspace identity: {error}")
+            })?;
     }
     Ok(())
 }
@@ -335,6 +691,14 @@ async fn ensure_performance_span_columns(connection: &turso::Connection) -> Resu
         (
             "retry_after_ms",
             "ALTER TABLE asp_otel_performance_span ADD COLUMN retry_after_ms INTEGER",
+        ),
+        (
+            "event_identity",
+            "ALTER TABLE asp_otel_performance_span ADD COLUMN event_identity TEXT",
+        ),
+        (
+            "observed_at_unix_micros",
+            "ALTER TABLE asp_otel_performance_span ADD COLUMN observed_at_unix_micros INTEGER",
         ),
     ] {
         if !columns.contains(column) {

@@ -59,7 +59,7 @@ fn search_flow_source_index_owner_item_graph_chain_is_executable() {
         require_multi_clause: false,
         limit: 5,
         source_index_lookup: Some(&lookup),
-        base_snapshot: &fixture.workspace,
+        base_snapshot: Some(&fixture.workspace),
         base_source_snapshot: &fixture.evidence,
         provider_digest: fixture.provider_digest.as_str(),
     })
@@ -300,7 +300,7 @@ fn search_flow_busy_source_index_miss_returns_overlay_skipped() {
         require_multi_clause: false,
         limit: 5,
         source_index_lookup: Some(&lookup),
-        base_snapshot: &fixture.workspace,
+        base_snapshot: Some(&fixture.workspace),
         base_source_snapshot: &fixture.evidence,
         provider_digest: fixture.provider_digest.as_str(),
     })
@@ -356,7 +356,7 @@ fn search_flow_cold_required_source_index_returns_overlay_skipped() {
         require_multi_clause: false,
         limit: 5,
         source_index_lookup: Some(&lookup),
-        base_snapshot: &fixture.workspace,
+        base_snapshot: Some(&fixture.workspace),
         base_source_snapshot: &fixture.evidence,
         provider_digest: fixture.provider_digest.as_str(),
     })

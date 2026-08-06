@@ -1,24 +1,16 @@
 schema_id = "agent.semantic-protocols.agent-route-registry"
 schema_version = 1
 
+[platforms.codex]
+matcher = "*_codex.toml"
+
+[platforms.claude]
+matcher = "*_claude.md"
+
 [agents.asp_explorer]
-session_name = "asp_explorer"
 session_lifetime = "resident"
 roles = ["explore", "subagent"]
 
-[agents.asp_explorer.platforms.codex]
-projection = "asp-explorer_codex.toml"
-
-[agents.asp_explorer.platforms.claude]
-projection = "asp-explorer_claude.md"
-
 [agents.asp_testing]
-session_name = "asp_testing"
 session_lifetime = "resident"
 roles = ["build", "subagent", "testing"]
-
-[agents.asp_testing.platforms.codex]
-projection = "asp-testing_codex.toml"
-
-[agents.asp_testing.platforms.claude]
-projection = "asp-testing_claude.md"

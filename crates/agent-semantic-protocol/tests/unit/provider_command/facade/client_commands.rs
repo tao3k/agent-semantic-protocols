@@ -5,43 +5,6 @@ use crate::provider_command::support::{
 };
 
 #[test]
-fn top_level_guide_lists_active_language_contract_and_provider_axes() {
-    let root = temp_project_root("top-level-guide-language-contract");
-
-    let output = asp_command(&root)
-        .args(["guide"])
-        .output()
-        .expect("run asp guide");
-
-    assert!(
-        output.status.success(),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(
-        stdout.contains("|cmd guide=asp <language> guide --workspace ."),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("known=rust|typescript|python|julia|gerbil-scheme|org|md"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("provider-guide-contract=run asp <language> guide --workspace ."),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "provider-knowledge-axes=asp <language> search env|runtime-source|lang|std|capability|extension|pattern|compare"
-        ),
-        "{stdout}"
-    );
-
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
 fn tools_doctor_reports_required_external_tools() {
     let root = temp_project_root("tools-doctor");
     let bin_dir = root.join(".bin");

@@ -90,6 +90,7 @@
           "search",
           "owner",
           "{owner}",
+          "items",
           "--workspace",
           "{workspace}",
           "--view",

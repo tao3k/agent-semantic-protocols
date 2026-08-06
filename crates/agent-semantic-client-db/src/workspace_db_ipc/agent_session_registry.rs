@@ -10,6 +10,9 @@ use super::{WorkspaceDbIpcOperation, WorkspaceDbIpcResult};
     rename_all_fields = "camelCase"
 )]
 pub enum AgentSessionRegistryIpcOperation {
+    RecordHostLifecycleEvent {
+        event: AgentHostLifecycleEventIpc,
+    },
     Register {
         request: AgentSessionRegisterIpcRequest,
     },
@@ -74,6 +77,30 @@ pub enum AgentSessionRegistryIpcOperation {
         evidence_ref: String,
         now: i64,
     },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AgentHostLifecycleEventKind {
+    Started,
+    Stopped,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentHostLifecycleEventIpc {
+    pub kind: AgentHostLifecycleEventKind,
+    pub platform: String,
+    pub project_id: String,
+    pub root_session_id: String,
+    pub parent_session_id: String,
+    pub child_session_id: String,
+    pub platform_host_agent_name: String,
+    pub role: String,
+    pub model: Option<String>,
+    pub profile_digest: String,
+    pub transcript_path: Option<String>,
+    pub observed_at: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

@@ -57,7 +57,7 @@ import ASPProof.HookSessionLifecycle
 import ASPProof.HookSessionMaterialization
 import ASPProof.HookLazyLoaderCapability
 import ASPProof.HookBootstrapRepair
-import ASPProof.ServerResidentHookEvaluator
+import ASPProof.HookExecutionPlane
 import ASPProof.HookEnforcementKernel
 import ASPProof.HostAuthoritativeAgentProfile
 import ASPProof.ManagerProjectionElimination
@@ -223,11 +223,13 @@ import ASPProof.ThreeViewSpecificationConformance
 import ASPProof.Audit
 import ASPProof.SearchLoopCache
 import ASPProof.ExactSelectorGenerationAdmission
+import ASPProof.ExactSelectorMerkleProofReuse
 import ASPProof.ResidentProviderRelationGeneration
 import ASPProof.Audit.ResidentProviderRelationGeneration
 import ASPProof.ResidentGenerationSegmentAdmission
 import ASPProof.Audit.ResidentGenerationSegmentAdmission
 import ASPProof.Audit.ExactSelectorGenerationAdmission
+import ASPProof.Audit.ExactSelectorMerkleProofReuse
 import ASPProof.CodexMultiAgentV2Lifecycle
 import ASPProof.ASPAgentSessionFencing
 import ASPProof.ASPAgentSessionPortal
@@ -255,3 +257,6 @@ import ASPProof.PolyglotSearchSemanticRefinement
 import ASPProof.PolyglotSearchArtifactReplay
 import ASPProof.PolyglotSearchQualification
 import ASPProof.PolyglotSearchEvidenceSufficiency
+import ASPProof.RuntimeGenerationMemoryAuthority
+import ASPProof.RuntimeServerLifecycle
+import ASPProof.SearchQueryIncidentLifecycle

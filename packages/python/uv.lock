@@ -8,6 +8,7 @@ members = [
     "agent-semantic-protocols-tools",
     "asp-graph-turbo",
     "asp-memory-engine",
+    "asp-schema-manager",
 ]
 
 [[package]]
@@ -18,6 +19,7 @@ dependencies = [
     { name = "agent-semantic-protocols-tools" },
     { name = "asp-graph-turbo" },
     { name = "asp-memory-engine" },
+    { name = "asp-schema-manager" },
 ]
 
 [package.dev-dependencies]
@@ -31,6 +33,7 @@ requires-dist = [
     { name = "agent-semantic-protocols-tools", editable = "tools" },
     { name = "asp-graph-turbo", editable = "asp_graph_turbo" },
     { name = "asp-memory-engine", editable = "asp_memory_engine" },
+    { name = "asp-schema-manager", editable = "asp_schema_manager" },
 ]
 
 [package.metadata.requires-dev]
@@ -122,6 +125,25 @@ dev = [
 ]
 
 [package.metadata]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9,<10" }]
+
+[[package]]
+name = "asp-schema-manager"
+version = "0.1.0"
+source = { editable = "asp_schema_manager" }
+dependencies = [
+    { name = "jsonschema" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "jsonschema", specifier = ">=4.23,<5" }]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9,<10" }]

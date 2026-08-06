@@ -1,15 +1,11 @@
 //! Command tree for the `asp` binary.
 
 mod agent_session;
-mod agent_session_registry;
 
-pub(crate) use agent_session_registry::{
-    ResidentChildIdentityProof, codex_transcript_resident_child_identity,
-    current_registered_session, current_resident_child_identity_proof, current_root_session_id,
-    has_current_agent_session, record_current_session_tool_event,
-    registered_resident_session_for_root, rollout_metadata_matches_host_agent_identity,
-    validate_session_profile,
-};
+pub(crate) use agent_config_sync::synchronize_agent_config_from_project_root;
+mod agent_config_sync;
+mod agent_control_plane;
+mod agent_window;
 mod ast_patch;
 mod cli_help;
 mod client_backend_worker;
@@ -23,10 +19,10 @@ mod graph;
 pub mod graph_turbo_resident_process;
 mod healthcheck;
 mod hook;
+mod hook_break_glass;
 mod hook_enforcement;
 pub(crate) mod hook_runtime;
 mod hook_runtime_context;
-mod hook_runtime_source_access;
 mod install_binary_config_admission;
 mod install_provider;
 mod install_provider_archive;
@@ -34,13 +30,14 @@ mod install_provider_development;
 mod install_provider_reconcile;
 mod install_provider_release;
 mod install_provider_runtime_reconcile;
+pub(crate) use install_provider_runtime_reconcile::reconcile_global_provider_catalog_for_runtime;
 mod install_provider_target;
 mod live_corpus;
 mod managed_hook_config;
 mod org_archive;
 mod org_capture;
 mod org_capture_contract_materialize;
-mod org_capture_interactive;
+pub(crate) mod org_capture_interactive;
 mod org_recall;
 mod paths;
 pub(crate) mod protocol_binary;
@@ -105,7 +102,7 @@ mod workspace_tree_sitter_query;
 mod workspace_tree_sitter_query_trace;
 
 pub(crate) use dispatch::{run_protocol_command, run_protocol_command_started};
-pub(crate) use hook::evaluate_hook_event_via_runtime;
+pub(crate) use hook::evaluate_hook_event_locally;
 pub(in crate::command) use hook_enforcement::codex_enforcement_report;
 pub(in crate::command) use hook_runtime_context::payload_indicates_subagent_context;
 pub(in crate::command) use protocol_binary::{

@@ -10,11 +10,11 @@ fn builtin_inline_materialization_rules_use_config_and_source_paths() {
     for (command, expected_rule) in [
         (
             "python -c \"open('crates/agent-semantic-hook/src/hook_config/core/implementation.rs').read()\"",
-            "deny-uncontrolled-python-inline-source-materialization",
+            "materialize-source-access-policy",
         ),
         (
             "node -e \"require('fs').readFileSync('crates/agent-semantic-hook/src/hook_config/core/implementation.rs')\"",
-            "deny-uncontrolled-javascript-inline-source-materialization",
+            "materialize-source-access-policy",
         ),
     ] {
         let decision = classify_hook_with_config(HookClassificationRequest {
@@ -233,7 +233,7 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
                 }
             }),
             DecisionKind::Deny,
-            "deny-uncontrolled-python-inline-source-materialization",
+            "materialize-source-access-policy",
         ),
         (
             "javascript inline source materialization",
@@ -244,7 +244,7 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
                 }
             }),
             DecisionKind::Deny,
-            "deny-uncontrolled-javascript-inline-source-materialization",
+            "materialize-source-access-policy",
         ),
         (
             "git source read",

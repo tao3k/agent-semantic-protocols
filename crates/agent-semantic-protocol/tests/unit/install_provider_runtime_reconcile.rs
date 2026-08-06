@@ -98,6 +98,98 @@ fn canonical_digest_lattice_symlink_is_current_without_rewrite() {
 
 #[cfg(unix)]
 #[test]
+fn registered_provider_file_is_atomically_migrated_to_the_digest_lattice() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "asp-provider-file-runtime-entry-{}-{nonce}",
+        std::process::id()
+    ));
+    let runtime_bin = root.join("runtime/bin");
+    let artifact_root = root.join("runtime/artifacts");
+    let provider_lock_dir = root.join("runtime/providers/receipts");
+    std::fs::create_dir_all(&runtime_bin).expect("temporary runtime bin");
+
+    let registrations = agent_semantic_hook::registered_provider_binaries_v1();
+    let registration = registrations.first().expect("registered provider");
+    let profile = runtime_bin.join(registration.binary());
+    std::fs::write(&profile, b"provider-binary-awaiting-lattice-migration")
+        .expect("write registered provider file");
+    std::fs::create_dir_all(&provider_lock_dir).expect("temporary provider receipts");
+    let content_digest =
+        agent_semantic_content_identity::file_content_digest_v1(&profile).expect("content digest");
+    let metadata_digest =
+        agent_semantic_content_identity::file_artifact_metadata_digest_v1(&profile)
+            .expect("metadata digest");
+    let execution_digest = agent_semantic_hook::provider_execution_command_digest(
+        &[profile.to_string_lossy().to_string()],
+        &content_digest,
+    )
+    .expect("execution digest");
+    let lock_path =
+        provider_lock_dir.join(format!("{}.lock.toml", registration.language_id().as_str()));
+    std::fs::write(
+        &lock_path,
+        format!(
+            "schemaId = \"asp.provider-install-lock.v1\"\nlanguage = \"{}\"\nprovider = \"{}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{}\"\ninstalledEntrypointMetadataDigest = \"{}\"\nexecutionCommandDigest = \"{}\"\n",
+            registration.language_id().as_str(),
+            registration.provider_id().as_str(),
+            profile.display(),
+            content_digest,
+            metadata_digest,
+            execution_digest,
+        ),
+    )
+    .expect("write pre-migration provider receipt");
+
+    let reconciliation = reconcile_registered_provider_runtime_binaries_from(
+        std::slice::from_ref(registration),
+        &runtime_bin,
+        &artifact_root,
+        &provider_lock_dir,
+    )
+    .expect("migrate registered provider file");
+
+    assert_eq!(reconciliation.reconciled_count, 1);
+    assert_eq!(reconciliation.changed_count, 1);
+    assert_eq!(reconciliation.receipt_reconciled_count, 1);
+    assert_eq!(reconciliation.receipt_changed_count, 1);
+    assert_eq!(reconciliation.binary_byte_reads, 2);
+    assert!(
+        std::fs::symlink_metadata(&profile)
+            .expect("migrated provider profile")
+            .file_type()
+            .is_symlink()
+    );
+    let canonical = std::fs::canonicalize(&profile).expect("canonical provider artifact");
+    let canonical_artifact_root =
+        std::fs::canonicalize(&artifact_root).expect("canonical artifact root");
+    assert!(canonical.starts_with(canonical_artifact_root.join("blake3-256")));
+    assert_eq!(
+        std::fs::read(&canonical).expect("read migrated artifact"),
+        b"provider-binary-awaiting-lattice-migration"
+    );
+    let reconciled_receipt =
+        super::super::install_provider_reconcile::read_provider_install_receipt(
+            registration.language_id().as_str(),
+            &provider_lock_dir,
+        )
+        .expect("read reconciled provider receipt");
+    assert!(
+        super::super::install_provider_reconcile::provider_install_receipt_matches_artifact(
+            &reconciled_receipt,
+            &profile,
+        )
+        .expect("receipt matches migrated provider artifact")
+    );
+
+    std::fs::remove_dir_all(root).expect("remove migration fixture");
+}
+
+#[cfg(unix)]
+#[test]
 fn unmanaged_provider_runtime_symlink_is_rejected_without_migration() {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -138,7 +230,7 @@ fn unmanaged_provider_runtime_symlink_is_rejected_without_migration() {
     .expect_err("reject unmanaged provider runtime symlink");
 
     assert!(
-        error.contains("is not a canonical digest-lattice symlink"),
+        error.contains("escapes immutable artifact root"),
         "unexpected reconciliation error: {error}"
     );
     assert_eq!(

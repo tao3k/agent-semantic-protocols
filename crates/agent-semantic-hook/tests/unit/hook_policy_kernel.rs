@@ -1,10 +1,8 @@
-use std::path::Path;
-
 use agent_semantic_config::HookClientLanguageProviderConfig;
 
 use super::{
     active_policy_snapshot, active_provider_projections, compile_language_provider_snapshot,
-    publish_language_provider_snapshot, snapshot_supports_source_file,
+    publish_language_provider_snapshot,
 };
 
 fn provider(
@@ -32,14 +30,10 @@ fn provider(
 }
 
 #[test]
-fn snapshot_recognizes_inactive_document_provider_without_runtime_server() {
+fn snapshot_projects_inactive_document_provider_without_runtime_server() {
     let project = "hook-policy-kernel-markdown";
     publish_language_provider_snapshot(project, &[provider("md", "orgize", &[".md", ".markdown"])])
         .expect("publish Markdown hook policy snapshot");
-    assert_eq!(
-        snapshot_supports_source_file(project, Path::new("README.md")),
-        Some(true)
-    );
     let projections = active_provider_projections(project).expect("active projections");
     assert_eq!(projections.len(), 1);
     assert_eq!(projections[0].language_id.as_str(), "md");

@@ -169,8 +169,32 @@ pub async fn prepare_runtime_server_endpoint(
     binding_token: &str,
 ) -> Result<RuntimeServerEndpoint, String> {
     let runtime_base = runtime_server_runtime_base();
-    prepare_runtime_server_endpoint_in(
+    let workspace_store_path = runtime_base.join("workspaces");
+    prepare_runtime_server_endpoint_in_with_workspace_store(
         &runtime_base,
+        &workspace_store_path,
+        runtime_artifact_path,
+        runtime_artifact_digest,
+        artifact_mode,
+        artifact_catalog_digest,
+        owner_epoch,
+        binding_token,
+    )
+    .await
+}
+
+pub async fn prepare_runtime_server_endpoint_with_workspace_store(
+    workspace_store_path: &Path,
+    runtime_artifact_path: &Path,
+    runtime_artifact_digest: &str,
+    artifact_mode: &str,
+    artifact_catalog_digest: &str,
+    owner_epoch: u64,
+    binding_token: &str,
+) -> Result<RuntimeServerEndpoint, String> {
+    prepare_runtime_server_endpoint_in_with_workspace_store(
+        &runtime_server_runtime_base(),
+        workspace_store_path,
         runtime_artifact_path,
         runtime_artifact_digest,
         artifact_mode,
@@ -183,6 +207,30 @@ pub async fn prepare_runtime_server_endpoint(
 
 pub async fn prepare_runtime_server_endpoint_in(
     runtime_base: &Path,
+    runtime_artifact_path: &Path,
+    runtime_artifact_digest: &str,
+    artifact_mode: &str,
+    artifact_catalog_digest: &str,
+    owner_epoch: u64,
+    binding_token: &str,
+) -> Result<RuntimeServerEndpoint, String> {
+    let workspace_store_path = runtime_base.join("workspaces");
+    prepare_runtime_server_endpoint_in_with_workspace_store(
+        runtime_base,
+        &workspace_store_path,
+        runtime_artifact_path,
+        runtime_artifact_digest,
+        artifact_mode,
+        artifact_catalog_digest,
+        owner_epoch,
+        binding_token,
+    )
+    .await
+}
+
+async fn prepare_runtime_server_endpoint_in_with_workspace_store(
+    runtime_base: &Path,
+    workspace_store_path: &Path,
     runtime_artifact_path: &Path,
     runtime_artifact_digest: &str,
     artifact_mode: &str,
@@ -219,7 +267,6 @@ pub async fn prepare_runtime_server_endpoint_in(
     let socket_path = runtime_base.join(format!("r-{}.sock", &digest[..16]));
     let data_plane_socket_path = runtime_base.join(format!("r-{}.data.sock", &digest[..16]));
     let status_memory_path = runtime_base.join("status.v1.memory");
-    let workspace_store_path = runtime_base.join("workspaces");
     if socket_path.as_os_str().as_bytes().len() > MAX_UNIX_SOCKET_PATH_BYTES {
         return Err(format!(
             "Runtime Server socket path exceeds Unix sun_path budget: {}",

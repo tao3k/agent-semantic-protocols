@@ -6,6 +6,19 @@ use std::process::Command;
 
 use agent_semantic_config::load_asp_project_config_file;
 
+pub trait CancellationProbe: Send + Sync {
+    fn is_cancelled(&self) -> bool;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NeverCancelled;
+
+impl CancellationProbe for NeverCancelled {
+    fn is_cancelled(&self) -> bool {
+        false
+    }
+}
+
 /// Git remote URL captured as identity evidence.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -311,6 +324,18 @@ fn repository_candidate_generation(
 pub fn discover_repository_candidate_snapshot(
     workspace: &Path,
 ) -> Result<Option<RepositoryCandidateSnapshot>, GitWorkspaceFileScopeError> {
+    discover_repository_candidate_snapshot_cancellable(workspace, &NeverCancelled)
+}
+
+pub fn discover_repository_candidate_snapshot_cancellable(
+    workspace: &Path,
+    probe: &dyn CancellationProbe,
+) -> Result<Option<RepositoryCandidateSnapshot>, GitWorkspaceFileScopeError> {
+    if probe.is_cancelled() {
+        return Err(GitWorkspaceFileScopeError::DiscoverRepository {
+            message: "cancelled".to_owned(),
+        });
+    }
     let Some(scope) = discover_git_workspace_file_scope(workspace)? else {
         return Ok(None);
     };
@@ -353,6 +378,9 @@ pub fn discover_repository_candidate_snapshot(
         .files
         .iter()
         .filter_map(|file| {
+            if probe.is_cancelled() {
+                return None;
+            }
             let relative_path = if worktree_prefix == Path::new(".") {
                 file.relative_path.clone()
             } else {

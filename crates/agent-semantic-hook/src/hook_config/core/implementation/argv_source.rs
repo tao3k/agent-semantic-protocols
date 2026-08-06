@@ -15,6 +15,7 @@ impl RuleMatch {
         if self.argv_source_any.is_empty()
             && self.argv_source_glob_any.is_empty()
             && !self.argv_workspace_regular_file
+            && !self.argv_structured_document_file
             && !self.argv_registered_source_file
         {
             return Some(Vec::new());

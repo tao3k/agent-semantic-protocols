@@ -9,6 +9,14 @@ use serde::{Deserialize, Serialize};
 
 use super::WorkspaceGenerationCommitReceipt;
 
+impl agent_semantic_runtime::git::CancellationProbe
+    for crate::runtime_generation_cancellation::GenerationCancellation
+{
+    fn is_cancelled(&self) -> bool {
+        self.is_cancelled()
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceGenerationCandidateIdentity {
@@ -54,9 +62,27 @@ impl WorkspaceGenerationCandidateIdentity {
 pub async fn discover_workspace_generation_candidate(
     project_root: &std::path::Path,
 ) -> Result<WorkspaceGenerationCandidateIdentity, String> {
+    discover_workspace_generation_candidate_with_cancellation(
+        project_root,
+        &crate::runtime_generation_cancellation::GenerationCancellation::new(),
+    )
+    .await
+}
+
+pub async fn discover_workspace_generation_candidate_with_cancellation(
+    project_root: &std::path::Path,
+    cancellation: &crate::runtime_generation_cancellation::GenerationCancellation,
+) -> Result<WorkspaceGenerationCandidateIdentity, String> {
+    if cancellation.is_cancelled() {
+        return Err("generation build cancelled".to_owned());
+    }
     let project_root = project_root.to_path_buf();
+    let cancellation = cancellation.clone();
     tokio::task::spawn_blocking(move || {
-        agent_semantic_runtime::git::discover_repository_candidate_snapshot(&project_root)
+        agent_semantic_runtime::git::discover_repository_candidate_snapshot_cancellable(
+            &project_root,
+            &cancellation,
+        )
     })
     .await
     .map_err(|error| format!("workspace candidate discovery task failed: {error}"))?
@@ -86,14 +112,81 @@ impl WorkspaceGenerationBuild {
 }
 
 pub type WorkspaceGenerationBuildFuture = Pin<
-    Box<dyn Future<Output = Result<WorkspaceGenerationCommitReceipt, String>> + Send + 'static>,
+    Box<
+        dyn Future<
+                Output = Result<
+                    WorkspaceGenerationBuildCompletion,
+                    WorkspaceGenerationBuildFailure,
+                >,
+            > + Send
+            + 'static,
+    >,
 >;
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WorkspaceGenerationFailureStage {
+    GenerationBuilder,
+    GenerationBuilderSupervision,
+    WorkspaceBootstrap,
+    DurableRestore,
+    SourceBuilder,
+    SourceIndexCommit,
+    CanonicalGenerationPublication,
+    AdmissionValidation,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WorkspaceGenerationBuildFailure {
+    pub stage: WorkspaceGenerationFailureStage,
+    pub message: String,
+}
+
+impl WorkspaceGenerationBuildFailure {
+    pub fn new(stage: WorkspaceGenerationFailureStage, message: impl Into<String>) -> Self {
+        Self {
+            stage,
+            message: message.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for WorkspaceGenerationBuildFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{}: {}",
+            serde_json::to_string(&self.stage).unwrap_or_default(),
+            self.message
+        )
+    }
+}
+
+impl std::error::Error for WorkspaceGenerationBuildFailure {}
+
+pub struct WorkspaceGenerationBuildCompletion {
+    pub candidate: WorkspaceGenerationCandidateIdentity,
+    pub commit: WorkspaceGenerationCommitReceipt,
+}
+
+impl WorkspaceGenerationBuildCompletion {
+    pub fn new(
+        candidate: WorkspaceGenerationCandidateIdentity,
+        commit: WorkspaceGenerationCommitReceipt,
+    ) -> Result<Self, String> {
+        candidate.validate()?;
+        commit.validate()?;
+        Ok(Self { candidate, commit })
+    }
+}
 pub type WorkspaceGenerationBuilder = Arc<
     dyn Fn(
             String,
             PathBuf,
             WorkspaceGenerationCandidateIdentity,
             WorkspaceGenerationBuildMode,
+            crate::runtime_generation_cancellation::GenerationCancellation,
+            tokio::time::Instant,
         ) -> WorkspaceGenerationBuildFuture
         + Send
         + Sync

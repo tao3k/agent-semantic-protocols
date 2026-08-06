@@ -9,7 +9,6 @@ pub(crate) use core::{
 mod decision;
 #[path = "../classifier_recovery.rs"]
 mod recovery;
-pub(crate) use recovery::command_line;
 mod source_access_routes;
 
 pub use core::{HookClassificationRequest, classify_hook, classify_hook_with_config};

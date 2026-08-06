@@ -7,6 +7,7 @@ dependencies = [
     "agent-semantic-protocols-tools",
     "asp-graph-turbo",
     "asp-memory-engine",
+    "asp-schema-manager",
 ]
 
 [dependency-groups]
@@ -23,10 +24,12 @@ agent-semantic-protocols-tools = { workspace = true }
 asp-graph-turbo = { workspace = true }
 python-lang-project-harness = { path = "../../languages/python-lang-project-harness", editable = true }
 asp-memory-engine = { workspace = true }
+asp-schema-manager = { workspace = true }
 
 [tool.uv.workspace]
 members = [
     "asp_graph_turbo",
     "tools",
     "asp_memory_engine",
+    "asp_schema_manager",
 ]

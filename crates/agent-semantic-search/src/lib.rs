@@ -2,6 +2,7 @@
 
 //! Search orchestration services for ASP agent-facing queries.
 
+pub mod command_diagnostics;
 mod document_candidates;
 mod dynamic_candidates;
 mod dynamic_overlay;

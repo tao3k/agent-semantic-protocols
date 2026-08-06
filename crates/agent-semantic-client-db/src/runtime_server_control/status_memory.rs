@@ -1,25 +1,23 @@
-use std::collections::HashMap;
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::PermissionsExt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
 use memmap2::{Mmap, MmapMut, MmapOptions};
-use tokio::sync::OnceCell;
 
 use super::model::{
     RuntimeServerControlReceipt, RuntimeServerEndpoint, RuntimeServerState,
     RuntimeServerStatusSnapshot,
 };
 
-const STATUS_MEMORY_BYTES: u64 = 4096;
+const STATUS_MEMORY_BYTES: u64 = 256 * 1024;
 const GENERATION_OFFSET: usize = 0;
 const PAYLOAD_LENGTH_OFFSET: usize = 8;
 const PAYLOAD_OFFSET: usize = 16;
 
-static STATUS_MEMORY_READERS: OnceCell<
-    tokio::sync::RwLock<HashMap<String, Arc<RuntimeServerStatusMemoryReader>>>,
-> = OnceCell::const_new();
+static STATUS_MEMORY_READERS: std::sync::OnceLock<
+    dashmap::DashMap<String, Arc<RuntimeServerStatusMemoryReader>>,
+> = std::sync::OnceLock::new();
 
 pub(crate) struct RuntimeServerStatusMemoryWriter {
     mapping: MmapMut,
@@ -27,6 +25,8 @@ pub(crate) struct RuntimeServerStatusMemoryWriter {
     generation: u64,
     graph_turbo_resident:
         Option<std::sync::Arc<std::sync::RwLock<super::GraphTurboResidentStatus>>>,
+    agent_sessions:
+        Option<std::sync::Arc<std::sync::RwLock<Vec<super::RuntimeServerAgentSessionStatus>>>>,
 }
 
 struct RuntimeServerStatusMemoryReader {
@@ -85,6 +85,7 @@ impl RuntimeServerStatusMemoryWriter {
             endpoint: endpoint.clone(),
             generation: 0,
             graph_turbo_resident: None,
+            agent_sessions: None,
         };
         writer.publish(RuntimeServerState::Starting, 0)?;
         Ok(writer)
@@ -107,6 +108,11 @@ impl RuntimeServerStatusMemoryWriter {
                 .graph_turbo_resident
                 .as_ref()
                 .and_then(|status| status.read().ok().map(|status| status.clone())),
+            agent_sessions: self
+                .agent_sessions
+                .as_ref()
+                .and_then(|sessions| sessions.read().ok().map(|sessions| sessions.clone()))
+                .unwrap_or_default(),
             ..snapshot
         };
         let payload = serde_json::to_vec(&snapshot)
@@ -129,6 +135,13 @@ impl RuntimeServerStatusMemoryWriter {
         status: std::sync::Arc<std::sync::RwLock<super::GraphTurboResidentStatus>>,
     ) {
         self.graph_turbo_resident = Some(status);
+    }
+
+    pub(crate) fn set_agent_sessions(
+        &mut self,
+        sessions: std::sync::Arc<std::sync::RwLock<Vec<super::RuntimeServerAgentSessionStatus>>>,
+    ) {
+        self.agent_sessions = Some(sessions);
     }
 }
 
@@ -245,11 +258,7 @@ pub fn runtime_server_status_memory_metrics(
     endpoint: &RuntimeServerEndpoint,
 ) -> Option<RuntimeServerStatusMemoryMetrics> {
     let readers = STATUS_MEMORY_READERS.get()?;
-    let reader_slot = readers
-        .try_read()
-        .ok()?
-        .get(&endpoint.status_memory_path)
-        .cloned()?;
+    let reader_slot = readers.get(&endpoint.status_memory_path)?;
     Some(reader_slot.metrics())
 }
 
@@ -264,45 +273,29 @@ async fn cached_runtime_server_status_memory_reader(
 ) -> Option<Arc<RuntimeServerStatusMemoryReader>> {
     STATUS_MEMORY_READERS
         .get()?
-        .read()
-        .await
         .get(&endpoint.status_memory_path)
-        .cloned()
+        .map(|reader| Arc::clone(reader.value()))
 }
 
 async fn runtime_server_status_memory_reader_at(
     status_memory_path: &str,
 ) -> Result<Arc<RuntimeServerStatusMemoryReader>, String> {
     let status_memory_path = std::path::Path::new(status_memory_path);
-    let readers = STATUS_MEMORY_READERS
-        .get_or_init(|| async { tokio::sync::RwLock::new(HashMap::new()) })
-        .await;
+    let readers = STATUS_MEMORY_READERS.get_or_init(dashmap::DashMap::new);
     let cache_key = status_memory_path.to_string_lossy().into_owned();
+    if let Some(reader) = readers.get(&cache_key) {
+        return Ok(Arc::clone(reader.value()));
+    }
     loop {
-        let live_identity = status_memory_file_identity(status_memory_path).await?;
-        if let Some(reader) = {
-            let cached = readers.read().await;
-            cached
-                .get(&cache_key)
-                .filter(|reader| reader.file_identity == live_identity)
-                .cloned()
-        } {
-            return Ok(reader);
-        }
-
         let candidate =
             Arc::new(RuntimeServerStatusMemoryReader::open_path(status_memory_path).await?);
         if candidate.file_identity != status_memory_file_identity(status_memory_path).await? {
             continue;
         }
-        let mut cached = readers.write().await;
-        if let Some(reader) = cached
-            .get(&cache_key)
-            .filter(|reader| reader.file_identity == candidate.file_identity)
-        {
-            return Ok(Arc::clone(reader));
+        if let Some(reader) = readers.get(&cache_key) {
+            return Ok(Arc::clone(reader.value()));
         }
-        cached.insert(cache_key.clone(), Arc::clone(&candidate));
+        readers.insert(cache_key.clone(), Arc::clone(&candidate));
         return Ok(candidate);
     }
 }
@@ -320,9 +313,32 @@ pub async fn read_runtime_server_cached_health_status(
     status_memory_path: &std::path::Path,
     request_id: String,
 ) -> Result<RuntimeServerControlReceipt, String> {
+    if let Some(cache_key) = status_memory_path.to_str()
+        && let Some(reader) = STATUS_MEMORY_READERS.get().and_then(|readers| {
+            readers
+                .get(cache_key)
+                .map(|reader| Arc::clone(reader.value()))
+        })
+    {
+        let snapshot = reader.read()?;
+        let receipt = snapshot.cached_health_receipt(request_id.clone());
+        if receipt.state == RuntimeServerState::Healthy {
+            return Ok(receipt);
+        }
+    }
     let status_memory_path = status_memory_path
         .to_str()
         .ok_or_else(|| "Runtime Server status memory path is not UTF-8".to_owned())?;
+    if let Some(readers) = STATUS_MEMORY_READERS.get()
+        && let Some(reader) = readers.get(status_memory_path)
+    {
+        let expected_identity =
+            status_memory_file_identity(std::path::Path::new(status_memory_path)).await?;
+        if expected_identity != reader.file_identity {
+            drop(reader);
+            readers.remove(status_memory_path);
+        }
+    }
     let reader = runtime_server_status_memory_reader_at(status_memory_path).await?;
     let snapshot = reader.read()?;
     Ok(snapshot.cached_health_receipt(request_id))
@@ -336,14 +352,118 @@ pub async fn prewarm_runtime_server_status_memory(
     Ok(reader.metrics())
 }
 
+pub async fn read_runtime_server_agent_sessions(
+    endpoint: &RuntimeServerEndpoint,
+) -> Result<Vec<super::RuntimeServerAgentSessionStatus>, String> {
+    endpoint.validate()?;
+    let reader = runtime_server_status_memory_reader(endpoint).await?;
+    Ok(reader.read()?.agent_sessions.clone())
+}
+
+pub fn resolve_runtime_server_agent_session_status(
+    sessions: &[super::RuntimeServerAgentSessionStatus],
+    workspace_id: &str,
+    observed_session_id: Option<&str>,
+    observed_root_session_id: Option<&str>,
+    name: &str,
+) -> Result<super::AgentSessionControlPlaneState, String> {
+    if name.trim().is_empty() {
+        return Err("session control-plane route requires a non-empty registered name".to_owned());
+    }
+    let observed = observed_session_id
+        .and_then(|session_id| sessions.iter().find(|entry| entry.session_id == session_id));
+    if let Some(record) = observed
+        && record.workspace_identity != workspace_id
+    {
+        return Err(format!(
+            "session control-plane workspace mismatch: requestedWorkspace={workspace_id} registeredWorkspace={} sessionId={}",
+            record.workspace_identity, record.session_id
+        ));
+    }
+    if let (Some(record), Some(expected_root)) = (observed, observed_root_session_id)
+        && record.root_session_id != expected_root
+    {
+        return Err(format!(
+            "session control-plane identity mismatch: observed session `{}` belongs to root `{}`, host reported `{expected_root}`",
+            record.session_id, record.root_session_id,
+        ));
+    }
+    let root_session_id = observed
+        .map(|record| record.root_session_id.clone())
+        .or_else(|| observed_root_session_id.map(str::to_owned));
+    let Some(root_session_id) = root_session_id else {
+        return Ok(super::AgentSessionControlPlaneState {
+            project_id: None,
+            root_session_id: None,
+            name: name.to_owned(),
+            state: "blocked".to_owned(),
+            generation: 0,
+            reason_kind: Some("root-session-identity-required".to_owned()),
+        });
+    };
+    let project_id = observed
+        .map(|record| record.project_id.clone())
+        .or_else(|| {
+            sessions
+                .iter()
+                .find(|entry| {
+                    entry.workspace_identity == workspace_id
+                        && entry.root_session_id == root_session_id
+                })
+                .map(|entry| entry.project_id.clone())
+        })
+        .unwrap_or_else(|| workspace_id.to_owned());
+    let record = sessions.iter().find(|entry| {
+        entry.workspace_identity == workspace_id
+            && entry.project_id == project_id
+            && entry.root_session_id == root_session_id
+            && entry.name == name
+    });
+    Ok(super::AgentSessionControlPlaneState {
+        project_id: Some(project_id),
+        root_session_id: Some(root_session_id),
+        name: name.to_owned(),
+        state: match record.map(|entry| &entry.lifecycle_state) {
+            Some(super::RuntimeServerAgentSessionLifecycleState::Routable) => {
+                "registered".to_owned()
+            }
+            Some(super::RuntimeServerAgentSessionLifecycleState::Archived) => "archived".to_owned(),
+            Some(
+                super::RuntimeServerAgentSessionLifecycleState::Expired
+                | super::RuntimeServerAgentSessionLifecycleState::Invalid,
+            ) => "archive-required".to_owned(),
+            None => "registration-required".to_owned(),
+        },
+        generation: record.map(|entry| entry.physical_generation).unwrap_or(0),
+        reason_kind: None,
+    })
+}
+
 pub(crate) async fn read_runtime_server_status(
     endpoint: &RuntimeServerEndpoint,
     request_id: String,
 ) -> Result<RuntimeServerControlReceipt, String> {
-    if let Some(reader) = cached_runtime_server_status_memory_reader(endpoint).await
-        && let Ok(receipt) = reader.read()?.receipt(request_id.clone(), endpoint)
-    {
-        return Ok(receipt);
+    if let Some(reader) = cached_runtime_server_status_memory_reader(endpoint).await {
+        match reader
+            .read()
+            .and_then(|snapshot| snapshot.receipt(request_id.clone(), endpoint))
+        {
+            Ok(receipt) if receipt.state == RuntimeServerState::Healthy => return Ok(receipt),
+            Ok(receipt)
+                if status_memory_file_identity(std::path::Path::new(
+                    &endpoint.status_memory_path,
+                ))
+                .await
+                .is_ok_and(|identity| identity == reader.file_identity) =>
+            {
+                return Ok(receipt);
+            }
+            Ok(_) | Err(_) => {
+                if let Some(readers) = STATUS_MEMORY_READERS.get() {
+                    readers.remove(&endpoint.status_memory_path);
+                }
+            }
+        }
     }
     let reader = runtime_server_status_memory_reader(endpoint).await?;
     let snapshot = reader.read()?;

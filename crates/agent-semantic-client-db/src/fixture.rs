@@ -63,6 +63,7 @@ impl SourceIndexFixture {
             session
                 .commit_source_index_generation(request, materialization)
                 .await
+                .map(|(receipt, _materialization)| receipt)
         })
     }
 
@@ -81,6 +82,7 @@ impl SourceIndexFixture {
             session
                 .commit_source_index_generation(request, materialization)
                 .await
+                .map(|(receipt, _materialization)| receipt)
         })
     }
 

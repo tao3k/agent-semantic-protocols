@@ -97,6 +97,15 @@ pub struct SeqlockJsonMemoryReader {
 }
 
 impl SeqlockJsonMemoryReader {
+    pub fn stable_generation(&self) -> Option<u64> {
+        let before = generation(&self.mapping).load(Ordering::Acquire);
+        if before == 0 || before % 2 != 0 {
+            return None;
+        }
+        let after = generation(&self.mapping).load(Ordering::Acquire);
+        (before == after).then_some(after)
+    }
+
     pub async fn open(path: &std::path::Path) -> Result<Self, String> {
         // Opening a fixed-size read-only mapping is the one cold locator step.
         // Routing it through Tokio's blocking pool costs more than the mapping

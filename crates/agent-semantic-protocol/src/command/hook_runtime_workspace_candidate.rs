@@ -2,58 +2,6 @@
 
 use std::path::{Path, PathBuf};
 
-pub(in crate::command::hook_runtime) fn direct_read_policy_project_root(
-    payload: &serde_json::Value,
-) -> Option<PathBuf> {
-    let tool_name = payload
-        .get("tool_name")
-        .or_else(|| payload.get("toolName"))
-        .and_then(serde_json::Value::as_str)?;
-    let tool_input = payload
-        .get("tool_input")
-        .or_else(|| payload.get("toolInput"))?;
-    agent_semantic_hook::direct_source_read_paths(tool_name, tool_input)?;
-    let root = payload
-        .get("cwd")
-        .and_then(serde_json::Value::as_str)
-        .filter(|cwd| !cwd.trim().is_empty())
-        .map(PathBuf::from)
-        .or_else(|| std::env::current_dir().ok())
-        .unwrap_or_else(|| PathBuf::from("."));
-    Some(std::fs::canonicalize(&root).unwrap_or(root))
-}
-
-pub(in crate::command::hook_runtime) fn activation_repair_project_root(
-    payload: &serde_json::Value,
-    activation_path: &Path,
-) -> Result<PathBuf, String> {
-    let payload_root = payload
-        .get("cwd")
-        .and_then(serde_json::Value::as_str)
-        .map(PathBuf::from)
-        .map(|root| std::fs::canonicalize(&root).unwrap_or(root));
-    let activation_owner =
-        agent_semantic_runtime::state::project_root_for_activation_path(activation_path)
-            .map(|root| std::fs::canonicalize(&root).unwrap_or(root));
-    if let Some(owner) = activation_owner {
-        if let Some(payload_root) = payload_root
-            && !payload_root.starts_with(&owner)
-        {
-            return Err(format!(
-                "identity/state mismatch: activationOwner={} payloadCwd={}",
-                owner.display(),
-                payload_root.display()
-            ));
-        }
-        return Ok(owner);
-    }
-    if let Some(payload_root) = payload_root {
-        return Ok(payload_root);
-    }
-    let current = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    Ok(std::fs::canonicalize(&current).unwrap_or(current))
-}
-
 pub(in crate::command::hook_runtime) fn hook_workspace_candidate(
     payload: &serde_json::Value,
     project_root: &Path,
@@ -79,28 +27,50 @@ pub(in crate::command::hook_runtime) fn hook_workspace_candidate(
 }
 
 fn explicit_asp_workspace(payload: &serde_json::Value, command_root: &Path) -> Option<PathBuf> {
-    super::hook_runtime_agent_session::payload_command_strings(payload)
+    payload_command_strings(payload)
         .into_iter()
         .find_map(|command| asp_workspace_from_command(&command, command_root))
 }
 
-pub(in crate::command) fn requests_explicit_asp_workspace(payload: &serde_json::Value) -> bool {
-    super::hook_runtime_agent_session::payload_command_strings(payload)
-        .into_iter()
-        .any(|command| {
-            let tokens = agent_semantic_hook::semantic_shell_tokens(&command);
-            let Some(asp_position) = tokens.iter().position(|token| {
-                Path::new(token).file_name().and_then(|name| name.to_str()) == Some("asp")
-            }) else {
-                return false;
-            };
-            tokens[asp_position + 1..].iter().any(|token| {
-                token == "--workspace"
-                    || token
-                        .strip_prefix("--workspace=")
-                        .is_some_and(|value| !value.is_empty())
-            })
-        })
+fn payload_command_strings(payload: &serde_json::Value) -> Vec<String> {
+    fn collect(value: &serde_json::Value, commands: &mut Vec<String>) {
+        match value {
+            serde_json::Value::Array(values) => {
+                for value in values {
+                    collect(value, commands);
+                }
+            }
+            serde_json::Value::Object(map) => {
+                for (key, value) in map {
+                    match (key.as_str(), value) {
+                        ("command" | "cmd" | "script", serde_json::Value::String(command))
+                            if !command.trim().is_empty() =>
+                        {
+                            commands.push(command.clone());
+                        }
+                        ("command" | "cmd", serde_json::Value::Array(parts)) => {
+                            let command = parts
+                                .iter()
+                                .filter_map(serde_json::Value::as_str)
+                                .collect::<Vec<_>>()
+                                .join(" ");
+                            if !command.trim().is_empty() {
+                                commands.push(command);
+                            }
+                        }
+                        _ => collect(value, commands),
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut commands = Vec::new();
+    collect(payload, &mut commands);
+    commands.sort();
+    commands.dedup();
+    commands
 }
 
 fn asp_workspace_from_command(command: &str, command_root: &Path) -> Option<PathBuf> {
@@ -126,7 +96,3 @@ fn asp_workspace_from_command(command: &str, command_root: &Path) -> Option<Path
         command_root.join(workspace)
     })
 }
-
-#[cfg(test)]
-#[path = "../../tests/unit/command/hook_runtime_direct_read_policy.rs"]
-mod direct_read_policy_tests;

@@ -44,8 +44,7 @@ async fn reader_pool_is_bounded_and_reuses_connections() {
             source_index_read_cache: (0..reader_limit)
                 .map(|_| tokio::sync::Mutex::new(None))
                 .collect(),
-            active_materializations: parking_lot::Mutex::new(std::collections::HashMap::new()),
-            provider_owner_cache: parking_lot::Mutex::new(std::collections::HashMap::new()),
+            provider_owner_cache: dashmap::DashMap::new(),
             writer_client,
             writer_task,
             next_request_id: AtomicU64::new(0),

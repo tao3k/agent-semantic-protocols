@@ -76,3 +76,37 @@ fn rejects_identity_multiple_inputs_and_multi_stage_commands() {
         StructuredFilterClassificationV1::Compound
     );
 }
+
+#[test]
+fn bounded_scalar_predicates_accept_json_types_and_retain_only_input() {
+    let options = vec!["-e".to_string()];
+    let option_values = BTreeMap::new();
+    for kind in ["object", "array", "string", "number", "boolean", "null"] {
+        let command = format!("jq -e 'type == \"{kind}\"' plugin.json");
+        assert!(matches!(
+            classify_single_bounded_path_command(&command, spec("jq", &[], &options, &option_values)),
+            StructuredFilterClassificationV1::BoundedScalarPredicate { source_operands, .. }
+                if source_operands == ["plugin.json"]
+        ));
+    }
+}
+
+#[test]
+fn bounded_scalar_predicates_reject_compound_or_unknown_filters() {
+    let options = vec!["-e".to_string()];
+    let option_values = BTreeMap::new();
+    for filter in [
+        "type == \"object\" | .name",
+        "type == \"object\" or .name",
+        "foo == \"bar\"",
+    ] {
+        let command = format!("jq -e '{filter}' plugin.json");
+        assert!(matches!(
+            classify_single_bounded_path_command(
+                &command,
+                spec("jq", &[], &options, &option_values)
+            ),
+            StructuredFilterClassificationV1::Invalid | StructuredFilterClassificationV1::Compound
+        ));
+    }
+}

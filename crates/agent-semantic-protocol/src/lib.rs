@@ -11,6 +11,8 @@ pub use command::search_router_graph_state;
 mod exact_projection_diagnostic;
 mod exact_projection_diagnostic_io;
 mod exact_projection_trace;
+mod hook_break_glass;
+mod multi_agent_session;
 mod resident_exact_projection;
 pub(crate) mod server;
 pub use agent_semantic_context_product as context_product_state;

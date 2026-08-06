@@ -1,9 +1,6 @@
 //! Installation owner for hook runtime and Codex plugin surfaces.
 
-use super::hook_runtime_codex_plugin::{
-    CodexPluginScope, codex_project_plugin_cache_skill_path, install_codex_plugin_hooks,
-    sync_codex_project_plugin_cache,
-};
+use super::hook_runtime_codex_plugin::{CodexPluginScope, install_codex_plugin_hooks};
 use super::hook_runtime_skill::{
     PluginSkillScope, install_agent_semantic_protocols_agent_config,
     install_agent_semantic_protocols_plugin_skill, install_agent_semantic_protocols_skill,
@@ -39,7 +36,7 @@ pub(super) fn run_install(args: &[String]) -> Result<(), String> {
         client,
         project_root,
         CodexPluginScope::Global,
-        subagent_model,
+        Some(subagent_model),
         "agent-install",
     )
 }
@@ -52,7 +49,6 @@ mod hook_runtime_install_tests;
 struct CodexPluginInstallRequest {
     project_root: PathBuf,
     scope: CodexPluginScope,
-    subagent_model: String,
 }
 
 fn parse_codex_plugin_install_args(args: &[String]) -> Result<CodexPluginInstallRequest, String> {
@@ -73,61 +69,28 @@ fn parse_codex_plugin_install_args(args: &[String]) -> Result<CodexPluginInstall
     } else {
         CodexPluginScope::Global
     };
-    let subagent_model = subagent_model_arg(
-        "codex",
-        matches
-            .get_one::<String>("subagent-model")
-            .map(String::as_str),
-    )?;
     Ok(CodexPluginInstallRequest {
         project_root,
         scope: codex_plugin_scope,
-        subagent_model,
     })
 }
 
 pub(in crate::command) fn run_codex_plugin_install_args(args: &[String]) -> Result<(), String> {
     let request = parse_codex_plugin_install_args(args)?;
-    if matches!(&request.scope, CodexPluginScope::Global) {
-        return run_install_for_client(
-            "codex",
-            request.project_root,
-            CodexPluginScope::Global,
-            request.subagent_model,
-            "plugin-install",
-        );
-    }
-    let runtime_state = project_runtime_state(&request.project_root)?;
-    crate::command::protocol_binary::require_configured_protocol_bin_dir_on_path()?;
-    let asp_binary_path = std::env::current_exe()
-        .map_err(|error| format!("failed to resolve current ASP executable: {error}"))?;
-    let client_config_path = runtime_state
-        .protocol_home
-        .join("hooks")
-        .join("config.toml");
-    let user_config_status = crate::command::managed_hook_config::materialize(&client_config_path)?;
-    let (config_path, plugin_receipt) = install_codex_plugin_hooks(
-        &request.project_root,
+    run_install_for_client(
+        "codex",
+        request.project_root,
         request.scope,
-        &request.subagent_model,
-        &asp_binary_path,
-    )?;
-    println!(
-        "[plugin-install] client=codex sourceRoot={} config={}{} userConfig={} userConfigStatus={} mode=ensured",
-        display_path(&request.project_root, &request.project_root),
-        display_path(&request.project_root, &config_path),
-        plugin_receipt,
-        display_path(&request.project_root, &client_config_path),
-        user_config_status.as_str(),
-    );
-    Ok(())
+        None,
+        "plugin-install",
+    )
 }
 
 fn run_install_for_client(
     client: &str,
     project_root: PathBuf,
     codex_plugin_scope: CodexPluginScope,
-    subagent_model: String,
+    subagent_model: Option<String>,
     receipt_label: &str,
 ) -> Result<(), String> {
     let mut timings = InstallTimings::new();
@@ -165,6 +128,15 @@ fn run_install_for_client(
         .join("hooks")
         .join("config.toml");
     let user_config_status = crate::command::managed_hook_config::materialize(&client_config_path)?;
+    let installed_hook_config =
+        agent_semantic_hook::load_client_config_for_project(&client_config_path, &project_root)?;
+    agent_semantic_hook::validate_match_policy_rule_coverage(&installed_hook_config).map_err(
+        |error| {
+            format!(
+                "managed Hook matcher rule-coverage gate failed before install publication: {error}"
+            )
+        },
+    )?;
     timings.mark("user-config");
     let mut provider_artifacts = runtime_profiles
         .providers
@@ -208,18 +180,25 @@ fn run_install_for_client(
     remove_incompatible_hook_event_state(&project_root)?;
     timings.mark("event-state");
     let (config_path, extra_config_receipt) = match client {
-        "codex" => install_codex_plugin_hooks(
+        "codex" => {
+            install_codex_plugin_hooks(&project_root, codex_plugin_scope, &binary_install.path)?
+        }
+        "claude" => install_claude_project_hooks(
             &project_root,
-            codex_plugin_scope,
-            &subagent_model,
-            &binary_install.path,
+            subagent_model
+                .as_deref()
+                .ok_or_else(|| "Claude install requires a configured subagent model".to_owned())?,
         )?,
-        "claude" => install_claude_project_hooks(&project_root, &subagent_model)?,
         _ => unreachable!("client support checked before install"),
     };
     timings.mark("project-hooks");
-    let agent_config_path = install_agent_semantic_protocols_agent_config(&project_root)?;
-    timings.mark("agent-config");
+    let agent_config_receipt = if client == "codex" {
+        "not-on-plugin-install".to_owned()
+    } else {
+        let agent_config_path = install_agent_semantic_protocols_agent_config(&project_root)?;
+        timings.mark("agent-config");
+        display_path(&project_root, &agent_config_path)
+    };
     let installed_skill = Some(match client {
         "codex" => install_agent_semantic_protocols_plugin_skill(
             &project_root,
@@ -236,19 +215,14 @@ fn run_install_for_client(
         _ => unreachable!("client support checked before install"),
     });
     timings.mark("skill");
-    let plugin_cache_path =
-        if client == "codex" && matches!(codex_plugin_scope, CodexPluginScope::Project) {
-            sync_codex_project_plugin_cache(&project_root)?
-        } else {
-            None
-        };
-    if client == "codex" && matches!(codex_plugin_scope, CodexPluginScope::Global) {
-        let legacy_project_cache = project_root.join(".codex/plugins/cache/asp-project");
-        if legacy_project_cache.exists() {
-            fs::remove_dir_all(&legacy_project_cache).map_err(|error| {
+    let plugin_cache_path = Option::<PathBuf>::None;
+    if client == "codex" {
+        let manual_project_cache = project_root.join(".codex/plugins/cache/asp-project");
+        if manual_project_cache.exists() {
+            fs::remove_dir_all(&manual_project_cache).map_err(|error| {
                 format!(
-                    "failed to remove legacy Codex project plugin cache {}: {error}",
-                    legacy_project_cache.display()
+                    "failed to remove retired manual Codex project plugin cache {}: {error}",
+                    manual_project_cache.display()
                 )
             })?;
         }
@@ -261,7 +235,7 @@ fn run_install_for_client(
         &provider_artifacts,
     )?;
     timings.mark("active-artifact-receipt");
-    let legacy_artifact_cleanup = if provider_binary_reconciliation.missing_count == 0
+    let retired_artifact_cleanup = if provider_binary_reconciliation.missing_count == 0
         && provider_profiles_are_lattice_current
     {
         Some(
@@ -272,26 +246,15 @@ fn run_install_for_client(
     } else {
         None
     };
-    timings.mark("legacy-artifact-cleanup");
-    if client == "codex" && matches!(codex_plugin_scope, CodexPluginScope::Global) {
-        crate::server::runtime_server_supervisor::install_runtime_server_supervisor(
-            &runtime_state.protocol_home,
-        )?;
-        timings.mark("runtime-server");
-    }
+    timings.mark("retired-artifact-cleanup");
     let project_skill_receipt = installed_skill
         .as_ref()
         .and_then(|installed_skill| installed_skill.skill_path.as_ref())
         .map(|skill_path| format!(" skill={}", display_path(&project_root, skill_path)))
         .unwrap_or_default();
-    let plugin_skill_path =
-        if client == "codex" && matches!(codex_plugin_scope, CodexPluginScope::Project) {
-            Some(codex_project_plugin_cache_skill_path(&project_root)?)
-        } else {
-            installed_skill
-                .as_ref()
-                .and_then(|installed_skill| installed_skill.plugin_skill_path.clone())
-        };
+    let plugin_skill_path = installed_skill
+        .as_ref()
+        .and_then(|installed_skill| installed_skill.plugin_skill_path.clone());
     let plugin_skill_receipt = plugin_skill_path
         .as_ref()
         .map(|skill_path| format!(" pluginSkill={}", display_path(&project_root, skill_path)))
@@ -306,7 +269,7 @@ fn run_install_for_client(
         user_config_status.as_str()
     );
     println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} activeArtifactReceipt={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic providerBinariesMissing={} legacyArtifactCleanup={} legacyArtifactGenerationsRemoved={} mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} activeArtifactReceipt={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic providerBinariesMissing={} retiredArtifactCleanup={} retiredArtifactGenerationsRemoved={} mode=updated",
         display_path(&project_root, &activation_path),
         activation_status,
         user_config_receipt,
@@ -315,7 +278,7 @@ fn run_install_for_client(
         active_artifact.artifact_byte_reads,
         active_artifact.artifact_bytes_read,
         active_artifact.receipt_writes,
-        display_path(&project_root, &agent_config_path),
+        agent_config_receipt,
         display_path(&project_root, &runtime_state.protocol_home.join("org")),
         org_state_sync.status,
         org_state_sync.source_index_status,
@@ -328,12 +291,12 @@ fn run_install_for_client(
         binary_install.status,
         binary_install.artifact_digest,
         provider_binary_reconciliation.missing_count,
-        if legacy_artifact_cleanup.is_some() {
+        if retired_artifact_cleanup.is_some() {
             "complete"
         } else {
             "deferred"
         },
-        legacy_artifact_cleanup
+        retired_artifact_cleanup
             .as_ref()
             .map_or(0, |receipt| receipt.removed_generation_count),
     );

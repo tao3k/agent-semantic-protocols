@@ -5,10 +5,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use agent_semantic_search::{
-    SearchPipeAutoAcquisitionRequest, SearchPipeDocumentAcquisitionRequest,
-    SearchPipeSearchOverlayAcquisitionRequest, SearchPipeSourceAcquisition,
-    SearchPipeSourceAcquisitionTrace, SearchPipeSourceMode, collect_search_pipe_auto_acquisition,
-    collect_search_pipe_document_acquisition, collect_search_pipe_search_overlay_acquisition,
+    SearchPipeAutoAcquisitionRequest, SearchPipeSourceAcquisition,
+    SearchPipeSourceAcquisitionTrace, collect_search_pipe_auto_acquisition,
 };
 use orgize::document::DocumentLanguage;
 use serde_json::Value;
@@ -60,10 +58,8 @@ pub(super) fn parse_source_spec(value: &str) -> Result<SourceSpec, String> {
 pub(super) struct CollectSearchPipeCandidatesRequest<'a> {
     pub(super) language_id: &'a str,
     pub(super) project_root: &'a Path,
-    pub(super) current_snapshot:
-        &'a agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
-    pub(super) source_index_client:
-        &'a agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneClient,
+    pub(super) current_snapshot: &'a crate::server::runtime_server::RuntimeServerSearchSnapshot,
+    pub(super) search_data_plane: &'a crate::server::runtime_server::RuntimeServerSearchDataPlane,
     pub(super) locator_root: &'a Path,
     pub(super) intent: &'a str,
     pub(super) scopes: &'a [PathBuf],
@@ -74,14 +70,14 @@ pub(super) struct CollectSearchPipeCandidatesRequest<'a> {
     pub(super) require_multi_clause: bool,
 }
 
-pub(super) fn collect_search_pipe_candidates(
+pub(super) async fn collect_search_pipe_candidates(
     request: CollectSearchPipeCandidatesRequest<'_>,
 ) -> Result<CandidateAcquisition, String> {
     let CollectSearchPipeCandidatesRequest {
         language_id,
         project_root,
         current_snapshot,
-        source_index_client,
+        search_data_plane,
         locator_root,
         intent,
         scopes,
@@ -90,17 +86,11 @@ pub(super) fn collect_search_pipe_candidates(
         provider_context,
         require_multi_clause,
     } = request;
-    if let Some(language) = document_language(language_id) {
-        return collect_document_search_pipe_candidates(DocumentSearchPipeCandidateRequest {
-            language,
-            project_root,
-            locator_root,
-            intent,
-            scopes,
-            source,
-            config,
-            current_snapshot,
-        });
+    if document_language(language_id).is_some() {
+        return Err(
+            "document search requires a resident Git-scope acquisition data plane; query-time filesystem projection is unsupported"
+                .to_owned(),
+        );
     }
     let query_clauses = super::search_pipe_provider_facts::with_query_pack_descriptor(
         provider_context,
@@ -116,86 +106,28 @@ pub(super) fn collect_search_pipe_candidates(
     )?;
     let query_terms = agent_semantic_search::search_pipe_unique_query_terms(&query_clauses);
     match source {
-        SourceSpec::Auto => auto_candidates(AutoCandidateRequest {
-            language_id,
-            project_root,
-            locator_root,
-            intent,
-            scopes,
-            config,
-            require_multi_clause,
-            query_clause_count: query_clauses.len(),
-            query_terms: &query_terms,
-            current_snapshot,
-            source_index_client,
-        }),
-        SourceSpec::SearchOverlay => search_overlay_candidates(SearchOverlayCandidateRequest {
-            language_id,
-            project_root,
-            locator_root,
-            intent,
-            scopes,
-            config,
-            require_multi_clause,
-            current_snapshot,
-        }),
+        SourceSpec::Auto => {
+            auto_candidates(AutoCandidateRequest {
+                language_id,
+                project_root,
+                locator_root,
+                intent,
+                scopes,
+                config,
+                require_multi_clause,
+                query_clause_count: query_clauses.len(),
+                query_terms: &query_terms,
+                current_snapshot,
+                search_data_plane,
+            })
+            .await
+        }
+        SourceSpec::SearchOverlay => Err(
+            "search-overlay requires the resident Memory Search data plane; query-time filesystem projection is unsupported"
+                .to_owned(),
+        ),
         SourceSpec::Provider => provider_candidates(),
         SourceSpec::Ingest => ingest_candidates(project_root, locator_root),
-    }
-}
-
-struct DocumentSearchPipeCandidateRequest<'a> {
-    language: DocumentLanguage,
-    project_root: &'a Path,
-    locator_root: &'a Path,
-    intent: &'a str,
-    scopes: &'a [PathBuf],
-    source: SourceSpec,
-    config: &'a AspConfig,
-    current_snapshot: &'a agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
-}
-
-fn collect_document_search_pipe_candidates(
-    request: DocumentSearchPipeCandidateRequest<'_>,
-) -> Result<CandidateAcquisition, String> {
-    let DocumentSearchPipeCandidateRequest {
-        language,
-        project_root,
-        locator_root,
-        intent,
-        scopes,
-        source,
-        config,
-        current_snapshot,
-    } = request;
-    match source {
-        SourceSpec::Auto | SourceSpec::Provider | SourceSpec::SearchOverlay => {
-            let acquisition =
-                collect_search_pipe_document_acquisition(SearchPipeDocumentAcquisitionRequest {
-                    language,
-                    project_root,
-                    locator_root,
-                    intent,
-                    scopes,
-                    mode: document_source_mode(source),
-                    ignore_dirs: &config.search.ignore_dirs,
-                    include_hidden_dirs: &config.search.include_hidden_dirs,
-                    search_overlay_limit: PIPE_CANDIDATE_LINE_LIMIT,
-                    base_snapshot: &current_snapshot.workspace_snapshot,
-                    provider_digest: &current_snapshot.source_snapshot.provider_digest,
-                })?;
-            Ok(candidate_acquisition_from_search(acquisition))
-        }
-        SourceSpec::Ingest => ingest_candidates(project_root, locator_root),
-    }
-}
-
-fn document_source_mode(source: SourceSpec) -> SearchPipeSourceMode {
-    match source {
-        SourceSpec::Auto => SearchPipeSourceMode::Auto,
-        SourceSpec::Provider => SearchPipeSourceMode::Provider,
-        SourceSpec::SearchOverlay => SearchPipeSourceMode::SearchOverlay,
-        SourceSpec::Ingest => SearchPipeSourceMode::Auto,
     }
 }
 
@@ -217,12 +149,13 @@ struct AutoCandidateRequest<'a> {
     require_multi_clause: bool,
     query_clause_count: usize,
     query_terms: &'a [agent_semantic_search::SearchPipeQueryTerm],
-    current_snapshot: &'a agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
-    source_index_client:
-        &'a agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneClient,
+    current_snapshot: &'a crate::server::runtime_server::RuntimeServerSearchSnapshot,
+    search_data_plane: &'a crate::server::runtime_server::RuntimeServerSearchDataPlane,
 }
 
-fn auto_candidates(request: AutoCandidateRequest<'_>) -> Result<CandidateAcquisition, String> {
+async fn auto_candidates(
+    request: AutoCandidateRequest<'_>,
+) -> Result<CandidateAcquisition, String> {
     let AutoCandidateRequest {
         language_id,
         project_root,
@@ -234,18 +167,24 @@ fn auto_candidates(request: AutoCandidateRequest<'_>) -> Result<CandidateAcquisi
         query_clause_count,
         query_terms,
         current_snapshot,
-        source_index_client,
+        search_data_plane,
     } = request;
     let language = agent_semantic_client::LanguageId::from(language_id);
     let source_index_query = source_index_lookup_query(intent, query_clause_count, query_terms);
     let source_index_query_gated = scopes.is_empty()
         && agent_semantic_search::search_pipe_source_index_query_gate(query_terms).is_some();
     let source_index_lookup = if scopes.is_empty() && !source_index_query_gated {
-        let lookup = source_index_client.lease().read_source_index(
-            &source_index_query,
-            Some(&language),
-            PIPE_CANDIDATE_LINE_LIMIT as u32,
-        )?;
+        let lookup = search_data_plane
+            .read_source_index(
+                agent_semantic_client_db::workspace_db_ipc::WorkspaceDbSourceIndexLookupRequest {
+                    project_root: project_root.to_path_buf(),
+                    indexed_project_root: project_root.to_path_buf(),
+                    query: source_index_query.clone(),
+                    language_id: Some(language),
+                    limit: PIPE_CANDIDATE_LINE_LIMIT as u32,
+                },
+            )
+            .await?;
         Some(
             agent_semantic_search::search_pipe_source_index_lookup_from_client_result(
                 agent_semantic_search::rank_source_index_lookup_result(lookup, &source_index_query),
@@ -266,7 +205,7 @@ fn auto_candidates(request: AutoCandidateRequest<'_>) -> Result<CandidateAcquisi
         require_multi_clause,
         limit: PIPE_CANDIDATE_LINE_LIMIT,
         source_index_lookup: source_index_lookup.as_ref(),
-        base_snapshot: &current_snapshot.workspace_snapshot,
+        base_snapshot: None,
         base_source_snapshot: &current_snapshot.source_snapshot,
         provider_digest: &current_snapshot.source_snapshot.provider_digest,
     })?;
@@ -336,65 +275,6 @@ fn search_source_trace(trace: SearchPipeSourceAcquisitionTrace) -> SearchPipeSou
         source_trace = source_trace.with_fields(fields);
     }
     source_trace
-}
-
-struct SearchOverlayCandidateRequest<'a> {
-    language_id: &'a str,
-    project_root: &'a Path,
-    locator_root: &'a Path,
-    intent: &'a str,
-    scopes: &'a [PathBuf],
-    config: &'a AspConfig,
-    require_multi_clause: bool,
-    current_snapshot: &'a agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
-}
-
-fn search_overlay_candidates(
-    request: SearchOverlayCandidateRequest<'_>,
-) -> Result<CandidateAcquisition, String> {
-    let SearchOverlayCandidateRequest {
-        language_id,
-        project_root,
-        locator_root,
-        intent,
-        scopes,
-        config,
-        require_multi_clause,
-        current_snapshot,
-    } = request;
-    let acquisition = collect_search_pipe_search_overlay_acquisition(
-        SearchPipeSearchOverlayAcquisitionRequest {
-            language_id,
-            project_root,
-            locator_root,
-            query: intent,
-            owners: scopes,
-            ignore_dirs: &config.search.ignore_dirs,
-            include_hidden_dirs: &config.search.include_hidden_dirs,
-            require_multi_clause,
-            limit: PIPE_CANDIDATE_LINE_LIMIT,
-            base_snapshot: &current_snapshot.workspace_snapshot,
-            provider_digest: &current_snapshot.source_snapshot.provider_digest,
-        },
-    )?;
-    let candidates = acquisition
-        .candidates
-        .into_iter()
-        .map(Candidate::from)
-        .collect::<Vec<_>>();
-    let source = candidate_route_source(&candidates);
-    Ok(CandidateAcquisition {
-        candidate_sources: vec![source.to_string()],
-        source_trace: vec![
-            candidate_trace(source, &candidates).with_fields(elapsed_fields(acquisition.elapsed)),
-        ],
-        source_snapshot: Some(acquisition.result_source_snapshot),
-        candidates,
-    })
-}
-
-fn candidate_route_source(_candidates: &[Candidate]) -> &'static str {
-    "search-overlay"
 }
 
 fn provider_candidates() -> Result<CandidateAcquisition, String> {

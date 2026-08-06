@@ -464,10 +464,22 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
         .await
         .expect("republish current-schema pointer through the writer lane");
     assert_eq!(repaired.target_epoch, 1);
-    let durability = registry
-        .generation_durability(workspace_identity, &root)
-        .expect("read repaired generation durability")
-        .expect("repaired generation has a durability receipt");
+    let mut durability_updates = registry
+        .subscribe_generation_durability(workspace_identity, &root)
+        .expect("subscribe repaired generation durability");
+    let durability = loop {
+        if let Some(receipt) = durability_updates.borrow().clone()
+            && receipt.target_epoch == repaired.target_epoch
+            && receipt.state
+                == agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDurabilityState::DurableReady
+        {
+            break receipt;
+        }
+        durability_updates
+            .changed()
+            .await
+            .expect("repaired generation durability lane remains available");
+    };
     durability
         .validate()
         .expect("validate repaired durability receipt");

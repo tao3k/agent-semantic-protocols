@@ -140,6 +140,10 @@ pub async fn serve_workspace_db_session_until_shutdown(
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> Result<(), String> {
     let mut sessions = tokio::task::JoinSet::new();
+    let connection_supervisor =
+        crate::runtime_server_runtime::RuntimeServerConnectionSupervisor::for_current_runtime(
+            "workspace-db-ipc",
+        );
     loop {
         if *shutdown.borrow() {
             sessions.abort_all();
@@ -159,7 +163,7 @@ pub async fn serve_workspace_db_session_until_shutdown(
                     }
                 }
             }
-            accepted = listener.accept() => {
+            accepted = listener.accept(), if connection_supervisor.has_capacity() => {
                 let (mut stream, _) = accepted
                     .map_err(|error| format!("failed to accept workspace owner session request: {error}"))?;
                 let now = SystemTime::now()
@@ -169,18 +173,22 @@ pub async fn serve_workspace_db_session_until_shutdown(
                 last_activity_epoch_seconds.store(now, Ordering::Relaxed);
                 let endpoint = endpoint.clone();
                 let registry = Arc::clone(&registry);
+                let connection_lease = connection_supervisor
+                    .try_admit()
+                    .expect("capacity guard must admit one workspace IPC connection");
                 sessions.spawn(async move {
-                    serve_workspace_db_session_stream(&mut stream, &endpoint, &registry).await
+                    let result = serve_workspace_db_session_stream(&mut stream, &endpoint, &registry).await;
+                    (connection_lease, result)
                 });
             }
             completed = sessions.join_next(), if !sessions.is_empty() => {
                 match completed {
-                    Some(Ok(Ok(true))) => {
+                    Some(Ok((_connection_lease, Ok(true)))) => {
                         sessions.abort_all();
                         return Ok(());
                     }
-                    Some(Ok(Ok(false))) => {}
-                    Some(Ok(Err(client_error))) => {
+                    Some(Ok((_connection_lease, Ok(false)))) => {}
+                    Some(Ok((_connection_lease, Err(client_error)))) => {
                         eprintln!(
                             "[runtime-server-workspace-client] status=failed workspaceIdentity={} error={client_error}",
                             endpoint.workspace_identity
@@ -215,7 +223,9 @@ async fn dispatch_workspace_db_session_operation(
         WorkspaceDbIpcOperation::ReadSourceIndex { .. } => {
             Err("source-index reads are only accepted by the Runtime Server data plane".to_owned())
         }
-        WorkspaceDbIpcOperation::ReadRuntimeSelector { .. } => Err(
+        WorkspaceDbIpcOperation::ReadRuntimeSelector { .. }
+        | WorkspaceDbIpcOperation::ReadRuntimeOwner { .. }
+        | WorkspaceDbIpcOperation::ReadRuntimeSearchGenerationAuthority { .. } => Err(
             "resident runtime selector reads are only accepted by the Runtime Server data plane"
                 .to_owned(),
         ),
@@ -228,8 +238,7 @@ async fn dispatch_workspace_db_session_operation(
         | WorkspaceDbIpcOperation::EnsureRuntimeGeneration { .. }
         | WorkspaceDbIpcOperation::RepairRuntimeGenerationLocator { .. }
         | WorkspaceDbIpcOperation::ReadRuntimeGenerationDurability { .. }
-        | WorkspaceDbIpcOperation::ReadRuntimeSearchGenerationAuthority { .. }
-        | WorkspaceDbIpcOperation::EvaluateHook { .. }
+        | WorkspaceDbIpcOperation::ReadRuntimeGraphFacts { .. }
         | WorkspaceDbIpcOperation::EvaluateGraphTurbo { .. } => Err(
             "canonical generation admission is only accepted by the Runtime Server data plane"
                 .to_owned(),
@@ -360,8 +369,7 @@ async fn dispatch_workspace_db_session_operation(
             "Runtime owner publication is only accepted by the Runtime Server data plane"
                 .to_owned(),
         ),
-        WorkspaceDbIpcOperation::EnsureRuntimeGenerationReady { .. }
-        | WorkspaceDbIpcOperation::EnsureRuntimeGenerationOwnerReady { .. } => {
+        WorkspaceDbIpcOperation::EnsureRuntimeGenerationReady { .. } => {
             unreachable!(
                 "EnsureRuntimeGenerationReady must be consumed by generation admission before dispatch"
             )
@@ -407,6 +415,8 @@ mod agent_session;
 mod agent_session_registry_dispatch;
 #[path = "workspace_db_ipc_server_generation.rs"]
 mod generation;
+#[path = "workspace_db_ipc_server_graph_facts.rs"]
+mod graph_facts;
 #[path = "workspace_db_ipc_server_graph_turbo.rs"]
 mod graph_turbo;
 
@@ -432,9 +442,11 @@ pub async fn serve_runtime_server_workspace_stream(
     generation_admission: Option<
         &std::sync::Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>,
     >,
-    hook_evaluation_builder: Option<&crate::runtime_server::HookEvaluationBuilder>,
     graph_turbo_evaluation_builder: Option<&crate::runtime_server::GraphTurboEvaluationBuilder>,
     agent_session_registry_owner: Option<&std::sync::Arc<crate::AgentSessionRegistry>>,
+    agent_session_status: Option<
+        &crate::runtime_server_agent_session_status::AgentSessionStatusHandle,
+    >,
     codex_multi_agent_control_plane_owner: &std::sync::Arc<
         crate::codex_multi_agent_control_plane_owner::CodexMultiAgentControlPlaneOwner,
     >,
@@ -453,6 +465,9 @@ pub async fn serve_runtime_server_workspace_stream(
             return Ok(());
         };
         let workspace_request = memory_registry.begin_request(&request.workspace_identity);
+        if let Some(context) = memory_registry.workspace_context(&request.workspace_identity) {
+            registry.register_workspace_context(context);
+        }
         let result = if request.schema_id != WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID {
             WorkspaceDbIpcResult::Failed {
                 code: "runtime-server-data-request-schema-id-mismatch".to_owned(),
@@ -523,6 +538,44 @@ pub async fn serve_runtime_server_workspace_stream(
                         message,
                     },
                 },
+                WorkspaceDbIpcOperation::ReadRuntimeOwner {
+                    project_root,
+                    owner_path,
+                } => match memory_registry.read_runtime_owner(
+                    &request.workspace_identity,
+                    Path::new(&project_root),
+                    &owner_path,
+                ) {
+                    Ok(read) => WorkspaceDbIpcResult::RuntimeOwner { read },
+                    Err(message) => WorkspaceDbIpcResult::Failed {
+                        code: "runtime-server-owner-read-failed".to_owned(),
+                        message,
+                    },
+                },
+                WorkspaceDbIpcOperation::ReadRuntimeSearchGenerationAuthority { project_root } => {
+                    match memory_registry.read_search_generation_authority(
+                        &request.workspace_identity,
+                        Path::new(&project_root),
+                    ) {
+                        Ok(authority) => {
+                            WorkspaceDbIpcResult::RuntimeSearchGenerationAuthority { authority }
+                        }
+                        Err(message) => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-search-generation-authority-read-failed"
+                                .to_owned(),
+                            message,
+                        },
+                    }
+                }
+                WorkspaceDbIpcOperation::ReadRuntimeGraphFacts {
+                    project_root,
+                    sources,
+                } => graph_facts::read(
+                    memory_registry,
+                    &request.workspace_identity,
+                    &project_root,
+                    sources,
+                ),
                 WorkspaceDbIpcOperation::PublishRuntimeSelectorOverlay {
                     project_root,
                     overlay,
@@ -573,7 +626,7 @@ pub async fn serve_runtime_server_workspace_stream(
                 ),
                 WorkspaceDbIpcOperation::EnsureRuntimeGeneration { project_root } => {
                     generation::ensure_current_or_build(
-                        generation_admission.map(std::sync::Arc::as_ref),
+                        generation_admission.cloned(),
                         &request.workspace_identity,
                         project_root,
                     )
@@ -582,24 +635,9 @@ pub async fn serve_runtime_server_workspace_stream(
                 WorkspaceDbIpcOperation::EnsureRuntimeGenerationReady { project_root } => {
                     generation::ensure_terminal_ready(
                         memory_registry,
-                        generation_admission.map(std::sync::Arc::as_ref),
+                        generation_admission.cloned(),
                         &request.workspace_identity,
                         project_root,
-                    )
-                    .await
-                }
-                WorkspaceDbIpcOperation::EnsureRuntimeGenerationOwnerReady {
-                    project_root,
-                    owner_path,
-                    admitted_content_digest,
-                } => {
-                    generation::ensure_owner_terminal_ready(
-                        memory_registry,
-                        generation_admission.map(std::sync::Arc::as_ref),
-                        &request.workspace_identity,
-                        project_root,
-                        owner_path,
-                        admitted_content_digest,
                     )
                     .await
                 }
@@ -716,8 +754,35 @@ pub async fn serve_runtime_server_workspace_stream(
                     project_root,
                     operation,
                 } => {
-                    agent_session::evaluate(agent_session_registry_owner, project_root, operation)
-                        .await
+                    let changes_registry = !matches!(
+                        &operation,
+                        crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::Query { .. }
+                            | crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionById { .. }
+                            | crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionByName { .. }
+                            | crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionIsRetired { .. }
+                            | crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionByIdAnyProject { .. }
+                            | crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::ProjectIdForRootSessionId { .. }
+                            | crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::DispatchLease { .. }
+                    );
+                    let result = agent_session::evaluate(
+                        agent_session_registry_owner,
+                        project_root,
+                        operation,
+                    )
+                    .await;
+                    if changes_registry
+                        && let (Some(status), Some(owner)) =
+                            (agent_session_status, agent_session_registry_owner)
+                        && let Err(message) = status.refresh(owner).await
+                    {
+                        WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-agent-session-status-publication-failed"
+                                .to_owned(),
+                            message,
+                        }
+                    } else {
+                        result
+                    }
                 }
                 WorkspaceDbIpcOperation::RefreshCodexMultiAgentControlPlane {
                     project_id,
@@ -740,34 +805,6 @@ pub async fn serve_runtime_server_workspace_stream(
                     )
                     .await
                 }
-                WorkspaceDbIpcOperation::EvaluateHook {
-                    project_root,
-                    arguments,
-                    input,
-                } => match hook_evaluation_builder {
-                    Some(builder) => match builder(
-                        request.workspace_identity.clone(),
-                        std::path::PathBuf::from(&project_root),
-                        arguments,
-                        input,
-                    )
-                    .await
-                    {
-                        Ok(output) => WorkspaceDbIpcResult::HookEvaluation {
-                            workspace_identity: request.workspace_identity.clone(),
-                            project_root,
-                            output,
-                        },
-                        Err(message) => WorkspaceDbIpcResult::Failed {
-                            code: "runtime-server-hook-evaluation-failed".to_owned(),
-                            message,
-                        },
-                    },
-                    None => WorkspaceDbIpcResult::Failed {
-                        code: "runtime-server-hook-evaluation-unavailable".to_owned(),
-                        message: "Runtime Server has no resident hook evaluator".to_owned(),
-                    },
-                },
                 WorkspaceDbIpcOperation::EvaluateGraphTurbo {
                     project_root,
                     message,
@@ -805,21 +842,6 @@ pub async fn serve_runtime_server_workspace_stream(
                         Ok(lookup) => WorkspaceDbIpcResult::SourceIndex { lookup },
                         Err(message) => WorkspaceDbIpcResult::Failed {
                             code: "runtime-server-source-index-read-failed".to_owned(),
-                            message,
-                        },
-                    }
-                }
-                WorkspaceDbIpcOperation::ReadRuntimeSearchGenerationAuthority { project_root } => {
-                    match memory_registry.search_generation_authority_open_receipt(
-                        &request.workspace_identity,
-                        Path::new(&project_root),
-                    ) {
-                        Ok(receipt) => {
-                            WorkspaceDbIpcResult::RuntimeSearchGenerationAuthority { receipt }
-                        }
-                        Err(message) => WorkspaceDbIpcResult::Failed {
-                            code: "runtime-server-search-generation-authority-read-failed"
-                                .to_owned(),
                             message,
                         },
                     }

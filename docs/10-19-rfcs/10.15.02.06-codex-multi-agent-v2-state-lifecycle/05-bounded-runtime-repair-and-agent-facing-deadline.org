@@ -66,6 +66,14 @@ The phases have different owners:
 - =SupervisorClassify= owns bounded reconciliation and typed failure mapping.
 - =Reply= serializes either the success receipt or a typed unavailable receipt.
 
+An explicit =asp server reconcile= also owns provider-catalog repair before it
+invokes launchd/systemd. It reconciles installed provider receipts against the
+canonical registered provider schemas, atomically republishes the global
+provider catalog, and only then starts a daemon generation. The daemon is a
+read-only fail-closed consumer of that catalog. Starting first and asking the
+daemon to repair its own stale catalog creates an unrecoverable supervisor
+restart loop and is forbidden.
+
 Resetting the warm timer after canonical binary preparation is valid only when
 the preparation result is durable and content-addressed.  Resetting it around a
 non-durable side effect would hide repeated work and is forbidden.

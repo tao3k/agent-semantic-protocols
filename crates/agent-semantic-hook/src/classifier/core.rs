@@ -12,8 +12,8 @@ use super::source_access_routes::{
 };
 use crate::event_state::asp_command_tokens;
 use crate::{
-    ActivatedProvider, ClientHookConfig, DecisionRoute, DecisionRouteKind, DecisionSubject,
-    HookDecision, HookRuntime, OperationIntent, ReasonKind, ToolAction,
+    ActivatedProvider, ClientHookConfig, DecisionKind, DecisionRoute, DecisionRouteKind,
+    DecisionSubject, HookDecision, HookRuntime, OperationIntent, ReasonKind, ToolAction,
     collect_source_selector_matches, collect_tool_actions, payload_string, subject_for_action,
 };
 
@@ -64,20 +64,65 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
     let decision = with_prompt_scope_fields(decision, request.payload);
     let decision =
         with_agent_org_artifact_recovery(decision, request.config, &request.registry.project_root);
-    with_hook_match_receipt(decision, request.payload, &actions, request.registry)
+    let decision = with_hook_match_receipt(decision, request.payload, &actions, request.config);
+    enforce_org_choice_plane_boundary(decision)
+}
+
+fn enforce_org_choice_plane_boundary(mut decision: HookDecision) -> HookDecision {
+    if decision.decision == DecisionKind::Allow {
+        return decision;
+    }
+    let interactive_recovery = decision.fields.contains_key("residentChildName")
+        || decision.fields.contains_key("targetAgentName")
+        || decision
+            .fields
+            .get("requiredAction")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|action| action.contains("resident"));
+    if !interactive_recovery {
+        return decision;
+    }
+    for rust_owned_choice_field in [
+        "transport",
+        "residentName",
+        "residentChildName",
+        "targetAgentName",
+        "targetAgentRole",
+        "targetAgentSelectionSource",
+        "canonicalTarget",
+        "agentSessionAction",
+        "receiptKind",
+        "commandDigest",
+    ] {
+        decision.fields.remove(rust_owned_choice_field);
+    }
+    for (field, value) in [
+        (
+            "requiredAction",
+            "open-org-interactive-resident-agent-window",
+        ),
+        ("nextAction", "run-asp-session-agent-window"),
+        ("agentWindowCommand", "asp session --agents choice-plane"),
+        ("choicePlaneOwner", "org-contract:agent-interactive"),
+    ] {
+        decision.fields.insert(
+            field.to_owned(),
+            serde_json::Value::String(value.to_owned()),
+        );
+    }
+    decision
 }
 
 fn with_hook_match_receipt(
     mut decision: HookDecision,
     payload: &Value,
     actions: &[ToolAction],
-    registry: &HookRuntime,
+    config: &ClientHookConfig,
 ) -> HookDecision {
-    let mut payload_keys = payload
+    let payload_keys = payload
         .as_object()
         .map(|object| object.keys().cloned().collect::<Vec<_>>())
         .unwrap_or_default();
-    payload_keys.sort();
     decision.fields.insert(
         "hookPayloadKeys".to_string(),
         Value::Array(payload_keys.into_iter().map(Value::String).collect()),
@@ -104,16 +149,14 @@ fn with_hook_match_receipt(
         "normalizedActions".to_string(),
         Value::Array(normalized_actions),
     );
-    if let Some(snapshot) =
-        crate::hook_policy_kernel::active_policy_snapshot(&registry.project_root)
-    {
+    if let Some((generation_digest, kernel_version)) = config.hook_policy_receipt() {
         decision.fields.insert(
             "hookPolicySnapshotDigest".to_string(),
-            Value::String(snapshot.generation_digest.clone()),
+            Value::String(generation_digest.to_owned()),
         );
         decision.fields.insert(
             "hookPolicyKernelVersion".to_string(),
-            Value::String(snapshot.kernel_version.to_string()),
+            Value::String(kernel_version.to_owned()),
         );
         decision.fields.insert(
             "hookPolicySynchronousDependencies".to_string(),

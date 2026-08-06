@@ -11,7 +11,7 @@ Do not return source bodies, snippets, or line-range selectors from the search c
 "#;
 
 const CODEX_AGENT_FLOW: &str = r#"Codex: start the configured resident ASP subagent for ASP search/query work. Resolve the agent role and resident child name from hooks/config.toml.
-When the subagent returns its child session id, register it from this root session: `asp agent session register --name <resident-name> --child-session-id <child-session-id> --role <resident-role>`. ASP resolves the root and parent session from the active agent environment.
+After the admitted host action completes, re-enter `asp session --agents choice-plane`. The native SubagentStart/host receipt is the only registration authority; agents must not mutate the session registry through a CLI fallback.
 Forward ASP search/query, owner/frontier ranking, dependency, and test reachability work to that resident child; keep the root agent on session, checkpoint, exact reads, edits, and recovery commands.
 "#;
 
@@ -68,3 +68,7 @@ impl From<HookClientRecoveryPromptConfig> for CompiledRecoveryPromptConfig {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/hook_recovery_prompt.rs"]
+mod tests;

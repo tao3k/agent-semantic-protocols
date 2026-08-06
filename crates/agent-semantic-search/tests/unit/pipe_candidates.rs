@@ -32,7 +32,7 @@ fn pipe_candidates_collect_dynamic_overlay_for_non_path_query() {
         owners: &owners,
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,
-        base_snapshot: &fixture.workspace,
+        base_snapshot: Some(&fixture.workspace),
         provider_digest: fixture.provider_digest.as_str(),
         limit: 16,
         require_multi_clause: false,

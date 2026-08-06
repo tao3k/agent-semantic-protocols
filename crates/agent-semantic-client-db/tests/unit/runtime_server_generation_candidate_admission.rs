@@ -8,7 +8,7 @@ use agent_semantic_client_db::runtime_server_admission::{
 };
 use tokio::sync::{Barrier, Mutex};
 
-use super::{candidate_identity_for, committed_generation};
+use super::{candidate_identity_for, completed_generation};
 
 fn run_git(root: &std::path::Path, args: &[&str]) {
     let output = Command::new("git")
@@ -28,14 +28,19 @@ async fn ensure_rebuilds_when_repository_candidate_generation_advances() {
     let builds = Arc::new(Mutex::new(Vec::new()));
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let builds = Arc::clone(&builds);
-        move |_workspace_identity, _project_root, candidate, _build_mode| {
+        move |_workspace_identity,
+              _project_root,
+              candidate,
+              _build_mode,
+              _cancellation,
+              _absolute_deadline| {
             let builds = Arc::clone(&builds);
             Box::pin(async move {
                 builds
                     .lock()
                     .await
-                    .push(candidate.candidate_generation.digest);
-                Ok(committed_generation())
+                    .push(candidate.candidate_generation.digest.clone());
+                completed_generation(candidate)
             })
         }
     }));
@@ -86,6 +91,46 @@ async fn ensure_rebuilds_when_repository_candidate_generation_advances() {
 }
 
 #[tokio::test]
+async fn ready_receipt_uses_the_candidate_captured_by_the_builder() {
+    let captured = candidate_identity_for(
+        "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    );
+    let admission = WorkspaceGenerationAdmission::new(Arc::new({
+        let captured = captured.clone();
+        move |_workspace_identity,
+              _project_root,
+              _requested_candidate,
+              _build_mode,
+              _cancellation,
+              _absolute_deadline| {
+            let captured = captured.clone();
+            Box::pin(async move { completed_generation(captured) })
+        }
+    }));
+    let project_root = std::env::temp_dir().join("asp-generation-captured-candidate");
+
+    admission
+        .admit(
+            "workspace-captured-candidate",
+            project_root.clone(),
+            candidate_identity_for(
+                "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            ),
+        )
+        .await
+        .expect("admit requested candidate");
+    let ready = admission
+        .wait_terminal("workspace-captured-candidate", &project_root)
+        .await
+        .expect("captured candidate reaches Ready");
+
+    assert_eq!(ready.state, WorkspaceGenerationAdmissionState::Ready);
+    assert_eq!(ready.candidate_generation, captured.candidate_generation);
+    assert_eq!(ready.policy_overlay_digest, captured.policy_overlay_digest);
+    admission.shutdown().await.expect("drain admission lane");
+}
+
+#[tokio::test]
 async fn tracked_source_edit_discovers_and_admits_a_new_generation() {
     let fixture = tempfile::tempdir().expect("candidate admission fixture");
     let project_root = fixture.path();
@@ -104,14 +149,19 @@ async fn tracked_source_edit_discovers_and_admits_a_new_generation() {
     let builds = Arc::new(Mutex::new(Vec::new()));
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let builds = Arc::clone(&builds);
-        move |_workspace_identity, _project_root, candidate, _build_mode| {
+        move |_workspace_identity,
+              _project_root,
+              candidate,
+              _build_mode,
+              _cancellation,
+              _absolute_deadline| {
             let builds = Arc::clone(&builds);
             Box::pin(async move {
                 builds
                     .lock()
                     .await
-                    .push(candidate.candidate_generation.digest);
-                Ok(committed_generation())
+                    .push(candidate.candidate_generation.digest.clone());
+                completed_generation(candidate)
             })
         }
     }));
@@ -176,11 +226,16 @@ async fn ensure_coalesces_an_advanced_candidate_behind_an_inflight_build() {
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let builds = Arc::clone(&builds);
         let first_release = Arc::clone(&first_release);
-        move |_workspace_identity, _project_root, candidate, _build_mode| {
+        move |_workspace_identity,
+              _project_root,
+              candidate,
+              _build_mode,
+              _cancellation,
+              _absolute_deadline| {
             let builds = Arc::clone(&builds);
             let first_release = Arc::clone(&first_release);
             Box::pin(async move {
-                let digest = candidate.candidate_generation.digest;
+                let digest = candidate.candidate_generation.digest.clone();
                 let first = {
                     let mut builds = builds.lock().await;
                     let first = builds.is_empty();
@@ -190,7 +245,7 @@ async fn ensure_coalesces_an_advanced_candidate_behind_an_inflight_build() {
                 if first {
                     first_release.wait().await;
                 }
-                Ok(committed_generation())
+                completed_generation(candidate)
             })
         }
     }));

@@ -1,5 +1,62 @@
 use super::protocol::{WorkspaceDbIpcOperation, WorkspaceDbIpcResult, WorkspaceDbIpcSession};
 
+#[derive(Debug)]
+pub(super) struct RuntimeSearchAuthorityCache {
+    pointer_path: std::path::PathBuf,
+    pointer: crate::runtime_server_workspace::WorkspaceGenerationPointerReader,
+    authority: parking_lot::RwLock<(
+        u64,
+        crate::runtime_server_workspace::WorkspaceSearchGenerationAuthority,
+    )>,
+    refresh: tokio::sync::Mutex<()>,
+}
+
+impl RuntimeSearchAuthorityCache {
+    async fn read(
+        &self,
+        session: &WorkspaceDbIpcSession,
+    ) -> Result<crate::runtime_server_workspace::WorkspaceSearchGenerationAuthority, String> {
+        let pointer_generation = self.pointer.committed_generation().ok_or_else(|| {
+            "Runtime Server generation pointer has no committed generation".to_owned()
+        })?;
+        {
+            let authority = self.authority.read();
+            if authority.0 == pointer_generation {
+                return Ok(authority.1.clone());
+            }
+        }
+        let _refresh = self.refresh.lock().await;
+        let pointer_generation = self.pointer.committed_generation().ok_or_else(|| {
+            "Runtime Server generation pointer has no committed generation".to_owned()
+        })?;
+        {
+            let authority = self.authority.read();
+            if authority.0 == pointer_generation {
+                return Ok(authority.1.clone());
+            }
+        }
+        let pointer_snapshot = self.pointer.read()?;
+        let active_epoch = pointer_snapshot.active_epoch;
+        let pointer_digest = pointer_snapshot.generation_digest;
+        let authority = crate::runtime_server_workspace::read_search_generation_authority_segment(
+            &self.pointer_path,
+            active_epoch,
+            session.workspace_identity(),
+            &session.runtime_project_root()?.display().to_string(),
+        )
+        .await
+        .map_err(|error| error)?;
+        if authority.generation_digest != pointer_digest {
+            return Err(format!(
+                "authority-corrupt: generation digest mismatch expected={} actual={}",
+                pointer_digest, authority.generation_digest
+            ));
+        }
+        *self.authority.write() = (pointer_generation, authority.clone());
+        Ok(authority)
+    }
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct MutationFlightKey {
     socket_path: String,
@@ -148,6 +205,27 @@ fn normalize_changed_paths(changed_paths: Vec<String>) -> Result<Vec<String>, St
 }
 
 impl WorkspaceDbIpcSession {
+    pub async fn runtime_graph_facts(
+        &self,
+        sources: Vec<super::RuntimeGraphFactSource>,
+    ) -> Result<super::RuntimeGraphFactsRead, String> {
+        match self
+            .call_operation(WorkspaceDbIpcOperation::ReadRuntimeGraphFacts {
+                project_root: self.runtime_project_root()?.display().to_string(),
+                sources,
+            })
+            .await?
+        {
+            WorkspaceDbIpcResult::RuntimeGraphFacts { read } => {
+                read.validate()?;
+                Ok(read)
+            }
+            other => Err(format!(
+                "Runtime Server returned unexpected graph facts result: {other:?}"
+            )),
+        }
+    }
+
     async fn call_runtime_generation_submission(
         &self,
         mutation_id: String,
@@ -196,6 +274,22 @@ impl WorkspaceDbIpcSession {
         {
             WorkspaceDbIpcResult::RuntimeSelector { read } => Ok(read),
             _ => Err("Runtime Server returned an unexpected runtime selector result".to_owned()),
+        }
+    }
+
+    pub async fn read_runtime_owner(
+        &self,
+        owner_path: impl Into<String>,
+    ) -> Result<crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead, String> {
+        match self
+            .call_operation(WorkspaceDbIpcOperation::ReadRuntimeOwner {
+                project_root: self.runtime_project_root()?.display().to_string(),
+                owner_path: owner_path.into(),
+            })
+            .await?
+        {
+            WorkspaceDbIpcResult::RuntimeOwner { read } => Ok(read),
+            _ => Err("Runtime Server returned an unexpected runtime owner result".to_owned()),
         }
     }
 
@@ -430,33 +524,6 @@ impl WorkspaceDbIpcSession {
         }
     }
 
-    /// Ensure the exact owner represented by a resident segment is still
-    /// current before the caller reopens that immutable generation.
-    pub async fn ensure_runtime_generation_owner_ready(
-        &self,
-        owner_path: &str,
-        admitted_content_digest: &str,
-    ) -> Result<crate::runtime_server_admission::WorkspaceOwnerGenerationReadinessReceipt, String>
-    {
-        let project_root = self.runtime_project_root()?.to_path_buf();
-        match self
-            .call_operation(WorkspaceDbIpcOperation::EnsureRuntimeGenerationOwnerReady {
-                project_root: project_root.display().to_string(),
-                owner_path: owner_path.to_owned(),
-                admitted_content_digest: admitted_content_digest.to_owned(),
-            })
-            .await?
-        {
-            WorkspaceDbIpcResult::RuntimeOwnerGenerationReadiness { receipt } => {
-                receipt.validate()?;
-                Ok(receipt)
-            }
-            _ => {
-                Err("Runtime Server returned an unexpected exact-owner readiness result".to_owned())
-            }
-        }
-    }
-
     pub async fn repair_runtime_generation_locator(
         &self,
     ) -> Result<crate::runtime_server_admission::WorkspaceGenerationReadinessReceipt, String> {
@@ -471,23 +538,6 @@ impl WorkspaceDbIpcSession {
                 "Runtime Server returned an unexpected generation locator repair result".to_owned(),
             ),
         }
-    }
-
-    pub async fn evaluate_hook(
-        &self,
-        arguments: Vec<String>,
-        input: String,
-    ) -> Result<String, String> {
-        let expected_workspace_identity = self.workspace_identity().to_owned();
-        let expected_project_root = self.runtime_project_root()?.display().to_string();
-        let result = self
-            .call_operation(WorkspaceDbIpcOperation::EvaluateHook {
-                project_root: expected_project_root.clone(),
-                arguments,
-                input,
-            })
-            .await?;
-        admit_hook_evaluation_result(&expected_workspace_identity, &expected_project_root, result)
     }
 
     pub async fn evaluate_graph_turbo(
@@ -532,56 +582,70 @@ impl WorkspaceDbIpcSession {
     pub async fn runtime_search_generation_authority(
         &self,
     ) -> Result<crate::runtime_server_workspace::WorkspaceSearchGenerationAuthority, String> {
-        let expected_workspace_identity = self.workspace_identity().to_owned();
-        let expected_project_root = self.runtime_project_root()?.display().to_string();
-        if let Some(pointer_path) = self.runtime_generation_pointer_path()
-            && let Some(pointer) = crate::runtime_server_workspace::WorkspaceSearchGenerationAuthorityPointerClient::shared_get(
-                pointer_path,
-                &expected_workspace_identity,
-                &expected_project_root,
-            )
+        let Some(pointer_path) = self.runtime_generation_pointer_path() else {
+            return self.fetch_runtime_search_generation_authority().await;
+        };
+        if let Some(authority) =
+            crate::runtime_server_workspace::resident_search_generation_authority(pointer_path)
         {
-            return pointer.read();
+            authority.validate_binding(
+                self.workspace_identity(),
+                &self.runtime_project_root()?.display().to_string(),
+            )?;
+            return Ok(authority.as_ref().clone());
         }
-        let pointer = self
+        let cache = self
             .shared
-            .search_generation_authority
+            .runtime_search_generation_authority
             .get_or_try_init(|| async {
-                if let Some(pointer_path) = self.runtime_generation_pointer_path()
-                    && let Some(pointer) = crate::runtime_server_workspace::WorkspaceSearchGenerationAuthorityPointerClient::shared_open_path_optional(
+                let pointer =
+                    crate::runtime_server_workspace::WorkspaceGenerationPointerReader::open(
                         pointer_path,
-                        &expected_workspace_identity,
-                        &expected_project_root,
-                    )
-                    .await?
-                {
-                    return Ok(pointer);
-                }
-                let result = self
-                    .call_operation(
-                        WorkspaceDbIpcOperation::ReadRuntimeSearchGenerationAuthority {
-                            project_root: expected_project_root.clone(),
-                        },
                     )
                     .await?;
-                let receipt = match result {
-                    WorkspaceDbIpcResult::RuntimeSearchGenerationAuthority { receipt } => receipt,
-                    other => {
-                        return Err(format!(
-                            "Runtime Server returned unexpected search generation authority result: {other:?}"
-                        ));
-                    }
-                };
-                crate::runtime_server_workspace::WorkspaceSearchGenerationAuthorityPointerClient::open(
-                    &receipt,
-                    &expected_workspace_identity,
-                    &expected_project_root,
-                )
-                .await
-                .map(std::sync::Arc::new)
+                let pointer_generation = pointer.committed_generation().ok_or_else(|| {
+                    "Runtime Server generation pointer has no committed generation".to_owned()
+                })?;
+                let snapshot = pointer.read()?;
+                let authority =
+                    crate::runtime_server_workspace::read_search_generation_authority_segment(
+                        pointer_path,
+                        snapshot.active_epoch,
+                        self.workspace_identity(),
+                        &self.runtime_project_root()?.display().to_string(),
+                    )
+                    .await?;
+                Ok::<_, String>(std::sync::Arc::new(RuntimeSearchAuthorityCache {
+                    pointer_path: pointer_path.to_path_buf(),
+                    pointer,
+                    authority: parking_lot::RwLock::new((pointer_generation, authority)),
+                    refresh: tokio::sync::Mutex::new(()),
+                }))
             })
             .await?;
-        pointer.read()
+        cache.read(self).await
+    }
+
+    async fn fetch_runtime_search_generation_authority(
+        &self,
+    ) -> Result<crate::runtime_server_workspace::WorkspaceSearchGenerationAuthority, String> {
+        let project_root = self.runtime_project_root()?.display().to_string();
+        match self
+            .call_operation(
+                WorkspaceDbIpcOperation::ReadRuntimeSearchGenerationAuthority { project_root },
+            )
+            .await?
+        {
+            WorkspaceDbIpcResult::RuntimeSearchGenerationAuthority {
+                authority: Some(authority),
+            } => Ok(authority),
+            WorkspaceDbIpcResult::RuntimeSearchGenerationAuthority { authority: None } => {
+                Err("Runtime Server has no admitted search generation authority".to_owned())
+            }
+            other => Err(format!(
+                "Runtime Server returned unexpected search generation authority result: {other:?}"
+            )),
+        }
     }
 
     pub async fn publish_runtime_owner(
@@ -640,33 +704,3 @@ impl WorkspaceDbIpcSession {
         }
     }
 }
-
-fn admit_hook_evaluation_result(
-    expected_workspace_identity: &str,
-    expected_project_root: &str,
-    result: WorkspaceDbIpcResult,
-) -> Result<String, String> {
-    match result {
-        WorkspaceDbIpcResult::HookEvaluation {
-            workspace_identity,
-            project_root,
-            output,
-        } if workspace_identity == expected_workspace_identity
-            && project_root == expected_project_root =>
-        {
-            Ok(output)
-        }
-        WorkspaceDbIpcResult::HookEvaluation {
-            workspace_identity,
-            project_root,
-            ..
-        } => Err(format!(
-            "Runtime Server hook evaluation identity mismatch: expectedWorkspaceIdentity={expected_workspace_identity} actualWorkspaceIdentity={workspace_identity} expectedProjectRoot={expected_project_root} actualProjectRoot={project_root}"
-        )),
-        _ => Err("Runtime Server returned an unexpected hook evaluation result".to_owned()),
-    }
-}
-
-#[cfg(test)]
-#[path = "../../tests/unit/workspace_db_ipc_hook_evaluation.rs"]
-mod hook_evaluation_tests;

@@ -37,6 +37,65 @@ fn dropping_owned_daemon_task_aborts_instead_of_detaching() {
     });
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_task_scope_drains_without_leaks() {
+    use agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope;
+
+    let scope = RuntimeServerTaskScope::new("fixture-concurrent-lifecycle");
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(65));
+    let mut tasks = Vec::with_capacity(64);
+    for _ in 0..64 {
+        let barrier = std::sync::Arc::clone(&barrier);
+        tasks.push(
+            scope
+                .spawn("fixture-concurrent-task", async move {
+                    barrier.wait().await;
+                    tokio::task::yield_now().await;
+                })
+                .expect("accepting scope should admit concurrent task"),
+        );
+    }
+    barrier.wait().await;
+    scope.begin_drain();
+    let late_admission = scope.spawn("fixture-late-task", async {});
+    assert!(
+        matches!(late_admission, Err(ref error) if error.contains("is draining")),
+        "draining scope must reject new task admission"
+    );
+    for task in tasks {
+        task.join().await.expect("owned task should join");
+    }
+
+    let receipt = scope.finish(0).expect("all admitted tasks should drain");
+    assert_eq!(receipt.state, "terminated");
+    assert_eq!(receipt.started, 64);
+    assert_eq!(receipt.completed, 64);
+    assert_eq!(receipt.cancelled, 0);
+    assert_eq!(receipt.failed, 0);
+    assert_eq!(receipt.active, 0);
+    assert_eq!(receipt.leaked, 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dropped_owned_tasks_are_accounted_as_cancelled() {
+    use agent_semantic_client_db::runtime_server_runtime::RuntimeServerTaskScope;
+
+    let scope = RuntimeServerTaskScope::new("fixture-cancel-on-drop");
+    let task = scope
+        .spawn("fixture-pending-task", std::future::pending::<()>())
+        .expect("accepting scope should admit pending task");
+    drop(task);
+    scope.begin_drain();
+
+    let receipt = scope
+        .finish(0)
+        .expect("drop must synchronously account cancellation");
+    assert_eq!(receipt.started, 1);
+    assert_eq!(receipt.cancelled, 1);
+    assert_eq!(receipt.active, 0);
+    assert_eq!(receipt.leaked, 0);
+}
+
 #[test]
 fn client_profile_completes_bounded_control_work() {
     assert!(
@@ -116,5 +175,73 @@ fn client_executor_warm_lookup_is_sub_millisecond() {
     assert!(
         p99_micros < 1_000,
         "warm Runtime Server client executor lookup must remain sub-millisecond: p99Micros={p99_micros}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn connection_supervisor_bounds_completed_but_unreaped_tasks() {
+    use agent_semantic_client_db::runtime_server_runtime::RuntimeServerConnectionSupervisor;
+
+    let supervisor = RuntimeServerConnectionSupervisor::new("fixture-connections", 32);
+    let mut connections = tokio::task::JoinSet::new();
+    for _ in 0..32 {
+        let lease = supervisor
+            .try_admit()
+            .expect("connection below the adaptive bound must be admitted");
+        connections.spawn(async move { lease });
+    }
+    tokio::task::yield_now().await;
+
+    let saturated = supervisor.snapshot();
+    assert_eq!(saturated.active, 32);
+    assert_eq!(saturated.high_watermark, 32);
+    assert!(!supervisor.has_capacity());
+    assert!(
+        supervisor.try_admit().is_none(),
+        "a completed task must keep its lease until the JoinSet result is reaped"
+    );
+    assert_eq!(supervisor.snapshot().rejected, 1);
+
+    while let Some(lease) = connections
+        .join_next()
+        .await
+        .transpose()
+        .expect("connection task must join")
+    {
+        drop(lease);
+    }
+    let drained = supervisor.snapshot();
+    assert_eq!(drained.active, 0);
+    assert!(supervisor.has_capacity());
+}
+
+#[test]
+fn connection_limit_adapts_to_runtime_worker_count_and_remains_bounded() {
+    use agent_semantic_client_db::runtime_server_runtime::runtime_server_connection_limit;
+
+    assert_eq!(runtime_server_connection_limit(1), 32);
+    assert!(runtime_server_connection_limit(8) > runtime_server_connection_limit(2));
+    assert_eq!(runtime_server_connection_limit(usize::MAX), 512);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stalled_connection_io_fails_inside_the_runtime_budget() {
+    use agent_semantic_client_db::runtime_server_runtime::{
+        RUNTIME_SERVER_CONNECTION_IO_BUDGET, within_connection_io_budget,
+    };
+
+    let started = tokio::time::Instant::now();
+    let error = within_connection_io_budget(
+        "fixture stalled frame",
+        std::future::pending::<Result<(), String>>(),
+    )
+    .await
+    .expect_err("stalled connection I/O must fail closed");
+
+    assert!(error.contains("connection I/O budget"));
+    assert!(started.elapsed() >= RUNTIME_SERVER_CONNECTION_IO_BUDGET);
+    assert!(
+        started.elapsed() < std::time::Duration::from_millis(100),
+        "a stalled connection must not retain a daemon task beyond 100ms"
     );
 }

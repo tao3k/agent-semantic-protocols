@@ -2,12 +2,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const CLAUDE_DEFAULT_RESIDENT_AGENT_MODEL: &str = "haiku";
-const EMBEDDED_AGENT_ROUTE_REGISTRY: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../agents/config.toml"
-));
-
 pub(super) fn subagent_model_arg(client: &str, model: Option<&str>) -> Result<String, String> {
+    if client == "codex" {
+        return Err(
+            "Codex agent models are owned by agents/config.toml; plugin install has no model override"
+                .to_owned(),
+        );
+    }
     let model = match model {
         Some(value) => value.trim().to_string(),
         None => default_subagent_model(client)?,
@@ -36,39 +37,6 @@ pub(super) fn install_claude_resident_agents(
         .join("agents")
         .join("asp-testing.md");
     project_agent_config(&testing_canonical_path, &testing_path)?;
-    Ok(path)
-}
-
-pub(crate) fn install_codex_resident_agents(
-    codex_home: &Path,
-    subagent_model: &str,
-) -> Result<PathBuf, String> {
-    install_codex_resident_agents_with_models(codex_home, subagent_model, subagent_model)
-}
-
-pub(crate) fn install_codex_resident_agents_with_models(
-    codex_home: &Path,
-    explorer_model: &str,
-    testing_model: &str,
-) -> Result<PathBuf, String> {
-    let path = refresh_codex_resident_search_agent(codex_home, explorer_model)?;
-    let testing_contents = codex_resident_testing_agent(testing_model)?;
-    let testing_canonical_path = asp_agent_config_path("asp-testing", "codex", "toml")?;
-    write_agent_config(&testing_canonical_path, testing_contents.as_bytes())?;
-    let testing_path = codex_home.join("agents").join("asp-testing.toml");
-    project_agent_config(&testing_canonical_path, &testing_path)?;
-    Ok(path)
-}
-
-pub(crate) fn refresh_codex_resident_search_agent(
-    codex_home: &Path,
-    subagent_model: &str,
-) -> Result<PathBuf, String> {
-    let contents = codex_resident_search_agent(subagent_model)?;
-    let canonical_path = asp_agent_config_path("asp-explorer", "codex", "toml")?;
-    write_agent_config(&canonical_path, contents.as_bytes())?;
-    let path = codex_home.join("agents").join("asp-explorer.toml");
-    project_agent_config(&canonical_path, &path)?;
     Ok(path)
 }
 
@@ -133,69 +101,16 @@ fn link_or_copy_agent_config(source: &Path, target: &Path) -> Result<(), String>
 
 fn default_subagent_model(client: &str) -> Result<String, String> {
     match client {
-        "codex" => codex_default_subagent_model(),
         "claude" => Ok(CLAUDE_DEFAULT_RESIDENT_AGENT_MODEL.to_string()),
         _ => unreachable!("client support checked before model default"),
     }
-}
-
-fn codex_default_subagent_model() -> Result<String, String> {
-    let config_path = agent_semantic_runtime::state_core::resolve_state_home()?
-        .join("agents")
-        .join("config.toml");
-    if config_path.is_file() {
-        return read_codex_explorer_model(&config_path);
-    }
-    codex_explorer_model_from_catalog(EMBEDDED_AGENT_ROUTE_REGISTRY, "embedded agents/config.toml")
-}
-
-fn read_codex_explorer_model(config_path: &Path) -> Result<String, String> {
-    let text = fs::read_to_string(config_path)
-        .map_err(|error| format!("failed to read {}: {error}", config_path.display()))?;
-    codex_explorer_model_from_catalog(&text, &config_path.display().to_string())
-}
-
-fn codex_explorer_model_from_catalog(text: &str, owner: &str) -> Result<String, String> {
-    let value = toml::from_str::<toml::Value>(text)
-        .map_err(|error| format!("failed to parse {owner}: {error}"))?;
-    value
-        .get("agents")
-        .and_then(|agents| agents.get("asp_explorer"))
-        .and_then(|agent| agent.get("platforms"))
-        .and_then(|platforms| platforms.get("codex"))
-        .and_then(|codex| codex.get("model"))
-        .and_then(toml::Value::as_str)
-        .map(str::trim)
-        .filter(|model| !model.is_empty())
-        .map(ToString::to_string)
-        .ok_or_else(|| format!("agents.asp_explorer.platforms.codex.model is required in {owner}"))
-}
-
-fn codex_resident_search_agent(subagent_model: &str) -> Result<String, String> {
-    render_codex_agent(
-        include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../agents/asp-explorer_codex.toml"
-        )),
-        subagent_model,
-    )
-}
-
-fn codex_resident_testing_agent(subagent_model: &str) -> Result<String, String> {
-    render_codex_agent(
-        include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../agents/asp-testing_codex.toml"
-        )),
-        subagent_model,
-    )
 }
 
 fn claude_resident_search_agent(subagent_model: &str) -> Result<String, String> {
     render_claude_agent(
         include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../agents/asp-explorer_claude.md"
+            "/../../agents/asp_explorer_claude.md"
         )),
         subagent_model,
     )
@@ -205,14 +120,10 @@ fn claude_resident_testing_agent(subagent_model: &str) -> Result<String, String>
     render_claude_agent(
         include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../agents/asp-testing_claude.md"
+            "/../../agents/asp_testing_claude.md"
         )),
         subagent_model,
     )
-}
-
-fn render_codex_agent(template: &str, model: &str) -> Result<String, String> {
-    Ok(template.replace("{{MODEL_TOML}}", &toml_basic_string(model)?))
 }
 
 fn render_claude_agent(template: &str, model: &str) -> Result<String, String> {
@@ -234,10 +145,6 @@ fn yaml_single_quoted(value: &str) -> Result<String, String> {
     Ok(format!("'{}'", value.replace('\'', "''")))
 }
 
-fn toml_basic_string(value: &str) -> Result<String, String> {
-    validate_subagent_model(value)?;
-    Ok(format!(
-        "\"{}\"",
-        value.replace('\\', "\\\\").replace('"', "\\\"")
-    ))
-}
+#[cfg(test)]
+#[path = "../../tests/unit/hook_runtime_subagent.rs"]
+mod tests;

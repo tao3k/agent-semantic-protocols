@@ -5,6 +5,17 @@ use agent_semantic_client_db::runtime_server_workspace::{
 
 const SELECTOR: &str = "rust://src/lib.rs#item/function/target";
 
+#[test]
+fn missing_generation_is_a_typed_read_only_failure() {
+    let Err(error) = resolve(WorkspaceRuntimeSelectorRead::GenerationMissing, SELECTOR) else {
+        panic!("a query must not admit a missing generation");
+    };
+    assert_eq!(
+        error,
+        "exact source query state=source-unavailable reasonKind=active-workspace-generation-required"
+    );
+}
+
 fn owner_with(selector: &str) -> WorkspaceOwnerSnapshot {
     WorkspaceOwnerSnapshot {
         owner_path: "src/lib.rs".to_owned(),

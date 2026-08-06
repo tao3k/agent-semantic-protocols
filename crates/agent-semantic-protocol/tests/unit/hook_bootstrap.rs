@@ -1,6 +1,7 @@
 use super::{
     event_is_observational, exact_canonical_binary_install, hook_event,
-    hook_event_is_runtime_server_recovery, is_hook_event_dispatch, runtime_server_hook_unavailable,
+    hook_event_is_canonical_recovery, hook_event_requires_policy_evaluation,
+    is_hook_event_dispatch, local_hook_policy_unavailable, local_hook_policy_unavailable_deny,
     validate_hook_args,
 };
 use std::ffi::OsString;
@@ -104,18 +105,17 @@ fn pre_tool(command: &str) -> (Vec<OsString>, Vec<u8>) {
 }
 
 #[test]
-fn runtime_server_recovery_is_a_configuration_independent_escape_edge() {
+fn canonical_recovery_is_a_configuration_independent_escape_edge() {
     for command in [
         "asp server status",
         "asp server reconcile",
         "/tmp/runtime/bin/asp server restart",
         "direnv exec . asp server reconcile",
+        "asp hook doctor --client codex",
+        "direnv exec . asp hook doctor --client codex",
     ] {
         let (args, input) = pre_tool(command);
-        assert!(
-            hook_event_is_runtime_server_recovery(&args, &input),
-            "{command}"
-        );
+        assert!(hook_event_is_canonical_recovery(&args, &input), "{command}");
     }
 }
 
@@ -124,12 +124,14 @@ fn recovery_kernel_rejects_chains_extra_arguments_and_non_control_commands() {
     for command in [
         "asp server reconcile && touch /tmp/escaped",
         "asp server reconcile --force",
+        "asp hook doctor --client claude",
+        "asp hook doctor --client codex --json",
         "cargo test",
         "other-asp server restart",
     ] {
         let (args, input) = pre_tool(command);
         assert!(
-            !hook_event_is_runtime_server_recovery(&args, &input),
+            !hook_event_is_canonical_recovery(&args, &input),
             "{command}"
         );
     }
@@ -139,22 +141,94 @@ fn recovery_kernel_rejects_chains_extra_arguments_and_non_control_commands() {
 fn observational_events_cannot_claim_the_recovery_escape_edge() {
     let args = vec![OsString::from("hook"), OsString::from("stop")];
     let (_, input) = pre_tool("asp server reconcile");
-    assert!(!hook_event_is_runtime_server_recovery(&args, &input));
+    assert!(!hook_event_is_canonical_recovery(&args, &input));
 }
 
 #[test]
-fn unavailable_resident_authority_is_typed_and_names_the_escape_edge() {
-    let failure = runtime_server_hook_unavailable("pre-tool", "endpoint refused");
+fn unrelated_codex_actions_never_enter_the_runtime_server_path() {
+    for tool_name in ["update_plan", "view_image", "collaboration.send_message"] {
+        let input = serde_json::to_vec(&serde_json::json!({
+            "tool_name": tool_name,
+            "tool_input": {"value": "not a source or command action"}
+        }))
+        .expect("Hook payload");
+        for event in ["pre-tool", "permission-request", "post-tool"] {
+            assert!(
+                !hook_event_requires_policy_evaluation(event, &input)
+                    .expect("local action classification"),
+                "{event} {tool_name} must be an in-process passthrough"
+            );
+        }
+    }
+}
+
+#[test]
+fn policy_bearing_codex_actions_enter_the_local_typed_evaluator() {
+    for (tool_name, tool_input) in [
+        ("Read", serde_json::json!({"path": "src/lib.rs"})),
+        (
+            "Bash",
+            serde_json::json!({"command": "sed -n '1,20p' src/lib.rs"}),
+        ),
+        (
+            "functions.exec",
+            serde_json::json!({"code": "await tools.exec_command({cmd: 'cargo test'})"}),
+        ),
+    ] {
+        let input = serde_json::to_vec(&serde_json::json!({
+            "tool_name": tool_name,
+            "tool_input": tool_input
+        }))
+        .expect("Hook payload");
+        assert!(
+            hook_event_requires_policy_evaluation("pre-tool", &input)
+                .expect("local action classification"),
+            "{tool_name} must reach typed ASP policy"
+        );
+    }
+}
+
+#[test]
+fn lifecycle_and_malformed_tool_events_cannot_bypass_typed_policy() {
+    let lifecycle = br#"{"cwd":"/tmp/workspace"}"#;
+    assert!(hook_event_requires_policy_evaluation("session-start", lifecycle).unwrap());
+    assert!(hook_event_requires_policy_evaluation("pre-tool", lifecycle).unwrap());
+}
+
+#[test]
+fn unavailable_local_policy_authority_is_typed_and_names_the_escape_edge() {
+    let failure = local_hook_policy_unavailable("pre-tool", "config invalid");
     let value: serde_json::Value = serde_json::from_str(&failure).expect("typed failure JSON");
     assert_eq!(
         value["schemaId"],
-        "agent.semantic-protocols.hook-control-plane-unavailable.v1"
+        "agent.semantic-protocols.hook-local-policy-unavailable.v1"
     );
     assert_eq!(
         value["reasonKind"],
-        "runtime-server-hook-authority-unavailable"
+        "local-hook-policy-authority-unavailable"
     );
-    assert_eq!(value["recoveryCommand"], "asp server reconcile");
+    assert_eq!(value["recoveryCommand"], "asp hook doctor --client codex");
     assert_eq!(value["recoveryCommands"].as_array().map(Vec::len), Some(2));
     assert!(value["canonicalBinaryInstallTarget"].is_string());
+}
+
+#[test]
+fn unavailable_enforcement_authority_is_a_host_protocol_deny() {
+    for (event, host_event) in [
+        ("pre-tool", "PreToolUse"),
+        ("permission-request", "PermissionRequest"),
+    ] {
+        let response = local_hook_policy_unavailable_deny(event, "config invalid");
+        let value: serde_json::Value =
+            serde_json::from_str(&response).expect("typed unavailable deny JSON");
+        assert_eq!(value["hookSpecificOutput"]["hookEventName"], host_event);
+        assert_eq!(value["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert!(
+            value["hookSpecificOutput"]["additionalContext"]
+                .as_str()
+                .is_some_and(|context| context
+                    .contains("agent.semantic-protocols.hook-local-policy-unavailable.v1")),
+            "{response}"
+        );
+    }
 }

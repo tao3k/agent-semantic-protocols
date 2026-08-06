@@ -1,18 +1,17 @@
 use serde::{Deserialize, Serialize};
 
-use std::{
-    path::{Path, PathBuf},
-    sync::{Arc, LazyLock},
-};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock};
 
-use super::{
-    WorkspaceGenerationLease, WorkspaceGenerationPointerReader, WorkspaceGenerationSnapshot,
-};
+use super::WorkspaceGenerationLease;
 
 pub const WORKSPACE_SEARCH_GENERATION_AUTHORITY_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-search-generation-authority";
-pub const WORKSPACE_SEARCH_GENERATION_AUTHORITY_OPEN_RECEIPT_SCHEMA_ID: &str =
-    "agent.semantic-protocols.runtime-server-search-generation-authority-open-receipt";
+const MAX_WORKSPACE_SEARCH_GENERATION_AUTHORITY_BYTES: usize = 4 * 1024 * 1024;
+
+static RESIDENT_SEARCH_AUTHORITIES: LazyLock<
+    dashmap::DashMap<PathBuf, Arc<WorkspaceSearchGenerationAuthority>>,
+> = LazyLock::new(dashmap::DashMap::new);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -24,6 +23,7 @@ pub struct WorkspaceSearchGenerationAuthority {
     pub active_epoch: u64,
     pub generation_digest: String,
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
     pub workspace_generation: agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
 }
 
@@ -33,7 +33,10 @@ impl WorkspaceSearchGenerationAuthority {
     /// Complete generation validation belongs to publication. Repeating it on
     /// this read path would turn every search into an O(workspace) operation.
     pub fn from_lease(lease: &WorkspaceGenerationLease) -> Self {
-        let generation = lease.generation();
+        Self::from_generation(lease.generation())
+    }
+
+    pub fn from_generation(generation: &super::WorkspaceMemoryGeneration) -> Self {
         Self {
             schema_id: WORKSPACE_SEARCH_GENERATION_AUTHORITY_SCHEMA_ID.to_owned(),
             schema_version: "1".to_owned(),
@@ -42,61 +45,9 @@ impl WorkspaceSearchGenerationAuthority {
             active_epoch: generation.active_epoch,
             generation_digest: generation.generation_digest.clone(),
             source_snapshot: generation.source_snapshot.clone(),
+            project_resolutions: generation.project_resolutions.clone(),
             workspace_generation: generation.workspace_generation.clone(),
         }
-    }
-
-    pub fn from_snapshot(
-        project_root: &str,
-        snapshot: &WorkspaceGenerationSnapshot,
-    ) -> Result<Self, String> {
-        snapshot.validate()?;
-        let raw_digest = |field: &str, digest: &str| -> Result<String, String> {
-            let raw = digest.strip_prefix("blake3-256:").ok_or_else(|| {
-                format!("workspace generation pointer {field} is not a qualified BLAKE3 digest")
-            })?;
-            if raw.len() != 64 || !raw.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-                return Err(format!(
-                    "workspace generation pointer {field} is not a canonical BLAKE3 digest"
-                ));
-            }
-            Ok(raw.to_owned())
-        };
-        let mut source_snapshot = agent_semantic_content_identity::SourceSnapshotEvidence::new(
-            raw_digest("sourceRootDigest", &snapshot.source_root_digest)?,
-            snapshot.source_kind,
-            usize::try_from(snapshot.leaf_count)
-                .map_err(|_| "workspace generation pointer leaf count overflow".to_owned())?,
-            raw_digest("sourceProviderDigest", &snapshot.source_provider_digest)?,
-        );
-        source_snapshot.base_root_digest = snapshot
-            .base_root_digest
-            .as_deref()
-            .map(|digest| raw_digest("baseRootDigest", digest))
-            .transpose()?;
-        source_snapshot.dirty_paths_digest = snapshot
-            .dirty_paths_digest
-            .as_deref()
-            .map(|digest| raw_digest("dirtyPathsDigest", digest))
-            .transpose()?;
-        let authority = Self {
-            schema_id: WORKSPACE_SEARCH_GENERATION_AUTHORITY_SCHEMA_ID.to_owned(),
-            schema_version: "1".to_owned(),
-            workspace_identity: snapshot.workspace_identity.clone(),
-            project_root: project_root.to_owned(),
-            active_epoch: snapshot.active_epoch,
-            generation_digest: snapshot.generation_digest.clone(),
-            workspace_generation:
-                agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1 {
-                    root_digest: source_snapshot.root_digest.clone(),
-                    root_depth: u32::from(snapshot.root_depth[0]),
-                    leaf_count: snapshot.leaf_count,
-                    owner_count: snapshot.owner_count,
-                },
-            source_snapshot,
-        };
-        authority.validate_binding(&snapshot.workspace_identity, project_root)?;
-        Ok(authority)
     }
 
     pub fn validate_binding(
@@ -127,200 +78,140 @@ impl WorkspaceSearchGenerationAuthority {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspaceSearchGenerationAuthorityOpenReceipt {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub authority: WorkspaceSearchGenerationAuthority,
-    pub generation_pointer_path: String,
+fn search_generation_authority_segment_path(
+    generation_pointer_path: &Path,
+    active_epoch: u64,
+) -> Result<PathBuf, String> {
+    let parent = generation_pointer_path
+        .parent()
+        .ok_or_else(|| "search generation authority pointer has no parent directory".to_owned())?;
+    Ok(parent.join(format!("search-authority-{active_epoch}.json")))
 }
 
-impl WorkspaceSearchGenerationAuthorityOpenReceipt {
-    pub fn new(
-        authority: WorkspaceSearchGenerationAuthority,
-        generation_pointer_path: &Path,
-    ) -> Result<Self, String> {
-        let receipt = Self {
-            schema_id: WORKSPACE_SEARCH_GENERATION_AUTHORITY_OPEN_RECEIPT_SCHEMA_ID.to_owned(),
-            schema_version: "1".to_owned(),
-            authority,
-            generation_pointer_path: generation_pointer_path.to_string_lossy().into_owned(),
-        };
-        receipt.validate_binding(
-            &receipt.authority.workspace_identity,
-            &receipt.authority.project_root,
-        )?;
-        Ok(receipt)
-    }
-
-    pub fn validate_binding(
-        &self,
-        workspace_identity: &str,
-        project_root: &str,
-    ) -> Result<(), String> {
-        if self.schema_id != WORKSPACE_SEARCH_GENERATION_AUTHORITY_OPEN_RECEIPT_SCHEMA_ID
-            || self.schema_version != "1"
-        {
-            return Err("search generation authority open receipt schema mismatch".to_owned());
+pub(crate) async fn read_search_generation_authority_segment(
+    generation_pointer_path: &Path,
+    active_epoch: u64,
+    workspace_identity: &str,
+    project_root: &str,
+) -> Result<WorkspaceSearchGenerationAuthority, String> {
+    if let Some(authority) = resident_search_generation_authority(generation_pointer_path) {
+        authority.validate_binding(workspace_identity, project_root)?;
+        if authority.active_epoch != active_epoch {
+            return Err(format!(
+                "resident search generation authority epoch mismatch: expected={active_epoch} actual={}",
+                authority.active_epoch
+            ));
         }
-        self.authority
-            .validate_binding(workspace_identity, project_root)?;
-        let pointer_path = Path::new(&self.generation_pointer_path);
-        if !pointer_path.is_absolute()
-            || pointer_path.file_name().and_then(|name| name.to_str())
-                != Some("active-generation.pointer")
-        {
-            return Err("search generation authority pointer locator is invalid".to_owned());
+        return Ok(authority.as_ref().clone());
+    }
+    let path = search_generation_authority_segment_path(generation_pointer_path, active_epoch)?;
+    let bytes = tokio::fs::read(&path).await.map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            format!(
+                "active-generation-required: search generation authority missing at {}",
+                path.display()
+            )
+        } else {
+            format!(
+                "read compact search generation authority {}: {error}",
+                path.display()
+            )
         }
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-pub struct WorkspaceSearchGenerationAuthorityPointerClient {
-    reader: WorkspaceGenerationPointerReader,
-    workspace_identity: String,
-    project_root: String,
-}
-
-pub type SharedWorkspaceSearchGenerationAuthorityPointerClient =
-    Arc<WorkspaceSearchGenerationAuthorityPointerClient>;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct WorkspaceSearchGenerationAuthorityPointerKey {
-    generation_pointer_path: PathBuf,
-    workspace_identity: String,
-    project_root: String,
-}
-
-type SharedAuthorityPointerCell =
-    tokio::sync::OnceCell<Option<SharedWorkspaceSearchGenerationAuthorityPointerClient>>;
-
-static SHARED_AUTHORITY_POINTERS: LazyLock<
-    dashmap::DashMap<WorkspaceSearchGenerationAuthorityPointerKey, Arc<SharedAuthorityPointerCell>>,
-> = LazyLock::new(dashmap::DashMap::new);
-
-impl WorkspaceSearchGenerationAuthorityPointerClient {
-    fn shared_key(
-        generation_pointer_path: &Path,
-        workspace_identity: &str,
-        project_root: &str,
-    ) -> WorkspaceSearchGenerationAuthorityPointerKey {
-        WorkspaceSearchGenerationAuthorityPointerKey {
-            generation_pointer_path: generation_pointer_path.to_path_buf(),
-            workspace_identity: workspace_identity.to_owned(),
-            project_root: project_root.to_owned(),
-        }
-    }
-
-    pub fn shared_get(
-        generation_pointer_path: &Path,
-        workspace_identity: &str,
-        project_root: &str,
-    ) -> Option<SharedWorkspaceSearchGenerationAuthorityPointerClient> {
-        let key = Self::shared_key(generation_pointer_path, workspace_identity, project_root);
-        SHARED_AUTHORITY_POINTERS
-            .get(&key)
-            .and_then(|cell| cell.get().and_then(Clone::clone))
-    }
-
-    pub(crate) fn invalidate_committed_pointer(
-        generation_pointer_path: &Path,
-        workspace_identity: &str,
-        project_root: &str,
-    ) {
-        SHARED_AUTHORITY_POINTERS.remove(&Self::shared_key(
-            generation_pointer_path,
-            workspace_identity,
-            project_root,
+    })?;
+    let authority =
+        serde_json::from_slice::<WorkspaceSearchGenerationAuthority>(&bytes).map_err(|error| {
+            format!("authority-corrupt: decode compact search generation authority: {error}")
+        })?;
+    authority.validate_binding(workspace_identity, project_root)?;
+    if authority.active_epoch != active_epoch {
+        return Err(format!(
+            "compact search generation authority epoch mismatch: expected={active_epoch} actual={}",
+            authority.active_epoch
         ));
     }
+    Ok(authority)
+}
 
-    pub async fn shared_open_path_optional(
-        generation_pointer_path: &Path,
-        workspace_identity: &str,
-        project_root: &str,
-    ) -> Result<Option<Arc<Self>>, String> {
-        let key = Self::shared_key(generation_pointer_path, workspace_identity, project_root);
-        let cell = SHARED_AUTHORITY_POINTERS
-            .entry(key.clone())
-            .or_insert_with(|| Arc::new(tokio::sync::OnceCell::new()))
-            .clone();
-        let pointer = cell
-            .get_or_try_init(|| async {
-                Self::open_path_optional(generation_pointer_path, workspace_identity, project_root)
-                    .await
-                    .map(|pointer| pointer.map(Arc::new))
-            })
-            .await?
-            .clone();
-        if pointer.is_none() {
-            SHARED_AUTHORITY_POINTERS.remove(&key);
-        }
-        Ok(pointer)
+/// Narrow fixture seam for external lifecycle/source-authority tests.
+#[doc(hidden)]
+pub async fn read_search_generation_authority_fixture(
+    generation_pointer_path: &Path,
+    active_epoch: u64,
+    workspace_identity: &str,
+    project_root: &str,
+) -> Result<WorkspaceSearchGenerationAuthority, String> {
+    read_search_generation_authority_segment(
+        generation_pointer_path,
+        active_epoch,
+        workspace_identity,
+        project_root,
+    )
+    .await
+}
+
+pub(crate) fn resident_search_generation_authority(
+    generation_pointer_path: &Path,
+) -> Option<Arc<WorkspaceSearchGenerationAuthority>> {
+    RESIDENT_SEARCH_AUTHORITIES
+        .get(generation_pointer_path)
+        .map(|authority| Arc::clone(authority.value()))
+}
+
+pub(crate) async fn publish_search_generation_authority_segment(
+    generation_pointer_path: &Path,
+    generation: &super::WorkspaceMemoryGeneration,
+) -> Result<(), String> {
+    let authority = WorkspaceSearchGenerationAuthority::from_generation(generation);
+    authority.validate_binding(&generation.workspace_identity, &generation.project_root)?;
+    let bytes = serde_json::to_vec(&authority)
+        .map_err(|error| format!("encode compact search generation authority: {error}"))?;
+    if bytes.len() > MAX_WORKSPACE_SEARCH_GENERATION_AUTHORITY_BYTES {
+        return Err(format!(
+            "search generation authority exceeds the bounded publication limit: bytes={} limit={MAX_WORKSPACE_SEARCH_GENERATION_AUTHORITY_BYTES}",
+            bytes.len(),
+        ));
     }
-
-    pub async fn open_path(
-        generation_pointer_path: &Path,
-        workspace_identity: &str,
-        project_root: &str,
-    ) -> Result<Self, String> {
-        let reader = WorkspaceGenerationPointerReader::open(generation_pointer_path).await?;
-        let client = Self {
-            reader,
-            workspace_identity: workspace_identity.to_owned(),
-            project_root: project_root.to_owned(),
-        };
-        client.read()?;
-        Ok(client)
-    }
-
-    pub async fn open_path_optional(
-        generation_pointer_path: &Path,
-        workspace_identity: &str,
-        project_root: &str,
-    ) -> Result<Option<Self>, String> {
-        let Some(reader) =
-            WorkspaceGenerationPointerReader::open_optional(generation_pointer_path).await?
-        else {
-            return Ok(None);
-        };
-        let client = Self {
-            reader,
-            workspace_identity: workspace_identity.to_owned(),
-            project_root: project_root.to_owned(),
-        };
-        client.read()?;
-        Ok(Some(client))
-    }
-
-    pub async fn open(
-        receipt: &WorkspaceSearchGenerationAuthorityOpenReceipt,
-        workspace_identity: &str,
-        project_root: &str,
-    ) -> Result<Self, String> {
-        receipt.validate_binding(workspace_identity, project_root)?;
-        let client = Self::open_path(
-            Path::new(&receipt.generation_pointer_path),
-            workspace_identity,
-            project_root,
+    let path =
+        search_generation_authority_segment_path(generation_pointer_path, generation.active_epoch)?;
+    let temporary = path.with_extension("json.pending");
+    let mut file = tokio::fs::File::create(&temporary).await.map_err(|error| {
+        format!(
+            "create compact search generation authority {}: {error}",
+            temporary.display()
         )
-        .await?;
-        let mapped = client.read()?;
-        if mapped.active_epoch < receipt.authority.active_epoch {
-            return Err(
-                "search generation authority pointer is older than its open receipt".to_owned(),
-            );
-        }
-        Ok(client)
-    }
-
-    pub fn read(&self) -> Result<WorkspaceSearchGenerationAuthority, String> {
-        let snapshot = self.reader.read()?;
-        if snapshot.workspace_identity != self.workspace_identity {
-            return Err("search generation authority pointer workspace drift".to_owned());
-        }
-        WorkspaceSearchGenerationAuthority::from_snapshot(&self.project_root, &snapshot)
-    }
+    })?;
+    use tokio::io::AsyncWriteExt;
+    file.write_all(&bytes).await.map_err(|error| {
+        format!(
+            "write compact search generation authority {}: {error}",
+            temporary.display()
+        )
+    })?;
+    file.sync_all().await.map_err(|error| {
+        format!(
+            "sync compact search generation authority {}: {error}",
+            temporary.display()
+        )
+    })?;
+    drop(file);
+    tokio::fs::rename(&temporary, &path)
+        .await
+        .map_err(|error| {
+            format!(
+                "publish compact search generation authority {}: {error}",
+                path.display()
+            )
+        })?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| "search generation authority path has no parent".to_owned())?;
+    let directory = tokio::fs::File::open(parent)
+        .await
+        .map_err(|error| format!("open authority directory for durability: {error}"))?;
+    directory
+        .sync_all()
+        .await
+        .map_err(|error| format!("sync authority directory after atomic rename: {error}"))?;
+    RESIDENT_SEARCH_AUTHORITIES.insert(generation_pointer_path.to_path_buf(), Arc::new(authority));
+    Ok(())
 }

@@ -1,0 +1,112 @@
+#+title: Search Command Diagnostics
+#+property: ID 10.05.11.08-search-command-diagnostics
+
+* Status
+
+Normative v1 contract for agent-facing =search= and =query= diagnostics.
+
+* Problem
+
+Large workspaces routinely expose search latency failures without enough typed
+evidence to distinguish workspace admission, generation open, MemoryBackend,
+provider projection, graph construction, resident ranking, rendering, or
+telemetry admission.  Adding ad-hoc text or widening a deadline hides the bug
+and cannot be queried from Turso.
+
+* Authority model
+
+Diagnostics have one request-local observation context and three independent
+projections:
+
+- =--verbose= is the result-explanation projection.  It may add bounded facts
+  explaining selected candidates and next actions.
+- =--debug= is the state-diagnostic projection.  It exposes typed workspace,
+  generation, cache, provider, router, and failure state.
+- =--trace= is the temporal-causality projection.  It exposes ordered exclusive
+  and cumulative stage latency plus typed resource counters.
+
+The flags are not aliases and none implies another.  All three consume the
+same observation context so command identity, stage identity, and failure
+classification cannot drift between renderers.
+
+* CLI contract
+
+The public surfaces are:
+
+#+begin_example
+asp <language> search ... [--verbose] [--debug] [--trace]
+asp <language> query  ... [--verbose] [--debug] [--trace]
+#+end_example
+
+ASP consumes these flags before provider argument parsing.  A flag after the
+explicit =--= boundary remains provider data.  Repeating a diagnostics flag is
+invalid.  No legacy spelling or compatibility alias is admitted.
+
+Normal stdout is byte-identical with and without diagnostics.  Diagnostics are
+one typed JSON receipt on stderr.  Enabling diagnostics cannot change route,
+rank, budget, cache policy, retry policy, provider selection, or result
+cardinality.
+
+* Identity and concurrency
+
+=commandIdentity= is derived from language id, command kind, canonical
+workspace identity, and normalized semantic arguments after diagnostics flags
+are removed.  Wall-clock time is excluded.  =traceId= identifies one execution
+and is distinct for concurrent executions of the same command.
+
+The context is request-local.  Process-global mutable current-trace state is
+forbidden.  Concurrent sessions and workspaces cannot exchange stages,
+counters, identities, or projection flags.
+
+* Trace stages
+
+Every stage has a monotonic sequence, exclusive elapsed microseconds, and
+cumulative elapsed microseconds.  Registered stage families include:
+
+- command parse
+- workspace session lookup
+- active generation read
+- MemoryBackend lookup
+- provider projection
+- graph construction
+- resident graph rank
+- result rendering
+- OpenTelemetry admission
+
+Counters are typed, not embedded only in prose: DB opens, binary reads,
+manifest writes, provider process starts, IPC requests, cache hits, and cache
+misses.  A warm resident search is required to report zero DB opens, binary
+reads, manifest writes, and provider process starts.
+
+* Failure audit
+
+Budget and lifecycle failures are always recorded, even when no diagnostics
+flag is present.  A budget-exceeded observation is a bug and carries
+=bug=true=.  =--trace= makes its stage breakdown immediately visible; it does
+not create the durable observation.
+
+OpenTelemetry spans and the Turso exporter preserve typed command identity,
+command kind, trace id, stage sequence, budget status, and bug classification.
+Repeated delivery of the same event identity is idempotent.
+
+* Refinement obligations
+
+1. Erasing the diagnostics receipt from a traced execution yields the same
+   semantic stdout and exit state as the untraced execution.
+2. Stage sequences are strictly increasing and cumulative elapsed time is
+   monotonic.
+3. A request-local context cannot contain stages from another trace id.
+4. =budget-exceeded= implies =bug=true=.
+5. Diagnostics do not introduce an additional provider process, DB open,
+   manifest write, or generation publication.
+
+* Empirical gates
+
+- traced and untraced stdout are byte-identical;
+- concurrent traces remain isolated across sessions and workspaces;
+- trace overhead is measured separately and must remain within the registered
+  diagnostics overhead budget;
+- forced budget failures are queryable from Turso by command identity and trace
+  id;
+- large-repository cold and warm receipts name the dominant stage rather than
+  returning only an aggregate wall failure.

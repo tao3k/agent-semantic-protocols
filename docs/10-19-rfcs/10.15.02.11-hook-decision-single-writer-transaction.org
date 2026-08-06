@@ -93,15 +93,28 @@ NOT synchronously wait for Ready inside =install= and then repeat the same
 readiness wait in the command adapter.  Readiness is observed by the separate
 healthcheck transition under its own bounded phase.
 
-An exact =ASP_NO_AGENT=1= is a bootstrap-owned maintenance switch.  It may be
-inherited by the Hook process or appear as the exact leading shell assignment
-of the intercepted command.  The bootstrap MUST inspect that raw leading
-assignment before semantic token normalization, because normalization removes
-environment assignments.  It MUST return the empty platform passthrough before
-endpoint discovery, activation/config loading, resident evaluation, or event
-persistence.  A later command segment or any other value does not opt out.
-This switch is an operator maintenance boundary, not an evaluator fallback,
-and therefore never attempts local policy classification.
+=ASP_NO_AGENT=1= is only a bootstrap-owned break-glass request; it is never
+authority by itself. Inherited or inline use without a matching
+=ASP_BREAK_GLASS_CAPABILITY=<nonce>= MUST continue through normal fail-closed
+policy evaluation. The former naked maintenance switch is removed.
+
+An operator-approved =asp hook break-glass mint= operation creates one pending
+=hook-break-glass-capability.v1= receipt under State Home. It binds the canonical
+workspace root, Hook root session, exact protected-command digest, latest denied
+Hook evidence reference, a restricted invariant-defect kind, issue/expiry time,
+and nonce. Minting requires the newest denied Hook command to equal the protected
+command. TTL is bounded to sixty seconds. In Codex, writing this State Home
+authority crosses the workspace sandbox and therefore requires explicit user
+approval.
+
+The bootstrap inspects the raw leading request before semantic normalization,
+loads only =pending/<nonce>.json= from its canonical State Home directory, and
+validates every binding. Authorization atomically renames that receipt into the
+consumed directory before returning empty platform passthrough. The same nonce
+cannot race or replay; command, workspace, session, TTL, or evidence drift fails
+closed. Consumption appends an audit record. The capability is evaluated before
+endpoint discovery or activation loading so it can repair an absolute bootstrap
+defect, but it is never an evaluator fallback or an Org lifecycle choice.
 
 When the runtime authority is unavailable, the same bootstrap kernel also
 admits the exact =asp install binary --target CANONICAL_RUNTIME_ASP= shape.

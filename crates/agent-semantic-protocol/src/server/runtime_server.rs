@@ -1,8 +1,6 @@
-use agent_semantic_client_db::runtime_server::RuntimeServer;
 use agent_semantic_client_db::runtime_server_control::prewarm_runtime_server_status_memory;
 use agent_semantic_client_db::{
-    RuntimeServerControlReceipt, RuntimeServerOperation, WorkspaceDbRegistry,
-    acquire_runtime_server_election, call_runtime_server, prepare_runtime_server_endpoint,
+    RuntimeServerControlReceipt, RuntimeServerOperation, call_runtime_server,
     runtime_server_endpoint_path,
 };
 use clap::{Command, CommandFactory, Parser, Subcommand};
@@ -10,8 +8,10 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-#[path = "runtime_server_hook_evaluation.rs"]
-pub(crate) mod runtime_server_hook_evaluation;
+#[path = "runtime_server_agent_config.rs"]
+mod runtime_server_agent_config;
+#[path = "runtime_server_daemon.rs"]
+mod runtime_server_daemon;
 #[path = "runtime_server_stop.rs"]
 mod runtime_server_stop;
 #[path = "runtime_server_telemetry_command.rs"]
@@ -163,6 +163,7 @@ fn agent_facing_wall_budget_error(
         ) {
             observation.workspace_identity = Some(admission.workspace_identity);
         }
+        observation.seal_budget_failure_identity();
         if let Ok(runtime) =
             agent_semantic_client_db::runtime_server_runtime::RuntimeServerClientExecutor::get()
         {
@@ -226,29 +227,7 @@ pub(crate) async fn runtime_server_workspace_session_for_admission_async(
     .await
 }
 
-pub(crate) fn runtime_server_hook_evaluation_client(
-    project_root: &Path,
-    arguments: Vec<String>,
-    input: String,
-) -> Result<String, String> {
-    let started = tokio::time::Instant::now();
-    let project_root = project_root.to_path_buf();
-    let budget_project_root = project_root.clone();
-    block_on_agent_facing_runtime_server_client(
-        started,
-        "hook",
-        "runtime-server-hook-evaluation",
-        &budget_project_root,
-        async move {
-            runtime_server_workspace_session_for_admission_async(&project_root)
-                .await?
-                .evaluate_hook(arguments, input)
-                .await
-        },
-    )
-}
-
-async fn runtime_server_admitted_workspace_scope(
+pub(super) async fn runtime_server_admitted_workspace_scope(
     project_root: &Path,
 ) -> Result<(String, PathBuf), String> {
     if !project_root.is_absolute() {
@@ -269,141 +248,10 @@ async fn runtime_server_admitted_workspace_scope(
     Ok((entry.workspace_identity, entry.project_root))
 }
 
-pub(crate) async fn runtime_server_workspace_generation_client_async(
-    project_root: &Path,
-) -> Result<
-    agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneClient,
-    String,
-> {
-    let (workspace_identity, canonical_project_root) =
-        runtime_server_admitted_workspace_scope(project_root).await?;
-    let state_home = state_home()?;
-    let endpoint = read_endpoint(&runtime_server_endpoint_path(&state_home)).await?;
-    let workspace_store_root = Path::new(&endpoint.workspace_store_path);
-    let pointer_path =
-        agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
-            workspace_store_root,
-            &workspace_identity,
-            &canonical_project_root,
-        )?;
-    use agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneOpen;
-    let open = agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneClient::open_state(
-        &pointer_path,
-    )
-    .await?;
-    match open {
-        WorkspaceGenerationDataPlaneOpen::Ready(client) => Ok(client),
-        WorkspaceGenerationDataPlaneOpen::Missing => {
-            super::runtime_server_generation::ensure_runtime_generation_ready_for_projection_async(
-                project_root,
-            )
-            .await?;
-            match agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneClient::open_state(
-                &pointer_path,
-            )
-            .await?
-            {
-                WorkspaceGenerationDataPlaneOpen::Ready(client) => Ok(client),
-                WorkspaceGenerationDataPlaneOpen::Missing => Err(format!(
-                    "resident workspace generation is building after daemon admission: reasonKind=active-workspace-generation-building retryAfterMs=250 workspace={} workspaceIdentity={workspace_identity}",
-                    project_root.display()
-                )),
-                WorkspaceGenerationDataPlaneOpen::RecoveryRequired { reason } => Err(format!(
-                    "resident workspace generation requires supervisor reconciliation after daemon admission: reasonKind=active-workspace-generation-reconciliation-required workspace={} workspaceIdentity={workspace_identity} reason={reason}",
-                    project_root.display()
-                )),
-            }
-        }
-        WorkspaceGenerationDataPlaneOpen::RecoveryRequired { reason } => Err(format!(
-            "resident workspace generation requires supervisor reconciliation: reasonKind=active-workspace-generation-reconciliation-required workspace={} workspaceIdentity={workspace_identity} reason={reason}",
-            project_root.display()
-        )),
-    }
-}
-
-/// Open the immutable exact-projection segment for the currently published
-/// workspace generation.
-///
-/// This is the resident query data plane: it follows the atomic generation
-/// pointer and memory-maps the exact segment without contacting the Runtime
-/// Server on a warm hit. A missing generation performs one typed daemon
-/// admission and reopens once; reconciliation-required state remains a
-/// fail-closed control-plane error.
-pub(crate) async fn runtime_server_workspace_exact_projection_client_async(
-    project_root: &Path,
-) -> Result<
-    agent_semantic_client_db::runtime_server_workspace::WorkspaceExactProjectionDataPlaneClient,
-    String,
-> {
-    let (workspace_identity, canonical_project_root) =
-        runtime_server_admitted_workspace_scope(project_root).await?;
-    let state_home = state_home()?;
-    let endpoint = read_endpoint(&runtime_server_endpoint_path(&state_home)).await?;
-    let workspace_store_root = Path::new(&endpoint.workspace_store_path);
-    let pointer_path =
-        agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
-            workspace_store_root,
-            &workspace_identity,
-            &canonical_project_root,
-        )?;
-    use agent_semantic_client_db::runtime_server_workspace::{
-        WorkspaceExactProjectionDataPlaneClient, WorkspaceExactProjectionDataPlaneOpen,
-    };
-    match WorkspaceExactProjectionDataPlaneClient::open_state(&pointer_path).await? {
-        WorkspaceExactProjectionDataPlaneOpen::Ready(client) => Ok(client),
-        WorkspaceExactProjectionDataPlaneOpen::Missing => {
-            super::runtime_server_generation::ensure_runtime_generation_ready_for_projection_async(
-                project_root,
-            )
-            .await?;
-            match WorkspaceExactProjectionDataPlaneClient::open_state(&pointer_path).await? {
-                WorkspaceExactProjectionDataPlaneOpen::Ready(client) => Ok(client),
-                WorkspaceExactProjectionDataPlaneOpen::Missing => Err(format!(
-                    "resident workspace exact generation is building after daemon admission: reasonKind=active-workspace-generation-building retryAfterMs=250 workspace={} workspaceIdentity={workspace_identity}",
-                    project_root.display()
-                )),
-                WorkspaceExactProjectionDataPlaneOpen::RecoveryRequired { reason } => Err(format!(
-                    "resident workspace exact generation requires supervisor reconciliation after daemon admission: reasonKind=active-workspace-generation-reconciliation-required workspace={} workspaceIdentity={workspace_identity} reason={reason}",
-                    project_root.display()
-                )),
-            }
-        }
-        WorkspaceExactProjectionDataPlaneOpen::RecoveryRequired { reason } => Err(format!(
-            "resident workspace exact generation requires supervisor reconciliation: reasonKind=active-workspace-generation-reconciliation-required workspace={} workspaceIdentity={workspace_identity} reason={reason}",
-            project_root.display()
-        )),
-    }
-}
-
-pub(crate) fn runtime_server_current_source_index_snapshot_from_client(
-    client: &agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneClient,
-) -> Result<agent_semantic_client::source_index::CurrentSourceIndexSnapshot, String> {
-    let lease = client.lease();
-    lease.generation().validate()?;
-    let workspace_generation =
-        agent_semantic_content_identity::workspace_generation_evidence::ValidatedWorkspaceGenerationV1::new(
-            lease.generation().workspace_generation.clone(),
-        )
-        .map_err(|error| {
-            format!("resident workspace generation evidence is incomplete: {error}")
-        })?;
-    let source_blobs = agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
-        lease.generation().owners.iter().map(|owner| {
-            (
-                agent_semantic_client_db::ClientDbSourceIndexPath::from(owner.owner_path.as_str()),
-                owner.bytes.clone(),
-            )
-        }),
-    );
-    Ok(
-        agent_semantic_client::source_index::CurrentSourceIndexSnapshot {
-            workspace_snapshot: lease.generation().workspace_snapshot.clone(),
-            source_snapshot: lease.generation().source_snapshot.clone(),
-            workspace_generation,
-            source_blobs,
-        },
-    )
-}
+pub(crate) use super::runtime_server_generation_data_plane::{
+    RuntimeServerSearchDataPlane, RuntimeServerSearchSnapshot,
+    runtime_server_search_data_plane_async,
+};
 
 pub(crate) fn run_runtime_server_command(args: &[String]) -> Result<(), String> {
     let parsed = ServerArgs::try_parse_from(
@@ -415,7 +263,7 @@ pub(crate) fn run_runtime_server_command(args: &[String]) -> Result<(), String> 
             .enable_all()
             .build()
             .map_err(|error| format!("failed to create ASP Runtime Server Tokio runtime: {error}"))?
-            .block_on(run_daemon()),
+            .block_on(runtime_server_daemon::run_daemon()),
         command => {
             block_on_runtime_server_supervisor_client(
                 "server",
@@ -439,6 +287,20 @@ pub(crate) fn run_runtime_server_command(args: &[String]) -> Result<(), String> 
     }
 }
 
+pub(crate) async fn runtime_server_workspace_exact_projection_async(
+    project_root: &Path,
+    projection_kind: &str,
+    structural_selector: &str,
+) -> Result<agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead, String>
+{
+    super::runtime_server_generation_data_plane::runtime_server_workspace_exact_projection_async(
+        project_root,
+        projection_kind,
+        structural_selector,
+    )
+    .await
+}
+
 async fn run_control(operation: RuntimeServerOperation) -> Result<(), String> {
     let state_home = state_home()?;
     let artifact_catalog =
@@ -447,7 +309,13 @@ async fn run_control(operation: RuntimeServerOperation) -> Result<(), String> {
         )
         .await?;
     if operation == RuntimeServerOperation::Reconcile {
-        super::runtime_server_supervisor::reconcile_runtime_server_supervisor(&state_home).await?;
+        let agent_config_sync =
+            runtime_server_agent_config::synchronize_for_reconcile(&artifact_catalog, &state_home)
+                .await?;
+        let provider_catalog =
+            crate::command::reconcile_global_provider_catalog_for_runtime(&state_home)?;
+        super::runtime_server_supervisor::reconcile_runtime_server_supervisor_explicit(&state_home)
+            .await?;
         crate::command::protocol_binary::prune_runtime_binary_artifacts(
             &state_home.join("runtime").join("artifacts"),
         )?;
@@ -461,6 +329,12 @@ async fn run_control(operation: RuntimeServerOperation) -> Result<(), String> {
                 "runtimeArtifactPath": state_home.join("runtime").join("bin").join("asp"),
                 "artifactMode": artifact_catalog.mode_label(),
                 "artifactCatalogDigest": artifact_catalog.digest(),
+                "agentConfigSync": agent_config_sync,
+                "providerCatalog": {
+                    "catalogGeneration": provider_catalog.catalog_generation,
+                    "providerCount": provider_catalog.provider_count,
+                    "elapsedMicros": provider_catalog.elapsed_micros,
+                },
                 "readinessAuthority": "asp healthcheck",
             })
         );
@@ -472,8 +346,10 @@ async fn run_control(operation: RuntimeServerOperation) -> Result<(), String> {
     let endpoint = match endpoint {
         Ok(endpoint) => endpoint,
         Err(error) if operation == RuntimeServerOperation::Restart => {
-            super::runtime_server_supervisor::reconcile_runtime_server_supervisor(&state_home)
-                .await?;
+            super::runtime_server_supervisor::reconcile_runtime_server_supervisor_explicit(
+                &state_home,
+            )
+            .await?;
             let runtime_artifact_path = state_home.join("runtime").join("bin").join("asp");
             let runtime_artifact_digest =
                 crate::command::protocol_binary::canonical_protocol_binary_artifact_digest(
@@ -511,8 +387,10 @@ async fn run_control(operation: RuntimeServerOperation) -> Result<(), String> {
     {
         Ok(receipt) => receipt,
         Err(error) if operation == RuntimeServerOperation::Restart => {
-            super::runtime_server_supervisor::reconcile_runtime_server_supervisor(&state_home)
-                .await?;
+            super::runtime_server_supervisor::reconcile_runtime_server_supervisor_explicit(
+                &state_home,
+            )
+            .await?;
             RuntimeServerControlReceipt::starting(
                 request_identity("control-recovery").await?,
                 crate::command::protocol_binary::canonical_protocol_binary_artifact_digest(
@@ -651,23 +529,6 @@ pub(crate) async fn healthcheck_runtime_server_at(
 /// restarts, or waits on the supervisor. Admission can therefore spend its
 /// small read budget on one status request and hand repair to the separately
 /// bounded supervisor path.
-pub(crate) async fn probe_healthy_runtime_server_at(state_home: &Path) -> Result<bool, String> {
-    let endpoint = read_supervisor_endpoint(&runtime_server_endpoint_path(state_home)).await?;
-    prewarm_runtime_server_status_memory(&endpoint).await?;
-    let receipt = call_runtime_server(
-        &endpoint,
-        RuntimeServerOperation::Status,
-        endpoint.runtime_artifact_digest.clone(),
-        request_identity("agent-session-runtime-probe").await?,
-    )
-    .await?;
-    Ok(receipt.state
-        == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
-        && tokio::net::UnixStream::connect(runtime_server_telemetry_query_socket_path(state_home))
-            .await
-            .is_ok())
-}
-
 async fn print_receipt(receipt: &RuntimeServerControlReceipt) -> Result<(), String> {
     let mut bytes = serde_json::to_vec(receipt)
         .map_err(|error| format!("failed to encode Runtime Server receipt: {error}"))?;
@@ -690,235 +551,6 @@ mod graph_turbo_daemon;
 #[path = "runtime_server_singleton_socket.rs"]
 mod singleton_socket;
 
-async fn run_daemon() -> Result<(), String> {
-    agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
-    let election = acquire_runtime_server_election()
-        .await
-        .map_err(|error| format!("failed to acquire Runtime Server election: {error}"))?;
-    let state_home = state_home()?;
-    let singleton_socket_guard = match singleton_socket::acquire(&state_home).await? {
-        singleton_socket::SingletonSocketElection::Acquired(guard) => guard,
-        singleton_socket::SingletonSocketElection::ResidentExists => return Ok(()),
-    };
-    let workspace_store =
-        agent_semantic_client_db::runtime_server_workspace::prepare_runtime_server_workspace_store(
-            &state_home.join("runtime").join("server"),
-        )
-        .await
-        .map_err(|error| format!("failed to prepare Runtime Server workspace store: {error}"))?;
-    ensure_runtime_protocol_binary_user_path_alias(&state_home)?;
-    let runtime_artifact_path = std::env::current_exe()
-        .map_err(|error| format!("failed to resolve running ASP artifact: {error}"))?;
-    let runtime_artifact_digest =
-        crate::command::protocol_binary::canonical_protocol_binary_artifact_digest(
-            &runtime_artifact_path,
-        )
-        .await?;
-    let artifact_catalog =
-        agent_semantic_runtime::runtime_artifact_catalog::load_runtime_artifact_catalog(
-            &state_home,
-        )
-        .await?;
-    let (owner_epoch, binding_token) = daemon_identity().await?;
-    let endpoint = prepare_runtime_server_endpoint(
-        &runtime_artifact_path,
-        &runtime_artifact_digest,
-        artifact_catalog.mode_label(),
-        &artifact_catalog.digest(),
-        owner_epoch,
-        &binding_token,
-    )
-    .await?;
-    let socket_path = PathBuf::from(&endpoint.socket_path);
-    let data_plane_socket_path = PathBuf::from(&endpoint.data_plane_socket_path);
-    let telemetry_socket_path = runtime_server_telemetry_socket_path(&state_home);
-    let telemetry_query_socket_path = runtime_server_telemetry_query_socket_path(&state_home);
-    remove_stale_socket(&socket_path).await?;
-    remove_stale_socket(&data_plane_socket_path).await?;
-    remove_stale_socket(&telemetry_socket_path).await?;
-    remove_stale_socket(&telemetry_query_socket_path).await?;
-
-    let admission_catalog =
-        agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog::load(
-            state_home
-                .join("runtime")
-                .join("server")
-                .join("workspace-admissions.v1.json"),
-        )
-        .await?;
-    let hook_snapshot_authority =
-        runtime_server_hook_evaluation::ResidentHookSnapshotAuthority::start(
-            admission_catalog.clone(),
-            workspace_store.root().to_path_buf(),
-            state_home
-                .join("runtime")
-                .join("server")
-                .join("hook-snapshot.v1.memory"),
-        )
-        .await?;
-    let hook_evaluation_builder = hook_snapshot_authority.evaluator();
-    let agent_session_registry_owner = std::sync::Arc::new(
-        agent_semantic_client_db::AgentSessionRegistry::open_or_create_state_root_async(
-            &state_home,
-        )
-        .await?,
-    );
-    let (diagnostic_events, diagnostics) =
-        agent_semantic_client_db::runtime_server_diagnostics::RuntimeServerDiagnostics::start(
-            state_home
-                .join("runtime")
-                .join("server")
-                .join("runtime-server-diagnostic.v1.json"),
-        )
-        .await?;
-    let opentelemetry =
-        agent_semantic_client_db::runtime_server_opentelemetry::RuntimeServerOpenTelemetry::start(
-            state_home
-                .join("runtime")
-                .join("server")
-                .join("runtime-server-telemetry.turso"),
-            telemetry_socket_path.clone(),
-            telemetry_query_socket_path.clone(),
-        )
-        .await?;
-    let provider_catalog_generation =
-        crate::command::global_provider_catalog::read_global_provider_catalog_readiness()?
-            .catalog_generation;
-    let generation_builder_catalog = provider_catalog_generation.clone();
-    let generation_builder: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateBuilder =
-        std::sync::Arc::new(move |_workspace_identity, project_root| {
-            let provider_catalog_generation = generation_builder_catalog.clone();
-            Box::pin(async move {
-                let (registry, current_catalog_generation) =
-                    crate::command::global_provider_catalog::runtime_provider_registry_snapshot(
-                        &project_root,
-                    )?;
-                if current_catalog_generation != provider_catalog_generation {
-                    return Err(format!(
-                        "runtime provider catalog advanced after daemon admission: admitted={} current={}",
-                        provider_catalog_generation, current_catalog_generation
-                    ));
-                }
-                let mut build = agent_semantic_client::source_index::
-                    prepare_runtime_server_workspace_generation_with_registry_async(
-                        project_root,
-                        registry,
-                    )
-                    .await?;
-                build.materialization.provider_schema_digest = current_catalog_generation;
-                Ok(build)
-            })
-        });
-    let owner_builder_catalog = provider_catalog_generation.clone();
-    let owner_projection_builder: agent_semantic_client_db::runtime_server_admission::WorkspaceOwnerProjectionBuilder =
-        std::sync::Arc::new(move |workspace_identity, project_root, owner_path, language_id| {
-            let provider_catalog_generation = owner_builder_catalog.clone();
-            Box::pin(async move {
-                let (registry, current_catalog_generation) =
-                    crate::command::global_provider_catalog::runtime_provider_registry_snapshot(
-                        &project_root,
-                    )?;
-                if current_catalog_generation != provider_catalog_generation {
-                    return Err(format!(
-                        "runtime provider catalog advanced after daemon admission: admitted={} current={}",
-                        provider_catalog_generation, current_catalog_generation
-                    ));
-                }
-                agent_semantic_client::source_index::
-                    prepare_runtime_server_owner_projection_with_registry_async(
-                        project_root,
-                        workspace_identity,
-                        owner_path,
-                        language_id,
-                        registry,
-                    )
-                    .await
-            })
-        });
-    let locator_catalog = admission_catalog.clone();
-    let server = RuntimeServer::bind_and_publish_with_artifact_catalog(
-        endpoint.clone(),
-        std::sync::Arc::new(WorkspaceDbRegistry::default()),
-        &runtime_server_endpoint_path(&state_home),
-        workspace_store,
-        std::sync::Arc::new(artifact_catalog),
-    )
-    .await
-    .map_err(|error| format!("failed to bind and publish Runtime Server: {error}"))?
-    .with_event_sender(diagnostic_events)
-    .with_workspace_generation_and_owner_builders_catalog_identity(
-        generation_builder,
-        owner_projection_builder,
-        admission_catalog,
-        provider_catalog_generation,
-    )
-    .with_agent_session_registry_owner(agent_session_registry_owner);
-    let server = server.with_hook_evaluation_builder(hook_evaluation_builder);
-    let hook_admission_locator =
-        agent_semantic_client_db::runtime_server_hook_admission_locator::spawn_runtime_hook_admission_locator(
-            state_home.clone(),
-            endpoint.clone(),
-            locator_catalog,
-        )
-        .await?;
-    let mut graph_turbo =
-        graph_turbo_daemon::GraphTurboDaemon::start_from_environment(&state_home).await;
-    let server = server.with_graph_turbo_resident_status(graph_turbo.status());
-    let server = match graph_turbo.evaluation_builder() {
-        Some(builder) => server.with_graph_turbo_evaluation_builder(builder),
-        None => server,
-    };
-    let result = server.serve().await.map(|_| ());
-    let result = match (result, hook_snapshot_authority.shutdown().await) {
-        (Ok(()), Ok(())) => Ok(()),
-        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
-        (Err(server_error), Err(hook_error)) => Err(format!(
-            "Runtime Server failed and Hook snapshot authority did not drain: server={server_error}; hook={hook_error}"
-        )),
-    };
-    let result = match (result, hook_admission_locator.shutdown().await) {
-        (Ok(()), Ok(())) => Ok(()),
-        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
-        (Err(server_error), Err(locator_error)) => Err(format!(
-            "Runtime Server failed and Hook admission locator did not drain: server={server_error}; locator={locator_error}"
-        )),
-    };
-    let result = match (result, graph_turbo.shutdown().await) {
-        (Ok(()), Ok(())) => Ok(()),
-        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
-        (Err(server_error), Err(graph_turbo_error)) => Err(format!(
-            "Runtime Server failed and Graph Turbo did not drain: server={server_error}; graphTurbo={graph_turbo_error}"
-        )),
-    };
-    let result = match (result, opentelemetry.shutdown().await) {
-        (Ok(()), Ok(())) => Ok(()),
-        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
-        (Err(server_error), Err(telemetry_error)) => Err(format!(
-            "Runtime Server failed and OpenTelemetry did not drain: server={server_error}; telemetry={telemetry_error}"
-        )),
-    };
-    let diagnostic_result = diagnostics.join().await;
-    cleanup_endpoint(&state_home, &endpoint).await;
-    let _ = tokio::fs::remove_file(&telemetry_socket_path).await;
-    let _ = tokio::fs::remove_file(&telemetry_query_socket_path).await;
-    let singleton_result = singleton_socket_guard.release().await;
-    let result = match (result, singleton_result) {
-        (Ok(()), Ok(())) => Ok(()),
-        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
-        (Err(server_error), Err(singleton_error)) => Err(format!(
-            "Runtime Server failed and singleton socket did not release: server={server_error}; singleton={singleton_error}"
-        )),
-    };
-    drop(election);
-    match (result, diagnostic_result) {
-        (Ok(()), Ok(())) => Ok(()),
-        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
-        (Err(server_error), Err(diagnostic_error)) => Err(format!(
-            "Runtime Server failed and diagnostic lane did not drain: server={server_error}; diagnostics={diagnostic_error}"
-        )),
-    }
-}
-
 fn ensure_runtime_protocol_binary_user_path_alias(protocol_home: &Path) -> Result<PathBuf, String> {
     let home = std::env::var_os("HOME")
         .filter(|value| !value.is_empty())
@@ -931,7 +563,7 @@ fn ensure_runtime_protocol_binary_user_path_alias(protocol_home: &Path) -> Resul
     Ok(alias)
 }
 
-fn state_home() -> Result<PathBuf, String> {
+pub(crate) fn state_home() -> Result<PathBuf, String> {
     if let Some(path) = std::env::var_os("ASP_STATE_HOME").filter(|value| !value.is_empty()) {
         return Ok(PathBuf::from(path));
     }
@@ -941,7 +573,7 @@ fn state_home() -> Result<PathBuf, String> {
     Ok(PathBuf::from(home).join(".agent-semantic-protocols"))
 }
 
-fn runtime_server_telemetry_socket_path(state_home: &Path) -> PathBuf {
+pub(crate) fn runtime_server_telemetry_socket_path(state_home: &Path) -> PathBuf {
     state_home
         .join("runtime")
         .join("server")

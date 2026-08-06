@@ -39,15 +39,13 @@ pub(super) struct ProviderGraphFactsContext<'a> {
     pub(super) profiles: &'a RuntimeProfiles,
 }
 
-pub(super) fn collect_provider_graph_facts(
+pub(super) async fn collect_provider_graph_facts(
     language_id: &str,
     project_root: &Path,
     query: Option<&str>,
     candidates: &[Candidate],
     context: Option<&ProviderGraphFactsContext<'_>>,
-    source_index_client: Option<
-        &agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneClient,
-    >,
+    search_data_plane: Option<&crate::server::runtime_server::RuntimeServerSearchDataPlane>,
 ) -> Result<ProviderGraphFacts, String> {
     let Some(context) = context else {
         return Ok(ProviderGraphFacts::default());
@@ -70,25 +68,30 @@ pub(super) fn collect_provider_graph_facts(
     let fact_candidates = provider_fact_candidates(candidates);
     let input_candidates = candidates.len();
     let truncated_candidates = input_candidates.saturating_sub(fact_candidates.len());
-    let source_index_client = source_index_client.ok_or_else(|| {
+    let search_data_plane = search_data_plane.ok_or_else(|| {
         format!(
             "resident provider relation generation is required: language={language_id} workspace={}",
             project_root.display()
         )
     })?;
-    let lease = source_index_client.lease();
-    let mut relations = Vec::new();
+    let mut sources = Vec::new();
     for candidate in &fact_candidates {
         if let Some(selector) = candidate.selector.as_deref() {
-            relations.extend(lease.relations_from("item", selector).into_iter().cloned());
+            sources.push(
+                agent_semantic_client_db::workspace_db_ipc::RuntimeGraphFactSource {
+                    kind: "item".to_owned(),
+                    id: selector.to_owned(),
+                },
+            );
         }
-        relations.extend(
-            lease
-                .relations_from("owner", &candidate.path)
-                .into_iter()
-                .cloned(),
+        sources.push(
+            agent_semantic_client_db::workspace_db_ipc::RuntimeGraphFactSource {
+                kind: "owner".to_owned(),
+                id: candidate.path.clone(),
+            },
         );
     }
+    let mut relations = search_data_plane.read_graph_facts(sources).await?.relations;
     relations.sort();
     relations.dedup();
     let mut nodes = std::collections::BTreeMap::new();

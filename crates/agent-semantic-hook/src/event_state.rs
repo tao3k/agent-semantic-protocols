@@ -1,12 +1,12 @@
 //! Append-only hook event state persisted by `asp hook`.
 
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use agent_semantic_runtime::ensure_project_hook_state_dir;
+use fs2::FileExt;
 use serde_json::{Value, json};
 
 use crate::event_replay::{
@@ -21,7 +21,7 @@ const HOOK_EVENT_SCHEMA_ID: &str = "agent.semantic-protocols.hook.event";
 const DENY_REPLAY_WINDOW_MS: u128 = 3 * 60 * 1000;
 const HOOK_EVENT_STATE_TAIL_BYTES: u64 = 1024 * 1024;
 const HOOK_EVENT_STATE_TAIL_LINE_CAP: usize = 4096;
-static HOOK_EVENT_STATE_WRITER: OnceLock<Mutex<()>> = OnceLock::new();
+const HOOK_EVENT_STATE_LOCK_TIMEOUT: Duration = Duration::from_millis(100);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HookEventSessionId(String);
@@ -80,6 +80,21 @@ impl From<String> for HookEventStateError {
     fn from(value: String) -> Self {
         Self(value)
     }
+}
+
+/// Policy selection recorded by a denied Hook event.
+///
+/// Resident identity is intentionally absent. `asp session` resolves the
+/// selected rule's semantic role through the current managed config and agent
+/// registry, so a Hook receipt cannot become a second agent registry.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HookSessionAgentRoute {
+    pub command_digest: Option<String>,
+    pub config_rule_id: String,
+    pub deny_evidence_ref: Option<String>,
+    pub reason_kind: String,
+    pub root_session_id: String,
+    pub subject_command: Option<String>,
 }
 
 fn should_preserve_agent_session_route_message(decision: &HookDecision) -> bool {
@@ -154,29 +169,11 @@ fn insert_resident_recovery_action_fields(decision: &mut HookDecision) {
     decision
         .fields
         .entry("requiredAction".to_string())
-        .or_insert_with(|| Value::String("enter-resident-choice-pane".to_string()));
+        .or_insert_with(|| Value::String("open-org-interactive-resident-agent-window".to_string()));
     decision
         .fields
         .entry("nextAction".to_string())
-        .or_insert_with(|| Value::String("choose-one-bootstrap-pane-option".to_string()));
-    decision
-        .fields
-        .entry("targetAgentName".to_string())
-        .or_insert_with(|| Value::String("asp_explorer".to_string()));
-    decision
-        .fields
-        .entry("targetAgentRole".to_string())
-        .or_insert_with(|| Value::String("asp_explorer".to_string()));
-    decision
-        .fields
-        .entry("targetAgentSelectionSource".to_string())
-        .or_insert_with(|| Value::String("hook-deny-intent".to_string()));
-    decision
-        .fields
-        .entry("targetAgentRegistrySource".to_string())
-        .or_insert_with(|| {
-            Value::String("~/.agent-semantic-protocols/agents/config.toml".to_string())
-        });
+        .or_insert_with(|| Value::String("run-asp-session-agent-window".to_string()));
     decision
         .fields
         .entry("forbiddenUntilResolved".to_string())
@@ -184,7 +181,68 @@ fn insert_resident_recovery_action_fields(decision: &mut HookDecision) {
     decision
         .fields
         .entry("completionReceipt".to_string())
-        .or_insert_with(|| Value::String("resident-choice-pane-receipt".to_string()));
+        .or_insert_with(|| Value::String("resident-agent-host-action-receipt".to_string()));
+    decision
+        .fields
+        .entry("agentWindowCommand".to_string())
+        .or_insert_with(|| Value::String("asp session --agents choice-plane".to_string()));
+}
+
+/// Return the newest denied Hook policy selection for this root session.
+pub fn latest_hook_session_agent_route(
+    project_root: &Path,
+) -> Result<Option<HookSessionAgentRoute>, String> {
+    let state_path = ensure_project_hook_state_dir(project_root)?.join(HOOK_EVENT_STATE_FILE);
+    if !state_path.is_file() {
+        return Ok(None);
+    }
+    let lines = read_hook_event_state_tail(&state_path)?;
+    Ok(latest_hook_session_agent_route_from_lines(&lines))
+}
+
+fn latest_hook_session_agent_route_from_lines(lines: &[String]) -> Option<HookSessionAgentRoute> {
+    lines.iter().rev().find_map(|line| {
+        let event = serde_json::from_str::<Value>(line).ok()?;
+        if !matches!(
+            event.get("decision").and_then(Value::as_str),
+            Some("deny" | "block")
+        ) || event
+            .pointer("/fields/agentWindowCommand")
+            .and_then(Value::as_str)
+            != Some("asp session --agents choice-plane")
+            || event
+                .pointer("/fields/choicePlaneOwner")
+                .and_then(Value::as_str)
+                != Some("org-contract:agent-interactive")
+        {
+            return None;
+        }
+        Some(HookSessionAgentRoute {
+            command_digest: event
+                .pointer("/fields/commandDigest")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            config_rule_id: required_event_string(&event, "/fields/configRuleId")?,
+            deny_evidence_ref: event
+                .pointer("/fields/recoveryRef")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            reason_kind: required_event_string(&event, "/reasonKind")?,
+            root_session_id: required_event_string(&event, "/fields/sessionId")?,
+            subject_command: event
+                .pointer("/subject/command")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+        })
+    })
+}
+
+fn required_event_string(event: &Value, pointer: &str) -> Option<String> {
+    event
+        .pointer(pointer)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
 }
 
 /// Append one compact hook decision record to `events.jsonl`.
@@ -192,12 +250,26 @@ pub fn append_hook_event_state(
     project_root: &Path,
     decision: &HookDecision,
 ) -> Result<PathBuf, String> {
+    append_hook_event_state_with_lock_timeout(project_root, decision, HOOK_EVENT_STATE_LOCK_TIMEOUT)
+}
+
+/// Try to project a decision without putting the authoritative Hook response
+/// behind the diagnostic writer's normal contention budget.
+pub fn try_append_hook_event_state(
+    project_root: &Path,
+    decision: &HookDecision,
+) -> Result<PathBuf, String> {
+    append_hook_event_state_with_lock_timeout(project_root, decision, Duration::ZERO)
+}
+
+fn append_hook_event_state_with_lock_timeout(
+    project_root: &Path,
+    decision: &HookDecision,
+    lock_timeout: Duration,
+) -> Result<PathBuf, String> {
     let state_dir = ensure_project_hook_state_dir(project_root)?;
     let state_path = state_dir.join(HOOK_EVENT_STATE_FILE);
-    let _writer = HOOK_EVENT_STATE_WRITER
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .map_err(|_| "resident hook event writer lock was poisoned".to_string())?;
+    let writer_lock = acquire_event_state_writer(&state_dir, lock_timeout)?;
     let event = json!({
         "schemaId": HOOK_EVENT_SCHEMA_ID,
         "schemaVersion": "1",
@@ -266,7 +338,49 @@ pub fn append_hook_event_state(
             )
         })?;
     }
+    FileExt::unlock(&writer_lock)
+        .map_err(|error| format!("unlock Hook event writer {}: {error}", state_dir.display()))?;
     Ok(state_path)
+}
+
+fn acquire_event_state_writer(state_dir: &Path, lock_timeout: Duration) -> Result<File, String> {
+    let lock_path = state_dir.join("events.jsonl.lock");
+    let lock = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .map_err(|error| {
+            format!(
+                "open Hook event writer lock {}: {error}",
+                lock_path.display()
+            )
+        })?;
+    let started = Instant::now();
+    loop {
+        match lock.try_lock_exclusive() {
+            Ok(()) => return Ok(lock),
+            Err(error)
+                if error.kind() == std::io::ErrorKind::WouldBlock
+                    && started.elapsed() < lock_timeout =>
+            {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                return Err(format!(
+                    "Hook event writer lock exceeded {}ms at {}",
+                    lock_timeout.as_millis(),
+                    lock_path.display()
+                ));
+            }
+            Err(error) => {
+                return Err(format!(
+                    "lock Hook event writer {}: {error}",
+                    lock_path.display()
+                ));
+            }
+        }
+    }
 }
 
 fn replace_hook_event_state(state_path: &Path, content: &[u8]) -> Result<(), String> {

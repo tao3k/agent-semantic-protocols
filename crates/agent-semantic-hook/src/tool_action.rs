@@ -9,6 +9,9 @@ use serde_json::Value;
 use crate::command::{apply_patch_source_paths, semantic_shell_tokens};
 use crate::protocol::DecisionSubject;
 
+#[path = "tool_action_exec/functions_exec.rs"]
+mod functions_exec;
+
 const ACTION_SCAN_KEYS: &[&str] = &[
     "commandActions",
     "command_actions",
@@ -389,7 +392,7 @@ impl OperationIntent {
     pub(crate) fn from_action(
         surface: ToolSurface,
         command: Option<&str>,
-        paths: &[String],
+        _paths: &[String],
     ) -> Self {
         match surface {
             ToolSurface::CodexApplyPatch => Self::ApplyPatch,
@@ -399,7 +402,6 @@ impl OperationIntent {
             ToolSurface::CodexNestedTools => Self::NestedTools,
             ToolSurface::CodexShell if command.is_some() => Self::ShellCommand,
             ToolSurface::CodexStdinContinuation if command.is_some() => Self::StdinContinuation,
-            ToolSurface::Unknown if command.is_none() && !paths.is_empty() => Self::DirectRead,
             _ => Self::Unknown,
         }
     }
@@ -428,6 +430,42 @@ pub fn direct_source_read_paths(tool_name: &str, tool_input: &Value) -> Option<V
         .into_iter()
         .find(|action| action.operation == OperationIntent::DirectRead)
         .map(|action| action.paths)
+}
+
+/// Returns whether a Codex tool envelope can reach any ASP policy-bearing
+/// action without loading configuration or contacting the Runtime Server.
+///
+/// `None` means the host envelope omitted its typed tool identity and must be
+/// handled fail-closed by the full evaluator. `Some(false)` is an authoritative
+/// no-I/O passthrough for unrelated actions such as planning or UI tools.
+pub fn codex_tool_event_requires_policy_evaluation(payload: &Value) -> Option<bool> {
+    let tool_name = payload
+        .get("tool_name")
+        .or_else(|| payload.get("toolName"))?
+        .as_str()?;
+    let tool_input = payload
+        .get("tool_input")
+        .or_else(|| payload.get("toolInput"))
+        .unwrap_or(&Value::Null);
+    let actions = collect_tool_actions(tool_name, tool_input);
+    if actions
+        .iter()
+        .any(|action| action.operation != OperationIntent::Unknown)
+    {
+        return Some(true);
+    }
+    // A dynamic or unsupported JavaScript envelope is still policy-bearing:
+    // the local evaluator must fail closed instead of treating it as an
+    // unrelated host action merely because no literal command was projected.
+    if tool_name == "functions.exec"
+        && tool_input
+            .get("code")
+            .and_then(Value::as_str)
+            .is_some_and(|code| code.contains("tools.exec_command"))
+    {
+        return Some(true);
+    }
+    Some(false)
 }
 
 /// Collects direct, shell, nested, and Codex `CommandAction` intents.
@@ -463,6 +501,20 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
     ) {
         if direct_action && let Some(action) = codex_command_action(tool_name, value) {
             push_unique_action(actions, action);
+            return;
+        }
+
+        // Codex may project a CommandAction either as the compact
+        // `{ type: "read", path: ... }` shape above or as a nested native
+        // tool envelope such as
+        // `{ toolName: "Read", toolInput: { path: ... } }`.  The latter must
+        // re-enter the canonical tool normalizer; otherwise registered source
+        // extensions disappear before policy matching and the outer
+        // `functions.exec` envelope is incorrectly treated as unrelated.
+        if direct_action && let Some(nested) = nested_action_from_tool_use(value) {
+            for action in collect_tool_actions(&nested.tool_name, &nested.input) {
+                push_unique_action(actions, action);
+            }
             return;
         }
 
@@ -760,9 +812,7 @@ fn nested_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<NestedToolAct
     if let Some(action) = nested_function_action(tool_input) {
         nested.push(action);
     }
-    if let Some(action) = nested_functions_exec_code_action(tool_name, tool_input) {
-        nested.push(action);
-    }
+    nested.extend(functions_exec::nested_code_actions(tool_name, tool_input));
     for key in ["tool_uses", "toolUses", "tools", "tool_calls", "toolCalls"] {
         let Some(tool_uses) = tool_input.get(key).and_then(Value::as_array) else {
             continue;
@@ -774,55 +824,6 @@ fn nested_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<NestedToolAct
         }
     }
     nested
-}
-
-fn nested_functions_exec_code_action(
-    tool_name: &str,
-    tool_input: &Value,
-) -> Option<NestedToolAction> {
-    if tool_name != "functions.exec" {
-        return None;
-    }
-    let code = tool_input.get("code")?.as_str()?.trim();
-    let code = code.strip_suffix(';').unwrap_or(code).trim();
-    let argument = code
-        .strip_prefix("await tools.exec_command(")?
-        .strip_suffix(')')?
-        .trim();
-    let argument = argument.strip_prefix('{')?.strip_suffix('}')?.trim();
-    let (key, value) = argument.split_once(':')?;
-    let key = key.trim().trim_matches('"');
-    if !matches!(key, "cmd" | "command") {
-        return None;
-    }
-    let value = value.trim();
-    if !value.starts_with('"') {
-        return None;
-    }
-    let mut escaped = false;
-    let mut literal_end = None;
-    for (index, byte) in value.as_bytes().iter().copied().enumerate().skip(1) {
-        match byte {
-            b'\\' if !escaped => escaped = true,
-            b'"' if !escaped => {
-                literal_end = Some(index + 1);
-                break;
-            }
-            _ => escaped = false,
-        }
-    }
-    let literal_end = literal_end?;
-    let trailing = value[literal_end..].trim();
-    if !trailing.is_empty() && trailing != "," {
-        return None;
-    }
-    let command = serde_json::from_str::<String>(&value[..literal_end]).ok()?;
-    let mut input = serde_json::Map::new();
-    input.insert(key.to_owned(), Value::String(command));
-    Some(NestedToolAction {
-        tool_name: "exec_command".to_owned(),
-        input: Value::Object(input),
-    })
 }
 
 fn nested_action_from_tool_use(tool_use: &Value) -> Option<NestedToolAction> {

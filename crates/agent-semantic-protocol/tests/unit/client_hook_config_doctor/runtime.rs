@@ -1,6 +1,6 @@
 use super::{
     PROBE_SENTINEL, run_doctor_with_env, stderr, stdout, temp_project_root, write_activation,
-    write_client_config, write_codex_project_config, write_executable,
+    write_client_config, write_codex_plugin_fixture, write_executable,
 };
 
 #[test]
@@ -50,7 +50,7 @@ fn doctor_reports_protocol_binary_symlink_loop() {
 fn doctor_reports_enforced_when_codex_probe_observes_deny() {
     let root = temp_project_root("doctor-codex-probe-deny");
     let activation_path = write_activation(&root);
-    write_codex_project_config(&root);
+    write_codex_plugin_fixture(&root);
     write_client_config(
         &root,
         r#"
@@ -87,7 +87,7 @@ decision = "deny"
 fn doctor_reports_unproven_when_codex_exec_has_no_hook_surface() {
     let root = temp_project_root("doctor-codex-probe-leak");
     let activation_path = write_activation(&root);
-    write_codex_project_config(&root);
+    write_codex_plugin_fixture(&root);
     write_client_config(
         &root,
         r#"
@@ -126,7 +126,7 @@ decision = "deny"
 fn doctor_reports_configured_but_not_enforced_when_hook_event_leaks_source() {
     let root = temp_project_root("doctor-codex-probe-hook-leak");
     let activation_path = write_activation(&root);
-    write_codex_project_config(&root);
+    write_codex_plugin_fixture(&root);
     write_client_config(
         &root,
         r#"

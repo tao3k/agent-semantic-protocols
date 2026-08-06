@@ -1,6 +1,7 @@
 {
   "name": "asp-codex-plugin",
   "version": "0.1.0",
+  "hooks": "./hooks/hooks.json",
   "description": "Codex integration for Agent Semantic Protocol using lifecycle hooks and agent guidance.",
   "author": {
     "name": "tao3k"
@@ -14,7 +15,6 @@
     "semantic-search"
   ],
   "skills": "./skills/",
-  "hooks": "./hooks/hooks.json",
   "interface": {
     "displayName": "Agent Semantic Protocol",
     "shortDescription": "Guides Codex toward ASP search and hook policy.",

@@ -6,8 +6,7 @@ use super::agent_runtime::{HookClientAgentsConfig, HookClientResidentAgentConfig
 use super::document::{
     CLIENT_HOOK_CONFIG_SCHEMA_ID, CLIENT_HOOK_CONFIG_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
     HOOK_PROTOCOL_VERSION, HookClientAgentOrgArtifactsArchiveWarningConfig,
-    HookClientAgentOrgArtifactsConfig, HookClientAgentSessionGuideConfig, HookClientConfigFile,
-    HookClientRecoveryPromptConfig,
+    HookClientAgentOrgArtifactsConfig, HookClientConfigFile, HookClientRecoveryPromptConfig,
 };
 use super::routing::{HookClientRuleConfig, HookClientRuleMatchConfig, HookClientRuleRouteConfig};
 use super::{HookClientCommandProfileConfig, expand_command_profile_prefixes};
@@ -20,7 +19,6 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
     )?;
     validate_agent_org_artifacts(config.agent_org_artifacts.as_ref())?;
     validate_recovery_prompt(&config.recovery_prompt)?;
-    validate_agent_session_guide(&config.agent_session_guide)?;
     validate_agent_session_messages(&config.agent_session_messages)?;
     validate_language_providers(&config.language_providers)?;
     validate_resident_agents(&config.agents.resident_agents)?;
@@ -87,14 +85,14 @@ fn validate_rule_dispatches(
             continue;
         };
         let prefix = format!("rules[{}].dispatch", rule.id);
-        validate_identifier(&format!("{prefix}.agent"), dispatch.agent.as_str())?;
+        validate_identifier(&format!("{prefix}.role"), dispatch.role.as_str())?;
         let resident_name = agents
             .placeholders
-            .get(dispatch.agent.as_str())
+            .get(dispatch.role.as_str())
             .ok_or_else(|| {
                 format!(
                     "{prefix}.agent `{}` must name an agents.placeholders entry",
-                    dispatch.agent.as_str()
+                    dispatch.role.as_str()
                 )
             })?;
         validate_non_empty(
@@ -108,7 +106,7 @@ fn validate_rule_dispatches(
         {
             return Err(format!(
                 "{prefix}.agent `{}` resolves to unavailable resident `{resident_name}`",
-                dispatch.agent.as_str()
+                dispatch.role.as_str()
             ));
         }
     }
@@ -129,13 +127,6 @@ fn validate_recovery_prompt(config: &HookClientRecoveryPromptConfig) -> Result<(
         "recoveryPrompt.defaultAgentFlow",
         config.default_agent_flow.as_deref(),
     )
-}
-
-fn validate_agent_session_guide(config: &HookClientAgentSessionGuideConfig) -> Result<(), String> {
-    validate_optional_non_empty("agentSessionGuide.register", config.register.as_deref())?;
-    validate_optional_non_empty("agentSessionGuide.list", config.list.as_deref())?;
-    validate_optional_non_empty("agentSessionGuide.show", config.show.as_deref())?;
-    validate_optional_non_empty("agentSessionGuide.reuse", config.reuse.as_deref())
 }
 
 fn validate_agent_session_messages(

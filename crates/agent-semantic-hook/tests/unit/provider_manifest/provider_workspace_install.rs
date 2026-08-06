@@ -32,7 +32,7 @@ const WORKSPACE_INSTALL_DESCRIPTORS: &[(&str, &str, &str)] = &[
     ),
     (
         "julia",
-        "asp-provider-workspace-install.json",
+        "juliac/asp-provider-workspace-install.json",
         include_str!(
             "../../../../../languages/JuliaLangProjectHarness.jl/juliac/asp-provider-workspace-install.json"
         ),

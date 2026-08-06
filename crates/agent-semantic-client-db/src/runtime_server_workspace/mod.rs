@@ -1,5 +1,6 @@
 mod canonical_materialization;
 mod client;
+mod context;
 mod durability;
 mod exact_segment;
 mod lease;
@@ -17,7 +18,6 @@ pub(crate) use model::{
     RUNTIME_SERVER_SHUTDOWN_RECEIPT_SCHEMA_ID, WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID,
     validate_owners,
 };
-pub(crate) use owner_content_identity::current_owner_content_digest;
 pub(crate) use resident_overlay::{ResidentOverlaySnapshot, ResidentOverlayStore};
 pub(crate) use selector_overlay::validate_projection_kind;
 mod pointer;
@@ -35,6 +35,7 @@ pub use client::{
     WorkspaceGenerationDataPlaneCacheReceipt, WorkspaceGenerationDataPlaneClient,
     WorkspaceGenerationDataPlaneOpen,
 };
+pub use context::WorkspaceRuntimeContext;
 pub use durability::{
     WORKSPACE_GENERATION_DURABILITY_RECEIPT_SCHEMA_ID, WorkspaceGenerationDurabilityReceipt,
     WorkspaceGenerationDurabilityState,
@@ -49,17 +50,20 @@ pub use model::{
     WorkspaceDataPlanePerformanceReceipt, WorkspaceDerivedProjectionSnapshot,
     WorkspaceGenerationBuild, WorkspaceGenerationDelta, WorkspaceGenerationSnapshot,
     WorkspaceGenerationState, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
-    WorkspaceRecoveryReceipt, WorkspaceRecoverySource, WorkspaceRuntimeSelectorOverlay,
-    WorkspaceRuntimeSelectorOverlayReceipt, WorkspaceRuntimeSelectorRead,
-    WorkspaceSelectorSnapshot,
+    WorkspaceRecoveryReceipt, WorkspaceRecoverySource, WorkspaceRuntimeOwnerRead,
+    WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorOverlayReceipt,
+    WorkspaceRuntimeSelectorRead, WorkspaceSelectorSnapshot,
 };
 pub use pointer::WorkspaceGenerationPointerReader;
 pub use registry::{PublishedWorkspaceGenerationState, RuntimeServerWorkspaceRegistry};
 pub use restore::restore_active_turso_generation;
 pub use scope_path::{workspace_generation_directory, workspace_generation_pointer_path};
-pub use search_generation_authority::{
-    SharedWorkspaceSearchGenerationAuthorityPointerClient, WorkspaceSearchGenerationAuthority,
-    WorkspaceSearchGenerationAuthorityOpenReceipt, WorkspaceSearchGenerationAuthorityPointerClient,
+pub use search_generation_authority::WorkspaceSearchGenerationAuthority;
+#[doc(hidden)]
+pub use search_generation_authority::read_search_generation_authority_fixture;
+pub(crate) use search_generation_authority::{
+    publish_search_generation_authority_segment, read_search_generation_authority_segment,
+    resident_search_generation_authority,
 };
 pub use segment::{MappedWorkspaceGeneration, WorkspaceGenerationPublisher};
 pub use store::{

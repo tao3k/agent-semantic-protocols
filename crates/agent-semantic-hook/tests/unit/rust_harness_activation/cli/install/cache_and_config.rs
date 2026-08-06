@@ -20,7 +20,7 @@ fn write_managed_config_sidecar(path: &std::path::Path, bytes: &[u8]) {
 }
 
 #[test]
-fn cli_install_uses_state_core_home_over_prj_cache_home() {
+fn cli_install_materializes_activation_under_state_core_not_prj_cache() {
     let _install_fixture = crate::integration_fixture::install_fixture_guard();
     let root = git_project_root("install-prj-cache-home");
     let codex_home = root.join(".codex-home");
@@ -70,10 +70,12 @@ enabled = false
     );
     let mut activation_paths = Vec::new();
     collect_activation_paths(&asp_state_home, &mut activation_paths);
-    assert!(
-        activation_paths.is_empty(),
-        "install must defer activation materialization to pre-tool: {activation_paths:?}"
+    assert_eq!(
+        activation_paths.len(),
+        1,
+        "activation paths: {activation_paths:?}"
     );
+    assert!(activation_paths[0].starts_with(&asp_state_home));
     assert!(!root.join(".cache").exists());
     assert!(!prj_cache_home.exists());
 }
@@ -214,7 +216,7 @@ fn cli_install_preserves_top_level_flags_and_writes_project_plugin_entries() {
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
     write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
-    let asp_bin_dir = asp_bin_dir();
+    let asp_bin_dir = asp_bin_dir(&root);
     let protocol_bin_dir = root.join(".agent-bin");
     write_real_asp_launcher(&protocol_bin_dir);
     let path = std::env::join_paths([protocol_bin_dir.as_path(), asp_bin_dir.as_path()])

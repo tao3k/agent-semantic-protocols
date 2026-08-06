@@ -134,3 +134,44 @@ async fn diagnostic_journal_accepts_more_than_its_bound_and_publishes_only_the_l
     assert_eq!(receipt["event"]["detail"], "event-65");
     assert!(!path.with_extension("json.tmp").exists());
 }
+
+#[tokio::test]
+async fn diagnostic_error_storm_is_bounded_and_drains_without_a_writer_leak() {
+    let root = tempfile::tempdir().expect("create diagnostic pressure fixture");
+    let path = root.path().join("runtime-server-diagnostic.v1.json");
+    let journal_path = root
+        .path()
+        .join("runtime-server-diagnostic-journal.v1.json");
+    let (publisher, diagnostics) = RuntimeServerDiagnostics::start(path)
+        .await
+        .expect("start bounded diagnostics");
+
+    let mut rejected = 0_u64;
+    for sequence in 0..100_000_u64 {
+        if publisher
+            .send(RuntimeServerEvent::ConnectionRejected(format!(
+                "pressure-{sequence}"
+            )))
+            .is_err()
+        {
+            rejected += 1;
+        }
+    }
+    assert!(
+        rejected > 0,
+        "a producer storm must meet bounded backpressure"
+    );
+    drop(publisher);
+    tokio::time::timeout(std::time::Duration::from_secs(2), diagnostics.join())
+        .await
+        .expect("bounded diagnostics must drain within two seconds")
+        .expect("bounded diagnostics must join");
+
+    let receipt: serde_json::Value = serde_json::from_slice(
+        &tokio::fs::read(&journal_path)
+            .await
+            .expect("read bounded diagnostic journal"),
+    )
+    .expect("decode bounded diagnostic journal");
+    assert_eq!(receipt["events"].as_array().expect("events").len(), 64);
+}

@@ -13,8 +13,8 @@ pub(crate) struct WorkspaceMemoryBackend {
 #[derive(Debug)]
 pub(crate) struct WorkspaceMemoryIndex {
     selector_index: HashMap<String, (usize, usize)>,
-    term_index: HashMap<String, Vec<usize>>,
-    relation_index: HashMap<(String, String), Vec<usize>>,
+    term_index: std::sync::OnceLock<HashMap<String, Vec<usize>>>,
+    relation_index: std::sync::OnceLock<HashMap<(String, String), Vec<usize>>>,
 }
 
 impl WorkspaceMemoryBackend {
@@ -29,15 +29,10 @@ impl WorkspaceMemoryBackend {
 
     pub(crate) fn prepare_index(
         owners: &[super::WorkspaceOwnerSnapshot],
-        relations: &[agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation],
+        _relations: &[agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation],
     ) -> Arc<WorkspaceMemoryIndex> {
         let mut selector_index = HashMap::new();
-        let mut term_index = HashMap::<String, Vec<usize>>::new();
         for (owner_position, owner) in owners.iter().enumerate() {
-            let text = std::str::from_utf8(&owner.bytes).unwrap_or_default();
-            for term in crate::source_index::source_query_keys(&owner.owner_path, text) {
-                term_index.entry(term).or_default().push(owner_position);
-            }
             for (selector_position, selector) in owner.selectors.iter().enumerate() {
                 selector_index.insert(
                     selector.selector.clone(),
@@ -45,17 +40,10 @@ impl WorkspaceMemoryBackend {
                 );
             }
         }
-        let mut relation_index = HashMap::<(String, String), Vec<usize>>::new();
-        for (relation_position, relation) in relations.iter().enumerate() {
-            relation_index
-                .entry((relation.from.kind.clone(), relation.from.id.clone()))
-                .or_default()
-                .push(relation_position);
-        }
         Arc::new(WorkspaceMemoryIndex {
             selector_index,
-            term_index,
-            relation_index,
+            term_index: std::sync::OnceLock::new(),
+            relation_index: std::sync::OnceLock::new(),
         })
     }
 
@@ -80,6 +68,16 @@ impl WorkspaceMemoryBackend {
     }
 
     pub(crate) fn source_index_owner_positions(&self, query: &str, limit: usize) -> Vec<usize> {
+        let term_index = self.index.term_index.get_or_init(|| {
+            let mut index = HashMap::<String, Vec<usize>>::new();
+            for (owner_position, owner) in self.generation.owners.iter().enumerate() {
+                let text = std::str::from_utf8(&owner.bytes).unwrap_or_default();
+                for term in crate::source_index::source_query_keys(&owner.owner_path, text) {
+                    index.entry(term).or_default().push(owner_position);
+                }
+            }
+            index
+        });
         let query_terms = crate::source_index::source_query_keys("", query);
         let query = query.trim();
         if !query.is_empty()
@@ -88,9 +86,7 @@ impl WorkspaceMemoryBackend {
             })
             && query.contains(['-', '_'])
         {
-            return self
-                .index
-                .term_index
+            return term_index
                 .get(&query.to_ascii_lowercase())
                 .into_iter()
                 .flatten()
@@ -100,7 +96,7 @@ impl WorkspaceMemoryBackend {
         }
         let mut scores = HashMap::<usize, usize>::new();
         for term in query_terms {
-            if let Some(positions) = self.index.term_index.get(&term) {
+            if let Some(positions) = term_index.get(&term) {
                 for &position in positions {
                     *scores.entry(position).or_default() += 1;
                 }
@@ -128,8 +124,17 @@ impl WorkspaceMemoryBackend {
     ) -> Vec<
         &agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
     > {
-        self.index
-            .relation_index
+        let relation_index = self.index.relation_index.get_or_init(|| {
+            let mut index = HashMap::<(String, String), Vec<usize>>::new();
+            for (relation_position, relation) in self.generation.relations.iter().enumerate() {
+                index
+                    .entry((relation.from.kind.clone(), relation.from.id.clone()))
+                    .or_default()
+                    .push(relation_position);
+            }
+            index
+        });
+        relation_index
             .get(&(endpoint_kind.to_owned(), endpoint_id.to_owned()))
             .into_iter()
             .flatten()

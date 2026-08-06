@@ -133,3 +133,23 @@ fn install_target_is_derived_from_the_canonical_runtime_root() {
             .expect("explicit runtime target");
     assert_eq!(explicit_target, explicit.join("asp"));
 }
+
+#[cfg(unix)]
+#[test]
+fn symlinked_parent_spellings_are_one_protocol_binary_entry() {
+    use std::os::unix::fs::symlink;
+
+    let root =
+        std::env::temp_dir().join(format!("asp-canonical-entry-parent-{}", std::process::id()));
+    let canonical_parent = root.join("canonical/bin");
+    std::fs::create_dir_all(&canonical_parent).expect("create canonical binary parent");
+    let alias_root = root.join("alias");
+    symlink(root.join("canonical"), &alias_root).expect("link alternate runtime spelling");
+
+    assert!(super::same_protocol_binary_entry(
+        &canonical_parent.join("asp"),
+        &alias_root.join("bin/asp")
+    ));
+
+    std::fs::remove_dir_all(root).expect("remove canonical entry fixture");
+}

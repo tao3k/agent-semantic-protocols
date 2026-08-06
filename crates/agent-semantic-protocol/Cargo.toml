@@ -18,6 +18,7 @@ aho-corasick.workspace = true
 agent-semantic-client = { path = "../agent-semantic-client" }
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-hook = { path = "../agent-semantic-hook" }
+memmap2.workspace = true
 agent-semantic-command-match = { path = "../agent-semantic-command-match" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
@@ -47,6 +48,7 @@ name = "asp"
 path = "src/main.rs"
 
 [build-dependencies]
+agent-semantic-config = { path = "../agent-semantic-config" }
 asp-rust-project-harness-policy = { workspace = true }
 
 [dev-dependencies]

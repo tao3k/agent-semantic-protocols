@@ -2,10 +2,6 @@
 
 #[path = "unit/agent_session_dispatch_ipc.rs"]
 mod agent_session_dispatch_ipc;
-#[path = "unit/agent_session_interactive_loop.rs"]
-mod agent_session_interactive_loop;
-#[path = "unit/agent_session_lifecycle_p0.rs"]
-mod agent_session_lifecycle_p0;
 #[path = "unit/agent_session_runtime_proxy.rs"]
 mod agent_session_runtime_proxy;
 #[path = "unit/codex_multi_agent_control_plane_owner.rs"]
@@ -40,10 +36,14 @@ mod provider_treesitter_read;
 mod runtime_cache_control;
 #[path = "unit/runtime_generation_admission_gate.rs"]
 mod runtime_generation_admission_gate;
+#[path = "unit/runtime_search_authority_fixture.rs"]
+mod runtime_search_authority_fixture;
 #[path = "unit/runtime_server_admission_catalog.rs"]
 mod runtime_server_admission_catalog;
 #[path = "unit/runtime_server_control.rs"]
 mod runtime_server_control;
+#[path = "unit/runtime_server_control_authority.rs"]
+mod runtime_server_control_authority;
 #[path = "unit/runtime_server_diagnostics.rs"]
 mod runtime_server_diagnostics;
 #[path = "unit/runtime_server_generation_admission.rs"]
@@ -54,8 +54,6 @@ mod runtime_server_generation_restore;
 mod runtime_server_graph_turbo;
 #[path = "unit/runtime_server_health.rs"]
 mod runtime_server_health;
-#[path = "unit/runtime_server_hook_evaluation.rs"]
-mod runtime_server_hook_evaluation;
 #[path = "unit/runtime_server_opentelemetry_test.rs"]
 mod runtime_server_opentelemetry_test;
 #[path = "unit/runtime_server_overlay_admission.rs"]
@@ -70,6 +68,10 @@ mod runtime_server_workspace;
 mod runtime_server_workspace_recovery;
 #[path = "unit/runtime_server_workspace_resident.rs"]
 mod runtime_server_workspace_resident;
+#[path = "unit/runtime_telemetry_bus.rs"]
+mod runtime_telemetry_bus;
+#[path = "unit/search_incident.rs"]
+mod search_incident;
 #[path = "unit/selector_generation_evidence.rs"]
 mod selector_generation_evidence;
 #[path = "unit/seqlock_json_memory.rs"]

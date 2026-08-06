@@ -15,7 +15,7 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
     let production =
         toml::from_str::<toml::Value>(production_text).expect("production hook config");
     let config_path = root.join("config.toml");
-    let default_document = agent_semantic_config::default_hook_client_config_template();
+    let default_document = agent_semantic_hook::default_client_config_template();
     let mut production_document =
         toml::from_str::<toml::Value>(&default_document).expect("production hook config document");
     production_document["rules"] = production["rules"].clone();
@@ -270,34 +270,33 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
                         "positive case selected the wrong reason: {case_id}"
                     );
                 }
-                if let Some(dispatch) = production_rule.get("dispatch") {
+                if production_rule.get("dispatch").is_some() {
                     assert_eq!(
-                        decision_json["fields"]["receiptKind"].as_str(),
-                        dispatch["receiptKind"].as_str(),
-                        "positive case selected the wrong receipt: {case_id}"
+                        decision_json["fields"]["choicePlaneOwner"].as_str(),
+                        Some("org-contract:agent-interactive"),
+                        "positive case lost the Org ChoicePlane: {case_id}"
+                    );
+                    assert_eq!(
+                        decision_json["fields"]["agentWindowCommand"].as_str(),
+                        Some("asp session --agents choice-plane"),
+                        "positive case changed the Org Agent window: {case_id}"
+                    );
+                    for forbidden in ["receiptKind", "residentName", "targetAgentName"] {
+                        assert!(
+                            decision_json["fields"].get(forbidden).is_none(),
+                            "positive case preselected a resident through {forbidden}: {case_id}"
+                        );
+                    }
+                }
+                if let Some(expected_command) = expected_command {
+                    assert_eq!(
+                        decision_json["subject"]["command"].as_str(),
+                        Some(expected_command),
+                        "typed dispatch changed the command subject: {case_id}"
                     );
                     assert!(
-                        decision_json["fields"]["residentName"].is_string(),
-                        "positive case lost resident dispatch: {case_id}"
-                    );
-                }
-                if let Some(expected_command) = expected_command
-                    && let Some(interactive_argv) =
-                        decision_json["interactiveCommand"]["argv"].as_array()
-                    && let Some(index) = interactive_argv
-                        .iter()
-                        .position(|argument| argument.as_str() == Some("--command-json"))
-                {
-                    let dispatched = serde_json::from_str::<Vec<String>>(
-                        interactive_argv[index + 1]
-                            .as_str()
-                            .expect("typed command-json"),
-                    )
-                    .expect("decode command-json");
-                    assert_eq!(
-                        dispatched,
-                        ["/bin/sh", "-c", expected_command],
-                        "interactive dispatch changed the command: {case_id}"
+                        decision_json.get("interactiveCommand").is_none(),
+                        "Hook must not materialize a Rust-owned ChoicePlane: {case_id}"
                     );
                 }
             }};
