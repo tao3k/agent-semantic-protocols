@@ -7,6 +7,7 @@ use std::{
     },
 };
 
+use crate::source_index_fixture::build_fixture_source_index_import;
 use agent_semantic_client_core::{
     CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId, SemanticSchemaId,
     SemanticSchemaVersion,
@@ -17,8 +18,7 @@ use agent_semantic_client_db::{
     ClientDbSourceIndexImportAssemblyRequest, ClientDbSourceIndexImportFile,
     ClientDbSourceIndexImportRequest, ClientDbSourceIndexLookupState, ClientDbSourceIndexPath,
     ClientDbSourceIndexQueryKey, ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexScopeFile,
-    ClientDbSourceIndexSelector, ClientDbSourceIndexSource, build_source_index_import,
-    source_index_import_with_file_hashes,
+    ClientDbSourceIndexSelector, ClientDbSourceIndexSource, source_index_import_with_file_hashes,
 };
 
 #[path = "engine_source_index/exact_selector_projection.rs"]
@@ -42,7 +42,8 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
         agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-project");
     let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
-    let first_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let first_import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
         generation_id: CacheGenerationId::from("source-index-active-turso-1"),
         project_root: project_root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
@@ -93,7 +94,8 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
     assert_eq!(inspect.source_index_owner_count, 1);
     assert_eq!(inspect.source_index_selector_count, 1);
 
-    let second_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let second_import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
         generation_id: CacheGenerationId::from("source-index-active-turso-1"),
         project_root: project_root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
@@ -169,7 +171,8 @@ async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_cand
     let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let selector =
         "rust://src/source_index_payload_proof.rs#item/function/source_index_payload_proof_fixture";
-    let source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let source_index_import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
         generation_id: CacheGenerationId::from("source-index-payload-proof-turso"),
         project_root: project_root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
@@ -398,28 +401,32 @@ async fn db_engine_source_index_lookup_deduplicates_same_owner_across_generation
             22,
         ),
     ] {
-        let source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
-            generation_id: CacheGenerationId::from(generation_id),
-            project_root: project_root.clone(),
-            schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
-            schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
-            selector_source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
-            file_hashes: vec![ClientCacheFileHash {
-                path: "src/source_index_dedup.rs".to_string(),
-                sha256: sha_prefix.repeat(4),
-                byte_len: text.len() as u64,
-                mtime_ms,
-            }],
-            files: vec![ClientDbSourceIndexImportFile {
-                relations: Vec::new(),
-                relative_path: "src/source_index_dedup.rs".to_string(),
-                language_id: rust_language_id.clone(),
-                provider_id: ProviderId::from("rs-harness"),
-                text: text.to_string(),
-                selectors: Vec::new(),
-            }],
-        })
-        .expect("build Turso source-index import");
+        let source_index_import =
+            build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+                source_blobs: Default::default(),
+                generation_id: CacheGenerationId::from(generation_id),
+                project_root: project_root.clone(),
+                schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
+                schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
+                selector_source: ClientDbSourceIndexSource::from(
+                    CLIENT_DB_SOURCE_INDEX_PROVIDER_ID,
+                ),
+                file_hashes: vec![ClientCacheFileHash {
+                    path: "src/source_index_dedup.rs".to_string(),
+                    sha256: sha_prefix.repeat(4),
+                    byte_len: text.len() as u64,
+                    mtime_ms,
+                }],
+                files: vec![ClientDbSourceIndexImportFile {
+                    relations: Vec::new(),
+                    relative_path: "src/source_index_dedup.rs".to_string(),
+                    language_id: rust_language_id.clone(),
+                    provider_id: ProviderId::from("rs-harness"),
+                    text: text.to_string(),
+                    selectors: Vec::new(),
+                }],
+            })
+            .expect("build Turso source-index import");
         let source_blobs = crate::projection_fixture::source_blobs_fixture([(
             "src/source_index_dedup.rs",
             text.as_bytes(),
@@ -483,7 +490,8 @@ async fn db_engine_source_index_import_does_not_populate_turso_fts_search_docume
     let project_root = temp_root("db-engine-source-index-fts-project");
     let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let rust_language_id = LanguageId::from("rust");
-    let source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let source_index_import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
         generation_id: CacheGenerationId::from("source-index-fts-turso"),
         project_root: project_root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
@@ -565,7 +573,8 @@ async fn db_engine_source_index_concurrent_inspect_and_lookup_survives_turso_fil
     let project_root = temp_root("db-engine-source-index-concurrent-project");
     let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let rust_language_id = LanguageId::from("rust");
-    let source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let source_index_import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
         generation_id: CacheGenerationId::from("source-index-concurrent-turso"),
         project_root: project_root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
@@ -659,7 +668,8 @@ async fn db_engine_source_index_lookup_succeeds_without_client_dir_write_permiss
     let project_root = temp_root("db-engine-source-index-read-only-project");
     let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let rust_language_id = LanguageId::from("rust");
-    let source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let source_index_import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
         generation_id: CacheGenerationId::from("source-index-read-only-turso"),
         project_root: project_root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
@@ -749,7 +759,8 @@ async fn db_engine_source_index_refresh_lookup_pressure_never_exposes_busy_or_lo
     let project_root = temp_root("db-engine-source-index-pressure-project");
     let rust_language_id = LanguageId::from("rust");
     let initial_source_snapshot = crate::snapshot_fixture::source_snapshot_evidence_for(1);
-    let initial_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let initial_import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
         generation_id: CacheGenerationId::from("source-index-pressure-turso-initial"),
         project_root: project_root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
@@ -803,7 +814,8 @@ async fn db_engine_source_index_refresh_lookup_pressure_never_exposes_busy_or_lo
                 "src/source_index_pressure.rs",
                 text.as_bytes(),
             )]);
-            let import = build_source_index_import(ClientDbSourceIndexImportRequest {
+            let import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+                source_blobs: Default::default(),
                 generation_id: CacheGenerationId::from(format!(
                     "source-index-pressure-turso-{round}"
                 )),

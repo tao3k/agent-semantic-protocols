@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
-    sync::{Arc, OnceLock, RwLock},
+    sync::{
+        Arc, OnceLock, RwLock,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 use tokio::{io::AsyncWriteExt, sync::Mutex};
 
@@ -101,10 +104,20 @@ struct RuntimeWorkspaceAdmissionCatalogDocument {
     entries: Vec<RuntimeWorkspaceAdmissionCatalogEntry>,
 }
 
+#[derive(Clone, Debug, Default)]
+struct CatalogDurabilityState {
+    durable_revision: u64,
+    failed_revision: Option<u64>,
+    error: Option<Arc<str>>,
+}
+
 #[derive(Clone, Debug)]
 pub struct RuntimeWorkspaceAdmissionCatalog {
     path: PathBuf,
     entries: tokio::sync::watch::Sender<Arc<BTreeSet<RuntimeWorkspaceAdmissionCatalogEntry>>>,
+    resident_revision: Arc<AtomicU64>,
+    durability: tokio::sync::watch::Sender<CatalogDurabilityState>,
+    resident_writer: Arc<parking_lot::Mutex<()>>,
     writer: Arc<Mutex<()>>,
 }
 
@@ -121,9 +134,13 @@ impl RuntimeWorkspaceAdmissionCatalog {
             }
         };
         let (entries, _) = tokio::sync::watch::channel(Arc::new(entries));
+        let (durability, _) = tokio::sync::watch::channel(CatalogDurabilityState::default());
         Ok(Self {
             path,
             entries,
+            resident_revision: Arc::new(AtomicU64::new(0)),
+            durability,
+            resident_writer: Arc::new(parking_lot::Mutex::new(())),
             writer: Arc::new(Mutex::new(())),
         })
     }
@@ -148,11 +165,22 @@ impl RuntimeWorkspaceAdmissionCatalog {
         &self,
         entry: RuntimeWorkspaceAdmissionCatalogEntry,
     ) -> Result<bool, String> {
+        let inserted = self.record_resident(entry)?;
+        if inserted {
+            self.publish_resident_snapshot().await?;
+        }
+        Ok(inserted)
+    }
+
+    pub fn record_resident(
+        &self,
+        entry: RuntimeWorkspaceAdmissionCatalogEntry,
+    ) -> Result<bool, String> {
         entry.validate()?;
+        let _resident_writer = self.resident_writer.lock();
         if self.entries.borrow().contains(&entry) {
             return Ok(false);
         }
-        let _writer = self.writer.lock().await;
         let mut entries = self.entries.borrow().as_ref().clone();
         if let Some(existing) = entries.iter().find(|existing| {
             existing.project_root == entry.project_root
@@ -179,11 +207,66 @@ impl RuntimeWorkspaceAdmissionCatalog {
         if !entries.insert(entry) {
             return Ok(false);
         }
-        if let Err(error) = publish_catalog(&self.path, &entries).await {
-            return Err(error);
-        }
         self.entries.send_replace(Arc::new(entries));
+        self.resident_revision.fetch_add(1, Ordering::Release);
         Ok(true)
+    }
+
+    pub async fn publish_resident_snapshot(&self) -> Result<(), String> {
+        let _writer = self.writer.lock().await;
+        let entries = Arc::clone(&self.entries.borrow());
+        let revision = self.resident_revision.load(Ordering::Acquire);
+        match publish_catalog(&self.path, entries.as_ref()).await {
+            Ok(()) => {
+                self.durability.send_modify(|state| {
+                    state.durable_revision = state.durable_revision.max(revision);
+                    if state
+                        .failed_revision
+                        .is_some_and(|failed| failed <= state.durable_revision)
+                    {
+                        state.failed_revision = None;
+                        state.error = None;
+                    }
+                });
+                Ok(())
+            }
+            Err(error) => {
+                self.durability.send_modify(|state| {
+                    state.failed_revision = Some(revision);
+                    state.error = Some(Arc::from(error.as_str()));
+                });
+                Err(error)
+            }
+        }
+    }
+
+    /// Waits for the current resident identity revision to become durable.
+    ///
+    /// Generation admission remains an in-memory sub-millisecond operation;
+    /// callers that require a terminal control-plane postcondition wait on this
+    /// receipt rather than polling the filesystem or sleeping.
+    pub async fn wait_durable(&self) -> Result<(), String> {
+        let target_revision = self.resident_revision.load(Ordering::Acquire);
+        let mut durability = self.durability.subscribe();
+        loop {
+            let state = durability.borrow().clone();
+            if state.durable_revision >= target_revision {
+                return Ok(());
+            }
+            if state
+                .failed_revision
+                .is_some_and(|failed| failed >= target_revision)
+            {
+                return Err(state
+                    .error
+                    .as_deref()
+                    .unwrap_or("workspace admission catalog durability publication failed")
+                    .to_owned());
+            }
+            durability.changed().await.map_err(|_| {
+                "workspace admission catalog durability receipt channel closed".to_owned()
+            })?;
+        }
     }
 
     /// Rebuilds a missing derived locator from the resident identity catalog.

@@ -1,8 +1,12 @@
 //! Registry-style language registrations used to derive hook provider manifests.
 
+mod argument_projection;
 mod catalog;
 mod runtime_binary;
 
+pub use argument_projection::{
+    ProviderMethodArgumentValuesV1, registered_provider_method_projected_argv_v1,
+};
 pub(crate) use catalog::registered_language_id;
 pub use catalog::{
     ProviderDevelopmentRegistrationV1, RegisteredProviderCatalogIdentity, RegisteredProviderKind,

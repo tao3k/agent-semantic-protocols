@@ -266,6 +266,10 @@ impl WorkspaceGenerationPublisher {
         super::WorkspaceGenerationDataPlaneClient::invalidate_committed_pointer(
             state.pointer.path(),
         );
+        super::WorkspaceExactProjectionDataPlaneClient::prime_committed_pointer(
+            state.pointer.path(),
+        )
+        .await?;
         state
             .owner_identity_journal
             .rebase(&snapshot.workspace_identity, &snapshot.generation_digest)

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-graph-turbo-definitions.v1.schema.json",
+  "title": "Semantic Graph Turbo Family Definitions v1",
+  "description": "Shared definitions owned by the semantic-graph-turbo schema family.",
+  "$defs": {
+    "profile": {
+      "enum": [
+        "owner-query",
+        "query-deps",
+        "owner-tests",
+        "prime",
+        "read-frontier",
+        "failure-frontier",
+        "field-impact",
+        "type-impact",
+        "collection-impact",
+        "failure-evidence",
+        "test-selection",
+        "affected",
+        "evidence-quality",
+        "rust-evidence-quality"
+      ]
+    },
+    "variant": {
+      "enum": [
+        "full",
+        "no-receipt",
+        "no-read-memory",
+        "no-quality-fields",
+        "no-provider-facts",
+        "relation-weight-flat",
+        "no-query-seed-prior",
+        "no-package-cohesion",
+        "no-query-clause-coverage",
+        "no-local-evidence",
+        "no-topology-membership"
+      ]
+    },
+    "qualityFailureList": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "field",
+          "actual",
+          "expected"
+        ],
+        "properties": {
+          "field": {
+            "type": "string",
+            "minLength": 1
+          },
+          "actual": {},
+          "expected": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

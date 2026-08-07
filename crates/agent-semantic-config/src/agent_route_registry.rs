@@ -59,7 +59,17 @@ pub struct PlatformAgentRegistrySpec {
 #[serde(deny_unknown_fields)]
 pub struct AgentRouteSpec {
     pub session_lifetime: AgentSessionLifetime,
+    #[serde(default)]
+    pub focus_mode: AgentFocusMode,
     pub roles: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum AgentFocusMode {
+    #[default]
+    Standard,
+    Leaf,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -115,6 +125,7 @@ impl AgentsRegistry {
 pub struct CompiledAgentRoute {
     pub route_key: AgentRouteKey,
     pub session_lifetime: AgentSessionLifetime,
+    pub focus_mode: AgentFocusMode,
     pub roles: Vec<String>,
     pub description: String,
     pub platform: PlatformId,
@@ -235,6 +246,10 @@ pub fn render_hook_agent_routes(agents_root: &Path) -> Result<String, String> {
             permissions: vec![sandbox_mode],
             codex_agent_name: codex.platform_host_agent_name.as_str().to_owned(),
             session_lifetime: codex.session_lifetime.as_str().to_owned(),
+            focus_mode: match codex.focus_mode {
+                AgentFocusMode::Standard => crate::HookClientAgentFocusMode::Standard,
+                AgentFocusMode::Leaf => crate::HookClientAgentFocusMode::Leaf,
+            },
         });
     }
 
@@ -338,6 +353,7 @@ fn compile_agent_route_from_source(
     Ok(CompiledAgentRoute {
         route_key: AgentRouteKey(agent_type.to_string()),
         session_lifetime: agent.session_lifetime,
+        focus_mode: agent.focus_mode,
         roles: agent.roles.clone(),
         description,
         platform: PlatformId(platform.to_string()),

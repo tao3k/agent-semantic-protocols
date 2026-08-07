@@ -467,6 +467,7 @@ fn latest_session_route_is_read_only_and_config_selected() {
         "choicePlaneOwner".to_owned(),
         Value::String("org-contract:agent-interactive".to_owned()),
     );
+    selected.subject.command = Some("cargo test".to_owned());
     append_hook_event_state(&project_root, &selected).expect("append selected route");
 
     let route = latest_hook_session_agent_route(&project_root)

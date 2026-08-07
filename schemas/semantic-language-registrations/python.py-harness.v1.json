@@ -76,6 +76,21 @@
         ]
       },
       "method": "search/owner",
+      "argumentProjection": {
+        "schemaVersion": "1",
+        "tokens": [
+          {"kind": "literal", "value": "search"},
+          {"kind": "literal", "value": "owner"},
+          {"kind": "slot", "name": "owner", "valueType": "path"},
+          {"kind": "literal", "value": "items"},
+          {"kind": "literal", "value": "--query"},
+          {"kind": "slot", "name": "query", "valueType": "string"},
+          {"kind": "literal", "value": "--workspace"},
+          {"kind": "slot", "name": "workspace", "valueType": "path"},
+          {"kind": "literal", "value": "--view"},
+          {"kind": "slot", "name": "presentation", "valueType": "presentation"}
+        ]
+      },
       "outputSchemaIds": [
         "agent.semantic-protocols.semantic-search-packet"
       ],
@@ -106,6 +121,20 @@
         ]
       },
       "method": "search/lexical",
+      "argumentProjection": {
+        "schemaVersion": "1",
+        "tokens": [
+          {"kind": "literal", "value": "search"},
+          {"kind": "literal", "value": "lexical"},
+          {"kind": "slot", "name": "query", "valueType": "string"},
+          {"kind": "literal", "value": "owner"},
+          {"kind": "literal", "value": "tests"},
+          {"kind": "literal", "value": "--workspace"},
+          {"kind": "slot", "name": "workspace", "valueType": "path"},
+          {"kind": "literal", "value": "--view"},
+          {"kind": "slot", "name": "presentation", "valueType": "presentation"}
+        ]
+      },
       "outputSchemaIds": [
         "agent.semantic-protocols.semantic-search-packet"
       ],

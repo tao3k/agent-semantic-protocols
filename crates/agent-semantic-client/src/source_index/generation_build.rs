@@ -40,6 +40,28 @@ impl SourceIndexRefreshContext {
         &self,
         request: SourceIndexGenerationRefresh<'_>,
     ) -> Result<PreparedSourceIndexGeneration, String> {
+        let changed_owner_paths = request.changed_owner_paths.map(|paths| {
+            paths
+                .iter()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+        });
+        let prepared = self.prepare_partial_generation_async(request).await?;
+        let Some(changed_owner_paths) = changed_owner_paths else {
+            return Ok(prepared);
+        };
+        super::generation_overlay::complete_incremental_generation(
+            &self.db_path,
+            prepared,
+            changed_owner_paths,
+        )
+        .await
+    }
+
+    async fn prepare_partial_generation_async(
+        &self,
+        request: SourceIndexGenerationRefresh<'_>,
+    ) -> Result<PreparedSourceIndexGeneration, String> {
         let trace_started = Instant::now();
         let (file_hashes, _workspace_snapshot, source_snapshot, source_blobs) =
             super::async_snapshot::source_index_snapshot_from_files_async(
@@ -66,6 +88,7 @@ impl SourceIndexRefreshContext {
                 index_root: request.index_root,
                 files: &projected_files,
                 project_resolutions: request.project_resolutions,
+                changed_owner_paths: request.changed_owner_paths,
                 candidate: request.candidate,
                 registry: request.registry,
                 provider_registry: request.provider_registry,
@@ -136,6 +159,7 @@ impl SourceIndexRefreshContext {
 }
 
 pub(super) struct SourceIndexGenerationRefresh<'a> {
+    pub(super) changed_owner_paths: Option<&'a [String]>,
     pub(super) index_root: &'a Path,
     pub(super) files: &'a [SourceIndexScopeFile],
     pub(super) project_resolutions: &'a [agent_semantic_runtime::AdmittedProjectResolution],

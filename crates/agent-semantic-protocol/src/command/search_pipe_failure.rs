@@ -13,7 +13,7 @@ use super::search_pipe_args::parse_failure_args;
 use super::search_pipe_candidates::PIPE_CANDIDATE_LINE_LIMIT;
 use super::search_pipe_model::Candidate;
 
-pub(super) fn run_search_failure_command(
+pub(super) async fn run_search_failure_command(
     language_id: &str,
     args: &[String],
     project_root: &Path,
@@ -39,7 +39,7 @@ pub(super) fn run_search_failure_command(
         return Err("search failure requires non-empty failure text".to_string());
     }
     let current_snapshot =
-        agent_semantic_client::source_index::current_source_index_snapshot(project_root)?;
+        agent_semantic_client::source_index::current_source_index_snapshot(project_root).await?;
     let acquisition =
         collect_search_pipe_failure_acquisition(SearchPipeFailureAcquisitionRequest {
             language_id,
@@ -72,7 +72,8 @@ pub(super) fn run_search_failure_command(
             locator_root,
             &message,
             &candidates,
-        )?
+        )
+        .await?
     };
     print!("{rendered}");
     Ok(())

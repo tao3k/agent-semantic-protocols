@@ -121,6 +121,7 @@ pub fn source_index_import_with_file_hashes(
             schema_version: request.schema_version,
             selector_source: request.selector_source,
             file_hashes,
+            source_blobs: request.source_blobs,
             files: import_files,
         },
         cold_assembly_started,
@@ -140,8 +141,23 @@ fn build_source_index_import_from_started(
     request: ClientDbSourceIndexImportRequest,
     cold_assembly_started: std::time::Instant,
 ) -> Result<ClientDbSourceIndexImport, String> {
-    let file_hash_by_path = request
-        .file_hashes
+    let mut canonical_file_hashes = request.file_hashes.clone();
+    for file in &request.files {
+        let owner_path = ClientDbSourceIndexPath::from(file.relative_path.clone());
+        let source = request.source_blobs.get(&owner_path).ok_or_else(|| {
+            format!(
+                "missing content-addressed source bytes for owner {}",
+                owner_path.as_str()
+            )
+        })?;
+        let file_hash = canonical_file_hashes
+            .iter_mut()
+            .find(|file_hash| file_hash.path == file.relative_path)
+            .ok_or_else(|| format!("missing source index hash for {}", file.relative_path))?;
+        file_hash.sha256 = format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(source));
+        file_hash.byte_len = source.len() as u64;
+    }
+    let file_hash_by_path = canonical_file_hashes
         .iter()
         .map(|file_hash| (file_hash.path.as_str(), file_hash))
         .collect::<BTreeMap<_, _>>();
@@ -212,7 +228,8 @@ fn build_source_index_import_from_started(
         project_root: request.project_root,
         schema_id: request.schema_id,
         schema_version: request.schema_version,
-        file_hashes: request.file_hashes,
+        file_hashes: canonical_file_hashes,
+        source_blobs: request.source_blobs,
         owners,
         selectors,
         relations,

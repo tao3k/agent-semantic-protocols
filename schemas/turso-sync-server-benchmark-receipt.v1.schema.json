@@ -34,16 +34,7 @@
   },
   "$defs": {
     "latency": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["sampleCount", "p50", "p95", "p99", "max"],
-      "properties": {
-        "sampleCount": { "type": "integer", "minimum": 1 },
-        "p50": { "type": "integer", "minimum": 0 },
-        "p95": { "type": "integer", "minimum": 0 },
-        "p99": { "type": "integer", "minimum": 0 },
-        "max": { "type": "integer", "minimum": 0 }
-      }
+      "$ref": "client-storage-definitions.v1.schema.json#/$defs/latency"
     }
   }
 }

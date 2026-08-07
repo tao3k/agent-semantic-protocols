@@ -61,9 +61,14 @@ async fn daemon_startup_does_not_eagerly_restore_registered_workspaces() {
     let build_count = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let builder_count = Arc::clone(&build_count);
     let admission = WorkspaceGenerationAdmission::new(Arc::new(
-        move |_, _, _, _, _cancellation, _absolute_deadline| {
+        move |_, _, _, _, _changed_paths, _cancellation| {
             builder_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Box::pin(async move { Err("fixture canonical generation missing".to_owned()) })
+            Box::pin(async move {
+                Err(agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                    agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationFailureStage::DurableRestore,
+                    "fixture canonical generation missing",
+                ))
+            })
         },
     ))
     .with_catalog(catalog);

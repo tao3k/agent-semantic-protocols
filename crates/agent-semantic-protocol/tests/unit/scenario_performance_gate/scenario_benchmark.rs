@@ -135,10 +135,11 @@ fn asp_runtime_timeout_policy_cold_functional_path_stays_inside_scenario_gate() 
 }
 
 #[cfg(unix)]
-#[test]
-fn asp_provider_process_orphan_descendant_closure_stays_inside_scenario_gate() {
+#[tokio::test]
+async fn asp_provider_process_orphan_descendant_closure_stays_inside_scenario_gate() {
     super::runtime_gates::asp_provider_process_orphan_descendant_closure_stays_inside_scenario_gate(
-    );
+    )
+    .await;
 }
 
 #[test]

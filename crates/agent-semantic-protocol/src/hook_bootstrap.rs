@@ -39,8 +39,8 @@ where
 /// Run the canonical hook command, repairing the development artifact on a
 /// recognized binary/config contract drift before replaying the event once.
 #[doc(hidden)]
-pub fn run_hook_bootstrap_from_env() -> i32 {
-    match run_hook_bootstrap(std::env::args_os().skip(1).collect()) {
+pub async fn run_hook_bootstrap_from_env() -> i32 {
+    match run_hook_bootstrap(std::env::args_os().skip(1).collect()).await {
         Ok(code) => code,
         Err(error) => {
             eprintln!("[asp-hook] status=failed error={error}");
@@ -69,7 +69,7 @@ pub fn terminate_hook_process(code: i32) -> ! {
     std::process::exit(code)
 }
 
-fn run_hook_bootstrap(args: Vec<OsString>) -> Result<i32, String> {
+async fn run_hook_bootstrap(args: Vec<OsString>) -> Result<i32, String> {
     let started = std::time::Instant::now();
     validate_hook_args(&args)?;
     let input = read_bounded_stdin()?;
@@ -129,7 +129,7 @@ fn run_hook_bootstrap(args: Vec<OsString>) -> Result<i32, String> {
         return Ok(0);
     }
 
-    match crate::command::evaluate_hook_event_locally(&hook_args[1..], hook_input) {
+    match crate::command::evaluate_hook_event_locally(&hook_args[1..], hook_input).await {
         Ok(()) => {
             if std::env::var_os(TRACE_ENV).is_some() {
                 eprintln!("[asp-hook] route=local-policy-evaluator");
@@ -173,6 +173,18 @@ fn local_hook_policy_unavailable(event: &str, error: &str) -> String {
     let canonical_install_target = agent_semantic_runtime::resolve_state_home()
         .ok()
         .map(|state_home| state_home.join("runtime/bin/asp"));
+    let recovery_command = canonical_install_target
+        .as_ref()
+        .map(|target| {
+            format!(
+                "<validated-candidate-asp> install binary --target {}",
+                target.display()
+            )
+        })
+        .unwrap_or_else(|| {
+            "<validated-candidate-asp> install binary --target <canonicalBinaryInstallTarget>"
+                .to_owned()
+        });
     serde_json::json!({
         "schemaId": "agent.semantic-protocols.hook-local-policy-unavailable.v1",
         "schemaVersion": "1",
@@ -180,10 +192,10 @@ fn local_hook_policy_unavailable(event: &str, error: &str) -> String {
         "event": event,
         "state": "unavailable",
         "reasonKind": "local-hook-policy-authority-unavailable",
-        "recoveryCommand": "asp hook doctor --client codex",
+        "recoveryCommand": recovery_command,
         "recoveryCommands": [
             "asp hook doctor --client codex",
-            "<validated-candidate-asp> install binary --target <canonicalBinaryInstallTarget>"
+            recovery_command
         ],
         "canonicalBinaryInstallTarget": canonical_install_target,
         "error": single_line(error),

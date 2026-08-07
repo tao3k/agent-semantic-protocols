@@ -9,13 +9,40 @@ use super::protocol::{
 use crate::workspace_db_endpoint::WorkspaceDbOwnerEndpoint;
 
 /// Connect, send one typed frame, and verify the response binding.
+pub const HOST_LOCAL_IPC_PERMISSION_DENIED_REASON_KIND: &str = "host-local-ipc-permission-denied";
+
+pub fn workspace_owner_connect_error(error: std::io::Error) -> String {
+    if error.kind() == std::io::ErrorKind::PermissionDenied {
+        return format!(
+            "failed to connect workspace owner endpoint reasonKind={HOST_LOCAL_IPC_PERMISSION_DENIED_REASON_KIND} errorKind=permission-denied"
+        );
+    }
+    format!("failed to connect workspace owner endpoint: {error}")
+}
+
+pub fn runtime_server_data_connect_error(error: std::io::Error) -> String {
+    if error.kind() == std::io::ErrorKind::PermissionDenied {
+        return format!(
+            "failed to connect Runtime Server data endpoint reasonKind={HOST_LOCAL_IPC_PERMISSION_DENIED_REASON_KIND} errorKind=permission-denied"
+        );
+    }
+    format!("failed to connect Runtime Server data endpoint: {error}")
+}
+
+pub fn is_host_local_ipc_permission_denied(error: &str) -> bool {
+    let expected = format!("reasonKind={HOST_LOCAL_IPC_PERMISSION_DENIED_REASON_KIND}");
+    error
+        .split_ascii_whitespace()
+        .any(|field| field == expected)
+}
+
 pub async fn call_workspace_db_owner(
     endpoint: &WorkspaceDbOwnerEndpoint,
     request: &WorkspaceDbIpcRequest,
 ) -> Result<WorkspaceDbIpcResponse, String> {
     let mut stream = UnixStream::connect(&endpoint.socket_path)
         .await
-        .map_err(|error| format!("failed to connect workspace owner endpoint: {error}"))?;
+        .map_err(workspace_owner_connect_error)?;
     write_frame(&mut stream, request).await?;
     let response: WorkspaceDbIpcResponse = read_frame(&mut stream).await?;
     if response.schema_id != WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID {

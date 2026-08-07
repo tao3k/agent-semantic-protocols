@@ -58,18 +58,18 @@ impl<'a>
 
 /// Capture the current content-authoritative source snapshot from an activation
 /// that the command boundary already loaded.
-pub fn current_source_index_snapshot_from_activation(
+pub async fn current_source_index_snapshot_from_activation(
     project_root: &Path,
     activation_path: &Path,
     activation: &agent_semantic_hook::HookRuntime,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     let provider_registry = ProviderRegistrySnapshot::from_activation(activation_path, activation)?;
-    current_source_index_snapshot_with_registry(project_root, &provider_registry)
+    current_source_index_snapshot_with_registry(project_root, &provider_registry).await
 }
 
 /// Capture the complete source scope for one provider from an activation that
 /// the command boundary already loaded.
-pub fn current_provider_source_index_snapshot_from_activation(
+pub async fn current_provider_source_index_snapshot_from_activation(
     project_root: &Path,
     activation_path: &Path,
     activation: &agent_semantic_hook::HookRuntime,
@@ -83,10 +83,11 @@ pub fn current_provider_source_index_snapshot_from_activation(
         provider_id,
         &provider_registry,
     )
+    .await
 }
 
 /// Refresh and publish one provider workspace envelope from an activation.
-pub fn ensure_provider_source_index_snapshot_from_activation(
+pub async fn ensure_provider_source_index_snapshot_from_activation(
     project_root: &Path,
     activation_path: &Path,
     activation: &agent_semantic_hook::HookRuntime,
@@ -104,6 +105,7 @@ pub fn ensure_provider_source_index_snapshot_from_activation(
             provider_registry: &provider_registry,
         },
     )
+    .await
 }
 
 /// Resolve the canonical pre-published envelope path from an activation.

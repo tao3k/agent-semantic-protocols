@@ -8,13 +8,13 @@ use super::{candidate_identity, completed_generation};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_generation_rebuild_admission_is_single_flight_and_sub_millisecond() {
-    const REQUEST_COUNT: usize = 256;
+    const REQUEST_COUNT: usize = 4_096;
     let build_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let release_repair = Arc::new(tokio::sync::Notify::new());
     let admission = Arc::new(WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
         let release_repair = Arc::clone(&release_repair);
-        move |_, _, candidate, _, _cancellation, _absolute_deadline| {
+        move |_, _, candidate, _, _changed_paths, _cancellation| {
             let build_count = Arc::clone(&build_count);
             let release_repair = Arc::clone(&release_repair);
             Box::pin(async move {

@@ -184,6 +184,39 @@ single-file installation.  Descriptor identity or path escape failures are
 typed provider-local admission failures; they never authorize falling back to
 the root development installer.
 
+**** Runtime generation incremental admission
+
+Runtime generation admission MUST be single-flight for the tuple of workspace
+identity, provider-registry evidence, schema evidence, and candidate Merkle
+identity.  Concurrent callers observe the same tracked build and receipt; a
+foreground wall budget never owns or cancels the background generation build.
+
+The active generation scope is the only owner-membership authority.  Provider
+fingerprint storage is a byte-bearing cache, not membership authority, because
+it may retain relocated or tombstoned owners.  An unchanged owner may be reused
+only when an active-generation owner row and a scoped provider snapshot join on
+owner path and content digest.  A missing or mismatched join requires rebuilding
+that owner from the live workspace.
+
+Mutation evidence MUST be projected by workspace root before reaching a
+provider builder.  A nested workspace cannot receive a changed path owned only
+by its parent.  The builder overlays rebuilt changed owners and explicit
+tombstones onto the admitted active manifest, preserves validated unchanged
+owners, derives a complete successor manifest, and publishes that successor in
+one writer lane.  A partial changed-owner file set MUST NOT be published as a
+complete replacement generation.
+
+Publication is latest-candidate-wins: an older build cannot overwrite a newer
+admitted candidate.  Unchanged admission performs no owner-byte rescan, changed
+admission reads only changed or unverifiable owners, and shutdown joins or
+cancels every tracked builder without leaving a worker or writer task behind.
+The Runtime reports single-flight build count, owner bytes read, owner rescan
+count, retained owner count, tombstone count, disk-byte delta, RSS delta, and
+control-plane latency through the resident telemetry buffer.  The normative
+gate is 256 concurrent callers with one build, zero unchanged owner rescans,
+changed-owner-only reconstruction, and thirty-run admission p99 below one
+millisecond.
+
 ** 10.05.10 Interactive SearchLoop
 
 Owns:
@@ -226,6 +259,15 @@ be base64-expanded into a generation JSON document.  One batch response
 contains owners, canonical item identities, selectors, relations, and the
 source leaf digests from which they were parsed.  Projections for unchanged
 owners are reused from the previous complete generation by digest identity.
+
+Every relation is attributed to exactly one owner projection.  Its =from=
+endpoint MUST be either that owner node or an item identity emitted for that
+owner in the same validated batch.  ASP rejects an edge whose source identity
+cannot be joined to its emitting owner; it MUST NOT infer attribution from a
+language-specific endpoint kind.  The generation store persists owner
+attribution with the edge.  An incremental successor clones edges attributed
+to unchanged owners, removes all edges attributed to changed or tombstoned
+owners, and inserts only the newly validated edges for rebuilt owners.
 
 ASP MUST partition generation projection into ordered, short-lived provider
 processes before writing a batch frame.  The default admission bound is at most
@@ -295,6 +337,21 @@ Owns:
 - the distinction between evidence caching and model prefix caching.
 
 ** 10.05.50 Adapters and transports
+
+A Host sandbox denial that prevents a local Runtime or workspace-owner Unix socket from being opened before any protocol frame is exchanged is a typed execution-capability boundary, not an endpoint transport failure. ASP MUST classify it as =host-local-ipc-permission-denied= instead of leaking platform error text. A parser-native lexical command MAY continue through the activated provider's registered bounded lexical surface, under the same process timeout, output, descendant, and memory guards as any provider invocation. Its receipt MUST name the degraded route and reason and MUST NOT claim resident generation, Memory Search, or source-index evidence. Endpoint decode, schema, workspace identity, peer identity, post-connect framing, and authority-validation failures remain terminal. Exact projection may use an analogous live-owner route only when the Provider Registry declares the required native-owner projection capability for that language; otherwise it remains fail closed.
+
+The degraded provider-native invocation MUST be materialized from the selected
+method descriptor's =provider-method-argument-projection.v1= contract.  The
+projection is a closed token AST: each output token is either a literal or one
+of the named, typed facade slots =query=, =workspace=, =presentation=, and
+=owner=.  It MUST NOT contain shell source, evaluation, arbitrary formatting,
+or provider/language-specific dispatch branches.  Lexical projections may map
+only =query=, =workspace=, and =presentation=; =owner= is admissible only for
+owner-scoped methods.  Token order is registry order and therefore produces
+deterministic argv.  A missing projection, an undeclared field, a missing slot
+value, an unsupported schema version, or an invalid method/slot combination
+MUST fail closed as
+=provider-native-argument-projection-unavailable= before provider execution.
 
 Owns:
 

@@ -241,10 +241,14 @@ fn selector_receipts(
                     .projections
                     .iter()
                     .map(|projection| {
+                        let projection_kind = agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::try_from(
+                            projection.projection_kind.as_str(),
+                        )
+                        .map_err(|error| format!("decode provider projection kind: {error}"))?;
                         serde_json::to_vec(&projection.payload)
                             .map(|bytes| {
                                 agent_semantic_client_db::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot {
-                                    projection_kind: projection.projection_kind.clone(),
+                                    projection_kind,
                                     bytes,
                                 }
                             })

@@ -6,6 +6,7 @@ mod async_snapshot;
 mod collect;
 mod generation_build;
 mod generation_commit;
+mod generation_overlay;
 pub use api::current_live_provider_source_index_snapshot_with_registry;
 mod projection;
 mod provider_envelope;

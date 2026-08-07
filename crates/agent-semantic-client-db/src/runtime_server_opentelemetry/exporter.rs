@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
-    path::Path,
+    path::{Path, PathBuf},
     sync::Arc,
     time::UNIX_EPOCH,
 };
@@ -18,6 +18,16 @@ use super::semconv;
 const PERFORMANCE_SPAN_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-opentelemetry-performance-event";
 const PERFORMANCE_SPAN_SCHEMA_VERSION: &str = "1";
+
+static SCHEMA_MIGRATION_LANES: std::sync::LazyLock<dashmap::DashMap<PathBuf, Arc<Mutex<()>>>> =
+    std::sync::LazyLock::new(dashmap::DashMap::new);
+
+fn schema_migration_lane(path: &Path) -> Arc<Mutex<()>> {
+    SCHEMA_MIGRATION_LANES
+        .entry(path.to_path_buf())
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
+}
 
 fn optional_u64(row: &turso::Row, index: usize, label: &str) -> Result<Option<u64>, String> {
     let value = row
@@ -73,7 +83,11 @@ impl TursoOpenTelemetrySpanExporter {
         let writer = database.connect().map_err(|error| {
             format!("failed to connect Runtime Server OpenTelemetry Turso DB: {error}")
         })?;
-        bootstrap_schema(&writer).await?;
+        {
+            let migration_lane = schema_migration_lane(path);
+            let _migration_guard = migration_lane.lock().await;
+            bootstrap_schema(&writer).await?;
+        }
         let reader = database.connect().map_err(|error| {
             format!("failed to connect Runtime Server OpenTelemetry Turso reader: {error}")
         })?;
@@ -391,6 +405,99 @@ impl TursoOpenTelemetrySpanExporter {
                 )
                 .await
                 .map_err(|error| format!("failed to persist OpenTelemetry span: {error}"))?;
+            let incident_workspace_identity =
+                optional_string_attribute(&attributes, semconv::WORKSPACE_IDENTITY);
+            let incident_id = optional_string_attribute(&attributes, semconv::INCIDENT_ID);
+            let incident_state = optional_string_attribute(&attributes, semconv::INCIDENT_STATE);
+            let incident_transition =
+                optional_string_attribute(&attributes, semconv::INCIDENT_TRANSITION);
+            let transition_sequence =
+                optional_integer_attribute(&attributes, semconv::INCIDENT_TRANSITION_SEQUENCE);
+            if let (
+                Some(workspace_identity),
+                Some(incident_id),
+                Some(incident_state),
+                Some(incident_transition),
+                Some(transition_sequence),
+            ) = (
+                incident_workspace_identity,
+                incident_id,
+                incident_state,
+                incident_transition,
+                transition_sequence,
+            ) {
+                if matches!(
+                    incident_state.as_str(),
+                    "open" | "repairing" | "verification-pending" | "failed-verification"
+                ) {
+                    transaction
+                        .execute(
+                            "INSERT INTO asp_otel_active_search_incident (
+                                 workspace_identity, incident_id, language_id,
+                                 generation_digest, operation_id, failure_reason,
+                                 incident_state, incident_transition, transition_sequence,
+                                 requested_projection, observed_at_unix_micros,
+                                 elapsed_micros, budget_micros, attributes_json
+                             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                             ON CONFLICT(workspace_identity, incident_id) DO UPDATE SET
+                                 language_id = excluded.language_id,
+                                 generation_digest = excluded.generation_digest,
+                                 operation_id = excluded.operation_id,
+                                 failure_reason = excluded.failure_reason,
+                                 incident_state = excluded.incident_state,
+                                 incident_transition = excluded.incident_transition,
+                                 transition_sequence = excluded.transition_sequence,
+                                 requested_projection = excluded.requested_projection,
+                                 observed_at_unix_micros = excluded.observed_at_unix_micros,
+                                 elapsed_micros = excluded.elapsed_micros,
+                                 budget_micros = excluded.budget_micros,
+                                 attributes_json = excluded.attributes_json
+                             WHERE excluded.transition_sequence >= asp_otel_active_search_incident.transition_sequence",
+                            turso::params![
+                                workspace_identity,
+                                incident_id,
+                                optional_string_attribute(&attributes, semconv::LANGUAGE_ID),
+                                optional_string_attribute(&attributes, semconv::GENERATION_DIGEST),
+                                optional_string_attribute(&attributes, semconv::OPERATION_ID),
+                                optional_string_attribute(&attributes, semconv::FAILURE_REASON),
+                                incident_state,
+                                incident_transition,
+                                transition_sequence,
+                                optional_string_attribute(
+                                    &attributes,
+                                    semconv::REQUESTED_PROJECTION,
+                                ),
+                                optional_integer_attribute(
+                                    &attributes,
+                                    semconv::OBSERVED_AT_UNIX_MICROS,
+                                )
+                                .unwrap_or_default(),
+                                optional_integer_attribute(&attributes, semconv::ELAPSED_MICROS),
+                                optional_integer_attribute(&attributes, semconv::BUDGET_MICROS),
+                                serde_json::to_string(&attributes).map_err(|error| format!(
+                                    "failed to encode active search incident attributes: {error}"
+                                ))?,
+                            ],
+                        )
+                        .await
+                        .map_err(|error| {
+                            format!("failed to materialize active search incident: {error}")
+                        })?;
+                } else {
+                    transaction
+                        .execute(
+                            "DELETE FROM asp_otel_active_search_incident
+                             WHERE workspace_identity = ?1
+                               AND incident_id = ?2
+                               AND transition_sequence <= ?3",
+                            turso::params![workspace_identity, incident_id, transition_sequence],
+                        )
+                        .await
+                        .map_err(|error| {
+                            format!("failed to close active search incident: {error}")
+                        })?;
+                }
+            }
             let pressure_present = [
                 process_resident_bytes,
                 process_peak_resident_bytes,
@@ -507,55 +614,41 @@ async fn bootstrap_schema(connection: &turso::Connection) -> Result<(), String> 
         .await
         .map_err(|error| format!("failed to create Runtime Server telemetry table: {error}"))?;
     ensure_performance_span_columns(connection).await?;
+    remove_legacy_active_search_incident_view(connection).await?;
     connection
         .execute(
-            "CREATE INDEX IF NOT EXISTS asp_otel_search_incident_timeline_idx
-             ON asp_otel_performance_span(
-                 json_extract(attributes_json, '$.\"asp.search.incident.id\"'),
+            "CREATE TABLE IF NOT EXISTS asp_otel_active_search_incident (
+                 workspace_identity TEXT NOT NULL,
+                 incident_id TEXT NOT NULL,
+                 language_id TEXT,
+                 generation_digest TEXT,
+                 operation_id TEXT,
+                 failure_reason TEXT,
+                 incident_state TEXT NOT NULL,
+                 incident_transition TEXT NOT NULL,
+                 transition_sequence INTEGER NOT NULL,
+                 requested_projection TEXT,
+                 observed_at_unix_micros INTEGER NOT NULL,
+                 elapsed_micros INTEGER,
+                 budget_micros INTEGER,
+                 attributes_json TEXT NOT NULL,
+                 PRIMARY KEY (workspace_identity, incident_id)
+             )",
+            (),
+        )
+        .await
+        .map_err(|error| format!("failed to create active search incident table: {error}"))?;
+    connection
+        .execute(
+            "CREATE INDEX IF NOT EXISTS asp_otel_active_search_incident_workspace_idx
+             ON asp_otel_active_search_incident(
+                 workspace_identity,
                  observed_at_unix_micros DESC
-             )
-             WHERE json_extract(attributes_json, '$.\"asp.search.incident.id\"') IS NOT NULL",
+             )",
             (),
         )
         .await
-        .map_err(|error| format!("failed to create search incident timeline index: {error}"))?;
-    connection
-        .execute(
-            "CREATE VIEW IF NOT EXISTS asp_otel_active_search_incident AS
-             WITH ranked AS (
-                 SELECT
-                     workspace_identity,
-                     language_id,
-                     generation_digest,
-                     json_extract(attributes_json, '$.\"asp.operation.id\"') AS operation_id,
-                     failure_reason,
-                     observed_at_unix_micros,
-                     elapsed_micros,
-                     budget_micros,
-                     attributes_json,
-                     json_extract(attributes_json, '$.\"asp.search.incident.id\"') AS incident_id,
-                     json_extract(attributes_json, '$.\"asp.search.incident.state\"') AS incident_state,
-                     json_extract(attributes_json, '$.\"asp.search.incident.transition\"') AS incident_transition,
-                     json_extract(attributes_json, '$.\"asp.search.requested_projection\"') AS requested_projection,
-                     ROW_NUMBER() OVER (
-                         PARTITION BY workspace_identity,
-                             json_extract(attributes_json, '$.\"asp.search.incident.id\"')
-                         ORDER BY observed_at_unix_micros DESC,
-                             json_extract(attributes_json, '$.\"asp.search.incident.transition_sequence\"') DESC,
-                             start_time_unix_nanos DESC
-                     ) AS incident_rank
-                 FROM asp_otel_performance_span
-                 WHERE json_extract(attributes_json, '$.\"asp.search.incident.id\"') IS NOT NULL
-             )
-             SELECT * FROM ranked
-             WHERE incident_rank = 1
-               AND incident_state IN (
-                   'open', 'repairing', 'verification-pending', 'failed-verification'
-               )",
-            (),
-        )
-        .await
-        .map_err(|error| format!("failed to create active search incident view: {error}"))?;
+        .map_err(|error| format!("failed to create active search incident index: {error}"))?;
     connection
         .execute(
             "CREATE TABLE IF NOT EXISTS asp_otel_runtime_pressure (
@@ -606,6 +699,39 @@ async fn bootstrap_schema(connection: &turso::Connection) -> Result<(), String> 
         connection.execute(statement, ()).await.map_err(|error| {
             format!("failed to bootstrap Runtime Server OpenTelemetry schema: {error}")
         })?;
+    }
+    Ok(())
+}
+
+async fn remove_legacy_active_search_incident_view(
+    connection: &turso::Connection,
+) -> Result<(), String> {
+    let mut rows = connection
+        .query(
+            "SELECT type FROM sqlite_schema
+             WHERE name = 'asp_otel_active_search_incident'
+             LIMIT 1",
+            (),
+        )
+        .await
+        .map_err(|error| format!("failed to inspect active search incident relation: {error}"))?;
+    let relation_kind = rows
+        .next()
+        .await
+        .map_err(|error| format!("failed to read active search incident relation: {error}"))?
+        .map(|row| {
+            row.get::<String>(0).map_err(|error| {
+                format!("failed to decode active search incident relation kind: {error}")
+            })
+        })
+        .transpose()?;
+    if relation_kind.as_deref() == Some("view") {
+        connection
+            .execute("DROP VIEW asp_otel_active_search_incident", ())
+            .await
+            .map_err(|error| {
+                format!("failed to remove legacy active search incident view: {error}")
+            })?;
     }
     Ok(())
 }

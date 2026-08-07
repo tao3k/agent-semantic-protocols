@@ -153,6 +153,12 @@
         }
       }
     },
+    "nodeRefList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nodeRef"
+      }
+    },
     "nodeRef": {
       "type": "object",
       "additionalProperties": false,
@@ -257,28 +263,16 @@
           "$ref": "#/$defs/projectPath"
         },
         "supportedBy": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/nodeRef"
-          }
+          "$ref": "#/$defs/nodeRefList"
         },
         "observedBy": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/nodeRef"
-          }
+          "$ref": "#/$defs/nodeRefList"
         },
         "reviewedBy": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/nodeRef"
-          }
+          "$ref": "#/$defs/nodeRefList"
         },
         "waivedBy": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/nodeRef"
-          }
+          "$ref": "#/$defs/nodeRefList"
         },
         "actions": {
           "type": "array",

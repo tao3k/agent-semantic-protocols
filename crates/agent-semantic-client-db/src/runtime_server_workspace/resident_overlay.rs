@@ -25,7 +25,8 @@ struct ResidentOverlayState {
     workspace_snapshot: agent_semantic_content_identity::WorkspaceSnapshot,
     owners: HashMap<String, WorkspaceOwnerSnapshot>,
     tombstones: HashSet<String>,
-    selectors: HashMap<(String, String), WorkspaceRuntimeSelectorOverlay>,
+    selectors:
+        HashMap<(super::model::ExactProjectionKind, String), WorkspaceRuntimeSelectorOverlay>,
 }
 
 #[derive(Debug, Clone)]
@@ -148,7 +149,6 @@ impl ResidentOverlayStore {
         ),
         String,
     > {
-        super::selector_overlay::validate_projection_kind(&overlay.projection_kind)?;
         if selector_owner_path(&overlay.structural_selector)? != overlay.owner_path {
             return Err("runtime selector overlay owner path mismatch".to_owned());
         }
@@ -278,7 +278,7 @@ fn materialize_selector(
     };
     selector.byte_start = overlay.byte_start;
     selector.byte_end = overlay.byte_end;
-    if overlay.projection_kind != "source" {
+    if overlay.projection_kind != super::model::ExactProjectionKind::Source {
         if let Some(projection) = selector
             .derived_projections
             .iter_mut()
@@ -289,7 +289,7 @@ fn materialize_selector(
             selector
                 .derived_projections
                 .push(WorkspaceDerivedProjectionSnapshot {
-                    projection_kind: overlay.projection_kind.clone(),
+                    projection_kind: overlay.projection_kind,
                     bytes: overlay.projection_bytes.clone(),
                 });
         }
@@ -353,15 +353,14 @@ impl ResidentOverlaySnapshot {
     pub(super) fn read_selector(
         &self,
         base: &WorkspaceMemoryGeneration,
-        projection_kind: &str,
+        projection_kind: super::model::ExactProjectionKind,
         structural_selector: &str,
     ) -> Result<WorkspaceRuntimeSelectorRead, String> {
-        super::selector_overlay::validate_projection_kind(projection_kind)?;
         let owner_path = selector_owner_path(structural_selector)?;
         if let Some(overlay) = self
             .state
             .selectors
-            .get(&(projection_kind.to_owned(), structural_selector.to_owned()))
+            .get(&(projection_kind, structural_selector.to_owned()))
         {
             return Ok(WorkspaceRuntimeSelectorRead::Projection {
                 generation_digest: self.state.generation_digest.clone(),
@@ -489,7 +488,9 @@ fn validate_selector_overlay(
         .bytes
         .get(overlay.byte_start..overlay.byte_end)
         .ok_or_else(|| "runtime selector overlay range is invalid".to_owned())?;
-    if overlay.projection_kind == "source" && source != overlay.projection_bytes {
+    if overlay.projection_kind == super::model::ExactProjectionKind::Source
+        && source != overlay.projection_bytes
+    {
         return Err(
             "runtime source selector overlay bytes do not match the admitted owner range"
                 .to_owned(),
@@ -502,7 +503,7 @@ fn read_base_selector_with_identity(
     base: &WorkspaceMemoryGeneration,
     generation_digest: &str,
     root_digest: &str,
-    projection_kind: &str,
+    projection_kind: super::model::ExactProjectionKind,
     structural_selector: &str,
 ) -> Result<WorkspaceRuntimeSelectorRead, String> {
     let owner_path = selector_owner_path(structural_selector)?;
@@ -525,7 +526,7 @@ fn read_owner_selector(
     owner: &WorkspaceOwnerSnapshot,
     generation_digest: &str,
     root_digest: &str,
-    projection_kind: &str,
+    projection_kind: super::model::ExactProjectionKind,
     structural_selector: &str,
 ) -> Result<WorkspaceRuntimeSelectorRead, String> {
     if let Some(selector) = owner
@@ -533,7 +534,7 @@ fn read_owner_selector(
         .iter()
         .find(|selector| selector.selector == structural_selector)
     {
-        if projection_kind == "source" {
+        if projection_kind == super::model::ExactProjectionKind::Source {
             let bytes = owner
                 .bytes
                 .get(selector.byte_start..selector.byte_end)

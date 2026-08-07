@@ -74,6 +74,12 @@ fn canonical_materialization_binds_snapshot_import_and_complete_owner_count() {
     std::fs::create_dir_all(&project_root).expect("create canonical materialization project root");
     let import = agent_semantic_client_db::build_source_index_import(
         agent_semantic_client_db::ClientDbSourceIndexImportRequest {
+            source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
+                [(
+                    agent_semantic_client_db::ClientDbSourceIndexPath::from("src/lib.rs"),
+                    b"source".to_vec(),
+                )],
+            ),
             generation_id: agent_semantic_client_core::CacheGenerationId::from(
                 "canonical-materialization-generation",
             ),
@@ -311,6 +317,7 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
     let workspace_identity = "workspace-concurrent-cold-restore";
     let source = b"pub fn restored() {}\n";
     let import = agent_semantic_client_db::ClientDbSourceIndexImport {
+        source_blobs: Default::default(),
         relations: Vec::new(),
         generation_id: agent_semantic_client_core::CacheGenerationId::from(
             "concurrent-cold-restore",

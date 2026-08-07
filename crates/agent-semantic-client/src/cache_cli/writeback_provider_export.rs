@@ -9,7 +9,7 @@ use agent_semantic_client_core::{
 };
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode,
-    run_provider_process as run_transport_process,
+    run_provider_process_async as run_transport_process,
 };
 use bytes::Bytes;
 
@@ -22,7 +22,7 @@ pub(super) struct ProviderPacketExport {
     pub(super) elapsed_ms: ElapsedMillis,
 }
 
-pub(super) fn export_provider_packet(
+pub(super) async fn export_provider_packet(
     provider: &ResolvedProvider,
     request: &ClientRequest,
 ) -> Option<ProviderPacketExport> {
@@ -54,6 +54,7 @@ pub(super) fn export_provider_packet(
         stderr: OutputMode::Capture,
         limits: ProviderProcessLimits::default(),
     })
+    .await
     .ok()?;
     if !output.status.success()
         || output.stdout.is_empty()

@@ -12,15 +12,13 @@ fn query_data_plane_never_invokes_generation_reconciliation() {
         "generation owner reintroduced the non-terminal admission bridge"
     );
     assert!(!data_plane.contains("ensure_runtime_generation_ready"));
-    assert!(data_plane.contains("connect_hook_workspace_session"));
+    assert!(data_plane.contains("runtime_server_workspace_session_async"));
+    assert!(!data_plane.contains("connect_hook_workspace_session"));
+    assert!(!data_plane.contains("runtime_generation_pointer_path"));
     assert!(!data_plane.contains("connect_runtime_server_workspace_session"));
-    assert_eq!(
-        data_plane
-            .matches("reasonKind=active-workspace-generation-required")
-            .count(),
-        2,
-        "source and exact projection misses must remain read-only typed failures"
-    );
+    let exact = include_str!("../../src/command/provider_resident_exact.rs");
+    assert!(exact.contains("reasonKind=active-workspace-generation-required"));
+    assert!(exact.contains("provider_native_exact_fallback_reason"));
 }
 
 #[test]

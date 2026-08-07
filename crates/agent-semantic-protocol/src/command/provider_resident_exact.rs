@@ -2,20 +2,20 @@ use std::path::Path;
 
 use agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead;
 
-pub(super) fn run_resident_exact_query(
+pub(super) async fn run_resident_exact_query(
     language_id: &str,
     provider_args: &[String],
     project_root: &Path,
     started: tokio::time::Instant,
 ) -> Result<(), String> {
     let exact = super::provider_exact_args::parse_exact_query_args(provider_args)?;
-    crate::server::runtime_server::block_on_agent_facing_runtime_server_client(
+    crate::server::runtime_server::await_agent_facing_runtime_server_client(
         started,
         "query",
         "resident-exact-generation-open",
         project_root,
         async move {
-            let read = resident_exact_projection(project_root, &exact).await?;
+            let read = resident_exact_projection(project_root, language_id, &exact).await?;
             crate::exact_projection_trace::stage("mmap-generation-open", started);
             match crate::resident_exact_projection::resolve(read, &exact.structural_selector)? {
                 crate::resident_exact_projection::ResidentExactProjection::Hit(projection) => {
@@ -65,14 +65,19 @@ pub(super) fn run_resident_exact_query(
             }
         },
     )
+    .await
 }
 
 async fn resident_exact_projection(
     project_root: &Path,
+    language_id: &str,
     exact: &super::provider_exact_args::ExactQueryArgs,
 ) -> Result<WorkspaceRuntimeSelectorRead, String> {
+    let language_id = agent_semantic_client_core::LanguageId::try_from(language_id)
+        .map_err(|error| format!("decode language id: {error}"))?;
     crate::server::runtime_server::runtime_server_workspace_exact_projection_async(
         project_root,
+        language_id,
         &exact.projection,
         &exact.structural_selector,
     )
@@ -86,3 +91,25 @@ fn registered_provider_id(language_id: &str) -> Result<String, String> {
         .map(|manifest| manifest.provider_id().as_str().to_owned())
         .ok_or_else(|| format!("no registered provider manifest for language {language_id}"))
 }
+
+pub(super) fn provider_native_exact_fallback_reason(error: &str) -> Option<&'static str> {
+    if agent_semantic_client_db::workspace_db_ipc::is_host_local_ipc_permission_denied(error) {
+        return Some("host-local-ipc-permission-denied");
+    }
+    if error.contains("reasonKind=active-workspace-generation-required")
+        || error.starts_with("canonical workspace scope is not admitted:")
+        || error.starts_with("workspace admission locator is unavailable at ")
+    {
+        return Some("active-workspace-generation-required");
+    }
+    if error.starts_with("Runtime Server endpoint is unavailable at ")
+        || error.starts_with("failed to connect Runtime Server data endpoint")
+    {
+        return Some("runtime-server-stable-ipc-unavailable");
+    }
+    None
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/command/provider_resident_exact.rs"]
+mod fallback_tests;

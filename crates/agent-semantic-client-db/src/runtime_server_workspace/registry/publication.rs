@@ -201,7 +201,7 @@ impl RuntimeServerWorkspaceRegistry {
             .map_err(|_| "runtime workspace writer lane dropped its receipt".to_owned())?
     }
 
-    pub async fn ensure_canonical_generation(
+    pub async fn admit_canonical_generation_resident(
         &self,
         request_id: impl Into<String>,
         workspace_identity: impl Into<String>,
@@ -271,6 +271,82 @@ impl RuntimeServerWorkspaceRegistry {
         receive
             .await
             .map_err(|_| "runtime workspace writer lane dropped its completion".to_owned())?
+    }
+
+    pub async fn ensure_canonical_generation(
+        &self,
+        request_id: impl Into<String>,
+        workspace_identity: impl Into<String>,
+        materialization: crate::runtime_server_workspace::ValidatedWorkspaceCanonicalMaterialization,
+    ) -> Result<WorkspaceRecoveryReceipt, String> {
+        let workspace_identity = workspace_identity.into();
+        let project_root =
+            std::path::PathBuf::from(&materialization.as_materialization().project_root);
+        let receipt = self
+            .admit_canonical_generation_resident(
+                request_id,
+                workspace_identity.clone(),
+                materialization,
+            )
+            .await?;
+        self.wait_canonical_generation_durable(
+            &workspace_identity,
+            &project_root,
+            &receipt.generation_digest,
+            receipt.target_epoch,
+        )
+        .await?;
+        Ok(receipt)
+    }
+
+    pub async fn wait_canonical_generation_durable(
+        &self,
+        workspace_identity: &str,
+        project_root: &std::path::Path,
+        generation_digest: &str,
+        target_epoch: u64,
+    ) -> Result<(), String> {
+        let entry = self
+            .ready_entry(workspace_identity, project_root)?
+            .ok_or_else(|| {
+                format!(
+                    "runtime workspace entry is unavailable while waiting for canonical durability: workspaceIdentity={workspace_identity}"
+                )
+            })?;
+        let mut durability = entry.durability.subscribe();
+        loop {
+            let receipt = durability.borrow().clone();
+            if let Some(receipt) = receipt {
+                receipt.validate()?;
+                if receipt.workspace_identity == workspace_identity
+                    && receipt.generation_digest == generation_digest
+                    && receipt.target_epoch == target_epoch
+                {
+                    match receipt.state {
+                        crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::DurableReady => {
+                            return Ok(());
+                        }
+                        crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::Failed => {
+                            return Err(receipt.failure.unwrap_or_else(|| {
+                                "canonical workspace generation durability failed without a diagnostic"
+                                    .to_owned()
+                            }));
+                        }
+                        crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::ResidentReady => {}
+                    }
+                } else if receipt.workspace_identity == workspace_identity
+                    && receipt.target_epoch > target_epoch
+                {
+                    return Err(format!(
+                        "canonical workspace generation was superseded before durability: workspaceIdentity={workspace_identity} expectedEpoch={target_epoch} actualEpoch={} expectedDigest={generation_digest} actualDigest={}",
+                        receipt.target_epoch, receipt.generation_digest
+                    ));
+                }
+            }
+            durability.changed().await.map_err(|_| {
+                "runtime workspace generation durability receipt channel closed".to_owned()
+            })?;
+        }
     }
 
     pub async fn restore_checkpoint(

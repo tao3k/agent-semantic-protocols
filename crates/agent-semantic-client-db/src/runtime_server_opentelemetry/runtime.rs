@@ -145,12 +145,12 @@ impl RuntimeServerOpenTelemetry {
         ingress_socket_path: std::path::PathBuf,
         query_socket_path: std::path::PathBuf,
     ) -> Result<Self, String> {
-        let (_sender, receiver) = tokio::sync::mpsc::channel(1);
+        let bus = crate::runtime_telemetry_bus::RuntimeTelemetryBus::new();
         Self::start_with_telemetry_receiver(
             database_path,
             ingress_socket_path,
             query_socket_path,
-            receiver,
+            bus.receiver,
         )
         .await
     }
@@ -338,11 +338,19 @@ async fn run_resident_telemetry_lane(
     mut shutdown: watch::Receiver<bool>,
     task_scope: crate::runtime_server_runtime::RuntimeServerTaskScope,
 ) -> Result<(), String> {
-    let exporter = TursoOpenTelemetrySpanExporter::open(&database_path).await?;
-    let processor = BatchSpanProcessor::builder(exporter.clone(), runtime::Tokio).build();
-    let provider = SdkTracerProvider::builder()
-        .with_span_processor(processor)
-        .build();
+    let (provider, persistence_failure) =
+        match TursoOpenTelemetrySpanExporter::open(&database_path).await {
+            Ok(exporter) => {
+                let processor = BatchSpanProcessor::builder(exporter, runtime::Tokio).build();
+                (
+                    SdkTracerProvider::builder()
+                        .with_span_processor(processor)
+                        .build(),
+                    None,
+                )
+            }
+            Err(error) => (SdkTracerProvider::builder().build(), Some(error)),
+        };
     let live_store = std::sync::Arc::new(super::live_store::RuntimePerformanceLiveStore::default());
     let (query_shutdown, query_shutdown_receiver) = watch::channel(false);
     let query_task = task_scope.spawn(
@@ -355,6 +363,27 @@ async fn run_resident_telemetry_lane(
         ),
     )?;
     let tracer = provider.tracer("asp.runtime-server.performance");
+    if let Some(error) = persistence_failure {
+        let mut observation = RuntimePerformanceObservation::new(
+            "runtime-server",
+            "opentelemetry-persistence-bootstrap",
+            0,
+            0,
+            "unavailable",
+        );
+        observation.failure_reason = Some("opentelemetry-persistence-unavailable".to_owned());
+        record_observation(&tracer, observation, &live_store);
+        eprintln!(
+            "[runtime-server-opentelemetry] {}",
+            serde_json::json!({
+                "schemaId": "agent.semantic-protocols.runtime-server-opentelemetry-degradation-receipt",
+                "schemaVersion": "1",
+                "state": "degraded",
+                "reasonKind": "opentelemetry-persistence-unavailable",
+                "error": error,
+            })
+        );
+    }
     let mut ingress_connections = tokio::task::JoinSet::new();
     let ingress_supervisor =
         crate::runtime_server_runtime::RuntimeServerConnectionSupervisor::for_current_runtime(

@@ -43,6 +43,7 @@ mod paths;
 pub(crate) mod protocol_binary;
 mod protocol_version;
 mod provider_activation;
+mod provider_argument_projection;
 mod provider_dispatch;
 mod provider_exact_args;
 mod provider_execution;

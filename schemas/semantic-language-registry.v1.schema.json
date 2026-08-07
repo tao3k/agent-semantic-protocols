@@ -236,6 +236,9 @@
         "invocation": {
           "$ref": "#/$defs/commandTemplate"
         },
+        "argumentProjection": {
+          "$ref": "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-method-argument-projection.v1.schema.json"
+        },
         "benchmarkInvocation": {
           "$ref": "#/$defs/benchmarkInvocation"
         },
@@ -246,6 +249,36 @@
           "type": "boolean"
         }
       },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "argumentProjection": {
+                "properties": {
+                  "tokens": {
+                    "contains": {
+                      "type": "object",
+                      "required": ["kind", "name"],
+                      "properties": {
+                        "kind": {"const": "slot"},
+                        "name": {"const": "owner"}
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "required": ["argumentProjection"]
+          },
+          "then": {
+            "properties": {
+              "method": {
+                "pattern": "^search/owner(?:$|-)"
+              }
+            }
+          }
+        }
+      ],
       "additionalProperties": true
     }
   }

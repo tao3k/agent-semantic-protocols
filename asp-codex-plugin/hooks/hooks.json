@@ -27,7 +27,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Read|read|readFile|readDirectory|read_file|read_directory|FsReadFile|FsReadDirectory|fs\\.read|fs\\.readFile|fs\\.readDirectory|fs/read|fs/readFile|fs/readDirectory|fs\\\\read|fs\\\\readFile|fs\\\\readDirectory|functions\\.read|functions\\.read_file|functions\\.readFile|mcp__.*__read|mcp__.*__read_file|mcp__.*__readFile|functions\\.exec_command|exec_command|command_execution|multi_tool_use\\.parallel|Bash|Shell",
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -40,7 +40,7 @@
     ],
     "PermissionRequest": [
       {
-        "matcher": "Read|read|readFile|readDirectory|read_file|read_directory|FsReadFile|FsReadDirectory|fs\\.read|fs\\.readFile|fs\\.readDirectory|fs/read|fs/readFile|fs/readDirectory|fs\\\\read|fs\\\\readFile|fs\\\\readDirectory|functions\\.read|functions\\.read_file|functions\\.readFile|mcp__.*__read|mcp__.*__read_file|mcp__.*__readFile|functions\\.exec_command|exec_command|command_execution|multi_tool_use\\.parallel|Bash|Shell",
+      "matcher": "*",
         "hooks": [
           {
             "type": "command",

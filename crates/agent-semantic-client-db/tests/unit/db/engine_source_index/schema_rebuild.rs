@@ -3,8 +3,8 @@ use super::{
     CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, CacheGenerationId, ClientCacheFileHash, ClientDbEngine,
     ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest,
     ClientDbSourceIndexLookupState, ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexSource,
-    LanguageId, ProviderId, SemanticSchemaId, SemanticSchemaVersion, build_source_index_import,
-    temp_root,
+    LanguageId, ProviderId, SemanticSchemaId, SemanticSchemaVersion,
+    build_fixture_source_index_import, temp_root,
 };
 use std::fs;
 
@@ -79,7 +79,8 @@ async fn db_engine_source_index_refresh_rebuilds_noncanonical_snapshot_schema() 
             "read-only lookup must not mutate a noncanonical derived namespace"
         );
     }
-    let source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let source_index_import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
         generation_id: CacheGenerationId::from("source-index-canonical-schema-turso"),
         project_root: project_root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),

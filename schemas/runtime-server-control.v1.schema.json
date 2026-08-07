@@ -29,6 +29,9 @@
     },
     {
       "$ref": "#/$defs/runtimeShutdownReceipt"
+    },
+    {
+      "$ref": "runtime-server-read-query-route.v1.schema.json"
     }
   ],
   "$defs": {
@@ -426,7 +429,8 @@
               "sessionId",
               "name",
               "physicalGeneration",
-              "lifecycleState"
+              "lifecycleState",
+              "hostBinding"
             ],
             "properties": {
               "workspaceIdentity": { "type": "string", "minLength": 1 },
@@ -437,6 +441,12 @@
               "physicalGeneration": { "type": "integer", "minimum": 0 },
               "lifecycleState": {
                 "enum": ["routable", "expired", "archived", "invalid"]
+              },
+              "hostBinding": {
+                "oneOf": [
+                  {"type": "null"},
+                  {"$ref": "agent-session-host-binding.v1.schema.json"}
+                ]
               }
             }
           }

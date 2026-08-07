@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/provider-definitions.v1.schema.json",
+  "title": "Provider Family Definitions v1",
+  "description": "Shared definitions owned by the provider schema family.",
+  "$defs": {
+    "relationEndpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "minLength": 1}
+      }
+    },
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "kind", "to"],
+      "properties": {
+        "from": {"$ref": "#/$defs/relationEndpoint"},
+        "kind": {"type": "string", "minLength": 1},
+        "to": {"$ref": "#/$defs/relationEndpoint"}
+      }
+    }
+  }
+}

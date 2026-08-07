@@ -80,7 +80,7 @@ pub(super) struct IncrementalOwnerSearchContext<'a> {
     pub(super) frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
 }
 
-pub(super) fn run_asp_incremental_owner_search_command(
+pub(super) async fn run_asp_incremental_owner_search_command(
     args: &[String],
     context: IncrementalOwnerSearchContext<'_>,
 ) -> Result<(), String> {
@@ -102,6 +102,7 @@ pub(super) fn run_asp_incremental_owner_search_command(
             frontier_receipt: context.frontier_receipt,
         },
     )
+    .await
 }
 
 pub(super) fn is_asp_fast_search(args: &[String]) -> bool {
@@ -159,7 +160,8 @@ pub(super) async fn run_asp_fast_search_command(
                 provider_context: context.provider_context,
                 frontier_receipt: context.frontier_receipt,
             },
-        );
+        )
+        .await;
     }
     if is_search_lexical(args) {
         return run_search_lexical_command(args, &context).await;
@@ -172,7 +174,8 @@ pub(super) async fn run_asp_fast_search_command(
             context.locator_root,
             context.cache_home,
             context.config,
-        );
+        )
+        .await;
     }
     if is_reasoning_owner_query(args) {
         return run_reasoning_owner_query_command(
@@ -396,7 +399,8 @@ async fn run_search_pipe_command(
             &pipe_args.scopes,
         ),
         frontier_receipt: context.frontier_receipt,
-    })?;
+    })
+    .await?;
     Ok(())
 }
 
@@ -720,7 +724,8 @@ async fn run_search_ingest_command(
         provider_context: context.provider_context,
         read_memory_selectors: &[],
         frontier_receipt: context.frontier_receipt,
-    })?;
+    })
+    .await?;
     Ok(())
 }
 
@@ -831,6 +836,7 @@ async fn run_search_lexical_command(
         provider_context: context.provider_context,
         read_memory_selectors: &[],
         frontier_receipt: context.frontier_receipt,
-    })?;
+    })
+    .await?;
     Ok(())
 }

@@ -111,6 +111,7 @@ dependencies = [
  "agent-semantic-context-product",
  "agent-semantic-loop",
  "agent-semantic-runtime",
+ "arc-swap",
  "asp-rust-project-harness-policy",
  "blake3",
  "criterion",
@@ -128,6 +129,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tokio",
+ "tokio-stream",
  "turso",
  "which 8.0.4",
 ]

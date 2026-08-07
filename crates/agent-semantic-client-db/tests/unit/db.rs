@@ -1,6 +1,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, path::PathBuf, process::Command, sync::Arc};
 
+use crate::source_index_fixture::build_fixture_source_index_import;
+
 use agent_semantic_client_core::{
     CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId, SemanticSchemaId,
     SemanticSchemaVersion, state_core::ResolvedState,
@@ -12,8 +14,8 @@ use agent_semantic_client_db::{
     CLIENT_DB_SOURCE_INDEX_SCHEMA_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION,
     ClientDbSourceIndexImportAssemblyRequest, ClientDbSourceIndexImportFile,
     ClientDbSourceIndexImportRequest, ClientDbSourceIndexRefreshRequest,
-    ClientDbSourceIndexScopeFile, ClientDbSourceIndexSource, build_source_index_import,
-    client_db_source_index_file_count, source_index_relative_path, source_index_scope_dirs,
+    ClientDbSourceIndexScopeFile, ClientDbSourceIndexSource, client_db_source_index_file_count,
+    source_index_relative_path, source_index_scope_dirs,
 };
 
 #[test]
@@ -892,7 +894,8 @@ fn source_index_import_assembly_uses_turso_ready_contract_rows() {
 #[test]
 fn source_index_refresh_request_remains_db_engine_owned() {
     let root = temp_root("source-index-refresh");
-    let import = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
         generation_id: CacheGenerationId::from("source-index-refresh-generation"),
         project_root: root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),

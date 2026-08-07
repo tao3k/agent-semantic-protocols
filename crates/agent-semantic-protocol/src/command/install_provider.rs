@@ -106,12 +106,12 @@ fn provider_artifact_authority<'a>(
     }
 }
 
-pub(crate) fn run_install_command(args: &[String]) -> Result<(), String> {
+pub(crate) async fn run_install_command(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
-        Some("binary") => run_install_binary(&args[1..]),
+        Some("binary") => run_install_binary(&args[1..]).await,
         Some("hook") => run_install_hook(&args[1..]),
         Some("plugin") => run_install_plugin(&args[1..]),
-        Some("language") => run_install_provider(&args[1..]),
+        Some("language") => run_install_provider(&args[1..]).await,
         Some("help" | "--help" | "-h") => {
             println!("{}", usage());
             Ok(())
@@ -121,7 +121,7 @@ pub(crate) fn run_install_command(args: &[String]) -> Result<(), String> {
     }
 }
 
-fn run_install_binary(args: &[String]) -> Result<(), String> {
+async fn run_install_binary(args: &[String]) -> Result<(), String> {
     let mut target = None;
     let mut index = 0;
     while index < args.len() {
@@ -156,6 +156,10 @@ fn run_install_binary(args: &[String]) -> Result<(), String> {
         &runtime_state.protocol_home,
     )?;
     let installed = super::protocol_binary::ensure_protocol_binary_installed(&plan)?;
+    let hook_config_publication =
+        super::install_binary_config_admission::publish_embedded_hook_config(
+            &runtime_state.protocol_home,
+        )?;
     let active_artifact_receipt = agent_semantic_hook::rebind_active_asp_binary_receipt_if_present(
         &installed.path,
         &installed.artifact_digest,
@@ -163,20 +167,17 @@ fn run_install_binary(args: &[String]) -> Result<(), String> {
     )?;
     drop(reconciliation_guard);
     let runtime_server_reconcile =
-        agent_semantic_client_db::runtime_server_runtime::RuntimeServerClientExecutor::get()
-            .and_then(|executor| {
-                executor.block_on(
-                    crate::server::runtime_server_supervisor::reconcile_healthy_runtime_server(
-                        &runtime_state.protocol_home,
-                    ),
-                )
-            });
+        crate::server::runtime_server_supervisor::reconcile_healthy_runtime_server(
+            &runtime_state.protocol_home,
+        )
+        .await;
     println!(
-        "[asp-install-binary] binaryPath={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic runtimeServerReconcile={} providerReconciliation=not-on-binary-install globalProviderCatalog=not-on-binary-install activeArtifactReceipt={} installSource=current-executable",
+        "[asp-install-binary] binaryPath={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic hookConfigPublication={} hookConfigCoupling=binary-generation runtimeServerReconcile={} providerReconciliation=not-on-binary-install globalProviderCatalog=not-on-binary-install activeArtifactReceipt={} installSource=current-executable",
         installed.path.display(),
         installed.status,
         installed.artifact_digest,
         installed.path.display(),
+        hook_config_publication,
         if runtime_server_reconcile.is_ok() {
             "complete"
         } else {
@@ -212,7 +213,7 @@ fn run_install_plugin(args: &[String]) -> Result<(), String> {
     run_codex_plugin_install_args(args)
 }
 
-fn run_install_provider(args: &[String]) -> Result<(), String> {
+async fn run_install_provider(args: &[String]) -> Result<(), String> {
     let Some(language_id) = args.first().map(String::as_str) else {
         return Err(usage());
     };
@@ -249,11 +250,11 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
     }
     let registered_binary = agent_semantic_hook::registered_provider_binary_v1(language_id)?;
     let state_home = agent_semantic_runtime::resolve_state_home()?;
-    let artifact_catalog = agent_semantic_runtime::runtime_block_on_current_thread(
+    let artifact_catalog =
         agent_semantic_runtime::runtime_artifact_catalog::load_runtime_artifact_catalog(
             &state_home,
-        ),
-    )??;
+        )
+        .await?;
     match provider_artifact_authority(
         artifact_catalog.mode(),
         install_args.record_installed_receipt.as_deref(),
@@ -265,7 +266,8 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
                 let built = install_provider_workspace::build_registered_provider_workspace(
                     root,
                     &registration,
-                )?;
+                )
+                .await?;
                 return install_provider_workspace::record_registered_provider_workspace_install(
                     language_id,
                     registered_binary.provider_id().as_str(),
@@ -279,7 +281,8 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
                     built,
                 );
             }
-            return run_development_provider_installer(root, language_id, &target, project_root);
+            return run_development_provider_installer(root, language_id, &target, project_root)
+                .await;
         }
         ProviderArtifactAuthority::Develop { root, artifact } => {
             return record_development_provider_install(
@@ -442,7 +445,7 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         },
     )?;
     let org_state_sync = match project_root {
-        Some(project_root) => org_capture::run_org_state_sync(project_root)?.status,
+        Some(project_root) => org_capture::run_org_state_sync(project_root).await?.status,
         None => "not-applicable",
     };
     println!(

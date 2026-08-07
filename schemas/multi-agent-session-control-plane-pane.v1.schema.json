@@ -48,14 +48,23 @@
     "agent": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["routeKey", "sessionName", "sessionLifetime", "platform", "hostAgentName", "roles", "roleDescription"],
+      "required": ["routeKey", "sessionName", "sessionLifetime", "platform", "hostAgentName", "roles", "roleDescription", "sandboxMode", "residentId", "matchDecision", "binding"],
       "properties": {
         "routeKey": {"type": "string", "minLength": 1},
         "sessionName": {"type": "string", "minLength": 1},
         "sessionLifetime": {"enum": ["resident", "temporary"]},
+        "residentId": {"type": "string", "minLength": 1},
+        "matchDecision": {"const": "matched"},
+        "binding": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "agent-session-host-binding.v1.schema.json"}
+          ]
+        },
         "platform": {"enum": ["codex", "claude"]},
         "hostAgentName": {"type": "string", "minLength": 1},
         "roleDescription": {"type": "string", "minLength": 1},
+        "sandboxMode": {"type": "string", "minLength": 1},
         "roles": {
           "type": "array",
           "minItems": 1,
@@ -79,5 +88,53 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "pane": {
+            "properties": {"nodeId": {"const": "registered"}},
+            "required": ["nodeId"]
+          }
+        },
+        "required": ["pane"]
+      },
+      "then": {
+        "properties": {
+          "agent": {
+            "properties": {
+              "binding": {
+                "allOf": [
+                  {"$ref": "agent-session-host-binding.v1.schema.json"},
+                  {
+                    "properties": {
+                      "lifecycleState": {"const": "live"},
+                      "routable": {"const": true}
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "pane": {
+            "properties": {"nodeId": {"const": "registration-required"}},
+            "required": ["nodeId"]
+          }
+        },
+        "required": ["pane"]
+      },
+      "then": {
+        "properties": {
+          "agent": {"properties": {"binding": {"type": "null"}}}
+        }
+      }
+    }
+  ]
 }

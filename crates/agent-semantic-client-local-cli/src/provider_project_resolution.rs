@@ -103,10 +103,29 @@ pub fn provider_project_resolution_candidates(
     })
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProviderProjectResolutionCollectionScope {
+    CompleteGeneration,
+    ExplicitOwners { owner_paths: Vec<String> },
+}
+
+impl ProviderProjectResolutionCollectionScope {
+    fn as_json(&self) -> serde_json::Value {
+        match self {
+            Self::CompleteGeneration => serde_json::json!({ "kind": "complete-generation" }),
+            Self::ExplicitOwners { owner_paths } => serde_json::json!({
+                "kind": "explicit-owners",
+                "ownerPaths": owner_paths,
+            }),
+        }
+    }
+}
+
 pub fn encode_provider_project_resolution_request(
     project_root: &Path,
     language_id: &LanguageId,
     provider_id: &ProviderId,
+    collection_scope: &ProviderProjectResolutionCollectionScope,
     repository_candidates: &agent_semantic_runtime::git::RepositoryCandidateSnapshot,
 ) -> Result<(Vec<u8>, ProviderProjectResolutionCandidates), String> {
     let candidates = provider_project_resolution_candidates(project_root, repository_candidates)?;
@@ -116,7 +135,8 @@ pub fn encode_provider_project_resolution_request(
         "languageId": language_id.as_str(),
         "providerId": provider_id.as_str(),
         "candidateBase": ".",
-        "candidateGeneration": candidates.generation,
+    "candidateGeneration": candidates.generation,
+    "collectionScope": collection_scope.as_json(),
         "candidatePaths": candidates.paths,
         "policyExclusions": candidates.policy_exclusions.iter().map(|exclusion| serde_json::json!({
             "path": exclusion.path,
@@ -139,39 +159,20 @@ pub fn provider_scope_authority_permits_project_resolution(
     )
 }
 
-pub fn provider_project_resolution_with_candidates(
+pub async fn provider_project_resolution_with_candidates(
     provider: &ResolvedProvider,
     project_root: &Path,
+    collection_scope: ProviderProjectResolutionCollectionScope,
     repository_candidates: agent_semantic_runtime::git::RepositoryCandidateSnapshot,
 ) -> Result<ProviderProjectResolution, String> {
     let (backend, request, candidates) = provider_project_resolution_invocation_with_candidates(
         provider,
         project_root,
+        &collection_scope,
         repository_candidates,
     )?;
     let output = backend
         .execute_with_limits(&request, project_resolution_provider_limits())
-        .map_err(|error| {
-            format!(
-                "provider project-resolution invocation failed: languageId={} providerId={} error={error}",
-                provider.language_id, provider.provider_id
-            )
-        })?;
-    provider_project_resolution_from_output(output, provider, &candidates)
-}
-
-pub async fn provider_project_resolution_with_candidates_async(
-    provider: &ResolvedProvider,
-    project_root: &Path,
-    repository_candidates: agent_semantic_runtime::git::RepositoryCandidateSnapshot,
-) -> Result<ProviderProjectResolution, String> {
-    let (backend, request, candidates) = provider_project_resolution_invocation_with_candidates(
-        provider,
-        project_root,
-        repository_candidates,
-    )?;
-    let output = backend
-        .execute_with_limits_async(&request, project_resolution_provider_limits())
         .await
         .map_err(|error| {
             format!(
@@ -185,6 +186,7 @@ pub async fn provider_project_resolution_with_candidates_async(
 fn provider_project_resolution_invocation_with_candidates(
     provider: &ResolvedProvider,
     project_root: &Path,
+    collection_scope: &ProviderProjectResolutionCollectionScope,
     repository_candidates: agent_semantic_runtime::git::RepositoryCandidateSnapshot,
 ) -> Result<
     (
@@ -206,6 +208,7 @@ fn provider_project_resolution_invocation_with_candidates(
         &project_root,
         &provider.language_id,
         &provider.provider_id,
+        collection_scope,
         &repository_candidates,
     )?;
     let request = ClientRequest::new(ClientMethod::ProjectResolution, project_root)
@@ -255,35 +258,20 @@ fn project_resolution_provider_limits() -> ProviderProcessLimits {
 }
 
 /// Resolve file-backed project scope entries for a project root.
-pub fn provider_project_resolution_files_with_candidates(
+pub async fn provider_project_resolution_files_with_candidates(
     project_root: &Path,
     provider: &ResolvedProvider,
     package_root_path: &Path,
+    collection_scope: ProviderProjectResolutionCollectionScope,
     repository_candidates: agent_semantic_runtime::git::RepositoryCandidateSnapshot,
 ) -> Result<ProviderProjectResolutionFiles, String> {
-    let ProviderProjectResolution::Supported(packet) =
-        provider_project_resolution_with_candidates(provider, project_root, repository_candidates)?
-    else {
-        return Ok(ProviderProjectResolutionFiles::Unsupported);
-    };
-    Ok(ProviderProjectResolutionFiles::Supported(
-        provider_project_resolution_files_from_packet(project_root, package_root_path, packet),
-    ))
-}
-
-pub async fn provider_project_resolution_files_with_candidates_async(
-    project_root: &Path,
-    provider: &ResolvedProvider,
-    package_root_path: &Path,
-    repository_candidates: agent_semantic_runtime::git::RepositoryCandidateSnapshot,
-) -> Result<ProviderProjectResolutionFiles, String> {
-    let ProviderProjectResolution::Supported(packet) =
-        provider_project_resolution_with_candidates_async(
-            provider,
-            project_root,
-            repository_candidates,
-        )
-        .await?
+    let ProviderProjectResolution::Supported(packet) = provider_project_resolution_with_candidates(
+        provider,
+        project_root,
+        collection_scope,
+        repository_candidates,
+    )
+    .await?
     else {
         return Ok(ProviderProjectResolutionFiles::Unsupported);
     };

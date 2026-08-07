@@ -392,6 +392,63 @@ fn structured_rust_read_binary_path_is_local_bounded_and_runtime_free() {
         warm_execution_micros < 100_000,
         "warm structured Read Hook execution exceeded 100ms: executionMicros={warm_execution_micros} stderr={warm_stderr}"
     );
+
+    fn find_compiled_matcher(path: &std::path::Path) -> Option<std::path::PathBuf> {
+        let entries = std::fs::read_dir(path).ok()?;
+        for entry in entries.flatten() {
+            let candidate = entry.path();
+            if candidate.is_dir() {
+                if let Some(found) = find_compiled_matcher(&candidate) {
+                    return Some(found);
+                }
+            } else if candidate
+                .parent()
+                .and_then(|parent| parent.file_name())
+                .and_then(|name| name.to_str())
+                == Some("compiled-matchers")
+                && candidate.extension().and_then(|ext| ext.to_str()) == Some("json")
+            {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+    let snapshot = find_compiled_matcher(&state_home).expect("compiled matcher snapshot");
+    std::fs::write(&snapshot, b"corrupt matcher snapshot").expect("corrupt fixture snapshot");
+    let mut recovery = Command::new(binary)
+        .current_dir(workspace)
+        .args(["hook", "pre-tool", "--client", "codex"])
+        .env_clear()
+        .env("HOME", &root)
+        .env("ASP_STATE_HOME", &state_home)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn recovery Hook binary");
+    serde_json::to_writer(
+        recovery.stdin.as_mut().expect("recovery Hook stdin"),
+        &payload,
+    )
+    .expect("write recovery Hook payload");
+    drop(recovery.stdin.take());
+    let recovery = recovery
+        .wait_with_output()
+        .expect("wait for recovery Hook binary");
+    assert!(recovery.status.success());
+    let recovery_stdout = String::from_utf8(recovery.stdout).expect("recovery stdout UTF-8");
+    let recovery_response: serde_json::Value =
+        serde_json::from_str(&recovery_stdout).expect("parse recovery Hook response");
+    let recovery_context = recovery_response["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("recovery Hook context");
+    assert!(
+        recovery_context.contains("compiled-and-published-after-corrupt-snapshot"),
+        "{recovery_context}"
+    );
+    let repaired = std::fs::read(&snapshot).expect("read repaired matcher snapshot");
+    let _artifact: agent_semantic_hook::DurableHookConfigArtifact =
+        serde_json::from_slice(&repaired).expect("decode repaired matcher snapshot");
     std::fs::remove_dir_all(root).expect("cleanup isolated Hook state");
 }
 
@@ -409,4 +466,144 @@ fn runtime_control_endpoint_is_published_before_optional_telemetry_starts() {
         endpoint < telemetry,
         "optional telemetry must not gate Runtime Server control-plane publication"
     );
+}
+
+#[test]
+fn canonical_managed_config_fingerprint_drift_auto_syncs_without_server_recovery() {
+    use sha2::{Digest, Sha256};
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("workspace root");
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "asp-hook-managed-config-auto-sync-{}-{nonce}",
+        std::process::id()
+    ));
+    let state_home = root.join("state");
+    let config_path = state_home.join("hooks/config.toml");
+    std::fs::create_dir_all(config_path.parent().expect("config parent"))
+        .expect("create isolated Hook config root");
+
+    let expected_fingerprint = agent_semantic_config::hook_client_contract_fingerprint();
+    let stale = agent_semantic_hook::default_client_config_template()
+        .replace(&expected_fingerprint, "hook-client-v1-intentionally-stale");
+    assert_ne!(
+        stale,
+        agent_semantic_hook::default_client_config_template(),
+        "fixture must contain the current contract fingerprint"
+    );
+    std::fs::write(&config_path, &stale).expect("write stale managed Hook config");
+    std::fs::write(
+        state_home.join("hooks/config.toml.managed.sha256"),
+        format!("{:x}", Sha256::digest(stale.as_bytes())),
+    )
+    .expect("write matching managed ownership sidecar");
+
+    let payload = serde_json::json!({
+        "session_id": "managed-config-auto-sync",
+        "cwd": workspace,
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Read",
+        "tool_input": {
+            "file_path": "crates/agent-semantic-hook/src/protocol.rs"
+        }
+    });
+    let mut child = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .current_dir(workspace)
+        .args(["hook", "pre-tool", "--client", "codex"])
+        .env_clear()
+        .env("HOME", &root)
+        .env("ASP_STATE_HOME", &state_home)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn Hook with stale managed config");
+    serde_json::to_writer(child.stdin.as_mut().expect("Hook stdin"), &payload)
+        .expect("write Hook payload");
+    child
+        .stdin
+        .as_mut()
+        .expect("Hook stdin")
+        .flush()
+        .expect("flush Hook payload");
+    drop(child.stdin.take());
+    let output = child.wait_with_output().expect("wait for Hook auto-sync");
+    let stdout = String::from_utf8(output.stdout).expect("Hook stdout UTF-8");
+    let stderr = String::from_utf8(output.stderr).expect("Hook stderr UTF-8");
+    assert!(output.status.success(), "stdout={stdout} stderr={stderr}");
+    assert!(
+        !stdout.contains("hook-local-policy-unavailable"),
+        "automatic sync must not emit the recovery deadlock: {stdout}"
+    );
+    let response: serde_json::Value =
+        serde_json::from_str(&stdout).expect("parse Hook decision response");
+    let context = response["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("typed Hook decision context");
+    assert!(context.contains("managed-config-auto-synced"), "{context}");
+    assert!(
+        context.contains("Registered rust source reads are denied"),
+        "{context}"
+    );
+    assert!(context.contains("ASP route: `asp rust"), "{context}");
+
+    for (language, path) in [("md", "docs/hook-policy.md"), ("org", "ASP_ORG_SKILL.org")] {
+        let payload = serde_json::json!({
+            "session_id": format!("managed-config-{language}-read"),
+            "cwd": workspace,
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Read",
+            "tool_input": { "file_path": path }
+        });
+        let mut child = Command::new(env!("CARGO_BIN_EXE_asp"))
+            .current_dir(workspace)
+            .args(["hook", "pre-tool", "--client", "codex"])
+            .env_clear()
+            .env("HOME", &root)
+            .env("ASP_STATE_HOME", &state_home)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn registered document Read Hook");
+        serde_json::to_writer(child.stdin.as_mut().expect("Hook stdin"), &payload)
+            .expect("write registered document Read payload");
+        drop(child.stdin.take());
+        let output = child
+            .wait_with_output()
+            .expect("wait for registered document Read Hook");
+        let stdout = String::from_utf8(output.stdout).expect("Hook stdout UTF-8");
+        let stderr = String::from_utf8(output.stderr).expect("Hook stderr UTF-8");
+        assert!(output.status.success(), "stdout={stdout} stderr={stderr}");
+        let response: serde_json::Value =
+            serde_json::from_str(&stdout).expect("parse registered document Hook decision");
+        let context = response["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .expect("registered document Hook context");
+        assert!(
+            context.contains("\"configRuleId\":\"materialize-registered-source-read-action\""),
+            "{language}: {context}"
+        );
+        assert!(
+            context.contains(&format!("Registered {language} source reads are denied")),
+            "{language}: {context}"
+        );
+        assert!(
+            context.contains(&format!("ASP route: `asp {language}")),
+            "{language}: {context}"
+        );
+    }
+
+    let refreshed = std::fs::read_to_string(&config_path).expect("read refreshed Hook config");
+    assert!(refreshed.contains(&expected_fingerprint));
+    std::fs::remove_dir_all(root).expect("cleanup isolated Hook state");
 }

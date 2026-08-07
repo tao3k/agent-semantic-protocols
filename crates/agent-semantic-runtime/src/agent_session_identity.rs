@@ -68,7 +68,7 @@ pub fn agent_session_registration_identity(
         .map(str::to_string)
         .or_else(|| runtime_session.as_ref().map(|session| session.id.clone()))
         .ok_or_else(|| {
-            "asp agent session register requires --child-session-id or an agent session env"
+            "agent session registration requires a child session id or host session identity"
                 .to_string()
         })?;
     let session_id_for_rollout =

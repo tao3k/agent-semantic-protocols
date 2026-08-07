@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::SessionControlPlaneSnapshot;
+
 use super::protocol::WorkspaceDbIpcSession;
 use super::{WorkspaceDbIpcOperation, WorkspaceDbIpcResult};
 
@@ -10,8 +12,21 @@ use super::{WorkspaceDbIpcOperation, WorkspaceDbIpcResult};
     rename_all_fields = "camelCase"
 )]
 pub enum AgentSessionRegistryIpcOperation {
+    RegisterControlPlaneAgent {
+        registration: SessionControlPlaneAgentRegistration,
+    },
+    AdmitControlPlaneDelegation {
+        proposal: SessionControlPlaneDelegationProposal,
+    },
+    ReadControlPlaneSnapshot {
+        project_id: String,
+        root_session_id: String,
+    },
     RecordHostLifecycleEvent {
         event: AgentHostLifecycleEventIpc,
+    },
+    RecordHostNonMatch {
+        observation: AgentHostNonMatchIpc,
     },
     Register {
         request: AgentSessionRegisterIpcRequest,
@@ -95,11 +110,30 @@ pub struct AgentHostLifecycleEventIpc {
     pub root_session_id: String,
     pub parent_session_id: String,
     pub child_session_id: String,
+    pub host_task_name: String,
     pub platform_host_agent_name: String,
+    pub route_key: String,
+    pub profile_id: String,
     pub role: String,
-    pub model: Option<String>,
+    pub model: String,
+    pub model_digest: String,
     pub profile_digest: String,
+    pub sandbox_mode: String,
+    pub session_lifetime: String,
+    pub payload_digest: String,
     pub transcript_path: Option<String>,
+    pub observed_at: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentHostNonMatchIpc {
+    pub kind: AgentHostLifecycleEventKind,
+    pub project_id: String,
+    pub root_session_id: String,
+    pub child_session_id: String,
+    pub host_task_name: String,
+    pub payload_digest: String,
     pub observed_at: i64,
 }
 
@@ -136,6 +170,13 @@ pub struct AgentSessionModelObservationIpc {
     rename_all_fields = "camelCase"
 )]
 pub enum AgentSessionRegistryIpcResult {
+    ControlPlaneAgentRegistered,
+    ControlPlaneDelegationAdmitted {
+        receipt: SessionControlPlaneTransactionReceipt,
+    },
+    ControlPlaneSnapshot {
+        snapshot: SessionControlPlaneSnapshot,
+    },
     Session {
         session: Option<crate::AgentSessionRecord>,
     },
@@ -200,3 +241,7 @@ impl WorkspaceDbIpcSession {
 #[cfg(test)]
 #[path = "../../tests/unit/workspace_db_ipc_agent_session_registry.rs"]
 mod tests;
+use crate::{
+    SessionControlPlaneAgentRegistration, SessionControlPlaneDelegationProposal,
+    SessionControlPlaneTransactionReceipt,
+};

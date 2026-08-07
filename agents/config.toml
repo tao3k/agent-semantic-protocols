@@ -9,8 +9,10 @@ matcher = "*_claude.md"
 
 [agents.asp_explorer]
 session_lifetime = "resident"
+focus_mode = "leaf"
 roles = ["explore", "subagent"]
 
 [agents.asp_testing]
 session_lifetime = "resident"
+focus_mode = "leaf"
 roles = ["build", "subagent", "testing"]

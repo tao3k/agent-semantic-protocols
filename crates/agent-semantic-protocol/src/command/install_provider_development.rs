@@ -8,7 +8,7 @@ use std::time::Duration;
 use agent_semantic_hook::ProviderDevelopmentArtifactDomain;
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode,
-    provider_process_limits_from_environment, run_provider_process,
+    provider_process_limits_from_environment, run_provider_process_async,
 };
 
 const DEFAULT_DEVELOPMENT_PROVIDER_INSTALL_TIMEOUT: Duration = Duration::from_secs(15 * 60);
@@ -84,7 +84,7 @@ fn development_provider_installer_plan(
     })
 }
 
-pub(super) fn run_development_provider_installer(
+pub(super) async fn run_development_provider_installer(
     configured_dev_root: &Path,
     language_id: &str,
     target: &str,
@@ -102,7 +102,7 @@ pub(super) fn run_development_provider_installer(
         target,
         project_root,
     )?;
-    let output = run_provider_process(ProviderProcessSpec {
+    let output = run_provider_process_async(ProviderProcessSpec {
         program: "direnv".to_string(),
         args: plan.args.clone(),
         cwd: plan.root.clone(),
@@ -112,6 +112,7 @@ pub(super) fn run_development_provider_installer(
         stderr: OutputMode::Tee,
         limits: development_provider_installer_limits()?,
     })
+    .await
     .map_err(|error| {
         format!(
             "development provider installer execution gate failed: language={language_id} devRoot={} error={error}",

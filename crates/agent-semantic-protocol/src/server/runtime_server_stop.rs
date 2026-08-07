@@ -1,4 +1,4 @@
-//! Typed Runtime Server stop receipt owned by the platform supervisor boundary.
+//! Typed Runtime Server stop receipt owned by the global State Home lifecycle.
 
 use agent_semantic_client_db::{RuntimeServerEndpoint, runtime_server_endpoint_path};
 use serde::Serialize;
@@ -30,8 +30,8 @@ pub(super) async fn run_stop() -> Result<(), String> {
             .ok();
     crate::server::runtime_server_exit_receipt::remove_stale(&state_home).await?;
     crate::server::runtime_server_supervisor::remove_runtime_server_run_intent(&state_home).await?;
-    crate::server::runtime_server_supervisor::request_runtime_server_drain().await?;
     if let Some(endpoint) = &endpoint {
+        crate::server::runtime_server_supervisor::request_runtime_server_drain(&state_home).await?;
         let exit = crate::server::runtime_server_exit_receipt::await_owner_exit(
             &state_home,
             endpoint.owner_epoch,
@@ -44,7 +44,7 @@ pub(super) async fn run_stop() -> Result<(), String> {
             ));
         }
     }
-    crate::server::runtime_server_supervisor::unload_runtime_server_supervisor().await?;
+    crate::server::runtime_server_supervisor::unload_runtime_server_supervisor(&state_home).await?;
     crate::server::runtime_server_supervisor::mark_runtime_server_operator_stopped(&state_home)
         .await?;
     let receipt = finalize_stopped_runtime_server(
@@ -101,7 +101,7 @@ async fn finalize_stopped_runtime_server(
         schema_version: "1",
         request_id,
         state: "stopped",
-        lifecycle_authority: "platform-supervisor",
+        lifecycle_authority: "state-home-lifecycle",
         operator_stop_recorded: true,
         endpoint_path: endpoint_path.to_string_lossy().into_owned(),
         endpoint_removed,

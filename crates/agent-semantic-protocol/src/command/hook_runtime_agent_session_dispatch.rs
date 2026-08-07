@@ -25,7 +25,6 @@ pub(crate) fn materialize_org_choice_plane_reference(
     }
 
     materialize_org_choice_plane_fields(&mut decision.fields);
-    decision.message = CHOICE_PLANE_INSTRUCTION.to_owned();
 }
 
 fn materialize_org_choice_plane_fields(

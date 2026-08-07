@@ -41,6 +41,13 @@ pub(super) async fn write_turso_source_index_rows(
             import.schema_version.as_str(),
         )
         .await?;
+        let overlay_base_generation_id = match membership_change_set {
+            crate::source_index::ClientDbSourceIndexMembershipChangeSet::FullSnapshot => None,
+            crate::source_index::ClientDbSourceIndexMembershipChangeSet::MerkleOverlay {
+                base_generation_id,
+                ..
+            } => Some(base_generation_id.as_str()),
+        };
         let (_membership_changed_owner_paths, removed_owner_paths) = match membership_change_set {
             crate::source_index::ClientDbSourceIndexMembershipChangeSet::FullSnapshot => {
                 stage_turso_source_index_import_membership(connection, file_hashes_json).await?;
@@ -54,6 +61,7 @@ pub(super) async fn write_turso_source_index_rows(
                 .await?
             }
             crate::source_index::ClientDbSourceIndexMembershipChangeSet::MerkleOverlay {
+                base_generation_id: _,
                 changed_owner_paths,
                 removed_owner_paths,
             } => {
@@ -92,6 +100,118 @@ pub(super) async fn write_turso_source_index_rows(
                 )
             }
         };
+        let (
+            effective_materialization,
+            effective_file_hashes_json,
+            effective_source_snapshot_json,
+            effective_selector_fingerprint,
+        ) = match membership_change_set {
+                crate::source_index::ClientDbSourceIndexMembershipChangeSet::FullSnapshot => (
+                    materialization.clone(),
+                    file_hashes_json.to_string(),
+                    source_snapshot_json.to_string(),
+                    None,
+                ),
+                crate::source_index::ClientDbSourceIndexMembershipChangeSet::MerkleOverlay {
+                    changed_owner_paths,
+                    removed_owner_paths,
+                    ..
+                } => {
+                    let active = super::generation_snapshot::load_turso_source_index_generation_snapshot(
+                        connection,
+                        project_root,
+                        import.schema_id.as_str(),
+                        import.schema_version.as_str(),
+                    )
+                    .await?
+                    .ok_or_else(|| {
+                        "source-index Merkle overlay requires an active canonical generation"
+                            .to_string()
+                    })?;
+                    let active_blobs = super::generation_snapshot::load_turso_source_index_generation_blobs_on_connection(
+                        connection,
+                        project_root,
+                        import.schema_id.as_str(),
+                        import.schema_version.as_str(),
+                        &active,
+                    )
+                    .await?;
+                    let changed_owner_paths = changed_owner_paths
+                        .iter()
+                        .map(|path| path.as_str().to_string())
+                        .collect::<std::collections::BTreeSet<_>>();
+                    let removed_owner_paths = removed_owner_paths
+                        .iter()
+                        .map(|path| path.as_str().to_string())
+                        .collect::<std::collections::BTreeSet<_>>();
+                    let full_import = crate::overlay_active_source_index_import(
+                        &active,
+                        &active_blobs,
+                        import,
+                        &changed_owner_paths,
+                        &removed_owner_paths,
+                    )?;
+                    let file_hashes_by_path = full_import
+                        .file_hashes
+                        .iter()
+                        .map(|record| (record.path.as_str(), record.sha256.as_str()))
+                        .collect::<std::collections::BTreeMap<_, _>>();
+                    for owner in &full_import.owners {
+                        let owner_path = owner.owner_path.as_str();
+                        if !file_hashes_by_path.contains_key(owner_path) {
+                            return Err(format!(
+                                "complete source-index successor is missing owner digest: ownerPath={owner_path}"
+                            ));
+                        }
+                    }
+                    let workspace_snapshot =
+                        agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes(
+                            full_import.source_blobs.iter(),
+                        );
+                    workspace_snapshot.validate()?;
+                    let partial_source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence =
+                        serde_json::from_str(source_snapshot_json).map_err(|error| {
+                            format!(
+                                "failed to decode partial source-index overlay evidence: {error}"
+                            )
+                        })?;
+                    let mut successor_source_snapshot = workspace_snapshot.evidence(
+                        partial_source_snapshot.source_kind,
+                        partial_source_snapshot.provider_digest,
+                    );
+                    successor_source_snapshot.base_root_digest =
+                        Some(active.source_snapshot.root_digest.clone());
+                    successor_source_snapshot.dirty_paths_digest =
+                        partial_source_snapshot.dirty_paths_digest;
+                    let full_materialization =
+                        crate::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
+                            materialization.workspace_identity.clone(),
+                            &successor_source_snapshot,
+                            &full_import,
+                            &full_import.source_blobs,
+                            materialization.project_resolutions.clone(),
+                        )?;
+                    let selector_fingerprint =
+                        super::core::turso_source_index_selector_fingerprint(&full_import)?;
+                    (
+                        full_materialization,
+                        serde_json::to_string(&full_import.file_hashes).map_err(|error| {
+                            format!(
+                                "failed to encode complete source-index successor hashes: {error}"
+                            )
+                        })?,
+                        serde_json::to_string(&successor_source_snapshot).map_err(|error| {
+                            format!(
+                                "failed to encode complete source-index successor evidence: {error}"
+                            )
+                        })?,
+                        Some(selector_fingerprint),
+                    )
+                }
+            };
+        let materialization = &effective_materialization;
+        let file_hashes_json = effective_file_hashes_json.as_str();
+        let source_snapshot_json = effective_source_snapshot_json.as_str();
         let materialization_digest = materialization.generation_identity_digest()?;
         let physical_generation_id = format!(
             "source-index-{}",
@@ -106,7 +226,19 @@ pub(super) async fn write_turso_source_index_rows(
         )
         .await?;
         let physical_generation_id = prepared.physical_generation_id.as_str();
-        let selector_fingerprint = prepared.selector_fingerprint;
+        if let Some(base_generation_id) = overlay_base_generation_id {
+            super::generation_clone::clone_active_generation_rows(
+                connection,
+                project_root,
+                import.schema_id.as_str(),
+                import.schema_version.as_str(),
+                base_generation_id,
+                physical_generation_id,
+            )
+            .await?;
+        }
+        let selector_fingerprint =
+            effective_selector_fingerprint.unwrap_or(prepared.selector_fingerprint);
         let changed_owner_paths = prepared.changed_owner_paths;
         let changed_owner_rows = prepared.changed_owner_rows;
         let changed_selector_rows = prepared.changed_selector_rows;
@@ -131,6 +263,7 @@ pub(super) async fn write_turso_source_index_rows(
             changed_owner_rows.len(),
             semantic_term_count,
         );
+        super::source_blob::write_source_index_blobs(connection, import).await?;
         write_turso_source_index_owner_rows(
             connection,
             &changed_owner_rows,
@@ -185,6 +318,17 @@ pub(super) async fn write_turso_source_index_rows(
         )
         .await?;
         source_index_db_trace("snapshot-selector-rows-written", cold_write_started);
+        super::relation::refresh_turso_source_index_relation_projection(
+            connection,
+            import,
+            project_root,
+            import.schema_id.as_str(),
+            import.schema_version.as_str(),
+            physical_generation_id,
+            &projection_owner_paths,
+        )
+        .await?;
+        source_index_db_trace("snapshot-relation-rows-written", cold_write_started);
         let posting_count = refresh_turso_source_index_posting_projection(
             connection,
             project_root,

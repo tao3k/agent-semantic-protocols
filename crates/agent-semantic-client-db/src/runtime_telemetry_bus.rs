@@ -2,20 +2,43 @@ use tokio::sync::mpsc;
 
 use crate::{
     runtime_server_opentelemetry::{RuntimeLifecycleEvent, RuntimePerformanceObservation},
-    search_incident::{IncidentState, IncidentSurface, IncidentTelemetryEvent},
+    search_incident::{
+        IncidentRecord, IncidentState, IncidentSurface, IncidentTelemetryEvent,
+        SearchIncidentTerminalContext, SearchIncidentTerminalOutcome, TransitionError,
+        observe_terminal,
+    },
 };
 
 pub const CAPACITY: usize = 1024;
 
 #[derive(Clone)]
 pub struct RuntimeTelemetryBusSender {
-    terminal: mpsc::Sender<RuntimeTelemetryEvent>,
-    transition: mpsc::Sender<RuntimeTelemetryEvent>,
+    terminal: mpsc::Sender<RuntimeTelemetryEnvelope>,
+    ordered: mpsc::Sender<RuntimeTelemetryEnvelope>,
+    transition_permits: std::sync::Arc<tokio::sync::Semaphore>,
+    pending_transitions: std::sync::Arc<dashmap::DashMap<String, usize>>,
+    incidents: std::sync::Arc<dashmap::DashMap<(String, String), IncidentRecord>>,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum RuntimeIncidentAdmissionError {
+    InvalidTransition(TransitionError),
+    TerminalQueueFull {
+        workspace_identity: String,
+        incident_id: String,
+    },
 }
 
 pub struct RuntimeTelemetryBusReceiver {
-    terminal: mpsc::Receiver<RuntimeTelemetryEvent>,
-    transition: mpsc::Receiver<RuntimeTelemetryEvent>,
+    terminal: mpsc::Receiver<RuntimeTelemetryEnvelope>,
+    ordered: mpsc::Receiver<RuntimeTelemetryEnvelope>,
+    pending_transitions: std::sync::Arc<dashmap::DashMap<String, usize>>,
+}
+
+struct RuntimeTelemetryEnvelope {
+    event: RuntimeTelemetryEvent,
+    _transition_permit: Option<tokio::sync::OwnedSemaphorePermit>,
+    pending_transition_key: Option<String>,
 }
 
 pub enum RuntimeTelemetryEvent {
@@ -31,29 +54,88 @@ pub struct RuntimeTelemetryBus {
 impl RuntimeTelemetryBus {
     pub fn new() -> Self {
         let (terminal, terminal_receiver) = mpsc::channel(CAPACITY);
-        let (transition, transition_receiver) = mpsc::channel(CAPACITY);
+        let (ordered, ordered_receiver) = mpsc::channel(CAPACITY * 2);
+        let pending_transitions = std::sync::Arc::new(dashmap::DashMap::new());
         Self {
             sender: RuntimeTelemetryBusSender {
                 terminal,
-                transition,
+                ordered,
+                transition_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(CAPACITY)),
+                pending_transitions: std::sync::Arc::clone(&pending_transitions),
+                incidents: std::sync::Arc::new(dashmap::DashMap::new()),
             },
             receiver: RuntimeTelemetryBusReceiver {
                 terminal: terminal_receiver,
-                transition: transition_receiver,
+                ordered: ordered_receiver,
+                pending_transitions,
             },
         }
     }
 }
 
 impl RuntimeTelemetryBusSender {
+    pub fn try_record_search_terminal(
+        &self,
+        context: SearchIncidentTerminalContext,
+        outcome: SearchIncidentTerminalOutcome,
+    ) -> Result<Option<IncidentRecord>, RuntimeIncidentAdmissionError> {
+        let Some((initial_record, initial_event)) =
+            observe_terminal(None, context.clone(), outcome.clone())
+                .map_err(RuntimeIncidentAdmissionError::InvalidTransition)?
+        else {
+            return Ok(None);
+        };
+        let key = (
+            initial_record.identity.workspace_identity.clone(),
+            initial_record.identity.incident_id.clone(),
+        );
+        match self.incidents.entry(key) {
+            dashmap::mapref::entry::Entry::Occupied(mut entry) => {
+                let Some((record, event)) =
+                    observe_terminal(Some(entry.get().clone()), context, outcome)
+                        .map_err(RuntimeIncidentAdmissionError::InvalidTransition)?
+                else {
+                    return Ok(None);
+                };
+                self.try_record_incident_terminal(event).map_err(|event| {
+                    RuntimeIncidentAdmissionError::TerminalQueueFull {
+                        workspace_identity: event.observation.identity.workspace_identity,
+                        incident_id: event.observation.identity.incident_id,
+                    }
+                })?;
+                entry.insert(record.clone());
+                Ok(Some(record))
+            }
+            dashmap::mapref::entry::Entry::Vacant(entry) => {
+                self.try_record_incident_terminal(initial_event)
+                    .map_err(|event| RuntimeIncidentAdmissionError::TerminalQueueFull {
+                        workspace_identity: event.observation.identity.workspace_identity,
+                        incident_id: event.observation.identity.incident_id,
+                    })?;
+                entry.insert(initial_record.clone());
+                Ok(Some(initial_record))
+            }
+        }
+    }
+
     pub async fn send_terminal(
         &self,
         event: RuntimeLifecycleEvent,
     ) -> Result<(), RuntimeLifecycleEvent> {
-        self.terminal
-            .send(RuntimeTelemetryEvent::Lifecycle(event))
+        let event = RuntimeTelemetryEvent::Lifecycle(event);
+        let sender = if self.has_pending_transition(&telemetry_order_key(&event)) {
+            &self.ordered
+        } else {
+            &self.terminal
+        };
+        sender
+            .send(RuntimeTelemetryEnvelope {
+                event,
+                _transition_permit: None,
+                pending_transition_key: None,
+            })
             .await
-            .map_err(|error| match error.0 {
+            .map_err(|error| match error.0.event {
                 RuntimeTelemetryEvent::Lifecycle(event) => event,
                 RuntimeTelemetryEvent::SearchIncident(_) => {
                     unreachable!("lifecycle send returned a different telemetry variant")
@@ -62,9 +144,24 @@ impl RuntimeTelemetryBusSender {
     }
 
     pub fn try_send_transition(&self, event: RuntimeLifecycleEvent) -> bool {
-        self.transition
-            .try_send(RuntimeTelemetryEvent::Lifecycle(event))
-            .is_ok()
+        let Ok(permit) = std::sync::Arc::clone(&self.transition_permits).try_acquire_owned() else {
+            return false;
+        };
+        let event = RuntimeTelemetryEvent::Lifecycle(event);
+        let key = telemetry_order_key(&event);
+        self.increment_pending_transition(&key);
+        let sent = self
+            .ordered
+            .try_send(RuntimeTelemetryEnvelope {
+                event,
+                _transition_permit: Some(permit),
+                pending_transition_key: Some(key.clone()),
+            })
+            .is_ok();
+        if !sent {
+            decrement_pending_transition(&self.pending_transitions, &key);
+        }
+        sent
     }
 
     pub fn try_record_incident_terminal(
@@ -74,9 +171,19 @@ impl RuntimeTelemetryBusSender {
         if !event.is_valid() {
             return Err(event);
         }
-        self.terminal
-            .try_send(RuntimeTelemetryEvent::SearchIncident(event))
-            .map_err(|error| match error.0 {
+        let event = RuntimeTelemetryEvent::SearchIncident(event);
+        let sender = if self.has_pending_transition(&telemetry_order_key(&event)) {
+            &self.ordered
+        } else {
+            &self.terminal
+        };
+        sender
+            .try_send(RuntimeTelemetryEnvelope {
+                event,
+                _transition_permit: None,
+                pending_transition_key: None,
+            })
+            .map_err(|error| match error.into_inner().event {
                 RuntimeTelemetryEvent::SearchIncident(event) => event,
                 RuntimeTelemetryEvent::Lifecycle(_) => {
                     unreachable!("incident send returned a different telemetry variant")
@@ -88,39 +195,102 @@ impl RuntimeTelemetryBusSender {
         if !event.is_valid() {
             return false;
         }
-        self.transition
-            .try_send(RuntimeTelemetryEvent::SearchIncident(event))
-            .is_ok()
+        let Ok(permit) = std::sync::Arc::clone(&self.transition_permits).try_acquire_owned() else {
+            return false;
+        };
+        let event = RuntimeTelemetryEvent::SearchIncident(event);
+        let key = telemetry_order_key(&event);
+        self.increment_pending_transition(&key);
+        let sent = self
+            .ordered
+            .try_send(RuntimeTelemetryEnvelope {
+                event,
+                _transition_permit: Some(permit),
+                pending_transition_key: Some(key.clone()),
+            })
+            .is_ok();
+        if !sent {
+            decrement_pending_transition(&self.pending_transitions, &key);
+        }
+        sent
+    }
+
+    fn has_pending_transition(&self, key: &str) -> bool {
+        self.pending_transitions
+            .get(key)
+            .is_some_and(|count| *count > 0)
+    }
+
+    fn increment_pending_transition(&self, key: &str) {
+        self.pending_transitions
+            .entry(key.to_owned())
+            .and_modify(|count| *count += 1)
+            .or_insert(1);
     }
 }
 
 impl RuntimeTelemetryBusReceiver {
     pub fn close(&mut self) {
         self.terminal.close();
-        self.transition.close();
+        self.ordered.close();
     }
 
     pub async fn recv(&mut self) -> Option<RuntimeTelemetryEvent> {
-        tokio::select! {
+        let envelope = tokio::select! {
             biased;
             event = self.terminal.recv() => match event {
                 Some(event) => Some(event),
-                None => self.transition.recv().await,
+                None => self.ordered.recv().await,
             },
-            event = self.transition.recv() => match event {
+            event = self.ordered.recv() => match event {
                 Some(event) => Some(event),
                 None => self.terminal.recv().await,
             },
-        }
+        }?;
+        Some(self.complete(envelope))
     }
 
     pub fn try_recv(
         &mut self,
     ) -> Result<RuntimeTelemetryEvent, tokio::sync::mpsc::error::TryRecvError> {
         match self.terminal.try_recv() {
-            Ok(event) => Ok(event),
-            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => self.transition.try_recv(),
-            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => self.transition.try_recv(),
+            Ok(envelope) => Ok(self.complete(envelope)),
+            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected)
+            | Err(tokio::sync::mpsc::error::TryRecvError::Empty) => self
+                .ordered
+                .try_recv()
+                .map(|envelope| self.complete(envelope)),
+        }
+    }
+
+    fn complete(&self, envelope: RuntimeTelemetryEnvelope) -> RuntimeTelemetryEvent {
+        if let Some(key) = envelope.pending_transition_key.as_deref() {
+            decrement_pending_transition(&self.pending_transitions, key);
+        }
+        envelope.event
+    }
+}
+
+fn telemetry_order_key(event: &RuntimeTelemetryEvent) -> String {
+    match event {
+        RuntimeTelemetryEvent::Lifecycle(event) => format!(
+            "lifecycle:{}:{}",
+            event.workspace_identity.as_deref().unwrap_or_default(),
+            event.owner_epoch
+        ),
+        RuntimeTelemetryEvent::SearchIncident(event) => format!(
+            "incident:{}:{}",
+            event.observation.identity.workspace_identity, event.observation.identity.incident_id
+        ),
+    }
+}
+
+fn decrement_pending_transition(pending: &dashmap::DashMap<String, usize>, key: &str) {
+    if let dashmap::mapref::entry::Entry::Occupied(mut entry) = pending.entry(key.to_owned()) {
+        if *entry.get() == 1 {
+            entry.remove();
+        } else {
+            *entry.get_mut() -= 1;
         }
     }
 }
@@ -140,11 +310,15 @@ fn incident_observation(event: IncidentTelemetryEvent) -> RuntimePerformanceObse
         IncidentSurface::Search => "search",
         IncidentSurface::Query => "query",
     };
-    let budget_status = match event.state {
-        IncidentState::Resolved | IncidentState::Superseded | IncidentState::Compacted => "ok",
-        IncidentState::FailedVerification => "failed-verification",
-        IncidentState::Open | IncidentState::Repairing | IncidentState::VerificationPending => {
-            "incident"
+    let budget_status = if incident.budget_exceeded {
+        "budget-exceeded"
+    } else {
+        match event.state {
+            IncidentState::Resolved | IncidentState::Superseded | IncidentState::Compacted => "ok",
+            IncidentState::FailedVerification => "failed-verification",
+            IncidentState::Open | IncidentState::Repairing | IncidentState::VerificationPending => {
+                "incident"
+            }
         }
     };
     let mut observation = RuntimePerformanceObservation::new(

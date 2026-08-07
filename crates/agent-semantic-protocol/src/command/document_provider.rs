@@ -10,11 +10,11 @@ pub(crate) fn is_document_language(language_id: &str) -> bool {
     DOCUMENT_LANGUAGES.contains(&language_id)
 }
 
-pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result<(), String> {
-    run_language_command_with_config(language_id, args, &AspConfig::default())
+pub(crate) async fn run_language_command(language_id: &str, args: &[String]) -> Result<(), String> {
+    run_language_command_with_config(language_id, args, &AspConfig::default()).await
 }
 
-pub(crate) fn run_language_command_with_config(
+pub(crate) async fn run_language_command_with_config(
     language_id: &str,
     args: &[String],
     config: &AspConfig,
@@ -38,7 +38,7 @@ pub(crate) fn run_language_command_with_config(
     if command == "capture" && language_id == "org" {
         let capture_args = &args[1..];
         if is_capture_state_command(capture_args) || capture_has_contract(capture_args) {
-            return org_capture::run_org_capture_command(capture_args);
+            return org_capture::run_org_capture_command(capture_args).await;
         }
         return Err(
             "asp org capture expects `--contract CONTRACT_ID`; use `asp org capture --contract agent.task.v1 --title TITLE --target-file ORG_FILE` for a contract-checked non-mutating Org entry. ASP Org state is initialized during install/sync."

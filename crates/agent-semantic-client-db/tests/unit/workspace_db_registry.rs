@@ -242,9 +242,11 @@ async fn resident_turso_session_restores_an_empty_memory_backend_without_reopeni
         .await
         .expect("admit durable Turso session");
     let source = b"pub fn resident_restore() {}\n";
+    let source_blobs =
+        crate::projection_fixture::source_blobs_fixture([("src/lib.rs", source.as_slice())]);
     let file_hashes = vec![agent_semantic_client_core::ClientCacheFileHash {
         path: "src/lib.rs".to_owned(),
-        sha256: "11".repeat(32),
+        sha256: format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(source)),
         byte_len: source.len() as u64,
         mtime_ms: 1,
     }];
@@ -257,6 +259,7 @@ async fn resident_turso_session_restores_an_empty_memory_backend_without_reopeni
         blake3::hash(b"resident-provider").to_hex().to_string(),
     );
     let import = agent_semantic_client_db::ClientDbSourceIndexImport {
+        source_blobs: source_blobs.clone(),
         relations: Vec::new(),
         generation_id: agent_semantic_client_core::CacheGenerationId::from("resident-cold-restore"),
         project_root: project_root.clone(),
@@ -277,8 +280,6 @@ async fn resident_turso_session_restores_an_empty_memory_backend_without_reopeni
         }],
         selectors: vec![],
     };
-    let source_blobs =
-        crate::projection_fixture::source_blobs_fixture([("src/lib.rs", source.as_slice())]);
     let materialization =
         agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
             scope.workspace_identity.clone(),

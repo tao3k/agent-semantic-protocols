@@ -245,7 +245,9 @@ async fn source_index_lease_miss_is_fail_fast_and_never_opens_turso() {
         "generation lease miss must fail in milliseconds: {:?}",
         started.elapsed()
     );
-    assert_eq!(durable_registry.workspace_entry_counts(), (0, 0));
+    let entry_counts = durable_registry.workspace_entry_counts();
+    assert_eq!(entry_counts.slot_count, 0);
+    assert_eq!(entry_counts.loaded_entry_count, 0);
     let counters = memory_registry.data_plane_counters();
     assert_eq!(counters.database_opens, 0);
     assert_eq!(counters.provider_spawns, 0);
@@ -673,7 +675,7 @@ async fn hook_generation_admission_is_non_blocking_and_single_flight() {
     .with_workspace_generation_builder(Arc::new({
         let source_build_count = Arc::clone(&source_build_count);
         let source_build_release = Arc::clone(&source_build_release);
-        move |_workspace_identity, _project_root| {
+        move |_workspace_identity, _project_root, _changed_paths| {
             let source_build_count = Arc::clone(&source_build_count);
             let source_build_release = Arc::clone(&source_build_release);
             Box::pin(async move {
@@ -832,7 +834,7 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_bounded() 
     .with_workspace_generation_builder(Arc::new({
         let source_build_count = Arc::clone(&source_build_count);
         let source_build_release = Arc::clone(&source_build_release);
-        move |_workspace_identity, _project_root| {
+        move |_workspace_identity, _project_root, _changed_paths| {
             let source_build_count = Arc::clone(&source_build_count);
             let source_build_release = Arc::clone(&source_build_release);
             Box::pin(async move {

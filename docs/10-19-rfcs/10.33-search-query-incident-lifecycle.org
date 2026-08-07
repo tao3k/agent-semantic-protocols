@@ -199,9 +199,23 @@ reason kind, elapsed time, budget, and code-projection presence.  A string
 =projectionKind= crossing the runtime IPC boundary is not an acceptable
 refinement of the shared schema; the boundary must carry a schema-owned enum.
 
-Turso retains append-only transition spans.  The resident schema exposes
-=asp_otel_active_search_incident= as the latest workspace-scoped state for each
-incident.  Only =open=, =repairing=, =verification-pending=, and
+Turso retains append-only transition spans.  In the same writer transaction it
+materializes =asp_otel_active_search_incident= as the latest workspace-scoped
+state for each incident; query-time window scans and JSON ranking are
+forbidden.  Only =open=, =repairing=, =verification-pending=, and
 =failed-verification= are active.  A verified =resolved= or retained
-=compacted= transition removes the incident from this active view without
+=compacted= transition removes the incident from this active relation without
 deleting its bounded audit history.
+
+* Provider responsibility boundary
+
+Language providers do not own incident lifecycle fields.  Their shared
+=provider-native-exact-response.v1= contract already provides a typed =oneOf=
+between a resolved projection and a diagnostic resolution state.  The Runtime
+Server terminal adapter derives =succeeded=, =codeProjectionPresent=, and the
+diagnostic =reasonKind= from that typed branch, then combines it with transport
+termination, blocking, and budget receipts.  Providers must not independently
+invent incident identifiers, transition sequences, retention state, or Turso
+writes.  This keeps Rust, TypeScript, Python, Gerbil Scheme, Julia, and future
+lazy-loaded providers aligned without copying lifecycle logic into each
+harness.

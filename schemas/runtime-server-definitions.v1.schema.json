@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/runtime-server-definitions.v1.schema.json",
+  "title": "Runtime Server Family Definitions v1",
+  "description": "Shared definitions owned by the runtime-server schema family.",
+  "$defs": {
+    "generationCommit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["activeEpoch", "generationDigest", "sourceRootDigest"],
+      "properties": {
+        "activeEpoch": {"type": "integer", "minimum": 1},
+        "generationDigest": {"type": "string", "minLength": 1},
+        "sourceRootDigest": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

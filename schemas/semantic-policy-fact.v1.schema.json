@@ -97,16 +97,10 @@
       }
     },
     "recommendedActions": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/action"
-      }
+      "$ref": "#/$defs/actionList"
     },
     "avoidActions": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/action"
-      }
+      "$ref": "#/$defs/actionList"
     },
     "agentUse": {
       "type": "array",
@@ -349,6 +343,12 @@
         "ask",
         "defer"
       ]
+    },
+    "actionList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/action"
+      }
     },
     "action": {
       "type": "object",

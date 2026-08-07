@@ -75,10 +75,7 @@
       ]
     },
     "frontierReturned": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/frontierItem"
-      }
+      "$ref": "#/$defs/frontierList"
     },
     "frontierActions": {
       "type": "array",
@@ -87,10 +84,7 @@
       }
     },
     "frontierFollowed": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/frontierItem"
-      }
+      "$ref": "#/$defs/frontierList"
     },
     "codeActuallyRead": {
       "type": "array",
@@ -294,6 +288,12 @@
       }
     }
   },
+    "frontierList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/frontierItem"
+      }
+    },
     "codeRead": {
       "type": "object",
       "additionalProperties": false,

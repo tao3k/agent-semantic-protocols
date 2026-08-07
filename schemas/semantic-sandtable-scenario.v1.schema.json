@@ -162,6 +162,15 @@
     }
   },
   "$defs": {
+    "envMap": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/envName"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
     "evidence": {
       "type": "object",
       "additionalProperties": false,
@@ -1237,13 +1246,7 @@
           "minLength": 1
         },
         "env": {
-          "type": "object",
-          "propertyNames": {
-            "$ref": "#/$defs/envName"
-          },
-          "additionalProperties": {
-            "type": "string"
-          }
+          "$ref": "#/$defs/envMap"
         },
         "requiredEnv": {
           "type": "array",
@@ -1332,13 +1335,7 @@
           "type": "boolean"
         },
         "env": {
-          "type": "object",
-          "propertyNames": {
-            "$ref": "#/$defs/envName"
-          },
-          "additionalProperties": {
-            "type": "string"
-          }
+          "$ref": "#/$defs/envMap"
         },
         "requiredEnv": {
           "type": "array",
@@ -1490,13 +1487,7 @@
           "minLength": 1
         },
         "env": {
-          "type": "object",
-          "propertyNames": {
-            "$ref": "#/$defs/envName"
-          },
-          "additionalProperties": {
-            "type": "string"
-          }
+          "$ref": "#/$defs/envMap"
         },
         "requiredEnv": {
           "type": "array",
@@ -1784,10 +1775,7 @@
           }
         },
         {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/jsonValue"
-          }
+          "$ref": "#/$defs/jsonValueMap"
         }
       ]
     },

@@ -31,11 +31,19 @@ fn bundled_manifest_declares_plugin_hook_authority() {
         .and_then(serde_json::Value::as_object)
         .expect("plugin hook event map");
     assert_eq!(events.len(), 8);
-    assert!(
-        events["PreToolUse"][0]["matcher"]
-            .as_str()
-            .is_some_and(|m| !m.is_empty())
-    );
+    for event in ["PreToolUse", "PermissionRequest", "PostToolUse"] {
+        let groups = events[event]
+            .as_array()
+            .unwrap_or_else(|| panic!("plugin Hook event {event} must contain matcher groups"));
+        assert!(
+            groups.iter().all(|group| matches!(
+                group.get("matcher").and_then(serde_json::Value::as_str),
+                None | Some("") | Some("*")
+            )),
+            "plugin Hook event {event} must use a Codex match-all matcher (`*`, empty, or omitted) so Read, MCP, apply_patch, and Bash all reach the internal action classifier: encodedMatcher={} actual={groups:?}",
+            serde_json::to_string(&groups[0]["matcher"]).expect("encode matcher diagnostic")
+        );
+    }
     for (event, groups) in events {
         let groups = groups
             .as_array()

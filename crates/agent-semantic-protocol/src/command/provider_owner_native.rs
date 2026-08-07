@@ -58,7 +58,7 @@ pub(super) struct ExpectedOwnerResponse<'a> {
     pub(super) source_size: u64,
 }
 
-pub(super) fn run_provider_owner_native(
+pub(super) async fn run_provider_owner_native(
     context: ProviderOwnerNativeTransportContext<'_>,
     request: ProviderOwnerNativeRequest<'_>,
 ) -> Result<Vec<ProviderSelectorProjection>, String> {
@@ -69,7 +69,8 @@ pub(super) fn run_provider_owner_native(
         &prepared.invocation,
         context.project_root,
         prepared.stdin,
-    )?;
+    )
+    .await?;
     finish_provider_owner_native(output, prepared.expected)
 }
 

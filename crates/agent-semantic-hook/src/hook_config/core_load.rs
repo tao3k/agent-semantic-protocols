@@ -93,8 +93,10 @@ pub fn load_client_config_for_project(
     path: &Path,
     project_root: &Path,
 ) -> Result<ClientHookConfig, String> {
-    let parsed =
-        load_hook_client_config_file_with_agents(path, load_project_agent_routes(project_root)?)?;
+    let parsed = match load_project_agent_routes(project_root)? {
+        Some(agents) => load_hook_client_config_file_with_agents(path, agents)?,
+        None => agent_semantic_config::load_hook_client_config_file(path)?,
+    };
     let agent_config_path = project_agent_config_path(project_root);
     let project = load_asp_project_config_file(&agent_config_path)?;
     compile_config(merge_asp_project_hook_config(parsed, project)?)
@@ -106,10 +108,10 @@ pub fn load_client_config_overlay_for_project(
     path: &Path,
     project_root: &Path,
 ) -> Result<ClientHookConfig, String> {
-    let parsed = load_hook_client_config_overlay_file_with_agents(
-        path,
-        load_project_agent_routes(project_root)?,
-    )?;
+    let parsed = match load_project_agent_routes(project_root)? {
+        Some(agents) => load_hook_client_config_overlay_file_with_agents(path, agents)?,
+        None => agent_semantic_config::load_hook_client_config_overlay_file(path)?,
+    };
     let agent_config_path = project_agent_config_path(project_root);
     let project = load_asp_project_config_file(&agent_config_path)?;
     compile_config(merge_asp_project_hook_config(parsed, project)?)
@@ -120,7 +122,9 @@ pub fn load_embedded_client_config_for_project(
     project_root: &Path,
 ) -> Result<ClientHookConfig, String> {
     let mut parsed = default_client_config_file()?;
-    parsed.agents = load_project_agent_routes(project_root)?;
+    if let Some(agents) = load_project_agent_routes(project_root)? {
+        parsed.agents = agents;
+    }
     let agent_config_path = project_agent_config_path(project_root);
     let project = load_asp_project_config_file(&agent_config_path)?;
     compile_config(merge_asp_project_hook_config(parsed, project)?)
@@ -128,9 +132,13 @@ pub fn load_embedded_client_config_for_project(
 
 fn load_project_agent_routes(
     project_root: &Path,
-) -> Result<agent_semantic_config::HookClientAgentsConfig, String> {
-    let rendered = render_hook_agent_routes(&project_root.join("agents"))?;
+) -> Result<Option<agent_semantic_config::HookClientAgentsConfig>, String> {
+    let agents_root = project_root.join("agents");
+    if !agents_root.join("config.toml").is_file() {
+        return Ok(None);
+    }
+    let rendered = render_hook_agent_routes(&agents_root)?;
     toml::from_str::<ManagedAgentRouteProjection>(&rendered)
-        .map(|projection| projection.agents)
+        .map(|projection| Some(projection.agents))
         .map_err(|error| format!("failed to parse project agent route projection: {error}"))
 }

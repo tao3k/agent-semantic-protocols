@@ -167,9 +167,10 @@ pub use read_only_subagent::{
 #[cfg(test)]
 extern crate self as agent_semantic_hook;
 pub use crate::provider_registry::{
-    RegisteredProviderCatalogIdentity, RegisteredProviderKind,
+    ProviderMethodArgumentValuesV1, RegisteredProviderCatalogIdentity, RegisteredProviderKind,
     registered_provider_catalog_identities, registered_provider_id_v1, registered_provider_kind,
-    registered_provider_method_invocation_v1, registered_provider_projection_command_binding_v1,
+    registered_provider_method_invocation_v1, registered_provider_method_projected_argv_v1,
+    registered_provider_projection_command_binding_v1,
 };
 #[doc(hidden)]
 pub use agent_semantic_command_match as command_match;

@@ -23,6 +23,7 @@
         "generationDigest": "blake3:generation-parent",
         "sourceRootDigest": "blake3:source-parent"
       },
+      "failureStage": null,
       "error": null
     },
     {
@@ -39,6 +40,7 @@
       "accepted": true,
       "attempt": 2,
       "commit": null,
+      "failureStage": null,
       "error": null
     }
   ]

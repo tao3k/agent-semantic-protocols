@@ -75,9 +75,6 @@
     "collectionFamily": {
       "enum": ["sequence", "map", "set", "iterator", "optional", "result"]
     },
-    "accessMode": {
-      "enum": ["read", "write", "append", "mutate", "construct", "validate"]
-    },
     "nodeId": {
       "type": "string",
       "minLength": 1
@@ -250,85 +247,13 @@
       }
     },
     "fieldFact": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["ownerKind", "name", "ownerPath", "access"],
-      "properties": {
-        "ownerKind": {
-          "enum": ["struct", "class", "interface", "dataclass", "module", "object"]
-        },
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "ownerPath": {
-          "type": "string",
-          "minLength": 1
-        },
-        "access": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/accessMode"
-          },
-          "uniqueItems": true
-        }
-      }
+      "$ref": "semantic-fact-definitions.v1.schema.json#/$defs/fieldFact"
     },
     "typeFact": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["name"],
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "element": {
-          "type": "string",
-          "minLength": 1
-        },
-        "key": {
-          "type": "string",
-          "minLength": 1
-        },
-        "value": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
+      "$ref": "semantic-fact-definitions.v1.schema.json#/$defs/typeFact"
     },
     "collectionFact": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["family", "impl"],
-      "properties": {
-        "family": {
-          "$ref": "#/$defs/collectionFamily"
-        },
-        "impl": {
-          "type": "string",
-          "minLength": 1
-        },
-        "elementType": {
-          "type": "string",
-          "minLength": 1
-        },
-        "keyType": {
-          "type": "string",
-          "minLength": 1
-        },
-        "valueType": {
-          "type": "string",
-          "minLength": 1
-        },
-        "mutation": {
-          "type": "array",
-          "items": {
-            "enum": ["append", "insert", "remove", "update", "clear", "replace"]
-          },
-          "uniqueItems": true
-        }
-      }
+      "$ref": "semantic-fact-definitions.v1.schema.json#/$defs/collectionFact"
     },
     "edge": {
       "type": "object",

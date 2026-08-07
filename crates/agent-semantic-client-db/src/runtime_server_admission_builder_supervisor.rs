@@ -8,29 +8,46 @@ use super::runtime_server_admission::{
     WorkspaceGenerationFailureStage,
 };
 
-pub(super) const WORKSPACE_GENERATION_BUILD_DEADLINE: std::time::Duration =
-    std::time::Duration::from_millis(800);
-
 pub(super) async fn run(
     builder: WorkspaceGenerationBuilder,
     workspace_identity: String,
     project_root: PathBuf,
     candidate: WorkspaceGenerationCandidateIdentity,
     build_mode: WorkspaceGenerationBuildMode,
+    changed_paths: std::sync::Arc<std::collections::BTreeSet<PathBuf>>,
     cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
 ) -> Result<WorkspaceGenerationBuildCompletion, WorkspaceGenerationBuildFailure> {
-    run_with_deadline(
-        builder,
+    let mut builders = tokio::task::JoinSet::new();
+    builders.spawn(builder(
         workspace_identity,
         project_root,
         candidate,
         build_mode,
-        cancellation,
-        WORKSPACE_GENERATION_BUILD_DEADLINE,
-    )
-    .await
+        changed_paths,
+        cancellation.clone(),
+    ));
+    let outcome = tokio::select! {
+        _ = cancellation.cancelled() => None,
+        result = builders.join_next() => result,
+    };
+    match outcome {
+        None if cancellation.is_cancelled() => Err(WorkspaceGenerationBuildFailure::new(
+            WorkspaceGenerationFailureStage::GenerationBuilderSupervision,
+            "workspace generation build cancelled",
+        )),
+        Some(Ok(completion)) => completion,
+        Some(Err(error)) => Err(WorkspaceGenerationBuildFailure::new(
+            WorkspaceGenerationFailureStage::GenerationBuilderSupervision,
+            format!("workspace generation builder task terminated before a receipt: {error}"),
+        )),
+        None => Err(WorkspaceGenerationBuildFailure::new(
+            WorkspaceGenerationFailureStage::GenerationBuilderSupervision,
+            "workspace generation builder supervisor lost its task",
+        )),
+    }
 }
 
+#[cfg(test)]
 pub(crate) async fn run_with_deadline(
     builder: WorkspaceGenerationBuilder,
     workspace_identity: String,
@@ -39,38 +56,29 @@ pub(crate) async fn run_with_deadline(
     build_mode: WorkspaceGenerationBuildMode,
     cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
     deadline: std::time::Duration,
-) -> Result<WorkspaceGenerationBuildCompletion, String> {
-    let absolute_deadline = tokio::time::Instant::now() + deadline;
-    let mut builders = tokio::task::JoinSet::new();
-    builders.spawn(builder(
-        workspace_identity,
-        project_root,
-        candidate,
-        build_mode,
-        cancellation.clone(),
-        absolute_deadline,
-    ));
-    let outcome = tokio::time::timeout_at(absolute_deadline, async {
-        tokio::select! {
-            _ = cancellation.cancelled() => None,
-            result = builders.join_next() => result,
+) -> Result<WorkspaceGenerationBuildCompletion, WorkspaceGenerationBuildFailure> {
+    match tokio::time::timeout(
+        deadline,
+        run(
+            builder,
+            workspace_identity,
+            project_root,
+            candidate,
+            build_mode,
+            std::sync::Arc::new(std::collections::BTreeSet::new()),
+            cancellation.clone(),
+        ),
+    )
+    .await
+    {
+        Err(_) => {
+            cancellation.cancel();
+            Err(WorkspaceGenerationBuildFailure::new(
+                WorkspaceGenerationFailureStage::GenerationBuilderSupervision,
+                format!("workspace generation build exceeded {deadline:?}"),
+            ))
         }
-    })
-    .await;
-    match outcome {
-        Err(_) => Err(format!(
-            "workspace-generation-build-deadline-exceeded: workspace generation build exceeded {deadline:?}"
-        )),
-        Ok(outcome) => match outcome {
-            None if cancellation.is_cancelled() => {
-                Err("workspace generation build cancelled".to_owned())
-            }
-            Some(Ok(completion)) => completion,
-            Some(Err(error)) => Err(format!(
-                "workspace generation builder task terminated before a receipt: {error}"
-            )),
-            None => Err("workspace generation builder supervisor lost its task".to_owned()),
-        },
+        Ok(outcome) => outcome,
     }
 }
 

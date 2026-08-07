@@ -12,6 +12,19 @@ pub(crate) struct LoadedHookConfig {
     pub(crate) config: Arc<ClientHookConfig>,
 }
 
+fn recovery_instruction() -> String {
+    agent_semantic_runtime::resolve_state_home()
+        .map(|state_home| {
+            format!(
+                "run a validated candidate `<candidate-asp> install binary --target {}` to republish the binary/config generation",
+                state_home.join("runtime/bin/asp").display()
+            )
+        })
+        .unwrap_or_else(|_| {
+            "run a validated candidate `<candidate-asp> install binary --target <ASP_STATE_HOME>/runtime/bin/asp` to republish the binary/config generation".to_owned()
+        })
+}
+
 fn append_file_identity(hasher: &mut Sha256, path: &Path) -> Result<(), String> {
     hasher.update(path.as_os_str().as_encoded_bytes());
     match fs::read(path) {
@@ -119,46 +132,82 @@ pub(crate) fn load_fresh_hook_config(
     config_path: &Path,
     project_root: &Path,
 ) -> Result<(Arc<LoadedHookConfig>, &'static str), String> {
+    load_fresh_hook_config_inner(config_path, project_root, false)
+}
+
+fn load_fresh_hook_config_inner(
+    config_path: &Path,
+    project_root: &Path,
+    managed_sync_attempted: bool,
+) -> Result<(Arc<LoadedHookConfig>, &'static str), String> {
     let generation = compiled_generation_key(config_path, project_root)?;
     let snapshot = snapshot_path(project_root, &generation)?;
-    if snapshot.is_file() {
-        let config = load_mmap_snapshot(&snapshot)?;
-        agent_semantic_hook::validate_match_policy_rule_coverage(&config).map_err(|error| {
-            format!(
-                "Hook matcher snapshot conformance failed for {}: {error}; run `asp hook install --client codex {}`",
-                snapshot.display(),
-                project_root.display()
-            )
-        })?;
-        return Ok((
-            Arc::new(LoadedHookConfig {
-                config: Arc::new(config),
-            }),
-            "mmap-hit",
-        ));
-    }
+    let corrupt_snapshot = if snapshot.is_file() {
+        match load_mmap_snapshot(&snapshot) {
+            Ok(config) => {
+                agent_semantic_hook::validate_match_policy_rule_coverage(&config).map_err(
+                    |error| {
+                        format!(
+                            "Hook matcher snapshot conformance failed for {}: {error}; {}",
+                            snapshot.display(),
+                            recovery_instruction()
+                        )
+                    },
+                )?;
+                return Ok((
+                    Arc::new(LoadedHookConfig {
+                        config: Arc::new(config),
+                    }),
+                    "mmap-hit",
+                ));
+            }
+            Err(_) => true,
+        }
+    } else {
+        false
+    };
 
     let config = agent_semantic_hook::load_client_config_for_project(config_path, project_root)
         .map_err(|error| {
             format!(
-                "Hook matcher snapshot source is invalid for {}: {error}; run `asp hook install --client codex {}` to republish managed artifacts",
+                "Hook matcher snapshot source is invalid for {}: {error}; {}",
                 config_path.display(),
-                project_root.display()
+                recovery_instruction()
             )
         })?;
     let expected_fingerprint = agent_semantic_config::hook_client_contract_fingerprint();
     if config.contract_fingerprint() != Some(expected_fingerprint.as_str()) {
+        let canonical_managed_config = agent_semantic_runtime::resolve_state_home()
+            .ok()
+            .map(|state_home| state_home.join("hooks/config.toml"));
+        let is_canonical_managed_config = canonical_managed_config.as_deref().is_some_and(|path| {
+            match (fs::canonicalize(path), fs::canonicalize(config_path)) {
+                (Ok(canonical), Ok(actual)) => canonical == actual,
+                _ => false,
+            }
+        });
+        if !managed_sync_attempted && is_canonical_managed_config {
+            crate::command::managed_hook_config::materialize(config_path).map_err(|error| {
+                format!(
+                    "Hook managed-config auto-sync failed for {}: {error}; {}",
+                    config_path.display(),
+                    recovery_instruction()
+                )
+            })?;
+            let (loaded, _) = load_fresh_hook_config_inner(config_path, project_root, true)?;
+            return Ok((loaded, "managed-config-auto-synced"));
+        }
         return Err(format!(
-            "Hook matcher snapshot source fingerprint mismatch for {}; run `asp hook install --client codex {}`",
+            "Hook matcher snapshot source fingerprint mismatch for {}; {}",
             config_path.display(),
-            project_root.display()
+            recovery_instruction()
         ));
     }
     agent_semantic_hook::validate_match_policy_rule_coverage(&config).map_err(|error| {
         format!(
-            "Hook matcher source conformance failed for {}: {error}; run `asp hook install --client codex {}`",
+            "Hook matcher source conformance failed for {}: {error}; {}",
             config_path.display(),
-            project_root.display()
+            recovery_instruction()
         )
     })?;
     atomic_publish_snapshot(&snapshot, &config)?;
@@ -166,7 +215,11 @@ pub(crate) fn load_fresh_hook_config(
         Arc::new(LoadedHookConfig {
             config: Arc::new(config),
         }),
-        "compiled-and-published",
+        if corrupt_snapshot {
+            "compiled-and-published-after-corrupt-snapshot"
+        } else {
+            "compiled-and-published"
+        },
     ))
 }
 

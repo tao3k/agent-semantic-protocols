@@ -27,15 +27,19 @@
     "routeKey": "asp_testing",
     "sessionName": "asp_testing",
     "sessionLifetime": "resident",
+    "residentId": "asp_testing",
+    "matchDecision": "matched",
     "platform": "codex",
     "hostAgentName": "asp_testing",
     "roles": ["build", "subagent", "testing"],
-    "roleDescription": "ASP test/build execution lane."
+    "roleDescription": "ASP test/build execution lane.",
+    "sandboxMode": "read-only",
+    "binding": null
   },
   "choices": [
     {
       "id": "CREATE_AND_REGISTER",
-      "instruction": "Create @asp_testing from its configured profile — ASP test/build execution lane. The Host owns the child identity and ASP Runtime Server records the resulting lifecycle event.",
+      "instruction": "Create and register @asp_testing subagent from its configured read-only sandbox profile — ASP test/build execution lane. The Host owns the child identity and ASP Runtime Server records the resulting lifecycle event.",
       "presentation": "pane",
       "why": "the Hook-selected role is configured and has no resident registration"
     }

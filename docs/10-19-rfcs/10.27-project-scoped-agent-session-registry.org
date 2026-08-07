@@ -9,6 +9,79 @@ session artifact tree just to remember root and child session relationships.
 The durable key is the current project plus the agent session ids.
 
 * Contract
+** Codex V2 adapter and ASP control-plane authority
+
+Codex host events are an external, versioned observation surface.  They are not
+the ASP session state machine and they do not own routing or delegation policy.
+Each supported Codex event version MUST be consumed by a dedicated adapter that
+validates host identity and rollout topology, then emits the stable ASP facts:
+
+- root session identity;
+- current agent-node identity and verified parent identity;
+- turn identity;
+- proposed delegation edge;
+- host lifecycle evidence.
+
+The project-scoped ASP Control Plane is the sole authority that materializes
+those facts into agent nodes, turns, delegation edges, lifecycle transitions,
+admission decisions, and durable receipts.  A future Codex event revision MUST
+therefore change only the adapter/input schema and its projection proof; it MUST
+NOT require Codex-specific branches in the registry, Hook policy, or the stable
+ASP transition model.
+
+Every registered agent node carries a delegation capability.  The initial
+capabilities are =standard= and =focused-leaf=:
+
+- =standard= permits a proposed child edge subject to the normal registered
+  route and lifecycle checks;
+- =focused-leaf= permits work in the current session but admits no outgoing
+  delegation edge.
+
+The canonical =asp_testing= and =asp_explorer= routes MUST materialize as
+=focused-leaf=.  When either session proposes another child, admission MUST
+return a typed deny receipt before child registration, Host binding, dispatch,
+or delegation publication.  The pre-state and post-state agent/delegation sets
+MUST be identical.  This rule is evaluated against the verified current
+agent-node identity; it is neither a root-session policy nor inheritance from a
+generic parent node.
+
+The synchronous Hook is only an adapter for this admission result.  It MUST NOT
+reimplement focus-mode routing from configuration, infer authority from an
+unverified =agent_type=, or manufacture a child record before the Control Plane
+has admitted the edge.
+
+** Durable delegation transition authority
+
+Delegation admission MUST be durable before it is observable.  The ASP Control
+Plane owns an append-only, project-scoped transition journal whose event identity
+is stable across Hook retries, Runtime restarts, and concurrent sessions.  A
+delegation proposal is linearized by one database transaction that:
+
+1. admits or rejects the proposal against the current generation and agent
+   capability;
+2. appends the transition event exactly once;
+3. publishes the next materialized generation when accepted, or preserves the
+   current generation when denied; and
+4. stores the typed admission receipt with the same commit.
+
+The transaction MUST use generation compare-and-swap.  A stale writer MUST
+retry against the committed generation and MUST NOT overwrite newer agent,
+turn, delegation, or receipt state.  Duplicate event identity MUST return the
+already committed receipt without appending a second event or advancing a
+generation.
+
+Startup and owner handoff MUST reconstruct the projection from a durable
+checkpoint plus the ordered journal tail.  A crash before commit exposes
+neither state nor receipt; a crash after commit exposes both.  Replay MUST be
+idempotent and MUST never invoke Codex execution operations.
+
+The foreground Hook path submits the proposal and reads its committed receipt;
+it does not wait for unrelated projection rebuilding.  Warm admission is a
+sub-millisecond control-plane gate.  Concurrent multi-workspace and
+multi-session tests MUST prove bounded latency, one committed event per event
+identity, no cross-workspace lock, and no child/session side effect for a
+=focused-leaf= denial.
+
 
 ASP records resident child sessions in the agent session registry DB with this
 identity:
@@ -30,6 +103,50 @@ The =project_id= is implicit from the current workspace. A normal agent never
 copies a host child id, message target, or model into a shell command. The
 platform adapter projects native lifecycle events into the registry; rollout
 data remains recovery evidence, not routing authority.
+
+** Tokio stream lifecycle contract
+
+Long-lived Session Control Plane event sources MUST be represented as bounded,
+shutdown-aware Tokio streams owned by the Runtime service.  A stream consumer
+MUST preserve backpressure, observe the Runtime shutdown signal, drain already
+admitted transitions, and join its owned task before lifecycle completion.
+No command adapter may own a long-lived consumer, and no consumer may detach a
+task without a durable join owner.
+
+This requirement applies only to continuing event sources.  A single
+request/reply receipt remains a Tokio oneshot, and a Turso row cursor remains a
+database cursor; wrapping either as an application stream would add ambiguity
+without adding lifecycle authority.  A bounded event stream MUST NOT be
+collected into a whole-generation vector before processing.
+
+Every resident stream MUST expose lock-free Runtime metrics for queue capacity,
+current depth, high-water mark, admitted and completed transitions, shutdown
+drain and cancellation counts, and actor starts and stops.  Metrics collection
+MUST perform no database operation, socket round trip, or awaited lock on the
+admission hot path.  A stopped Runtime is closed only when its admitted queue is
+drained, its actor has published a stop receipt, and its join handle has
+completed.
+
+** Authority-current delegation admission
+
+A Host adapter MUST NOT implement delegation as two independent IPC operations
+that first read a generation and later submit a compare-and-swap proposal.  Two
+sessions under the same root can observe the same generation, causing one valid
+delegation to fail only because another valid delegation linearized first.
+
+The agent-facing adapter submits an immutable delegation intent without a
+caller-selected generation.  The workspace resident writer lane materializes
+the current generation, validates the current-session capability, commits the
+child node, edge, next generation, and admission receipt in one Immediate
+transaction, and returns the materialized expected generation as evidence.
+Explicit generation compare-and-swap remains available to reconciliation and
+diagnostic clients, but it is not the Host lifecycle admission surface.
+
+Concurrent distinct intents MUST serialize without stale-generation failure.
+Duplicate event identities MUST return the first durable receipt without a
+second state transition.  A focused-leaf denial MUST preserve generation and
+state digest.  No Host child registration or dispatch may become visible before
+the corresponding accepted receipt is durable.
 
 * Gap Audit
 

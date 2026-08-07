@@ -149,6 +149,7 @@ pub(super) fn validate_source_index_membership_change_set(
     membership_change_set: &crate::source_index::ClientDbSourceIndexMembershipChangeSet,
 ) -> Result<(), String> {
     let crate::source_index::ClientDbSourceIndexMembershipChangeSet::MerkleOverlay {
+        base_generation_id: _,
         changed_owner_paths,
         removed_owner_paths,
     } = membership_change_set

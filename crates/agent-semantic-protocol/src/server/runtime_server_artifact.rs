@@ -6,12 +6,6 @@ pub(crate) enum RuntimeServerArtifactAction {
     Restart,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum RuntimeServerSupervisorAction {
-    Noop,
-    Reconcile,
-}
-
 pub(crate) fn runtime_server_artifact_action(
     canonical_artifact: &Path,
     running_artifact: &Path,
@@ -22,16 +16,5 @@ pub(crate) fn runtime_server_artifact_action(
         RuntimeServerArtifactAction::Status
     } else {
         RuntimeServerArtifactAction::Restart
-    }
-}
-
-pub(crate) fn runtime_server_supervisor_action(
-    runtime_is_healthy: bool,
-    definition_changed: bool,
-) -> RuntimeServerSupervisorAction {
-    if runtime_is_healthy && !definition_changed {
-        RuntimeServerSupervisorAction::Noop
-    } else {
-        RuntimeServerSupervisorAction::Reconcile
     }
 }

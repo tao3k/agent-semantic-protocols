@@ -3,6 +3,9 @@
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SourceIndexCollectionScope {
     CompleteGeneration,
+    ExplicitOwners {
+        owner_paths: Vec<String>,
+    },
     TargetProvider {
         language_id: agent_semantic_client_core::LanguageId,
         provider_id: agent_semantic_client_core::ProviderId,
@@ -10,6 +13,78 @@ pub enum SourceIndexCollectionScope {
     TargetProviderId {
         provider_id: agent_semantic_client_core::ProviderId,
     },
+}
+
+impl SourceIndexCollectionScope {
+    pub(super) fn explicit_owner_paths(&self) -> Option<&[String]> {
+        match self {
+            Self::ExplicitOwners { owner_paths } => Some(owner_paths),
+            Self::CompleteGeneration
+            | Self::TargetProvider { .. }
+            | Self::TargetProviderId { .. } => None,
+        }
+    }
+}
+
+fn explicit_owner_paths(
+    project_root: &std::path::Path,
+    scope: &SourceIndexCollectionScope,
+) -> Result<Option<std::collections::BTreeSet<std::path::PathBuf>>, String> {
+    let SourceIndexCollectionScope::ExplicitOwners { owner_paths } = scope else {
+        return Ok(None);
+    };
+    if owner_paths.is_empty() {
+        return Err("explicit owner collection requires at least one owner path".to_owned());
+    }
+    let mut requested = std::collections::BTreeSet::new();
+    for owner_path in owner_paths {
+        let owner_path = std::path::PathBuf::from(owner_path);
+        if owner_path.is_absolute()
+            || owner_path.components().any(|component| {
+                matches!(
+                    component,
+                    std::path::Component::CurDir
+                        | std::path::Component::ParentDir
+                        | std::path::Component::RootDir
+                        | std::path::Component::Prefix(_)
+                )
+            })
+        {
+            return Err(format!(
+                "explicit owner collection path must be normalized and workspace-relative: {}",
+                owner_path.display()
+            ));
+        }
+        requested.insert(project_root.join(owner_path));
+    }
+    Ok(Some(requested))
+}
+
+fn retain_explicit_owner_files(
+    project_root: &std::path::Path,
+    scope: &SourceIndexCollectionScope,
+    files: &mut Vec<agent_semantic_client_db::ClientDbSourceIndexScopeFile>,
+) -> Result<(), String> {
+    let Some(requested) = explicit_owner_paths(project_root, scope)? else {
+        return Ok(());
+    };
+    files.retain(|file| requested.contains(&file.path));
+    Ok(())
+}
+
+fn provider_project_resolution_collection_scope(
+    scope: &SourceIndexCollectionScope,
+) -> agent_semantic_client_local_cli::ProviderProjectResolutionCollectionScope {
+    match scope {
+        SourceIndexCollectionScope::ExplicitOwners { owner_paths } =>
+            agent_semantic_client_local_cli::ProviderProjectResolutionCollectionScope::ExplicitOwners {
+                owner_paths: owner_paths.clone(),
+            },
+        SourceIndexCollectionScope::CompleteGeneration
+        | SourceIndexCollectionScope::TargetProvider { .. }
+        | SourceIndexCollectionScope::TargetProviderId { .. } =>
+            agent_semantic_client_local_cli::ProviderProjectResolutionCollectionScope::CompleteGeneration,
+    }
 }
 
 pub(crate) struct SourceIndexCollectionReceipt {
@@ -38,7 +113,7 @@ fn provider_scope_collection_route(
     }
 }
 
-pub(crate) fn collect_source_index_files(
+pub(crate) async fn collect_source_index_files(
     project_root: &std::path::Path,
     provider_registry: &agent_semantic_client_core::ProviderRegistrySnapshot,
     scope: &SourceIndexCollectionScope,
@@ -55,7 +130,8 @@ pub(crate) fn collect_source_index_files(
     let mut files = Vec::new();
     for provider in &provider_registry.providers {
         let provider_is_selected = match scope {
-            SourceIndexCollectionScope::CompleteGeneration => true,
+            SourceIndexCollectionScope::CompleteGeneration
+            | SourceIndexCollectionScope::ExplicitOwners { .. } => true,
             SourceIndexCollectionScope::TargetProvider {
                 language_id,
                 provider_id,
@@ -73,8 +149,10 @@ pub(crate) fn collect_source_index_files(
                     project_root,
                     provider,
                     std::path::Path::new(&provider.binary),
+                    provider_project_resolution_collection_scope(scope),
                     repository_candidates.clone(),
                 )
+                .await
                 .map_err(|error| error.to_string())?
             }
             ProviderScopeCollectionRoute::GitDocumentCandidates => {
@@ -83,6 +161,7 @@ pub(crate) fn collect_source_index_files(
         };
         append_provider_scope_files(&mut files, provider, receipt)?;
     }
+    retain_explicit_owner_files(project_root, scope, &mut files)?;
     Ok(files)
 }
 
@@ -107,7 +186,8 @@ pub(crate) async fn collect_source_index_scope_async(
     let mut providers = tokio::task::JoinSet::new();
     for provider in &provider_registry.providers {
         let selected = match scope {
-            SourceIndexCollectionScope::CompleteGeneration => true,
+            SourceIndexCollectionScope::CompleteGeneration
+            | SourceIndexCollectionScope::ExplicitOwners { .. } => true,
             SourceIndexCollectionScope::TargetProvider {
                 language_id,
                 provider_id,
@@ -131,16 +211,18 @@ pub(crate) async fn collect_source_index_scope_async(
         let project_root = project_root.to_path_buf();
         let provider = provider.clone();
         let repository_candidates = repository_candidates.clone();
+        let collection_scope = provider_project_resolution_collection_scope(scope);
         providers.spawn(async move {
             let (receipt, project_resolution) =
                 match provider_scope_collection_route(provider.scope_authority) {
                 ProviderScopeCollectionRoute::ProjectResolution => {
                     let package_root_path = std::path::PathBuf::from(&provider.binary);
                     let resolution =
-                        agent_semantic_client_local_cli::provider_project_resolution_with_candidates_async(
-                            &provider,
-                            &project_root,
-                            repository_candidates,
+        agent_semantic_client_local_cli::provider_project_resolution_with_candidates(
+            &provider,
+            &project_root,
+                            collection_scope,
+            repository_candidates,
                         )
                         .await
                         .map_err(|error| error.to_string())?;
@@ -191,6 +273,7 @@ pub(crate) async fn collect_source_index_scope_async(
             project_resolutions.push(project_resolution);
         }
     }
+    retain_explicit_owner_files(project_root, scope, &mut files)?;
     files.sort_by(|left, right| {
         (&left.path, &left.language_id, &left.provider_id).cmp(&(
             &right.path,
@@ -291,12 +374,12 @@ fn append_provider_scope_files(
     }
 }
 
-pub(crate) fn collect_workspace_search_source_index_files(
+pub(crate) async fn collect_workspace_search_source_index_files(
     project_root: &std::path::Path,
     provider_registry: &agent_semantic_client_core::ProviderRegistrySnapshot,
     scope: &SourceIndexCollectionScope,
 ) -> Result<Vec<agent_semantic_client_db::ClientDbSourceIndexScopeFile>, String> {
-    collect_source_index_files(project_root, provider_registry, scope)
+    collect_source_index_files(project_root, provider_registry, scope).await
 }
 
 #[cfg(test)]

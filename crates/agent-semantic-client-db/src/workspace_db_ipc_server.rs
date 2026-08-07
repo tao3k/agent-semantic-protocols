@@ -444,12 +444,16 @@ pub async fn serve_runtime_server_workspace_stream(
     >,
     graph_turbo_evaluation_builder: Option<&crate::runtime_server::GraphTurboEvaluationBuilder>,
     agent_session_registry_owner: Option<&std::sync::Arc<crate::AgentSessionRegistry>>,
+    session_control_plane_runtime_registry: &std::sync::Arc<
+        crate::SessionControlPlaneRuntimeRegistry,
+    >,
     agent_session_status: Option<
         &crate::runtime_server_agent_session_status::AgentSessionStatusHandle,
     >,
     codex_multi_agent_control_plane_owner: &std::sync::Arc<
         crate::codex_multi_agent_control_plane_owner::CodexMultiAgentControlPlaneOwner,
     >,
+    telemetry_sender: Option<&crate::runtime_telemetry_bus::RuntimeTelemetryBusSender>,
     mut drain: tokio::sync::watch::Receiver<bool>,
 ) -> Result<(), String> {
     let mut stream = BufStream::new(stream);
@@ -464,6 +468,8 @@ pub async fn serve_runtime_server_workspace_stream(
         let Some(request) = request else {
             return Ok(());
         };
+        let operation_started = std::time::Instant::now();
+        let mut incident_context = crate::search_incident::workspace_ipc_terminal_context(&request);
         let workspace_request = memory_registry.begin_request(&request.workspace_identity);
         if let Some(context) = memory_registry.workspace_context(&request.workspace_identity) {
             registry.register_workspace_context(context);
@@ -524,12 +530,13 @@ pub async fn serve_runtime_server_workspace_stream(
                 }
                 WorkspaceDbIpcOperation::ReadRuntimeSelector {
                     project_root,
+                    language_id: _,
                     projection_kind,
                     structural_selector,
                 } => match memory_registry.read_runtime_selector(
                     &request.workspace_identity,
                     Path::new(&project_root),
-                    &projection_kind,
+                    projection_kind,
                     &structural_selector,
                 ) {
                     Ok(read) => WorkspaceDbIpcResult::RuntimeSelector { read },
@@ -766,6 +773,7 @@ pub async fn serve_runtime_server_workspace_stream(
                     );
                     let result = agent_session::evaluate(
                         agent_session_registry_owner,
+                        session_control_plane_runtime_registry,
                         project_root,
                         operation,
                     )
@@ -918,6 +926,12 @@ pub async fn serve_runtime_server_workspace_stream(
                 }
             }
         };
+        let _ = crate::search_incident::record_workspace_ipc_terminal(
+            telemetry_sender,
+            incident_context.take(),
+            &result,
+            operation_started.elapsed(),
+        );
         write_frame(
             &mut stream,
             &WorkspaceDbIpcResponse {
@@ -931,33 +945,6 @@ pub async fn serve_runtime_server_workspace_stream(
             },
         )
         .await?;
-    }
-}
-
-#[cfg(test)]
-#[cfg(test)]
-#[tokio::test]
-async fn bounded_runtime_generation_wait_rejects_expired_budget() {
-    let error = bounded_runtime_generation_wait(
-        std::time::Duration::ZERO,
-        std::future::pending::<Result<(), String>>(),
-        "runtime generation foreground wait expired".to_owned(),
-    )
-    .await
-    .expect_err("an expired foreground budget must fail closed");
-
-    assert_eq!(error, "runtime generation foreground wait expired");
-}
-
-#[cfg(test)]
-async fn bounded_runtime_generation_wait<T>(
-    timeout: std::time::Duration,
-    wait: impl std::future::Future<Output = Result<T, String>>,
-    timeout_error: String,
-) -> Result<T, String> {
-    match tokio::time::timeout(timeout, wait).await {
-        Ok(result) => result,
-        Err(_) => Err(timeout_error),
     }
 }
 

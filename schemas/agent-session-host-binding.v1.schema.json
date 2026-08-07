@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/agent-session-host-binding.v1.schema.json",
+  "title": "ASP Agent Session Host Binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "bindingId",
+    "registrationId",
+    "rootSessionId",
+    "hostChildId",
+    "hostTaskName",
+    "agentInstanceId",
+    "residentId",
+    "routeKey",
+    "profileId",
+    "profileDigest",
+    "modelId",
+    "modelDigest",
+    "sandboxMode",
+    "sessionLifetime",
+    "generation",
+    "lifecycleState",
+    "routable",
+    "evidenceSequence"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.agent-session-host-binding"},
+    "schemaVersion": {"const": "1"},
+    "bindingId": {"type": "string", "minLength": 1},
+    "registrationId": {"type": "string", "minLength": 1},
+    "rootSessionId": {"type": "string", "minLength": 1},
+    "hostChildId": {"type": "string", "minLength": 1},
+    "hostTaskName": {"type": "string", "minLength": 1},
+    "agentInstanceId": {"type": "string", "minLength": 1},
+    "residentId": {"type": "string", "minLength": 1},
+    "routeKey": {"type": "string", "minLength": 1},
+    "profileId": {"type": "string", "minLength": 1},
+    "profileDigest": {"type": "string", "minLength": 1},
+    "modelId": {"type": "string", "minLength": 1},
+    "modelDigest": {"type": "string", "minLength": 1},
+    "sandboxMode": {"type": "string", "minLength": 1},
+    "sessionLifetime": {"enum": ["resident", "temporary"]},
+    "generation": {"type": "integer", "minimum": 1},
+    "lifecycleState": {
+      "enum": ["live", "completed", "stopped", "unregistered", "archived"]
+    },
+    "routable": {"type": "boolean"},
+    "evidenceSequence": {"type": "integer", "minimum": 1},
+    "temporaryAuthority": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/temporaryAuthority"}
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"sessionLifetime": {"const": "resident"}},
+        "required": ["sessionLifetime"]
+      },
+      "then": {
+        "properties": {"temporaryAuthority": {"type": "null"}}
+      }
+    },
+    {
+      "if": {
+        "properties": {"sessionLifetime": {"const": "temporary"}},
+        "required": ["sessionLifetime"]
+      },
+      "then": {
+        "required": ["temporaryAuthority"],
+        "properties": {"temporaryAuthority": {"$ref": "#/$defs/temporaryAuthority"}}
+      }
+    }
+  ],
+  "$defs": {
+    "temporaryAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "parentBindingId", "issuedAtUtc", "expiresAtUtc", "completionCondition"],
+      "properties": {
+        "reason": {"type": "string", "minLength": 1},
+        "parentBindingId": {"type": "string", "minLength": 1},
+        "issuedAtUtc": {"type": "string", "format": "date-time"},
+        "expiresAtUtc": {"type": "string", "format": "date-time"},
+        "completionCondition": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

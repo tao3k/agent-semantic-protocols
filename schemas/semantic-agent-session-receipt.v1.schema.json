@@ -241,18 +241,7 @@
       }
     },
     "tokenCost": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["unit", "totalTokens", "basis"],
-      "properties": {
-        "unit": {"enum": ["token-estimate", "token-count"]},
-        "inputTokens": {"type": "integer", "minimum": 0},
-        "outputTokens": {"type": "integer", "minimum": 0},
-        "cacheReadInputTokens": {"type": "integer", "minimum": 0},
-        "totalTokens": {"type": "integer", "minimum": 0},
-        "costUsd": {"type": "number", "minimum": 0},
-        "basis": {"type": "string", "minLength": 1}
-      }
+      "$ref": "semantic-agent-definitions.v1.schema.json#/$defs/tokenCost"
     },
     "stringList": {
       "type": "array",

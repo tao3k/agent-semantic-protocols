@@ -6,6 +6,8 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
+from unit.schema_validation import schema_validator_for
+
 
 _SCHEMA_DIR = Path(__file__).resolve().parents[2] / "schemas"
 
@@ -18,7 +20,9 @@ def _load_schema(name: str) -> dict[str, object]:
 class SemanticSourceLocationSchemaTests(unittest.TestCase):
     def setUp(self) -> None:
         self.schema = _load_schema("semantic-source-location.v1.schema.json")
-        self.validator = Draft202012Validator(self.schema)
+        self.validator = schema_validator_for(
+            _SCHEMA_DIR / "semantic-source-location.v1.schema.json"
+        )
 
     def test_valid_source_location_bundle(self) -> None:
         packet = {

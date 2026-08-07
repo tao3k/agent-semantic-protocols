@@ -41,7 +41,9 @@ pub(super) struct SearchPipeViewRequest<'a> {
     pub(super) frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
 }
 
-pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Result<(), String> {
+pub(super) async fn print_search_pipe_view(
+    request: SearchPipeViewRequest<'_>,
+) -> Result<(), String> {
     let SearchPipeViewRequest {
         language_id,
         project_root,
@@ -100,38 +102,43 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                 provider_context,
                 read_memory_selectors,
                 action_frontier: &[],
-            })?;
+            })
+            .await?;
             write_fast_search_frontier_receipt(
                 frontier_receipt,
                 language_id,
                 query,
                 request.as_bytes(),
-            )?;
+            )
+            .await?;
             print!("{request}");
         }
-        "seeds" => render_search_pipe_seeds_view(SearchPipeSeedsViewRequest {
-            source_snapshot,
-            generation,
-            language_id,
-            project_root,
-            locator_root,
-            cache_home,
-            surface,
-            query,
-            candidates,
-            project_resolutions,
-            pipes,
-            source,
-            candidate_sources,
-            source_trace,
-            scopes,
-            include_pipe_plan,
-            provider_facts,
-            provider_context,
-            read_memory_selectors,
-            frontier_receipt,
-            graph_query_clauses: &graph_query_clauses,
-        })?,
+        "seeds" => {
+            render_search_pipe_seeds_view(SearchPipeSeedsViewRequest {
+                source_snapshot,
+                generation,
+                language_id,
+                project_root,
+                locator_root,
+                cache_home,
+                surface,
+                query,
+                candidates,
+                project_resolutions,
+                pipes,
+                source,
+                candidate_sources,
+                source_trace,
+                scopes,
+                include_pipe_plan,
+                provider_facts,
+                provider_context,
+                read_memory_selectors,
+                frontier_receipt,
+                graph_query_clauses: &graph_query_clauses,
+            })
+            .await?
+        }
         _ => {
             reject_non_graph_turbo_receipt(frontier_receipt)?;
             print!("{}", render_ingest_frontier(candidates, pipes));
@@ -200,7 +207,9 @@ struct SearchPipeSeedsViewRequest<'a> {
     graph_query_clauses: &'a [String],
 }
 
-fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Result<(), String> {
+async fn render_search_pipe_seeds_view(
+    request: SearchPipeSeedsViewRequest<'_>,
+) -> Result<(), String> {
     let render_started_at = Instant::now();
     let SearchPipeSeedsViewRequest {
         source_snapshot,
@@ -256,7 +265,8 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
         provider_context,
         read_memory_selectors,
         action_frontier: &[],
-    })?;
+    })
+    .await?;
     let graph_elapsed = graph_started_at.elapsed();
     let receipt_started_at = Instant::now();
     if frontier_receipt.is_some() {
@@ -267,7 +277,8 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
             language_id,
             query,
             request_bytes.as_slice(),
-        )?;
+        )
+        .await?;
     }
     let receipt_elapsed = receipt_started_at.elapsed();
     let seed_started_at = Instant::now();
@@ -280,8 +291,9 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
     let projection_started_at = Instant::now();
     let request_bytes = serde_json::to_vec(&request_packet)
         .map_err(|error| format!("failed to serialize graph turbo request: {error}"))?;
-    let ranked_packet =
-        super::graph::rank_graph_turbo_packet(&request_bytes)?.ok_or_else(|| {
+    let ranked_packet = super::graph::rank_graph_turbo_packet(&request_bytes)
+        .await?
+        .ok_or_else(|| {
             "search seeds requires the activated asp-graph-turbo typed ranker".to_string()
         })?;
     let projection_request = agent_semantic_search_projection::SearchProjectionRequestV1::new(
@@ -635,7 +647,7 @@ pub(super) fn reject_non_graph_turbo_receipt(
     Ok(())
 }
 
-fn write_fast_search_frontier_receipt(
+async fn write_fast_search_frontier_receipt(
     frontier_receipt: Option<&GraphTurboReceiptRequest>,
     language_id: &str,
     query: Option<&str>,
@@ -656,6 +668,7 @@ fn write_fast_search_frontier_receipt(
             extra_args: &receipt.extra_args,
         },
     )
+    .await
 }
 
 fn frontier_receipt_token(language_id: &str, query: Option<&str>) -> String {

@@ -9,13 +9,13 @@ use super::provider_dispatch::{
     is_language_facade, run_language_command, unsupported_language_facade_message,
 };
 
-pub(crate) fn run_root_language_facade(command: &str, args: &[String]) -> Result<(), String> {
+pub(crate) async fn run_root_language_facade(command: &str, args: &[String]) -> Result<(), String> {
     let cwd = env::current_dir()
         .map_err(|error| format!("failed to resolve current directory: {error}"))?;
     let (language_id, provider_args) = root_language_and_args(command, args, &cwd)?;
     let mut language_args = vec![command.to_string()];
     language_args.extend(provider_args);
-    run_language_command(&language_id, &language_args, tokio::time::Instant::now())
+    run_language_command(&language_id, &language_args, tokio::time::Instant::now()).await
 }
 
 fn root_language_and_args(

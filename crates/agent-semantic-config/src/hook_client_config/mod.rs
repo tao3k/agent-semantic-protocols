@@ -10,7 +10,9 @@ mod validation;
 pub use routing::HookClientStructuredFormat;
 pub use routing::{HookClientStructuredFilterGrammar, HookClientStructuredProjectionMatchConfig};
 
-pub use agent_runtime::{HookClientAgentsConfig, HookClientResidentAgentConfig};
+pub use agent_runtime::{
+    HookClientAgentFocusMode, HookClientAgentsConfig, HookClientResidentAgentConfig,
+};
 pub use document::{
     AspProjectConfigFile, AspProjectDiscoveryConfig, AspProjectHookConfig,
     CLIENT_HOOK_CONFIG_SCHEMA_ID, CLIENT_HOOK_CONFIG_SCHEMA_VERSION,

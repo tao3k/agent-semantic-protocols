@@ -9,15 +9,15 @@ use agent_semantic_client_core::state_core::{ResolvedState, resolve_state_home};
 use agent_semantic_client_db::ClientDbEngine;
 
 /// Run the `asp` binary with pre-dispatch for State Core commands.
-pub fn run_binary_from_env() -> Result<(), String> {
-    run_binary_from_env_started(tokio::time::Instant::now())
+pub async fn run_binary_from_env() -> Result<(), String> {
+    run_binary_from_env_started(tokio::time::Instant::now()).await
 }
 
-fn run_binary_from_env_started(process_started: tokio::time::Instant) -> Result<(), String> {
+async fn run_binary_from_env_started(process_started: tokio::time::Instant) -> Result<(), String> {
     if let Some(result) = run_state_command_from_env() {
         return result;
     }
-    crate::cli::run_cli_from_env_started(process_started)
+    crate::cli::run_cli_from_env_started(process_started).await
 }
 
 fn run_state_command_from_env() -> Option<Result<(), String>> {

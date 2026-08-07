@@ -18,11 +18,11 @@ use super::run_protocol_version_command;
 use super::runtime_server::run_runtime_server_command;
 use super::source_access::run_source_access_command;
 
-pub(crate) fn run_protocol_command(args: Vec<String>) -> Result<(), String> {
-    run_protocol_command_started(args, tokio::time::Instant::now())
+pub(crate) async fn run_protocol_command(args: Vec<String>) -> Result<(), String> {
+    run_protocol_command_started(args, tokio::time::Instant::now()).await
 }
 
-pub(crate) fn run_protocol_command_started(
+pub(crate) async fn run_protocol_command_started(
     args: Vec<String>,
     process_started: tokio::time::Instant,
 ) -> Result<(), String> {
@@ -42,39 +42,39 @@ pub(crate) fn run_protocol_command_started(
             Ok(())
         }
         Some("providers" | "doctor" | "cache" | "cloud" | "tools" | "wrap" | "fd" | "rg") => {
-            run_client_command(args)
+            run_client_command(args).await
         }
         Some("search") if args.get(1).is_some_and(|arg| arg == "history") => {
-            run_client_command(args)
+            run_client_command(args).await
         }
-        Some("search") => run_root_language_facade("search", &args[1..]),
+        Some("search") => run_root_language_facade("search", &args[1..]).await,
         Some("query") => {
             match super::provider_selector::root_structural_selector_language(&args[1..])? {
                 Some(language_id) => {
-                    run_language_command(&language_id, &args[1..], process_started)
+                    run_language_command(&language_id, &args[1..], process_started).await
                 }
-                None => run_root_language_facade("query", &args[1..]),
+                None => run_root_language_facade("query", &args[1..]).await,
             }
         }
         Some("check") => Err(
             "asp check is not a public command surface; use asp <rust|typescript|python|julia> check ..."
                 .to_string(),
         ),
-        Some("hook") => run_hook_command(&args[1..]),
+        Some("hook") => run_hook_command(&args[1..]).await,
         Some("agent") => run_agent_command(&args[1..]),
-        Some("session") => run_session_control_plane_command(&args[1..]),
-        Some("install") => run_install_command(&args[1..]),
+        Some("session") => run_session_control_plane_command(&args[1..]).await,
+        Some("install") => run_install_command(&args[1..]).await,
         Some("paths") => run_paths_command(&args[1..]),
-        Some("healthcheck") => run_healthcheck_command(&args[1..]),
-        Some("server") => run_runtime_server_command(&args[1..]),
+        Some("healthcheck") => run_healthcheck_command(&args[1..]).await,
+        Some("server") => run_runtime_server_command(&args[1..]).await,
         Some("live-corpus") => run_live_corpus_command(&args[1..]),
         Some("source-access") => run_source_access_command(&args[1..]),
         Some("ast-patch") => run_ast_patch_command(&args[1..]),
-        Some("graph") => run_graph_command(&args[1..]),
+        Some("graph") => run_graph_command(&args[1..]).await,
         Some(document_id) if document_provider::is_document_language(document_id) => {
-            document_provider::run_language_command(document_id, &args[1..])
+            document_provider::run_language_command(document_id, &args[1..]).await
         }
-        Some(language_id) => run_language_command(language_id, &args[1..], process_started),
+        Some(language_id) => run_language_command(language_id, &args[1..], process_started).await,
         _ => Err(usage()),
     }
 }
@@ -171,8 +171,8 @@ fn usage() -> String {
     "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|agent|install|paths|healthcheck|server|workspace-db|live-corpus|source-access|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
 }
 
-fn run_client_command(args: Vec<String>) -> Result<(), String> {
+async fn run_client_command(args: Vec<String>) -> Result<(), String> {
     let cwd = env::current_dir()
         .map_err(|error| format!("failed to resolve current directory: {error}"))?;
-    agent_semantic_client::run_cli_args(None, args, cwd)
+    agent_semantic_client::run_cli_args(None, args, cwd).await
 }

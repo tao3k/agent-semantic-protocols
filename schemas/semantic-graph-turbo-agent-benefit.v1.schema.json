@@ -312,27 +312,7 @@
                     "type": "object"
                 },
                 "failures": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": [
-                            "field",
-                            "actual",
-                            "expected"
-                        ],
-                        "properties": {
-                            "field": {
-                                "type": "string",
-                                "minLength": 1
-                            },
-                            "actual": true,
-                            "expected": {
-                                "type": "string",
-                                "minLength": 1
-                            }
-                        }
-                    }
+                    "$ref": "semantic-graph-turbo-definitions.v1.schema.json#/$defs/qualityFailureList"
                 }
             }
         }

@@ -183,11 +183,8 @@
     "noOutput": {
       "$ref": "#/$defs/noOutput"
     },
-    "avoidNextActions": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/avoidNextAction"
-      }
+       "avoidNextActions": {
+          "$ref": "#/$defs/avoidNextActionList"
     },
     "header": {
       "$ref": "#/$defs/header"
@@ -279,11 +276,8 @@
         "$ref": "#/$defs/finding"
       }
     },
-    "nextActions": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/nextAction"
-      }
+       "nextActions": {
+          "$ref": "#/$defs/nextActionList"
     },
     "delegationHints": {
       "type": "array",
@@ -299,6 +293,18 @@
     }
   },
   "$defs": {
+    "nextActionList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nextAction"
+      }
+    },
+    "avoidNextActionList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/avoidNextAction"
+      }
+    },
     "scalar": {
       "oneOf": [
         {
@@ -1193,11 +1199,8 @@
             "$ref": "#/$defs/projectPath"
           }
         },
-        "seeds": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/nextAction"
-          }
+       "seeds": {
+          "$ref": "#/$defs/nextActionList"
         },
         "fields": {
           "$ref": "#/$defs/fields"
@@ -1337,11 +1340,8 @@
             "$ref": "#/$defs/nextAction"
           }
         },
-        "avoidNextActions": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/avoidNextAction"
-          }
+   "avoidNextActions": {
+      "$ref": "#/$defs/avoidNextActionList"
         },
         "queryBudget": {
           "$ref": "#/$defs/queryBudget"
@@ -1731,11 +1731,8 @@
             "type": "string"
           }
         },
-        "nextActions": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/nextAction"
-          }
+   "nextActions": {
+      "$ref": "#/$defs/nextActionList"
         },
         "fields": {
           "$ref": "#/$defs/fields"

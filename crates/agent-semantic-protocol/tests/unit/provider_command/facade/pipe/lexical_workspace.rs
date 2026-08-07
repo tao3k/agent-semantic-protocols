@@ -530,8 +530,8 @@ fn state_projects_gc_help_has_no_audit_side_effect() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn workspace_file_rejection_error_snapshot_and_perf() {
+#[tokio::test]
+async fn workspace_file_rejection_error_snapshot_and_perf() {
     let root = temp_project_root("search-workspace-file-rejection-api");
     let workspace_file = root.join("build-std.ss");
     std::fs::write(&workspace_file, "(display \"build\")\n").expect("write owner file");
@@ -551,6 +551,7 @@ fn workspace_file_rejection_error_snapshot_and_perf() {
         "--view",
         "seeds",
     ])
+    .await
     .expect_err("file-valued workspace should fail through Rust API");
     let elapsed = start.elapsed();
 

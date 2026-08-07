@@ -304,62 +304,6 @@ fn install_protocol_binary_alias(
     Ok(())
 }
 
-pub(crate) fn ensure_runtime_protocol_binary_alias(
-    protocol_home: &Path,
-    alias: &Path,
-) -> Result<(), String> {
-    let runtime_root = protocol_home.join("runtime");
-    let artifact_root = runtime_root.join("artifacts");
-    let canonical_target = runtime_root.join("bin").join(SEMANTIC_AGENT_PROTOCOL_BIN);
-    let expected = fs::canonicalize(&canonical_target).map_err(|error| {
-        format!(
-            "failed to resolve current ASP runtime binary {}: {error}",
-            canonical_target.display()
-        )
-    })?;
-
-    match fs::symlink_metadata(alias) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => {
-            return Err(format!(
-                "failed to inspect ASP runtime PATH entry {}: {error}",
-                alias.display()
-            ));
-        }
-        Ok(metadata) if metadata.file_type().is_symlink() => {
-            fs::canonicalize(alias).map_err(|error| {
-                format!(
-                    "failed to resolve ASP runtime PATH entry {}: {error}",
-                    alias.display()
-                )
-            })?;
-        }
-        Ok(_) => {
-            return Err(format!(
-                "refusing to replace unmanaged ASP runtime PATH entry {}",
-                alias.display()
-            ));
-        }
-    }
-
-    install_protocol_binary_alias(alias, &canonical_target, &artifact_root)?;
-    let installed = fs::canonicalize(alias).map_err(|error| {
-        format!(
-            "failed to resolve installed ASP runtime PATH entry {}: {error}",
-            alias.display()
-        )
-    })?;
-    if installed != expected {
-        return Err(format!(
-            "ASP runtime PATH entry {} resolves to {}, expected {}",
-            alias.display(),
-            installed.display(),
-            expected.display()
-        ));
-    }
-    Ok(())
-}
-
 pub(crate) fn protocol_binary_path_probe() -> ProtocolBinaryPathProbe {
     for candidate in path_dirs()
         .iter()

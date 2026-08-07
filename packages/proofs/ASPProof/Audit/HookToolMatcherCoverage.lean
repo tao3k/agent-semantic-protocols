@@ -1,0 +1,7 @@
+import ASPProof.HookToolMatcherCoverage
+
+#check ASPProof.HookToolMatcherCoverage.wildcard_delivers_every_supported_tool
+#check ASPProof.HookToolMatcherCoverage.wildcard_delivers_org_read
+#check ASPProof.HookToolMatcherCoverage.wildcard_delivers_md_read
+#check ASPProof.HookToolMatcherCoverage.nonempty_bash_matcher_does_not_deliver_org_read
+#check ASPProof.HookToolMatcherCoverage.nonempty_bash_matcher_does_not_deliver_md_read

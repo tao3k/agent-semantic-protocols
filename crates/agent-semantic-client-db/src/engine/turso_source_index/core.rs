@@ -150,6 +150,7 @@ pub async fn refresh_turso_source_index_import_on_connection(
     let trace_started = std::time::Instant::now();
     let requested_source_snapshot = request.source_snapshot;
     let import = request.import;
+    let mut canonical_import = import.clone();
     let workspace_snapshot = materialization.workspace_snapshot.clone();
     workspace_snapshot.validate()?;
     if workspace_snapshot.root_digest() != requested_source_snapshot.root_digest {
@@ -179,10 +180,10 @@ pub async fn refresh_turso_source_index_import_on_connection(
             )
         })
         .collect::<std::collections::BTreeMap<_, _>>();
-    let current_owner_paths = import
+    let current_owner_paths = materialization
         .owners
         .iter()
-        .map(|owner| owner.owner_path.as_str().to_owned())
+        .map(|owner| owner.owner_path.clone())
         .collect::<std::collections::BTreeSet<_>>();
     let membership_change_set = if let Some(previous) =
         super::generation_snapshot::load_turso_source_index_generation_snapshot(
@@ -212,11 +213,30 @@ pub async fn refresh_turso_source_index_import_on_connection(
             source_snapshot = workspace_snapshot.overlay_evidence(
                 agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
                 requested_source_snapshot.provider_digest.clone(),
-                previous.source_snapshot.root_digest,
+                previous.source_snapshot.root_digest.clone(),
                 changed_owner_paths.iter().cloned(),
                 removed_owner_paths.iter().cloned(),
             )?;
+            let active_blobs =
+                super::generation_snapshot::load_turso_source_index_generation_blobs_on_connection(
+                    connection,
+                    &project_root,
+                    import.schema_id.as_str(),
+                    import.schema_version.as_str(),
+                    &previous,
+                )
+                .await?;
+            let changed_owner_set = changed_owner_paths.iter().cloned().collect();
+            let removed_owner_set = removed_owner_paths.iter().cloned().collect();
+            canonical_import = crate::overlay_active_source_index_import(
+                &previous,
+                &active_blobs,
+                &import,
+                &changed_owner_set,
+                &removed_owner_set,
+            )?;
             crate::ClientDbSourceIndexMembershipChangeSet::MerkleOverlay {
+                base_generation_id: previous.generation_id.clone(),
                 changed_owner_paths: changed_owner_paths
                     .into_iter()
                     .map(crate::ClientDbSourceIndexPath::new)
@@ -231,17 +251,13 @@ pub async fn refresh_turso_source_index_import_on_connection(
         crate::ClientDbSourceIndexMembershipChangeSet::FullSnapshot
     };
     super::membership::validate_source_index_membership_change_set(
-        &import,
+        &canonical_import,
         &source_snapshot,
         &membership_change_set,
     )?;
     materialization.finalize_generation_evidence(workspace_snapshot, source_snapshot.clone())?;
-    materialization.validate_against(
-        materialization.workspace_identity.as_str(),
-        &source_snapshot,
-        &import,
-        import.owners.len().min(u32::MAX as usize) as u32,
-    )?;
+    materialization.validate_persisted(materialization.workspace_identity.as_str())?;
+    materialization.validate_incremental_source_index_proofs(&import)?;
     let source_snapshot_json = serde_json::to_string(&source_snapshot).map_err(|error| {
         format!("failed to serialize Turso source-index source snapshot evidence: {error}")
     })?;
@@ -297,8 +313,13 @@ pub async fn refresh_turso_source_index_import_on_connection(
         write_stats.physical_generation_id.as_str(),
     )
     .await?;
-    let expected_owner_count = import.owners.len().min(u32::MAX as usize) as u32;
-    let expected_selector_count = import.selectors.len().min(u32::MAX as usize) as u32;
+    let expected_owner_count = materialization.owners.len().min(u32::MAX as usize) as u32;
+    let expected_selector_count = materialization
+        .owners
+        .iter()
+        .map(|owner| owner.selectors.len())
+        .sum::<usize>()
+        .min(u32::MAX as usize) as u32;
     if owner_count != expected_owner_count || selector_count < expected_selector_count {
         return Err(format!(
             "Turso source-index refresh did not persist generation rows: generation={} expectedOwners={} persistedOwners={} expectedSelectors={} persistedSelectors={}",

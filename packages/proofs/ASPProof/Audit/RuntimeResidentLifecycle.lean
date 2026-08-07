@@ -1,8 +1,10 @@
 import ASPProof.RuntimeResidentLifecycle
+import ASPProof.RuntimeServerLifecycle
 
 namespace ASPProof.Audit.RuntimeResidentLifecycle
 
 open ASPProof.RuntimeResidentLifecycle
+open ASPProof.RuntimeServerLifecycle
 
 #check matching_profile_is_ready
 #check missing_typed_spawn_blocks
@@ -12,5 +14,8 @@ open ASPProof.RuntimeResidentLifecycle
 #check admitted_transition_decreases_rank
 #check repair_never_blocks_unrelated_tools
 #check same_generation_lease_owner_unique
+#check zero_workspace_does_not_imply_shutdown
+#check daemon_shutdown_requires_missing_or_expired_lease
+#check supervisor_process_without_endpoint_not_healthy
 
 end ASPProof.Audit.RuntimeResidentLifecycle

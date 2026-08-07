@@ -62,34 +62,10 @@
       "pattern": "^[a-z][a-z0-9+.-]*://[^#\\s]+#[^\\s]+$"
     },
     "location": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "path",
-        "lineRange"
-      ],
-      "properties": {
-        "path": {
-          "$ref": "#/$defs/projectPath"
-        },
-        "lineRange": {
-          "$ref": "#/$defs/lineRange"
-        },
-        "structuralSelector": {
-          "$ref": "#/$defs/structuralSelector"
-        },
-        "displayLineRange": {
-          "$ref": "#/$defs/lineRange"
-        },
-        "sourceLocatorHint": {
-          "$ref": "#/$defs/sourceLocator"
-        }
-      }
+      "$ref": "semantic-definitions.v1.schema.json#/$defs/location"
     },
     "sourceLocator": {
-      "type": "string",
-      "description": "Project-root-relative source selector accepting path:start, path:start:end, or path:start-end.",
-      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*(?:(?::|-)[1-9][0-9]*)?$"
+      "$ref": "semantic-definitions.v1.schema.json#/$defs/sourceLocator"
     },
     "sourceSpanLocator": {
       "type": "string",

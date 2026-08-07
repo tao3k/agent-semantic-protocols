@@ -73,16 +73,19 @@
       "minLength": 1
     },
     "artifactRefs": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/artifactRef"
-      }
+      "$ref": "#/$defs/artifactRefList"
     },
     "fields": {
       "$ref": "#/$defs/fields"
     }
   },
   "$defs": {
+    "artifactRefList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifactRef"
+      }
+    },
     "languageId": {
       "enum": ["rust", "typescript", "python", "julia"]
     },
@@ -332,10 +335,7 @@
           }
         },
         "artifactRefs": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/artifactRef"
-          }
+          "$ref": "#/$defs/artifactRefList"
         },
         "fields": {
           "$ref": "#/$defs/fields"

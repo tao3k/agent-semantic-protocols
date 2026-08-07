@@ -222,6 +222,12 @@
         "unknown"
       ]
     },
+    "typeRefList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/typeRef"
+      }
+    },
     "typeRef": {
       "type": "object",
       "additionalProperties": false,
@@ -263,10 +269,7 @@
           "type": "boolean"
         },
         "typeArguments": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/typeRef"
-          }
+          "$ref": "#/$defs/typeRefList"
         },
         "fields": {
           "$ref": "#/$defs/fields"
@@ -394,10 +397,7 @@
           }
         },
         "relatedTypes": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/typeRef"
-          }
+          "$ref": "#/$defs/typeRefList"
         },
         "fields": {
           "$ref": "#/$defs/fields"

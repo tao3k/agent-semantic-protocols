@@ -13,10 +13,15 @@ pub mod codex_multi_agent_control_plane_owner;
 pub mod context_run_mvcc;
 mod dependency_index;
 pub mod engine;
+pub use engine::{
+    SessionControlPlaneAgentRegistration, SessionControlPlaneDelegationProposal,
+    SessionControlPlaneRuntimeMetricsSnapshot, SessionControlPlaneSnapshot,
+    SessionControlPlaneRuntime, SessionControlPlaneRuntimeRegistry,
+    SessionControlPlaneTransactionReceipt,
+};
 pub mod graph_turbo_cache;
 mod runtime_concurrency;
 pub mod runtime_generation_cancellation;
-pub mod runtime_telemetry_bus;
 pub mod runtime_server;
 pub mod runtime_server_admission;
 mod runtime_server_admission_builder_supervisor;
@@ -33,6 +38,7 @@ pub mod runtime_server_observability;
 pub mod runtime_server_opentelemetry;
 pub mod runtime_server_runtime;
 pub mod runtime_server_workspace;
+pub mod runtime_telemetry_bus;
 pub mod search_incident;
 pub mod seqlock_json_memory;
 mod source_index;
@@ -50,9 +56,9 @@ pub use runtime_server_control::{
     RuntimeServerAgentSessionStatus, RuntimeServerControlReceipt, RuntimeServerEndpoint,
     RuntimeServerOperation, acquire_runtime_server_election, call_runtime_server,
     prepare_runtime_server_endpoint, prepare_runtime_server_endpoint_with_workspace_store,
-    read_runtime_server_agent_sessions, read_runtime_server_endpoint,
-    resolve_runtime_server_agent_session_status, runtime_server_endpoint_path,
-    runtime_server_runtime_base,
+    publish_runtime_server_endpoint, read_runtime_server_agent_sessions,
+    read_runtime_server_endpoint, resolve_runtime_server_agent_session_status,
+    runtime_server_endpoint_path, runtime_server_runtime_base,
 };
 pub use turso_mvcc_keyset::{
     TursoMvccEventId, TursoMvccPageCursor, TursoMvccPageLimit, TursoMvccPartitionKey,
@@ -92,15 +98,17 @@ pub use dependency_index::{
     gerbil_deps_selector_for, gerbil_deps_validate_module_id, gerbil_deps_validate_symbol,
 };
 pub use engine::{
-    ClientDbBackend, ClientDbEngine, ClientDbEngineDurability, ClientDbEngineFeatures,
-    ClientDbEngineReadSession, ClientDbEngineReport, ClientDbEngineWriteSession,
-    ProviderIncrementalOwnerSnapshot, ProviderIncrementalOwnerWrite, ProviderIncrementalScoped,
-    ProviderIncrementalWriteReceipt, ProviderOwnerBatchProbeReceipt,
-    ProviderOwnerBatchProbeRequest, ProviderOwnerBatchProbeResult, ProviderOwnerDecision,
-    ProviderOwnerFingerprint, ProviderOwnerInventory, ProviderOwnerInventoryEntry,
-    ProviderOwnerInventoryEntryState, ProviderOwnerInventoryState, ProviderOwnerInventoryWrite,
-    ProviderOwnerInventoryWriteReceipt, ProviderOwnerMetadata, ProviderOwnerProbe,
-    ProviderRemainingOwnerCountKind, ProviderSelectorProjection,
+    ClientDbActiveGenerationSourceBlob, ClientDbActiveGenerationSourceBlobs, ClientDbBackend,
+    ClientDbEngine, ClientDbEngineDurability, ClientDbEngineFeatures, ClientDbEngineReadSession,
+    ClientDbEngineReport, ClientDbEngineWriteSession, ClientDbSourceIndexGenerationOwner,
+    ClientDbSourceIndexGenerationRelation, ClientDbSourceIndexGenerationSnapshot,
+    ClientDbSourceIndexSelectorFact, ProviderIncrementalOwnerSnapshot,
+    ProviderIncrementalOwnerWrite, ProviderIncrementalScoped, ProviderIncrementalWriteReceipt,
+    ProviderOwnerBatchProbeReceipt, ProviderOwnerBatchProbeRequest, ProviderOwnerBatchProbeResult,
+    ProviderOwnerDecision, ProviderOwnerFingerprint, ProviderOwnerInventory,
+    ProviderOwnerInventoryEntry, ProviderOwnerInventoryEntryState, ProviderOwnerInventoryState,
+    ProviderOwnerInventoryWrite, ProviderOwnerInventoryWriteReceipt, ProviderOwnerMetadata,
+    ProviderOwnerProbe, ProviderRemainingOwnerCountKind, ProviderSelectorProjection,
     ProviderTreeSitterCaptureProjection, ProviderTreeSitterContinuation,
     ProviderTreeSitterOwnerResult, ProviderTreeSitterOwnerResultState,
     ProviderTreeSitterOwnerWriteReceipt, ProviderTreeSitterQueryCounters,
@@ -134,8 +142,8 @@ pub use source_index::{
     build_source_index_import, client_db_source_index_artifact_digest,
     client_db_source_index_file_count, client_db_source_index_generation_id_for_snapshot,
     client_db_source_index_registry_evidence_hash, client_db_source_index_scope_dir_evidence_hash,
-    source_index_file_hashes, source_index_import_with_file_hashes, source_index_relative_path,
-    source_index_scope_dirs,
+    overlay_active_source_index_import, source_index_file_hashes,
+    source_index_import_with_file_hashes, source_index_relative_path, source_index_scope_dirs,
 };
 pub use source_index::{
     ClientDbExactSelectorProjectionV1, ClientDbExactSelectorWarmHitV1,
@@ -168,3 +176,8 @@ pub use engine::{
     WorkspaceDbWriteFinishMode, WorkspaceDbWriteFinishReceipt,
 };
 pub mod fixture;
+
+pub use engine::{
+    active_turso_source_index_generation, active_turso_source_index_generation_blobs,
+    latest_turso_source_index_generation_snapshot,
+};

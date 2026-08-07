@@ -88,7 +88,8 @@ async fn selector_overlay_rejects_owner_digest_drift() {
             "workspace-selector-drift",
             &project_root("workspace-selector-drift"),
             WorkspaceRuntimeSelectorOverlay {
-                projection_kind: "source".to_owned(),
+                projection_kind:
+                    agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::Source,
                 structural_selector: "rust://src/lib.rs#item/function/second".to_owned(),
                 owner_path: "src/lib.rs".to_owned(),
                 owner_content_digest: "blake3-256:deadbeef".to_owned(),
@@ -123,7 +124,8 @@ async fn source_generation_transition_invalidates_selector_overlays() {
             "workspace-selector-invalidation",
             &project_root("workspace-selector-invalidation"),
             WorkspaceRuntimeSelectorOverlay {
-                projection_kind: "source".to_owned(),
+                projection_kind:
+                    agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::Source,
                 structural_selector: "rust://src/lib.rs#item/function/repaired".to_owned(),
                 owner_path: first_owner.owner_path,
                 owner_content_digest: first_owner.content_digest,
@@ -148,7 +150,7 @@ async fn source_generation_transition_invalidates_selector_overlays() {
             .read_runtime_selector(
                 "workspace-selector-invalidation",
                 &project_root("workspace-selector-invalidation"),
-                "source",
+                agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::Source,
                 "rust://src/lib.rs#item/function/repaired",
             )
             .expect("read invalidated selector"),
@@ -197,7 +199,10 @@ async fn epoch_publication_keeps_the_previous_generation_readable() {
         .expect("publish second generation");
     assert!(receipt.old_generation_readable);
     match old_lease
-        .read_runtime_selector("source", selector)
+        .read_runtime_selector(
+            agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::Source,
+            selector,
+        )
         .expect("read old lease")
     {
         WorkspaceRuntimeSelectorRead::Projection { bytes, .. } => {
@@ -210,7 +215,10 @@ async fn epoch_publication_keeps_the_previous_generation_readable() {
         .expect("current generation lease");
     assert_eq!(current.epoch(), 2);
     match current
-        .read_runtime_selector("source", selector)
+        .read_runtime_selector(
+            agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::Source,
+            selector,
+        )
         .expect("read current lease")
     {
         WorkspaceRuntimeSelectorRead::Projection { bytes, .. } => {

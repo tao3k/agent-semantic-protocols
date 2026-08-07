@@ -163,7 +163,7 @@
     "notes": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/note"
+        "$ref": "semantic-definitions.v1.schema.json#/$defs/note"
       }
     }
   },
@@ -1085,23 +1085,6 @@
         },
         "location": {
           "$ref": "#/$defs/location"
-        }
-      }
-    },
-    "note": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "kind",
-        "message"
-      ],
-      "properties": {
-        "kind": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "message": {
-          "type": "string"
         }
       }
     }

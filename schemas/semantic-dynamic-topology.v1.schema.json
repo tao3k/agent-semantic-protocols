@@ -198,18 +198,20 @@
       "required": ["legalBranches", "illegalBranches", "unknownBranches"],
       "properties": {
         "legalBranches": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/topologyBranchRule" }
+          "$ref": "#/$defs/topologyBranchRuleList"
         },
         "illegalBranches": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/topologyBranchRule" }
+          "$ref": "#/$defs/topologyBranchRuleList"
         },
         "unknownBranches": {
           "type": "array",
           "items": { "$ref": "#/$defs/topologyBranchGap" }
         }
       }
+    },
+    "topologyBranchRuleList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/topologyBranchRule" }
     },
     "topologyBranchRule": {
       "type": "object",

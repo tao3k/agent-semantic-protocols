@@ -13,8 +13,7 @@ use agent_semantic_client_core::{
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessError, ProviderProcessLimits, ProviderProcessReceipt,
     ProviderProcessSpec, StdinMode, provider_process_limits_from_environment,
-    run_provider_process as run_transport_process,
-    run_provider_process_async as run_transport_process_async,
+    run_provider_process_async as run_transport_process,
 };
 use bytes::{Bytes, BytesMut};
 
@@ -272,18 +271,19 @@ impl LocalNativeCliBackend {
         path.is_dir()
     }
 
-    pub fn execute(&self, request: &ClientRequest) -> Result<LocalNativeOutput, String> {
+    pub async fn execute(&self, request: &ClientRequest) -> Result<LocalNativeOutput, String> {
         self.execute_with_limits(request, provider_process_limits_from_environment()?)
+            .await
     }
 
-    pub fn execute_with_limits(
+    pub async fn execute_with_limits(
         &self,
         request: &ClientRequest,
         limits: ProviderProcessLimits,
     ) -> Result<LocalNativeOutput, String> {
         let prepared_commands = self.prepare_all(request)?;
         let (provider, stdout, stderr, status_code, provider_commands, elapsed_ms) =
-            Self::run_provider_commands(prepared_commands, request.stdin.clone(), limits)?;
+            Self::run_provider_commands(prepared_commands, request.stdin.clone(), limits).await?;
         let receipt = Self::receipt_for_run(
             request,
             &provider,
@@ -301,33 +301,7 @@ impl LocalNativeCliBackend {
         })
     }
 
-    pub async fn execute_with_limits_async(
-        &self,
-        request: &ClientRequest,
-        limits: ProviderProcessLimits,
-    ) -> Result<LocalNativeOutput, String> {
-        let prepared_commands = self.prepare_all(request)?;
-        let (provider, stdout, stderr, status_code, provider_commands, elapsed_ms) =
-            Self::run_provider_commands_async(prepared_commands, request.stdin.clone(), limits)
-                .await?;
-        let receipt = Self::receipt_for_run(
-            request,
-            &provider,
-            provider_commands,
-            elapsed_ms,
-            stdout.len(),
-            stderr.len(),
-        )?;
-
-        Ok(LocalNativeOutput {
-            stdout,
-            stderr,
-            status_code,
-            receipt,
-        })
-    }
-
-    fn run_provider_commands(
+    async fn run_provider_commands(
         prepared_commands: Vec<LocalNativeCommand>,
         stdin: Option<Bytes>,
         limits: ProviderProcessLimits,
@@ -346,104 +320,6 @@ impl LocalNativeCliBackend {
             let provider_argv = prepared.argv();
             let provider_cwd = prepared.project_root.clone();
             let output = run_transport_process(ProviderProcessSpec {
-                program: prepared.program.clone(),
-                args: prepared.args.clone(),
-                cwd: prepared.project_root.clone(),
-                env: Self::protocol_renderer_env(),
-                stdin: stdin
-                    .clone()
-                    .map(StdinMode::bytes)
-                    .unwrap_or(StdinMode::Inherit),
-                stdout: OutputMode::Capture,
-                stderr: OutputMode::Capture,
-                limits,
-            });
-            let output = match output {
-                Ok(output) => output,
-                Err(ProviderProcessError::Timeout { timeout, receipt }) => {
-                    provider_commands.push(Self::provider_command_receipt(
-                        &prepared,
-                        provider_argv,
-                        124,
-                        &receipt,
-                    ));
-                    stderr.extend_from_slice(
-                        format!("provider process timed out after {timeout:?}\n").as_bytes(),
-                    );
-                    status_code = 124;
-                    break;
-                }
-                Err(ProviderProcessError::MemoryLimit {
-                    limit_bytes,
-                    receipt,
-                }) => {
-                    provider_commands.push(Self::provider_command_receipt(
-                        &prepared,
-                        provider_argv,
-                        137,
-                        &receipt,
-                    ));
-                    stderr.extend_from_slice(
-                        format!("provider process exceeded memory limit {limit_bytes} bytes\n")
-                            .as_bytes(),
-                    );
-                    status_code = 137;
-                    break;
-                }
-                Err(error) => {
-                    return Err(format!(
-                        "failed to execute provider `{}` for language `{}` with cwd `{}` argv `{}`: {error}",
-                        prepared.provider.provider_id,
-                        prepared.provider.language_id,
-                        provider_cwd.display(),
-                        provider_argv.join(" ")
-                    ));
-                }
-            };
-            let command_status = output.status.code().unwrap_or(1);
-            provider_commands.push(Self::provider_command_receipt(
-                &prepared,
-                provider_argv,
-                command_status,
-                &output.receipt,
-            ));
-            stdout.extend_from_slice(output.stdout.as_ref());
-            stderr.extend_from_slice(output.stderr.as_ref());
-            if command_status != 0 {
-                status_code = command_status;
-                break;
-            }
-        }
-
-        Ok((
-            provider,
-            stdout.freeze(),
-            stderr.freeze(),
-            status_code,
-            provider_commands,
-            ElapsedMillis::from_duration(started_all.elapsed()),
-        ))
-    }
-
-    async fn run_provider_commands_async(
-        prepared_commands: Vec<LocalNativeCommand>,
-        stdin: Option<Bytes>,
-        limits: ProviderProcessLimits,
-    ) -> Result<ProviderCommandOutputs, String> {
-        let provider = prepared_commands
-            .first()
-            .map(|prepared| prepared.provider.clone())
-            .ok_or_else(|| "empty provider invocation set".to_string())?;
-        let started_all = Instant::now();
-        let mut stdout = BytesMut::new();
-        let mut stderr = BytesMut::new();
-        let mut status_code = 0;
-        let mut provider_commands = Vec::new();
-
-        for prepared in prepared_commands {
-            let provider_argv = prepared.argv();
-            let provider_cwd = prepared.project_root.clone();
-            let output = run_transport_process_async(ProviderProcessSpec {
                 program: prepared.program.clone(),
                 args: prepared.args.clone(),
                 cwd: prepared.project_root.clone(),

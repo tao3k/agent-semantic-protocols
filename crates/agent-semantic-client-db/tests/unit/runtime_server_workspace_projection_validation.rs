@@ -1,6 +1,6 @@
 use super::{
-    WorkspaceDerivedProjectionSnapshot, WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot,
-    projection_validation::validate_selector, typed_digest,
+    ExactProjectionKind, WorkspaceDerivedProjectionSnapshot, WorkspaceOwnerSnapshot,
+    WorkspaceSelectorSnapshot, projection_validation::validate_selector, typed_digest,
 };
 
 #[test]
@@ -29,7 +29,7 @@ fn signature_text_cannot_masquerade_as_callable_skeleton_json() {
         byte_start: 0,
         byte_end: owner.bytes.len(),
         derived_projections: vec![WorkspaceDerivedProjectionSnapshot {
-            projection_kind: "callable-skeleton".to_owned(),
+            projection_kind: ExactProjectionKind::CallableSkeleton,
             bytes: b"fn f()".to_vec(),
         }],
     };

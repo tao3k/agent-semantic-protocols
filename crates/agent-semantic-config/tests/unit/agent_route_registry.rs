@@ -30,11 +30,13 @@ fn hook_agent_routes_are_derived_from_platform_projection_owners() {
         resident["name"].as_str() == Some("asp_explorer")
             && resident["role"].as_str() == Some("asp_explorer")
             && resident["codexAgentName"].as_str() == Some("asp_explorer")
+            && resident["focusMode"].as_str() == Some("leaf")
     }));
     assert!(residents.iter().any(|resident| {
         resident["name"].as_str() == Some("asp_testing")
             && resident["role"].as_str() == Some("asp_testing")
             && resident["codexAgentName"].as_str() == Some("asp_testing")
+            && resident["focusMode"].as_str() == Some("leaf")
     }));
 }
 
@@ -120,6 +122,7 @@ fn canonical_registry_compiles_host_routes() {
     assert_eq!(codex.route_key.as_str(), "asp_explorer");
     assert_eq!(claude.route_key.as_str(), "asp_explorer");
     assert_eq!(codex.session_lifetime, AgentSessionLifetime::Resident);
+    assert_eq!(codex.focus_mode, super::AgentFocusMode::Leaf);
     assert_eq!(codex.platform.as_str(), "codex");
     assert_eq!(claude.platform.as_str(), "claude");
     assert_eq!(codex.platform_host_agent_name.as_str(), "asp_explorer");
@@ -131,6 +134,13 @@ fn canonical_registry_compiles_host_routes() {
     assert_eq!(codex.roles, vec!["explore", "subagent"]);
     assert_eq!(codex.description, "ASP search/query evidence explorer.");
     assert_eq!(claude.description, codex.description);
+    assert_eq!(codex.sandbox_mode.as_deref(), Some("read-only"));
+    let testing =
+        compile_agent_route(&loaded, "asp_testing", "codex").expect("Codex testing route");
+    assert_eq!(testing.platform_host_agent_name.as_str(), "asp_testing");
+    assert_eq!(testing.focus_mode, super::AgentFocusMode::Leaf);
+    assert!(testing.profile_path.ends_with("asp_testing_codex.toml"));
+    assert_eq!(testing.sandbox_mode.as_deref(), Some("read-only"));
 }
 
 #[test]

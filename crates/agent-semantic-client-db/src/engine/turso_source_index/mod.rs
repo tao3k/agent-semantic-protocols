@@ -1,12 +1,19 @@
+mod active_generation;
 mod canonical;
 pub(in crate::engine) mod core;
 pub(in crate::engine) mod exact_projection_store;
 pub(in crate::engine) mod generation_snapshot;
+pub use active_generation::{
+    ClientDbActiveSourceIndexGeneration, active_turso_source_index_generation,
+};
 pub use generation_snapshot::{
-    ClientDbSourceIndexGenerationOwner, ClientDbSourceIndexGenerationSnapshot,
-    ClientDbSourceIndexSelectorFact, latest_turso_source_index_generation_snapshot,
+    ClientDbActiveGenerationSourceBlob, ClientDbActiveGenerationSourceBlobs,
+    ClientDbSourceIndexGenerationOwner, ClientDbSourceIndexGenerationRelation,
+    ClientDbSourceIndexGenerationSnapshot, ClientDbSourceIndexSelectorFact,
+    active_turso_source_index_generation_blobs, latest_turso_source_index_generation_snapshot,
 };
 mod facts;
+mod generation_clone;
 mod materialization;
 mod membership;
 mod prepare;
@@ -19,8 +26,10 @@ mod provider_treesitter_read;
 mod provider_treesitter_write;
 mod publish;
 mod readiness;
+mod relation;
 mod resident_selector;
 mod schema;
+mod source_blob;
 mod trace;
 
 pub(super) use core::turso_source_index_access_lock;

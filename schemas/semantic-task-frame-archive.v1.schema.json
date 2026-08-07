@@ -104,6 +104,12 @@
     }
   },
   "$defs": {
+    "projectPathList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/projectPath"
+      }
+    },
     "identifier": {
       "type": "string",
       "minLength": 1,
@@ -158,10 +164,7 @@
           "minLength": 1
         },
         "owners": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/projectPath"
-          }
+          "$ref": "#/$defs/projectPathList"
         },
         "selectors": {
           "type": "array",
@@ -177,10 +180,7 @@
           }
         },
         "tests": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/projectPath"
-          }
+          "$ref": "#/$defs/projectPathList"
         },
         "artifacts": {
           "type": "array",
@@ -252,10 +252,7 @@
           "$ref": "#/$defs/identifier"
         },
         "owners": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/projectPath"
-          }
+          "$ref": "#/$defs/projectPathList"
         },
         "result": {
           "enum": [

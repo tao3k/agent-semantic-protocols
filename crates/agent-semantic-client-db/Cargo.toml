@@ -10,6 +10,7 @@ default = []
 turso-sync-server-e2e = []
 
 [dependencies]
+arc-swap.workspace = true
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
 memmap2.workspace = true
 postcard.workspace = true
@@ -23,6 +24,7 @@ sha2 = { workspace = true }
 fs2 = { workspace = true }
 fs4 = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
+tokio-stream.workspace = true
 parking_lot.workspace = true
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true

@@ -92,6 +92,13 @@
     }
   },
   "$defs": {
+    "evidenceAnchorList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/evidenceAnchor"
+      }
+    },
     "behaviorScores": {
       "type": "object",
       "additionalProperties": false,
@@ -156,11 +163,7 @@
       ],
       "properties": {
         "anchors": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/evidenceAnchor"
-          },
-          "uniqueItems": true
+          "$ref": "#/$defs/evidenceAnchorList"
         },
         "ownerPath": {
           "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
@@ -331,11 +334,7 @@
           "$ref": "#/$defs/routeId"
         },
         "preconditions": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/evidenceAnchor"
-          },
-          "uniqueItems": true
+          "$ref": "#/$defs/evidenceAnchorList"
         },
         "expectedProjection": {
           "$ref": "#/$defs/projection"

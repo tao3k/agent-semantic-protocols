@@ -16,3 +16,4 @@ __pycache__/
 .pre-commit-config.yaml
 /.asp-artifacts/
 /.worktrees
+/.pnpm*

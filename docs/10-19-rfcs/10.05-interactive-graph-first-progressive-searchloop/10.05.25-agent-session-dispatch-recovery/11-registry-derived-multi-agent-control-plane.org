@@ -57,18 +57,36 @@ continue to require their indexed delivery receipt.
 
 * Public adapter
 
-The agent-facing adapter exposes two observation-only operations:
+The Agent-facing lifecycle surface is the singleton
+=asp session --agents choice-plane=. It accepts neither a session identifier,
+an agent name, a task payload, nor a platform selector. The root identity and
+platform come from the active Host environment; the Hook rule selects a
+semantic role; =agents/config.toml= resolves that role to the platform profile
+and its exact =name= and =sandbox_mode= values.
 
-- =control-plane refresh= asks the Runtime Server to reconcile the durable
-  registry snapshot and returns its typed publication receipt;
-- =control-plane show= reads the last published projection for the requested
-  root session.
+Runtime refresh and projection reads are internal typed operations, not public
+Agent lifecycle commands. The Session adapter first performs a healthy-state
+read. Only an unavailable or unhealthy Runtime enters the bounded supervisor
+reconcile path. It then reads the current root-scoped status-memory projection;
+it never opens the registry database directly.
 
-Both operations accept a root session identity and derive the project identity
-from the canonical workspace. They do not spawn, resume, send, interrupt,
-archive, or delete a Codex task. A client-side sequence that classifies model
-guidance, child-message attempts, receipts, and archival as an ASP control-plane
-lifecycle is legacy execution-plane duplication and must not be retained.
+The resulting Org ChoicePlane discloses only actions admitted by the current
+state:
+
+- =registered=: natural-language =Call/resume @name= action;
+- =registration-required=: create and register the configured profile;
+- =archive-required=: archive the identified stale generation;
+- =archived=: create a distinct later generation;
+- unavailable authority: a typed blocked choice with no lifecycle mutation.
+
+Every disclosed action includes the configured sandbox mode. Internal Org row
+numbers are ordering metadata and must not be rendered as choices. The Host,
+not ASP, executes create, resume, and archive. Re-entry reads the latest state
+and history is only a cursor; it does not replay the lifecycle loop.
+
+A client-side sequence that classifies model guidance, child-message attempts,
+receipts, and archival as an ASP execution-plane lifecycle is legacy duplication
+and must not be retained.
 
 * Freshness and generation
 

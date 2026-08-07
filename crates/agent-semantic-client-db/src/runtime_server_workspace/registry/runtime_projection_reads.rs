@@ -1,17 +1,14 @@
 use super::core::RuntimeServerWorkspaceRegistry;
-use crate::runtime_server_workspace::{
-    WorkspaceRuntimeOwnerRead, WorkspaceRuntimeSelectorRead, validate_projection_kind,
-};
+use crate::runtime_server_workspace::{WorkspaceRuntimeOwnerRead, WorkspaceRuntimeSelectorRead};
 
 impl RuntimeServerWorkspaceRegistry {
     pub fn read_runtime_selector(
         &self,
         workspace_identity: &str,
         project_root: &std::path::Path,
-        projection_kind: &str,
+        projection_kind: super::super::ExactProjectionKind,
         structural_selector: &str,
     ) -> Result<WorkspaceRuntimeSelectorRead, String> {
-        validate_projection_kind(projection_kind)?;
         let lease = match self.lease(workspace_identity, project_root) {
             Ok(lease) => lease,
             Err(_) => return Ok(WorkspaceRuntimeSelectorRead::GenerationMissing),

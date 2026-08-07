@@ -15,8 +15,8 @@ use crate::engine::{
 
 use super::bootstrap::dedupe_turso_agent_sessions_by_session_id;
 
-pub(in crate::agent_session_registry) fn block_on_agent_session_registry_async<T>(
-    future: impl std::future::Future<Output = Result<T, String>>,
+pub(in crate::agent_session_registry) fn block_on_agent_session_registry_async<T: Send>(
+    future: impl std::future::Future<Output = Result<T, String>> + Send,
 ) -> Result<T, String> {
     crate::engine::facade::block_on_db_engine_borrowed(future)
 }
@@ -106,6 +106,22 @@ pub(super) async fn bootstrap_turso_agent_session_schema(db_path: &Path) -> Resu
     .await?;
     super::retirement::bootstrap_turso_agent_session_retirement_schema(&connection).await?;
     super::dispatch::bootstrap_turso_agent_dispatch_schema(&connection).await?;
+    execute_turso_statement(
+        &connection,
+        "CREATE TABLE IF NOT EXISTS asp_host_child_match_decisions (
+            project_id TEXT NOT NULL,
+            root_session_id TEXT NOT NULL,
+            child_session_id TEXT NOT NULL,
+            host_task_name TEXT NOT NULL,
+            match_decision TEXT NOT NULL CHECK(match_decision = 'none'),
+            lifecycle_state TEXT NOT NULL,
+            payload_digest TEXT NOT NULL,
+            observed_at INTEGER NOT NULL,
+            PRIMARY KEY(project_id, root_session_id, child_session_id)
+        )",
+        "failed to initialize Host child match-decision schema",
+    )
+    .await?;
     ensure_turso_agent_sessions_project_id_column(&connection).await?;
     ensure_turso_agent_sessions_message_target_id_column(&connection).await?;
     ensure_turso_agent_sessions_model_observation_columns(&connection).await?;

@@ -70,6 +70,66 @@ Only definitions reachable from a registered schema root through =$ref= or
 entries are reported separately; they MUST NOT be promoted into a family
 definition contract merely because the same dead fragment appears repeatedly.
 
+* Logical projection and proof composition
+
+The Schema Manager MAY generate a deterministic logical projection from a
+registered JSON Schema.  This is a read-only derivation: it MUST identify the
+source schema and digest, select contract-visible facts, and bind each fact to
+its JSON Pointer and proof role.  It MUST NOT mutate the source schema, invent a
+second schema authority, or label an unchecked projection as a proof.
+
+The projection reuses
+=schemas/semantic-proof-definitions.v1.schema.json#/$defs/schemaProjection=.
+Schema Manager MUST NOT introduce an =asp-schema-logical-projection= structure
+that duplicates that definition.  If an independently transported top-level
+projection becomes necessary, its contract belongs to the =semantic-proof=
+family and references the existing definition; Schema Manager remains only the
+producer.
+
+Proof obligations are composed from
+=schemas/semantic-proof-obligation.v1.schema.json=.  A projection containing
+several obligations uses an ordered or explicitly keyed collection of those
+objects.  It MUST NOT duplicate the obligation fields in an
+=asp-schema-proof-obligation-set= contract.  A separately versioned obligation
+set is admitted only after an independent transport or lifecycle consumer is
+demonstrated, and its ownership remains =semantic-proof=.
+
+The verification result uses
+=schemas/semantic-proof-receipt.v1.schema.json=.  Schema Manager MUST NOT define
+an =asp-schema-proof-receipt= alias or private receipt.  The existing receipt's
+checker identity distinguishes =axle.verify_proof=, =axle.check=, =lean=, and
+other admitted checkers without changing receipt authority.
+
+Axle owns checker execution evidence and the binding from the generated
+projection and obligations to the checked Lean declarations.  A successful
+receipt MUST bind the exact source-schema digest, logical-projection digest,
+obligation identity, formal statement digest, candidate digest, checker
+environment, and relevant Lean proof/declaration identity.  Structural Axle
+audit receipts MAY accompany that evidence but do not replace the semantic
+proof receipt.
+
+Any change to the source schema, selected logical facts, obligation collection,
+formal statement, candidate, checker environment, or bound Lean declaration
+invalidates the derived projection/receipt chain unless all dependent digests
+are recomputed and verification is executed again.  Schema Manager MUST report
+digest drift as stale or invalid proof evidence; it MUST NOT silently carry a
+previous Ready/verified verdict forward.
+
+The ownership chain is therefore:
+
+#+begin_example
+Schema Manager read-only projection
+  -> semantic-proof schemaProjection
+  -> semantic-proof obligation composition
+  -> Axle/Lean checker evidence
+  -> semantic-proof receipt
+#+end_example
+
+The =asp-schema-manager= family owns management reports, filename-family policy,
+reference decisions, and lifecycle analysis.  It does not own language-neutral
+proof semantics.  The =semantic-proof= family owns projection, obligation, and
+receipt contracts; Axle owns checker-specific evidence.
+
 * Rust usage model
 
 - =direct=: Rust source names the schema file, =$id=, or protocol =schemaId=.

@@ -9,7 +9,7 @@ use crate::cli_args::{ParsedArgs, parse_client_args};
 use crate::provider_method::run_provider_method;
 
 /// Runs the agent semantic client CLI from process arguments.
-pub fn run_cli_from_env() -> Result<(), String> {
+pub async fn run_cli_from_env() -> Result<(), String> {
     let args = env::args().skip(1).collect::<Vec<_>>();
     if matches!(args.first().map(String::as_str), Some("query" | "check")) {
         return Err(
@@ -19,11 +19,11 @@ pub fn run_cli_from_env() -> Result<(), String> {
     }
     let cwd = env::current_dir()
         .map_err(|error| format!("failed to resolve current directory: {error}"))?;
-    run_cli_args(None, args, cwd)
+    run_cli_args(None, args, cwd).await
 }
 
 /// Runs the agent semantic client CLI with an optional facade language.
-pub fn run_cli_args(
+pub async fn run_cli_args(
     language_id: Option<agent_semantic_client_core::LanguageId>,
     args: Vec<String>,
     cwd: PathBuf,
@@ -56,24 +56,32 @@ pub fn run_cli_args(
                 return crate::search_history::run_search_history(
                     &parsed.project_root,
                     &parsed.forwarded_args,
-                );
+                )
+                .await;
             }
             run_provider_method(
                 parsed,
                 ClientMethod::Search,
                 language_id.ok_or_else(|| provider_language_required("search"))?,
             )
+            .await
         }
-        Some("query") => run_provider_method(
-            parsed,
-            ClientMethod::Query,
-            language_id.ok_or_else(|| provider_language_required("query"))?,
-        ),
-        Some("check") => run_provider_method(
-            parsed,
-            ClientMethod::Check,
-            language_id.ok_or_else(|| provider_language_required("check"))?,
-        ),
+        Some("query") => {
+            run_provider_method(
+                parsed,
+                ClientMethod::Query,
+                language_id.ok_or_else(|| provider_language_required("query"))?,
+            )
+            .await
+        }
+        Some("check") => {
+            run_provider_method(
+                parsed,
+                ClientMethod::Check,
+                language_id.ok_or_else(|| provider_language_required("check"))?,
+            )
+            .await
+        }
         Some(command) => Err(format!("unknown client command: {command}")),
     }
 }

@@ -19,24 +19,8 @@
     }
   },
   "$defs": {
-    "relationEndpoint": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["kind", "id"],
-      "properties": {
-        "kind": { "type": "string", "minLength": 1 },
-        "id": { "type": "string", "minLength": 1 }
-      }
-    },
     "relation": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["from", "kind", "to"],
-      "properties": {
-        "from": { "$ref": "#/$defs/relationEndpoint" },
-        "kind": { "type": "string", "minLength": 1 },
-        "to": { "$ref": "#/$defs/relationEndpoint" }
-      }
+      "$ref": "provider-definitions.v1.schema.json#/$defs/relation"
     }
   }
 }

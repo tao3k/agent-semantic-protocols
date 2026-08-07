@@ -34,6 +34,15 @@ def targets : List Target :=
   , { name := `ASPProof.HookBootstrapRepair.server_warm_generation_is_not_per_hook
       theoremFamily := "hook-bootstrap-server-generation-sharing"
       rfcClauseIds := ["ASP-RFC-10.15-HOOK-BOOTSTRAP-REPAIR"] }
+  , { name := `ASPProof.HookBootstrapRepair.drift_preserves_configuration_independent_repair_edge
+      theoremFamily := "hook-bootstrap-drift-recovery-nondeadlock"
+      rfcClauseIds := ["ASP-RFC-10.15-HOOK-BOOTSTRAP-REPAIR"] }
+  , { name := `ASPProof.HookBootstrapRepair.automatic_sync_requires_canonical_managed_ownership
+      theoremFamily := "hook-bootstrap-managed-auto-sync-authority"
+      rfcClauseIds := ["ASP-RFC-10.15-HOOK-BOOTSTRAP-REPAIR"] }
+  , { name := `ASPProof.HookBootstrapRepair.canonical_install_republishes_a_coherent_pair
+      theoremFamily := "hook-bootstrap-install-generation-coherence"
+      rfcClauseIds := ["ASP-RFC-10.15-HOOK-BOOTSTRAP-REPAIR"] }
   ]
 
 def auditJson : TermElabM Json :=

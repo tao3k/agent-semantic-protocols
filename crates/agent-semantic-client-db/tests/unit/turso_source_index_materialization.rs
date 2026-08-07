@@ -30,6 +30,7 @@ fn generation_fixture(
     let selector = "rust://src/materialized.rs#item/function/materialized";
     let source = b"pub fn materialized() {}\n";
     let import = ClientDbSourceIndexImport {
+        source_blobs: Default::default(),
         relations: Vec::new(),
         generation_id: CacheGenerationId::from("materialized-generation"),
         project_root: project_root.to_path_buf(),
@@ -37,7 +38,7 @@ fn generation_fixture(
         schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
         file_hashes: vec![ClientCacheFileHash {
             path: owner_path.to_owned(),
-            sha256: "a".repeat(64),
+            sha256: format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(source)),
             byte_len: source.len() as u64,
             mtime_ms: 1,
         }],
@@ -81,6 +82,8 @@ fn generation_fixture(
     };
     let source_blobs =
         crate::projection_fixture::source_blobs_fixture([(owner_path, source.as_slice())]);
+    let mut import = import;
+    import.source_blobs = source_blobs.clone();
     let source_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes([(
         owner_path,
         blake3::hash(source).to_hex().to_string(),
@@ -227,7 +230,7 @@ fn turso_generation_materialization_is_reusable_and_drift_is_fail_closed() {
     assert_eq!(active.owners.len(), 1);
     assert_eq!(
         active.owners[0].selectors[0].derived_projections[0].projection_kind,
-        "callable-skeleton"
+        agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::CallableSkeleton
     );
     assert_eq!(
         active.project_root,
@@ -253,7 +256,9 @@ fn turso_generation_materialization_is_reusable_and_drift_is_fail_closed() {
         .commit_source_index_generation_with_materialization(request, drifted)
         .expect_err("forged exact owner bytes must fail closed");
     assert!(
-        error.contains("proof source drift") || error.contains("proof projection drift"),
+        error.contains("incremental owner digest drift")
+            || error.contains("proof source drift")
+            || error.contains("proof projection drift"),
         "unexpected materialization drift error: {error}"
     );
 
@@ -268,6 +273,125 @@ fn turso_generation_materialization_is_reusable_and_drift_is_fail_closed() {
     assert_eq!(counters.workspace_lock_retry_count, 0);
     assert_eq!(counters.max_active_writer_count, 1);
 
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn relation_admission_failure_does_not_publish_a_partial_generation() {
+    let root = fixture_root();
+    let client_dir = root.join("client");
+    let project_root = root.join("project");
+    std::fs::create_dir_all(&project_root).expect("create relation transaction project root");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
+    let (request, source_blobs) = generation_fixture(&project_root);
+
+    fixture
+        .commit_source_index_generation(request.clone(), &source_blobs)
+        .expect("commit relation transaction base generation");
+    let before = fixture
+        .load_active_workspace_generation_materialization(&project_root)
+        .expect("load relation transaction base materialization")
+        .expect("base materialization must exist");
+
+    let mut invalid = request;
+    invalid.import.relations.push(
+        agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation {
+            from: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
+                kind: agent_semantic_content_identity::provider_projection_relation::PROVIDER_RELATION_ITEM_ENDPOINT_KIND.to_owned(),
+                id: "rust://src/missing.rs#item/function/missing".to_owned(),
+            },
+            kind: "calls".to_owned(),
+            to: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
+                kind: agent_semantic_content_identity::provider_projection_relation::PROVIDER_RELATION_ITEM_ENDPOINT_KIND.to_owned(),
+                id: "rust://src/materialized.rs#item/function/materialized".to_owned(),
+            },
+        },
+    );
+    let error = fixture
+        .commit_source_index_generation(invalid, &source_blobs)
+        .expect_err("unattributed relation must fail before generation publication");
+    assert!(
+        error.contains("no parser-attributed owner"),
+        "unexpected relation admission error: {error}"
+    );
+
+    let after = fixture
+        .load_active_workspace_generation_materialization(&project_root)
+        .expect("reload relation transaction materialization")
+        .expect("base materialization must remain visible");
+    assert_eq!(after, before);
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn relation_generation_transaction_preserves_replaces_and_deletes() {
+    let root = fixture_root();
+    let client_dir = root.join("client");
+    let project_root = root.join("project");
+    std::fs::create_dir_all(&project_root).expect("create relation generation project");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
+    let (mut request, source_blobs) = generation_fixture(&project_root);
+    let relation = |kind: &str| {
+        agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation {
+            from: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
+                kind: agent_semantic_content_identity::provider_projection_relation::PROVIDER_RELATION_ITEM_ENDPOINT_KIND.to_owned(),
+                id: "rust://src/materialized.rs#item/function/materialized".to_owned(),
+            },
+            kind: kind.to_owned(),
+            to: agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelationEndpoint {
+                kind: agent_semantic_content_identity::provider_projection_relation::PROVIDER_RELATION_ITEM_ENDPOINT_KIND.to_owned(),
+                id: "rust://src/materialized.rs#item/function/materialized".to_owned(),
+            },
+        }
+    };
+
+    let calls = relation("calls");
+    request.import.generation_id = "relation-generation-base".to_owned().into();
+    request.import.relations = vec![calls.clone()];
+    fixture
+        .commit_source_index_generation(request.clone(), &source_blobs)
+        .expect("commit base relation generation");
+    let base = fixture
+        .load_active_workspace_generation_materialization(&project_root)
+        .expect("load base relation generation")
+        .expect("base relation generation must be visible");
+    assert_eq!(base.relations, vec![calls.clone()]);
+
+    request.import.generation_id = "relation-generation-unchanged".to_owned().into();
+    fixture
+        .commit_source_index_generation(request.clone(), &source_blobs)
+        .expect("commit unchanged relation generation");
+    let unchanged = fixture
+        .load_active_workspace_generation_materialization(&project_root)
+        .expect("load unchanged relation generation")
+        .expect("unchanged relation generation must be visible");
+    assert_eq!(unchanged.relations, vec![calls]);
+
+    let uses = relation("uses");
+    request.import.generation_id = "relation-generation-replaced".to_owned().into();
+    request.import.relations = vec![uses.clone()];
+    fixture
+        .commit_source_index_generation(request.clone(), &source_blobs)
+        .expect("commit replaced relation generation");
+    let replaced = fixture
+        .load_active_workspace_generation_materialization(&project_root)
+        .expect("load replaced relation generation")
+        .expect("replaced relation generation must be visible");
+    assert_eq!(replaced.relations, vec![uses]);
+
+    request.import.generation_id = "relation-generation-deleted".to_owned().into();
+    request.import.relations.clear();
+    fixture
+        .commit_source_index_generation(request, &source_blobs)
+        .expect("commit relation deletion generation");
+    let deleted = fixture
+        .load_active_workspace_generation_materialization(&project_root)
+        .expect("load relation deletion generation")
+        .expect("relation deletion generation must be visible");
+    assert!(deleted.relations.is_empty());
     let _ = std::fs::remove_dir_all(root);
 }
 

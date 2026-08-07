@@ -41,7 +41,7 @@ struct DependencySeedSource {
     sha256: String,
 }
 
-pub(super) fn collect_cached_manifest_dependency_facts(
+pub(super) async fn collect_cached_manifest_dependency_facts(
     language_id: &str,
     project_root: &Path,
     cache_home: &Path,
@@ -57,10 +57,10 @@ pub(super) fn collect_cached_manifest_dependency_facts(
             "activated {language_id} provider does not declare parser-owned dependency topology"
         ));
     }
-    collect_provider_dependency_topology_facts(language_id, project_root, cache_home, context)
+    collect_provider_dependency_topology_facts(language_id, project_root, cache_home, context).await
 }
 
-pub(super) fn collect_cached_dependency_facts(
+pub(super) async fn collect_cached_dependency_facts(
     language_id: &str,
     project_root: &Path,
     cache_home: &Path,
@@ -74,9 +74,10 @@ pub(super) fn collect_cached_dependency_facts(
         cache_home,
         provider_context,
     )
+    .await
 }
 
-fn collect_provider_dependency_topology_facts(
+async fn collect_provider_dependency_topology_facts(
     language_id: &str,
     project_root: &Path,
     cache_home: &Path,
@@ -91,7 +92,7 @@ fn collect_provider_dependency_topology_facts(
         });
     }
     if let Some(fingerprint) =
-        provider_dependency_topology_metadata_fingerprint(language_id, project_root, context)
+        provider_dependency_topology_metadata_fingerprint(language_id, project_root, context).await
         && let Some(record) = read_dependency_seed_cache(&cache_path, &fingerprint)
         && !record.sources.is_empty()
     {
@@ -114,6 +115,7 @@ fn collect_provider_dependency_topology_facts(
         project_root,
         Vec::new(),
     )
+    .await
     .map_err(|error| {
         format!("parser-owned {language_id} dependency topology invocation failed: {error}")
     })?;
@@ -148,7 +150,7 @@ fn collect_provider_dependency_topology_facts(
     })
 }
 
-fn provider_dependency_topology_metadata_fingerprint(
+async fn provider_dependency_topology_metadata_fingerprint(
     language_id: &str,
     project_root: &Path,
     context: &ProviderGraphFactsContext<'_>,
@@ -169,6 +171,7 @@ fn provider_dependency_topology_metadata_fingerprint(
         project_root,
         Vec::new(),
     )
+    .await
     .ok()?;
     if !output.status.success() {
         return None;

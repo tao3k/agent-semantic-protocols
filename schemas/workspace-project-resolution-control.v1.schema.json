@@ -53,26 +53,7 @@
       }
     },
     "workspaceIdentity": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "repositoryIdentity",
-        "worktreeIdentity",
-        "workspaceRootDigest"
-      ],
-      "properties": {
-        "repositoryIdentity": {
-          "type": "string",
-          "minLength": 1
-        },
-        "worktreeIdentity": {
-          "type": "string",
-          "minLength": 1
-        },
-        "workspaceRootDigest": {
-          "$ref": "#/$defs/digest"
-        }
-      }
+      "$ref": "workspace-definitions.v1.schema.json#/$defs/workspaceIdentity"
     },
     "sessionIdentity": {
       "type": "string",

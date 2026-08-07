@@ -70,6 +70,103 @@ def test_local_definition_can_own_repeated_shape(tmp_path: Path) -> None:
     assert candidate["recommendation"] == "ref:#/$defs/shared"
 
 
+def test_same_local_ref_different_targets_do_not_merge(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "schemas/a.v1.schema.json",
+        {
+            "$id": "https://example/a",
+            "$defs": {"shared": {"type": "string", "minLength": 1}},
+            "properties": {
+                "payload": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["source", "target", "relation"],
+                    "properties": {
+                        "source": {"$ref": "#/$defs/shared"},
+                        "target": {"$ref": "#/$defs/shared"},
+                        "relation": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+                        "weight": {"type": "number"},
+                        "fields": {"type": "object"},
+                    },
+                }
+            },
+        },
+    )
+    _write(
+        tmp_path / "schemas/b.v1.schema.json",
+        {
+            "$id": "https://example/b",
+            "$defs": {"shared": {"type": "integer", "minimum": 0}},
+            "properties": {
+                "payload": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["source", "target", "relation"],
+                    "properties": {
+                        "source": {"$ref": "#/$defs/shared"},
+                        "target": {"$ref": "#/$defs/shared"},
+                        "relation": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+                        "weight": {"type": "number"},
+                        "fields": {"type": "object"},
+                    },
+                }
+            },
+        },
+    )
+    _write(
+        tmp_path / "packages/python/asp_schema_manager/asp-schema-lifecycle.v1.json",
+        {"schemaId": "asp.schema-lifecycle-manifest.v1", "schemaVersion": "1", "entries": []},
+    )
+
+    report = audit_workspace(tmp_path, minimum_reference_bytes=1)
+
+    merged = [
+        item
+        for item in report["referenceOpportunities"]
+        if len(item["occurrences"]) > 1
+        and {occurrence["schemaPath"] for occurrence in item["occurrences"]}
+        == {"schemas/a.v1.schema.json", "schemas/b.v1.schema.json"}
+    ]
+    assert merged == []
+
+
+def test_local_ref_target_and_reference_site_do_not_merge(tmp_path: Path) -> None:
+    shared = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["source", "target", "relation"],
+        "properties": {
+            "source": {"type": "string", "minLength": 1},
+            "target": {"type": "string", "minLength": 1},
+            "relation": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+            "weight": {"type": "number"},
+            "fields": {"type": "object"},
+        },
+    }
+    _write(
+        tmp_path / "schemas/a.v1.schema.json",
+        {
+            "$id": "https://example/a",
+            "$defs": {"shared": shared},
+            "properties": {"payload": {"$ref": "#/$defs/shared"}},
+        },
+    )
+    _write(
+        tmp_path / "packages/python/asp_schema_manager/asp-schema-lifecycle.v1.json",
+        {"schemaId": "asp.schema-lifecycle-manifest.v1", "schemaVersion": "1", "entries": []},
+    )
+
+    report = audit_workspace(tmp_path, minimum_reference_bytes=1)
+
+    assert not any(
+        {
+            "/$defs/shared",
+            "/properties/payload",
+        }.issubset({occurrence["jsonPointer"] for occurrence in item["occurrences"]})
+        for item in report["referenceOpportunities"]
+    )
+
+
 def test_unreachable_definitions_are_reported_not_extracted(tmp_path: Path) -> None:
     _write(
         tmp_path / "schemas/a.v1.schema.json",

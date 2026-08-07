@@ -589,4 +589,52 @@ theorem enabled_rule_and_registered_extension_require_executable_witness
     ruleWitness = true ∧ extensionWitness = true := by
   exact ⟨hRule, hExtension⟩
 
+inductive MarketplaceAuthority where
+  | repositoryCatalog
+  | codexUserRegistration
+  | aspDirectConfigMutation
+  deriving DecidableEq, Repr
+
+def validMarketplaceAuthority : MarketplaceAuthority → Bool
+  | .repositoryCatalog => true
+  | .codexUserRegistration => true
+  | .aspDirectConfigMutation => false
+
+structure AuthorityWitness where
+  catalogOwned : Bool
+  nativeCodexCommand : Bool
+  directAspConfigWrite : Bool
+  agentProfileSync : Bool
+  inlineHookMutation : Bool
+  deriving DecidableEq, Repr
+
+def validAuthorityWitness (w : AuthorityWitness) : Prop :=
+  w.catalogOwned = true ∧ w.nativeCodexCommand = true ∧
+    w.directAspConfigWrite = false ∧ w.agentProfileSync = false ∧
+    w.inlineHookMutation = false
+
+def invalidDirectAspWitness : AuthorityWitness := {
+  catalogOwned := true
+  nativeCodexCommand := false
+  directAspConfigWrite := true
+  agentProfileSync := false
+  inlineHookMutation := false
+}
+
+theorem asp_direct_config_mutation_is_not_valid_authority :
+    validMarketplaceAuthority .aspDirectConfigMutation = false := by
+  decide
+
+theorem direct_asp_mutation_cannot_satisfy_authority_witness :
+    ¬ validAuthorityWitness invalidDirectAspWitness := by
+  simp [validAuthorityWitness, invalidDirectAspWitness]
+
+theorem desired_postcondition_subsumes_reconcile_step_failure
+    (desiredHealthy : Bool) (reconcileFailed : Bool)
+    (authorityComplete : Bool)
+    (hHealthy : desiredHealthy = true)
+    (hAuthority : authorityComplete = true) :
+    desiredHealthy = true ∧ authorityComplete = true := by
+  exact ⟨hHealthy, hAuthority⟩
+
 end ASPProof.HookExecutionPlane

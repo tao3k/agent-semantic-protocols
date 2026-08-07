@@ -114,12 +114,24 @@ impl SeqlockJsonMemoryReader {
         let file = std::fs::OpenOptions::new()
             .read(true)
             .open(path)
-            .map_err(|error| format!("failed to open seqlock JSON memory: {error}"))?;
+            .map_err(|error| {
+                format!(
+                    "failed to open seqlock JSON memory {}: {error}",
+                    path.display()
+                )
+            })?;
         // SAFETY: the elected writer owns sizing and publishes under the generation seqlock.
-        let mapping = unsafe { MmapOptions::new().map(&file) }
-            .map_err(|error| format!("failed to map seqlock JSON memory reader: {error}"))?;
+        let mapping = unsafe { MmapOptions::new().map(&file) }.map_err(|error| {
+            format!(
+                "failed to map seqlock JSON memory reader {}: {error}",
+                path.display()
+            )
+        })?;
         if mapping.len() <= PAYLOAD_OFFSET {
-            return Err("seqlock JSON memory has an invalid size".to_owned());
+            return Err(format!(
+                "seqlock JSON memory {} has an invalid size",
+                path.display()
+            ));
         }
         Ok(Self { mapping })
     }

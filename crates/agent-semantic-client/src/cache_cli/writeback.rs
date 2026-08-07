@@ -52,7 +52,7 @@ pub(crate) struct CacheWritebackProbe {
     pub(crate) provider_elapsed_ms: ElapsedMillis,
 }
 
-pub(crate) fn write_prompt_output_cache_after_provider_success(
+pub(crate) async fn write_prompt_output_cache_after_provider_success(
     project_root: &Path,
     snapshot: &ProviderRegistrySnapshot,
     request: &ClientRequest,
@@ -81,11 +81,9 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
     } else {
         None
     };
-    let search_packet_writeback = provider_export_allowed
-        .then(|| request_search_packet_provider_export_method(request))
-        .flatten()
-        .and_then(|export_method| {
-            let export = export_provider_packet(provider, request)?;
+    let search_packet_writeback = if provider_export_allowed {
+        if let Some(export_method) = request_search_packet_provider_export_method(request) {
+            let export = export_provider_packet(provider, request).await?;
             validate_search_packet_for_provider(&export.packet_bytes, provider)?;
             Some((
                 export_method,
@@ -96,7 +94,12 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
                 vec![export.command],
                 export.elapsed_ms,
             ))
-        });
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
     let (
         export_method,
@@ -128,7 +131,7 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         if !provider_export_allowed {
             return None;
         }
-        let export = export_provider_packet(provider, request)?;
+        let export = export_provider_packet(provider, request).await?;
         validate_syntax_query_packet_for_provider(&export.packet_bytes, provider)?;
         (
             export_method,
@@ -143,7 +146,21 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         return None;
     };
 
-    let cache_probe = (|| {
+    let structural_source_snapshot =
+        if matches!(artifact_kind, ArtifactKind::SemanticStructuralIndex) {
+            Some(
+                crate::source_index::current_source_index_snapshot_with_registry(
+                    project_root,
+                    snapshot,
+                )
+                .await
+                .ok()?
+                .source_snapshot,
+            )
+        } else {
+            None
+        };
+    let cache_probe = (async {
         let cache_root = cache_report.cache_root.as_ref()?;
         let manifest_path = cache_report.manifest_path.as_ref()?;
         let mut manifest =
@@ -183,14 +200,7 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
         };
         let structural_generation =
             if matches!(artifact_kind, ArtifactKind::SemanticStructuralIndex) {
-                let source_snapshot =
-                    crate::source_index::current_source_index_snapshot_with_registry(
-                        project_root,
-                        snapshot,
-                    )
-                    .ok()?
-                    .source_snapshot;
-                Some((generation.clone(), source_snapshot))
+                Some((generation.clone(), structural_source_snapshot?))
             } else {
                 None
             };
@@ -283,10 +293,11 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
             .ok()?;
             db_write_count += 1;
         }
-        let mut probe = provider_cache_probe(project_root, snapshot, request)?;
+        let mut probe = provider_cache_probe(project_root, snapshot, request).await?;
         probe.db_write_count = db_write_count;
         Some(probe)
-    })();
+    })
+    .await;
     if cache_probe.is_none() && writeback_provider_commands.is_empty() {
         return None;
     }
@@ -301,7 +312,7 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
     })
 }
 
-pub(crate) fn write_search_packet_cache_after_provider_success(
+pub(crate) async fn write_search_packet_cache_after_provider_success(
     project_root: &Path,
     snapshot: &ProviderRegistrySnapshot,
     request: &ClientRequest,
@@ -334,7 +345,7 @@ pub(crate) fn write_search_packet_cache_after_provider_success(
     upsert_generation(&mut manifest, generation);
     write_cache_manifest(manifest_path, &manifest).ok()?;
     ClientDbEngine::import_manifest_from_client_dir(cache_root, &manifest).ok()?;
-    let mut probe = provider_cache_probe(project_root, snapshot, request)?;
+    let mut probe = provider_cache_probe(project_root, snapshot, request).await?;
     let artifact_events = artifact_events_for_writeback(ArtifactEventWriteback {
         artifact_kind: ArtifactKind::SearchPacket,
         artifact_id: artifact_id.as_str(),

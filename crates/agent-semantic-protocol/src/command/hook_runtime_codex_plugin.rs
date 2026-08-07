@@ -292,36 +292,14 @@ fn remove_toml_sections(existing: &str, sections: &[&str]) -> String {
     format!("{}\n", lines.join("\n").trim_end())
 }
 
-fn remove_codex_project_marketplace_source(
-    config_path: &Path,
-    marketplace_name: &str,
-) -> Result<(), String> {
-    let existing = fs::read_to_string(config_path).unwrap_or_default();
-    validate_codex_config_toml(&existing)
-        .map_err(|error| format!("refusing to clean invalid Codex config TOML: {error}"))?;
-    let section_plain = format!("[marketplaces.{marketplace_name}]");
-    let section_quoted = format!("[marketplaces.{}]", toml_basic_string(marketplace_name));
-    let cleaned = remove_toml_sections(
-        &existing,
-        &[section_plain.as_str(), section_quoted.as_str()],
-    );
-    if cleaned != existing {
-        validate_codex_config_toml(&cleaned).map_err(|error| {
-            format!("refusing to write invalid cleaned Codex config TOML: {error}")
-        })?;
-        fs::write(config_path, cleaned.as_bytes())
-            .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
-    }
-    Ok(())
-}
-
 fn ensure_codex_plugin_marketplace_registered(
     command_cwd: &Path,
     plugin_source_root: &Path,
     codex_home: Option<&Path>,
     marketplace_name: &str,
 ) -> Result<(), String> {
-    if codex_marketplace_config_points_to_source_root(
+    if codex_marketplace_points_to_source_root(
+        command_cwd,
         plugin_source_root,
         codex_home,
         marketplace_name,
@@ -358,48 +336,6 @@ fn ensure_codex_plugin_marketplace_registered(
         }
         Err(error) => Err(error),
     }
-}
-
-fn codex_marketplace_config_points_to_source_root(
-    plugin_source_root: &Path,
-    codex_home: Option<&Path>,
-    marketplace_name: &str,
-) -> Result<bool, String> {
-    let config_path = codex_home
-        .map(|home| home.join("config.toml"))
-        .map_or_else(global_codex_config_path, Ok)?;
-    let contents = match fs::read_to_string(&config_path) {
-        Ok(contents) => contents,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(error) => {
-            return Err(format!(
-                "failed to read Codex marketplace config {}: {error}",
-                config_path.display()
-            ));
-        }
-    };
-    let config = toml::from_str::<toml::Value>(&contents)
-        .map_err(|error| format!("invalid Codex marketplace config TOML: {error}"))?;
-    let Some(source) = config
-        .get("marketplaces")
-        .and_then(toml::Value::as_table)
-        .and_then(|marketplaces| marketplaces.get(marketplace_name))
-        .and_then(toml::Value::as_table)
-        .and_then(|marketplace| marketplace.get("source"))
-        .and_then(toml::Value::as_str)
-    else {
-        return Ok(false);
-    };
-    let Ok(configured_source) = fs::canonicalize(source) else {
-        return Ok(false);
-    };
-    let canonical_source = fs::canonicalize(plugin_source_root).map_err(|error| {
-        format!(
-            "failed to resolve Codex plugin marketplace source {}: {error}",
-            plugin_source_root.display()
-        )
-    })?;
-    Ok(configured_source == canonical_source)
 }
 
 fn codex_marketplace_points_to_source_root(

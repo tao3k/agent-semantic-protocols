@@ -1,0 +1,16 @@
+{
+  "schemaId": "agent.semantic-protocols.runtime-server-workspace-generation-admission.v1",
+  "schemaVersion": "1",
+  "workspaceIdentity": "workspace-fixture",
+  "candidateGeneration": {
+    "algorithm": "blake3-worktree-state-v1",
+    "digest": "blake3:fixture-candidate",
+    "authorities": ["git-index", "git-worktree"]
+  },
+  "policyOverlayDigest": "blake3:fixture-policy",
+  "state": "failed",
+  "accepted": false,
+  "attempt": 1,
+  "commit": null,
+  "error": "missing typed stage must be rejected"
+}

@@ -30,6 +30,7 @@ edition = "2024"
 [workspace.lints]
 
 [workspace.dependencies]
+arc-swap = "1.9.2"
 memmap2 = "0.9.10"
 agent-semantic-hook = { path = "crates/agent-semantic-hook" }
 jsonschema = { version = "0.48.1", default-features = false }

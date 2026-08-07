@@ -1,0 +1,231 @@
+{
+  "schemaId": "asp.schema-reference-decision-registry.v1",
+  "schemaVersion": "1",
+  "entries": [
+    {
+      "fingerprint": "sha256:d2a44cebe27ba00bd88b6c4ff33fc15998bdb0d89bd77e0ebaff6d2dcaf019e5",
+      "occurrenceSetDigest": "sha256:8c9d04d708fa6b25eafdc06649771357223a9d39ddf20b10140f8820d611849e",
+      "familyIds": ["asp.schema-family.semantic", "asp.schema-family.semantic-agent", "asp.schema-family.semantic-assurance", "asp.schema-family.semantic-ast-patch", "asp.schema-family.software-criterion"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic",
+      "rationale": "Keep the generic fields shape local until the semantic parent contract defines public ownership."
+    },
+    {
+      "fingerprint": "sha256:7245937b80aac15d7d70b80e82eaa5fe6c5c4136d7d641250b268b09aa37f96a",
+      "occurrenceSetDigest": "sha256:08a3ccf3bc65fa35febb4210c9acde40feb8dcd19f0fc5e437dea04a620170b5",
+      "familyIds": ["asp.schema-family.rust-project-harness", "asp.schema-family.semantic", "asp.schema-family.semantic-assurance", "asp.schema-family.semantic-ast-patch", "asp.schema-family.semantic-graph", "asp.schema-family.semantic-policy", "asp.schema-family.software-criterion"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic",
+      "rationale": "Promote projectPath only after all external families can consume a public semantic definition."
+    },
+    {
+      "fingerprint": "sha256:c22956b8502199745da256f13a5747fe11075368a61e8f7fff5950512adaed06",
+      "occurrenceSetDigest": "sha256:5f831420dec56dc99250c5c693789d877e6f97fa7b5ab89a130927bd313d2200",
+      "familyIds": ["asp.schema-family.rust-project-harness", "asp.schema-family.semantic", "asp.schema-family.semantic-ast-patch", "asp.schema-family.semantic-search"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic",
+      "rationale": "Source locator promotion needs a public semantic definition and consumer migration plan."
+    },
+    {
+      "fingerprint": "sha256:1f364075c230f171d7602ad4b547e1fdbd3347b1d9c915b82e8bc5211851c603",
+      "occurrenceSetDigest": "sha256:70084139dd6bfbb404a72faabcadfc8e053eac1295e6dd19e6d6a4c74afbbeb1",
+      "familyIds": ["asp.schema-family.semantic-agent", "asp.schema-family.semantic-sandtable"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic-agent",
+      "rationale": "Sandtable should reference the agent answer contract after semantic-agent definitions become public."
+    },
+    {
+      "fingerprint": "sha256:61e6652dd7efec7949d7c84082718b3d029f68a15fdd908fee97c1972c865a84",
+      "occurrenceSetDigest": "sha256:1a0f15b0cc7d5d6ae200da598de8109075a62a7a42ab04918d589d52abf6ef9e",
+      "familyIds": ["asp.schema-family.semantic-fact", "asp.schema-family.semantic-graph-turbo"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic-fact",
+      "rationale": "Context metrics need an explicit semantic-fact public definition before graph-turbo migration."
+    },
+    {
+      "fingerprint": "sha256:4298e3a6c7efa53e6107da8778159f6f334067d031a28db5813d71372b733c44",
+      "occurrenceSetDigest": "sha256:01d92f91de88a9ba8971dae708abf6e3848c5edf21016fc1897c86094fa71a9d",
+      "familyIds": ["asp.schema-family.semantic-agent", "asp.schema-family.semantic-sandtable"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic-agent",
+      "rationale": "Quality finding lists will move with the semantic-agent quality finding definition."
+    },
+    {
+      "fingerprint": "sha256:071137bccfb1096132378b47e221f2c3144dcbd8a74c29b753a0f834bc3248a7",
+      "occurrenceSetDigest": "sha256:a88de522b09996eb0b6d7499234e71788995692e302dea0c1265ab99354ae958",
+      "familyIds": ["asp.schema-family.semantic-graph", "asp.schema-family.software-criterion"],
+      "decision": "intentional-duplication",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.schema-manager",
+      "rationale": "Graph owner frontiers and software criterion fixture owners share syntax but not semantics."
+    },
+    {
+      "fingerprint": "sha256:5e72be959793d55b4bcf45a22fb8a652efaf763afb88ee90976c3edb5e586cfc",
+      "occurrenceSetDigest": "sha256:b08c6a0d1e77eadebb3e48882cae72f3f3cb1065606e66966b0ac3da36a11620",
+      "familyIds": ["asp.schema-family.semantic-agent", "asp.schema-family.semantic-sandtable"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic-agent",
+      "rationale": "Sandtable quality findings should consume a public semantic-agent definition."
+    },
+    {
+      "fingerprint": "sha256:4df374a1de0f11d980a365f7cf475a1ee4bc5f183cbfe13545a3b6fa0931c2d9",
+      "occurrenceSetDigest": "sha256:e6245dc970122ab3e42e102f24380a10dcdd323e2ff88c30a9a0f6741ed60350",
+      "familyIds": ["asp.schema-family.semantic-policy", "asp.schema-family.semantic-proof"],
+      "decision": "intentional-duplication",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.schema-manager",
+      "rationale": "Policy fields and proof fields are independently owned open extension maps."
+    },
+    {
+      "fingerprint": "sha256:bc994518650f8e6c90a3a7d5f98ccee5f8fc25dd0e1c1985d086ee65a2485ff9",
+      "occurrenceSetDigest": "sha256:73994c6fc3f4ca4a3fee4e90512e5644a45b83c2c4e0745b3146ed543b544bfc",
+      "familyIds": ["asp.schema-family.semantic-fact", "asp.schema-family.semantic-graph-turbo"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic-fact",
+      "rationale": "Range ownership belongs in semantic-fact after public visibility is explicit."
+    },
+    {
+      "fingerprint": "sha256:8cc19f1f4f9cfd31bbcd575289d8fecbc0256f323c263d40e56422ab8ea2aeff",
+      "occurrenceSetDigest": "sha256:655bf74036c2581321f4c8c9f2df41aea706c8d149a5ca1ad4095b0eaa493579",
+      "familyIds": ["asp.schema-family.semantic-policy", "asp.schema-family.semantic-proof"],
+      "decision": "intentional-duplication",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.schema-manager",
+      "rationale": "Policy and proof scalar slots have distinct domain meaning despite equal JSON shape."
+    },
+    {
+      "fingerprint": "sha256:59205d978b02f80380cda4e83960a29fa839edff1940d279efeac7a885438853",
+      "occurrenceSetDigest": "sha256:6c8df2abb67e9e36000d0916d6819e10239e175b3c25ab00af57f54ca96142f5",
+      "familyIds": ["asp.schema-family.semantic", "asp.schema-family.semantic-assurance"],
+      "decision": "intentional-duplication",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.schema-manager",
+      "rationale": "Semantic and assurance scalar slots are domain-local value envelopes."
+    },
+    {
+      "fingerprint": "sha256:f8196e27c4406f27abc5d2a4a589f5aa513f9843e648d87e95fbfdc7e4f2dd48",
+      "occurrenceSetDigest": "sha256:58fa83bb2a60ff66eac6e8049435ad4acf969097f0d4b843a30ddb6f783293a9",
+      "familyIds": ["asp.schema-family.provider", "asp.schema-family.semantic-agent"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.provider",
+      "rationale": "Hook policy needs one provider-owned public contract before agent consumption."
+    },
+    {
+      "fingerprint": "sha256:981fdc978f075173c7cbab937d334511db859e72f8758ab3310cf787e3802b0a",
+      "occurrenceSetDigest": "sha256:987af08244da4bcebad04b149bbe18885748598494852e0ec6a82124058d7907",
+      "familyIds": ["asp.schema-family.semantic", "asp.schema-family.semantic-ast-patch"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic",
+      "rationale": "Location should be promoted only with a public semantic definition and complete consumer migration."
+    },
+    {
+      "fingerprint": "sha256:9fafb8a5c930d882c0221d8aade7855fba09ba30d884891607dfbf2179c2ab2f",
+      "occurrenceSetDigest": "sha256:3ce62c507b90752b0ce20b4842bbd52fcf90e15ed28f35f1e0dcdd36af123083",
+      "familyIds": ["asp.schema-family.semantic", "asp.schema-family.semantic-assurance"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic",
+      "rationale": "Assurance fields will reference semantic fields after public ownership is established."
+    },
+    {
+      "fingerprint": "sha256:f44b93d3e1a66d00bef14c09cc2f27d0efb8e552b12da07d92cd11994e8c3eb2",
+      "occurrenceSetDigest": "sha256:4efd316ddd677c115f41e7fa5efc5affd219cc86d27616998cd9957f3803ac37",
+      "familyIds": ["asp.schema-family.semantic-graph-turbo", "asp.schema-family.semantic-search"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic-search",
+      "rationale": "Delegation receipts need a shared search definition before graph-turbo references it."
+    },
+    {
+      "fingerprint": "sha256:1733d812bb1b355644fb1907ba739cbfa6446038604ae4fe16614eb3421abbfd",
+      "occurrenceSetDigest": "sha256:e6e8f94e9650c529c0f21d3af2715c4bd2645525da6aece9bf1879f7282411e8",
+      "familyIds": ["asp.schema-family.semantic-agent", "asp.schema-family.semantic-sandtable"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic-agent",
+      "rationale": "Sandtable project data should reference a public semantic-agent project definition."
+    },
+    {
+      "fingerprint": "sha256:a54a35ec3bf1a54c70e7f23f45a2ed23f8afe94228cf6124c6aa228c058db493",
+      "occurrenceSetDigest": "sha256:4b3c20dbf73dfed994daaa764303115ae671c167fef69971a94110c17fda96df",
+      "familyIds": ["asp.schema-family.language", "asp.schema-family.provider", "asp.schema-family.semantic-search"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic-search",
+      "rationale": "Root lists need a language-neutral public path-list definition before extraction."
+    },
+    {
+      "fingerprint": "sha256:811c570f79fff148fd4ecb5fdf999fc87c87c21908f3bdd3d4ddc99dda1e28dc",
+      "occurrenceSetDigest": "sha256:4a902b643e3cf9760b5906b00ee5f37d868ea92b2293adf415d16b6d52c6534e",
+      "familyIds": ["asp.schema-family.semantic", "asp.schema-family.semantic-assurance"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic",
+      "rationale": "Invariant kinds need a semantic parent definition before assurance migration."
+    },
+    {
+      "fingerprint": "sha256:82eea660dabf702a5523ee26a394fbe06202e1e955804410a76c0aa13dc42209",
+      "occurrenceSetDigest": "sha256:da08d9539f3d9be53710e42a95df93257651167b97d1903b16d0037d7b6d0130",
+      "familyIds": ["asp.schema-family.semantic-fact", "asp.schema-family.semantic-graph-turbo"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic-fact",
+      "rationale": "Source ranges should use one public semantic-fact range definition."
+    },
+    {
+      "fingerprint": "sha256:0c936f70dafce1c7cc33abb734c0b0bfa6b43fb3410937c5f193aa13129cbe79",
+      "occurrenceSetDigest": "sha256:99b0ec69eb815786a980df13fd0a53965eeb30dbf3a7092654b49061ebf11bb4",
+      "familyIds": ["asp.schema-family.semantic", "asp.schema-family.semantic-ast-patch"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic",
+      "rationale": "Changed and test paths need a public semantic path-list definition."
+    },
+    {
+      "fingerprint": "sha256:62f71a66c2be93e2dd7208a0c5ecfb4783ee86dcd753fa7b8ef10039f85a870f",
+      "occurrenceSetDigest": "sha256:53d80724abee8c7e08219932e4136d896b5927abeb766246e105d67d3f629bfc",
+      "familyIds": ["asp.schema-family.semantic-fact", "asp.schema-family.semantic-graph"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic-graph",
+      "rationale": "Graph node fields require an explicitly public semantic graph fact map."
+    },
+    {
+      "fingerprint": "sha256:c59ce57a6a1272108ca7a166b9c63c8061b42cd5eefa848b151e461285ef6d51",
+      "occurrenceSetDigest": "sha256:94e74453dd616ac6978bc77c6f3345cfc5560287eeb13cc578b56059c6469b64",
+      "familyIds": ["asp.schema-family.provider", "asp.schema-family.semantic"],
+      "decision": "intentional-duplication",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.schema-manager",
+      "rationale": "Provider process failures and semantic failures have different lifecycle semantics."
+    },
+    {
+      "fingerprint": "sha256:11465fde644bba159bfc73175a389bab91c90a46416296274ce387cdfccd9477",
+      "occurrenceSetDigest": "sha256:2adb2f0211ee7cea88ad11e82a20557545c4c9b9fd8d5332c65c19f7d6ee974c",
+      "familyIds": ["asp.schema-family.semantic-graph", "asp.schema-family.semantic-search"],
+      "decision": "defer",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.semantic-graph",
+      "rationale": "Search graph node kinds need a public semantic-graph definition."
+    },
+    {
+      "fingerprint": "sha256:e5c6d1791bd4981e88a37880d1b8d111f966294cd130fe5e6b541dd2344239f2",
+      "occurrenceSetDigest": "sha256:5e4c67dd434f94b5f5f37c3536120aabea0626cede00cc2c906f48bf95090b88",
+      "familyIds": ["asp.schema-family.semantic", "asp.schema-family.semantic-agent"],
+      "decision": "intentional-duplication",
+      "reviewState": "accepted",
+      "owner": "asp.schema-family.schema-manager",
+      "rationale": "Semantic failure envelopes and agent document notes are independently owned concepts."
+    }
+  ]
+}

@@ -348,51 +348,7 @@
       }
     },
     "agentOrgArtifacts": {
-      "description": "Agent Org artifact entry guard. When enabled, hook decisions can direct the agent back to ASP_ORG.org if no Org artifact write has occurred recently and warn when DONE Org records should be archived.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "inactiveAfterMinutes": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "artifactsPath": {
-          "type": "string",
-          "minLength": 1
-        },
-        "entrySkillPath": {
-          "type": "string",
-          "minLength": 1
-        },
-        "archiveWarning": {
-          "$ref": "#/$defs/agentOrgArtifactsArchiveWarning"
-        }
-      }
-    },
-    "agentOrgArtifactsArchiveWarning": {
-      "description": "Warning gate for active Org artifact directories that contain DONE records not yet moved under archives.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "activeOrgFileThreshold": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "archivesDir": {
-          "type": "string",
-          "minLength": 1
-        },
-        "maxReportedFiles": {
-          "type": "integer",
-          "minimum": 1
-        }
-      }
+      "$ref": "semantic-agent-definitions.v1.schema.json#/$defs/agentOrgArtifacts"
     },
     "rule": {
       "type": "object",

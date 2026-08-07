@@ -13,6 +13,7 @@ use super::client_backend_worker::run_client_backend_on_worker;
 use super::gerbil_check_cache::try_replay_gerbil_check_cache;
 use super::gerbil_deps::try_run_gerbil_deps_index_command;
 use super::protocol_version_line;
+use super::provider_argument_projection::provider_native_argument_values;
 use super::provider_fast_path::{
     run_activated_owner_language_preflight, run_pre_activation_search_command_preflight,
 };
@@ -60,7 +61,7 @@ fn exact_query_trace(stage: &str, started: tokio::time::Instant) {
     }
 }
 
-pub(crate) fn run_language_command(
+pub(crate) async fn run_language_command(
     language_id: &str,
     args: &[String],
     process_started: tokio::time::Instant,
@@ -73,7 +74,7 @@ pub(crate) fn run_language_command(
             || matches!(args.first().map(String::as_str), Some("cache"))
     }
 
-    fn run_client_backend_command(
+    async fn run_client_backend_command(
         language_id: &str,
         args: &[String],
         project_root: &Path,
@@ -116,7 +117,8 @@ pub(crate) fn run_language_command(
             }
         }
         let result =
-            run_client_backend_on_worker(language_id, client_args, project_root.to_path_buf());
+            run_client_backend_on_worker(language_id, client_args, project_root.to_path_buf())
+                .await;
         restore_env_var!("ASP_PROVIDER_ACTIVATION_PATH", previous_activation_path);
         restore_env_var!(
             "ASP_PROVIDER_ACTIVATION_REFRESH",
@@ -181,12 +183,26 @@ pub(crate) fn run_language_command(
                 &invocation_root,
             )?
             .unwrap_or_else(|| (invocation_root.clone(), command_args.clone()));
-        return super::provider_resident_exact::run_resident_exact_query(
+        let resident_result = super::provider_resident_exact::run_resident_exact_query(
             language_id,
             &exact_provider_args,
             &exact_project_root,
             exact_query_started,
-        );
+        )
+        .await;
+        match resident_result {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                let Some(reason_kind) =
+                    super::provider_resident_exact::provider_native_exact_fallback_reason(&error)
+                else {
+                    return Err(error);
+                };
+                eprintln!(
+                    "[query-route] state=degraded reasonKind={reason_kind} acquisitionRoute=provider-native-exact residentEvidence=none"
+                );
+            }
+        }
     }
     if super::search_pipe::is_search_owner_items_query(&command_args) {
         exact_query_trace("owner-resident-read-admitted", exact_query_started);
@@ -200,7 +216,8 @@ pub(crate) fn run_language_command(
                 provider_context: None,
                 frontier_receipt: frontier_receipt.as_ref(),
             },
-        );
+        )
+        .await;
     }
     let canonical_activation_path = provider_activation_path(&invocation_root);
     let activation_path = canonical_activation_path.clone();
@@ -270,7 +287,8 @@ pub(crate) fn run_language_command(
             &project_root,
             provider,
             &tree_sitter_runtime_profiles,
-        )?
+        )
+        .await?
     {
         return Ok(());
     }
@@ -284,7 +302,8 @@ pub(crate) fn run_language_command(
                 &project_root,
                 &cache_home,
                 None,
-            );
+            )
+            .await;
         }
         let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
         let provider_context = ProviderGraphFactsContext {
@@ -297,7 +316,8 @@ pub(crate) fn run_language_command(
             &project_root,
             &cache_home,
             Some(&provider_context),
-        );
+        )
+        .await;
     }
     if is_asp_fast_search(&provider_args) {
         let ranker = runtime
@@ -347,9 +367,9 @@ pub(crate) fn run_language_command(
         // ranker to the currently running ASP artifact.
         exact_query_trace("ranker-admitted", exact_query_started);
         let current_search_data_plane =
-            super::search_pipe::fast_search_requires_source_index_snapshot(&provider_args)
-                .then(|| {
-                    crate::server::runtime_server::block_on_agent_facing_runtime_server_client(
+            if super::search_pipe::fast_search_requires_source_index_snapshot(&provider_args) {
+                let result =
+                    crate::server::runtime_server::await_agent_facing_runtime_server_client(
                         exact_query_started,
                         "search",
                         "graph-turbo-generation-open",
@@ -358,8 +378,47 @@ pub(crate) fn run_language_command(
                             &project_root,
                         ),
                     )
-                })
-                .transpose()?;
+                    .await;
+                if let Err(error) = result {
+                    let lexical = provider_args.first().is_some_and(|arg| arg == "search")
+                        && provider_args.get(1).is_some_and(|arg| arg == "lexical");
+                    if lexical && frontier_receipt.is_none()
+                        && agent_semantic_client_db::workspace_db_ipc::is_host_local_ipc_permission_denied(&error)
+                    {
+                        let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
+                        let projection_values = provider_native_argument_values(
+                            "search/lexical",
+                            &provider_args,
+                            &project_root,
+                        )?;
+                        let projected_args =
+                            agent_semantic_hook::registered_provider_method_projected_argv_v1(
+                                language_id,
+                                provider.provider_id.as_str(),
+                                "search/lexical",
+                                &projection_values,
+                            )?;
+                        let invocation = provider_invocation_with_profile(
+                            &runtime_profiles,
+                            provider,
+                            &projected_args,
+                        )?;
+                        eprintln!("[search-route] state=degraded reasonKind=host-local-ipc-permission-denied acquisitionRoute=provider-native-lexical residentEvidence=none");
+                        return run_provider_command(
+                            language_id,
+                            provider,
+                            &invocation,
+                            &project_root,
+                            false,
+                        )
+                        .await;
+                    }
+                    return Err(error);
+                }
+                Some(result.expect("runtime server data plane result checked above"))
+            } else {
+                None
+            };
         let current_snapshot = current_search_data_plane
             .as_ref()
             .map(crate::server::runtime_server::RuntimeServerSearchDataPlane::current_snapshot)
@@ -374,7 +433,7 @@ pub(crate) fn run_language_command(
                 provider,
                 profiles: &runtime_profiles,
             };
-            return crate::server::runtime_server::block_on_agent_facing_runtime_server_client(
+            return crate::server::runtime_server::await_agent_facing_runtime_server_client(
                 exact_query_started,
                 "search",
                 "resident-search-evaluation",
@@ -394,10 +453,11 @@ pub(crate) fn run_language_command(
                         search_data_plane: current_search_data_plane.as_ref(),
                     },
                 ),
-            );
+            )
+            .await;
         }
         exact_query_trace("provider-context-not-required", exact_query_started);
-        return crate::server::runtime_server::block_on_agent_facing_runtime_server_client(
+        return crate::server::runtime_server::await_agent_facing_runtime_server_client(
             exact_query_started,
             "search",
             "resident-search-evaluation",
@@ -417,7 +477,8 @@ pub(crate) fn run_language_command(
                     search_data_plane: current_search_data_plane.as_ref(),
                 },
             ),
-        );
+        )
+        .await;
     }
     if frontier_receipt
         .as_ref()
@@ -437,7 +498,8 @@ pub(crate) fn run_language_command(
             &project_root,
             &activation_path,
             frontier_receipt.as_ref(),
-        );
+        )
+        .await;
     }
 
     let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
@@ -445,13 +507,13 @@ pub(crate) fn run_language_command(
         let guide_args = provider_guide_args(language_id, &provider_args);
         let invocation =
             provider_invocation_with_profile(&runtime_profiles, provider, &guide_args)?;
-        return run_guide_command(language_id, provider, &invocation, &project_root);
+        return run_guide_command(language_id, provider, &invocation, &project_root).await;
     }
     let provider_argv = provider_process_args(&provider_args);
     for invocation in
         provider_invocations(provider, &provider_argv, &project_root, &runtime_profiles)?
     {
-        run_provider_command(language_id, provider, &invocation, &project_root, false)?;
+        run_provider_command(language_id, provider, &invocation, &project_root, false).await?;
     }
     Ok(())
 }

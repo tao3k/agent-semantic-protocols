@@ -16,7 +16,10 @@ mod hook_runtime {
         Ok(())
     }
 
-    pub(crate) fn run_hook_from_bootstrap(_args: &[String], _input: String) -> Result<(), String> {
+    pub(crate) async fn run_hook_from_bootstrap(
+        _args: &[String],
+        _input: String,
+    ) -> Result<(), String> {
         Ok(())
     }
 }
@@ -27,8 +30,18 @@ mod hook_break_glass {
     }
 }
 
-const _: fn(&[String]) -> Result<(), String> = hook::run_hook_command;
 const _: fn(Vec<String>) -> Result<(), String> = hook_runtime::run_hook_runtime_args;
+
+fn assert_hook_command_future(
+    future: impl std::future::Future<Output = Result<(), String>> + Send,
+) {
+    drop(future);
+}
+
+#[test]
+fn hook_command_exposes_an_async_adapter() {
+    assert_hook_command_future(hook::run_hook_command(&[]));
+}
 fn args(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| value.to_string()).collect()
 }

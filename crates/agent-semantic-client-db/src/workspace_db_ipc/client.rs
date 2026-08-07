@@ -1,6 +1,5 @@
-use super::{
-    ClientDbSourceIndexLookupResult, WorkspaceDbIpcSession, WorkspaceDbSourceIndexLookupRequest,
-};
+use super::{WorkspaceDbIpcSession, WorkspaceDbSourceIndexLookupRequest};
+use crate::ClientDbSourceIndexLookupResult;
 use std::path::{Path, PathBuf};
 
 pub async fn connect_runtime_server_workspace_session(

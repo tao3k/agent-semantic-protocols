@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/semantic-definitions.v1.schema.json",
+  "title": "Semantic Family Definitions v1",
+  "description": "Shared definitions owned by the root semantic schema family.",
+  "$defs": {
+    "projectPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "lineRange": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
+    },
+    "structuralSelector": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9+.-]*://[^#\\s]+#[^\\s]+$"
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "lineRange"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "lineRange": {
+          "$ref": "#/$defs/lineRange"
+        },
+        "displayLineRange": {
+          "$ref": "#/$defs/lineRange"
+        },
+        "sourceLocatorHint": {
+          "$ref": "#/$defs/sourceLocator"
+        },
+        "structuralSelector": {
+          "$ref": "#/$defs/structuralSelector"
+        }
+      }
+    },
+    "scalar": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/scalar"
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/scalar"
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/$defs/scalar"
+            }
+          }
+        ]
+      }
+    },
+    "omission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "message"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "unsupported",
+            "unavailable",
+            "backend-unavailable",
+            "too-expensive",
+            "ambiguous",
+            "policy-blocked"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "note": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "message"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "sourceLocator": {
+      "type": "string",
+      "description": "Project-root-relative source selector accepting path:start, path:start:end, or path:start-end.",
+      "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*(?:(?::|-)[1-9][0-9]*)?$"
+    },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifactId",
+        "schemaId"
+      ],
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    }
+  }
+}

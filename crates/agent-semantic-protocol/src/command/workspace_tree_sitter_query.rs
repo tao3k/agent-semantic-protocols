@@ -16,7 +16,7 @@ struct WorkspaceTreeSitterCapture {
     projection: agent_semantic_client_db::ProviderTreeSitterCaptureProjection,
 }
 
-pub(super) fn try_run_workspace_tree_sitter_query(
+pub(super) async fn try_run_workspace_tree_sitter_query(
     language_id: &str,
     args: &[String],
     project_root: &Path,
@@ -43,7 +43,8 @@ pub(super) fn try_run_workspace_tree_sitter_query(
         &request,
         &language,
         &query,
-    )?;
+    )
+    .await?;
     render_workspace_query(
         language_id,
         &request,
@@ -176,7 +177,7 @@ struct ProcessedOwner {
     captures: Vec<agent_semantic_client_db::ProviderTreeSitterCaptureProjection>,
 }
 
-fn run_workspace_tree_sitter_query(
+async fn run_workspace_tree_sitter_query(
     language_id: &str,
     project_root: &Path,
     provider: &ActivatedProvider,
@@ -188,12 +189,8 @@ fn run_workspace_tree_sitter_query(
     let total_started = std::time::Instant::now();
     let phase_started = std::time::Instant::now();
     let state = resolve_tree_sitter_query_state(language_id, project_root, provider)?;
-    let client_db_runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|error| format!("failed to create Tree-sitter query runtime: {error}"))?;
     let client_db_session =
-        crate::server::runtime_server::runtime_server_workspace_session(project_root)?;
+        crate::server::runtime_server::runtime_server_workspace_session_async(project_root).await?;
     tree_sitter_trace("resolve-state", phase_started, None);
     let query_identity = agent_semantic_client_db::ProviderTreeSitterQueryIdentity {
         scope: state.scope.clone(),
@@ -204,8 +201,7 @@ fn run_workspace_tree_sitter_query(
         capture_names: agent_semantic_tree_sitter::extract_capture_names(&request.query_source),
     };
     let phase_started = std::time::Instant::now();
-    let before =
-        read_tree_sitter_query(&client_db_runtime, &client_db_session, &query_identity, 0)?;
+    let before = read_tree_sitter_query(&client_db_session, &query_identity, 0).await?;
     tree_sitter_trace("initial-query-read", phase_started, None);
     let phase_started = std::time::Instant::now();
     let mut owners = super::workspace_tree_sitter_inventory::collect_provider_inventory(
@@ -214,25 +210,20 @@ fn run_workspace_tree_sitter_query(
     )?;
     tree_sitter_trace("inventory-enumerate", phase_started, Some(owners.len()));
     let phase_started = std::time::Instant::now();
-    probe_inventory_entries(&client_db_runtime, &client_db_session, &state, &mut owners)?;
+    probe_inventory_entries(&client_db_session, &state, &mut owners).await?;
     tree_sitter_trace("inventory-probe-batch", phase_started, Some(owners.len()));
     if !inventory_matches(before.inventory.as_ref(), owners.as_slice()) {
         let phase_started = std::time::Instant::now();
-        publish_inventory(
-            &client_db_runtime,
-            &client_db_session,
-            &state,
-            owners.as_slice(),
-        )?;
+        publish_inventory(&client_db_session, &state, owners.as_slice()).await?;
         tree_sitter_trace("inventory-publish", phase_started, Some(owners.len()));
     }
     let phase_started = std::time::Instant::now();
     let scheduled = read_tree_sitter_query(
-        &client_db_runtime,
         &client_db_session,
         &query_identity,
         TREE_SITTER_OWNER_BUDGET,
-    )?;
+    )
+    .await?;
     tree_sitter_trace(
         "schedule-query-read",
         phase_started,
@@ -240,7 +231,6 @@ fn run_workspace_tree_sitter_query(
     );
     let phase_started = std::time::Instant::now();
     let processed = process_scheduled_owners(
-        &client_db_runtime,
         &client_db_session,
         language_id,
         project_root,
@@ -252,7 +242,8 @@ fn run_workspace_tree_sitter_query(
         &query_identity,
         scheduled.scheduled_entries.as_slice(),
         &mut owners,
-    )?;
+    )
+    .await?;
     tree_sitter_trace("process-owner", phase_started, Some(processed.len()));
     let processed_owner_count = processed.len().try_into().unwrap_or(u32::MAX);
     let processed_source_bytes = processed
@@ -270,39 +261,34 @@ fn run_workspace_tree_sitter_query(
             )
             .collect::<Vec<_>>();
         let phase_started = std::time::Instant::now();
-        let generation = publish_inventory(
-            &client_db_runtime,
-            &client_db_session,
-            &state,
-            owners.as_slice(),
-        )?;
+        let generation = publish_inventory(&client_db_session, &state, owners.as_slice()).await?;
         super::workspace_tree_sitter_query_trace::trace_owner_probe_boundary(
-            &client_db_runtime,
             &client_db_session,
             &state.scope,
             post_publish_probes.as_slice(),
             "inventory-publish",
-        )?;
+        )
+        .await?;
         write_processed_query_results(
-            &client_db_runtime,
             &client_db_session,
             &query_identity,
             generation.as_str(),
             processed,
-        )?;
+        )
+        .await?;
         super::workspace_tree_sitter_query_trace::trace_owner_probe_boundary(
-            &client_db_runtime,
             &client_db_session,
             &state.scope,
             post_publish_probes.as_slice(),
             "query-result-publish",
-        )?;
+        )
+        .await?;
         super::workspace_tree_sitter_query_trace::finish_writes(
-            &client_db_runtime,
             &client_db_session,
             &state.scope,
             post_publish_probes.as_slice(),
-        )?;
+        )
+        .await?;
         tree_sitter_trace(
             "owner-results-publish",
             phase_started,
@@ -310,8 +296,7 @@ fn run_workspace_tree_sitter_query(
         );
     }
     let phase_started = std::time::Instant::now();
-    let final_read =
-        read_tree_sitter_query(&client_db_runtime, &client_db_session, &query_identity, 0)?;
+    let final_read = read_tree_sitter_query(&client_db_session, &query_identity, 0).await?;
     tree_sitter_trace("final-query-read", phase_started, None);
     let mut receipt = final_read.receipt.ok_or_else(|| {
         "provider Tree-sitter inventory disappeared after publication".to_string()
@@ -378,8 +363,7 @@ fn resolve_tree_sitter_query_state(
     })
 }
 
-fn probe_inventory_entries(
-    client_db_runtime: &tokio::runtime::Runtime,
+async fn probe_inventory_entries(
     client_db_session: &agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession,
     state: &TreeSitterQueryState,
     owners: &mut [InventoryOwner],
@@ -393,8 +377,9 @@ fn probe_inventory_entries(
             },
         )
         .collect::<Vec<_>>();
-    let probe_receipt = client_db_runtime
-        .block_on(client_db_session.probe_provider_owners(&state.scope, requests.as_slice()))?;
+    let probe_receipt = client_db_session
+        .probe_provider_owners(&state.scope, requests.as_slice())
+        .await?;
     if probe_receipt.results.len() != owners.len() {
         return Err(format!(
             "provider batch probe cardinality drift: owners={} probes={}",
@@ -453,38 +438,32 @@ fn inventory_matches(
     })
 }
 
-fn publish_inventory(
-    client_db_runtime: &tokio::runtime::Runtime,
+async fn publish_inventory(
     client_db_session: &agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession,
     state: &TreeSitterQueryState,
     owners: &[InventoryOwner],
 ) -> Result<String, String> {
-    client_db_runtime
-        .block_on(client_db_session.upsert_provider_owner_inventory(
-            &agent_semantic_client_db::ProviderOwnerInventoryWrite {
-                scope: state.scope.clone(),
-                state: agent_semantic_client_db::ProviderOwnerInventoryState::Exact,
-                entries: owners.iter().map(|owner| owner.entry.clone()).collect(),
-            },
-        ))
+    client_db_session
+        .upsert_provider_owner_inventory(&agent_semantic_client_db::ProviderOwnerInventoryWrite {
+            scope: state.scope.clone(),
+            state: agent_semantic_client_db::ProviderOwnerInventoryState::Exact,
+            entries: owners.iter().map(|owner| owner.entry.clone()).collect(),
+        })
+        .await
         .map(|receipt| receipt.inventory_generation)
 }
 
-fn read_tree_sitter_query(
-    client_db_runtime: &tokio::runtime::Runtime,
+async fn read_tree_sitter_query(
     client_db_session: &agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession,
     query: &agent_semantic_client_db::ProviderTreeSitterQueryIdentity,
     owner_budget: u32,
 ) -> Result<agent_semantic_client_db::ProviderTreeSitterQueryRead, String> {
-    client_db_runtime.block_on(client_db_session.read_provider_treesitter_query(
-        query,
-        owner_budget,
-        None,
-    ))
+    client_db_session
+        .read_provider_treesitter_query(query, owner_budget, None)
+        .await
 }
 
-fn process_scheduled_owners(
-    client_db_runtime: &tokio::runtime::Runtime,
+async fn process_scheduled_owners(
     client_db_session: &agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession,
     language_id: &str,
     project_root: &Path,
@@ -497,20 +476,19 @@ fn process_scheduled_owners(
     scheduled: &[agent_semantic_client_db::ProviderOwnerInventoryEntry],
     owners: &mut [InventoryOwner],
 ) -> Result<Vec<ProcessedOwner>, String> {
-    scheduled
-        .iter()
-        .map(|scheduled| {
-            let owner = owners
-                .iter_mut()
-                .find(|owner| owner.owner_path == scheduled.owner_path)
-                .ok_or_else(|| {
-                    format!(
-                        "scheduled provider owner is absent from exact inventory: {}",
-                        scheduled.owner_path
-                    )
-                })?;
+    let mut processed = Vec::with_capacity(scheduled.len());
+    for scheduled in scheduled {
+        let owner = owners
+            .iter_mut()
+            .find(|owner| owner.owner_path == scheduled.owner_path)
+            .ok_or_else(|| {
+                format!(
+                    "scheduled provider owner is absent from exact inventory: {}",
+                    scheduled.owner_path
+                )
+            })?;
+        processed.push(
             process_owner(
-                client_db_runtime,
                 client_db_session,
                 language_id,
                 project_root,
@@ -522,12 +500,13 @@ fn process_scheduled_owners(
                 query_identity,
                 owner,
             )
-        })
-        .collect()
+            .await?,
+        );
+    }
+    Ok(processed)
 }
 
-fn process_owner(
-    client_db_runtime: &tokio::runtime::Runtime,
+async fn process_owner(
     client_db_session: &agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession,
     language_id: &str,
     project_root: &Path,
@@ -571,7 +550,8 @@ fn process_owner(
             fingerprint: &fingerprint,
             source_bytes: source_bytes.as_slice(),
         },
-    )?;
+    )
+    .await?;
     let post_provider_metadata =
         super::provider_owner_native::provider_owner_metadata(owner.absolute_path.as_path())?;
     if post_provider_metadata != fingerprint.metadata {
@@ -610,16 +590,18 @@ fn process_owner(
         &owner.owner_path,
         &owner_projections,
     )?;
-    client_db_runtime.block_on(client_db_session.write_provider_incremental_owner(
-        &agent_semantic_client_db::ProviderIncrementalOwnerWrite {
-            scope: state.scope.clone(),
-            owner_path: owner.owner_path.clone(),
-            fingerprint: fingerprint.clone(),
-            source_bytes: source_bytes.clone(),
-            projection_completeness: "complete-owner".to_string(),
-            projections: owner_projections.clone(),
-        },
-    ))?;
+    client_db_session
+        .write_provider_incremental_owner(
+            &agent_semantic_client_db::ProviderIncrementalOwnerWrite {
+                scope: state.scope.clone(),
+                owner_path: owner.owner_path.clone(),
+                fingerprint: fingerprint.clone(),
+                source_bytes: source_bytes.clone(),
+                projection_completeness: "complete-owner".to_string(),
+                projections: owner_projections.clone(),
+            },
+        )
+        .await?;
     owner.entry = agent_semantic_client_db::ProviderOwnerInventoryEntry {
         owner_path: owner.owner_path.clone(),
         owner_content_digest: Some(fingerprint.content_digest.clone()),
@@ -672,28 +654,29 @@ fn join_capture_projections(
         .collect()
 }
 
-fn write_processed_query_results(
-    client_db_runtime: &tokio::runtime::Runtime,
+async fn write_processed_query_results(
     client_db_session: &agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession,
     query: &agent_semantic_client_db::ProviderTreeSitterQueryIdentity,
     inventory_generation: &str,
     processed: Vec<ProcessedOwner>,
 ) -> Result<(), String> {
-    processed.into_iter().try_for_each(|owner| {
-        client_db_runtime.block_on(client_db_session.write_provider_treesitter_owner_result(
-            query,
-            &agent_semantic_client_db::ProviderTreeSitterOwnerResult {
-                owner_path: owner.owner_path,
-                owner_content_digest: owner.fingerprint.content_digest,
-                query_digest: query.query_digest.clone(),
-                inventory_generation: inventory_generation.to_owned(),
-                state: agent_semantic_client_db::ProviderTreeSitterOwnerResultState::Processed,
-                complete_owner_refresh_count: 1,
-                projections: owner.captures,
-            },
-        ))?;
-        Ok(())
-    })
+    for owner in processed {
+        client_db_session
+            .write_provider_treesitter_owner_result(
+                query,
+                &agent_semantic_client_db::ProviderTreeSitterOwnerResult {
+                    owner_path: owner.owner_path,
+                    owner_content_digest: owner.fingerprint.content_digest,
+                    query_digest: query.query_digest.clone(),
+                    inventory_generation: inventory_generation.to_owned(),
+                    state: agent_semantic_client_db::ProviderTreeSitterOwnerResultState::Processed,
+                    complete_owner_refresh_count: 1,
+                    projections: owner.captures,
+                },
+            )
+            .await?;
+    }
+    Ok(())
 }
 
 fn tree_sitter_trace(phase: &str, started: std::time::Instant, owner_count: Option<usize>) {

@@ -14,6 +14,7 @@
     "accepted",
     "attempt",
     "commit",
+    "failureStage",
     "error"
   ],
   "properties": {
@@ -24,21 +25,31 @@
     "workspaceIdentity": { "type": "string", "minLength": 1 },
     "candidateGeneration": { "$ref": "https://schemas.agent-semantic-protocols.dev/repository-candidate-snapshot.v1.schema.json#/$defs/candidateGeneration" },
     "policyOverlayDigest": { "type": "string", "minLength": 1 },
-    "state": { "enum": ["building", "ready", "failed"] },
+    "state": { "enum": ["building", "ready", "failed", "cancelled"] },
     "accepted": { "type": "boolean" },
     "attempt": { "type": "integer", "minimum": 1 },
     "commit": {
       "oneOf": [
         { "type": "null" },
         {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["activeEpoch", "generationDigest", "sourceRootDigest"],
-          "properties": {
-            "activeEpoch": { "type": "integer", "minimum": 1 },
-            "generationDigest": { "type": "string", "minLength": 1 },
-            "sourceRootDigest": { "type": "string", "minLength": 1 }
-          }
+          "$ref": "runtime-server-definitions.v1.schema.json#/$defs/generationCommit"
+        }
+      ]
+    },
+    "failureStage": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "enum": [
+            "generation-builder",
+            "generation-builder-supervision",
+            "workspace-bootstrap",
+            "durable-restore",
+            "source-builder",
+            "source-index-commit",
+            "canonical-generation-publication",
+            "admission-validation"
+          ]
         }
       ]
     },
@@ -50,6 +61,7 @@
       "then": {
         "properties": {
           "commit": { "type": "null" },
+          "failureStage": { "type": "null" },
           "error": { "type": "null" }
         }
       }
@@ -59,6 +71,7 @@
       "then": {
         "properties": {
           "commit": { "type": "object" },
+          "failureStage": { "type": "null" },
           "error": { "type": "null" }
         }
       }
@@ -68,6 +81,23 @@
       "then": {
         "properties": {
           "commit": { "type": "null" },
+          "failureStage": {
+            "type": "string",
+            "minLength": 1
+          },
+          "error": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "state": { "const": "cancelled" } } },
+      "then": {
+        "properties": {
+          "commit": { "type": "null" },
+          "failureStage": {
+            "type": "string",
+            "minLength": 1
+          },
           "error": { "type": "string", "minLength": 1 }
         }
       }

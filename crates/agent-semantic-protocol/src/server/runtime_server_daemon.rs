@@ -8,17 +8,17 @@ use agent_semantic_client_db::{
 use std::path::PathBuf;
 
 use super::{
-    cleanup_endpoint, daemon_identity, ensure_runtime_protocol_binary_user_path_alias,
-    graph_turbo_daemon, remove_stale_socket, runtime_server_telemetry_query_socket_path,
-    runtime_server_telemetry_socket_path, singleton_socket, state_home,
+    cleanup_endpoint, daemon_identity, graph_turbo_daemon, remove_stale_socket,
+    runtime_server_telemetry_query_socket_path, runtime_server_telemetry_socket_path,
+    singleton_socket, state_home,
 };
 
 pub(super) async fn run_daemon() -> Result<(), String> {
     agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
-    let election = acquire_runtime_server_election()
+    let state_home = state_home()?;
+    let election = acquire_runtime_server_election(&state_home)
         .await
         .map_err(|error| format!("failed to acquire Runtime Server election: {error}"))?;
-    let state_home = state_home()?;
     let singleton_socket_guard = match singleton_socket::acquire(&state_home).await? {
         singleton_socket::SingletonSocketElection::Acquired(guard) => guard,
         singleton_socket::SingletonSocketElection::ResidentExists => return Ok(()),
@@ -29,7 +29,6 @@ pub(super) async fn run_daemon() -> Result<(), String> {
         )
         .await
         .map_err(|error| format!("failed to prepare Runtime Server workspace store: {error}"))?;
-    ensure_runtime_protocol_binary_user_path_alias(&state_home)?;
     let runtime_artifact_path = std::env::current_exe()
         .map_err(|error| format!("failed to resolve running ASP artifact: {error}"))?;
     let runtime_artifact_digest =
@@ -63,6 +62,7 @@ pub(super) async fn run_daemon() -> Result<(), String> {
     )
     .await?;
     let endpoint = prepare_runtime_server_endpoint_with_workspace_store(
+        &state_home,
         workspace_store.root(),
         &runtime_artifact_path,
         &runtime_artifact_digest,
@@ -105,13 +105,34 @@ pub(super) async fn run_daemon() -> Result<(), String> {
         .await?;
     let lifecycle_bus = agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus::new();
     let provider_catalog_generation =
-        crate::command::global_provider_catalog::read_global_provider_catalog_readiness()?
+        crate::command::global_provider_catalog::read_runtime_provider_catalog_readiness()?
             .catalog_generation;
     let generation_builder_catalog = provider_catalog_generation.clone();
     let generation_builder: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateBuilder =
-        std::sync::Arc::new(move |_workspace_identity, project_root| {
+    std::sync::Arc::new(move |_workspace_identity, project_root, changed_paths| {
             let provider_catalog_generation = generation_builder_catalog.clone();
-            Box::pin(async move {
+        Box::pin(async move {
+            let collection_scope = if changed_paths.is_empty() {
+                agent_semantic_client::source_index::SourceIndexCollectionScope::CompleteGeneration
+            } else {
+                let owner_paths = changed_paths
+                    .iter()
+                    .map(|path| {
+                        path.strip_prefix(&project_root)
+                            .map_err(|_| {
+                                format!(
+                                    "changed owner is outside Runtime workspace: workspace={} owner={}",
+                                    project_root.display(),
+                                    path.display()
+                                )
+                            })
+                            .map(|relative| relative.to_string_lossy().into_owned())
+                    })
+                    .collect::<Result<Vec<_>, String>>()?;
+                agent_semantic_client::source_index::SourceIndexCollectionScope::ExplicitOwners {
+                    owner_paths,
+                }
+            };
                 let (registry, current_catalog_generation) =
                     crate::command::global_provider_catalog::runtime_provider_registry_snapshot(
                         &project_root,
@@ -123,10 +144,11 @@ pub(super) async fn run_daemon() -> Result<(), String> {
                     ));
                 }
                 let mut build = agent_semantic_client::source_index::
-                    prepare_runtime_server_workspace_generation_with_registry_async(
-                        project_root,
-                        registry,
-                    )
+                prepare_runtime_server_workspace_generation_with_registry_async(
+                    project_root,
+                    registry,
+                    collection_scope,
+                )
                     .await?;
                 build.materialization.provider_schema_digest = current_catalog_generation;
                 Ok(build)

@@ -261,13 +261,15 @@ impl WorkspaceDbIpcSession {
 
     pub async fn read_runtime_selector(
         &self,
-        projection_kind: impl Into<String>,
+        language_id: agent_semantic_client_core::LanguageId,
+        projection_kind: crate::runtime_server_workspace::ExactProjectionKind,
         structural_selector: impl Into<String>,
     ) -> Result<crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead, String> {
         match self
             .call_operation(WorkspaceDbIpcOperation::ReadRuntimeSelector {
                 project_root: self.runtime_project_root()?.display().to_string(),
-                projection_kind: projection_kind.into(),
+                language_id,
+                projection_kind,
                 structural_selector: structural_selector.into(),
             })
             .await?

@@ -173,6 +173,96 @@ fn registry_method_inventory_is_explicit() {
 }
 
 #[test]
+fn provider_native_argument_projections_are_closed_and_capability_truthful() {
+    let lexical_values = crate::ProviderMethodArgumentValuesV1 {
+        query: Some("alpha beta".to_string()),
+        workspace: Some("/tmp/project".to_string()),
+        presentation: Some("seeds".to_string()),
+        owner: Some("must-not-leak.rs".to_string()),
+    };
+    for (language_id, provider_id) in [("rust", "rs-harness"), ("python", "py-harness")] {
+        let argv = crate::registered_provider_method_projected_argv_v1(
+            language_id,
+            provider_id,
+            "search/lexical",
+            &lexical_values,
+        )
+        .unwrap_or_else(|error| panic!("project {language_id} lexical argv: {error}"));
+        assert_eq!(
+            argv,
+            [
+                "search",
+                "lexical",
+                "alpha beta",
+                "owner",
+                "tests",
+                "--workspace",
+                "/tmp/project",
+                "--view",
+                "seeds",
+            ],
+            "{language_id} projection must be deterministic and must not project the owner facade field"
+        );
+    }
+
+    let gerbil_error = crate::registered_provider_method_projected_argv_v1(
+        "gerbil-scheme",
+        "gerbil-scheme-harness",
+        "search/lexical",
+        &lexical_values,
+    )
+    .expect_err("Gerbil whole-workspace lexical is not a provider-native capability");
+    assert!(
+        gerbil_error.contains("reasonKind=provider-native-argument-projection-unavailable")
+            && gerbil_error.contains("detail=projection-not-declared"),
+        "{gerbil_error}"
+    );
+
+    let owner_values = crate::ProviderMethodArgumentValuesV1 {
+        owner: Some("src/main.ss".to_string()),
+        workspace: Some("/tmp/project".to_string()),
+        presentation: Some("seeds".to_string()),
+        ..Default::default()
+    };
+    let gerbil_owner = crate::registered_provider_method_projected_argv_v1(
+        "gerbil-scheme",
+        "gerbil-scheme-harness",
+        "search/owner",
+        &owner_values,
+    )
+    .expect("Gerbil explicit-owner projection");
+    assert_eq!(
+        gerbil_owner,
+        [
+            "search",
+            "owner",
+            "src/main.ss",
+            "items",
+            "--workspace",
+            "/tmp/project",
+            "--view",
+            "seeds",
+        ]
+    );
+}
+
+#[test]
+fn provider_native_argument_projection_missing_slot_fails_typed() {
+    let error = crate::registered_provider_method_projected_argv_v1(
+        "rust",
+        "rs-harness",
+        "search/lexical",
+        &crate::ProviderMethodArgumentValuesV1::default(),
+    )
+    .expect_err("missing projection values must fail closed");
+    assert!(
+        error.contains("reasonKind=provider-native-argument-projection-unavailable")
+            && error.contains("detail=missing-slot-query"),
+        "{error}"
+    );
+}
+
+#[test]
 fn every_registered_language_has_provider_owned_development_authority() {
     use crate::ProviderDevelopmentArtifactDomain::Checkout;
 

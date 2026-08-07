@@ -53,6 +53,54 @@ async fn exact_source_projection_consumes_the_pretool_admitted_owner_change() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn exact_source_projection_reconciles_unadmitted_owner_change_before_cached_hit() {
+    let root = temp_project_root("exact-selector-read-side-freshness");
+    establish_rust_package(&root);
+    let owner = root.join("src/lib.rs");
+    fs::write(&owner, "pub fn alpha() {\n    let value = 1;\n}\n").expect("write first source");
+    let runtime = ExactQueryRuntime::start(&root).await;
+
+    runtime
+        .admit("alpha-initial-read-side", vec!["src/lib.rs".to_owned()])
+        .await;
+    let first = run_exact_selector_query(&root, &runtime.state_home).await;
+    assert!(first.contains("let value = 1;"), "{first}");
+
+    fs::write(&owner, "pub fn alpha() {\n    let value = 2;\n}\n")
+        .expect("write unadmitted owner change");
+
+    let refresh_started = std::time::Instant::now();
+    let second = run_exact_selector_query(&root, &runtime.state_home).await;
+    let refresh_elapsed = refresh_started.elapsed();
+    assert!(second.contains("let value = 2;"), "{second}");
+    assert!(
+        !second.contains("let value = 1;"),
+        "exact selector query returned a cached owner after an unadmitted checkout change: {second}"
+    );
+    assert!(
+        refresh_elapsed < std::time::Duration::from_millis(250),
+        "read-side owner reconciliation exceeded the 250ms publication budget: {refresh_elapsed:?}"
+    );
+
+    let warm_started = std::time::Instant::now();
+    let warm = run_exact_selector_query(&root, &runtime.state_home).await;
+    let warm_elapsed = warm_started.elapsed();
+    assert!(warm.contains("let value = 2;"), "{warm}");
+    assert!(
+        warm_elapsed < std::time::Duration::from_millis(100),
+        "unchanged cached owner exact query exceeded the 100ms warm budget: {warm_elapsed:?}"
+    );
+    println!(
+        "[read-side-exact-performance] reconcileMicros={} reconcileBudgetMicros=250000 warmMicros={} warmBudgetMicros=100000",
+        refresh_elapsed.as_micros(),
+        warm_elapsed.as_micros()
+    );
+
+    runtime.shutdown().await;
+    let _ = fs::remove_dir_all(root);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn exact_selector_changed_and_moved_owner_never_requires_sync() {
     prewarm_cli_artifact().await;
     let root = temp_project_root("exact-selector-live-owner");
@@ -255,6 +303,7 @@ struct ExactQueryRuntime {
     workspace_identity: String,
     project_root: PathBuf,
     shutdown: agent_semantic_client_db::runtime_server::RuntimeServerShutdownHandle,
+    hook_admission_locator: agent_semantic_client_db::runtime_server_hook_admission_locator::RuntimeHookAdmissionLocatorTask,
     server: tokio::task::JoinHandle<
         Result<agent_semantic_client_db::runtime_server::RuntimeServerExit, String>,
     >,
@@ -268,6 +317,13 @@ impl ExactQueryRuntime {
             .to_hex()
             .to_string();
         let state_home = Path::new("/tmp").join(format!("asp-q-{}", &state_id[..16]));
+        std::fs::create_dir_all(&state_home).expect("create exact-query Runtime state directory");
+        #[cfg(unix)]
+        std::fs::set_permissions(
+            &state_home,
+            std::os::unix::fs::PermissionsExt::from_mode(0o700),
+        )
+        .expect("secure exact-query Runtime state directory");
         let artifact_catalog =
             agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog::new(
                 agent_semantic_config::runtime_dev::RuntimeArtifactMode::Release,
@@ -295,8 +351,15 @@ impl ExactQueryRuntime {
         )
         .await
         .expect("load exact-query admission catalog");
+        let hook_admission_locator = agent_semantic_client_db::runtime_server_hook_admission_locator::spawn_runtime_hook_admission_locator(
+            state_home.clone(),
+            endpoint.clone(),
+            catalog.clone(),
+        )
+        .await
+        .expect("start exact-query Hook admission locator");
         let builder: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateBuilder = {
-            Arc::new(move |workspace_identity, project_root| {
+            Arc::new(move |workspace_identity, project_root, _cancellation| {
                 Box::pin(build_exact_query_generation(workspace_identity, project_root))
             })
         };
@@ -329,9 +392,9 @@ impl ExactQueryRuntime {
             agent_semantic_client_db::runtime_server::RuntimeServer::bind_with_artifact_catalog(
                 endpoint.clone(),
                 Arc::new(
-                    agent_semantic_client_db::WorkspaceDbRegistry::with_state_home(
-                        agent_semantic_client_db::runtime_server_runtime_base().join("workspaces"),
-                    ),
+                    agent_semantic_client_db::WorkspaceDbRegistry::with_state_home(PathBuf::from(
+                        &endpoint.workspace_store_path,
+                    )),
                 ),
                 workspace_store,
                 Arc::new(artifact_catalog),
@@ -357,6 +420,7 @@ impl ExactQueryRuntime {
             workspace_identity,
             project_root,
             shutdown,
+            hook_admission_locator,
             server,
         }
     }
@@ -409,6 +473,10 @@ impl ExactQueryRuntime {
     }
 
     async fn shutdown(self) {
+        self.hook_admission_locator
+            .shutdown()
+            .await
+            .expect("stop exact-query Hook admission locator");
         self.shutdown.shutdown();
         self.server
             .await
@@ -492,7 +560,8 @@ async fn build_exact_query_generation_owner(
             byte_end: owner.bytes.len(),
             derived_projections: vec![
                 agent_semantic_client_db::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot {
-                    projection_kind: "callable-skeleton".to_owned(),
+                    projection_kind:
+                        agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::CallableSkeleton,
                     bytes: serde_json::to_vec(&projection)
                         .map_err(|error| format!("serialize callable skeleton fixture: {error}"))?,
                 },
@@ -582,11 +651,16 @@ async fn build_exact_query_generation(
             .await?,
         );
     }
-    let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes(
-        owners
-            .iter()
-            .map(|owner| (owner.owner_path.as_str(), owner.bytes.as_slice())),
+    let source_blobs = agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
+        owners.iter().map(|owner| {
+            (
+                agent_semantic_client_db::ClientDbSourceIndexPath::new(&owner.owner_path),
+                owner.bytes.clone(),
+            )
+        }),
     );
+    let workspace_snapshot =
+        agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes(source_blobs.iter());
     let source_snapshot = workspace_snapshot.evidence(
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
         format!(
@@ -596,6 +670,7 @@ async fn build_exact_query_generation(
     );
     let import = agent_semantic_client_db::build_source_index_import(
         agent_semantic_client_db::ClientDbSourceIndexImportRequest {
+            source_blobs: source_blobs.clone(),
             generation_id:
                 agent_semantic_client_db::client_db_source_index_generation_id_for_snapshot(
                     &source_snapshot,
@@ -610,15 +685,13 @@ async fn build_exact_query_generation(
     )?;
     let file_count = u32::try_from(import.file_hashes.len())
         .map_err(|_| "exact-query fixture file count overflow".to_owned())?;
-    let materialization =
-        agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::new(
-            workspace_identity,
-            source_snapshot.clone(),
-            &import,
-            [1, 0],
-            owners,
-            Vec::new(),
-        )?;
+    let materialization = agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
+        workspace_identity,
+        &source_snapshot,
+        &import,
+        &source_blobs,
+        Vec::new(),
+    )?;
     Ok(
         agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuild::new(
             candidate,

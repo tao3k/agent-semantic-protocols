@@ -271,6 +271,9 @@ impl ClientHookConfig {
                     }
                 };
                 if let Some(mut decision) = decision {
+                    if let Some(message) = rule.message.as_ref() {
+                        decision.message = message.clone();
+                    }
                     if let Some(agent_action) = rule.agent_action_receipt(
                         runtime,
                         action,

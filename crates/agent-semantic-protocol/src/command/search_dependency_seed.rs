@@ -17,7 +17,7 @@ pub(super) fn is_search_dependency_seed(args: &[String]) -> bool {
         && !args.iter().any(|arg| arg == "--json")
 }
 
-pub(super) fn run_search_dependency_seed_command(
+pub(super) async fn run_search_dependency_seed_command(
     language_id: &str,
     args: &[String],
     project_root: &Path,
@@ -31,7 +31,8 @@ pub(super) fn run_search_dependency_seed_command(
         project_root,
         cache_home,
         provider_context,
-    )?;
+    )
+    .await?;
     let facts = seed
         .facts
         .into_iter()

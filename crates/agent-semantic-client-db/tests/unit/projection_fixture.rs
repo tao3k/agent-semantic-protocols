@@ -141,7 +141,7 @@ pub(crate) fn callable_skeleton_projection_fixture(
     }))
     .expect("encode callable skeleton fixture");
     agent_semantic_client_db::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot {
-        projection_kind: "callable-skeleton".to_owned(),
+        projection_kind: agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::CallableSkeleton,
         bytes,
     }
 }

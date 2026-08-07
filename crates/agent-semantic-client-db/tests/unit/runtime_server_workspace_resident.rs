@@ -223,7 +223,8 @@ async fn ready_recovery_receipt_reuses_resident_generation_without_resetting_ove
             "workspace-a",
             temporary.path(),
             WorkspaceRuntimeSelectorOverlay {
-                projection_kind: "source".to_owned(),
+                projection_kind:
+                    agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::Source,
                 structural_selector: selector.to_owned(),
                 owner_path: "src/lib.rs".to_owned(),
                 owner_content_digest: format!("blake3-256:{}", blake3::hash(source).to_hex()),
@@ -245,7 +246,12 @@ async fn ready_recovery_receipt_reuses_resident_generation_without_resetting_ove
     assert_eq!(receipt.counters.provider_spawns, 0);
     assert!(matches!(
         registry
-            .read_runtime_selector("workspace-a", temporary.path(), "source", selector)
+            .read_runtime_selector(
+                "workspace-a",
+                temporary.path(),
+                agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::Source,
+                selector,
+            )
             .expect("read selector after ready receipt"),
         WorkspaceRuntimeSelectorRead::Projection { .. }
     ));

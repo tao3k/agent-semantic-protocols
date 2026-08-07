@@ -95,57 +95,7 @@
       }
     },
     "agentOrgArtifactsConfig": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": true
-        },
-        "inactiveAfterMinutes": {
-          "type": "integer",
-          "minimum": 1,
-          "default": 30
-        },
-        "artifactsPath": {
-          "type": "string",
-          "minLength": 1,
-          "default": ".cache/agent-semantic-protocol/artifacts/org"
-        },
-        "entrySkillPath": {
-          "type": "string",
-          "minLength": 1,
-          "default": ".cache/agent-semantic-protocol/org/templates/ASP_ORG_SKILL.org"
-        },
-        "archiveWarning": {
-          "$ref": "#/$defs/agentOrgArtifactsArchiveWarningConfig"
-        }
-      }
-    },
-    "agentOrgArtifactsArchiveWarningConfig": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": true
-        },
-        "activeOrgFileThreshold": {
-          "type": "integer",
-          "minimum": 1,
-          "default": 10
-        },
-        "archivesDir": {
-          "type": "string",
-          "minLength": 1,
-          "default": "archives"
-        },
-        "maxReportedFiles": {
-          "type": "integer",
-          "minimum": 1,
-          "default": 5
-        }
-      }
+      "$ref": "semantic-agent-definitions.v1.schema.json#/$defs/agentOrgArtifacts"
     },
     "codeqlExtensionConfig": {
       "type": "object",

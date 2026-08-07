@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict
 from typing import Any, Sequence
+from asp_proofs._cli_output import write_stdout
 
 from asp_proofs.polyglot_search_semantics import (
     GraphEdge,
@@ -179,7 +180,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    print(render_json_fixture() if args.format == "json" else render_lean_fixture(), end="")
+    write_stdout(render_json_fixture() if args.format == "json" else render_lean_fixture(), end="")
     return 0
 
 

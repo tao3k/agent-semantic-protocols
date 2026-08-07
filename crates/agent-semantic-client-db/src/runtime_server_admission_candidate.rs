@@ -4,10 +4,32 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
 use super::WorkspaceGenerationCommitReceipt;
+
+type CachedCandidate = Result<WorkspaceGenerationCandidateIdentity, String>;
+type CandidateCell = Arc<tokio::sync::OnceCell<CachedCandidate>>;
+
+static CANDIDATE_CACHE: OnceLock<dashmap::DashMap<PathBuf, CandidateCell>> = OnceLock::new();
+
+fn candidate_cache() -> &'static dashmap::DashMap<PathBuf, CandidateCell> {
+    CANDIDATE_CACHE.get_or_init(dashmap::DashMap::new)
+}
+
+pub fn record_workspace_generation_candidate(
+    project_root: PathBuf,
+    candidate: WorkspaceGenerationCandidateIdentity,
+) -> Result<(), String> {
+    candidate.validate()?;
+    let cell = Arc::new(tokio::sync::OnceCell::new());
+    cell.set(Ok(candidate))
+        .map_err(|_| "workspace generation candidate cache was initialized twice".to_owned())?;
+    candidate_cache().insert(project_root, cell);
+    Ok(())
+}
 
 impl agent_semantic_runtime::git::CancellationProbe
     for crate::runtime_generation_cancellation::GenerationCancellation
@@ -77,18 +99,32 @@ pub async fn discover_workspace_generation_candidate_with_cancellation(
         return Err("generation build cancelled".to_owned());
     }
     let project_root = project_root.to_path_buf();
-    let cancellation = cancellation.clone();
-    tokio::task::spawn_blocking(move || {
-        agent_semantic_runtime::git::discover_repository_candidate_snapshot_cancellable(
-            &project_root,
-            &cancellation,
-        )
-    })
-    .await
-    .map_err(|error| format!("workspace candidate discovery task failed: {error}"))?
-    .map_err(|error| format!("discover workspace repository candidates: {error}"))?
-    .map(|snapshot| WorkspaceGenerationCandidateIdentity::from_snapshot(&snapshot))
-    .ok_or_else(|| "workspace generation admission requires a Git candidate snapshot".to_owned())
+    let cell = candidate_cache()
+        .entry(project_root.clone())
+        .or_insert_with(|| Arc::new(tokio::sync::OnceCell::new()))
+        .clone();
+    let discovery_root = project_root.clone();
+    let discovery_cancellation = cancellation.clone();
+    let result = cell
+        .get_or_init(|| async move {
+            tokio::task::spawn_blocking(move || {
+                agent_semantic_runtime::git::discover_repository_candidate_snapshot_cancellable(
+                    &discovery_root,
+                    &discovery_cancellation,
+                )
+            })
+            .await
+            .map_err(|error| format!("workspace candidate discovery task failed: {error}"))?
+            .map_err(|error| format!("discover workspace repository candidates: {error}"))?
+            .map(|snapshot| WorkspaceGenerationCandidateIdentity::from_snapshot(&snapshot))
+            .ok_or_else(|| {
+                "workspace generation admission requires a Git candidate snapshot".to_owned()
+            })
+        })
+        .await
+        .clone();
+    candidate_cache().remove_if(&project_root, |_, cached| Arc::ptr_eq(cached, &cell));
+    result
 }
 
 pub struct WorkspaceGenerationBuild {
@@ -185,8 +221,8 @@ pub type WorkspaceGenerationBuilder = Arc<
             PathBuf,
             WorkspaceGenerationCandidateIdentity,
             WorkspaceGenerationBuildMode,
+            Arc<std::collections::BTreeSet<PathBuf>>,
             crate::runtime_generation_cancellation::GenerationCancellation,
-            tokio::time::Instant,
         ) -> WorkspaceGenerationBuildFuture
         + Send
         + Sync
@@ -213,8 +249,16 @@ impl WorkspaceGenerationBuildMode {
 
 pub type WorkspaceGenerationCandidateBuildFuture =
     Pin<Box<dyn Future<Output = Result<WorkspaceGenerationBuild, String>> + Send + 'static>>;
-pub type WorkspaceGenerationCandidateBuilder =
-    Arc<dyn Fn(String, PathBuf) -> WorkspaceGenerationCandidateBuildFuture + Send + Sync + 'static>;
+pub type WorkspaceGenerationCandidateBuilder = Arc<
+    dyn Fn(
+            String,
+            PathBuf,
+            Arc<std::collections::BTreeSet<PathBuf>>,
+        ) -> WorkspaceGenerationCandidateBuildFuture
+        + Send
+        + Sync
+        + 'static,
+>;
 
 pub type WorkspaceOwnerProjectionBuildFuture = Pin<
     Box<

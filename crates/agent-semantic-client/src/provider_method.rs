@@ -12,7 +12,7 @@ use agent_semantic_client_core::{
 };
 use agent_semantic_client_local_cli::{LocalNativeCliBackend, LocalNativeOutput};
 use agent_semantic_provider_transport::{
-    OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode, run_provider_process,
+    OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode, run_provider_process_async,
 };
 use bytes::Bytes;
 use sha2::{Digest, Sha256};
@@ -32,7 +32,7 @@ fn debug_client_stage(stage: &str) {
     }
 }
 
-pub(crate) fn run_provider_method(
+pub(crate) async fn run_provider_method(
     parsed: ParsedArgs,
     method: ClientMethod,
     language_id: LanguageId,
@@ -94,7 +94,7 @@ pub(crate) fn run_provider_method(
     let cache_probe = if request.stdin.is_some() {
         None
     } else {
-        provider_cache_probe(&parsed.project_root, &snapshot, &request)
+        provider_cache_probe(&parsed.project_root, &snapshot, &request).await
     };
     debug_client_stage("provider-method:cache-replay");
     if let Some(cache_probe) = &cache_probe
@@ -141,7 +141,8 @@ pub(crate) fn run_provider_method(
                 &request,
                 execution_cache_status,
                 parsed.frontier_receipt_out.as_deref(),
-            )?
+            )
+            .await?
         } else {
             None
         };
@@ -153,7 +154,7 @@ pub(crate) fn run_provider_method(
         debug_client_stage("provider-method:new-backend");
         let backend = LocalNativeCliBackend::new(snapshot);
         debug_client_stage("provider-method:execute");
-        let mut output = backend.execute(&request)?;
+        let mut output = backend.execute(&request).await?;
         debug_client_stage("provider-method:execute-done");
         if output.status_code == 0 {
             crate::compact_mode::validate_compact_provider_stdout(&request, &output.stdout)?;
@@ -166,6 +167,7 @@ pub(crate) fn run_provider_method(
                 &output.stdout,
                 &output.receipt.provider_commands,
             )
+            .await
         } else {
             None
         };
@@ -206,7 +208,8 @@ pub(crate) fn run_provider_method(
         )?;
         if output.status_code != 0 && check_failure_frontier_view {
             let frontier =
-                render_last_check_failure_frontier(&parsed.project_root, &request_language_id)?;
+                render_last_check_failure_frontier(&parsed.project_root, &request_language_id)
+                    .await?;
             io::stdout()
                 .write_all(frontier.as_ref())
                 .map_err(|error| format!("failed to write failure frontier stdout: {error}"))?;
@@ -338,7 +341,7 @@ fn normalize_check_forwarded_args(args: Vec<String>) -> Vec<String> {
     normalized
 }
 
-fn render_last_check_failure_frontier(
+async fn render_last_check_failure_frontier(
     project_root: &Path,
     language_id: &LanguageId,
 ) -> Result<Vec<u8>, String> {
@@ -347,7 +350,7 @@ fn render_last_check_failure_frontier(
         .unwrap_or_else(|| PathBuf::from("asp"))
         .to_string_lossy()
         .into_owned();
-    let output = run_provider_process(ProviderProcessSpec {
+    let output = run_provider_process_async(ProviderProcessSpec {
         program,
         args: vec![
             language_id.to_string(),
@@ -365,6 +368,7 @@ fn render_last_check_failure_frontier(
         stderr: OutputMode::Capture,
         limits: ProviderProcessLimits::default(),
     })
+    .await
     .map_err(|error| format!("failed to render check failure frontier: {error}"))?;
     if !output.stderr.is_empty() {
         io::stderr()
@@ -432,7 +436,7 @@ fn is_dependency_search(args: &[String]) -> bool {
         .is_some_and(|arg| arg == "dependency" || arg == "deps")
 }
 
-fn run_search_packet_first_miss(
+async fn run_search_packet_first_miss(
     project_root: &Path,
     snapshot: &ProviderRegistrySnapshot,
     request: &ClientRequest,
@@ -448,7 +452,7 @@ fn run_search_packet_first_miss(
         .with_forwarded_args(packet_args)
         .with_language(language_id);
     let backend = LocalNativeCliBackend::new(snapshot.clone());
-    let mut output = backend.execute(&packet_request)?;
+    let mut output = backend.execute(&packet_request).await?;
     if output.status_code != 0 {
         return Ok(None);
     }
@@ -458,9 +462,10 @@ fn run_search_packet_first_miss(
         crate::cache_replay::render_search_packet_bytes_with_receipt(
             output.stdout.clone(),
             receipt_request,
-        )?
+        )
+        .await?
     } else {
-        crate::cache_replay::render_search_packet_bytes(output.stdout.clone())
+        crate::cache_replay::render_search_packet_bytes(output.stdout.clone()).await
     };
     let Some(rendered_stdout) = rendered_stdout else {
         return Ok(None);
@@ -471,7 +476,9 @@ fn run_search_packet_first_miss(
         request,
         &output.stdout,
         &rendered_stdout,
-    ) else {
+    )
+    .await
+    else {
         return Ok(None);
     };
     apply_provider_cache_probe(&mut output.receipt, &writeback_probe);

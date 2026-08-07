@@ -36,4 +36,14 @@ pub struct HookClientResidentAgentConfig {
     pub codex_agent_name: String,
     #[serde(default = "default_session_lifetime")]
     pub session_lifetime: String,
+    #[serde(default)]
+    pub focus_mode: HookClientAgentFocusMode,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HookClientAgentFocusMode {
+    #[default]
+    Standard,
+    Leaf,
 }

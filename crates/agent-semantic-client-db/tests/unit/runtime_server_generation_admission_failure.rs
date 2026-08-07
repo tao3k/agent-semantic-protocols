@@ -13,8 +13,8 @@ async fn panicking_generation_builder_publishes_a_failed_terminal_receipt() {
          _project_root,
          _candidate,
          _build_mode,
-         _cancellation,
-         _absolute_deadline| {
+         _changed_paths,
+         _cancellation| {
             Box::pin(async move {
                 panic!("synthetic generation builder panic");
             })
@@ -57,15 +57,15 @@ async fn shutdown_cancels_tracked_generation_builds() {
               _project_root,
               _candidate,
               _build_mode,
-              _cancellation,
-              _absolute_deadline| {
+              _changed_paths,
+              _cancellation| {
             let started = Arc::clone(&started);
             Box::pin(async move {
                 started.notify_one();
                 std::future::pending::<
                     Result<
                         agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildCompletion,
-                        String,
+                        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildFailure,
                     >,
                 >()
                 .await

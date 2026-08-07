@@ -31,7 +31,7 @@ pub(crate) struct ProviderCacheProbe {
     pub(crate) replay: Option<ProviderCacheReplay>,
 }
 
-pub(crate) fn provider_cache_probe(
+pub(crate) async fn provider_cache_probe(
     project_root: &Path,
     snapshot: &ProviderRegistrySnapshot,
     request: &ClientRequest,
@@ -86,53 +86,55 @@ pub(crate) fn provider_cache_probe(
     let generation_fresh = generation_hit
         .as_ref()
         .is_some_and(|hit| generation_file_hashes_match(project_root, hit));
-    let replay = generation_hit
-        .as_ref()
-        .and_then(|hit| {
-            if generation_fresh {
-                load_replay_artifact(cache_root, hit, request)
-            } else {
-                None
-            }
-        })
-        .or_else(|| {
-            let db_session = db_session.as_ref()?;
-            let provider = selected_provider?;
-            let export_method = export_method.as_ref()?;
-            if db_report.status != ClientDbStatus::Present
-                || !is_fresh_prime_reuse_request(request, export_method)
-            {
-                return None;
-            }
-            db_read_count += 1;
-            load_fresh_prime_replay(
-                db_session,
-                cache_root,
-                project_root,
-                provider,
-                export_method,
-                request,
-            )
-        })
-        .or_else(|| {
-            let db_session = db_session.as_ref()?;
-            let provider = selected_provider?;
-            let export_method = export_method.as_ref()?;
-            if db_report.status != ClientDbStatus::Present
-                || !is_fresh_lexical_reuse_request(request, export_method)
-            {
-                return None;
-            }
-            db_read_count += 1;
-            load_fresh_lexical_replay(
-                db_session,
-                cache_root,
-                project_root,
-                provider,
-                export_method,
-                request,
-            )
-        });
+    let mut replay = if generation_fresh {
+        if let Some(hit) = generation_hit.as_ref() {
+            load_replay_artifact(cache_root, hit, request).await
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    if replay.is_none()
+        && db_report.status == ClientDbStatus::Present
+        && let (Some(db_session), Some(provider), Some(export_method)) = (
+            db_session.as_ref(),
+            selected_provider,
+            export_method.as_ref(),
+        )
+        && is_fresh_prime_reuse_request(request, export_method)
+    {
+        db_read_count += 1;
+        replay = load_fresh_prime_replay(
+            db_session,
+            cache_root,
+            project_root,
+            provider,
+            export_method,
+            request,
+        )
+        .await;
+    }
+    if replay.is_none()
+        && db_report.status == ClientDbStatus::Present
+        && let (Some(db_session), Some(provider), Some(export_method)) = (
+            db_session.as_ref(),
+            selected_provider,
+            export_method.as_ref(),
+        )
+        && is_fresh_lexical_reuse_request(request, export_method)
+    {
+        db_read_count += 1;
+        replay = load_fresh_lexical_replay(
+            db_session,
+            cache_root,
+            project_root,
+            provider,
+            export_method,
+            request,
+        )
+        .await;
+    }
     let cache_status = if replay.is_some() {
         CacheStatus::Hit
     } else if generation_hit.is_some() && !generation_fresh {
@@ -184,7 +186,7 @@ fn cache_project_root_for_request(project_root: &Path, request: &ClientRequest) 
         .unwrap_or_else(|| project_root.to_path_buf())
 }
 
-fn load_fresh_prime_replay(
+async fn load_fresh_prime_replay(
     db_session: &ClientDbEngineReadSession,
     cache_root: &Path,
     project_root: &Path,
@@ -203,13 +205,13 @@ fn load_fresh_prime_replay(
         .ok()
         .flatten()?;
     if generation_file_hashes_match(project_root, &hit) {
-        load_replay_artifact(cache_root, &hit, request)
+        load_replay_artifact(cache_root, &hit, request).await
     } else {
         None
     }
 }
 
-fn load_fresh_lexical_replay(
+async fn load_fresh_lexical_replay(
     db_session: &ClientDbEngineReadSession,
     cache_root: &Path,
     project_root: &Path,
@@ -231,7 +233,7 @@ fn load_fresh_lexical_replay(
         if generation_file_hashes_match(project_root, &hit)
             && search_lexical_generation_matches_request(cache_root, &hit, request).is_some()
         {
-            return load_replay_artifact(cache_root, &hit, request);
+            return load_replay_artifact(cache_root, &hit, request).await;
         }
     }
     None

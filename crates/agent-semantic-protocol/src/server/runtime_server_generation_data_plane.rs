@@ -1,6 +1,6 @@
 //! Opens immutable Runtime Server generation data planes for resident queries.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Clone, Debug)]
 pub(crate) struct RuntimeServerSearchDataPlane {
@@ -60,40 +60,16 @@ impl RuntimeServerSearchDataPlane {
 
 async fn generation_session(
     project_root: &Path,
-) -> Result<
-    (
-        agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession,
-        String,
-        PathBuf,
-    ),
-    String,
-> {
-    // Query/search must resolve an already admitted workspace through the
-    // lifecycle-published mmap locator.  Re-running ResolvedState/Git/package
-    // discovery here makes the data plane O(workspace) and gives a read path
-    // accidental generation-control authority.
-    let state_home = agent_semantic_client_core::state_core::resolve_state_home()?;
-    let session = agent_semantic_client_db::runtime_server_hook_admission_locator::
-        connect_hook_workspace_session(&state_home, project_root)
-        .await?;
-    let workspace_identity = session.workspace_identity().to_owned();
-    let pointer_path = session
-        .runtime_generation_pointer_path()
-        .ok_or_else(|| {
-            format!(
-                "Runtime Server session omitted generation pointer: workspaceIdentity={workspace_identity}"
-            )
-        })?
-        .to_path_buf();
-    Ok((session, workspace_identity, pointer_path))
+) -> Result<agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession, String> {
+    // The global Runtime Server owns workspace routing and generation opens.
+    // Query clients receive no mmap locator or workspace-owner socket.
+    crate::server::runtime_server::runtime_server_workspace_session_async(project_root).await
 }
 
 pub(crate) async fn runtime_server_search_data_plane_async(
     project_root: &Path,
 ) -> Result<RuntimeServerSearchDataPlane, String> {
-    let (session, _workspace_identity, _pointer_path) = generation_session(project_root).await?;
-    session.ensure_runtime_generation().await?;
-    session.ensure_runtime_generation_ready().await?;
+    let session = generation_session(project_root).await?;
     let authority = session.runtime_search_generation_authority().await?;
     Ok(RuntimeServerSearchDataPlane { session, authority })
 }
@@ -105,13 +81,14 @@ pub(crate) async fn runtime_server_search_data_plane_async(
 /// generation reconciliation for every workspace.
 pub(crate) async fn runtime_server_workspace_exact_projection_async(
     project_root: &Path,
-    projection_kind: &str,
+    language_id: agent_semantic_client_core::LanguageId,
+    projection_kind: agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind,
     structural_selector: &str,
 ) -> Result<agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead, String>
 {
-    let (session, _workspace_identity, _pointer_path) = generation_session(project_root).await?;
+    let session = generation_session(project_root).await?;
     session
-        .read_runtime_selector(projection_kind, structural_selector)
+        .read_runtime_selector(language_id, projection_kind, structural_selector)
         .await
 }
 

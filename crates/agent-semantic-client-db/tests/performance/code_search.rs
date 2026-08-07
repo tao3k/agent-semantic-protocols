@@ -109,6 +109,7 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
             text: "pub fn resident_needle() {}\n".to_string(),
             selectors: Vec::new(),
         }],
+        source_blobs: Default::default(),
     })
     .expect("build resident Turso source-index import");
     let mut import = import;
@@ -578,6 +579,7 @@ fn code_search_merkle_memory_warm_path_is_a_strong_gate() {
             query_keys: vec!["needle".into()],
         }],
         selectors: Vec::new(),
+        source_blobs: Default::default(),
     };
     let expected_artifact_digest = client_db_source_index_artifact_digest(&source_snapshot);
     let rust_language_id = LanguageId::from("rust");

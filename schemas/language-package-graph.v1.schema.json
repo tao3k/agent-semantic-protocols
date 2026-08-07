@@ -41,16 +41,10 @@
       "minLength": 1
     },
     "manifests": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/manifest"
-      }
+      "$ref": "#/$defs/lockfileList"
     },
     "lockfiles": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/lockfile"
-      }
+      "$ref": "#/$defs/lockfileList"
     },
     "packages": {
       "type": "array",
@@ -78,31 +72,13 @@
     }
   },
   "$defs": {
+    "lockfileList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/lockfile" }
+    },
     "path": {
       "type": "string",
       "minLength": 1
-    },
-    "manifest": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "path",
-        "kind",
-        "digest"
-      ],
-      "properties": {
-        "path": {
-          "$ref": "#/$defs/path"
-        },
-        "kind": {
-          "type": "string",
-          "minLength": 1
-        },
-        "digest": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
     },
     "lockfile": {
       "type": "object",

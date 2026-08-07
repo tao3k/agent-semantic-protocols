@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode,
-    run_provider_process as run_transport_process,
+    run_provider_process_async as run_transport_process,
 };
 use bytes::Bytes;
 
@@ -19,7 +19,7 @@ pub struct GraphRenderReceiptRequest {
     pub command_fingerprint: String,
 }
 
-pub fn run_graph_render_packet(packet_path: &Path, max_stdout_bytes: u64) -> Option<Bytes> {
+pub async fn run_graph_render_packet(packet_path: &Path, max_stdout_bytes: u64) -> Option<Bytes> {
     run_graph_render_process(
         packet_path.display().to_string(),
         StdinMode::Closed,
@@ -27,11 +27,12 @@ pub fn run_graph_render_packet(packet_path: &Path, max_stdout_bytes: u64) -> Opt
         None,
         false,
     )
+    .await
     .ok()
     .flatten()
 }
 
-pub fn run_graph_render_packet_bytes(
+pub async fn run_graph_render_packet_bytes(
     packet_bytes: impl Into<Bytes>,
     max_stdout_bytes: u64,
 ) -> Option<Bytes> {
@@ -42,11 +43,12 @@ pub fn run_graph_render_packet_bytes(
         None,
         false,
     )
+    .await
     .ok()
     .flatten()
 }
 
-pub fn run_graph_render_packet_bytes_with_receipt(
+pub async fn run_graph_render_packet_bytes_with_receipt(
     packet_bytes: impl Into<Bytes>,
     max_stdout_bytes: u64,
     receipt: &GraphRenderReceiptRequest,
@@ -58,9 +60,10 @@ pub fn run_graph_render_packet_bytes_with_receipt(
         Some(receipt),
         true,
     )
+    .await
 }
 
-fn run_graph_render_process(
+async fn run_graph_render_process(
     packet_arg: String,
     stdin: StdinMode,
     max_stdout_bytes: u64,
@@ -101,7 +104,9 @@ fn run_graph_render_process(
             Some(64 * 1024),
             Some(1024 * 1024 * 1024),
         ),
-    }) {
+    })
+    .await
+    {
         Ok(output) => output,
         Err(error) if strict => return Err(format!("failed to run graph renderer: {error}")),
         Err(_) => return Ok(None),

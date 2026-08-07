@@ -87,16 +87,10 @@
       }
     },
     "expectedFacts": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/factRef"
-      }
+      "$ref": "#/$defs/factRefList"
     },
     "expectedEvidence": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/evidenceExpectation"
-      }
+      "$ref": "#/$defs/evidenceList"
     },
     "failureModes": {
       "type": "array",
@@ -210,6 +204,18 @@
         }
       }
     },
+    "factRefList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/factRef"
+      }
+    },
+    "evidenceList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidenceExpectation"
+      }
+    },
     "factRef": {
       "type": "object",
       "additionalProperties": false,
@@ -238,10 +244,7 @@
           "minLength": 1
         },
         "factRefs": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/factRef"
-          }
+          "$ref": "#/$defs/factRefList"
         },
         "command": {
           "type": "string",
@@ -288,16 +291,10 @@
           "minLength": 1
         },
         "requiredFactRefs": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/factRef"
-          }
+          "$ref": "#/$defs/factRefList"
         },
         "expectedEvidence": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/evidenceExpectation"
-          }
+          "$ref": "#/$defs/evidenceList"
         },
         "nextCommand": {
           "type": "string",

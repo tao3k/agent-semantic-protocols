@@ -82,18 +82,7 @@
       "pattern": "^sha256:[0-9a-f]{64}$"
     },
     "generatedBy": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["runtime", "version"],
-      "properties": {
-        "runtime": {
-          "const": "asp"
-        },
-        "version": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
+      "$ref": "semantic-agent-definitions.v1.schema.json#/$defs/generatedBy"
     },
     "activatedProvider": {
       "type": "object",

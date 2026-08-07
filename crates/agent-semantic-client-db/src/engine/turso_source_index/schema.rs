@@ -14,11 +14,78 @@ fn workspace_db_schema_contract_marker() -> String {
     hasher.update(&[0]);
     hasher.update(include_bytes!("schema.rs"));
     hasher.update(&[0]);
+    hasher.update(include_bytes!("canonical.rs"));
+    hasher.update(&[0]);
+    hasher.update(include_bytes!("generation_snapshot.rs"));
+    hasher.update(&[0]);
+    hasher.update(include_bytes!("relation.rs"));
+    hasher.update(&[0]);
+    hasher.update(include_bytes!("source_blob.rs"));
+    hasher.update(&[0]);
+    hasher.update(include_bytes!("materialization.rs"));
+    hasher.update(&[0]);
     hasher.update(include_bytes!("provider_incremental_schema.rs"));
     format!(
         "{WORKSPACE_DB_SCHEMA_ID}/v{WORKSPACE_DB_SCHEMA_VERSION}/blake3-256:{}",
         hasher.finalize().to_hex()
     )
+}
+
+async fn reset_derived_generations_on_schema_contract_change(
+    connection: &turso::Connection,
+) -> Result<(), String> {
+    connection
+        .execute(
+            "CREATE TABLE IF NOT EXISTS asp_workspace_db_schema_receipt_v1 (
+                schema_digest TEXT PRIMARY KEY
+            )",
+            (),
+        )
+        .await
+        .map_err(|error| format!("failed to inspect workspace DB schema receipt: {error}"))?;
+    let mut rows = connection
+        .query(
+            "SELECT schema_digest FROM asp_workspace_db_schema_receipt_v1 LIMIT 1",
+            (),
+        )
+        .await
+        .map_err(|error| format!("failed to read workspace DB schema receipt: {error}"))?;
+    let existing = rows
+        .next()
+        .await
+        .map_err(|error| format!("failed to advance workspace DB schema receipt: {error}"))?
+        .map(|row| {
+            row.get::<String>(0)
+                .map_err(|error| format!("failed to decode workspace DB schema receipt: {error}"))
+        })
+        .transpose()?;
+    if existing.as_deref() == Some(workspace_db_schema_contract_marker().as_str()) {
+        return Ok(());
+    }
+
+    // Every table below is a derived, generation-addressed projection. The
+    // workspace source and provider receipts remain the rebuild authority, so
+    // carrying rows across an incompatible schema would be ordinary legacy
+    // decoding rather than a valid migration.
+    for table in [
+        "asp_workspace_generation_materialization_v1",
+        "asp_source_index_relation_v1",
+        "asp_source_index_token_owner_v1",
+        "asp_source_index_selector_v1",
+        "asp_source_index_owner_v1",
+        "asp_source_index_layout_v1",
+        "asp_source_index_scope_v1",
+        "asp_exact_selector_projection_v1",
+        "asp_source_index_blob_v1",
+    ] {
+        connection
+            .execute(format!("DROP TABLE IF EXISTS {table}").as_str(), ())
+            .await
+            .map_err(|error| {
+                format!("failed to reset incompatible workspace DB projection {table}: {error}")
+            })?;
+    }
+    Ok(())
 }
 
 async fn publish_workspace_db_schema_receipt(connection: &turso::Connection) -> Result<(), String> {
@@ -46,7 +113,9 @@ async fn publish_workspace_db_schema_receipt(connection: &turso::Connection) -> 
 pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
     connection: &turso::Connection,
 ) -> Result<(), String> {
+    reset_derived_generations_on_schema_contract_change(connection).await?;
     for statement in [
+        "CREATE TABLE IF NOT EXISTS asp_source_index_blob_v1 (content_digest TEXT PRIMARY KEY NOT NULL, size_bytes INTEGER NOT NULL, source_bytes BLOB NOT NULL)",
         "CREATE TABLE IF NOT EXISTS asp_source_index_scope_v1 (
             project_root TEXT NOT NULL,
             schema_id TEXT NOT NULL,
@@ -119,6 +188,30 @@ pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
                 structural_selector
             )
         )",
+        "CREATE TABLE IF NOT EXISTS asp_source_index_relation_v1 (
+            project_root TEXT NOT NULL,
+            schema_id TEXT NOT NULL,
+            schema_version TEXT NOT NULL,
+            generation_id TEXT NOT NULL,
+            owner_path TEXT NOT NULL CHECK(length(owner_path) > 0),
+            from_kind TEXT NOT NULL CHECK(length(from_kind) > 0),
+            from_id TEXT NOT NULL CHECK(length(from_id) > 0),
+            relation_kind TEXT NOT NULL CHECK(length(relation_kind) > 0),
+            to_kind TEXT NOT NULL CHECK(length(to_kind) > 0),
+            to_id TEXT NOT NULL CHECK(length(to_id) > 0),
+            PRIMARY KEY (
+                project_root,
+                schema_id,
+                schema_version,
+                generation_id,
+                owner_path,
+                from_kind,
+                from_id,
+                relation_kind,
+                to_kind,
+                to_id
+            )
+        )",
         "CREATE TABLE IF NOT EXISTS asp_source_index_layout_v1 (
             project_root TEXT NOT NULL,
             schema_id TEXT NOT NULL,
@@ -189,6 +282,20 @@ pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
                 item_kind,
                 item_symbol,
                 scopes_json
+            )",
+        "failed to bootstrap Turso source-index schema",
+    )
+    .await?;
+    execute_turso_statement(
+        connection,
+        "CREATE INDEX IF NOT EXISTS asp_source_index_relation_v1_endpoint_idx
+            ON asp_source_index_relation_v1(
+                project_root,
+                schema_id,
+                schema_version,
+                generation_id,
+                from_kind,
+                from_id
             )",
         "failed to bootstrap Turso source-index schema",
     )

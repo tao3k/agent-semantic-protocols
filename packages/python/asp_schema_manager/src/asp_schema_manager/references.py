@@ -68,6 +68,51 @@ def _validation_shape(value: Any) -> Any:
     return value
 
 
+def _unescape_pointer(token: str) -> str:
+    return token.replace("~1", "/").replace("~0", "~")
+
+
+def _resolve_local_refs(
+    value: Any,
+    document: SchemaDocument,
+    stack: tuple[str, ...] = (),
+) -> Any:
+    if (
+        isinstance(value, dict)
+        and isinstance(value.get("$ref"), str)
+        and value["$ref"].startswith("#/")
+    ):
+        reference = value["$ref"]
+        siblings = {
+            key: _resolve_local_refs(child, document, stack)
+            for key, child in value.items()
+            if key != "$ref"
+        }
+        if reference in stack:
+            resolved: Any = {"$refResolution": f"cycle:{reference}"}
+        else:
+            target: Any = document.value
+            try:
+                for raw_token in reference[2:].split("/"):
+                    token = _unescape_pointer(raw_token)
+                    target = target[int(token)] if isinstance(target, list) else target[token]
+            except (KeyError, IndexError, TypeError, ValueError):
+                resolved = {"$refResolution": f"unresolved:{reference}"}
+            else:
+                resolved = _resolve_local_refs(target, document, (*stack, reference))
+        if siblings:
+            return {"$refResolution": resolved, "$refSiblings": siblings}
+        return resolved
+    if isinstance(value, dict):
+        return {
+            key: _resolve_local_refs(child, document, stack)
+            for key, child in value.items()
+        }
+    if isinstance(value, list):
+        return [_resolve_local_refs(child, document, stack) for child in value]
+    return value
+
+
 def discover_reference_opportunities(
     documents: list[SchemaDocument],
     *,
@@ -88,7 +133,10 @@ def discover_reference_opportunities(
             ):
                 continue
             normalized = json.dumps(
-                _validation_shape(node), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+                _validation_shape(_resolve_local_refs(node, document)),
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
             )
             validation_bytes = len(normalized.encode("utf-8"))
             if validation_bytes < minimum_bytes:

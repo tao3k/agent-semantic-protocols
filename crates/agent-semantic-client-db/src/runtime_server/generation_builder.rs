@@ -1,9 +1,5 @@
-use crate::runtime_server_admission::{
-    WorkspaceGenerationBuildFailure, WorkspaceGenerationFailureStage,
-};
+use crate::runtime_server_admission::WorkspaceGenerationBuildFailure;
 use std::future::Future;
-use std::time::Instant;
-use tokio::time::Instant as TokioInstant;
 
 #[derive(Clone, Copy)]
 pub(crate) enum Stage {
@@ -24,47 +20,31 @@ impl Stage {
             Self::CanonicalGenerationPublication => "canonical-generation-publication",
         }
     }
-
-    fn failure_stage(self) -> WorkspaceGenerationFailureStage {
-        match self {
-            Self::WorkspaceBootstrap => WorkspaceGenerationFailureStage::WorkspaceBootstrap,
-            Self::DurableRestore => WorkspaceGenerationFailureStage::DurableRestore,
-            Self::SourceBuilder => WorkspaceGenerationFailureStage::SourceBuilder,
-            Self::SourceIndexCommit => WorkspaceGenerationFailureStage::SourceIndexCommit,
-            Self::CanonicalGenerationPublication => {
-                WorkspaceGenerationFailureStage::CanonicalGenerationPublication
-            }
-        }
-    }
 }
 
 pub(crate) async fn await_stage<T, F>(
-    started: Instant,
-    deadline: TokioInstant,
+    workspace_identity: &str,
+    operation_id: &str,
     stage: Stage,
     future: F,
 ) -> Result<T, WorkspaceGenerationBuildFailure>
 where
     F: Future<Output = Result<T, WorkspaceGenerationBuildFailure>>,
 {
-    let remaining = deadline.saturating_duration_since(TokioInstant::now());
-    if remaining.is_zero() {
-        return Err(WorkspaceGenerationBuildFailure::new(
-            stage.failure_stage(),
-            format!(
-                "deadline exceeded elapsedMicros={}",
-                started.elapsed().as_micros()
-            ),
-        ));
+    let started = std::time::Instant::now();
+    let result = future.await;
+    let mut observation = crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
+        "workspace-generation-admission",
+        stage.label(),
+        u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX),
+        0,
+        if result.is_ok() { "observed" } else { "failed" },
+    )
+    .with_operation_id(operation_id.to_owned());
+    observation.workspace_identity = Some(workspace_identity.to_owned());
+    if let Err(error) = &result {
+        observation.failure_reason = Some(format!("{:?}", error.stage).to_lowercase());
     }
-    match tokio::time::timeout_at(deadline, future).await {
-        Ok(result) => result,
-        Err(_) => Err(WorkspaceGenerationBuildFailure::new(
-            stage.failure_stage(),
-            format!(
-                "deadline exceeded elapsedMicros={}",
-                started.elapsed().as_micros()
-            ),
-        )),
-    }
+    let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
+    result
 }

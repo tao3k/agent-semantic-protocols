@@ -126,7 +126,8 @@ async fn telemetry_bus_keeps_workspace_incidents_isolated() {
         assert_eq!(observation.process_resident_bytes, Some(10));
         assert_eq!(observation.runtime_alive_tasks, Some(2));
         assert_eq!(observation.runtime_global_queue_depth, Some(3));
-        assert_eq!(observation.budget_status, "incident");
+        assert_eq!(observation.budget_status, "budget-exceeded");
+        assert_eq!(observation.incident_state.as_deref(), Some("open"));
     }
 
     assert!(first.receiver.try_recv().is_err());
@@ -216,6 +217,118 @@ fn lifecycle_owns_monotonic_transition_sequence_and_event_identity() {
     assert_eq!(record.transition_sequence, 4);
     reopen_failed_verification(&mut record).expect("reopen failed verification");
     assert_eq!(record.transition_sequence, 5);
+}
+
+fn terminal_context(
+    workspace_identity: &str,
+    requested_projection: agent_semantic_client_db::search_incident::RequestedProjection,
+) -> agent_semantic_client_db::search_incident::SearchIncidentTerminalContext {
+    use agent_semantic_client_db::search_incident::{IncidentSurface, ResourceObservation};
+
+    agent_semantic_client_db::search_incident::SearchIncidentTerminalContext {
+        workspace_identity: workspace_identity.to_owned(),
+        language_id: "rust".to_owned(),
+        surface: IncidentSurface::Query,
+        canonical_request_digest: "request-digest".to_owned(),
+        requested_projection,
+        stage: "exact-projection".to_owned(),
+        runtime_artifact_digest: Some("runtime-digest".to_owned()),
+        provider_contract_digest: Some("provider-digest".to_owned()),
+        generation_digest: Some("generation-digest".to_owned()),
+        budget_micros: Some(1_000),
+        elapsed_micros: Some(900),
+        observed_at_unix_micros: 100,
+        resources: ResourceObservation::default(),
+    }
+}
+
+#[test]
+fn typed_terminal_adapter_covers_all_failure_classes_without_false_success_incidents() {
+    use agent_semantic_client_db::search_incident::{
+        RequestedProjection, SearchIncidentTerminalOutcome, observe_terminal,
+    };
+
+    assert!(
+        observe_terminal(
+            None,
+            terminal_context("workspace-terminal", RequestedProjection::Source),
+            SearchIncidentTerminalOutcome::Succeeded {
+                code_projection_present: true,
+            },
+        )
+        .expect("source success")
+        .is_none()
+    );
+    assert!(
+        observe_terminal(
+            None,
+            terminal_context("workspace-terminal", RequestedProjection::Seeds),
+            SearchIncidentTerminalOutcome::Succeeded {
+                code_projection_present: false,
+            },
+        )
+        .expect("non-code success")
+        .is_none()
+    );
+
+    for outcome in [
+        SearchIncidentTerminalOutcome::Failed {
+            reason_kind: "provider-failed".to_owned(),
+        },
+        SearchIncidentTerminalOutcome::Blocked {
+            reason_kind: "generation-unavailable".to_owned(),
+        },
+        SearchIncidentTerminalOutcome::BudgetExceeded {
+            reason_kind: "wall-budget-exceeded".to_owned(),
+            code_projection_present: false,
+        },
+        SearchIncidentTerminalOutcome::Succeeded {
+            code_projection_present: false,
+        },
+    ] {
+        let (record, event) = observe_terminal(
+            None,
+            terminal_context("workspace-terminal", RequestedProjection::Source),
+            outcome,
+        )
+        .expect("typed terminal observation")
+        .expect("active incident");
+        assert_eq!(record.transition_sequence, 1);
+        assert_eq!(event.transition_sequence, 1);
+        assert_eq!(event.transition, "failure-observed");
+    }
+}
+
+#[test]
+fn repeated_terminal_failure_reuses_identity_and_advances_sequence() {
+    use agent_semantic_client_db::search_incident::{
+        RequestedProjection, SearchIncidentTerminalOutcome, observe_terminal,
+    };
+
+    let outcome = SearchIncidentTerminalOutcome::Blocked {
+        reason_kind: "generation-unavailable".to_owned(),
+    };
+    let (first, first_event) = observe_terminal(
+        None,
+        terminal_context("workspace-terminal-repeat", RequestedProjection::Source),
+        outcome.clone(),
+    )
+    .expect("first terminal observation")
+    .expect("first incident");
+    let (second, second_event) = observe_terminal(
+        Some(first),
+        terminal_context("workspace-terminal-repeat", RequestedProjection::Source),
+        outcome,
+    )
+    .expect("repeated terminal observation")
+    .expect("repeated incident");
+    assert_eq!(
+        first_event.observation.identity.incident_id,
+        second.identity.incident_id
+    );
+    assert_eq!(second.occurrence_count, 2);
+    assert_eq!(second.transition_sequence, 2);
+    assert_eq!(second_event.transition, "repeated-failure");
 }
 
 #[test]

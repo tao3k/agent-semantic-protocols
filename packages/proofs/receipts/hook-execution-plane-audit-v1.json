@@ -222,6 +222,32 @@
    "hasSorryAx": false,
    "axioms": []},
   {"type":
+   "validMarketplaceAuthority MarketplaceAuthority.aspDirectConfigMutation = false",
+   "theoremFamily": "hook-marketplace-authority-owner-separation",
+   "rfcClauseIds": ["ASP-RFC-10.15-HOOK-EXECUTION-PLANE"],
+   "name":
+   "ASPProof.HookExecutionPlane.asp_direct_config_mutation_is_not_valid_authority",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type": "¬validAuthorityWitness invalidDirectAspWitness",
+   "theoremFamily": "hook-direct-config-mutation-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.15-HOOK-EXECUTION-PLANE"],
+   "name":
+   "ASPProof.HookExecutionPlane.direct_asp_mutation_cannot_satisfy_authority_witness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (desiredHealthy reconcileFailed authorityComplete : Bool),\n  desiredHealthy = true → authorityComplete = true → desiredHealthy = true ∧ authorityComplete = true",
+   "theoremFamily": "hook-reconcile-desired-state-linearization",
+   "rfcClauseIds": ["ASP-RFC-10.15-HOOK-EXECUTION-PLANE"],
+   "name":
+   "ASPProof.HookExecutionPlane.desired_postcondition_subsumes_reconcile_step_failure",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
    "legacyRustChoiceSurfaceAdmitted LegacyRustChoiceSurface.hookInteractiveCommandField = false ∧\n  legacyRustChoiceSurfaceAdmitted LegacyRustChoiceSurface.residentInteractiveCommand = false ∧\n    legacyRustChoiceSurfaceAdmitted LegacyRustChoiceSurface.clientDbInteractiveMenu = false ∧\n      legacyRustChoiceSurfaceAdmitted LegacyRustChoiceSurface.publicBootstrapCommand = false",
    "theoremFamily": "hook-choice-no-legacy-rust-surface",
    "rfcClauseIds": ["ASP-RFC-10.15-HOOK-EXECUTION-PLANE"],
@@ -427,7 +453,7 @@
    "kind": "theorem",
    "hasSorryAx": false,
    "axioms": []}],
- "declarationCount": 49,
+ "declarationCount": 52,
  "axiomInventory": ["Classical.choice", "Quot.sound", "propext"],
- "axiomFreeDeclarationCount": 45,
- "axiomDependentDeclarationCount": 4}
+ "axiomFreeDeclarationCount": 47,
+ "axiomDependentDeclarationCount": 5}

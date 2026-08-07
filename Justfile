@@ -14,6 +14,11 @@ asp_runtime_bin := asp_state_home / "runtime" / "bin"
 default:
 	@just --list
 
+# Fast profile-native shell; only devenv input drift invokes direnv evaluation.
+[positional-arguments]
+devenv +args:
+	@scripts/devenv-profile-exec.sh "$@"
+
 _agent-tools-run-asp bin_dir +args:
     @bin_dir="{{bin_dir}}"; \
     if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-{{asp_runtime_bin}}}"; fi; \
@@ -144,8 +149,7 @@ agent-tools-install-protocol bin_dir="":
       "${asp_artifact}" install binary --target "${destination}"; \
       rm -f "$(dirname "${destination}")/semantic-agent-protocol"; \
       test -x "${destination}"; \
-      "${destination}" --version --require-release >/dev/null; \
-      "${destination}" guide >/dev/null
+      "${destination}" --version --require-release >/dev/null
 
 # Install the debug protocol binary into the canonical Global runtime and prewarm it.
 agent-tools-install-protocol-debug bin_dir="":
@@ -343,7 +347,7 @@ check-language-evidence-smoke-all: check-language-evidence-smoke-all-setup
     protocol_home="$(PATH="$PWD/.bin:$PATH" .bin/asp hook paths . | awk -F= '$1=="protocolHome"{print substr($0, 14)}')" && \
       cat "$protocol_home/language-evidence-smoke-all-providers.json"
 
-provider-gate: check-rust-warnings check-schema-profiles check-schema-manager check-rfc-docs check-tree-sitter-query-contracts check-language-workspace-search-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia
+provider-gate: check-rust-warnings check-schema-profiles check-rfc-docs check-schema-manager check-tree-sitter-query-contracts check-language-workspace-search-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia
 
 check-rust-warnings:
     env RUSTFLAGS="-D warnings" cargo check -q -p agent-semantic-protocol
@@ -352,8 +356,11 @@ check-rust-warnings:
 check-schema-profiles:
     uv run --project packages/python python -m tools schema profiles validate
 
-check-schema-manager:
-    uv run --project packages/python --frozen asp-schema-manager check --workspace-root .
+check-schema-manager: check-schema-proof-plan
+	uv run --project packages/python --frozen asp-schema-manager check --workspace-root . --fail-on-family-local-refs --fail-on-unclassified-schemas --fail-on-mixed-family-refs --fail-on-reference-decision-drift
+
+check-schema-proof-plan:
+    uv run --project packages/python --frozen pytest packages/python/asp_schema_manager/tests/unit/test_logical_projection.py packages/python/asp_schema_manager/tests/unit/test_proof_plan_cli.py -q
 
 report-schema-manager:
     uv run --project packages/python --frozen asp-schema-manager audit --workspace-root .

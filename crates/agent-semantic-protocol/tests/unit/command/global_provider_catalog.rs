@@ -358,3 +358,33 @@ fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
 
     std::fs::remove_dir_all(root).expect("remove catalog contract root");
 }
+
+#[test]
+fn clean_state_home_admits_empty_runtime_catalog_without_weakening_strict_reads() {
+    let _environment_lock = ENVIRONMENT_LOCK
+        .lock()
+        .expect("global provider catalog environment lock");
+    let root = std::env::temp_dir().join(format!(
+        "asp-empty-runtime-provider-catalog-{}",
+        std::process::id()
+    ));
+    if root.exists() {
+        std::fs::remove_dir_all(&root).expect("clear empty runtime catalog root");
+    }
+    let state_home = root.join("state");
+    let fake_home = root.join("home");
+    std::fs::create_dir_all(state_home.join("runtime")).expect("create clean State Home runtime");
+    std::fs::create_dir_all(&fake_home).expect("create isolated HOME");
+    let _environment = EnvironmentGuard::install(&state_home, &fake_home);
+
+    let readiness = catalog::read_runtime_provider_catalog_readiness()
+        .expect("clean State Home must admit an empty runtime provider catalog");
+    assert_eq!(readiness.provider_count, 0);
+    assert!(readiness.catalog_generation.starts_with("blake3-256:"));
+
+    let strict = catalog::read_global_provider_catalog_readiness()
+        .expect_err("provider dispatch must still reject a missing catalog");
+    assert!(strict.contains("failed to read Global provider catalog"));
+
+    std::fs::remove_dir_all(root).expect("cleanup empty runtime catalog root");
+}

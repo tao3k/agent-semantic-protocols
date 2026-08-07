@@ -8,6 +8,8 @@ pub(super) struct TursoSourceIndexCanonicalSelectorFact {
     pub(super) source: String,
     pub(super) projection_record: agent_semantic_content_identity::ExactSelectorProjectionRecordV1,
     pub(super) query_keys: Vec<String>,
+    pub(super) derived_projections:
+        Vec<crate::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot>,
 }
 
 const TURSO_SOURCE_INDEX_POSTING_TERMS_PER_OWNER: usize = 16;
@@ -80,6 +82,7 @@ pub(super) fn turso_source_index_canonical_selectors_by_owner(
                     .iter()
                     .map(|key| key.as_str().to_string())
                     .collect(),
+                derived_projections: selector.derived_projections.clone(),
             });
     }
 

@@ -2,6 +2,23 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use super::query::{RuntimePerformanceQuery, RuntimePerformanceQueryReceipt};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum QueryConnectionOutcome {
+    LivenessProbe,
+    ReceiptWritten,
+}
+
+fn record_query_connection_terminal(
+    permit: crate::runtime_server_runtime::RuntimeServerTaskPermit,
+    result: &Result<QueryConnectionOutcome, String>,
+) {
+    if result.is_ok() {
+        permit.complete();
+    } else {
+        permit.fail();
+    }
+}
+
 pub(super) async fn run_query_server(
     listener: tokio::net::UnixListener,
     live_store: std::sync::Arc<super::live_store::RuntimePerformanceLiveStore>,
@@ -24,17 +41,20 @@ pub(super) async fn run_query_server(
                 let connection_lease = connection_supervisor
                     .try_admit()
                     .expect("capacity guard must admit one telemetry query connection");
+                let mut connection_shutdown = shutdown.clone();
                 connections.spawn(async move {
-                    let result = crate::runtime_server_runtime::within_connection_io_budget(
-                        "telemetry query",
-                        serve_query(stream, live_store),
-                    )
-                    .await;
-                    if result.is_ok() {
-                        permit.complete();
-                    } else {
-                        permit.fail();
-                    }
+                    let result = tokio::select! {
+                        biased;
+                        changed = connection_shutdown.changed() => {
+                            let _ = changed;
+                            Err("telemetry query connection cancelled by shutdown".to_owned())
+                        }
+                        result = crate::runtime_server_runtime::within_connection_io_budget(
+                            "telemetry query",
+                            serve_query(stream, live_store),
+                        ) => result,
+                    };
+                    record_query_connection_terminal(permit, &result);
                     (connection_lease, result)
                 });
             }
@@ -44,7 +64,7 @@ pub(super) async fn run_query_server(
                         format!("Runtime Server telemetry query task failed: {error}")
                     })?;
                     match result {
-                        Ok(()) | Err(_) => {}
+                        Ok(_) | Err(_) => {}
                     }
                 }
             }
@@ -58,7 +78,7 @@ pub(super) async fn run_query_server(
         let (_connection_lease, result) = result
             .map_err(|error| format!("Runtime Server telemetry query task failed: {error}"))?;
         match result {
-            Ok(()) | Err(_) => {}
+            Ok(_) | Err(_) => {}
         }
     }
     Ok(())
@@ -67,13 +87,16 @@ pub(super) async fn run_query_server(
 async fn serve_query(
     stream: tokio::net::UnixStream,
     live_store: std::sync::Arc<super::live_store::RuntimePerformanceLiveStore>,
-) -> Result<(), String> {
+) -> Result<QueryConnectionOutcome, String> {
     let (reader, mut writer) = stream.into_split();
     let mut request_line = String::new();
-    BufReader::new(reader)
+    let bytes_read = BufReader::new(reader)
         .read_line(&mut request_line)
         .await
         .map_err(|error| format!("failed to read Runtime Server telemetry query: {error}"))?;
+    if bytes_read == 0 {
+        return Ok(QueryConnectionOutcome::LivenessProbe);
+    }
     let query: RuntimePerformanceQuery = serde_json::from_str(&request_line)
         .map_err(|error| format!("failed to decode Runtime Server telemetry query: {error}"))?;
     query.validate()?;
@@ -89,5 +112,10 @@ async fn serve_query(
     writer
         .shutdown()
         .await
-        .map_err(|error| format!("failed to finish Runtime Server telemetry receipt: {error}"))
+        .map_err(|error| format!("failed to finish Runtime Server telemetry receipt: {error}"))?;
+    Ok(QueryConnectionOutcome::ReceiptWritten)
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/runtime_server_opentelemetry_query_connection.rs"]
+mod tests;

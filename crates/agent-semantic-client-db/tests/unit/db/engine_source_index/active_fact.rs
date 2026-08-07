@@ -5,8 +5,8 @@ use super::{
     CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, CacheGenerationId, ClientCacheFileHash, ClientDbEngine,
     ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest,
     ClientDbSourceIndexLookupState, ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexSource,
-    LanguageId, ProviderId, SemanticSchemaId, SemanticSchemaVersion, build_source_index_import,
-    temp_root,
+    LanguageId, ProviderId, SemanticSchemaId, SemanticSchemaVersion,
+    build_fixture_source_index_import, temp_root,
 };
 
 #[tokio::test(flavor = "current_thread")]
@@ -16,7 +16,8 @@ async fn db_engine_source_index_lookup_reads_canonical_snapshot() {
         agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-canonical-snapshot-project");
     let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
-    let source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let source_index_import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
         generation_id: CacheGenerationId::from("source-index-canonical-snapshot-turso"),
         project_root: project_root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
@@ -80,7 +81,8 @@ async fn db_engine_source_index_lookup_request_stays_within_project_resolution()
     let project_b = temp_root("db-engine-source-index-scope-binding-project-b");
     let source_snapshot_a = crate::snapshot_fixture::source_snapshot_evidence_for(10);
     let source_snapshot_b = crate::snapshot_fixture::source_snapshot_evidence_for(20);
-    let import_a = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let import_a = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
         generation_id: CacheGenerationId::from("source-index-scope-a"),
         project_root: project_a.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
@@ -102,7 +104,8 @@ async fn db_engine_source_index_lookup_request_stays_within_project_resolution()
         }],
     })
     .expect("build project A source-index import");
-    let import_b = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let import_b = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: Default::default(),
         generation_id: CacheGenerationId::from("source-index-scope-b"),
         project_root: project_b.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),

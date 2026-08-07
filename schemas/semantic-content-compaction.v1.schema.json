@@ -92,6 +92,13 @@
         "debug-only"
       ]
     },
+    "useCaseList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/useCase"
+      }
+    },
     "useCase": {
       "enum": [
         "discovery",
@@ -164,18 +171,10 @@
           ]
         },
         "validFor": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "$ref": "#/$defs/useCase"
-          }
+          "$ref": "#/$defs/useCaseList"
         },
         "notValidFor": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "$ref": "#/$defs/useCase"
-          }
+          "$ref": "#/$defs/useCaseList"
         },
         "preserved": {
           "type": "array",
@@ -194,11 +193,7 @@
           }
         },
         "requiresExactSourceFor": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "$ref": "#/$defs/useCase"
-          }
+          "$ref": "#/$defs/useCaseList"
         },
         "exactSourceRequired": {
           "type": "boolean"

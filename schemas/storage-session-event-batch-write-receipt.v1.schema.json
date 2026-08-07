@@ -32,16 +32,7 @@
       "minLength": 1
     },
     "partition": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["repoId", "workspaceId", "scopeId", "sessionId", "agentId"],
-      "properties": {
-        "repoId": { "type": "string", "minLength": 1 },
-        "workspaceId": { "type": "string", "minLength": 1 },
-        "scopeId": { "type": "string", "minLength": 1 },
-        "sessionId": { "type": "string", "minLength": 1 },
-        "agentId": { "type": "string", "minLength": 1 }
-      }
+      "$ref": "client-storage-definitions.v1.schema.json#/$defs/partition"
     },
     "authority": { "enum": ["local", "remote-sync", "in-memory"] },
     "backend": { "type": "string", "minLength": 1 },

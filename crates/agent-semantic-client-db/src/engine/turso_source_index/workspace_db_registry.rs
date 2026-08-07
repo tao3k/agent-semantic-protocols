@@ -51,6 +51,13 @@ pub struct WorkspaceDbRegistryCounters {
     pub max_active_writer_count: u64,
 }
 
+/// Current resident workspace database registry occupancy.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct WorkspaceDbRegistryEntryCounts {
+    pub slot_count: usize,
+    pub loaded_entry_count: usize,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WorkspaceDbWriteFinishMode {
@@ -239,7 +246,7 @@ impl WorkspaceDbRegistry {
         .await
     }
 
-    pub fn workspace_entry_counts(&self) -> (usize, usize) {
+    pub fn workspace_entry_counts(&self) -> WorkspaceDbRegistryEntryCounts {
         let (slot_count, loaded) = {
             let slots = self.slots.lock();
             (
@@ -251,7 +258,10 @@ impl WorkspaceDbRegistry {
             )
         };
         let admission_count = self.admission_sessions.lock().len();
-        (slot_count.max(admission_count), loaded)
+        WorkspaceDbRegistryEntryCounts {
+            slot_count: slot_count.max(admission_count),
+            loaded_entry_count: loaded,
+        }
     }
 
     /// Resolve and validate canonical workspace ownership before any database open.

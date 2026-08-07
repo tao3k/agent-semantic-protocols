@@ -50,14 +50,60 @@ impl SourceIndexFixture {
             let project_root = request.import.project_root.clone();
             let session =
                 fixture_session(&registry, &sessions, binding.as_ref(), &project_root).await?;
-            let canonical_source_snapshot = canonical_source_snapshot(&request, &source_blobs);
+            request.import.source_blobs = source_blobs;
+            let mut materialization_import = request.import.clone();
+            if let Some(binding) = binding.as_ref()
+                && let Some(active) = crate::latest_turso_source_index_generation_snapshot(
+                    &binding.db_path,
+                    &project_root,
+                    &request.import.schema_id,
+                    &request.import.schema_version,
+                )
+                .await?
+                && let Some(active_blobs) = crate::active_turso_source_index_generation_blobs(
+                    &binding.db_path,
+                    &project_root,
+                    &request.import.schema_id,
+                    &request.import.schema_version,
+                )
+                .await?
+            {
+                let changed_owner_paths = request
+                    .import
+                    .owners
+                    .iter()
+                    .map(|owner| owner.owner_path.as_str().to_owned())
+                    .collect::<std::collections::BTreeSet<_>>();
+                let successor_paths = request
+                    .import
+                    .file_hashes
+                    .iter()
+                    .map(|file_hash| file_hash.path.as_str())
+                    .collect::<std::collections::BTreeSet<_>>();
+                let removed_owner_paths = active
+                    .owners
+                    .iter()
+                    .map(|owner| owner.owner_path.clone())
+                    .filter(|owner_path| !successor_paths.contains(owner_path.as_str()))
+                    .collect::<std::collections::BTreeSet<_>>();
+                materialization_import = crate::overlay_active_source_index_import(
+                    &active,
+                    &active_blobs,
+                    &request.import,
+                    &changed_owner_paths,
+                    &removed_owner_paths,
+                )?;
+            }
+            let materialization_source_blobs = materialization_import.source_blobs.clone();
+            let canonical_source_snapshot =
+                canonical_source_snapshot(&request, &materialization_source_blobs);
             request.source_snapshot = canonical_source_snapshot.clone();
             let materialization =
                 crate::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
                     session.workspace_identity(),
                     &canonical_source_snapshot,
-                    &request.import,
-                    &source_blobs,
+                    &materialization_import,
+                    &materialization_source_blobs,
                     Vec::new(),
                 )?;
             session

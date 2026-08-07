@@ -11,6 +11,7 @@ mod source_index_candidate_types;
 mod source_index_facade;
 mod source_index_query_scoring;
 mod turso;
+mod session_control_plane;
 mod turso_artifact;
 mod turso_artifact_graph;
 mod turso_batch;
@@ -27,7 +28,9 @@ mod turso_schema_lifecycle_tests;
 mod turso_search;
 mod turso_source_index;
 pub use turso_source_index::{
-    ClientDbSourceIndexGenerationOwner, ClientDbSourceIndexGenerationSnapshot,
+    ClientDbActiveGenerationSourceBlob, ClientDbActiveGenerationSourceBlobs,
+    ClientDbActiveSourceIndexGeneration, ClientDbSourceIndexGenerationOwner,
+    ClientDbSourceIndexGenerationRelation, ClientDbSourceIndexGenerationSnapshot,
     ClientDbSourceIndexSelectorFact, ProviderIncrementalOwnerSnapshot,
     ProviderIncrementalOwnerWrite, ProviderIncrementalScoped, ProviderIncrementalWriteReceipt,
     ProviderOwnerDecision, ProviderOwnerFingerprint, ProviderOwnerInventory,
@@ -38,7 +41,7 @@ pub use turso_source_index::{
     ProviderTreeSitterOwnerResult, ProviderTreeSitterOwnerResultState,
     ProviderTreeSitterOwnerWriteReceipt, ProviderTreeSitterQueryCounters,
     ProviderTreeSitterQueryIdentity, ProviderTreeSitterQueryReceipt,
-    latest_turso_source_index_generation_snapshot,
+    active_turso_source_index_generation_blobs, latest_turso_source_index_generation_snapshot,
 };
 pub(crate) mod turso_statement;
 mod turso_syntax;
@@ -64,9 +67,16 @@ pub use turso_search::{
 pub use turso_source_index::{
     ProviderOwnerBatchProbeReceipt, ProviderOwnerBatchProbeRequest, ProviderOwnerBatchProbeResult,
     ProviderTreeSitterQueryRead, ProviderTreeSitterQueryReadState,
+    active_turso_source_index_generation,
 };
 pub use turso_source_index::{
     ProviderSearchWorkspaceSession, TursoResidentSelectorCandidate, TursoResidentSelectorQuery,
     TursoResidentSelectorRead, WorkspaceDbRegistry, WorkspaceDbRegistryCounters,
     WorkspaceDbWriteFinishMode, WorkspaceDbWriteFinishReceipt,
+};
+pub use session_control_plane::{
+    SessionControlPlaneAgentRegistration, SessionControlPlaneDelegationProposal,
+    SessionControlPlaneRuntimeMetricsSnapshot, SessionControlPlaneSnapshot,
+    SessionControlPlaneRuntime, SessionControlPlaneRuntimeRegistry,
+    SessionControlPlaneTransactionReceipt,
 };

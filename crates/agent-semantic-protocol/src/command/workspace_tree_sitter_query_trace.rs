@@ -1,5 +1,4 @@
-pub(super) fn trace_owner_probe_boundary(
-    runtime: &tokio::runtime::Runtime,
+pub(super) async fn trace_owner_probe_boundary(
     session: &agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession,
     scope: &agent_semantic_client_db::ProviderIncrementalScoped,
     probes: &[agent_semantic_client_db::ProviderOwnerBatchProbeRequest],
@@ -8,7 +7,7 @@ pub(super) fn trace_owner_probe_boundary(
     if std::env::var_os("ASP_TREESITTER_TRACE").is_none() {
         return Ok(());
     }
-    let verification = runtime.block_on(session.probe_provider_owners(scope, probes))?;
+    let verification = session.probe_provider_owners(scope, probes).await?;
     eprintln!(
         "[query-treesitter-owner-boundary] boundary={boundary} probes={:?}",
         verification
@@ -20,20 +19,21 @@ pub(super) fn trace_owner_probe_boundary(
     Ok(())
 }
 
-pub(super) fn finish_writes(
-    runtime: &tokio::runtime::Runtime,
+pub(super) async fn finish_writes(
     session: &agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession,
     scope: &agent_semantic_client_db::ProviderIncrementalScoped,
     probes: &[agent_semantic_client_db::ProviderOwnerBatchProbeRequest],
 ) -> Result<(), String> {
-    let finish_receipt = runtime.block_on(session.finish_writes(
-        scope,
-        agent_semantic_client_db::WorkspaceDbWriteFinishMode::OwnerDurabilityBoundary,
-    ))?;
+    let finish_receipt = session
+        .finish_writes(
+            scope,
+            agent_semantic_client_db::WorkspaceDbWriteFinishMode::OwnerDurabilityBoundary,
+        )
+        .await?;
     if std::env::var_os("ASP_TREESITTER_TRACE").is_none() {
         return Ok(());
     }
-    let verification = runtime.block_on(session.probe_provider_owners(scope, probes))?;
+    let verification = session.probe_provider_owners(scope, probes).await?;
     eprintln!(
         "[query-treesitter-durability] transport=resident-workspace-owner workspaceIdentity={} providerWorkspaceDigest={} providerId={} cacheFlushCount={} checkpointMode={:?} checkpointBusy={:?} logFrames={:?} checkpointedFrames={:?} probes={:?}",
         scope.workspace_identity,

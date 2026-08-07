@@ -1,5 +1,45 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExactProjectionKind {
+    Source,
+    CallableSkeleton,
+}
+
+impl ExactProjectionKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Source => "source",
+            Self::CallableSkeleton => "callable-skeleton",
+        }
+    }
+
+    pub const fn as_bytes(self) -> &'static [u8] {
+        self.as_str().as_bytes()
+    }
+}
+
+impl TryFrom<&str> for ExactProjectionKind {
+    type Error = String;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "source" => Ok(Self::Source),
+            "callable-skeleton" => Ok(Self::CallableSkeleton),
+            _ => Err(format!(
+                "exact projection kind is not defined by the active schema: projectionKind={value}"
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for ExactProjectionKind {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 #[path = "digest.rs"]
 mod digest;
 #[path = "model_validation.rs"]
@@ -104,7 +144,7 @@ pub struct WorkspaceSelectorSnapshot {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceDerivedProjectionSnapshot {
-    pub projection_kind: String,
+    pub projection_kind: ExactProjectionKind,
     pub bytes: Vec<u8>,
 }
 
@@ -164,7 +204,7 @@ impl WorkspaceGenerationDelta {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceRuntimeSelectorOverlay {
-    pub projection_kind: String,
+    pub projection_kind: ExactProjectionKind,
     pub structural_selector: String,
     pub owner_path: String,
     pub owner_content_digest: String,
@@ -180,7 +220,7 @@ pub struct WorkspaceRuntimeSelectorOverlayReceipt {
     pub schema_version: String,
     pub workspace_identity: String,
     pub generation_digest: String,
-    pub projection_kind: String,
+    pub projection_kind: ExactProjectionKind,
     pub structural_selector: String,
     pub inserted: bool,
 }

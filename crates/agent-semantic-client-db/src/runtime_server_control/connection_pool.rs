@@ -110,6 +110,9 @@ impl RuntimeServerConnectionPool {
                         let stream = UnixStream::connect(&socket_path).await.map_err(|error| {
                             format!("failed to prewarm Runtime Server control lane: {error}")
                         })?;
+                        super::validate_runtime_server_peer_fd(std::os::fd::AsRawFd::as_raw_fd(
+                            &stream,
+                        ))?;
                         Ok::<_, String>((index, stream))
                     });
                 }
@@ -177,11 +180,11 @@ async fn exchange_runtime_server_request_with_budget(
 ) -> Result<RuntimeServerControlReceipt, String> {
     discard_closed_or_dirty_control_stream(stream);
     if stream.is_none() {
-        *stream = Some(
-            UnixStream::connect(&endpoint.socket_path)
-                .await
-                .map_err(|error| format!("failed to connect Runtime Server endpoint: {error}"))?,
-        );
+        let connected = UnixStream::connect(&endpoint.socket_path)
+            .await
+            .map_err(|error| format!("failed to connect Runtime Server endpoint: {error}"))?;
+        super::validate_runtime_server_peer_fd(std::os::fd::AsRawFd::as_raw_fd(&connected))?;
+        *stream = Some(connected);
     }
     let active = stream
         .as_mut()

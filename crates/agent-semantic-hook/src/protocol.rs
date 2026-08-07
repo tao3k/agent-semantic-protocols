@@ -319,6 +319,7 @@ pub enum ReasonKind {
     ProviderBinaryDirectExecution,
     ReadOnlySubagentWrite,
     SubagentReceiptRequired,
+    FocusedSubagentNestedStart,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

@@ -27,7 +27,7 @@ pub(crate) struct ChoicePlaneRequest<'a> {
     pub json: bool,
 }
 
-pub(crate) fn open_choice_plane(request: ChoicePlaneRequest<'_>) -> Result<String, String> {
+pub(crate) async fn open_choice_plane(request: ChoicePlaneRequest<'_>) -> Result<String, String> {
     let hook_route = latest_hook_session_agent_route(request.project_root)?.ok_or_else(|| {
                 "hook-deny-session-route-required: asp session --agents choice-plane requires a current config-selected denied Hook event"
                     .to_owned()
@@ -37,17 +37,41 @@ pub(crate) fn open_choice_plane(request: ChoicePlaneRequest<'_>) -> Result<Strin
     let loaded = load_agent_route_registry(&agents_root(&state.state_home).join("config.toml"))?;
     let (route, resolved_hook_route) =
         compile_hook_selected_route(&loaded, &hook_route, request.platform, &state.state_home)?;
+    let sandbox_mode = route.sandbox_mode.as_deref().ok_or_else(|| {
+        format!(
+            "agent-route-sandbox-mode-required: registry route `{}` does not declare sandbox_mode",
+            route.route_key.as_str(),
+        )
+    })?;
     let interactive_contract = AgentInteractiveChoice::from_source(
         CONTROL_PLANE_CONTRACT_SOURCE,
         CONTROL_PLANE_CONTRACT_FILE,
         "presentation",
     )?;
-    let context = SessionRegistryContext::resolve(
+    let runtime_observation_started = tokio::time::Instant::now();
+    let mut context = match crate::server::runtime_server::await_agent_facing_runtime_server_client(
+        runtime_observation_started,
+        "session-choice-plane",
+        "runtime-session-state",
         request.project_root,
-        None,
-        Some(hook_route.root_session_id.clone()),
-        route.platform_host_agent_name.as_str(),
-    );
+        async {
+            crate::server::runtime_server::observe_agent_facing_runtime_server(&state.state_home)
+                .await?;
+            Ok(SessionRegistryContext::resolve(
+                request.project_root,
+                None,
+                Some(hook_route.root_session_id.clone()),
+                route.platform_host_agent_name.as_str(),
+            )
+            .await)
+        },
+    )
+    .await
+    {
+        Ok(context) => context,
+        Err(error) => SessionRegistryContext::blocked(error),
+    };
+    context.enforce_exact_binding(&route, sandbox_mode, &hook_route.root_session_id)?;
     let choices = interactive_contract.admit_matching(&[
         ("SESSION_STATE", context.state()),
         (
@@ -55,12 +79,14 @@ pub(crate) fn open_choice_plane(request: ChoicePlaneRequest<'_>) -> Result<Strin
             route.platform_host_agent_name.as_str(),
         ),
         ("ROLE_DESCRIPTION", route.description.as_str()),
+        ("SANDBOX_MODE", sandbox_mode),
     ])?;
     render_session_pane(
         request.json,
         &interactive_contract,
         &resolved_hook_route,
         &route,
+        sandbox_mode,
         &context,
         &choices,
     )
@@ -141,7 +167,17 @@ enum SessionRegistryContext {
 }
 
 impl SessionRegistryContext {
-    fn resolve(
+    fn blocked(error: String) -> Self {
+        Self::Blocked {
+            reason_kind: typed_runtime_failure_reason(
+                &error,
+                "runtime-server-session-control-plane-unavailable",
+            ),
+            failure: error,
+        }
+    }
+
+    async fn resolve(
         project_root: &Path,
         session_id: Option<String>,
         root_session_id: Option<String>,
@@ -152,15 +188,11 @@ impl SessionRegistryContext {
             session_id.as_deref(),
             root_session_id.as_deref(),
             name,
-        ) {
+        )
+        .await
+        {
             Ok(state) => Self::Ready(state),
-            Err(error) => Self::Blocked {
-                reason_kind: typed_runtime_failure_reason(
-                    &error,
-                    "runtime-server-session-control-plane-unavailable",
-                ),
-                failure: error,
-            },
+            Err(error) => Self::blocked(error),
         }
     }
 
@@ -191,6 +223,70 @@ impl SessionRegistryContext {
             Self::Blocked { failure, .. } => Some(failure),
         }
     }
+
+    fn binding(&self) -> Option<&serde_json::Value> {
+        match self {
+            Self::Ready(state) if state.state == "registered" => state.host_binding.as_ref(),
+            Self::Ready(_) | Self::Blocked { .. } => None,
+        }
+    }
+
+    fn enforce_exact_binding(
+        &mut self,
+        route: &CompiledAgentRoute,
+        sandbox_mode: &str,
+        expected_root_session_id: &str,
+    ) -> Result<(), String> {
+        let Self::Ready(state) = self else {
+            return Ok(());
+        };
+        if state.state != "registered" {
+            return Ok(());
+        }
+        let binding = state.host_binding.as_ref().ok_or_else(|| {
+            "unbound-matched-child: registered pane state has no Host binding receipt".to_owned()
+        })?;
+        let profile = std::fs::read(&route.profile_path).map_err(|error| {
+            format!(
+                "host-binding-profile-unavailable: failed to read {}: {error}",
+                route.profile_path
+            )
+        })?;
+        let profile_digest = format!("blake3-256:{}", blake3::hash(&profile).to_hex());
+        let model = route.model.as_deref().ok_or_else(|| {
+            "host-binding-profile-model-required: selected route has no model".to_owned()
+        })?;
+        let model_digest = format!("blake3-256:{}", blake3::hash(model.as_bytes()).to_hex());
+        let exact = [
+            ("rootSessionId", expected_root_session_id),
+            ("residentId", route.platform_host_agent_name.as_str()),
+            ("routeKey", route.route_key.as_str()),
+            ("profileId", route.profile_path.as_str()),
+            ("profileDigest", profile_digest.as_str()),
+            ("modelId", model),
+            ("modelDigest", model_digest.as_str()),
+            ("sandboxMode", sandbox_mode),
+            ("sessionLifetime", route.session_lifetime.as_str()),
+        ]
+        .into_iter()
+        .all(|(field, expected)| {
+            binding.get(field).and_then(serde_json::Value::as_str) == Some(expected)
+        }) && binding
+            .get("generation")
+            .and_then(serde_json::Value::as_u64)
+            == Some(state.generation)
+            && binding
+                .get("lifecycleState")
+                .and_then(serde_json::Value::as_str)
+                == Some("live")
+            && binding.get("routable").and_then(serde_json::Value::as_bool) == Some(true);
+        if !exact {
+            state.state = "registration-required".to_owned();
+            state.reason_kind = Some("host-binding-route-profile-drift".to_owned());
+            state.host_binding = None;
+        }
+        Ok(())
+    }
 }
 
 pub(crate) fn typed_runtime_failure_reason(error: &str, fallback: &str) -> String {
@@ -212,6 +308,7 @@ fn render_session_pane(
     interactive_contract: &AgentInteractiveChoice,
     hook_route: &ResolvedHookSessionRoute,
     route: &CompiledAgentRoute,
+    sandbox_mode: &str,
     context: &SessionRegistryContext,
     choices: &[AdmittedAgentInteractiveChoice],
 ) -> Result<String, String> {
@@ -224,6 +321,7 @@ fn render_session_pane(
     let node_id = context.state();
     let reason_kind = context.reason_kind();
     let failure = context.failure();
+    let binding = context.binding();
     let history_cursor = pane_history_cursor(context, generation);
     let choice_receipts = choices
         .iter()
@@ -265,27 +363,33 @@ fn render_session_pane(
             "routeKey": route.route_key.as_str(),
             "sessionName": route.platform_host_agent_name.as_str(),
             "sessionLifetime": route.session_lifetime.as_str(),
+            "residentId": route.platform_host_agent_name.as_str(),
+            "matchDecision": "matched",
             "platform": route.platform.as_str(),
             "hostAgentName": route.platform_host_agent_name.as_str(),
             "roles": &route.roles,
             "roleDescription": route.description.as_str(),
+            "sandboxMode": sandbox_mode,
+            "binding": binding,
         },
         "choices": choice_receipts,
     });
     if json {
         return Ok(receipt.to_string());
     }
-    let pane_context = format!(
-        "pane=session node={} generation={} historyCursor={} hookRule={} receiptKind={} commandDigest={} reasonKind={} failure={}",
+    let mut pane_context = format!(
+        "node={} generation={} agent=@{} sandboxMode={}",
         node_id,
         generation,
-        history_cursor,
-        hook_route.config_rule_id,
-        hook_route.receipt_kind,
-        hook_route.command_digest.as_deref().unwrap_or("none"),
-        reason_kind.unwrap_or("none"),
-        failure.unwrap_or("none"),
+        route.platform_host_agent_name.as_str(),
+        sandbox_mode,
     );
+    if let Some(reason_kind) = reason_kind {
+        pane_context.push_str(&format!(" reasonKind={reason_kind}"));
+    }
+    if let Some(failure) = failure {
+        pane_context.push_str(&format!(" failure={failure}"));
+    }
     if choices.len() == 1 && choices[0].presentation == "action" {
         return Ok(interactive_contract.render_admitted_action(
             CONTROL_PLANE_CONTRACT_ID,

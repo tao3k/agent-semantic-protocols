@@ -77,7 +77,7 @@ pub(crate) fn encode_exact_projection_segment(
                 let projection_blob_offset = blobs.len();
                 blobs.extend_from_slice(&projection.bytes);
                 selector_rows.push((
-                    projection_key_hash(&projection.projection_kind, &selector.selector),
+                    projection_key_hash(projection.projection_kind.as_str(), &selector.selector),
                     text,
                     projection_kind,
                     owner_index,

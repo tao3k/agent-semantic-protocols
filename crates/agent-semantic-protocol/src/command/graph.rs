@@ -6,24 +6,24 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 use agent_semantic_provider_transport::{
-    OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode, run_provider_process,
+    OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode, run_provider_process_async,
 };
 use serde_json::Value;
 
 const GRAPH_TURBO_REQUEST_SCHEMA_ID: &str = "agent.semantic-protocols.semantic-graph-turbo-request";
 
-pub(crate) fn run_graph_command(args: &[String]) -> Result<(), String> {
+pub(crate) async fn run_graph_command(args: &[String]) -> Result<(), String> {
     let Some(command) = args.first().map(String::as_str) else {
         return Err(usage());
     };
     match command {
-        "render" => run_graph_render_command(&args[1..]),
+        "render" => run_graph_render_command(&args[1..]).await,
         "help" | "--help" | "-h" => Err(usage()),
         _ => Err(usage()),
     }
 }
 
-fn run_graph_render_command(args: &[String]) -> Result<(), String> {
+async fn run_graph_render_command(args: &[String]) -> Result<(), String> {
     let request = GraphRenderRequest::parse(args)?;
     if request.view != "seeds" {
         return Err("graph render currently supports only --view seeds".to_string());
@@ -31,9 +31,11 @@ fn run_graph_render_command(args: &[String]) -> Result<(), String> {
     let packet_bytes = read_packet_bytes(&request.packet_path)?;
     let packet = parse_packet(&packet_bytes)?;
     if is_graph_turbo_request(&packet) {
-        let ranked_packet = rank_graph_turbo_packet(&packet_bytes)?.ok_or_else(|| {
-            "graph render requires the asp-graph-turbo typed JSON ranker".to_string()
-        })?;
+        let ranked_packet = rank_graph_turbo_packet(&packet_bytes)
+            .await?
+            .ok_or_else(|| {
+                "graph render requires the asp-graph-turbo typed JSON ranker".to_string()
+            })?;
         if request.frontier_receipt_out.is_some() {
             write_graph_turbo_receipt(
                 &packet_bytes,
@@ -57,7 +59,8 @@ fn run_graph_render_command(args: &[String]) -> Result<(), String> {
                     capture_source: "asp graph render",
                     extra_args: &[],
                 },
-            )?;
+            )
+            .await?;
         }
         let mut projection_request =
             agent_semantic_search_projection::SearchProjectionRequestV1::new(
@@ -162,12 +165,12 @@ fn is_graph_turbo_request(packet: &Value) -> bool {
         || packet.get("packetKind").and_then(Value::as_str) == Some("graph-turbo-request")
 }
 
-pub(super) fn rank_graph_turbo_packet(
+pub(super) async fn rank_graph_turbo_packet(
     packet_bytes: &[u8],
 ) -> Result<Option<agent_semantic_search_projection::GraphTurboResultPacketV1>, String> {
     let cwd = std::env::current_dir()
         .map_err(|error| format!("failed to resolve current directory: {error}"))?;
-    let output = match run_provider_process(ProviderProcessSpec {
+    let output = match run_provider_process_async(ProviderProcessSpec {
         program: graph_turbo_program(),
         args: vec![
             "rank".to_string(),
@@ -181,7 +184,9 @@ pub(super) fn rank_graph_turbo_packet(
         stdout: OutputMode::Capture,
         stderr: OutputMode::Capture,
         limits: ProviderProcessLimits::default(),
-    }) {
+    })
+    .await
+    {
         Ok(output) => output,
         Err(error) => {
             eprintln!(
@@ -237,7 +242,7 @@ impl GraphTurboReceiptRequest {
     }
 }
 
-pub(super) fn write_graph_turbo_receipt(
+pub(super) async fn write_graph_turbo_receipt(
     packet_bytes: &[u8],
     capture: &GraphTurboReceiptCapture<'_>,
 ) -> Result<(), String> {
@@ -258,7 +263,7 @@ pub(super) fn write_graph_turbo_receipt(
         "--field".to_string(),
         format!("captureSource={}", capture.capture_source),
     ]);
-    let output = run_provider_process(ProviderProcessSpec {
+    let output = run_provider_process_async(ProviderProcessSpec {
         program: graph_turbo_program(),
         args,
         cwd,
@@ -268,6 +273,7 @@ pub(super) fn write_graph_turbo_receipt(
         stderr: OutputMode::Capture,
         limits: ProviderProcessLimits::default(),
     })
+    .await
     .map_err(|error| format!("failed to run asp-graph-turbo receipt: {error}"))?;
     if !output.stderr.is_empty() {
         io::stderr()

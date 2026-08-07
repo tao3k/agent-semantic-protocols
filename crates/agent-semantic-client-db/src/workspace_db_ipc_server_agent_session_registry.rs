@@ -41,8 +41,18 @@ pub(super) async fn run_operation(
         };
 
         match operation {
+            Operation::RegisterControlPlaneAgent { .. }
+            | Operation::AdmitControlPlaneDelegation { .. }
+            | Operation::ReadControlPlaneSnapshot { .. } => Err(
+                "session control-plane operation reached the blocking registry dispatcher"
+                    .to_owned(),
+            ),
             Operation::RecordHostLifecycleEvent { event } => {
                 record_host_lifecycle_event(&registry, event)
+            }
+            Operation::RecordHostNonMatch { observation } => {
+                registry.record_host_non_match_local(&observation)?;
+                Ok(IpcResult::Changed { changed: true })
             }
             Operation::Register { request } => {
                 let model_source = request
@@ -217,6 +227,88 @@ fn record_host_lifecycle_event(
 
     match event.kind {
         EventKind::Started => {
+            if event.session_lifetime != "resident" {
+                return Err(
+                    "temporary-session-authority-required: Host lifecycle registration requires a persisted temporaryAuthority receipt"
+                        .to_owned(),
+                );
+            }
+            let existing = registry.session_by_name(
+                event.project_id.clone(),
+                event.root_session_id.clone(),
+                event.platform_host_agent_name.clone(),
+            )?;
+            let generation = match existing.as_ref() {
+                Some(current)
+                    if current.session_id() == event.child_session_id
+                        && current.is_routable_at(event.observed_at) =>
+                {
+                    u64::try_from(current.physical_generation).unwrap_or(0)
+                }
+                Some(current) if current.session_id() == event.child_session_id => {
+                    return Err(format!(
+                        "terminal-host-instance-reuse: child={} generation={}",
+                        current.session_id(),
+                        current.physical_generation,
+                    ));
+                }
+                Some(current) if current.is_routable_at(event.observed_at) => {
+                    return Err(format!(
+                        "resident-first-call-resume-required: namespace={}/{} liveChild={} proposedChild={}",
+                        event.root_session_id,
+                        event.route_key,
+                        current.session_id(),
+                        event.child_session_id,
+                    ));
+                }
+                Some(current) => u64::try_from(current.physical_generation)
+                    .unwrap_or(0)
+                    .saturating_add(1),
+                None => 1,
+            };
+            let registration_id = format!(
+                "blake3-256:{}",
+                blake3::hash(
+                    format!(
+                        "{}\0{}\0{}\0{}\0{}\0{}",
+                        event.root_session_id,
+                        event.child_session_id,
+                        event.route_key,
+                        event.profile_digest,
+                        event.model_digest,
+                        event.sandbox_mode,
+                    )
+                    .as_bytes(),
+                )
+                .to_hex()
+            );
+            let binding_id = format!(
+                "blake3-256:{}",
+                blake3::hash(format!("{registration_id}\0{generation}").as_bytes()).to_hex()
+            );
+            let host_binding = serde_json::json!({
+                "schemaId": "agent.semantic-protocols.agent-session-host-binding",
+                "schemaVersion": "1",
+                "bindingId": binding_id,
+                "registrationId": registration_id,
+                "rootSessionId": event.root_session_id,
+                "hostChildId": event.child_session_id,
+                "hostTaskName": event.host_task_name,
+                "agentInstanceId": event.child_session_id,
+                "residentId": event.platform_host_agent_name,
+                "routeKey": event.route_key,
+                "profileId": event.profile_id,
+                "profileDigest": event.profile_digest,
+                "modelId": event.model,
+                "modelDigest": event.model_digest,
+                "sandboxMode": event.sandbox_mode,
+                "sessionLifetime": event.session_lifetime,
+                "generation": generation,
+                "lifecycleState": "live",
+                "routable": true,
+                "evidenceSequence": generation,
+                "temporaryAuthority": null,
+            });
             let metadata_json = serde_json::json!({
                 "event": "subagent-start",
                 "native": true,
@@ -227,21 +319,22 @@ fn record_host_lifecycle_event(
                 "agentType": event.platform_host_agent_name,
                 "profileDigest": event.profile_digest,
                 "transcriptPath": event.transcript_path,
+                "matchDecision": "matched",
+                "payloadDigest": event.payload_digest,
+                "hostBinding": host_binding,
             })
             .to_string();
-            let model_observation = event.model.as_deref().map(|model| {
-                crate::agent_session_registry::AgentSessionModelObservationRef {
-                    model,
+            let model_observation = Some(crate::agent_session_registry::AgentSessionModelObservationRef {
+                    model: event.model.as_str(),
                     source: crate::agent_session_registry::AgentSessionModelObservationSource::CodexSubagentStart,
                     observed_at: event.observed_at,
                     evidence_ref: event.transcript_path.as_deref(),
-                }
-            });
-            let session = registry.register_session(crate::AgentSessionRegisterRequest {
-                project_id: event.project_id.into(),
+                });
+            let request = crate::AgentSessionRegisterRequest {
+                project_id: event.project_id.clone().into(),
                 root_session_id: event.root_session_id.clone().into(),
                 session_id: event.child_session_id.clone().into(),
-                message_target_id: Some(event.child_session_id.into()),
+                message_target_id: Some(event.child_session_id.clone().into()),
                 parent_session_id: Some(event.parent_session_id.into()),
                 name: event.platform_host_agent_name.into(),
                 role: event.role.into(),
@@ -250,16 +343,66 @@ fn record_host_lifecycle_event(
                 expires_at: None,
                 metadata_json: metadata_json.into(),
                 now: event.observed_at,
-            })?;
+            };
+            let session = match existing {
+                Some(current) if current.session_id() != event.child_session_id => {
+                    registry.archive_session(
+                        event.project_id.clone(),
+                        current.session_id().to_owned(),
+                        event.observed_at,
+                    )?;
+                    registry.replace_resident_session(current.session_id().to_owned(), request)?
+                }
+                _ => registry.register_session(request)?,
+            };
             Ok(IpcResult::Registered { session })
         }
-        EventKind::Stopped => Ok(IpcResult::Changed {
-            changed: registry.archive_session(
-                event.project_id,
-                event.child_session_id,
-                event.observed_at,
-            )?,
-        }),
+        EventKind::Stopped => {
+            let current = registry
+                .session_by_id(event.project_id.clone(), event.child_session_id.clone())?
+                .ok_or_else(|| {
+                    "host-binding-terminal-instance-missing: exact child binding is unavailable"
+                        .to_owned()
+                })?;
+            let binding: serde_json::Value = serde_json::from_str(current.metadata_json())
+                .ok()
+                .and_then(|metadata: serde_json::Value| metadata.get("hostBinding").cloned())
+                .ok_or_else(|| {
+                    "unbound-matched-child: exact Host binding receipt is unavailable".to_owned()
+                })?;
+            let exact = binding
+                .get("rootSessionId")
+                .and_then(serde_json::Value::as_str)
+                == Some(event.root_session_id.as_str())
+                && binding
+                    .get("hostChildId")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(event.child_session_id.as_str())
+                && binding.get("routeKey").and_then(serde_json::Value::as_str)
+                    == Some(event.route_key.as_str())
+                && binding
+                    .get("profileDigest")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(event.profile_digest.as_str())
+                && binding
+                    .get("modelDigest")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(event.model_digest.as_str())
+                && binding
+                    .get("sandboxMode")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(event.sandbox_mode.as_str());
+            if !exact {
+                return Err("host-binding-terminal-identity-drift: stop evidence does not exact-match the live instance".to_owned());
+            }
+            Ok(IpcResult::Changed {
+                changed: registry.archive_session(
+                    event.project_id,
+                    event.child_session_id,
+                    event.observed_at,
+                )?,
+            })
+        }
     }
 }
 

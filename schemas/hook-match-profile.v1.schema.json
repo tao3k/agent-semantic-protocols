@@ -17,6 +17,10 @@
     "fields": { "$ref": "#/$defs/templateObject" }
   },
   "$defs": {
+    "predicateList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/predicate" }
+    },
     "match": {
       "type": "object",
       "additionalProperties": false,
@@ -103,8 +107,8 @@
           "minProperties": 1,
           "maxProperties": 1,
           "properties": {
-            "all": { "type": "array", "items": { "$ref": "#/$defs/predicate" } },
-            "any": { "type": "array", "items": { "$ref": "#/$defs/predicate" } },
+            "all": { "$ref": "#/$defs/predicateList" },
+            "any": { "$ref": "#/$defs/predicateList" },
             "not": { "$ref": "#/$defs/predicate" }
           }
         }

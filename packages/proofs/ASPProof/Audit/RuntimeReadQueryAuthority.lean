@@ -1,0 +1,13 @@
+import ASPProof.RuntimeReadQueryAuthority
+
+open ASPProof.RuntimeReadQueryAuthority
+
+#print axioms readOnlyResidentConnectsGlobalRuntime
+#print axioms readOnlyResidentCannotConnectWorkspaceOwner
+#print axioms internalRouteNeverExposesOwnerEndpoint
+#print axioms readQueryDoesNotPublishGeneration
+#print axioms readQueryDoesNotMutateOverlay
+#print axioms changedOwnerRejectsCachedProjection
+#print axioms providerNativeFallbackRequiresDeclaration
+#print axioms finiteBudgetQueryHasOnlyTerminalOutcomes
+#print axioms unavailableOutcomeIsActionable

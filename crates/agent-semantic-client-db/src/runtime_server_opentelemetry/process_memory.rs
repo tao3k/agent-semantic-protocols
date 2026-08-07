@@ -80,6 +80,10 @@ impl ProcessMemoryObservation {
     }
 }
 
+#[cfg(test)]
+#[path = "../../tests/unit/runtime_server_generation_resource_gate.rs"]
+mod runtime_server_generation_resource_gate;
+
 pub(super) fn observe_process_memory(
     event_loop_lag_micros: u64,
     scheduler: RuntimeSchedulerObservation,

@@ -5,6 +5,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass
 from typing import Any, Sequence
+from asp_proofs._cli_output import write_stdout
 
 
 SCHEMA_ID = "agent.semantic-protocols.polyglot-search-evidence-sufficiency.v1"
@@ -171,7 +172,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     build_parser().parse_args(argv)
-    print(render_json_fixture(), end="")
+    write_stdout(render_json_fixture(), end="")
     return 0
 
 

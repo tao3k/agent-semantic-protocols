@@ -2,6 +2,10 @@
 
 use serde::Deserialize;
 
+use super::argument_projection::{
+    ProviderMethodArgumentProjectionV1, ProviderMethodArgumentSlotNameV1,
+    ProviderMethodArgumentTokenV1,
+};
 use crate::protocol::{
     HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, PROVIDER_MANIFEST_SCHEMA_ID,
     PROVIDER_MANIFEST_SCHEMA_VERSION,
@@ -563,6 +567,31 @@ fn validate_schema_registry_v1(registry: &SemanticLanguageRegistry) -> Result<()
                 language.language_id
             ));
         }
+        for descriptor in &language.method_descriptors {
+            let Some(projection) = descriptor.argument_projection.as_ref() else {
+                continue;
+            };
+            if projection.schema_version != "1" {
+                return Err(format!(
+                    "ProviderRegistry argument projection schemaVersion must be `1` for language `{}` method `{}`",
+                    language.language_id, descriptor.method
+                ));
+            }
+            if descriptor.method == "search/lexical"
+                && projection.tokens.iter().any(|token| {
+                    matches!(
+                        token,
+                        ProviderMethodArgumentTokenV1::Slot(slot)
+                            if slot.name == ProviderMethodArgumentSlotNameV1::Owner
+                    )
+                })
+            {
+                return Err(format!(
+                    "ProviderRegistry lexical argument projection declares owner slot for language `{}`",
+                    language.language_id
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -589,4 +618,5 @@ pub(crate) struct LanguageRegistration {
 pub(crate) struct SemanticMethodDescriptor {
     pub(crate) method: String,
     pub(crate) invocation: crate::protocol::CommandTemplate,
+    pub(crate) argument_projection: Option<ProviderMethodArgumentProjectionV1>,
 }

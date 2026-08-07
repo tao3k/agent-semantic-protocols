@@ -43,6 +43,7 @@ fn multi_agent_session_contract_owns_every_lifecycle_instruction() {
     let bindings = [
         ("REGISTERED_AGENT_NAME", "asp_testing"),
         ("ROLE_DESCRIPTION", "ASP test/build execution lane."),
+        ("SANDBOX_MODE", "read-only"),
     ];
 
     let registered = choice
@@ -50,6 +51,7 @@ fn multi_agent_session_contract_owns_every_lifecycle_instruction() {
             ("SESSION_STATE", "registered"),
             ("REGISTERED_AGENT_NAME", "asp_testing"),
             ("ROLE_DESCRIPTION", "ASP test/build execution lane."),
+            ("SANDBOX_MODE", "read-only"),
         ])
         .expect("registered contract projection");
     assert_eq!(registered.len(), 1);
@@ -61,13 +63,19 @@ fn multi_agent_session_contract_owns_every_lifecycle_instruction() {
             ("SESSION_STATE", "registration-required"),
             ("REGISTERED_AGENT_NAME", "asp_testing"),
             ("ROLE_DESCRIPTION", "ASP test/build execution lane."),
+            ("SANDBOX_MODE", "read-only"),
         ])
         .expect("registration contract projection");
     assert_eq!(missing.len(), 1);
     assert_eq!(missing[0].id, "CREATE_AND_REGISTER");
     assert!(missing.iter().all(|entry| entry.presentation == "pane"));
     let blocked = choice
-        .admit_matching(&[("SESSION_STATE", "blocked"), bindings[0], bindings[1]])
+        .admit_matching(&[
+            ("SESSION_STATE", "blocked"),
+            bindings[0],
+            bindings[1],
+            bindings[2],
+        ])
         .expect("blocked contract projection");
     assert_eq!(blocked.len(), 1);
     assert_eq!(blocked[0].id, "BLOCKED");
@@ -87,6 +95,21 @@ fn multi_agent_session_contract_owns_every_lifecycle_instruction() {
             .iter()
             .all(|entry| !entry.instruction.contains("asp agent session register"))
     );
+    let pane = choice.render_admitted_pane(
+        "agent.multi-agent-session-control-plane.v1",
+        &[(
+            missing[0].id.as_str(),
+            missing[0].instruction.as_str(),
+            missing[0].use_if.as_str(),
+        )],
+        "node=registration-required",
+    );
+    assert!(pane.contains("choice: CREATE_AND_REGISTER"));
+    assert!(!pane.contains("\n2."));
+    assert!(!pane.contains("choose exactly one"));
+    assert!(!pane.contains("do not attach a task payload"));
+    assert!(!pane.contains("status=interactive-required"));
+    assert!(!pane.contains("entry=not-created"));
     for admitted in registered
         .iter()
         .chain(missing.iter())
@@ -98,6 +121,7 @@ fn multi_agent_session_contract_owns_every_lifecycle_instruction() {
                 .instruction
                 .contains("ASP test/build execution lane.")
         );
+        assert!(admitted.instruction.contains("read-only"));
     }
 }
 

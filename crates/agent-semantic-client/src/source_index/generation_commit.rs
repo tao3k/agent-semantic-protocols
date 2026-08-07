@@ -27,6 +27,31 @@ impl PreparedSourceIndexGeneration {
         }
     }
 
+    pub(super) fn refresh_request(
+        &self,
+    ) -> &agent_semantic_client_db::ClientDbSourceIndexRefreshRequest {
+        &self.refresh_request
+    }
+
+    pub(super) fn materialization(
+        &self,
+    ) -> &agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization
+    {
+        &self.materialization
+    }
+
+    pub(super) fn with_complete_successor(
+        mut self,
+        source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+        file_count: u32,
+        materialization: agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization,
+    ) -> Self {
+        self.refresh_request.source_snapshot = source_snapshot;
+        self.refresh_request.file_count = file_count;
+        self.materialization = materialization;
+        self
+    }
+
     pub(super) fn into_runtime_server_build(
         self,
     ) -> agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuild {

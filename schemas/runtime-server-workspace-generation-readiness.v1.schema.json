@@ -18,14 +18,7 @@
     "schemaVersion": { "const": "1" },
     "workspaceIdentity": { "type": "string", "minLength": 1 },
     "commit": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["activeEpoch", "generationDigest", "sourceRootDigest"],
-      "properties": {
-        "activeEpoch": { "type": "integer", "minimum": 1 },
-        "generationDigest": { "type": "string", "minLength": 1 },
-        "sourceRootDigest": { "type": "string", "minLength": 1 }
-      }
+      "$ref": "runtime-server-definitions.v1.schema.json#/$defs/generationCommit"
     },
     "reconciled": { "type": "boolean" }
   }

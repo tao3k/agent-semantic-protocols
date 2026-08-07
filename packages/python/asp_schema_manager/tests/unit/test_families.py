@@ -59,6 +59,46 @@ def test_more_specific_filename_namespace_wins_by_contract_priority(
     }
 
 
+def test_agent_semantic_client_namespace_is_distinct_from_semantic_agent(
+    tmp_path: Path,
+) -> None:
+    _write_schema(
+        tmp_path
+        / "schemas/agent-semantic-client-cache-manifest.v1.schema.json",
+        "https://example/client-cache",
+        {"type": "object"},
+    )
+    _write_schema(
+        tmp_path / "schemas/agent-semantic-client-receipt.v1.schema.json",
+        "https://example/client-receipt",
+        {"type": "object"},
+    )
+    documents, _diagnostics = load_catalog(tmp_path)
+    families = [
+        {
+            "familyId": "asp.schema-family.semantic",
+            "priority": 100,
+            "namespace": {"filenamePrefixes": ["semantic-"]},
+        },
+        {
+            "familyId": "asp.schema-family.semantic-agent",
+            "priority": 200,
+            "namespace": {"filenamePrefixes": ["semantic-agent-"]},
+        },
+        {
+            "familyId": "asp.schema-family.agent-semantic-client",
+            "priority": 200,
+            "parentFamilyId": "asp.schema-family.semantic",
+            "namespace": {"filenamePrefixes": ["agent-semantic-client-"]},
+        },
+    ]
+    assignments, diagnostics = classify_schema_families(documents, families)
+    assert diagnostics == []
+    assert {item["familyId"] for item in assignments.values()} == {
+        "asp.schema-family.agent-semantic-client"
+    }
+
+
 def test_same_priority_namespace_overlap_is_an_error(tmp_path: Path) -> None:
     _write_schema(
         tmp_path / "schemas/provider-native-request.v1.schema.json",

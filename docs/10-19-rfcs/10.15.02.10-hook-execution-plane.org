@@ -61,6 +61,14 @@ enabled canonical rule and every registered provider extension therefore needs
 at least one executable generated witness before the conformance report is
 complete.
 
+Marketplace authority is split explicitly: the ASP repository catalog owns
+=.agents/plugins/marketplace.json=; Codex owns user marketplace registration
+and plugin-enable persistence. Repository discovery MUST NOT write Codex
+=config.toml=. Global explicit registration may persist user state only through
+the Codex-native marketplace command. Direct ASP TOML mutation is invalid and
+unreachable as a valid authority witness. Plugin installation does not sync
+agent profiles or install inline hooks.
+
 #+begin_src mermaid
 flowchart LR
     Host[Host matcher = *] --> Project[In-process typed action projection]
@@ -164,6 +172,21 @@ admitted by the configuration-independent bootstrap, as is the digest-targeted
 canonical binary install. Chained commands, extra arguments, alternate clients,
 and non-canonical install targets remain policy-bearing.
 
+The canonical binary installer owns a coupled binary/config generation sync.
+Before it returns success it MUST publish the managed Hook config embedded in
+the installing executable and its ownership sidecar, then report both the
+binary generation and =hookConfigPublication=. Runtime Server reconcile is a
+later, independent best-effort step and is not an authority for this sync.
+
+When the one-shot Hook loader observes only a fingerprint mismatch on the
+canonical =$ASP_STATE_HOME/hooks/config.toml=, it MUST attempt one local
+managed-config auto-sync and retry matcher loading once. The sync is admitted
+only when managed ownership is proven by the sidecar or the versioned managed
+identity. A custom =--config= path or an ownership failure is never overwritten
+and remains a typed fail-closed result. Thus config drift cannot deny every
+repair edge: the exact canonical binary install remains configuration
+independent even if automatic sync cannot complete.
+
 There is no Hook-originated Runtime state call, Tokio client executor, socket
 timeout, supervisor recovery, or generation-admission closure. Runtime resource
 and deadline policy belongs to the Runtime Server control plane and cannot be
@@ -191,9 +214,12 @@ generation before classification. A process-local =OnceLock= or resident
 A missing or invalid snapshot never authorizes Runtime, Session, rollout, or
 supervisor recovery. If the source configuration is valid, the Hook process may
 perform the bounded cold compile and atomic publication locally. If the source
-configuration or durable artifact is invalid, Hook returns the local typed
-failure and directs explicit =asp hook install --client codex= recovery. There
-is no embedded-config or Runtime fallback.
+configuration or durable artifact is invalid after the single managed sync
+attempt, Hook returns the local typed failure and directs the validated
+candidate's exact =install binary --target
+$ASP_STATE_HOME/runtime/bin/asp= recovery. That installer republishes its own
+matching managed config; it does not reinstall the Codex plugin. There is no
+Runtime fallback.
 
 Hook event evidence is bounded independently from matcher snapshots. Replay
 reads at most the final 1 MiB and 4096 lines; =events.jsonl= is compacted before

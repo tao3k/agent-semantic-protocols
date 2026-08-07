@@ -56,7 +56,7 @@ pub(super) fn session_control_plane_usage() -> String {
     "usage: asp session --agents choice-plane [--json]".to_owned()
 }
 
-pub(super) fn run_session_control_plane(args: &[String]) -> Result<(), String> {
+pub(super) async fn run_session_control_plane(args: &[String]) -> Result<(), String> {
     let request = AgentWindowRequest::parse(args)?;
     let platform = current_session_platform()?;
     let project_root = std::env::current_dir()
@@ -65,7 +65,8 @@ pub(super) fn run_session_control_plane(args: &[String]) -> Result<(), String> {
         project_root: &project_root,
         platform,
         json: request.json,
-    })?;
+    })
+    .await?;
     println!("{rendered}");
     Ok(())
 }

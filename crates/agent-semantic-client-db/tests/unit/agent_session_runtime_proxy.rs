@@ -1,4 +1,7 @@
-use agent_semantic_client_db::{AgentSessionRegistry, runtime_server_endpoint_path};
+use agent_semantic_client_db::{
+    AgentSessionRegistry, publish_runtime_server_endpoint, runtime_server_endpoint_path,
+};
+use std::os::unix::fs::PermissionsExt;
 use tempfile::TempDir;
 
 use crate::test_support::{StateHomeGuard, environment_lock, workspace};
@@ -15,6 +18,8 @@ fn project_registry_rejects_invalid_runtime_endpoint_descriptor() {
     let runtime_base = endpoint_path.parent().expect("runtime endpoint parent");
     std::fs::create_dir_all(runtime_base).expect("create runtime endpoint directory");
     std::fs::write(&endpoint_path, b"{}\n").expect("publish endpoint descriptor sentinel");
+    std::fs::set_permissions(&endpoint_path, std::fs::Permissions::from_mode(0o600))
+        .expect("make invalid endpoint descriptor private");
 
     assert!(endpoint_path.is_file());
     let error = AgentSessionRegistry::open_runtime_project_proxy(&project_root)
@@ -67,6 +72,7 @@ async fn project_registry_selects_runtime_proxy_from_unix_socket_endpoint() {
         .expect("create runtime endpoint directory");
     let runtime_base = endpoint_path.parent().expect("runtime endpoint parent");
     let mut endpoint = agent_semantic_client_db::prepare_runtime_server_endpoint(
+        &state_home,
         &state_home.join("runtime/bin/asp"),
         "test-runtime-artifact",
         "dev",
@@ -81,11 +87,9 @@ async fn project_registry_selects_runtime_proxy_from_unix_socket_endpoint() {
     endpoint.status_memory_path = runtime_base.join("status.memory").display().to_string();
     let _listener = std::os::unix::net::UnixListener::bind(&endpoint.socket_path)
         .expect("bind Runtime Server control socket");
-    std::fs::write(
-        &endpoint_path,
-        serde_json::to_vec(&endpoint).expect("encode typed Runtime Server endpoint"),
-    )
-    .expect("publish typed Runtime Server endpoint descriptor fixture");
+    publish_runtime_server_endpoint(&endpoint_path, &endpoint)
+        .await
+        .expect("publish typed Runtime Server endpoint descriptor fixture");
 
     assert!(endpoint_path.is_file());
     assert!(

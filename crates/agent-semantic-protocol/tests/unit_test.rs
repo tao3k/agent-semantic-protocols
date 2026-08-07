@@ -90,8 +90,6 @@ mod rs_harness_attribute;
 mod runtime_server_artifact;
 #[path = "unit/runtime_server_query_purity.rs"]
 mod runtime_server_query_purity;
-#[path = "unit/runtime_server_service_catalog.rs"]
-mod runtime_server_service_catalog;
 #[path = "unit/runtime_server_singleton_socket.rs"]
 mod runtime_server_singleton_socket;
 #[path = "../../agent-semantic-hook/tests/unit/rust_harness_activation/mod.rs"]

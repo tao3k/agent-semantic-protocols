@@ -19,7 +19,6 @@ pub(crate) use model::{
     validate_owners,
 };
 pub(crate) use resident_overlay::{ResidentOverlaySnapshot, ResidentOverlayStore};
-pub(crate) use selector_overlay::validate_projection_kind;
 mod pointer;
 mod registry;
 mod resident_overlay;
@@ -46,13 +45,14 @@ pub use exact_segment::{
 pub use lease::WorkspaceGenerationLease;
 pub use memory_backend::WorkspaceProjectionLease;
 pub use model::{
-    RuntimeDataPlaneCounters, RuntimeServerShutdownReceipt, WORKSPACE_GENERATION_DELTA_SCHEMA_ID,
-    WorkspaceDataPlanePerformanceReceipt, WorkspaceDerivedProjectionSnapshot,
-    WorkspaceGenerationBuild, WorkspaceGenerationDelta, WorkspaceGenerationSnapshot,
-    WorkspaceGenerationState, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
-    WorkspaceRecoveryReceipt, WorkspaceRecoverySource, WorkspaceRuntimeOwnerRead,
-    WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorOverlayReceipt,
-    WorkspaceRuntimeSelectorRead, WorkspaceSelectorSnapshot,
+    ExactProjectionKind, RuntimeDataPlaneCounters, RuntimeServerShutdownReceipt,
+    WORKSPACE_GENERATION_DELTA_SCHEMA_ID, WorkspaceDataPlanePerformanceReceipt,
+    WorkspaceDerivedProjectionSnapshot, WorkspaceGenerationBuild, WorkspaceGenerationDelta,
+    WorkspaceGenerationSnapshot, WorkspaceGenerationState, WorkspaceMemoryGeneration,
+    WorkspaceOwnerSnapshot, WorkspaceRecoveryReceipt, WorkspaceRecoverySource,
+    WorkspaceRuntimeOwnerRead, WorkspaceRuntimeSelectorOverlay,
+    WorkspaceRuntimeSelectorOverlayReceipt, WorkspaceRuntimeSelectorRead,
+    WorkspaceSelectorSnapshot,
 };
 pub use pointer::WorkspaceGenerationPointerReader;
 pub use registry::{PublishedWorkspaceGenerationState, RuntimeServerWorkspaceRegistry};

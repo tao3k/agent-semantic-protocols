@@ -50,6 +50,21 @@ impl AgentSessionStatusHandle {
                         }
                     }
                 };
+                let mut host_binding = serde_json::from_str::<serde_json::Value>(
+                    record.metadata_json(),
+                )
+                .ok()
+                .and_then(|metadata| metadata.get("hostBinding").cloned());
+                if let Some(binding) = host_binding.as_mut().and_then(serde_json::Value::as_object_mut) {
+                    let (state, routable) = match &lifecycle_state {
+                        crate::runtime_server_control::RuntimeServerAgentSessionLifecycleState::Routable => ("live", true),
+                        crate::runtime_server_control::RuntimeServerAgentSessionLifecycleState::Archived => ("archived", false),
+                        crate::runtime_server_control::RuntimeServerAgentSessionLifecycleState::Expired => ("stopped", false),
+                        crate::runtime_server_control::RuntimeServerAgentSessionLifecycleState::Invalid => ("unregistered", false),
+                    };
+                    binding.insert("lifecycleState".to_owned(), state.into());
+                    binding.insert("routable".to_owned(), routable.into());
+                }
                 Ok(crate::runtime_server_control::RuntimeServerAgentSessionStatus {
                     workspace_identity,
                     project_id: record.project_id().to_owned(),
@@ -58,6 +73,7 @@ impl AgentSessionStatusHandle {
                     name: record.name().to_owned(),
                     physical_generation: u64::try_from(record.physical_generation).unwrap_or(0),
                     lifecycle_state,
+                    host_binding,
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;

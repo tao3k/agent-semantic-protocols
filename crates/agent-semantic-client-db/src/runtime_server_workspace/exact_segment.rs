@@ -39,10 +39,44 @@ const WORKSPACE_ID_LEN_OFFSET: usize = 120;
 const RELOCATION_TABLE_OFFSET: usize = 128;
 const RELOCATION_COUNT_OFFSET: usize = 136;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct WorkspaceExactProjectionDataPlaneClient {
+    inner: std::sync::Arc<WorkspaceExactProjectionDataPlaneClientInner>,
+}
+
+#[derive(Debug)]
+struct WorkspaceExactProjectionDataPlaneClientInner {
     pointer: WorkspaceGenerationPointerReader,
-    mapped: MappedWorkspaceExactProjection,
+    current: parking_lot::RwLock<std::sync::Arc<MappedWorkspaceExactProjection>>,
+}
+
+#[derive(Debug, Default)]
+struct WorkspaceExactProjectionDataPlaneCell {
+    client: tokio::sync::OnceCell<WorkspaceExactProjectionDataPlaneClient>,
+}
+
+static EXACT_PROJECTION_DATA_PLANE_CELLS: std::sync::OnceLock<
+    parking_lot::RwLock<
+        std::collections::BTreeMap<
+            std::path::PathBuf,
+            std::sync::Arc<WorkspaceExactProjectionDataPlaneCell>,
+        >,
+    >,
+> = std::sync::OnceLock::new();
+
+fn exact_projection_data_plane_cell(
+    pointer_path: &Path,
+) -> std::sync::Arc<WorkspaceExactProjectionDataPlaneCell> {
+    let cells = EXACT_PROJECTION_DATA_PLANE_CELLS.get_or_init(Default::default);
+    if let Some(cell) = cells.read().get(pointer_path) {
+        return std::sync::Arc::clone(cell);
+    }
+    let mut cells = cells.write();
+    std::sync::Arc::clone(
+        cells.entry(pointer_path.to_path_buf()).or_insert_with(|| {
+            std::sync::Arc::new(WorkspaceExactProjectionDataPlaneCell::default())
+        }),
+    )
 }
 
 #[derive(Debug)]
@@ -68,30 +102,57 @@ impl WorkspaceExactProjectionDataPlaneClient {
         }
     }
 
+    pub(crate) fn invalidate_committed_pointer(pointer_path: &Path) {
+        if let Some(cells) = EXACT_PROJECTION_DATA_PLANE_CELLS.get() {
+            cells.write().remove(pointer_path);
+        }
+    }
+
+    pub(crate) async fn prime_committed_pointer(pointer_path: &Path) -> Result<(), String> {
+        Self::invalidate_committed_pointer(pointer_path);
+        Self::open(pointer_path).await.map(|_| ())
+    }
+
     pub async fn open(pointer_path: &Path) -> Result<Self, String> {
-        let pointer = WorkspaceGenerationPointerReader::open(pointer_path).await?;
-        let snapshot = pointer.read()?;
-        let mapped = MappedWorkspaceExactProjection::open(&snapshot).await?;
-        Ok(Self { pointer, mapped })
+        let cell = exact_projection_data_plane_cell(pointer_path);
+        let mut client = cell
+            .client
+            .get_or_try_init(|| async {
+                let pointer = WorkspaceGenerationPointerReader::open(pointer_path).await?;
+                let snapshot = pointer.read()?;
+                let mapped = MappedWorkspaceExactProjection::open(&snapshot).await?;
+                Ok::<_, String>(Self {
+                    inner: std::sync::Arc::new(WorkspaceExactProjectionDataPlaneClientInner {
+                        pointer,
+                        current: parking_lot::RwLock::new(std::sync::Arc::new(mapped)),
+                    }),
+                })
+            })
+            .await?
+            .clone();
+        client.refresh_if_changed().await?;
+        Ok(client)
     }
 
     pub fn read_runtime_selector(
         &self,
-        projection_kind: &str,
+        projection_kind: super::model::ExactProjectionKind,
         structural_selector: &str,
     ) -> Result<WorkspaceRuntimeSelectorRead, String> {
-        self.mapped
+        self.inner
+            .current
+            .read()
             .read_runtime_selector(projection_kind, structural_selector)
     }
 
     /// Return the resident content identity for one exact owner without
     /// opening the workspace database or contacting the control plane.
     pub fn owner_content_digest(&self, owner_path: &str) -> Result<Option<String>, String> {
-        self.mapped.owner_content_digest(owner_path)
+        self.inner.current.read().owner_content_digest(owner_path)
     }
 
     pub fn contains_owner(&self, owner: &WorkspaceOwnerSnapshot) -> Result<bool, String> {
-        self.mapped.contains_owner(owner)
+        self.inner.current.read().contains_owner(owner)
     }
 
     /// Resolve one owner directly from the immutable exact-generation index.
@@ -103,28 +164,33 @@ impl WorkspaceExactProjectionDataPlaneClient {
         &self,
         owner_path: &str,
     ) -> Result<Option<WorkspaceOwnerSnapshot>, String> {
-        let Some((owner_index, owner)) = self.mapped.find_owner(owner_path)? else {
+        let mapped = self.inner.current.read();
+        let Some((owner_index, owner)) = mapped.find_owner(owner_path)? else {
             return Ok(None);
         };
-        self.mapped.owner_snapshot(owner_index, &owner).map(Some)
+        mapped.owner_snapshot(owner_index, &owner).map(Some)
     }
 
     #[must_use]
-    pub fn generation_digest(&self) -> &str {
-        &self.mapped.generation_digest
+    pub fn generation_digest(&self) -> String {
+        self.inner.current.read().generation_digest.clone()
     }
 
     #[must_use]
-    pub fn root_digest(&self) -> &str {
-        &self.mapped.root_digest
+    pub fn root_digest(&self) -> String {
+        self.inner.current.read().root_digest.clone()
     }
 
     pub async fn refresh_if_changed(&mut self) -> Result<bool, String> {
-        let snapshot = self.pointer.read()?;
-        if self.mapped.epoch == snapshot.active_epoch {
+        let snapshot = self.inner.pointer.read()?;
+        let current = self.inner.current.read();
+        decode_header(&current.mapping)?;
+        if current.epoch == snapshot.active_epoch {
             return Ok(false);
         }
-        self.mapped = MappedWorkspaceExactProjection::open(&snapshot).await?;
+        drop(current);
+        let mapped = MappedWorkspaceExactProjection::open(&snapshot).await?;
+        *self.inner.current.write() = std::sync::Arc::new(mapped);
         Ok(true)
     }
 }
@@ -204,10 +270,9 @@ impl MappedWorkspaceExactProjection {
 
     fn read_runtime_selector(
         &self,
-        projection_kind: &str,
+        projection_kind: super::model::ExactProjectionKind,
         structural_selector: &str,
     ) -> Result<WorkspaceRuntimeSelectorRead, String> {
-        super::selector_overlay::validate_projection_kind(projection_kind)?;
         if let Some(selector) = self.find_selector(projection_kind, structural_selector)? {
             return self.project_selector(projection_kind, selector);
         }
@@ -250,12 +315,12 @@ impl MappedWorkspaceExactProjection {
 
     fn project_selector(
         &self,
-        projection_kind: &str,
+        projection_kind: super::model::ExactProjectionKind,
         selector: SelectorEntry,
     ) -> Result<WorkspaceRuntimeSelectorRead, String> {
         let resolved_selector = self.selector_text(&selector)?.to_owned();
         let owner = self.owner_entry(selector.owner_index)?;
-        let projection = if projection_kind == "source" {
+        let projection = if projection_kind == super::model::ExactProjectionKind::Source {
             self.owner_bytes(&owner)?
                 .get(selector.byte_start..selector.byte_end)
                 .ok_or_else(|| "workspace exact projection selector range is invalid".to_owned())?
@@ -319,17 +384,20 @@ impl MappedWorkspaceExactProjection {
         let mut selectors = Vec::new();
         for index in 0..self.selector_count {
             let entry = self.selector_entry(index)?;
-            if entry.owner_index == owner_index && self.selector_kind(&entry)? == "source" {
+            if entry.owner_index == owner_index
+                && self.selector_kind(&entry)? == super::model::ExactProjectionKind::Source
+            {
                 let selector_text = self.selector_text(&entry)?;
                 let mut derived_projections = Vec::new();
                 for derived_index in 0..self.selector_count {
                     let derived = self.selector_entry(derived_index)?;
                     if derived.owner_index == owner_index
                         && self.selector_text(&derived)? == selector_text
-                        && self.selector_kind(&derived)? != "source"
+                        && self.selector_kind(&derived)?
+                            != super::model::ExactProjectionKind::Source
                     {
                         derived_projections.push(super::WorkspaceDerivedProjectionSnapshot {
-                            projection_kind: self.selector_kind(&derived)?.to_owned(),
+                            projection_kind: self.selector_kind(&derived)?,
                             bytes: read_slice(
                                 &self.mapping,
                                 derived.projection_blob_offset,
@@ -389,10 +457,10 @@ impl MappedWorkspaceExactProjection {
 
     fn find_selector(
         &self,
-        projection_kind: &str,
+        projection_kind: super::model::ExactProjectionKind,
         selector: &str,
     ) -> Result<Option<SelectorEntry>, String> {
-        let hash = projection_key_hash(projection_kind, selector);
+        let hash = projection_key_hash(projection_kind.as_str(), selector);
         let mut low = 0;
         let mut high = self.selector_count;
         while low < high {
@@ -573,13 +641,16 @@ impl MappedWorkspaceExactProjection {
         )
     }
 
-    fn selector_kind<'a>(&'a self, selector: &SelectorEntry) -> Result<&'a str, String> {
-        read_text(
+    fn selector_kind(
+        &self,
+        selector: &SelectorEntry,
+    ) -> Result<super::model::ExactProjectionKind, String> {
+        super::model::ExactProjectionKind::try_from(read_text(
             &self.mapping,
             selector.projection_kind_offset,
             selector.projection_kind_len,
             "projection kind",
-        )
+        )?)
     }
 }
 

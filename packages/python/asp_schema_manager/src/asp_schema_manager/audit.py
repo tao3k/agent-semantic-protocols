@@ -12,6 +12,10 @@ from .families import (
     load_family_registry,
 )
 from .lifecycle import lifecycle_state, load_lifecycle_manifest
+from .reference_decisions import (
+    load_reference_decisions,
+    reconcile_reference_decisions,
+)
 from .references import discover_reference_opportunities
 from .rust_usage import rust_usage
 
@@ -20,6 +24,9 @@ DEFAULT_MANIFEST = Path("packages/python/asp_schema_manager/asp-schema-lifecycle
 DEFAULT_FAMILY_REGISTRY = Path(
     "packages/python/asp_schema_manager/asp-schema-families.v1.json"
 )
+DEFAULT_REFERENCE_DECISIONS = Path(
+    "packages/python/asp_schema_manager/asp-schema-reference-decisions.v1.json"
+)
 
 
 def audit_workspace(
@@ -27,6 +34,7 @@ def audit_workspace(
     *,
     manifest_path: Path | None = None,
     family_registry_path: Path | None = None,
+    reference_decisions_path: Path | None = None,
     minimum_reference_bytes: int = 120,
     reference_limit: int = 200,
 ) -> dict[str, Any]:
@@ -54,6 +62,17 @@ def audit_workspace(
         used_definitions=used_definitions,
         minimum_bytes=minimum_reference_bytes,
         limit=reference_limit,
+    )
+    resolved_reference_decisions = reference_decisions_path or (
+        root / DEFAULT_REFERENCE_DECISIONS
+    )
+    reference_decisions, reference_decision_diagnostics = load_reference_decisions(
+        resolved_reference_decisions,
+        root / "schemas/asp-schema-reference-decision-registry.v1.schema.json",
+    )
+    diagnostics.extend(reference_decision_diagnostics)
+    diagnostics.extend(
+        reconcile_reference_decisions(opportunities, reference_decisions)
     )
     rust_states, rust_evidence = rust_usage(root, documents, edges)
     resolved_manifest = manifest_path or (root / DEFAULT_MANIFEST)

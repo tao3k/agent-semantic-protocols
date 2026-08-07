@@ -2,21 +2,15 @@ use std::sync::Arc;
 
 use super::generation_builder::{Stage, await_stage};
 
-use tokio::net::{UnixListener, UnixStream};
+use tokio::net::UnixListener;
 use tokio::sync::watch;
 use tokio::task::JoinSet;
 
 use crate::runtime_server_agent_session_status::AgentSessionStatusHandle;
+use crate::runtime_server_control::RuntimeServerEndpoint;
 use crate::runtime_server_control::status_memory::RuntimeServerStatusMemoryWriter;
-use crate::runtime_server_control::{
-    RuntimeServerControlReceipt, RuntimeServerEndpoint, RuntimeServerRequestReadError,
-    read_runtime_server_requests, write_runtime_server_receipts,
-};
 pub use crate::runtime_server_graph_turbo_status::GraphTurboResidentStatusHandle;
 
-#[cfg(test)]
-#[path = "../../tests/unit/runtime_server_build_stage_deadline.rs"]
-mod runtime_server_build_stage_deadline;
 use crate::WorkspaceDbRegistry;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -30,6 +24,29 @@ pub use crate::runtime_server_observability::RuntimeServerEvent;
 use crate::runtime_server_observability::publish_event;
 
 const CONNECTION_DRAIN_BOUNDARY: std::time::Duration = std::time::Duration::from_millis(100);
+pub(crate) const RUNTIME_SERVER_DAEMON_INACTIVITY_LEASE: std::time::Duration =
+    std::time::Duration::from_secs(3_600);
+
+/// A daemon must not infer shutdown from an empty registry alone: startup can
+/// legitimately precede the first workspace admission.  Shutdown is allowed
+/// only after a confirmed removed workspace or an elapsed inactivity lease.
+pub(crate) fn daemon_checkpoint_should_shutdown(
+    workspace_count: usize,
+    had_workspace: bool,
+    workspace_path_confirmed_missing: bool,
+    last_activity: tokio::time::Instant,
+    now: tokio::time::Instant,
+) -> bool {
+    workspace_path_confirmed_missing
+        || (had_workspace
+            && workspace_count == 0
+            && now.saturating_duration_since(last_activity)
+                >= RUNTIME_SERVER_DAEMON_INACTIVITY_LEASE)
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/runtime_server_daemon_checkpoint.rs"]
+mod daemon_checkpoint_tests;
 
 #[derive(Clone)]
 pub struct RuntimeServerShutdownHandle {
@@ -60,8 +77,10 @@ pub struct RuntimeServer {
         Option<Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>>,
     pub(super) graph_turbo_evaluation_builder: Option<GraphTurboEvaluationBuilder>,
     pub(super) graph_turbo_resident_status: Option<GraphTurboResidentStatusHandle>,
-    pub(crate) agent_session_registry_owner: Option<Arc<crate::AgentSessionRegistry>>,
-    pub(crate) agent_session_status: Option<AgentSessionStatusHandle>,
+pub(crate) agent_session_registry_owner: Option<Arc<crate::AgentSessionRegistry>>,
+pub(crate) session_control_plane_runtime_registry:
+    Arc<crate::SessionControlPlaneRuntimeRegistry>,
+pub(crate) agent_session_status: Option<AgentSessionStatusHandle>,
     pub(super) codex_multi_agent_control_plane_owner:
         Arc<crate::codex_multi_agent_control_plane_owner::CodexMultiAgentControlPlaneOwner>,
     pub(super) telemetry_sender: Option<crate::runtime_telemetry_bus::RuntimeTelemetryBusSender>,
@@ -171,8 +190,8 @@ impl RuntimeServer {
                   project_root: std::path::PathBuf,
                   candidate: crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
                   build_mode: crate::runtime_server_admission::WorkspaceGenerationBuildMode,
-                  _cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
-                  absolute_deadline: tokio::time::Instant| {
+                  changed_paths: Arc<std::collections::BTreeSet<std::path::PathBuf>>,
+                  _cancellation: crate::runtime_generation_cancellation::GenerationCancellation| {
                 let durable_registry = Arc::clone(&durable_registry);
                 let memory_registry = Arc::clone(&memory_registry);
                 let source_builder = source_builder.clone();
@@ -181,18 +200,21 @@ impl RuntimeServer {
                 let workspace_for_build = workspace_identity.clone();
                 Box::pin(async move {
                     if _cancellation.is_cancelled() {
-                        return Err("generation build cancelled".to_owned());
+                        return Err(crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::GenerationBuilderSupervision,
+                            "generation build cancelled",
+                        ));
                     }
                     let diagnostic_workspace_identity = workspace_identity.clone();
                     let diagnostic_events = events.clone();
                     let result = async move {
                     if _cancellation.is_cancelled() {
-                        return Err("generation build cancelled".to_owned());
+                        return Err(crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::GenerationBuilderSupervision,
+                            "generation build cancelled",
+                        ));
                     }
                     let build_started = std::time::Instant::now();
-                    let build_deadline = absolute_deadline
-                        .checked_sub(std::time::Duration::from_millis(20))
-                        .unwrap_or(absolute_deadline);
                     let build_mode_label = match build_mode {
                         crate::runtime_server_admission::WorkspaceGenerationBuildMode::RestoreOnly => {
                             "restore-only"
@@ -217,25 +239,44 @@ impl RuntimeServer {
                             operation_id.clone(),
                         );
                     let session = await_stage(
-                        build_started,
-                        build_deadline,
+                        &workspace_identity,
+                        &operation_id,
                         Stage::WorkspaceBootstrap,
-                        crate::workspace_db_ipc_server::admitted_or_bootstrap_workspace(
-                            &durable_registry,
-                            &workspace_identity,
-                            &project_root,
-                        ),
+                        async {
+                            crate::workspace_db_ipc_server::admitted_or_bootstrap_workspace(
+                                &durable_registry,
+                                &workspace_identity,
+                                &project_root,
+                            )
+                            .await
+                            .map_err(|error| {
+                                crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                    crate::runtime_server_admission::WorkspaceGenerationFailureStage::WorkspaceBootstrap,
+                                    error,
+                                )
+                            })
+                        },
                     )
                     .await?;
                     if build_mode.attempts_durable_restore() {
                         let restore_started = std::time::Instant::now();
                         let materialization_load = await_stage(
-                            build_started,
-                            build_deadline,
+                        &workspace_identity,
+                        &operation_id,
                             Stage::DurableRestore,
-                            session.load_active_workspace_generation_materialization_state(
-                                &project_root,
-                            ),
+                            async {
+                                session
+                                    .load_active_workspace_generation_materialization_state(
+                                        &project_root,
+                                    )
+                                    .await
+                                    .map_err(|error| {
+                                        crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::DurableRestore,
+                                            error,
+                                        )
+                                    })
+                            },
                         )
                         .await;
                         let restore_elapsed_micros = restore_started
@@ -285,17 +326,23 @@ impl RuntimeServer {
                                     relation_count: materialization.relations.len(),
                                 },
                             );
-                            let materialization = materialization.into_validated(&workspace_identity)?;
+                            let materialization = materialization.into_validated(&workspace_identity).map_err(|error| {
+                                crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                    crate::runtime_server_admission::WorkspaceGenerationFailureStage::DurableRestore,
+                                    error,
+                                )
+                            })?;
                             if canonical_materialization_matches_admitted_generation(
                                 materialization.as_materialization(),
                                 provider_catalog_generation.as_deref(),
                                 &candidate,
                             ) {
                                 let published = await_stage(
-                                    build_started,
-                                    build_deadline,
+                        &workspace_identity,
+                        &operation_id,
                                     Stage::CanonicalGenerationPublication,
-                                    memory_registry.ensure_canonical_generation(
+                                    async {
+                                        memory_registry.admit_canonical_generation_resident(
                                         format!(
                                             "daemon-admission-restore-{workspace_identity}-{}-{}",
                                             materialization.as_materialization().workspace_generation.root_digest,
@@ -303,7 +350,15 @@ impl RuntimeServer {
                                         ),
                                         &workspace_identity,
                                         materialization,
-                                    ),
+                                        )
+                                        .await
+                                        .map_err(|error| {
+                                            crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                                crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
+                                                error,
+                                            )
+                                        })
+                                    },
                                 )
                                 .await?;
                                 publish_event(
@@ -318,11 +373,17 @@ impl RuntimeServer {
                                         .unwrap_or(u64::MAX),
                                     },
                                 );
-                                let commit = crate::runtime_server_admission::WorkspaceGenerationCommitReceipt::from_recovery(&published)?;
+                                let commit = crate::runtime_server_admission::WorkspaceGenerationCommitReceipt::from_recovery(&published).map_err(|error| crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                    crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
+                                    error,
+                                ))?;
                                 return crate::runtime_server_admission::WorkspaceGenerationBuildCompletion::new(
                                     candidate.clone(),
                                     commit,
-                                );
+                                ).map_err(|error| crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                    crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
+                                    error,
+                                ));
                             }
                             }
                             crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Missing
@@ -332,21 +393,40 @@ impl RuntimeServer {
                     if build_mode
                         == crate::runtime_server_admission::WorkspaceGenerationBuildMode::RestoreOnly
                     {
-                        return Err(format!(
+                        return Err(crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::DurableRestore,
+                            format!(
                             "registered workspace restore requires a current canonical materialization; an explicit admission is required before rebuild: workspaceIdentity={workspace_identity}"
+                            ),
                         ));
                     }
                     let source_builder = source_builder.as_ref().ok_or_else(|| {
                         format!(
                             "canonical workspace generation is unavailable; writer lane publication is required before admission: workspaceIdentity={workspace_identity}"
                         )
-                    })?;
+                    }).map_err(|error| crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                        crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
+                        error,
+                    ))?;
                     let source_build_started = std::time::Instant::now();
                     let source_build = await_stage(
-                        build_started,
-                        build_deadline,
+                        &workspace_identity,
+                        &operation_id,
                         Stage::SourceBuilder,
-                        source_builder(workspace_for_build, project_root.clone()),
+                        async {
+                            source_builder(
+                                workspace_for_build,
+                                project_root.clone(),
+                                changed_paths,
+                            )
+                                .await
+                                .map_err(|error| {
+                                    crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                        crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
+                                        error,
+                                    )
+                                })
+                        },
                     )
                     .await;
                     let source_build_elapsed_micros = source_build_started
@@ -365,7 +445,7 @@ impl RuntimeServer {
                             "budget-exceeded"
                         },
                     )
-                    .with_operation_id(operation_id);
+                        .with_operation_id(operation_id.clone());
                     source_build_observation.workspace_identity = Some(workspace_identity.clone());
                     if source_build.is_err() {
                         source_build_observation.failure_reason =
@@ -378,38 +458,62 @@ impl RuntimeServer {
                     let captured_candidate = build.candidate.clone();
                     build
                         .materialization
-                        .validate_refresh_request(&workspace_identity, &build.refresh)?;
+                        .validate_refresh_request(&workspace_identity, &build.refresh)
+                        .map_err(|error| {
+                            crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
+                                error,
+                            )
+                        })?;
                     let (durable, committed_materialization) =
                         await_stage(
-                            build_started,
-                            build_deadline,
+                        &workspace_identity,
+                        &operation_id,
                             Stage::SourceIndexCommit,
-                            session
-                                .commit_source_index_generation(
-                                    build.refresh,
-                                    build.materialization,
-                                ),
+                            async {
+                                session
+                                    .commit_source_index_generation(
+                                        build.refresh,
+                                        build.materialization,
+                                    )
+                                    .await
+                                    .map_err(|error| {
+                                        crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceIndexCommit,
+                                            error,
+                                        )
+                                    })
+                            },
                         )
                         .await?;
                     let committed_materialization =
-                        committed_materialization.into_validated(&workspace_identity)?;
+                        committed_materialization.into_validated(&workspace_identity).map_err(|error| {
+                            crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceIndexCommit,
+                                error,
+                            )
+                        })?;
                     if !durable
                         .source_snapshot
                         .has_same_content_identity(
                             &committed_materialization.as_materialization().source_snapshot,
                         )
                     {
-                        return Err(format!(
+                        return Err(crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceIndexCommit,
+                            format!(
                             "Turso generation evidence differs from canonical materialization: durable={:?} materialized={:?}",
                             durable.source_snapshot,
                             committed_materialization.as_materialization().source_snapshot
+                            ),
                         ));
                     }
                     let published = await_stage(
-                        build_started,
-                        build_deadline,
+                        &workspace_identity,
+                        &operation_id,
                         Stage::CanonicalGenerationPublication,
-                        memory_registry.ensure_canonical_generation(
+                        async {
+                            memory_registry.admit_canonical_generation_resident(
                             format!(
                                 "daemon-admission-build-{workspace_identity}-{}-{}",
                                 committed_materialization.as_materialization().workspace_generation.root_digest,
@@ -417,14 +521,30 @@ impl RuntimeServer {
                             ),
                             &workspace_identity,
                             committed_materialization,
-                        ),
+                            )
+                            .await
+                            .map_err(|error| {
+                                crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                    crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
+                                    error,
+                                )
+                            })
+                        },
                     )
                     .await?;
-                    let commit = crate::runtime_server_admission::WorkspaceGenerationCommitReceipt::from_recovery(&published)?;
+                    let commit = crate::runtime_server_admission::WorkspaceGenerationCommitReceipt::from_recovery(&published).map_err(|error| {
+                        crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
+                            error,
+                        )
+                    })?;
                     crate::runtime_server_admission::WorkspaceGenerationBuildCompletion::new(
                         captured_candidate,
                         commit,
-                    )
+                    ).map_err(|error| crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                        crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
+                        error,
+                    ))
                     }
                     .await;
                     if let Err(error) = &result {
@@ -438,7 +558,7 @@ impl RuntimeServer {
                                     crate::runtime_server_admission::WorkspaceGenerationBuildMode::RebuildAfterMutation => "rebuild-after-mutation",
                                 }
                                 .to_owned(),
-                                error: error.clone(),
+                                error: error.message.clone(),
                             },
                         );
                     }
@@ -479,9 +599,10 @@ impl RuntimeServer {
             graph_turbo_evaluation_builder,
             graph_turbo_resident_status,
             agent_session_registry_owner,
+            session_control_plane_runtime_registry,
             agent_session_status,
             codex_multi_agent_control_plane_owner,
-            telemetry_sender: _,
+            telemetry_sender,
         } = self;
         let (_lifecycle_state, lifecycle) =
             watch::channel(crate::runtime_server_control::RuntimeServerState::Healthy);
@@ -489,7 +610,9 @@ impl RuntimeServer {
         // Registered durable generations are restored on demand by the typed
         // workspace admission path. Daemon startup must not materialize every
         // catalog entry into resident memory.
-        let (slot_count, loaded_entry_count) = registry.workspace_entry_counts();
+        let entry_counts = registry.workspace_entry_counts();
+        let slot_count = entry_counts.slot_count;
+        let loaded_entry_count = entry_counts.loaded_entry_count;
         status_memory.publish(
             crate::runtime_server_control::RuntimeServerState::Healthy,
             slot_count
@@ -501,7 +624,12 @@ impl RuntimeServer {
             crate::runtime_server_runtime::RuntimeServerConnectionSupervisor::for_current_runtime(
                 "runtime-server-ipc",
             );
+        let control_replay_guard = Arc::new(tokio::sync::Mutex::new(
+            super::control_connection::RuntimeServerControlReplayGuard::default(),
+        ));
         let (drain_sender, drain_receiver) = watch::channel(false);
+        let mut daemon_last_activity = tokio::time::Instant::now();
+        let mut daemon_had_workspace = false;
         let mut retirement_sweep = tokio::time::interval(std::time::Duration::from_secs(60));
         retirement_sweep.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         retirement_sweep.tick().await;
@@ -523,22 +651,28 @@ impl RuntimeServer {
                     let (stream, _) = connection.map_err(|error| {
                         format!("failed to accept runtime server request: {error}")
                     })?;
+                    crate::runtime_server_control::validate_runtime_server_peer_fd(
+                        std::os::fd::AsRawFd::as_raw_fd(&stream),
+                    )?;
                     let lease = connection_supervisor
                         .try_admit()
                         .expect("capacity guard must admit one control connection");
+                    daemon_last_activity = tokio::time::Instant::now();
                     let connection_endpoint = endpoint.clone();
                     let connection_registry = Arc::clone(&registry);
                     let connection_lifecycle = lifecycle.clone();
                     let connection_graph_turbo_status = graph_turbo_resident_status.clone();
                     let connection_drain = drain_receiver.clone();
+                    let connection_replay_guard = Arc::clone(&control_replay_guard);
                     connections.spawn(async move {
-                        let result = serve_connection(
+                        let result = super::control_connection::serve_connection(
                             stream,
                             connection_endpoint,
                             connection_registry,
                             connection_lifecycle,
                             connection_graph_turbo_status,
                             connection_drain,
+                            connection_replay_guard,
                         )
                         .await;
                         (lease, result)
@@ -548,19 +682,26 @@ impl RuntimeServer {
                     let (stream, _) = connection.map_err(|error| {
                         format!("failed to accept Runtime Server data-plane request: {error}")
                     })?;
+                    crate::runtime_server_control::validate_runtime_server_peer_fd(
+                        std::os::fd::AsRawFd::as_raw_fd(&stream),
+                    )?;
                     let endpoint = endpoint.clone();
                     let registry = Arc::clone(&registry);
                     let memory_registry = Arc::clone(&workspace_registry);
                     let generation_admission = generation_admission.clone();
                     let graph_turbo_evaluation_builder = graph_turbo_evaluation_builder.clone();
-                    let agent_session_registry_owner = agent_session_registry_owner.clone();
-                    let agent_session_status = agent_session_status.clone();
+let agent_session_registry_owner = agent_session_registry_owner.clone();
+let session_control_plane_runtime_registry =
+    Arc::clone(&session_control_plane_runtime_registry);
+let agent_session_status = agent_session_status.clone();
                     let codex_multi_agent_control_plane_owner =
                         Arc::clone(&codex_multi_agent_control_plane_owner);
+                    let telemetry_sender = telemetry_sender.clone();
                     let connection_drain = drain_receiver.clone();
                     let lease = connection_supervisor
                         .try_admit()
                         .expect("capacity guard must admit one data-plane connection");
+                    daemon_last_activity = tokio::time::Instant::now();
                     connections.spawn(async move {
                         let result = crate::workspace_db_ipc_server::serve_runtime_server_workspace_stream(
                             stream,
@@ -569,9 +710,11 @@ impl RuntimeServer {
                             &memory_registry,
                             generation_admission.as_ref(),
                             graph_turbo_evaluation_builder.as_ref(),
-                            agent_session_registry_owner.as_ref(),
-                            agent_session_status.as_ref(),
+agent_session_registry_owner.as_ref(),
+&session_control_plane_runtime_registry,
+agent_session_status.as_ref(),
                             &codex_multi_agent_control_plane_owner,
+                            telemetry_sender.as_ref(),
                             connection_drain,
                         )
                         .await
@@ -582,8 +725,9 @@ impl RuntimeServer {
                 completed = connections.join_next(), if !connections.is_empty() => {
                     match completed {
                         Some(Ok((_lease, Ok(true)))) => {
-                            let (slot_count, loaded_entry_count) =
-                                registry.workspace_entry_counts();
+                            let entry_counts = registry.workspace_entry_counts();
+                            let slot_count = entry_counts.slot_count;
+                            let loaded_entry_count = entry_counts.loaded_entry_count;
                             status_memory.publish(
                                 crate::runtime_server_control::RuntimeServerState::Draining,
                                 slot_count
@@ -613,7 +757,11 @@ impl RuntimeServer {
                     if changed.is_err() {
                         break RuntimeServerExit::ListenerClosed;
                     }
-                    let (slot_count, loaded_entry_count) = registry.workspace_entry_counts();
+                    let entry_counts = registry.workspace_entry_counts();
+                    let slot_count = entry_counts.slot_count;
+                    let loaded_entry_count = entry_counts.loaded_entry_count;
+                    daemon_had_workspace |= *workspace_count.borrow_and_update() > 0;
+                    daemon_last_activity = tokio::time::Instant::now();
                     status_memory.publish(
                         crate::runtime_server_control::RuntimeServerState::Healthy,
                         slot_count
@@ -627,7 +775,14 @@ impl RuntimeServer {
                     {
                         status.refresh(owner).await?;
                     }
-                    for receipt in workspace_registry.retire_inactive().await? {
+                    let retirement_receipts = workspace_registry.retire_inactive().await?;
+                    let confirmed_workspace_missing = retirement_receipts.iter().any(|receipt| {
+                        matches!(
+                            receipt.reason,
+                            crate::runtime_server_workspace::ResidentWorkspaceRetirementReason::WorkspaceMissing
+                        )
+                    });
+                    for receipt in retirement_receipts {
                         eprintln!(
                             "[runtime-server-workspace-retirement] schemaId={} schemaVersion={} workspaceIdentity={} reason={:?} checkpointCompleted={} writerLaneDrained={} endpointRetired={}",
                             receipt.schema_id,
@@ -639,6 +794,19 @@ impl RuntimeServer {
                             receipt.endpoint_retired,
                         );
                     }
+                    let entry_counts = registry.workspace_entry_counts();
+                    let slot_count = entry_counts.slot_count;
+                    let loaded_entry_count = entry_counts.loaded_entry_count;
+                    if daemon_checkpoint_should_shutdown(
+                        slot_count.max(loaded_entry_count).max(*workspace_count.borrow()),
+                        daemon_had_workspace,
+                        confirmed_workspace_missing,
+                        daemon_last_activity,
+                        tokio::time::Instant::now(),
+                    ) {
+                        let _ = drain_sender.send(true);
+                        break RuntimeServerExit::ShutdownRequested;
+                    }
                 }
                 changed = async {
                     match graph_turbo_status_changes.as_mut() {
@@ -649,7 +817,9 @@ impl RuntimeServer {
                     changed
                         .expect("Graph Turbo status branch requires a receiver")
                         .map_err(|_| "Graph Turbo resident status owner closed".to_owned())?;
-                    let (slot_count, loaded_entry_count) = registry.workspace_entry_counts();
+                    let entry_counts = registry.workspace_entry_counts();
+                    let slot_count = entry_counts.slot_count;
+                    let loaded_entry_count = entry_counts.loaded_entry_count;
                     status_memory.publish(
                         crate::runtime_server_control::RuntimeServerState::Healthy,
                         slot_count
@@ -666,7 +836,9 @@ impl RuntimeServer {
                     changed
                         .expect("Agent session status branch requires a receiver")
                         .map_err(|_| "Agent session status owner closed".to_owned())?;
-                    let (slot_count, loaded_entry_count) = registry.workspace_entry_counts();
+                    let entry_counts = registry.workspace_entry_counts();
+                    let slot_count = entry_counts.slot_count;
+                    let loaded_entry_count = entry_counts.loaded_entry_count;
                     status_memory.publish(
                         crate::runtime_server_control::RuntimeServerState::Healthy,
                         slot_count
@@ -676,8 +848,9 @@ impl RuntimeServer {
                 }
                 changed = shutdown.changed() => {
                     if changed.is_err() || *shutdown.borrow_and_update() {
-                        let (slot_count, loaded_entry_count) =
-                            registry.workspace_entry_counts();
+                        let entry_counts = registry.workspace_entry_counts();
+                        let slot_count = entry_counts.slot_count;
+                        let loaded_entry_count = entry_counts.loaded_entry_count;
                         status_memory.publish(
                             crate::runtime_server_control::RuntimeServerState::Draining,
                             slot_count
@@ -777,68 +950,4 @@ pub(super) async fn runtime_server_shutdown_signal() -> Result<(), String> {
     tokio::signal::ctrl_c()
         .await
         .map_err(|error| format!("failed to await Runtime Server Ctrl-C signal: {error}"))
-}
-
-async fn serve_connection(
-    mut stream: UnixStream,
-    endpoint: RuntimeServerEndpoint,
-    registry: Arc<WorkspaceDbRegistry>,
-    lifecycle: watch::Receiver<crate::runtime_server_control::RuntimeServerState>,
-    graph_turbo_resident_status: Option<GraphTurboResidentStatusHandle>,
-    mut drain: watch::Receiver<bool>,
-) -> Result<bool, String> {
-    loop {
-        let requests = tokio::select! {
-            requests = read_runtime_server_requests(&mut stream) => match requests {
-                Ok(requests) => requests,
-                Err(RuntimeServerRequestReadError::Closed) => return Ok(false),
-                Err(RuntimeServerRequestReadError::Invalid(error)) => return Err(error),
-            },
-            changed = drain.changed() => {
-                let _ = changed;
-                return Ok(false);
-            }
-        };
-        let (slot_count, loaded_entry_count) = registry.workspace_entry_counts();
-        let workspace_entry_count = slot_count.max(loaded_entry_count);
-        let mut restart = false;
-        let mut receipts = Vec::with_capacity(requests.len());
-        for request in requests {
-            let request_restart = request.requires_restart(&endpoint)?;
-            restart |= request_restart;
-            let mut receipt = if request_restart {
-                RuntimeServerControlReceipt::draining(
-                    request.request_id,
-                    &endpoint,
-                    workspace_entry_count,
-                )
-            } else if *lifecycle.borrow()
-                == crate::runtime_server_control::RuntimeServerState::Starting
-            {
-                let mut receipt = RuntimeServerControlReceipt::starting(
-                    request.request_id,
-                    endpoint.runtime_artifact_digest.clone(),
-                    endpoint.artifact_mode.clone(),
-                    endpoint.artifact_catalog_digest.clone(),
-                    "workspace-generation-restore".to_owned(),
-                );
-                receipt.workspace_entry_count = workspace_entry_count;
-                receipt
-            } else {
-                RuntimeServerControlReceipt::healthy(
-                    request.request_id,
-                    &endpoint,
-                    workspace_entry_count,
-                )
-            };
-            receipt.graph_turbo_resident = graph_turbo_resident_status
-                .as_ref()
-                .map(|status| status.snapshot());
-            receipts.push(receipt);
-        }
-        write_runtime_server_receipts(&mut stream, &receipts).await?;
-        if restart {
-            return Ok(true);
-        }
-    }
 }

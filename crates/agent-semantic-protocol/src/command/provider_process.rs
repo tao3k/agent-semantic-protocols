@@ -1,7 +1,7 @@
 use agent_semantic_hook::{ActivatedProvider, RuntimeProfiles};
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessLimits, ProviderProcessOutput, ProviderProcessSpec, StdinMode,
-    provider_process_limits_from_environment, run_provider_process as run_transport_process,
+    provider_process_limits_from_environment, run_provider_process_async as run_transport_process,
 };
 use agent_semantic_runtime::project_state_paths;
 use std::collections::BTreeMap;
@@ -9,7 +9,7 @@ use std::env;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-pub(super) fn run_provider_command(
+pub(super) async fn run_provider_command(
     language_id: &str,
     provider: &ActivatedProvider,
     invocation: &[String],
@@ -19,7 +19,8 @@ pub(super) fn run_provider_command(
     let (program, forwarded) = invocation
         .split_first()
         .ok_or_else(|| format!("language `{language_id}` has an empty provider command"))?;
-    let output = run_provider_process(language_id, provider, program, forwarded, project_root)?;
+    let output =
+        run_provider_process(language_id, provider, program, forwarded, project_root).await?;
     write_facade_stream(language_id, provider, output.stderr.as_ref(), io::stderr())?;
     if require_semantic_document_query_packet {
         validate_semantic_document_query_packet(output.stdout.as_ref(), provider)?;
@@ -97,7 +98,7 @@ fn validate_semantic_document_query_packet(
     Ok(())
 }
 
-pub(super) fn run_provider_command_with_stdin(
+pub(super) async fn run_provider_command_with_stdin(
     language_id: &str,
     provider: &ActivatedProvider,
     invocation: &[String],
@@ -113,9 +114,10 @@ pub(super) fn run_provider_command_with_stdin(
         stdin,
         limits,
     )
+    .await
 }
 
-pub(super) fn run_provider_command_with_stdin_limits(
+pub(super) async fn run_provider_command_with_stdin_limits(
     language_id: &str,
     provider: &ActivatedProvider,
     invocation: &[String],
@@ -136,9 +138,10 @@ pub(super) fn run_provider_command_with_stdin_limits(
         limits,
         stdin: StdinMode::bytes(stdin),
     })
+    .await
 }
 
-pub(super) fn run_guide_command(
+pub(super) async fn run_guide_command(
     language_id: &str,
     provider: &ActivatedProvider,
     invocation: &[String],
@@ -147,7 +150,8 @@ pub(super) fn run_guide_command(
     let (program, forwarded) = invocation
         .split_first()
         .ok_or_else(|| format!("language `{language_id}` has an empty provider command"))?;
-    let output = run_provider_process(language_id, provider, program, forwarded, project_root)?;
+    let output =
+        run_provider_process(language_id, provider, program, forwarded, project_root).await?;
     io::stderr()
         .write_all(&output.stderr)
         .map_err(|error| format!("failed to write provider stderr: {error}"))?;
@@ -162,7 +166,7 @@ pub(super) fn run_guide_command(
         .map_err(|error| format!("failed to write provider stdout: {error}"))
 }
 
-fn run_provider_process(
+async fn run_provider_process(
     language_id: &str,
     provider: &ActivatedProvider,
     program: &str,
@@ -179,6 +183,7 @@ fn run_provider_process(
         limits: default_provider_process_limits()?,
         stdin: StdinMode::Inherit,
     })
+    .await
 }
 
 fn default_provider_process_limits() -> Result<ProviderProcessLimits, String> {
@@ -196,11 +201,11 @@ struct ProviderProcessRun<'a> {
     limits: ProviderProcessLimits,
 }
 
-fn run_provider_process_with_stdin(
+async fn run_provider_process_with_stdin(
     request: ProviderProcessRun<'_>,
 ) -> Result<ProviderProcessOutput, String> {
     let (spec, language_id, provider_id) = provider_process_spec(request)?;
-    run_transport_process(spec).map_err(|error| {
+    run_transport_process(spec).await.map_err(|error| {
         format!("failed to run provider `{provider_id}` for language `{language_id}`: {error}")
     })
 }

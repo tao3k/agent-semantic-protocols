@@ -70,7 +70,7 @@
     "notes": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/note"
+        "$ref": "semantic-definitions.v1.schema.json#/$defs/note"
       }
     }
   },
@@ -116,35 +116,7 @@
       "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*)$"
     },
     "location": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "path",
-        "lineRange"
-      ],
-      "properties": {
-        "path": {
-          "$ref": "#/$defs/projectPath"
-        },
-        "lineRange": {
-          "type": "string",
-          "description": "Compact source line range as start:end, for example 10:43. This is display metadata, not selector identity.",
-          "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
-        },
-        "structuralSelector": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "^[a-z][a-z0-9+.-]*://[^#\\s]+#[^\\s]+$"
-        },
-        "displayLineRange": {
-          "type": "string",
-          "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
-        },
-        "sourceLocatorHint": {
-          "type": "string",
-          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*(?:(?::|-)[1-9][0-9]*)?$"
-        }
-      }
+      "$ref": "semantic-definitions.v1.schema.json#/$defs/location"
     },
     "handleKind": {
       "enum": [
@@ -283,9 +255,8 @@
           "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
         },
         "sourceLocatorHint": {
-          "type": "string",
           "description": "Compatibility source locator for exact code transport after a semantic selector has been chosen.",
-          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*(?:(?::|-)[1-9][0-9]*)?$"
+          "$ref": "semantic-definitions.v1.schema.json#/$defs/sourceLocator"
         },
         "projection": {
           "enum": [
@@ -337,23 +308,6 @@
         },
         "fields": {
           "$ref": "#/$defs/fields"
-        }
-      }
-    },
-    "note": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "kind",
-        "message"
-      ],
-      "properties": {
-        "kind": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$"
-        },
-        "message": {
-          "type": "string"
         }
       }
     }

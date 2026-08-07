@@ -27,3 +27,19 @@ fn typed_read_action_with_path_remains_policy_bearing() {
         Some(true)
     );
 }
+
+#[test]
+fn typed_read_actions_for_registered_document_extensions_remain_policy_bearing() {
+    for path in ["ASP_ORG_SKILL.org", "RTK.md"] {
+        let payload = json!({
+            "tool_name": "Read",
+            "tool_input": { "file_path": path }
+        });
+
+        assert_eq!(
+            codex_tool_event_requires_policy_evaluation(&payload),
+            Some(true),
+            "registered document Read must reach the internal language-extension matcher: {path}"
+        );
+    }
+}

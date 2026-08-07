@@ -97,7 +97,9 @@ impl RuntimeServer {
         let data_listener =
             bind_runtime_server_listener(Path::new(&endpoint.data_plane_socket_path))?;
         let mut status_memory = RuntimeServerStatusMemoryWriter::create(&endpoint).await?;
-        let (slot_count, loaded_entry_count) = registry.workspace_entry_counts();
+        let entry_counts = registry.workspace_entry_counts();
+        let slot_count = entry_counts.slot_count;
+        let loaded_entry_count = entry_counts.loaded_entry_count;
         status_memory.publish(
             crate::runtime_server_control::RuntimeServerState::Starting,
             slot_count.max(loaded_entry_count),
@@ -126,8 +128,11 @@ impl RuntimeServer {
             generation_admission: None,
             graph_turbo_evaluation_builder: None,
             graph_turbo_resident_status: None,
-            agent_session_registry_owner: None,
-            agent_session_status: None,
+agent_session_registry_owner: None,
+session_control_plane_runtime_registry: Arc::new(
+    crate::SessionControlPlaneRuntimeRegistry::default(),
+),
+agent_session_status: None,
             codex_multi_agent_control_plane_owner: Arc::new(
                 crate::codex_multi_agent_control_plane_owner::CodexMultiAgentControlPlaneOwner::new(
                 ),

@@ -193,8 +193,8 @@ fn relative_project_root_is_canonicalized_for_provider_cwd() {
     assert_eq!(command.project_root, current_dir);
 }
 
-#[test]
-fn execute_records_transport_receipt_fields() {
+#[tokio::test]
+async fn execute_records_transport_receipt_fields() {
     let _home = install_home_provider(
         "receipt",
         "fake-rust-provider",
@@ -207,7 +207,7 @@ fn execute_records_transport_receipt_fields() {
         .with_language("rust")
         .with_forwarded_args(vec!["prime".to_string()]);
 
-    let output = backend.execute(&request).expect("execute provider");
+    let output = backend.execute(&request).await.expect("execute provider");
 
     assert_eq!(output.status_code, 0);
     assert_eq!(output.stdout.as_ref(), b"provider-out");

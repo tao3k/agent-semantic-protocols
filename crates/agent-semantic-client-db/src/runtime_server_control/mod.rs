@@ -5,7 +5,10 @@ mod frame;
 mod model;
 pub(crate) mod status_memory;
 
-pub use client::{call_runtime_server, reconcile_runtime_server};
+pub use client::{
+    RUNTIME_SERVER_HOOK_CONTROL_PROBE_BUDGET, RuntimeServerHookProbeError, call_runtime_server,
+    probe_runtime_server_for_hook, reconcile_runtime_server,
+};
 pub use endpoint::{
     RuntimeServerElection, acquire_runtime_server_election, bind_runtime_server_listener,
     prepare_runtime_server_endpoint, prepare_runtime_server_endpoint_in,
@@ -13,6 +16,7 @@ pub use endpoint::{
     read_runtime_server_endpoint, runtime_server_connection_pool_capacity,
     runtime_server_connection_pool_size, runtime_server_endpoint_path,
     runtime_server_listener_backlog, runtime_server_runtime_base,
+    validate_runtime_server_endpoint_for_state_home, validate_runtime_server_peer_fd,
 };
 pub(crate) use frame::{read_runtime_server_requests, write_runtime_server_receipts};
 pub use model::{

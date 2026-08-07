@@ -16,6 +16,7 @@ SCHEMA_PATH = (
 CANDIDATE_SCHEMA_PATH = (
     REPO_ROOT / "schemas" / "repository-candidate-snapshot.v1.schema.json"
 )
+DEFINITIONS_SCHEMA_PATH = REPO_ROOT / "schemas" / "runtime-server-definitions.v1.schema.json"
 FIXTURE_ROOT = (
     REPO_ROOT
     / "schemas"
@@ -38,9 +39,12 @@ MUTATION_FIXTURE_ROOT = (
 def validator() -> Draft202012Validator:
     schema = json.loads(SCHEMA_PATH.read_text())
     candidate_schema = json.loads(CANDIDATE_SCHEMA_PATH.read_text())
+    definitions_schema = json.loads(DEFINITIONS_SCHEMA_PATH.read_text())
     Draft202012Validator.check_schema(schema)
-    registry = Registry().with_resource(
-        candidate_schema["$id"], Resource.from_contents(candidate_schema)
+    registry = Registry().with_resources(
+        [(candidate_schema["$id"], Resource.from_contents(candidate_schema)),
+         (definitions_schema["$id"], Resource.from_contents(definitions_schema)),
+         ("https://agent-semantic-protocols.dev/schemas/runtime-server-definitions.v1.schema.json", Resource.from_contents(definitions_schema))]
     )
     return Draft202012Validator(schema, registry=registry)
 
@@ -49,6 +53,7 @@ def mutation_validator() -> Draft202012Validator:
     schema = json.loads(MUTATION_SCHEMA_PATH.read_text())
     admission_schema = json.loads(SCHEMA_PATH.read_text())
     candidate_schema = json.loads(CANDIDATE_SCHEMA_PATH.read_text())
+    definitions_schema = json.loads(DEFINITIONS_SCHEMA_PATH.read_text())
     Draft202012Validator.check_schema(schema)
     registry = Registry().with_resources(
         [
@@ -60,6 +65,8 @@ def mutation_validator() -> Draft202012Validator:
                 candidate_schema["$id"],
                 Resource.from_contents(candidate_schema),
             ),
+            (definitions_schema["$id"], Resource.from_contents(definitions_schema)),
+            ("https://agent-semantic-protocols.dev/schemas/runtime-server-definitions.v1.schema.json", Resource.from_contents(definitions_schema)),
         ]
     )
     return Draft202012Validator(schema, registry=registry)

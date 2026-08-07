@@ -4,7 +4,8 @@ use std::time::{Duration, Instant};
 #[cfg(target_os = "macos")]
 use crate::ProviderProcessError;
 use crate::{
-    DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES, ProviderProcessLimits, StdinMode, run_provider_process,
+    DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES, ProviderProcessLimits, StdinMode,
+    run_provider_process_async,
 };
 
 use super::support::{script, spec, temp_dir};
@@ -18,15 +19,17 @@ fn default_limits_enforce_the_two_gibibyte_provider_process_group_ceiling() {
     assert_eq!(DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES, 2 * 1024 * 1024 * 1024);
 }
 
-#[test]
-fn captures_stdout_stderr_and_exit_status() {
+#[tokio::test]
+async fn captures_stdout_stderr_and_exit_status() {
     let root = temp_dir("capture-status");
     let program = script(
         &root,
         "provider.sh",
         "#!/bin/sh\nprintf 'out'\nprintf 'err' >&2\nexit 7\n",
     );
-    let output = run_provider_process(spec(program, root.clone())).expect("run provider");
+    let output = run_provider_process_async(spec(program, root.clone()))
+        .await
+        .expect("run provider");
 
     assert_eq!(output.status.code(), Some(7));
     assert_eq!(output.stdout.as_ref(), b"out");
@@ -49,8 +52,8 @@ fn captures_stdout_stderr_and_exit_status() {
 }
 
 #[cfg(unix)]
-#[test]
-fn completed_provider_invocation_kills_background_descendants_before_returning() {
+#[tokio::test]
+async fn completed_provider_invocation_kills_background_descendants_before_returning() {
     let root = temp_dir("provider-orphan-descendant");
     let program = script(
         &root,
@@ -59,7 +62,9 @@ fn completed_provider_invocation_kills_background_descendants_before_returning()
     );
     let started = Instant::now();
 
-    let output = run_provider_process(spec(program, root.clone())).expect("run provider");
+    let output = run_provider_process_async(spec(program, root.clone()))
+        .await
+        .expect("run provider");
 
     assert!(output.status.success());
     assert_eq!(output.stdout.as_ref(), b"orphan");
@@ -73,34 +78,38 @@ fn completed_provider_invocation_kills_background_descendants_before_returning()
     let _ = fs::remove_dir_all(root);
 }
 
-#[test]
-fn writes_bytes_to_stdin() {
+#[tokio::test]
+async fn writes_bytes_to_stdin() {
     let root = temp_dir("stdin-bytes");
     let program = script(&root, "provider.sh", "#!/bin/sh\ncat\n");
     let mut process = spec(program, root.clone());
     process.stdin = StdinMode::bytes("payload");
-    let output = run_provider_process(process).expect("run provider");
+    let output = run_provider_process_async(process)
+        .await
+        .expect("run provider");
 
     assert!(output.status.success());
     assert_eq!(output.stdout.as_ref(), b"payload");
     let _ = fs::remove_dir_all(root);
 }
 
-#[test]
-fn stdin_broken_pipe_still_reports_provider_output() {
+#[tokio::test]
+async fn stdin_broken_pipe_still_reports_provider_output() {
     let root = temp_dir("stdin-broken-pipe");
     let program = script(&root, "provider.sh", "#!/bin/sh\nprintf 'ready'\nexit 0\n");
     let mut process = spec(program, root.clone());
     process.stdin = StdinMode::bytes(vec![b'x'; 1024 * 1024]);
-    let output = run_provider_process(process).expect("run provider");
+    let output = run_provider_process_async(process)
+        .await
+        .expect("run provider");
 
     assert!(output.status.success());
     assert_eq!(output.stdout.as_ref(), b"ready");
     let _ = fs::remove_dir_all(root);
 }
 
-#[test]
-fn passes_cwd_and_env() {
+#[tokio::test]
+async fn passes_cwd_and_env() {
     let root = temp_dir("cwd-env");
     let program = script(
         &root,
@@ -109,7 +118,9 @@ fn passes_cwd_and_env() {
     );
     let mut process = spec(program, root.clone());
     process.env.insert("ASP_TEST_VALUE".into(), "ok".into());
-    let output = run_provider_process(process).expect("run provider");
+    let output = run_provider_process_async(process)
+        .await
+        .expect("run provider");
     let stdout = output.stdout_lossy();
 
     assert!(
@@ -120,8 +131,8 @@ fn passes_cwd_and_env() {
     let _ = fs::remove_dir_all(root);
 }
 
-#[test]
-fn records_signal_termination_with_memory_limit_context() {
+#[tokio::test]
+async fn records_signal_termination_with_memory_limit_context() {
     let root = temp_dir("signal-memory-receipt");
     let program = script(&root, "provider.sh", "#!/bin/sh\nkill -SEGV $$\n");
     let mut process = spec(program, root.clone());
@@ -129,7 +140,9 @@ fn records_signal_termination_with_memory_limit_context() {
         .limits
         .with_memory_limit_bytes(Some(512 * 1024 * 1024));
 
-    let output = run_provider_process(process).expect("run provider");
+    let output = run_provider_process_async(process)
+        .await
+        .expect("run provider");
 
     assert!(!output.status.success());
     assert_eq!(output.receipt.exit_signal(), Some(libc::SIGSEGV));
@@ -143,8 +156,8 @@ fn records_signal_termination_with_memory_limit_context() {
     let _ = fs::remove_dir_all(root);
 }
 
-#[test]
-fn records_success_with_enforced_memory_limit() {
+#[tokio::test]
+async fn records_success_with_enforced_memory_limit() {
     let root = temp_dir("success-memory-receipt");
     let program = script(&root, "provider.sh", "#!/bin/sh\nprintf ok\n");
     let mut process = spec(program, root.clone());
@@ -152,7 +165,9 @@ fn records_success_with_enforced_memory_limit() {
         .limits
         .with_memory_limit_bytes(Some(512 * 1024 * 1024));
 
-    let output = run_provider_process(process).expect("run provider");
+    let output = run_provider_process_async(process)
+        .await
+        .expect("run provider");
 
     assert!(output.status.success());
     assert_eq!(output.receipt.termination_reason(), "success");
@@ -163,8 +178,8 @@ fn records_success_with_enforced_memory_limit() {
 }
 
 #[cfg(target_os = "macos")]
-#[test]
-fn macos_parent_kills_provider_after_rss_limit() {
+#[tokio::test]
+async fn macos_parent_kills_provider_after_rss_limit() {
     let root = temp_dir("macos-rss-limit");
     let program = script(
         &root,
@@ -176,7 +191,9 @@ fn macos_parent_kills_provider_after_rss_limit() {
         .limits
         .with_memory_limit_bytes(Some(32 * 1024 * 1024));
 
-    let error = run_provider_process(process).expect_err("memory limit must terminate provider");
+    let error = run_provider_process_async(process)
+        .await
+        .expect_err("memory limit must terminate provider");
     let ProviderProcessError::MemoryLimit {
         limit_bytes,
         receipt,
@@ -192,8 +209,8 @@ fn macos_parent_kills_provider_after_rss_limit() {
 }
 
 #[cfg(target_os = "macos")]
-#[test]
-fn macos_parent_kills_provider_when_child_pushes_process_group_over_rss_limit() {
+#[tokio::test]
+async fn macos_parent_kills_provider_when_child_pushes_process_group_over_rss_limit() {
     let root = temp_dir("macos-process-group-rss-limit");
     let program = script(
         &root,
@@ -205,8 +222,9 @@ fn macos_parent_kills_provider_when_child_pushes_process_group_over_rss_limit() 
         .limits
         .with_memory_limit_bytes(Some(32 * 1024 * 1024));
 
-    let error =
-        run_provider_process(process).expect_err("process-group memory must terminate provider");
+    let error = run_provider_process_async(process)
+        .await
+        .expect_err("process-group memory must terminate provider");
     let ProviderProcessError::MemoryLimit {
         limit_bytes,
         receipt,

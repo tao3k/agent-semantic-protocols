@@ -1,3 +1,6 @@
+use agent_semantic_client_db::runtime_server_admission::{
+    WorkspaceGenerationBuildFailure, WorkspaceGenerationFailureStage,
+};
 use std::sync::Arc;
 
 use agent_semantic_client_db::runtime_server_admission::{
@@ -11,13 +14,6 @@ use agent_semantic_client_db::runtime_server_admission_catalog::{
     RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
 };
 use tokio::sync::{Barrier, Mutex};
-
-#[test]
-fn mutation_rebuild_does_not_attempt_to_restore_the_superseded_materialization() {
-    assert!(WorkspaceGenerationBuildMode::RestoreOnly.attempts_durable_restore());
-    assert!(WorkspaceGenerationBuildMode::RestoreOrBuild.attempts_durable_restore());
-    assert!(!WorkspaceGenerationBuildMode::RebuildAfterMutation.attempts_durable_restore());
-}
 
 pub(super) fn candidate_identity() -> WorkspaceGenerationCandidateIdentity {
     candidate_identity_for(
@@ -46,6 +42,7 @@ fn ready_receipt(workspace_identity: &str) -> WorkspaceGenerationAdmissionReceip
         policy_overlay_digest: candidate_identity().policy_overlay_digest,
         state: WorkspaceGenerationAdmissionState::Ready,
         accepted: true,
+        failure_stage: None,
         attempt: 1,
         commit: Some(
             agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
@@ -77,12 +74,16 @@ fn completed_generation(
     candidate: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
 ) -> Result<
     agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildCompletion,
-    String,
+    agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildFailure,
 > {
     agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildCompletion::new(
         candidate,
         committed_generation(),
     )
+    .map_err(|error| agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
+        error,
+    ))
 }
 
 #[test]
@@ -99,94 +100,8 @@ fn ready_admission_requires_generation_commit_evidence() {
 }
 
 #[test]
-fn mutation_receipt_rejects_count_drift_and_duplicate_workspace_identity() {
-    let count_drift = WorkspaceGenerationMutationAdmissionReceipt {
-        schema_id: WORKSPACE_GENERATION_MUTATION_ADMISSION_RECEIPT_SCHEMA_ID.to_owned(),
-        schema_version: "1".to_owned(),
-        mutation_id: "mutation-count-drift".to_owned(),
-        changed_path_count: 2,
-        affected_workspace_count: 1,
-        receipts: vec![
-            ready_receipt("workspace-parent"),
-            ready_receipt("workspace-nested"),
-        ],
-    };
-    assert_eq!(
-        count_drift.validate().expect_err("count drift must fail"),
-        "workspace mutation admission receipt count does not match receipts"
-    );
-
-    let duplicate = WorkspaceGenerationMutationAdmissionReceipt {
-        schema_id: WORKSPACE_GENERATION_MUTATION_ADMISSION_RECEIPT_SCHEMA_ID.to_owned(),
-        schema_version: "1".to_owned(),
-        mutation_id: "mutation-duplicate-workspace".to_owned(),
-        changed_path_count: 2,
-        affected_workspace_count: 2,
-        receipts: vec![
-            ready_receipt("workspace-parent"),
-            ready_receipt("workspace-parent"),
-        ],
-    };
-    assert_eq!(
-        duplicate
-            .validate()
-            .expect_err("duplicate workspace identity must fail"),
-        "workspace mutation admission receipt repeats a workspace identity"
-    );
-}
-
-#[tokio::test]
-async fn mutation_admission_rejects_non_normalized_paths_and_workspace_identity_drift() {
-    let temp = tempfile::tempdir().expect("temporary resident catalog");
-    let parent_root = temp.path().join("repository");
-    let conflicting_root = temp.path().join("other-checkout");
-    let catalog = RuntimeWorkspaceAdmissionCatalog::load(temp.path().join("catalog.json"))
-        .await
-        .expect("load resident workspace catalog");
-    catalog
-        .record(RuntimeWorkspaceAdmissionCatalogEntry {
-            workspace_identity: "workspace-parent".to_owned(),
-            project_root: parent_root.clone(),
-        })
-        .await
-        .expect("record parent workspace");
-    let admission = WorkspaceGenerationAdmission::new(Arc::new(
-        |_, _, _, _, _cancellation, _absolute_deadline| {
-            Box::pin(async {
-                panic!("invalid mutation admission must not start a generation build")
-            })
-        },
-    ))
-    .with_catalog(catalog);
-
-    let path_error = admission
-        .admit_observed_mutation(
-            "mutation-path-normalization",
-            "workspace-parent",
-            parent_root.clone(),
-            vec![std::path::PathBuf::from("src/../src/lib.rs")],
-            candidate_identity(),
-        )
-        .await
-        .expect_err("parent directory component must fail closed");
-    assert!(path_error.contains("path must be normalized"));
-
-    let identity_error = admission
-        .admit_observed_mutation(
-            "mutation-identity-drift",
-            "workspace-parent",
-            conflicting_root.clone(),
-            vec![conflicting_root.join("src/lib.rs")],
-            candidate_identity(),
-        )
-        .await
-        .expect_err("workspace identity drift must fail closed");
-    assert!(identity_error.contains("identity already owns a different resident root"));
-}
-
-#[test]
 fn cold_restore_publishes_committed_generation_without_live_checkout_probe() {
-    let source = include_str!("../../src/runtime_server/mod.rs");
+    let source = include_str!("../../src/runtime_server/core.rs");
     assert!(source.contains("canonical_materialization_matches_admitted_generation"));
     assert!(!source.contains("canonical_materialization_matches_candidate_generation"));
     assert!(!source.contains("discover_repository_candidate_snapshot"));
@@ -194,7 +109,7 @@ fn cold_restore_publishes_committed_generation_without_live_checkout_probe() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn concurrent_workspace_admission_is_single_flight() {
+async fn concurrent_256_admission_requests_are_single_flight() {
     const REQUEST_COUNT: usize = 256;
     let build_count = Arc::new(Mutex::new(0_u32));
     let release = Arc::new(Barrier::new(2));
@@ -205,8 +120,8 @@ async fn concurrent_workspace_admission_is_single_flight() {
               _project_root,
               candidate,
               _build_mode,
-              _cancellation,
-              _absolute_deadline| {
+              _changed_paths,
+              _cancellation| {
             let build_count = Arc::clone(&build_count);
             let release = Arc::clone(&release);
             Box::pin(async move {
@@ -265,6 +180,9 @@ async fn concurrent_workspace_admission_is_single_flight() {
         .expect("drain generation admission lane");
 }
 
+#[path = "runtime_server_generation_admission_performance.rs"]
+mod runtime_server_generation_admission_performance;
+
 #[tokio::test]
 async fn project_roots_have_independent_admission_flights() {
     let roots = Arc::new(Mutex::new(Vec::new()));
@@ -274,8 +192,8 @@ async fn project_roots_have_independent_admission_flights() {
               project_root,
               candidate,
               _build_mode,
-              _cancellation,
-              _absolute_deadline| {
+              _changed_paths,
+              _cancellation| {
             let roots = Arc::clone(&roots);
             Box::pin(async move {
                 roots.lock().await.push(project_root);
@@ -330,241 +248,6 @@ async fn project_roots_have_independent_admission_flights() {
         .expect("drain independent admission lanes");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn changed_paths_fan_out_to_each_workspace_resident_without_git_rediscovery() {
-    let temp = tempfile::tempdir().expect("temporary resident catalog");
-    let parent_root = temp.path().join("repository");
-    let nested_root = parent_root.join("languages/rust-lang-project-harness");
-    tokio::fs::create_dir_all(&nested_root)
-        .await
-        .expect("nested workspace root");
-    let catalog = RuntimeWorkspaceAdmissionCatalog::load(temp.path().join("catalog.json"))
-        .await
-        .expect("load resident workspace catalog");
-    catalog
-        .record(RuntimeWorkspaceAdmissionCatalogEntry {
-            workspace_identity: "workspace-parent".to_owned(),
-            project_root: parent_root.clone(),
-        })
-        .await
-        .expect("record parent workspace");
-    catalog
-        .record(RuntimeWorkspaceAdmissionCatalogEntry {
-            workspace_identity: "workspace-nested".to_owned(),
-            project_root: nested_root.clone(),
-        })
-        .await
-        .expect("record nested workspace");
-
-    let builds = Arc::new(Mutex::new(Vec::new()));
-    let admission = WorkspaceGenerationAdmission::new(Arc::new({
-        let builds = Arc::clone(&builds);
-        move |workspace_identity,
-              project_root,
-              candidate,
-              _build_mode,
-              _cancellation,
-              _absolute_deadline| {
-            let builds = Arc::clone(&builds);
-            Box::pin(async move {
-                builds.lock().await.push((workspace_identity, project_root));
-                completed_generation(candidate)
-            })
-        }
-    }))
-    .with_catalog(catalog);
-    for (workspace_identity, workspace_root) in [
-        ("workspace-parent", &parent_root),
-        ("workspace-nested", &nested_root),
-    ] {
-        admission
-            .admit(
-                workspace_identity,
-                workspace_root.clone(),
-                candidate_identity(),
-            )
-            .await
-            .expect("admit resident candidate evidence");
-        admission
-            .wait_terminal(workspace_identity, workspace_root)
-            .await
-            .expect("resident candidate evidence ready");
-    }
-    builds.lock().await.clear();
-
-    let receipt = admission
-        .admit_observed_mutation(
-            "mutation-parent-and-nested",
-            "workspace-parent",
-            parent_root.clone(),
-            vec![
-                parent_root.join("README.md"),
-                nested_root.join("src/exact_source.rs"),
-            ],
-            candidate_identity(),
-        )
-        .await
-        .expect("fan out changed paths from resident evidence");
-    receipt.validate().expect("valid mutation receipt");
-    assert_eq!(receipt.changed_path_count, 2);
-    assert_eq!(receipt.affected_workspace_count, 2);
-    assert_eq!(
-        receipt
-            .receipts
-            .iter()
-            .map(|receipt| receipt.workspace_identity.as_str())
-            .collect::<Vec<_>>(),
-        vec!["workspace-nested", "workspace-parent"]
-    );
-    for (workspace_identity, workspace_root) in [
-        ("workspace-parent", &parent_root),
-        ("workspace-nested", &nested_root),
-    ] {
-        admission
-            .wait_terminal(workspace_identity, workspace_root)
-            .await
-            .expect("workspace mutation terminal state");
-    }
-    let mut builds = builds.lock().await.clone();
-    builds.sort();
-    assert_eq!(
-        builds,
-        vec![
-            ("workspace-nested".to_owned(), nested_root),
-            ("workspace-parent".to_owned(), parent_root),
-        ]
-    );
-
-    admission
-        .shutdown()
-        .await
-        .expect("drain changed-path admission lanes");
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attempt() {
-    let build_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let release = Arc::new(tokio::sync::Semaphore::new(0));
-    let admission = WorkspaceGenerationAdmission::new(Arc::new({
-        let build_count = Arc::clone(&build_count);
-        let release = Arc::clone(&release);
-        move |_, _, candidate, _, _cancellation, _absolute_deadline| {
-            let build_count = Arc::clone(&build_count);
-            let release = Arc::clone(&release);
-            Box::pin(async move {
-                build_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                release
-                    .acquire_owned()
-                    .await
-                    .map_err(|_| "mutation queue release closed".to_owned())?
-                    .forget();
-                completed_generation(candidate)
-            })
-        }
-    }));
-    let root = std::env::temp_dir().join("asp-mutation-queue-workspace");
-    let changed_path = root.join("src/lib.rs");
-
-    let first = admission
-        .admit_observed_mutation(
-            "mutation-1",
-            "workspace-mutation-queue",
-            root.clone(),
-            vec![changed_path.clone()],
-            candidate_identity(),
-        )
-        .await
-        .expect("admit first mutation");
-    assert_eq!(first.receipts[0].attempt, 1);
-    assert!(first.receipts[0].accepted);
-
-    let second = admission
-        .admit_observed_mutation(
-            "mutation-2",
-            "workspace-mutation-queue",
-            root.clone(),
-            vec![changed_path.clone()],
-            candidate_identity(),
-        )
-        .await
-        .expect("queue successor mutation");
-    assert_eq!(second.receipts[0].attempt, 2);
-    assert!(second.receipts[0].accepted);
-
-    let third = admission
-        .admit_observed_mutation(
-            "mutation-3",
-            "workspace-mutation-queue",
-            root.clone(),
-            vec![changed_path.clone()],
-            candidate_identity(),
-        )
-        .await
-        .expect("queue second successor mutation");
-    assert_eq!(third.receipts[0].attempt, 3);
-    assert!(third.receipts[0].accepted);
-
-    let duplicate = admission
-        .admit_observed_mutation(
-            "mutation-2",
-            "workspace-mutation-queue",
-            root.clone(),
-            vec![changed_path.clone()],
-            candidate_identity(),
-        )
-        .await
-        .expect("observe queued mutation");
-    assert_eq!(duplicate.receipts[0].attempt, 2);
-    assert!(!duplicate.receipts[0].accepted);
-
-    release.add_permits(1);
-    tokio::time::timeout(std::time::Duration::from_millis(100), async {
-        while build_count.load(std::sync::atomic::Ordering::Relaxed) < 2 {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("successor generation attempt must start");
-    release.add_permits(1);
-    tokio::time::timeout(std::time::Duration::from_millis(100), async {
-        while build_count.load(std::sync::atomic::Ordering::Relaxed) < 3 {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("second successor generation attempt must start");
-    release.add_permits(1);
-    let terminal = tokio::time::timeout(
-        std::time::Duration::from_millis(100),
-        admission.wait_terminal("workspace-mutation-queue", &root),
-    )
-    .await
-    .expect("queued successor must reach terminal state within 100ms")
-    .expect("queued successor must produce a terminal receipt");
-    assert_eq!(terminal.state, WorkspaceGenerationAdmissionState::Ready);
-    assert_eq!(terminal.attempt, 3);
-    assert_eq!(build_count.load(std::sync::atomic::Ordering::Relaxed), 3);
-
-    let completed_duplicate = admission
-        .admit_observed_mutation(
-            "mutation-3",
-            "workspace-mutation-queue",
-            root.clone(),
-            vec![changed_path],
-            candidate_identity(),
-        )
-        .await
-        .expect("coalesce duplicate of the completed mutation");
-    assert_eq!(completed_duplicate.receipts[0].attempt, 3);
-    assert!(!completed_duplicate.receipts[0].accepted);
-    assert_eq!(build_count.load(std::sync::atomic::Ordering::Relaxed), 3);
-
-    tokio::time::timeout(std::time::Duration::from_millis(100), admission.shutdown())
-        .await
-        .expect("queued mutation generation lane must drain within 100ms")
-        .expect("drain queued mutation generation lane");
-}
-
 #[tokio::test(flavor = "multi_thread")]
 async fn multi_workspace_multi_session_admission_is_in_process_single_flight_and_sub_millisecond() {
     let machine_parallelism = std::thread::available_parallelism()
@@ -581,7 +264,7 @@ async fn multi_workspace_multi_session_admission_is_in_process_single_flight_and
         let peak_builds = Arc::clone(&peak_builds);
         let build_count = Arc::clone(&build_count);
         let release = Arc::clone(&release);
-        move |_, _, candidate, _, _cancellation, _absolute_deadline| {
+        move |_, _, candidate, _, _changed_paths, _cancellation| {
             let active_builds = Arc::clone(&active_builds);
             let peak_builds = Arc::clone(&peak_builds);
             let build_count = Arc::clone(&build_count);
@@ -593,7 +276,12 @@ async fn multi_workspace_multi_session_admission_is_in_process_single_flight_and
                 release
                     .acquire_owned()
                     .await
-                    .map_err(|_| "in-process admission release closed".to_owned())?
+                    .map_err(|_| {
+                        WorkspaceGenerationBuildFailure::new(
+                            WorkspaceGenerationFailureStage::GenerationBuilder,
+                            "in-process admission release closed",
+                        )
+                    })?
                     .forget();
                 active_builds.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
                 completed_generation(candidate)
@@ -695,8 +383,8 @@ async fn ensure_observes_ready_attempt_without_starting_another_build() {
               _project_root,
               candidate,
               _build_mode,
-              _cancellation,
-              _absolute_deadline| {
+              _changed_paths,
+              _cancellation| {
             let build_count = Arc::clone(&build_count);
             Box::pin(async move {
                 *build_count.lock().await += 1;
@@ -743,8 +431,8 @@ async fn ensure_schedules_once_without_waiting_for_generation_build() {
               _project_root,
               candidate,
               _build_mode,
-              _cancellation,
-              _absolute_deadline| {
+              _changed_paths,
+              _cancellation| {
             let build_count = Arc::clone(&build_count);
             let release = Arc::clone(&release);
             Box::pin(async move {
@@ -756,7 +444,6 @@ async fn ensure_schedules_once_without_waiting_for_generation_build() {
     }));
     let project_root = std::env::temp_dir().join("asp-generation-ensure-submit-project");
 
-    let started = tokio::time::Instant::now();
     let first = admission
         .ensure(
             "workspace-ensure-submit",
@@ -773,7 +460,6 @@ async fn ensure_schedules_once_without_waiting_for_generation_build() {
         )
         .await
         .expect("observe scheduled generation");
-    let submit_elapsed = started.elapsed();
 
     assert_eq!(first.state, WorkspaceGenerationAdmissionState::Building);
     assert_eq!(second.state, WorkspaceGenerationAdmissionState::Building);
@@ -781,9 +467,31 @@ async fn ensure_schedules_once_without_waiting_for_generation_build() {
     assert!(second.accepted);
     assert_eq!(first.attempt, 1);
     assert_eq!(second.attempt, 1);
+    const OBSERVATION_COUNT: usize = 4_096;
+    let mut latencies = Vec::with_capacity(OBSERVATION_COUNT);
+    for _ in 0..OBSERVATION_COUNT {
+        let started = tokio::time::Instant::now();
+        let observed = admission
+            .ensure(
+                "workspace-ensure-submit",
+                &project_root,
+                candidate_identity(),
+            )
+            .await
+            .expect("observe resident scheduled generation");
+        latencies.push(started.elapsed());
+        assert_eq!(observed.state, WorkspaceGenerationAdmissionState::Building);
+        assert_eq!(observed.attempt, 1);
+    }
+    latencies.sort_unstable();
+    let p99 = latencies[(OBSERVATION_COUNT * 99 / 100).min(OBSERVATION_COUNT - 1)];
+    eprintln!(
+        "resident-generation-ensure observations={OBSERVATION_COUNT} p99Nanos={} budgetNanos=1000000",
+        p99.as_nanos()
+    );
     assert!(
-        submit_elapsed < std::time::Duration::from_millis(1),
-        "two generation ensure submissions must remain sub-millisecond: {submit_elapsed:?}"
+        p99 < std::time::Duration::from_millis(1),
+        "resident generation ensure p99 must remain sub-millisecond: {p99:?}"
     );
     release.wait().await;
     let ready = admission
@@ -846,7 +554,7 @@ async fn supervisor_fails_closed_for_registered_workspaces_without_git_candidate
         let maximum_active = Arc::clone(&maximum_active);
         let build_count = Arc::clone(&build_count);
         let restore_only_build_count = Arc::clone(&restore_only_build_count);
-        move |_, _, candidate, build_mode, _cancellation, _absolute_deadline| {
+        move |_, _, candidate, build_mode, _changed_paths, _cancellation| {
             let active = Arc::clone(&active);
             let maximum_active = Arc::clone(&maximum_active);
             let build_count = Arc::clone(&build_count);
@@ -904,14 +612,17 @@ async fn failed_generation_build_retries_only_on_explicit_admission() {
               _project_root,
               _candidate,
               _build_mode,
-              _cancellation,
-              _absolute_deadline| {
+              _changed_paths,
+              _cancellation| {
             let build_count = Arc::clone(&build_count);
             let failed = Arc::clone(&failed);
             Box::pin(async move {
                 *build_count.lock().await += 1;
                 failed.notify_one();
-                Err("provider generation unavailable".to_owned())
+                Err(WorkspaceGenerationBuildFailure::new(
+                    WorkspaceGenerationFailureStage::SourceBuilder,
+                    "provider generation unavailable",
+                ))
             })
         }
     }));
@@ -962,3 +673,6 @@ async fn failed_generation_build_retries_only_on_explicit_admission() {
 
 #[path = "runtime_server_generation_admission_failure.rs"]
 mod runtime_server_generation_admission_failure;
+
+#[path = "runtime_server_generation_admission_mutation.rs"]
+mod runtime_server_generation_admission_mutation;

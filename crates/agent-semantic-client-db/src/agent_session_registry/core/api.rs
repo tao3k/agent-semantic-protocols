@@ -4,7 +4,7 @@ use super::AgentSessionRegistry;
 use super::storage::{
     block_on_agent_session_registry_async, turso_claim_resident_session, turso_delete_session,
     turso_query_all_sessions, turso_query_sessions, turso_record_tool_event,
-    turso_refresh_expired_sessions, turso_register_session, turso_session_by_id,
+    turso_record_host_non_match, turso_refresh_expired_sessions, turso_register_session, turso_session_by_id,
     turso_session_by_id_any_project, turso_session_by_name,
     turso_session_for_root_session_id_any_project, turso_set_archived_status,
     turso_update_session_status,
@@ -24,7 +24,7 @@ impl AgentSessionRegistry {
     }
 
     /// Resolve the complete Hook-selected session pane state in one Runtime Server call.
-    pub fn resolve_session_control_plane(
+    pub async fn resolve_session_control_plane(
         &self,
         observed_session_id: Option<&str>,
         observed_root_session_id: Option<&str>,
@@ -39,6 +39,7 @@ impl AgentSessionRegistry {
             observed_root_session_id,
             name,
         )
+        .await
     }
 
     /// Resolve the Hook-selected pane from the Runtime Server status-memory projection.
@@ -46,7 +47,7 @@ impl AgentSessionRegistry {
     /// This read-only path does not require workspace admission, a Runtime IPC proxy, or a
     /// direct registry/database open. A root task with no projected child is therefore a valid
     /// `registration-required` state.
-    pub fn resolve_project_session_control_plane(
+    pub async fn resolve_project_session_control_plane(
         project_root: &std::path::Path,
         observed_session_id: Option<&str>,
         observed_root_session_id: Option<&str>,
@@ -56,9 +57,7 @@ impl AgentSessionRegistry {
         let endpoint = crate::read_runtime_server_endpoint(&state.state_home)?
             .ok_or_else(|| "Runtime Server endpoint is unavailable".to_owned())?;
         let workspace_id = Self::workspace_id(project_root)?;
-        let sessions = block_on_agent_session_registry_async(
-            crate::read_runtime_server_agent_sessions(&endpoint),
-        )?;
+        let sessions = crate::read_runtime_server_agent_sessions(&endpoint).await?;
         crate::resolve_runtime_server_agent_session_status(
             &sessions,
             &workspace_id,
@@ -132,6 +131,105 @@ impl AgentSessionRegistry {
             },
         )?
         .ok_or_else(|| "Host lifecycle events require the Runtime Server registry proxy".to_owned())
+    }
+
+    pub async fn record_host_lifecycle_event_async(
+        &self,
+        event: crate::workspace_db_ipc::AgentHostLifecycleEventIpc,
+    ) -> Result<crate::workspace_db_ipc::AgentSessionRegistryIpcResult, String> {
+        self.runtime_operation_async(
+            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::RecordHostLifecycleEvent {
+                event,
+            },
+        )
+        .await
+    }
+
+    pub fn record_host_non_match(
+        &self,
+        observation: crate::workspace_db_ipc::AgentHostNonMatchIpc,
+    ) -> Result<crate::workspace_db_ipc::AgentSessionRegistryIpcResult, String> {
+        self.runtime_operation(
+            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::RecordHostNonMatch {
+                observation,
+            },
+        )?
+        .ok_or_else(|| "Host match decisions require the Runtime Server registry proxy".to_owned())
+    }
+
+    pub(crate) fn record_host_non_match_local(
+        &self,
+        observation: &crate::workspace_db_ipc::AgentHostNonMatchIpc,
+    ) -> Result<(), String> {
+        block_on_agent_session_registry_async(turso_record_host_non_match(
+            &self.db_path,
+            observation,
+        ))
+    }
+
+    pub async fn register_control_plane_agent(
+        &self,
+        registration: crate::SessionControlPlaneAgentRegistration,
+    ) -> Result<(), String> {
+        match self
+            .runtime_operation_async(
+                crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::RegisterControlPlaneAgent {
+                    registration,
+                },
+            )
+            .await?
+        {
+            crate::workspace_db_ipc::AgentSessionRegistryIpcResult::ControlPlaneAgentRegistered => {
+                Ok(())
+            }
+            result => Err(format!(
+                "Runtime Server returned unexpected control-plane registration result: {result:?}"
+            )),
+        }
+    }
+
+    pub async fn admit_control_plane_delegation(
+        &self,
+        proposal: crate::SessionControlPlaneDelegationProposal,
+    ) -> Result<crate::SessionControlPlaneTransactionReceipt, String> {
+        match self
+            .runtime_operation_async(
+                crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::AdmitControlPlaneDelegation {
+                    proposal,
+                },
+            )
+            .await?
+        {
+            crate::workspace_db_ipc::AgentSessionRegistryIpcResult::ControlPlaneDelegationAdmitted {
+                receipt,
+            } => Ok(receipt),
+            result => Err(format!(
+                "Runtime Server returned unexpected control-plane admission result: {result:?}"
+            )),
+        }
+    }
+
+    pub async fn read_control_plane_snapshot(
+        &self,
+        project_id: String,
+        root_session_id: String,
+    ) -> Result<crate::SessionControlPlaneSnapshot, String> {
+        match self
+            .runtime_operation_async(
+                crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::ReadControlPlaneSnapshot {
+                    project_id,
+                    root_session_id,
+                },
+            )
+            .await?
+        {
+            crate::workspace_db_ipc::AgentSessionRegistryIpcResult::ControlPlaneSnapshot {
+                snapshot,
+            } => Ok(snapshot),
+            result => Err(format!(
+                "Runtime Server returned unexpected control-plane snapshot result: {result:?}"
+            )),
+        }
     }
 
     /// Claim a resident route without replacing the child that already owns it.

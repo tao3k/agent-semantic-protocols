@@ -29,7 +29,7 @@ pub struct TargetProviderSourceEnvelopePublicationRequestV1<'a> {
 
 /// Publish one provider-scoped source envelope without opening a complete
 /// workspace generation transaction.
-pub fn publish_target_provider_source_envelope_v1(
+pub async fn publish_target_provider_source_envelope_v1(
     publication: TargetProviderSourceEnvelopePublicationRequestV1<'_>,
 ) -> Result<PathBuf, String> {
     let requested_provider = match &publication.collection_scope {
@@ -65,7 +65,8 @@ pub fn publish_target_provider_source_envelope_v1(
             }
             requested_provider
         }
-        super::collect::SourceIndexCollectionScope::CompleteGeneration => {
+        super::collect::SourceIndexCollectionScope::CompleteGeneration
+        | super::collect::SourceIndexCollectionScope::ExplicitOwners { .. } => {
             return Err(
                 "target-provider source envelope publication requires target-provider collection scope"
                     .to_owned(),
@@ -78,7 +79,8 @@ pub fn publish_target_provider_source_envelope_v1(
         &requested_provider.provider_id,
         &publication.collection_scope,
         publication.provider_registry,
-    )?;
+    )
+    .await?;
     let normalized_extensions = requested_provider
         .source_extensions
         .iter()
@@ -184,7 +186,8 @@ pub fn publish_workspace_search_generation_v1(
             publish_complete_workspace_search_generation_v1(publication)
         }
         super::collect::SourceIndexCollectionScope::TargetProvider { .. }
-        | super::collect::SourceIndexCollectionScope::TargetProviderId { .. } => Err(
+        | super::collect::SourceIndexCollectionScope::TargetProviderId { .. }
+        | super::collect::SourceIndexCollectionScope::ExplicitOwners { .. } => Err(
             "workspace search generation publication requires complete-generation collection scope"
                 .to_owned(),
         ),

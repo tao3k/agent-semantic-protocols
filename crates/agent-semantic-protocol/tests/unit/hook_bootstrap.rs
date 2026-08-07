@@ -207,8 +207,17 @@ fn unavailable_local_policy_authority_is_typed_and_names_the_escape_edge() {
         value["reasonKind"],
         "local-hook-policy-authority-unavailable"
     );
-    assert_eq!(value["recoveryCommand"], "asp hook doctor --client codex");
+    assert!(
+        value["recoveryCommand"]
+            .as_str()
+            .is_some_and(|command| command.contains("install binary --target"))
+    );
     assert_eq!(value["recoveryCommands"].as_array().map(Vec::len), Some(2));
+    assert_eq!(
+        value["recoveryCommands"][0],
+        "asp hook doctor --client codex"
+    );
+    assert_eq!(value["recoveryCommands"][1], value["recoveryCommand"]);
     assert!(value["canonicalBinaryInstallTarget"].is_string());
 }
 

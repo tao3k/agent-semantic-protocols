@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 pub const PROVIDER_RELATION_GENERATION_SCHEMA_ID: &str = "asp.provider-relation-generation.v1";
+pub const PROVIDER_RELATION_OWNER_ENDPOINT_KIND: &str = "owner";
+pub const PROVIDER_RELATION_ITEM_ENDPOINT_KIND: &str = "item";
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

@@ -1,3 +1,6 @@
+use agent_semantic_client_db::runtime_server_admission::{
+    WorkspaceGenerationBuildFailure, WorkspaceGenerationFailureStage,
+};
 use agent_semantic_client_db::runtime_server_admission_catalog::{
     RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
 };
@@ -369,11 +372,16 @@ async fn daemon_restore_replays_each_catalog_scope_once() {
         agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission::new(
             Arc::new({
                 let builds = Arc::clone(&builds);
-                move |_, _, candidate, _, _, _absolute_deadline| {
+                move |_, _, candidate, _, _changed_paths, _| {
                     let builds = Arc::clone(&builds);
                     Box::pin(async move {
                         builds.fetch_add(1, Ordering::Relaxed);
-                        completed_generation(candidate)
+                        completed_generation(candidate).map_err(|error| {
+                            WorkspaceGenerationBuildFailure::new(
+                                WorkspaceGenerationFailureStage::DurableRestore,
+                                error,
+                            )
+                        })
                     })
                 }
             }),
@@ -412,11 +420,16 @@ async fn typed_ipc_admission_publishes_an_initial_missing_locator() {
         agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission::new(
             Arc::new({
                 let builds = Arc::clone(&builds);
-                move |_, _, candidate, _, _, _absolute_deadline| {
+                move |_, _, candidate, _, _changed_paths, _| {
                     let builds = Arc::clone(&builds);
                     Box::pin(async move {
                         builds.fetch_add(1, Ordering::Relaxed);
-                        completed_generation(candidate)
+                        completed_generation(candidate).map_err(|error| {
+                            WorkspaceGenerationBuildFailure::new(
+                                WorkspaceGenerationFailureStage::DurableRestore,
+                                error,
+                            )
+                        })
                     })
                 }
             }),
@@ -489,17 +502,20 @@ async fn daemon_restore_isolates_failed_workspace_scopes() {
     let admission =
         agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission::new(
             Arc::new(
-                |workspace_identity,
-                 _,
-                 candidate,
-                 _build_mode,
-                 _cancellation,
-                 _absolute_deadline| {
+                |workspace_identity, _, candidate, _build_mode, _changed_paths, _cancellation| {
                     Box::pin(async move {
                         if workspace_identity == "workspace-failed" {
-                            Err("fixture canonical generation missing".to_owned())
+                            Err(WorkspaceGenerationBuildFailure::new(
+                                WorkspaceGenerationFailureStage::DurableRestore,
+                                "fixture canonical generation missing",
+                            ))
                         } else {
-                            completed_generation(candidate)
+                            completed_generation(candidate).map_err(|error| {
+                                WorkspaceGenerationBuildFailure::new(
+                                    WorkspaceGenerationFailureStage::DurableRestore,
+                                    error,
+                                )
+                            })
                         }
                     })
                 },

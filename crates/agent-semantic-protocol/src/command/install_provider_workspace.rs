@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessSpec, StdinMode, provider_process_limits_from_environment,
-    run_provider_process,
+    run_provider_process_async,
 };
 use serde::Deserialize;
 
@@ -83,7 +83,7 @@ pub(super) struct PublishedProviderWorkspace {
     pub(super) installed_path: PathBuf,
 }
 
-pub(super) fn build_registered_provider_workspace(
+pub(super) async fn build_registered_provider_workspace(
     configured_dev_root: &Path,
     registration: &agent_semantic_hook::ProviderDevelopmentRegistrationV1,
 ) -> Result<BuiltProviderWorkspace, String> {
@@ -172,7 +172,8 @@ pub(super) fn build_registered_provider_workspace(
             &materialization.args,
             materialization_cwd,
             &materialization.env,
-        )?;
+        )
+        .await?;
     }
     run_workspace_command(
         "workspace-build",
@@ -182,7 +183,8 @@ pub(super) fn build_registered_provider_workspace(
         &descriptor.workspace_build.args,
         working_directory,
         &descriptor.workspace_build.env,
-    )?;
+    )
+    .await?;
     let source_root = artifact_path
         .canonicalize()
         .map_err(|error| format!("canonicalize built workspace artifact: {error}"))?;
@@ -207,7 +209,7 @@ pub(super) fn build_registered_provider_workspace(
     })
 }
 
-fn run_workspace_command(
+async fn run_workspace_command(
     stage: &str,
     registration: &agent_semantic_hook::ProviderDevelopmentRegistrationV1,
     dev_root: &Path,
@@ -226,7 +228,7 @@ fn run_workspace_command(
         })
         .collect();
     let limits = provider_process_limits_from_environment()?;
-    let output = run_provider_process(ProviderProcessSpec {
+    let output = run_provider_process_async(ProviderProcessSpec {
         program: program.to_string(),
         args: args.to_vec(),
         cwd,
@@ -240,6 +242,7 @@ fn run_workspace_command(
             limits.with_timeout(Some(DEFAULT_WORKSPACE_BUILD_TIMEOUT))
         },
     })
+    .await
     .map_err(|error| {
         format!(
             "registered provider {stage} gate failed: language={} provider={} error={error}",

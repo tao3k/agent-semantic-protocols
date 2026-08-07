@@ -8,6 +8,17 @@ The included `ASP_ORG.org` owns durable Org planning, specifications,
 adversarial review, and agent-state workflow. Keep state path and layout rules
 in that skill instead of duplicating them here.
 
+## Plugin Hook Contract
+
+Treat the installed Codex plugin and its `hooks.json` as a fixed host contract.
+Rebuilding or reinstalling the ASP binary, providers, Runtime Server, or
+workspace-owner state does not authorize reinstalling the plugin, rewriting
+project trust, or requiring a Codex restart. Only refresh the plugin when
+`hooks.json` or another plugin payload actually changed and the task explicitly
+requires publishing that change; verify that payload drift first. Recover
+Runtime Server and workspace-owner failures independently from plugin
+trust/configuration.
+
 ## Search Protocol Changes
 
 When work touches semantic search behavior, query composition, search output,

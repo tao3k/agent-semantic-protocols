@@ -9,8 +9,11 @@ use agent_semantic_client_db::runtime_server_control::prepare_runtime_server_end
 #[tokio::test]
 async fn endpoint_publishes_the_bound_workspace_store_authority() {
     let runtime_dir = tempfile::tempdir().expect("create endpoint authority fixture");
+    let state_home = runtime_dir.path().join("state-home");
+    std::fs::create_dir_all(&state_home).expect("create State Home fixture");
     let workspace_store = runtime_dir.path().join("persistent").join("workspaces");
     let endpoint = prepare_runtime_server_endpoint_with_workspace_store(
+        &state_home,
         &workspace_store,
         std::path::Path::new("/runtime/asp"),
         "runtime-digest",

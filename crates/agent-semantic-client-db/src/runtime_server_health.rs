@@ -8,9 +8,7 @@ use serde::Serialize;
 
 use crate::runtime_server_control::{
     RuntimeServerControlReceipt, RuntimeServerState, read_runtime_server_cached_health_status,
-    runtime_server_runtime_base,
 };
-use crate::runtime_server_runtime::RuntimeServerClientExecutor;
 
 const CACHED_HEALTH_SCHEMA_ID: &str = "agent.semantic-protocols.runtime-server-cached-health";
 const SCHEMA_VERSION: &str = "1";
@@ -32,12 +30,6 @@ impl RuntimeServerCachedHealth {
     pub fn is_healthy(&self) -> bool {
         self.resident.state == RuntimeServerState::Healthy
     }
-}
-
-/// Read cached health from the canonical Global Runtime Server status memory.
-pub fn cached_runtime_server_health() -> Result<RuntimeServerCachedHealth, String> {
-    let runtime_base = runtime_server_runtime_base();
-    RuntimeServerClientExecutor::get()?.block_on(cached_runtime_server_health_at(&runtime_base))
 }
 
 /// Read cached health from an explicitly selected isolated Runtime Server base.

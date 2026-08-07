@@ -28,7 +28,9 @@ pub(super) fn validate_selector(
     }
     let mut projection_kinds = std::collections::HashSet::new();
     for projection in &selector.derived_projections {
-        if projection.projection_kind != "callable-skeleton" {
+        if projection.projection_kind
+            != crate::runtime_server_workspace::ExactProjectionKind::CallableSkeleton
+        {
             return Err(format!(
                 "workspace derived selector projection kind is unsupported: projectionKind={}",
                 projection.projection_kind

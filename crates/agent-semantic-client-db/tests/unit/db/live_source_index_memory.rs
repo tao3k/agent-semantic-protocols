@@ -39,6 +39,7 @@ fn live_source_index_hit_does_not_create_or_open_client_db() {
         dirty_paths_digest: None,
     };
     let source_index_import = ClientDbSourceIndexImport {
+        source_blobs: Default::default(),
         relations: Vec::new(),
         generation_id: client_db_source_index_generation_id_for_snapshot(&source_snapshot),
         project_root: project_root.clone(),

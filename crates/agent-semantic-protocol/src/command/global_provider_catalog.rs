@@ -228,6 +228,30 @@ pub(crate) fn read_global_provider_catalog_readiness()
     })
 }
 
+pub(crate) fn empty_global_provider_catalog_readiness()
+-> Result<GlobalProviderCatalogReadiness, String> {
+    Ok(GlobalProviderCatalogReadiness {
+        catalog_generation: generation_digest(&[])?,
+        provider_count: 0,
+        elapsed_micros: 0,
+    })
+}
+
+pub(crate) fn read_runtime_provider_catalog_readiness()
+-> Result<GlobalProviderCatalogReadiness, String> {
+    let path = catalog_path()?;
+    match std::fs::metadata(&path) {
+        Ok(_) => read_global_provider_catalog_readiness(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            empty_global_provider_catalog_readiness()
+        }
+        Err(error) => Err(format!(
+            "failed to inspect Global provider catalog {}: {error}",
+            path.display()
+        )),
+    }
+}
+
 pub(crate) fn runtime_provider_registry_snapshot(
     project_root: &Path,
 ) -> Result<(agent_semantic_client_core::ProviderRegistrySnapshot, String), String> {

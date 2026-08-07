@@ -174,6 +174,12 @@ impl Drop for RuntimeServerConnectionLease {
 }
 
 impl RuntimeServerRuntimeBuilder {
+    pub fn new_cli() -> Self {
+        Self {
+            builder: tokio::runtime::Builder::new_current_thread(),
+        }
+    }
+
     pub fn new_daemon() -> Self {
         let worker_count = std::thread::available_parallelism()
             .map(std::num::NonZeroUsize::get)

@@ -1,23 +1,14 @@
 import ASPProof.MultiAgentLifeSession
+import ASPProof.MultiAgentHostIdentityBinding
 
 namespace ASPProof.MultiAgentChoicePlane
 
 open ASPProof.MultiAgentLifeSession
 
-structure ResidentGenerationFact where
-  residentId : Nat
-  generation : Nat
-  profileDigest : Nat
-  modelDigest : Nat
-  routable : Bool
-  archived : Bool
-  deriving DecidableEq, Repr
-
 structure RuntimeObservation where
   workspaceId : Nat
   rootSessionId : Option Nat
-  expectedProfileDigest : Nat
-  expectedModelDigest : Nat
+  expectedBinding : ExactAgentBinding
   resident : Option ResidentGenerationFact
   runtimeAvailable : Bool
   deriving DecidableEq, Repr
@@ -25,8 +16,7 @@ structure RuntimeObservation where
 def residentMatchesExpected
     (observation : RuntimeObservation)
     (resident : ResidentGenerationFact) : Bool :=
-  resident.profileDigest == observation.expectedProfileDigest &&
-    resident.modelDigest == observation.expectedModelDigest
+  registrationMatches observation.expectedBinding resident
 
 def observedNode (observation : RuntimeObservation) : AgentControlPlaneObservation :=
   if !observation.runtimeAvailable || observation.rootSessionId.isNone then
@@ -35,9 +25,9 @@ def observedNode (observation : RuntimeObservation) : AgentControlPlaneObservati
     match observation.resident with
     | none => .registrationRequired
     | some resident =>
-        if resident.archived then
+        if resident.lifecycle == .archived then
           .archived
-        else if resident.routable && residentMatchesExpected observation resident then
+        else if residentMatchesExpected observation resident then
           .registered
         else
           .archiveRequired
@@ -67,9 +57,26 @@ def admittedRowsAtNode
 def registeredObservation : RuntimeObservation :=
   { workspaceId := 1
     rootSessionId := some 10
-    expectedProfileDigest := 20
-    expectedModelDigest := 30
-    resident := some ⟨40, 1, 20, 30, true, false⟩
+    expectedBinding :=
+      { host := ⟨10, 11, 12⟩
+        asp := ⟨40, 41⟩
+        residentId := .aspExplorer
+        routeDigest := 13
+        profileDigest := 20
+        modelDigest := 30
+        sandboxMode := .readOnly
+        generation := 1 }
+    resident := some ⟨
+      { host := ⟨10, 11, 12⟩
+        asp := ⟨40, 41⟩
+        residentId := .aspExplorer
+        routeDigest := 13
+        profileDigest := 20
+        modelDigest := 30
+        sandboxMode := .readOnly
+        generation := 1 },
+      .live,
+      true⟩
     runtimeAvailable := true }
 
 def multiChoiceWitnessRows : List ChoicePlaneContractRow :=
@@ -112,7 +119,10 @@ theorem missing_resident_exposes_creation_without_speculative_resume :
 
 def mismatchedResidentObservation : RuntimeObservation :=
   { registeredObservation with
-      resident := some ⟨40, 1, 21, 30, false, false⟩ }
+      resident := some ⟨
+        { registeredObservation.expectedBinding with profileDigest := 21 },
+        .live,
+        false⟩ }
 
 theorem mismatched_resident_exposes_archive_before_replacement :
     (admittedRows currentLifecycleRows mismatchedResidentObservation).map (·.action) =
@@ -121,12 +131,27 @@ theorem mismatched_resident_exposes_archive_before_replacement :
 
 def archivedResidentObservation : RuntimeObservation :=
   { registeredObservation with
-      resident := some ⟨40, 1, 20, 30, false, true⟩ }
+      resident := some ⟨registeredObservation.expectedBinding, .archived, false⟩ }
 
 theorem archived_resident_exposes_only_new_generation_creation :
     (admittedRows currentLifecycleRows archivedResidentObservation).map (·.action) =
       [.lifecycle .createAfterArchive] := by
   rfl
+
+theorem registered_node_implies_exact_live_binding
+    {observation : RuntimeObservation}
+    {resident : ResidentGenerationFact}
+    (residentPresent : observation.resident = some resident)
+    (registeredNode : observedNode observation = .registered) :
+    registeredBinding observation.expectedBinding resident := by
+  unfold observedNode at registeredNode
+  split at registeredNode <;> try contradiction
+  rw [residentPresent] at registeredNode
+  simp only at registeredNode
+  split at registeredNode <;> try contradiction
+  split at registeredNode <;> try contradiction
+  rename_i bindingMatches
+  exact of_decide_eq_true bindingMatches
 
 structure ArchiveRequest where
   resident : ResidentGenerationFact
@@ -144,7 +169,10 @@ theorem missing_resident_cannot_form_archive_request :
 
 theorem archive_request_carries_the_identified_resident :
     archiveRequest mismatchedResidentObservation =
-      some ⟨⟨40, 1, 21, 30, false, false⟩⟩ := by
+      some ⟨⟨
+        { registeredObservation.expectedBinding with profileDigest := 21 },
+        .live,
+        false⟩⟩ := by
   rfl
 
 structure RecreateGenerationEvidence where
@@ -181,7 +209,7 @@ structure ChoicePlaneSnapshot where
 def snapshot
     (rows : List ChoicePlaneContractRow)
     (observation : RuntimeObservation) : ChoicePlaneSnapshot :=
-  let generation := observation.resident.map (·.generation) |>.getD 0
+  let generation := observation.resident.map (·.binding.generation) |>.getD 0
   { observation
     cursor :=
       { workspaceId := observation.workspaceId
@@ -223,6 +251,7 @@ inductive ChoicePlaneFact where
   | runtimeAuthority
   | rootIdentity
   | configuredProfile
+  | configuredSandbox
   | residentAbsent
   | residentIdentity
   | residentGeneration
@@ -235,32 +264,32 @@ inductive ChoicePlaneFact where
 
 def disclosedFactsForNode : AgentControlPlaneObservation → List ChoicePlaneFact
   | .registered =>
-      [.runtimeAuthority, .rootIdentity, .residentIdentity, .residentGeneration,
+      [.runtimeAuthority, .rootIdentity, .configuredSandbox, .residentIdentity, .residentGeneration,
         .routable, .profileMatch]
   | .registrationRequired =>
-      [.runtimeAuthority, .rootIdentity, .configuredProfile, .residentAbsent]
+      [.runtimeAuthority, .rootIdentity, .configuredProfile, .configuredSandbox, .residentAbsent]
   | .archiveRequired =>
-      [.runtimeAuthority, .rootIdentity, .residentIdentity, .residentGeneration,
+      [.runtimeAuthority, .rootIdentity, .configuredSandbox, .residentIdentity, .residentGeneration,
         .mismatchReason]
   | .archived =>
-      [.runtimeAuthority, .rootIdentity, .configuredProfile, .residentIdentity,
+      [.runtimeAuthority, .rootIdentity, .configuredProfile, .configuredSandbox, .residentIdentity,
         .archivedGeneration]
-  | .unavailableAuthority => [.typedFailure]
+  | .unavailableAuthority => [.configuredSandbox, .typedFailure]
 
 def requiredFactsForCurrentChoices :
     AgentControlPlaneObservation → List ChoicePlaneFact
   | .registered =>
-      [.runtimeAuthority, .rootIdentity, .residentIdentity, .residentGeneration,
+      [.runtimeAuthority, .rootIdentity, .configuredSandbox, .residentIdentity, .residentGeneration,
         .routable, .profileMatch]
   | .registrationRequired =>
-      [.runtimeAuthority, .rootIdentity, .configuredProfile, .residentAbsent]
+      [.runtimeAuthority, .rootIdentity, .configuredProfile, .configuredSandbox, .residentAbsent]
   | .archiveRequired =>
-      [.runtimeAuthority, .rootIdentity, .residentIdentity, .residentGeneration,
+      [.runtimeAuthority, .rootIdentity, .configuredSandbox, .residentIdentity, .residentGeneration,
         .mismatchReason]
   | .archived =>
-      [.runtimeAuthority, .rootIdentity, .configuredProfile, .residentIdentity,
+      [.runtimeAuthority, .rootIdentity, .configuredProfile, .configuredSandbox, .residentIdentity,
         .archivedGeneration]
-  | .unavailableAuthority => [.typedFailure]
+  | .unavailableAuthority => [.configuredSandbox, .typedFailure]
 
 theorem current_disclosure_is_exactly_sufficient
     (node : AgentControlPlaneObservation) :
@@ -268,7 +297,7 @@ theorem current_disclosure_is_exactly_sufficient
   cases node <;> rfl
 
 def allLifecycleFacts : List ChoicePlaneFact :=
-  [.runtimeAuthority, .rootIdentity, .configuredProfile, .residentAbsent,
+  [.runtimeAuthority, .rootIdentity, .configuredProfile, .configuredSandbox, .residentAbsent,
     .residentIdentity, .residentGeneration, .routable, .profileMatch,
     .mismatchReason, .archivedGeneration, .typedFailure]
 
@@ -276,6 +305,11 @@ theorem progressive_disclosure_withholds_future_state_facts
     (node : AgentControlPlaneObservation) :
     disclosedFactsForNode node ≠ allLifecycleFacts := by
   cases node <;> decide
+
+theorem every_choice_discloses_the_configured_sandbox
+    (node : AgentControlPlaneObservation) :
+    (disclosedFactsForNode node).contains ChoicePlaneFact.configuredSandbox = true := by
+  cases node <;> rfl
 
 inductive ExpectedHostOutcome where
   | taskControlTransferred

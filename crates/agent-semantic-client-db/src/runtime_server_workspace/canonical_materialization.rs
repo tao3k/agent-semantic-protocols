@@ -620,6 +620,104 @@ impl WorkspaceCanonicalMaterialization {
         Ok(())
     }
 
+    pub(crate) fn validate_incremental_source_index_proofs(
+        &self,
+        import: &crate::ClientDbSourceIndexImport,
+    ) -> Result<(), String> {
+        // File hashes describe complete membership; owners and selectors describe the changed delta.
+        let owners = self
+            .owners
+            .iter()
+            .map(|owner| (owner.owner_path.as_str(), owner))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let complete_file_hashes = import
+            .file_hashes
+            .iter()
+            .map(|file_hash| (file_hash.path.as_str(), file_hash))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        for imported_owner in &import.owners {
+            let owner_path = imported_owner.owner_path.as_str();
+            let materialized_owner = owners.get(owner_path).ok_or_else(|| {
+                format!(
+                    "workspace canonical materialization omitted incremental owner: ownerPath={owner_path}"
+                )
+            })?;
+            let file_hash = complete_file_hashes.get(owner_path).ok_or_else(|| {
+                format!(
+                    "workspace canonical materialization incremental owner has no file hash: ownerPath={owner_path}"
+                )
+            })?;
+            let materialized_sha256 =
+                <sha2::Sha256 as sha2::Digest>::digest(materialized_owner.bytes.as_slice());
+            let actual_sha256 = format!("{materialized_sha256:x}");
+            if file_hash.sha256 != actual_sha256 {
+                return Err(format!(
+                    "workspace canonical materialization incremental owner digest drift: ownerPath={owner_path} expected={} actual={actual_sha256}",
+                    file_hash.sha256
+                ));
+            }
+        }
+        for selector in &import.selectors {
+            let record = &selector.projection_record;
+            let proof = &record.proof;
+            let owner = owners.get(proof.owner_path()).ok_or_else(|| {
+                format!(
+                    "workspace canonical materialization omitted proof owner: ownerPath={} selector={}",
+                    proof.owner_path(),
+                    proof.structural_selector()
+                )
+            })?;
+            if proof.source_blob_digest()
+                != &agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
+                    &owner.bytes,
+                )
+            {
+                return Err(format!(
+                    "workspace canonical materialization proof source drift: ownerPath={} selector={}",
+                    proof.owner_path(),
+                    proof.structural_selector()
+                ));
+            }
+            let byte_start = usize::try_from(record.source_byte_range.start).map_err(|_| {
+                format!(
+                    "workspace canonical materialization proof start overflow: ownerPath={} selector={}",
+                    proof.owner_path(),
+                    proof.structural_selector()
+                )
+            })?;
+            let byte_end = usize::try_from(record.source_byte_range.end).map_err(|_| {
+                format!(
+                    "workspace canonical materialization proof end overflow: ownerPath={} selector={}",
+                    proof.owner_path(),
+                    proof.structural_selector()
+                )
+            })?;
+            let materialized_selector = owner
+                .selectors
+                .iter()
+                .find(|candidate| candidate.selector == proof.structural_selector())
+                .ok_or_else(|| {
+                    format!(
+                        "workspace canonical materialization omitted proof selector: ownerPath={} selector={}",
+                        proof.owner_path(),
+                        proof.structural_selector()
+                    )
+                })?;
+            if materialized_selector.byte_start != byte_start
+                || materialized_selector.byte_end != byte_end
+                || owner.bytes.get(byte_start..byte_end)
+                    != Some(record.projection_payload.as_slice())
+            {
+                return Err(format!(
+                    "workspace canonical materialization proof projection drift: ownerPath={} selector={}",
+                    proof.owner_path(),
+                    proof.structural_selector()
+                ));
+            }
+        }
+        Ok(())
+    }
+
     fn validate_source_index_proofs(
         &self,
         import: &crate::ClientDbSourceIndexImport,

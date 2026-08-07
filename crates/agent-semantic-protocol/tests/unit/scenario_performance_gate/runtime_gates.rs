@@ -331,9 +331,10 @@ pub(crate) fn asp_runtime_timeout_policy_cold_functional_path_stays_inside_scena
 }
 
 #[cfg(unix)]
-pub(crate) fn asp_provider_process_orphan_descendant_closure_stays_inside_scenario_gate() {
+pub(crate) async fn asp_provider_process_orphan_descendant_closure_stays_inside_scenario_gate() {
     use agent_semantic_provider_transport::{
-        OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode, run_provider_process,
+        OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode,
+        run_provider_process_async,
     };
 
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -362,7 +363,9 @@ pub(crate) fn asp_provider_process_orphan_descendant_closure_stays_inside_scenar
     };
 
     let started_at = Instant::now();
-    let output = run_provider_process(spec).expect("run one-shot provider fixture");
+    let output = run_provider_process_async(spec)
+        .await
+        .expect("run one-shot provider fixture");
     let elapsed = started_at.elapsed();
     let descendant_pid: i32 = fs::read_to_string(&pid_path)
         .expect("read descendant pid")

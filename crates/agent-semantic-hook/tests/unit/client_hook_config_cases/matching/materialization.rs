@@ -139,6 +139,10 @@ fn action_first_rule_denies_inferred_reads_before_shell_expansion() {
         "materialize-registered-source-read-action"
     );
     assert_eq!(
+        native_read.message,
+        "Registered {{languageId}} source reads are denied. Use the parser-owned ASP route below instead of raw Read."
+    );
+    assert_eq!(
         native_read.fields["normalizedActions"][0]["operationIntent"],
         "direct-read"
     );

@@ -14,8 +14,6 @@ mod unix {
         let mut child = Command::new(env!("CARGO_BIN_EXE_asp"))
             .current_dir(&root)
             .env("ASP_STATE_HOME", &state_home)
-            .env("ASP_RUNTIME_SERVER_LAUNCHCTL_PATH", "/usr/bin/false")
-            .env("ASP_RUNTIME_SERVER_SYSTEMCTL_PATH", "/usr/bin/false")
             .args(["hook", "pre-tool", "--client", "codex"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -74,12 +72,6 @@ mod unix {
         std::fs::create_dir_all(&codex_home).expect("create codex home");
         std::fs::create_dir_all(&agent_bin_dir).expect("create semantic agent bin dir");
         materialize_plugin_install_state(&root, &state_home);
-        std::fs::create_dir_all(root.join(".codex")).expect("create project codex dir");
-        std::fs::write(
-            root.join(".codex").join("config.toml"),
-            "[marketplaces.asp-project]\nsource_type = \"local\"\nsource = \".\"\n",
-        )
-        .expect("write legacy project marketplace config");
         std::fs::write(
             codex_home.join("config.toml"),
             "# BEGIN agent-semantic-protocol agent hooks\n[[hooks.pre_tool_use]]\nmatcher = \"*\"\n[[hooks.pre_tool_use.hooks]]\ntype = \"command\"\ncommand = \"direnv exec . asp-codex-hook pre-tool\"\n# END agent-semantic-protocol agent hooks\n",
@@ -173,35 +165,7 @@ mod unix {
             !project_config.contains("[agents.asp_explorer]"),
             "{project_config}"
         );
-        assert!(
-            project_config.contains("[marketplaces.asp-project]"),
-            "{project_config}"
-        );
-        assert!(
-            project_config.contains("source_type = \"local\""),
-            "{project_config}"
-        );
-        assert!(
-            project_config.contains("[plugins.\"asp-codex-plugin@asp-project\"]"),
-            "{project_config}"
-        );
-        let explorer_agent =
-            std::fs::read_to_string(codex_home.join("agents").join("asp_explorer.toml"))
-                .expect("read Codex ASP Explorer agent");
-        assert!(
-            explorer_agent.contains(
-                r#"nickname_candidates = ["ASP Explore", "ASP Reasoning", "ASP Search"]"#
-            ),
-            "{explorer_agent}"
-        );
-        assert!(
-            explorer_agent.contains(r#"model_reasoning_effort = "low""#),
-            "{explorer_agent}"
-        );
-        assert!(
-            !explorer_agent.contains("session_lifetime"),
-            "{explorer_agent}"
-        );
+        assert!(!codex_home.join("agents").join("asp_explorer.toml").exists());
         assert!(
             !codex_home.join("agents").join("asp-explorer.toml").exists(),
             "legacy Codex explorer alias must be retired"
@@ -213,24 +177,10 @@ mod unix {
         let global_config = std::fs::read_to_string(codex_home.join("config.toml"))
             .expect("read global Codex config");
         assert!(
-            global_config.contains("# BEGIN agent-semantic-protocol agent hooks"),
-            "{global_config}"
-        );
-        assert!(
             !global_config.contains("[[hooks.pre_tool_use]]"),
             "{global_config}"
         );
         assert!(!global_config.contains("direnv exec"), "{global_config}");
-        assert!(
-            global_config.contains("[[hooks.PreToolUse]]"),
-            "{global_config}"
-        );
-        assert!(global_config.contains("matcher = \"*\""), "{global_config}");
-        assert!(global_config.contains(" hook pre-tool "), "{global_config}");
-        assert!(
-            global_config.contains(r#"repo_root="${CODEX_WORKSPACE_ROOT:-${PWD:-.}}""#),
-            "{global_config}"
-        );
         assert!(
             !global_config.contains("\"$repo_root/.bin/asp\" hook"),
             "{global_config}"
@@ -240,16 +190,8 @@ mod unix {
             "{global_config}"
         );
         assert!(
-            global_config.contains(".codex-home/config.toml:pre_tool_use:0:0"),
-            "{global_config}"
-        );
-        assert!(
             !global_config
                 .contains("asp-codex-plugin@asp-project:hooks/hooks.json:pre_tool_use:0:0"),
-            "{global_config}"
-        );
-        assert!(
-            global_config.contains("agent-semantic-protocol trusted hook state"),
             "{global_config}"
         );
         let agent_config = std::fs::read_to_string(root.join(".agents").join("asp.toml"))
@@ -294,8 +236,6 @@ developer_instructions = "test projection"
             .env("HOME", &test_home)
             .env("PATH", prepend_paths(&[&agent_bin_dir, &fake_bin]))
             .env("ASP_STATE_HOME", &state_home)
-            .env("ASP_RUNTIME_SERVER_LAUNCHCTL_PATH", "/usr/bin/true")
-            .env("ASP_RUNTIME_SERVER_SYSTEMCTL_PATH", "/usr/bin/true")
             .env("PRJ_CACHE_HOME", root.join(".cache"))
             .args(["install", "plugin", "--codex", "."])
             .output()
@@ -320,7 +260,6 @@ developer_instructions = "test projection"
                 .exists()
         );
         assert!(!codex_home.join("agents").join("asp_explorer.toml").exists());
-        assert!(!test_home.join("Library/LaunchAgents/dev.tao3k.agent-semantic-protocols.asp-runtime-server.plist").exists());
 
         std::fs::remove_dir_all(root).expect("cleanup temp project root");
     }
@@ -420,8 +359,6 @@ developer_instructions = "test projection"
             .env("HOME", &test_home)
             .env("PATH", prepend_paths(&[&agent_bin_dir, &fake_bin]))
             .env("ASP_STATE_HOME", &state_home)
-            .env("ASP_RUNTIME_SERVER_LAUNCHCTL_PATH", "/usr/bin/true")
-            .env("ASP_RUNTIME_SERVER_SYSTEMCTL_PATH", "/usr/bin/true")
             .env("PRJ_CACHE_HOME", root.join(".cache"))
             .args(["install", "plugin", "--codex", "."])
             .output()
@@ -443,9 +380,7 @@ developer_instructions = "test projection"
             "stdout={stdout}"
         );
         assert!(
-            stdout.contains(
-                "globalPluginCache=.codex-home/plugins/cache/asp-project/asp-codex-plugin/0.1.0"
-            ),
+            stdout.contains("pluginInstalledPath=/tmp/asp-codex-plugin"),
             "stdout={stdout}"
         );
         let project_plugin_cache = root
@@ -457,12 +392,6 @@ developer_instructions = "test projection"
             !project_plugin_cache.exists(),
             "global plugin install must not create project plugin cache: {}",
             project_plugin_cache.display()
-        );
-        assert!(
-            test_home
-                .join("Library/LaunchAgents/dev.tao3k.agent-semantic-protocols.asp-runtime-server.plist")
-                .is_file(),
-            "global installer fixture must materialize its supervisor only under isolated HOME"
         );
 
         std::fs::remove_dir_all(root).expect("cleanup temp project root");
@@ -549,6 +478,9 @@ developer_instructions = "test projection"
 case "$*" in
   "plugin marketplace add "*)
     printf '{}\n'
+    ;;
+  "plugin marketplace list --json")
+    printf '{"marketplaces":[]}\n'
     ;;
   "plugin add "*)
     printf '{"installedPath":"/tmp/asp-codex-plugin"}\n'

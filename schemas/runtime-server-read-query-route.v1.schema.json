@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-server-read-query-route.v1.schema.json",
+  "title": "Runtime Server Read Query Route v1",
+  "oneOf": [
+    {"$ref": "#/$defs/request"},
+    {"$ref": "#/$defs/receipt"}
+  ],
+  "$defs": {
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "requestId",
+        "operation",
+        "accessMode",
+        "transportAuthority",
+        "projectId",
+        "workspaceIdentity",
+        "languageId",
+        "providerId",
+        "selector",
+        "projection",
+        "budgetMicros"
+      ],
+      "properties": {
+        "schemaId": {"const": "agent.semantic-protocols.runtime-server-read-query-request.v1"},
+        "schemaVersion": {"const": "1"},
+        "requestId": {"type": "string", "minLength": 1},
+        "operation": {"const": "exact-query"},
+        "accessMode": {"const": "read-only"},
+        "transportAuthority": {"const": "global-runtime-server"},
+        "projectId": {"type": "string", "minLength": 1},
+        "workspaceIdentity": {"type": "string", "minLength": 1},
+        "languageId": {"type": "string", "minLength": 1},
+        "providerId": {"type": "string", "minLength": 1},
+        "selector": {"type": "string", "minLength": 1},
+        "projection": {"enum": ["source", "callable-skeleton"]},
+        "budgetMicros": {"type": "integer", "minimum": 1}
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "requestId",
+        "projectId",
+        "workspaceIdentity",
+        "route",
+        "state",
+        "source",
+        "selector",
+        "projection",
+        "cacheFresh",
+        "fallbackDeclared",
+        "generationPublished",
+        "workspaceOwnerEndpointExposed",
+        "elapsedMicros"
+      ],
+      "properties": {
+        "schemaId": {"const": "agent.semantic-protocols.runtime-server-read-query-receipt.v1"},
+        "schemaVersion": {"const": "1"},
+        "requestId": {"type": "string", "minLength": 1},
+        "projectId": {"type": "string", "minLength": 1},
+        "workspaceIdentity": {"type": "string", "minLength": 1},
+        "route": {"const": "global-runtime-internal-workspace"},
+        "state": {"enum": ["projected", "fallback-projected", "unavailable"]},
+        "source": {"enum": ["admitted-generation", "provider-native-exact", "none"]},
+        "selector": {"type": "string", "minLength": 1},
+        "projection": {"enum": ["source", "callable-skeleton"]},
+        "cachedOwnerDigest": {"type": ["string", "null"]},
+        "liveOwnerDigest": {"type": ["string", "null"]},
+        "cacheFresh": {"type": "boolean"},
+        "fallbackDeclared": {"type": "boolean"},
+        "generationPublished": {"const": false},
+        "workspaceOwnerEndpointExposed": {"const": false},
+        "reasonKind": {"type": ["string", "null"]},
+        "retryAfterMs": {"type": ["integer", "null"], "minimum": 0},
+        "nextAction": {"type": ["string", "null"]},
+        "elapsedMicros": {"type": "integer", "minimum": 0}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"state": {"const": "unavailable"}}, "required": ["state"]},
+          "then": {
+            "required": ["reasonKind", "retryAfterMs", "nextAction"],
+            "properties": {
+              "source": {"const": "none"},
+              "reasonKind": {"type": "string", "minLength": 1},
+              "retryAfterMs": {"type": "integer", "minimum": 0},
+              "nextAction": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"state": {"const": "fallback-projected"}}, "required": ["state"]},
+          "then": {
+            "properties": {
+              "source": {"const": "provider-native-exact"},
+              "fallbackDeclared": {"const": true}
+            }
+          }
+        }
+      ]
+    }
+  }
+}

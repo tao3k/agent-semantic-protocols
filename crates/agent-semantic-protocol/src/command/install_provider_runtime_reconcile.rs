@@ -91,6 +91,9 @@ pub(crate) fn reconcile_global_provider_catalog_for_runtime(
         &runtime_root.join("artifacts"),
         &agent_semantic_runtime::provider_receipt_dir(state_home),
     )?;
+    if reconciliation.provider_receipts.is_empty() {
+        return super::global_provider_catalog::empty_global_provider_catalog_readiness();
+    }
     super::global_provider_catalog::publish_global_provider_catalog(
         &reconciliation.provider_receipts,
     )?;

@@ -1,24 +1,25 @@
 use std::fs;
 
-use crate::{OutputFraming, ProviderProcessFraming, run_provider_process_with_framing};
+use crate::{OutputFraming, ProviderProcessFraming, run_provider_process_async_with_framing};
 
 use super::support::{script, spec, temp_dir};
 
-#[test]
-fn line_framing_normalizes_line_payloads() {
+#[tokio::test]
+async fn line_framing_normalizes_line_payloads() {
     let root = temp_dir("line-framing");
     let program = script(
         &root,
         "provider.sh",
         "#!/bin/sh\nprintf 'first\\nsecond'\nprintf 'warn\\n' >&2\n",
     );
-    let output = run_provider_process_with_framing(
+    let output = run_provider_process_async_with_framing(
         spec(program, root.clone()),
         ProviderProcessFraming {
             stdout: OutputFraming::Lines,
             stderr: OutputFraming::Lines,
         },
     )
+    .await
     .expect("run provider");
 
     assert!(output.status.success());
@@ -29,21 +30,22 @@ fn line_framing_normalizes_line_payloads() {
     let _ = fs::remove_dir_all(root);
 }
 
-#[test]
-fn length_delimited_framing_captures_payload_bytes() {
+#[tokio::test]
+async fn length_delimited_framing_captures_payload_bytes() {
     let root = temp_dir("length-delimited-framing");
     let program = script(
         &root,
         "provider.sh",
         "#!/bin/sh\nprintf '\\000\\000\\000\\005hello\\000\\000\\000\\005world'\n",
     );
-    let output = run_provider_process_with_framing(
+    let output = run_provider_process_async_with_framing(
         spec(program, root.clone()),
         ProviderProcessFraming {
             stdout: OutputFraming::LengthDelimited,
             stderr: OutputFraming::Bytes,
         },
     )
+    .await
     .expect("run provider");
 
     assert!(output.status.success());

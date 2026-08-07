@@ -1,0 +1,95 @@
+#+TITLE: 10.05.26 Global Runtime Read Query Routing
+#+STARTUP: overview
+
+* Status
+
+Draft for implementation and qualification.
+
+* Problem
+
+Agent-facing =search= and =query= operations are read-only, but a sandboxed
+resident can currently be required to connect directly to a workspace-owner
+Unix socket.  Operating-system sandbox policy classifies socket connection as
+an IPC capability independently of the read-only semantics of the RPC method.
+The result is a transport-level permission denial before ASP can enforce its
+own read contract.
+
+This is an authority-boundary defect.  A workspace-owner endpoint is an
+implementation detail of the Runtime Server and MUST NOT be an agent
+capability.
+
+* Public and private boundaries
+
+There is one public Runtime Server authority for agent-facing operations.
+Agents, Hooks, providers, and resident subagents connect only to the canonical
+Runtime Server socket.  A request carries a parser-owned =projectId= and
+=workspaceIdentity=.  The Runtime Server resolves that identity against its
+admitted workspace catalog and dispatches internally to the matching owner.
+
+Workspace-owner endpoints, binding tokens, process identifiers, and private
+socket paths remain server-owned.  They MUST NOT appear as required client
+inputs, recommended next commands, or fallback instructions.
+
+* Read-query contract
+
+An agent-facing read request contains:
+
+- a unique request identity;
+- =projectId= and =workspaceIdentity=;
+- the registered language and provider identity;
+- an exact parser-owned selector;
+- an explicit projection;
+- a finite wall budget.
+
+The Runtime Server authenticates the public connection, verifies that the
+operation is in the read-only allowlist, resolves the workspace internally,
+and returns one typed receipt.
+
+Read-query execution MUST NOT publish a generation, mutate an overlay, write a
+freshness receipt, or advance workspace authority.  It MAY calculate a live
+owner digest for comparison with an admitted generation.
+
+* Freshness and fallback
+
+Before a cached exact projection is returned, the Runtime Server compares its
+recorded owner identity and digest with the live owner identity and digest.
+A mismatch rejects the cached hit.
+
+When an admitted exact generation cannot be opened within the read budget, the
+server MAY use the registered provider-native exact projection capability.
+That fallback is valid only when it is declared by the active provider
+registration and returns the same selector and projection identity.  It does
+not publish or reconcile a generation.
+
+If neither admitted generation nor provider-native exact projection is
+available, the server returns a typed terminal receipt containing
+=reasonKind=, =retryAfterMs=, and an executable =nextAction=.  A bare
+=generation-discovery-in-progress= message is not a valid terminal result.
+
+* CLI projection stability
+
+The public query facade owns projection aliases.  The historical =--code=
+surface maps to =--projection source=.  Providers receive the normalized
+projection and MUST NOT define public CLI aliases independently.
+
+* Security invariants
+
+1. A read-only agent never receives or connects to a workspace-owner endpoint.
+2. A public read request is routed by an admitted project/workspace identity.
+3. A read request cannot invoke a mutation operation.
+4. A cached projection is returned only when its owner digest is current.
+5. Every query terminates with a projection or a typed actionable failure
+   within its finite wall budget.
+6. Provider-native fallback is registry-declared and preserves selector and
+   projection identity.
+
+* Qualification scenarios
+
+- a read-only resident succeeds while direct workspace-owner socket access is
+  denied by the host sandbox;
+- a changed live owner invalidates an otherwise matching cached selector;
+- generation discovery that exceeds the budget falls back without publishing;
+- an undeclared provider fallback fails closed with a typed next action;
+- =--code= and =--projection source= produce the same normalized request;
+- no public receipt or command contains a private owner socket path.
+

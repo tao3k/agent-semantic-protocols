@@ -52,6 +52,13 @@
     }
   },
   "$defs": {
+    "toolCaseList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/toolCase"
+      }
+    },
     "toolCase": {
       "type": "object",
       "additionalProperties": false,
@@ -92,18 +99,10 @@
           }
         },
         "positiveTools": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "$ref": "#/$defs/toolCase"
-          }
+          "$ref": "#/$defs/toolCaseList"
         },
         "negativeTools": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "$ref": "#/$defs/toolCase"
-          }
+          "$ref": "#/$defs/toolCaseList"
         },
         "wrapperExemption": {
           "type": "string",

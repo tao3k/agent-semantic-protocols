@@ -210,7 +210,7 @@ argvSourceGlobAny = [
 }
 
 #[test]
-fn cli_install_preserves_top_level_flags_and_writes_project_plugin_entries() {
+fn cli_install_preserves_top_level_flags_without_forging_hook_trust() {
     let _install_fixture = crate::integration_fixture::install_fixture_guard();
     let root = git_project_root("install-unified-exec-feature");
     let codex_home = root.join(".codex-home");
@@ -300,7 +300,10 @@ fn cli_install_preserves_top_level_flags_and_writes_project_plugin_entries() {
         Some(true)
     );
     assert!(user_config.contains("sha256:old"));
-    assert!(user_config.contains("agent-semantic-protocol trusted hook state"));
+    assert!(
+        !user_config.contains("agent-semantic-protocol trusted hook state"),
+        "plugin installation must not synthesize Codex hook trust"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 use crate::rust_harness_activation::cli::install::support::write_real_asp_launcher;

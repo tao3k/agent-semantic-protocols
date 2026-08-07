@@ -56,7 +56,7 @@ impl ProviderCacheReplay {
     }
 }
 
-pub(crate) fn load_replay_artifact(
+pub(crate) async fn load_replay_artifact(
     cache_root: &Path,
     generation_hit: &ClientDbGenerationHit,
     request: &ClientRequest,
@@ -121,6 +121,7 @@ pub(crate) fn load_replay_artifact(
         .any(|artifact_id| structured_evidence_artifact_path(cache_root, artifact_id).is_some());
 
     load_search_packet_artifact(cache_root, generation_hit, request)
+        .await
         .or_else(|| load_syntax_query_packet_artifact(cache_root, generation_hit, request))
         .or_else(|| {
             if is_tree_sitter_query_request(request) || has_structured_evidence_artifact {
@@ -131,7 +132,7 @@ pub(crate) fn load_replay_artifact(
         })
 }
 
-fn load_search_packet_artifact(
+async fn load_search_packet_artifact(
     cache_root: &Path,
     generation_hit: &ClientDbGenerationHit,
     request: &ClientRequest,
@@ -139,16 +140,19 @@ fn load_search_packet_artifact(
     if request.method != ClientMethod::Search {
         return None;
     }
-    generation_hit
+    if let Some(replay) = generation_hit
         .artifact_ids
         .iter()
         .find_map(|artifact_id| load_search_output_artifact(cache_root, artifact_id))
-        .or_else(|| {
-            generation_hit
-                .artifact_ids
-                .iter()
-                .find_map(|artifact_id| render_search_packet_artifact(cache_root, artifact_id))
-        })
+    {
+        return Some(replay);
+    }
+    for artifact_id in &generation_hit.artifact_ids {
+        if let Some(replay) = render_search_packet_artifact(cache_root, artifact_id).await {
+            return Some(replay);
+        }
+    }
+    None
 }
 
 fn load_search_output_artifact(
@@ -167,12 +171,14 @@ fn load_search_output_artifact(
     Some(ProviderCacheReplay::stdout(stdout))
 }
 
-fn render_search_packet_artifact(
+async fn render_search_packet_artifact(
     cache_root: &Path,
     artifact_id: &CacheArtifactId,
 ) -> Option<ProviderCacheReplay> {
     let artifact_path = replay_artifact_path(cache_root, artifact_id, "search/", ".json")?;
-    render_search_packet_artifact_stdout(&artifact_path).map(ProviderCacheReplay::stdout)
+    render_search_packet_artifact_stdout(&artifact_path)
+        .await
+        .map(ProviderCacheReplay::stdout)
 }
 
 fn load_syntax_query_packet_artifact(

@@ -14,7 +14,7 @@ const HOOK_EVENTS: &[&str] = &[
     "subagent-stop",
 ];
 
-pub(crate) fn run_hook_command(args: &[String]) -> Result<(), String> {
+pub(crate) async fn run_hook_command(args: &[String]) -> Result<(), String> {
     if matches!(args.first().map(String::as_str), Some("break-glass")) {
         return super::hook_break_glass::run_hook_break_glass(&args[1..]);
     }
@@ -29,14 +29,14 @@ pub(crate) fn run_hook_command(args: &[String]) -> Result<(), String> {
 
     let input = read_hook_input_bounded()
         .map_err(|error| format!("failed to read hook payload from stdin: {error}"))?;
-    evaluate_hook_event_locally(&forwarded, input)
+    evaluate_hook_event_locally(&forwarded, input).await
 }
 
-pub(crate) fn evaluate_hook_event_locally(
+pub(crate) async fn evaluate_hook_event_locally(
     arguments: &[String],
     input: String,
 ) -> Result<(), String> {
-    super::hook_runtime::run_hook_from_bootstrap(arguments, input)
+    super::hook_runtime::run_hook_from_bootstrap(arguments, input).await
 }
 
 pub(super) fn is_help_request(args: &[String]) -> bool {

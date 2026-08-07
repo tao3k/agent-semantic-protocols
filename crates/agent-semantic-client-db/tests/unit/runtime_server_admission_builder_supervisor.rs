@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation;
 use agent_semantic_client_db::runtime_server_admission::{
-    WorkspaceGenerationBuildFuture, WorkspaceGenerationBuildMode,
-    WorkspaceGenerationCandidateIdentity,
+    WorkspaceGenerationBuildFailure, WorkspaceGenerationBuildFuture, WorkspaceGenerationBuildMode,
+    WorkspaceGenerationCandidateIdentity, WorkspaceGenerationFailureStage,
 };
 
 fn candidate() -> WorkspaceGenerationCandidateIdentity {
@@ -21,8 +21,10 @@ fn candidate() -> WorkspaceGenerationCandidateIdentity {
 #[tokio::test]
 async fn delayed_builder_hits_short_deadline_with_typed_reason() {
     let builder = Arc::new(
-        |_, _, _, _, _, _absolute_deadline| -> WorkspaceGenerationBuildFuture {
-            Box::pin(async { std::future::pending::<Result<_, String>>().await })
+        |_, _, _, _, _changed_paths, _cancellation| -> WorkspaceGenerationBuildFuture {
+            Box::pin(async {
+                std::future::pending::<Result<_, WorkspaceGenerationBuildFailure>>().await
+            })
         },
     );
     let result = super::run_with_deadline(
@@ -39,7 +41,10 @@ async fn delayed_builder_hits_short_deadline_with_typed_reason() {
         Ok(_) => panic!("deadline should fail"),
         Err(error) => error,
     };
-    assert!(error.starts_with("workspace-generation-build-deadline-exceeded"));
+    assert_eq!(
+        error.stage,
+        WorkspaceGenerationFailureStage::GenerationBuilderSupervision
+    );
 }
 
 #[tokio::test]
@@ -47,11 +52,14 @@ async fn cancellation_remains_distinct_from_deadline() {
     let cancellation = GenerationCancellation::new();
     let cancelled = cancellation.clone();
     let builder = Arc::new(
-        move |_, _, _, _, _, _absolute_deadline| -> WorkspaceGenerationBuildFuture {
+        move |_, _, _, _, _changed_paths, _cancellation| -> WorkspaceGenerationBuildFuture {
             let cancelled = cancelled.clone();
             Box::pin(async move {
                 cancelled.cancelled().await;
-                Err("cancelled".to_owned())
+                Err(WorkspaceGenerationBuildFailure::new(
+                    WorkspaceGenerationFailureStage::GenerationBuilderSupervision,
+                    "cancelled",
+                ))
             })
         },
     );
@@ -69,5 +77,9 @@ async fn cancellation_remains_distinct_from_deadline() {
         Ok(_) => panic!("cancelled"),
         Err(error) => error,
     };
-    assert_eq!(error, "workspace generation build cancelled");
+    assert_eq!(
+        error.stage,
+        WorkspaceGenerationFailureStage::GenerationBuilderSupervision
+    );
+    assert_eq!(error.message, "workspace generation build cancelled");
 }

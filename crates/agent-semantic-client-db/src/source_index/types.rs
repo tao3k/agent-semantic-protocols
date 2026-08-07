@@ -188,6 +188,8 @@ pub struct ClientDbSourceIndexImport {
     pub schema_id: SemanticSchemaId,
     pub schema_version: SemanticSchemaVersion,
     pub file_hashes: Vec<ClientCacheFileHash>,
+    #[serde(skip)]
+    pub source_blobs: ClientDbSourceIndexSourceBlobs,
     pub owners: Vec<ClientDbSourceIndexOwner>,
     pub selectors: Vec<ClientDbSourceIndexSelector>,
     pub relations: Vec<
@@ -281,6 +283,7 @@ pub struct ClientDbSourceIndexImportRequest {
     pub schema_version: SemanticSchemaVersion,
     pub selector_source: ClientDbSourceIndexSource,
     pub file_hashes: Vec<ClientCacheFileHash>,
+    pub source_blobs: ClientDbSourceIndexSourceBlobs,
     pub files: Vec<ClientDbSourceIndexImportFile>,
 }
 
@@ -479,6 +482,7 @@ pub struct ClientDbSourceIndexSelector {
     pub source: ClientDbSourceIndexSource,
     pub query_keys: Vec<ClientDbSourceIndexQueryKey>,
     pub projection_record: agent_semantic_content_identity::ExactSelectorProjectionRecordV1,
+    #[serde(default)]
     pub derived_projections:
         Vec<crate::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot>,
 }
@@ -511,6 +515,7 @@ pub enum ClientDbSourceIndexMembershipChangeSet {
     FullSnapshot,
     /// Apply only the owner leaves committed by a Merkle overlay.
     MerkleOverlay {
+        base_generation_id: String,
         changed_owner_paths: Vec<ClientDbSourceIndexPath>,
         removed_owner_paths: Vec<ClientDbSourceIndexPath>,
     },

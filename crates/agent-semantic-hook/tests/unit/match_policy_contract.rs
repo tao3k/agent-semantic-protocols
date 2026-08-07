@@ -107,7 +107,7 @@ fn canonical_config_covers_builtin_programming_native_read_matrix() {
 }
 
 #[test]
-fn restored_plugin_matcher_corpus_covers_canonical_host_names() {
+fn bundled_plugin_matcher_covers_every_host_tool_action() {
     let hooks: Value = serde_json::from_str(include_str!(
         "../../../../asp-codex-plugin/hooks/hooks.json"
     ))
@@ -115,37 +115,41 @@ fn restored_plugin_matcher_corpus_covers_canonical_host_names() {
     let matcher = hooks["hooks"]["PreToolUse"][0]["matcher"]
         .as_str()
         .expect("PreToolUse matcher");
-    for name in [
-        "Read",
-        "readFile",
-        "read_file",
-        "mcp__",
-        "Bash",
-        "exec_command",
-        "command_execution",
-        "multi_tool_use\\.parallel",
-    ] {
-        assert!(matcher.contains(name), "missing host matcher token {name}");
-    }
-    for outer in [
-        "Read",
-        "mcp__server__read",
-        "Bash",
-        "exec_command",
-        "command_execution",
-        "multi_tool_use.parallel",
-    ] {
-        let nested = json!({"toolName": outer, "toolInput": {"commandActions": [{"toolName": "Read", "toolInput": {"path": "src/witness.py"}}]}});
-        assert!(
-            nested["toolName"].as_str().is_some_and(|name| {
-                matcher.contains(name)
-                    || (name.starts_with("mcp__") && matcher.contains("mcp__.*__read"))
-                    || (name == "multi_tool_use.parallel"
-                        && matcher.contains("multi_tool_use\\.parallel"))
-            }),
-            "nested host corpus {outer}"
-        );
-    }
+    assert_eq!(
+        matcher, "*",
+        "PreToolUse must deliver every host tool action to the internal policy matcher"
+    );
+}
+
+#[test]
+fn embedded_hook_policy_does_not_require_project_agent_routes() {
+    let project_root = std::env::temp_dir().join(format!(
+        "asp-hook-policy-without-agent-routes-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&project_root).expect("create project root without agents config");
+
+    let config = agent_semantic_hook::load_embedded_client_config_for_project(&project_root)
+        .expect("embedded hook policy must load without project agent routes");
+    agent_semantic_hook::validate_match_policy_rule_coverage(&config)
+        .expect("embedded hook policy remains conformant");
+
+    let config_path = project_root.join("hook-config.toml");
+    std::fs::write(
+        &config_path,
+        agent_semantic_hook::default_client_config_template(),
+    )
+    .expect("write installed hook policy fixture");
+    let config = agent_semantic_hook::load_client_config_for_project(&config_path, &project_root)
+        .expect("installed hook policy must load without project agent routes");
+    agent_semantic_hook::validate_match_policy_rule_coverage(&config)
+        .expect("installed hook policy remains conformant");
+
+    std::fs::remove_dir_all(project_root).ok();
 }
 
 fn run_with_projection_capabilities() {

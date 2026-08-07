@@ -65,9 +65,26 @@ structure WarmCost where
 def warmCost : WarmCost :=
   { hostProcessStarts := 1
     aspChildProcessStarts := 0
-    serverGenerationAdmissions := 1 }
+    serverGenerationAdmissions := 0 }
 
-def serverGenerationBuilds (_warmEvents : Nat) : Nat := 1
+def serverGenerationBuilds (_warmEvents : Nat) : Nat := 0
+
+inductive RecoveryAction where
+  | doctor
+  | canonicalBinaryInstall
+  | arbitraryCommand
+  | chainedCommand
+  deriving DecidableEq, Repr
+
+def recoveryAdmitted : RecoveryAction → Bool
+  | .doctor | .canonicalBinaryInstall => true
+  | .arbitraryCommand | .chainedCommand => false
+
+def managedAutoSync (canonical ownershipProven : Bool) : Bool :=
+  canonical && ownershipProven
+
+def installGeneration (generation : Nat) : PublishedPair :=
+  publishPair generation
 
 theorem publish_pair_is_coherent (generation : Nat) :
     PairCoherent (publishPair generation) := by
@@ -105,7 +122,23 @@ theorem warm_path_has_no_second_process :
   exact ⟨rfl, rfl⟩
 
 theorem server_warm_generation_is_not_per_hook (warmEvents : Nat) :
-    serverGenerationBuilds warmEvents ≤ 1 := by
-  exact Nat.le_refl 1
+    serverGenerationBuilds warmEvents = 0 := by
+  rfl
+
+theorem drift_preserves_configuration_independent_repair_edge :
+    canParseFullConfig .drifted = false ∧
+      recoveryAdmitted .canonicalBinaryInstall = true ∧
+      recoveryAdmitted .chainedCommand = false := by
+  decide
+
+theorem automatic_sync_requires_canonical_managed_ownership :
+    managedAutoSync true true = true ∧
+      managedAutoSync true false = false ∧
+      managedAutoSync false true = false := by
+  decide
+
+theorem canonical_install_republishes_a_coherent_pair (generation : Nat) :
+    PairCoherent (installGeneration generation) := by
+  exact publish_pair_is_coherent generation
 
 end ASPProof.HookBootstrapRepair

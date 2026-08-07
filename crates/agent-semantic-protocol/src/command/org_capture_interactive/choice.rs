@@ -244,25 +244,14 @@ impl AgentInteractiveChoice {
         choices: &[(&str, &str, &str)],
         pane_context: &str,
     ) -> String {
-        let mut output = format!(
-            "{}\ncontext: {pane_context}",
-            self.render_interactive_header("[agent-interactive]", Some(contract_id)),
-        );
+        let mut output =
+            format!("[agent-interactive] contract={contract_id}\ncontext: {pane_context}");
         for (selection, instruction, why) in choices {
-            let number = self
-                .entries
-                .iter()
-                .find(|entry| entry.id == *selection)
-                .map(|entry| entry.number.as_str())
-                .unwrap_or("?");
             output.push_str(&format!(
-                "\n{}. {}\n   selection: {}\n   why: {}",
-                number, instruction, selection, why,
+                "\nchoice: {}\n   action: {}\n   why: {}",
+                selection, instruction, why,
             ));
         }
-        output.push_str(
-            "\nnext: choose exactly one admitted host action, then re-enter the same control plane\nguard: preserve the exact registered role identity; do not attach a task payload",
-        );
         output
     }
 
@@ -273,10 +262,8 @@ impl AgentInteractiveChoice {
         pane_context: &str,
     ) -> String {
         format!(
-            "{}\ncontext: {pane_context}\naction: {}\nwhy: {}\nnext: execute this host action and return its typed receipt\nguard: preserve the Hook-selected registered role identity; do not attach a task payload",
-            self.render_interactive_header("[agent-interactive]", Some(contract_id)),
-            choice.instruction,
-            choice.use_if,
+            "[agent-interactive] contract={contract_id}\ncontext: {pane_context}\naction: {}\nwhy: {}",
+            choice.instruction, choice.use_if,
         )
     }
 

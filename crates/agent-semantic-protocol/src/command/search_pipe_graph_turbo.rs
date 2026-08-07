@@ -47,10 +47,10 @@ pub(super) struct GraphTurboSearchPipeRequest<'a> {
     pub(super) action_frontier: &'a [Value],
 }
 
-pub(super) fn render_graph_turbo_request(
+pub(super) async fn render_graph_turbo_request(
     request: GraphTurboSearchPipeRequest<'_>,
 ) -> Result<String, String> {
-    let packet = graph_turbo_request(&request)?;
+    let packet = graph_turbo_request(&request).await?;
     serde_json::to_string(&packet)
         .map(|mut text| {
             text.push('\n');
@@ -59,7 +59,7 @@ pub(super) fn render_graph_turbo_request(
         .map_err(|error| format!("failed to serialize graph turbo request: {error}"))
 }
 
-pub(super) fn graph_turbo_request(
+pub(super) async fn graph_turbo_request(
     request: &GraphTurboSearchPipeRequest<'_>,
 ) -> Result<Value, String> {
     let language_id = request.language_id;
@@ -133,7 +133,8 @@ pub(super) fn graph_turbo_request(
             provider_context_for_dependency_seed(provider_context, &surfaces),
             query,
             &graph_candidates,
-        )?
+        )
+        .await?
     } else {
         super::search_pipe_dependency_seed_cache::CachedDependencyFacts {
             cache_status: "skipped",

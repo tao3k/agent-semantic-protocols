@@ -7,8 +7,8 @@ use super::{
     ASP_CODEX_PLUGIN_MARKETPLACE_NAME, ASP_CODEX_PLUGIN_NAME, CodexPluginScope,
     codex_plugin_installed_path, codex_plugin_source_root, display_codex_plugin_source_root,
     ensure_codex_plugin_marketplace_registered, global_codex_config_path,
-    install_codex_project_plugin_config, plugin_path, remove_codex_project_marketplace_source,
-    remove_codex_project_plugin_config, run_codex_plugin_command,
+    install_codex_project_plugin_config, plugin_path, remove_codex_project_plugin_config,
+    run_codex_plugin_command,
 };
 use crate::command::hook_runtime::display_path;
 
@@ -53,7 +53,6 @@ pub(in crate::command) fn install_codex_plugin_hooks(
     }
     let (installed_path, plugin_install_status) = {
         if scope == CodexPluginScope::Global {
-            remove_codex_project_marketplace_source(&project_config_path, marketplace_name)?;
             remove_codex_project_plugin_config(&project_config_path, &plugin_id)?;
         }
         ensure_codex_plugin_marketplace_registered(

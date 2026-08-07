@@ -3,7 +3,7 @@ use super::{
     CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, CacheGenerationId, ClientCacheFileHash,
     ClientDbSourceIndexImport, ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest,
     ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexSource, LanguageId, ProviderId,
-    SemanticSchemaId, SemanticSchemaVersion, build_source_index_import, temp_root,
+    SemanticSchemaId, SemanticSchemaVersion, build_fixture_source_index_import, temp_root,
 };
 use std::{fs, path::Path};
 
@@ -15,7 +15,16 @@ fn merkle_import(
     ClientDbSourceIndexImport,
     agent_semantic_client_db::ClientDbSourceIndexSourceBlobs,
 ) {
-    let import = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let source_blobs = agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
+        files.iter().map(|(path, _, symbol)| {
+            (
+                agent_semantic_client_db::ClientDbSourceIndexPath::new(*path),
+                format!("pub fn {symbol}() {{}}\n").into_bytes(),
+            )
+        }),
+    );
+    let import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
+        source_blobs: source_blobs.clone(),
         generation_id: CacheGenerationId::from(generation_id),
         project_root: project_root.to_path_buf(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
@@ -23,11 +32,17 @@ fn merkle_import(
         selector_source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
         file_hashes: files
             .iter()
-            .map(|(path, digest, _)| ClientCacheFileHash {
-                path: (*path).to_string(),
-                sha256: (*digest).to_string(),
-                byte_len: 32,
-                mtime_ms: 1,
+            .map(|(path, _, symbol)| {
+                let source = format!("pub fn {symbol}() {{}}\n");
+                ClientCacheFileHash {
+                    path: (*path).to_string(),
+                    sha256: format!(
+                        "{:x}",
+                        <sha2::Sha256 as sha2::Digest>::digest(source.as_bytes())
+                    ),
+                    byte_len: source.len() as u64,
+                    mtime_ms: 1,
+                }
             })
             .collect(),
         files: files
@@ -43,14 +58,6 @@ fn merkle_import(
             .collect(),
     })
     .expect("build Merkle source-index import");
-    let source_blobs = agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
-        files.iter().map(|(path, _, symbol)| {
-            (
-                agent_semantic_client_db::ClientDbSourceIndexPath::new(*path),
-                format!("pub fn {symbol}() {{}}\n").into_bytes(),
-            )
-        }),
-    );
     (import, source_blobs)
 }
 

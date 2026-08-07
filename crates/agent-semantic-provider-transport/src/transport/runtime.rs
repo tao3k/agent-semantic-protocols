@@ -97,26 +97,6 @@ impl ProviderProcessOutput {
     }
 }
 
-/// Run a provider process on a current-thread Tokio runtime.
-pub fn run_provider_process(
-    spec: ProviderProcessSpec,
-) -> Result<ProviderProcessOutput, ProviderProcessError> {
-    run_provider_process_with_framing(spec, ProviderProcessFraming::default())
-}
-
-/// Run a provider process with explicit stdout/stderr framing on a current-thread Tokio runtime.
-pub fn run_provider_process_with_framing(
-    spec: ProviderProcessSpec,
-    framing: ProviderProcessFraming,
-) -> Result<ProviderProcessOutput, ProviderProcessError> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_io()
-        .enable_time()
-        .build()
-        .map_err(|source| ProviderProcessError::Runtime { source })?;
-    runtime.block_on(run_provider_process_async_with_framing(spec, framing))
-}
-
 /// Run a provider process asynchronously and capture stdout, stderr, and receipt data.
 pub async fn run_provider_process_async(
     spec: ProviderProcessSpec,

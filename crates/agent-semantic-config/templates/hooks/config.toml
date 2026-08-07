@@ -255,7 +255,7 @@ id = "materialize-registered-source-read-action"
 priority = 40000
 decision = "deny"
 decisionMaterializer = "source-access"
-message = "Registered source read actions are derived from action and provider-owned source patterns."
+message = "Registered {{languageId}} source reads are denied. Use the parser-owned ASP route below instead of raw Read."
 
 [rules.match]
 actionAny = ["read"]
@@ -568,4 +568,3 @@ Do not fall back to raw source tools while the registry is locked.
 registryError={{registryError}}
 command={{command}}
 """
-

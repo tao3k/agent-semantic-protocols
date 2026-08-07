@@ -1,7 +1,7 @@
 //! Runtime Server generation overlays and process-cold exact projection gates.
 
 use agent_semantic_client_db::runtime_server_workspace::{
-    RuntimeServerWorkspaceRegistry, WorkspaceExactProjectionDataPlaneClient,
+    ExactProjectionKind, RuntimeServerWorkspaceRegistry, WorkspaceExactProjectionDataPlaneClient,
     WorkspaceExactProjectionDataPlaneOpen, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
     WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorRead, WorkspaceSelectorSnapshot,
     workspace_generation_pointer_path,
@@ -107,7 +107,10 @@ async fn process_cold_exact_projection_relocates_by_canonical_item_identity() {
         .expect("open relocated exact index");
 
     match client
-        .read_runtime_selector("source", "rust://src/old_owner.rs#item/function/run")
+        .read_runtime_selector(
+            ExactProjectionKind::Source,
+            "rust://src/old_owner.rs#item/function/run",
+        )
         .expect("resolve moved canonical identity")
     {
         WorkspaceRuntimeSelectorRead::Projection { bytes, .. } => {
@@ -118,7 +121,7 @@ async fn process_cold_exact_projection_relocates_by_canonical_item_identity() {
 
     match client
         .read_runtime_selector(
-            "callable-skeleton",
+            ExactProjectionKind::CallableSkeleton,
             "rust://src/old_owner.rs#item/function/run",
         )
         .expect("resolve moved item before projection availability")
@@ -168,7 +171,7 @@ async fn process_cold_exact_projection_relocates_scoped_impl_and_method_identity
         "rust://src/previous.rs#item/method/parse/scope/implementation-owner/type/CliOptions/scope/trait-owner/trait/Parse",
     ] {
         match client
-            .read_runtime_selector("source", stale)
+            .read_runtime_selector(ExactProjectionKind::Source, stale)
             .expect("resolve scoped canonical identity")
         {
             WorkspaceRuntimeSelectorRead::Projection { bytes, .. } => {
@@ -210,7 +213,10 @@ async fn process_cold_exact_projection_rejects_ambiguous_relocation() {
         .expect("open ambiguous exact index");
 
     match client
-        .read_runtime_selector("source", "rust://src/old.rs#item/function/run")
+        .read_runtime_selector(
+            ExactProjectionKind::Source,
+            "rust://src/old.rs#item/function/run",
+        )
         .expect("classify ambiguous canonical identity")
     {
         WorkspaceRuntimeSelectorRead::RelocationAmbiguous { candidates, .. } => assert_eq!(
@@ -276,7 +282,7 @@ async fn warm_canonical_relocation_is_sub_250_microseconds_at_p99() {
     for _ in 0..SAMPLE_COUNT {
         let started = Instant::now();
         let read = client
-            .read_runtime_selector("source", stale)
+            .read_runtime_selector(ExactProjectionKind::Source, stale)
             .expect("relocate selector");
         assert!(matches!(
             read,
@@ -286,7 +292,7 @@ async fn warm_canonical_relocation_is_sub_250_microseconds_at_p99() {
 
         let started = Instant::now();
         let read = client
-            .read_runtime_selector("callable-skeleton", stale)
+            .read_runtime_selector(ExactProjectionKind::CallableSkeleton, stale)
             .expect("relocate selector before missing projection classification");
         assert!(matches!(
             read,
@@ -360,9 +366,9 @@ async fn concurrent_multi_workspace_relocation_is_lock_free_and_generation_stabl
                 let mut generation_digest = None;
                 for iteration in 0..READS_PER_READER {
                     let projection_kind = if iteration % 2 == 0 {
-                        "source"
+                        ExactProjectionKind::Source
                     } else {
-                        "callable-skeleton"
+                        ExactProjectionKind::CallableSkeleton
                     };
                     let read = client
                         .read_runtime_selector(
@@ -457,7 +463,7 @@ async fn same_owner_selector_overlays_accumulate_without_advancing_source_epoch(
             "workspace-a",
             &project_root("workspace-a"),
             WorkspaceRuntimeSelectorOverlay {
-                projection_kind: "source".to_owned(),
+                projection_kind: ExactProjectionKind::Source,
                 structural_selector: second_selector.to_owned(),
                 owner_path: "src/lib.rs".to_owned(),
                 owner_content_digest: format!("blake3-256:{}", blake3::hash(source).to_hex()),
@@ -474,13 +480,13 @@ async fn same_owner_selector_overlays_accumulate_without_advancing_source_epoch(
         .expect("generation lease");
     assert!(matches!(
         lease
-            .read_runtime_selector("source", first_selector)
+            .read_runtime_selector(ExactProjectionKind::Source, first_selector)
             .expect("read first selector"),
         WorkspaceRuntimeSelectorRead::Projection { .. }
     ));
     assert!(matches!(
         lease
-            .read_runtime_selector("source", second_selector)
+            .read_runtime_selector(ExactProjectionKind::Source, second_selector)
             .expect("read second selector"),
         WorkspaceRuntimeSelectorRead::Projection { .. }
     ));
@@ -520,7 +526,7 @@ async fn selector_overlay_is_memory_resident_and_preserves_the_source_epoch() {
             "workspace-selector-overlay",
             &project_root("workspace-selector-overlay"),
             WorkspaceRuntimeSelectorOverlay {
-                projection_kind: "source".to_owned(),
+                projection_kind: ExactProjectionKind::Source,
                 structural_selector: repaired_selector.to_owned(),
                 owner_path: "src/lib.rs".to_owned(),
                 owner_content_digest,
@@ -547,7 +553,7 @@ async fn selector_overlay_is_memory_resident_and_preserves_the_source_epoch() {
         .read_runtime_selector(
             "workspace-selector-overlay",
             &project_root("workspace-selector-overlay"),
-            "source",
+            ExactProjectionKind::Source,
             repaired_selector,
         )
         .expect("read repaired selector")
@@ -567,7 +573,7 @@ async fn selector_overlay_is_memory_resident_and_preserves_the_source_epoch() {
     };
     assert!(matches!(
         process_cold
-            .read_runtime_selector("source", repaired_selector)
+            .read_runtime_selector(ExactProjectionKind::Source, repaired_selector)
             .expect("read canonical process-cold generation"),
         WorkspaceRuntimeSelectorRead::OwnerForRepair { .. }
     ));
@@ -576,7 +582,7 @@ async fn selector_overlay_is_memory_resident_and_preserves_the_source_epoch() {
             "workspace-selector-overlay",
             &project_root("workspace-selector-overlay"),
             WorkspaceRuntimeSelectorOverlay {
-                projection_kind: "source".to_owned(),
+                projection_kind: ExactProjectionKind::Source,
                 structural_selector: repaired_selector.to_owned(),
                 owner_path: "src/lib.rs".to_owned(),
                 owner_content_digest: format!("blake3-256:{}", blake3::hash(source).to_hex()),
@@ -627,7 +633,7 @@ async fn selector_overlay_binds_projection_kind_and_projection_bytes() {
             "workspace-projection-kind",
             &project_root("workspace-projection-kind"),
             WorkspaceRuntimeSelectorOverlay {
-                projection_kind: "callable-skeleton".to_owned(),
+                projection_kind: ExactProjectionKind::CallableSkeleton,
                 structural_selector: selector.to_owned(),
                 owner_path: source_owner.owner_path,
                 owner_content_digest: source_owner.content_digest,
@@ -643,7 +649,7 @@ async fn selector_overlay_binds_projection_kind_and_projection_bytes() {
         .read_runtime_selector(
             "workspace-projection-kind",
             &project_root("workspace-projection-kind"),
-            "source",
+            ExactProjectionKind::Source,
             selector,
         )
         .expect("read source projection")
@@ -655,7 +661,7 @@ async fn selector_overlay_binds_projection_kind_and_projection_bytes() {
         .read_runtime_selector(
             "workspace-projection-kind",
             &project_root("workspace-projection-kind"),
-            "callable-skeleton",
+            ExactProjectionKind::CallableSkeleton,
             selector,
         )
         .expect("read callable-skeleton projection")
@@ -684,7 +690,7 @@ async fn selector_overlay_binds_projection_kind_and_projection_bytes() {
         panic!("callable-skeleton projection must be mmap-readable");
     };
     let process_cold_read = process_cold
-        .read_runtime_selector("callable-skeleton", selector)
+        .read_runtime_selector(ExactProjectionKind::CallableSkeleton, selector)
         .expect("read canonical process-cold generation");
     assert!(
         matches!(
@@ -740,7 +746,7 @@ async fn process_cold_exact_projection_open_and_lookup_is_sub_millisecond_at_p99
             .await
             .expect("open process-cold exact index");
         match client
-            .read_runtime_selector("source", target)
+            .read_runtime_selector(ExactProjectionKind::Source, target)
             .expect("binary-search exact selector")
         {
             WorkspaceRuntimeSelectorRead::Projection { bytes, .. } => {

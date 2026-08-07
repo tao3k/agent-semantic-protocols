@@ -399,6 +399,7 @@ pub fn resolve_runtime_server_agent_session_status(
             state: "blocked".to_owned(),
             generation: 0,
             reason_kind: Some("root-session-identity-required".to_owned()),
+            host_binding: None,
         });
     };
     let project_id = observed
@@ -419,13 +420,51 @@ pub fn resolve_runtime_server_agent_session_status(
             && entry.root_session_id == root_session_id
             && entry.name == name
     });
+    let host_binding = record.and_then(|entry| entry.host_binding.clone());
+    let live_exact_binding = record.is_some_and(|entry| {
+        matches!(
+            entry.lifecycle_state,
+            super::RuntimeServerAgentSessionLifecycleState::Routable
+        ) && entry.host_binding.as_ref().is_some_and(|binding| {
+            binding
+                .get("schemaVersion")
+                .and_then(serde_json::Value::as_str)
+                == Some("1")
+                && binding
+                    .get("rootSessionId")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(root_session_id.as_str())
+                && binding
+                    .get("hostChildId")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(entry.session_id.as_str())
+                && binding
+                    .get("residentId")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(name)
+                && binding
+                    .get("generation")
+                    .and_then(serde_json::Value::as_u64)
+                    == Some(entry.physical_generation)
+                && binding
+                    .get("lifecycleState")
+                    .and_then(serde_json::Value::as_str)
+                    == Some("live")
+                && binding.get("routable").and_then(serde_json::Value::as_bool) == Some(true)
+        })
+    });
     Ok(super::AgentSessionControlPlaneState {
         project_id: Some(project_id),
         root_session_id: Some(root_session_id),
         name: name.to_owned(),
         state: match record.map(|entry| &entry.lifecycle_state) {
-            Some(super::RuntimeServerAgentSessionLifecycleState::Routable) => {
+            Some(super::RuntimeServerAgentSessionLifecycleState::Routable)
+                if live_exact_binding =>
+            {
                 "registered".to_owned()
+            }
+            Some(super::RuntimeServerAgentSessionLifecycleState::Routable) => {
+                "registration-required".to_owned()
             }
             Some(super::RuntimeServerAgentSessionLifecycleState::Archived) => "archived".to_owned(),
             Some(
@@ -435,7 +474,18 @@ pub fn resolve_runtime_server_agent_session_status(
             None => "registration-required".to_owned(),
         },
         generation: record.map(|entry| entry.physical_generation).unwrap_or(0),
-        reason_kind: None,
+        reason_kind: if record.is_some_and(|entry| {
+            matches!(
+                entry.lifecycle_state,
+                super::RuntimeServerAgentSessionLifecycleState::Routable
+            )
+        }) && !live_exact_binding
+        {
+            Some("unbound-matched-child".to_owned())
+        } else {
+            None
+        },
+        host_binding,
     })
 }
 

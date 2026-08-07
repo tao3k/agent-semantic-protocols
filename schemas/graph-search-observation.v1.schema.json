@@ -126,10 +126,7 @@
       "additionalProperties": false,
       "properties": {
         "owners": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/pathRef"
-          }
+          "$ref": "#/$defs/pathRefList"
         },
         "items": {
           "type": "array",
@@ -144,10 +141,7 @@
           }
         },
         "tests": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/pathRef"
-          }
+          "$ref": "#/$defs/pathRefList"
         },
         "edges": {
           "type": "array",
@@ -262,6 +256,12 @@
     }
   },
   "$defs": {
+    "pathRefList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/pathRef"
+      }
+    },
     "pathRef": {
       "type": "object",
       "required": [

@@ -472,6 +472,7 @@ fn reason_kind_label(kind: ReasonKind) -> &'static str {
         ReasonKind::SemanticAstPatchRequired => "semantic-ast-patch-required",
         ReasonKind::ReadOnlySubagentWrite => "read-only-subagent-write",
         ReasonKind::SubagentReceiptRequired => "subagent-receipt-required",
+        ReasonKind::FocusedSubagentNestedStart => "focused-subagent-nested-start",
     }
 }
 

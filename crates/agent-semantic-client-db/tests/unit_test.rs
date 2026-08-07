@@ -44,6 +44,8 @@ mod runtime_server_admission_catalog;
 mod runtime_server_control;
 #[path = "unit/runtime_server_control_authority.rs"]
 mod runtime_server_control_authority;
+#[path = "unit/runtime_server_control_security.rs"]
+mod runtime_server_control_security;
 #[path = "unit/runtime_server_diagnostics.rs"]
 mod runtime_server_diagnostics;
 #[path = "unit/runtime_server_generation_admission.rs"]
@@ -60,6 +62,8 @@ mod runtime_server_opentelemetry_test;
 mod runtime_server_overlay_admission;
 #[path = "unit/runtime_server_runtime.rs"]
 mod runtime_server_runtime;
+#[path = "unit/runtime_server_state_home_isolation.rs"]
+mod runtime_server_state_home_isolation;
 #[path = "unit/runtime_server_supervisor_reconciliation.rs"]
 mod runtime_server_supervisor_reconciliation;
 #[path = "unit/runtime_server_workspace.rs"]
@@ -78,6 +82,8 @@ mod selector_generation_evidence;
 mod seqlock_json_memory;
 #[path = "unit/db/snapshot_fixture.rs"]
 mod snapshot_fixture;
+#[path = "unit/source_index_fixture.rs"]
+mod source_index_fixture;
 #[path = "unit/db/source_index_refresh_perf.rs"]
 mod source_index_refresh_perf;
 #[path = "unit/test_support.rs"]
@@ -96,3 +102,7 @@ mod workspace_db_owner_election;
 mod workspace_db_registry;
 #[path = "unit/workspace_project_resolution.rs"]
 mod workspace_project_resolution;
+#[path = "unit/session_control_plane.rs"]
+mod session_control_plane;
+#[path = "unit/session_control_plane_ipc.rs"]
+mod session_control_plane_ipc;

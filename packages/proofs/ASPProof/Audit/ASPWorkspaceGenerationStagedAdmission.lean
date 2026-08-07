@@ -1,0 +1,8 @@
+import ASPProof.ASPWorkspaceGenerationStagedAdmission
+
+#print axioms ASPProof.valid_deadline_reserves_terminal_publication_margin
+#print axioms ASPProof.failed_receipt_exposes_failure_stage
+#print axioms ASPProof.cancelled_receipt_exposes_failure_stage
+#print axioms ASPProof.ready_receipt_hides_failure_stage
+#print axioms ASPProof.generic_timeout_cannot_mask_staged_terminal_evidence
+#print axioms ASPProof.admitted_terminal_evidence_identifies_a_stage

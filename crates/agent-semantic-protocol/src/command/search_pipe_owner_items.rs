@@ -19,7 +19,7 @@ pub(super) struct SearchOwnerItemsContext<'a> {
     pub(super) frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
 }
 
-pub(super) fn run_search_owner_items_query_command(
+pub(super) async fn run_search_owner_items_query_command(
     args: &[String],
     context: SearchOwnerItemsContext<'_>,
 ) -> Result<(), String> {
@@ -35,7 +35,7 @@ pub(super) fn run_search_owner_items_query_command(
     );
     let owner_path = normalized_owner_key(&project_root, &owner_query_args.owner)?;
     let (owner_read, project_resolutions) =
-        crate::server::runtime_server::block_on_agent_facing_runtime_server_client(
+        crate::server::runtime_server::await_agent_facing_runtime_server_client(
             tokio::time::Instant::now(),
             "search",
             "resident-exact-generation-open",
@@ -50,7 +50,8 @@ pub(super) fn run_search_owner_items_query_command(
                 let owner_read = data_plane.read_owner(&owner_path).await?;
                 Ok((owner_read, project_resolutions))
             },
-        )?;
+        )
+        .await?;
     // The CLI remains a pure client. Filesystem observation and provider
     // projection belong to the watcher and workspace writer lane; this path
     // only reads the admitted immutable MemoryBackend generation.

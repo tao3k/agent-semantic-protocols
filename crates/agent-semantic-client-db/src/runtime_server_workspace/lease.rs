@@ -237,7 +237,7 @@ impl WorkspaceGenerationLease {
 
     pub fn read_runtime_selector(
         &self,
-        projection_kind: &str,
+        projection_kind: super::ExactProjectionKind,
         structural_selector: &str,
     ) -> Result<super::WorkspaceRuntimeSelectorRead, String> {
         self.overlay

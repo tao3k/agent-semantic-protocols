@@ -58,20 +58,98 @@ impl AgentRuntimeSession {
 /// Discover the current host agent session from well-known environment ids.
 #[must_use]
 pub fn current_agent_runtime_session() -> Option<AgentRuntimeSession> {
+    agent_runtime_session_from_platform_ids(
+        env_value("CODEX_SESSION_ID"),
+        env_value("CODEX_THREAD_ID"),
+        env_value("CLAUDE_CODE_SESSION_ID"),
+        env_value("CLAUDE_CODE_REMOTE_SESSION_ID"),
+    )
+}
+
+fn agent_runtime_session_from_platform_ids(
+    codex_session_id: Option<String>,
+    codex_thread_id: Option<String>,
+    claude_session_id: Option<String>,
+    claude_remote_session_id: Option<String>,
+) -> Option<AgentRuntimeSession> {
     let sessions = [
-        ("CODEX_THREAD_ID", "codex"),
-        ("CLAUDE_CODE_SESSION_ID", "claude-code"),
-        ("CLAUDE_CODE_REMOTE_SESSION_ID", "claude-code"),
+        codex_session_id
+            .or(codex_thread_id)
+            .map(|id| AgentRuntimeSession {
+                client: "codex".to_string(),
+                id,
+            }),
+        claude_session_id
+            .or(claude_remote_session_id)
+            .map(|id| AgentRuntimeSession {
+                client: "claude-code".to_string(),
+                id,
+            }),
     ]
     .into_iter()
-    .filter_map(|(name, client)| {
-        env_value(name).map(|id| AgentRuntimeSession {
-            client: client.to_string(),
-            id,
-        })
-    })
+    .flatten()
     .collect::<Vec<_>>();
     (sessions.len() == 1).then(|| sessions.into_iter().next().expect("one session"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::agent_runtime_session_from_platform_ids;
+
+    #[test]
+    fn current_agent_runtime_session_prefers_codex_session_id_over_thread_id() {
+        let session = agent_runtime_session_from_platform_ids(
+            Some("session-id".to_string()),
+            Some("thread-id".to_string()),
+            None,
+            None,
+        )
+        .expect("Codex identity should resolve");
+
+        assert_eq!(session.client, "codex");
+        assert_eq!(session.id, "session-id");
+    }
+
+    #[test]
+    fn current_agent_runtime_session_uses_codex_thread_id_as_fallback() {
+        let session = agent_runtime_session_from_platform_ids(
+            None,
+            Some("thread-id".to_string()),
+            None,
+            None,
+        )
+        .expect("Codex thread fallback should resolve");
+
+        assert_eq!(session.client, "codex");
+        assert_eq!(session.id, "thread-id");
+    }
+
+    #[test]
+    fn current_agent_runtime_session_prefers_local_claude_session_id() {
+        let session = agent_runtime_session_from_platform_ids(
+            None,
+            None,
+            Some("local-session".to_string()),
+            Some("remote-session".to_string()),
+        )
+        .expect("Claude identity should resolve");
+
+        assert_eq!(session.client, "claude-code");
+        assert_eq!(session.id, "local-session");
+    }
+
+    #[test]
+    fn current_agent_runtime_session_rejects_cross_platform_ambiguity() {
+        assert!(
+            agent_runtime_session_from_platform_ids(
+                Some("codex-session".to_string()),
+                None,
+                Some("claude-session".to_string()),
+                None,
+            )
+            .is_none()
+        );
+    }
 }
 
 fn env_value(name: &str) -> Option<String> {

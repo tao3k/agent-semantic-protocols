@@ -71,20 +71,16 @@
       "required": ["owners", "selectors", "tests"],
       "properties": {
         "owners": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/evidenceRef" }
+          "$ref": "#/$defs/evidenceRefList"
         },
         "selectors": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/evidenceRef" }
+          "$ref": "#/$defs/evidenceRefList"
         },
         "tests": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/evidenceRef" }
+          "$ref": "#/$defs/evidenceRefList"
         },
         "schemas": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/evidenceRef" }
+          "$ref": "#/$defs/evidenceRefList"
         }
       }
     },
@@ -153,8 +149,7 @@
       }
     },
     "evidence": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/evidenceRef" }
+      "$ref": "#/$defs/evidenceRefList"
     },
     "fields": {
       "type": "object",
@@ -162,6 +157,10 @@
     }
   },
   "$defs": {
+    "evidenceRefList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidenceRef" }
+    },
     "evidenceRef": {
       "type": "object",
       "additionalProperties": false,

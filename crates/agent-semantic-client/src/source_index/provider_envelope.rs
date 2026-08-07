@@ -354,7 +354,7 @@ pub fn provider_source_snapshot_envelope_path_at_artifact_root_with_registry(
 }
 
 /// Refresh and publish one provider workspace envelope, then load it strictly.
-pub fn ensure_provider_source_index_snapshot_at_artifact_root_with_registry(
+pub async fn ensure_provider_source_index_snapshot_at_artifact_root_with_registry(
     request: ProviderSourceEnvelopeLookupRequestV1<'_>,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     super::generation::publish_target_provider_source_envelope_v1(
@@ -367,7 +367,8 @@ pub fn ensure_provider_source_index_snapshot_at_artifact_root_with_registry(
             artifact_root: request.artifact_root,
             project_root: request.project_root,
         },
-    )?;
+    )
+    .await?;
     current_provider_source_index_snapshot_at_artifact_root_with_registry(request)
 }
 

@@ -280,6 +280,18 @@ impl AgentSessionRegistry {
         }))
     }
 
+    pub(in crate::agent_session_registry) async fn runtime_operation_async(
+        &self,
+        operation: crate::workspace_db_ipc::AgentSessionRegistryIpcOperation,
+    ) -> Result<crate::workspace_db_ipc::AgentSessionRegistryIpcResult, String> {
+        let project_root = self.runtime_project_root.as_ref().ok_or_else(|| {
+            "session control-plane operations require the Runtime Server registry proxy".to_owned()
+        })?;
+        let session =
+            crate::workspace_db_ipc::connect_runtime_server_workspace_session(project_root).await?;
+        session.call_agent_session_registry(operation).await
+    }
+
     pub(in crate::agent_session_registry) fn runtime_operation(
         &self,
         operation: crate::workspace_db_ipc::AgentSessionRegistryIpcOperation,
@@ -924,6 +936,49 @@ pub(super) async fn turso_refresh_expired_sessions(db_path: &Path, now: i64) -> 
                 .map_err(|error| error.to_string())
         },
         "failed to refresh Turso expired session rows",
+    )
+    .await?;
+    Ok(())
+}
+
+pub(super) async fn turso_record_host_non_match(
+    db_path: &Path,
+    observation: &crate::workspace_db_ipc::AgentHostNonMatchIpc,
+) -> Result<(), String> {
+    let connection = connect_turso_agent_session_registry(db_path).await?;
+    execute_turso_operation(
+        || async {
+            connection
+                .execute(
+                    "INSERT INTO asp_host_child_match_decisions (
+                        project_id, root_session_id, child_session_id, host_task_name,
+                        match_decision, lifecycle_state, payload_digest, observed_at
+                     ) VALUES (?1, ?2, ?3, ?4, 'none', ?5, ?6, ?7)
+                     ON CONFLICT(project_id, root_session_id, child_session_id) DO UPDATE SET
+                        host_task_name = excluded.host_task_name,
+                        lifecycle_state = excluded.lifecycle_state,
+                        payload_digest = excluded.payload_digest,
+                        observed_at = excluded.observed_at
+                     WHERE excluded.observed_at >= asp_host_child_match_decisions.observed_at",
+                    (
+                        observation.project_id.as_str(),
+                        observation.root_session_id.as_str(),
+                        observation.child_session_id.as_str(),
+                        observation.host_task_name.as_str(),
+                        match observation.kind {
+                            crate::workspace_db_ipc::AgentHostLifecycleEventKind::Started => "live",
+                            crate::workspace_db_ipc::AgentHostLifecycleEventKind::Stopped => {
+                                "stopped"
+                            }
+                        },
+                        observation.payload_digest.as_str(),
+                        observation.observed_at,
+                    ),
+                )
+                .await
+                .map_err(|error| error.to_string())
+        },
+        "failed to persist Host child matchDecision=none",
     )
     .await?;
     Ok(())

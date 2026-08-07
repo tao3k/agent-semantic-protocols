@@ -13,7 +13,7 @@ use super::search_pipe_model::Candidate;
 const GRAPH_TURBO_REQUEST_SCHEMA_ID: &str = "agent.semantic-protocols.semantic-graph-turbo-request";
 const FAILURE_HOT_BLOCK_MAX_LINES: usize = 80;
 
-pub(super) fn render_failure_frontier(
+pub(super) async fn render_failure_frontier(
     language_id: &str,
     project_root: &Path,
     locator_root: &Path,
@@ -29,9 +29,11 @@ pub(super) fn render_failure_frontier(
     );
     let packet_bytes = serde_json::to_vec(&packet)
         .map_err(|error| format!("failed to serialize failure graph turbo request: {error}"))?;
-    let ranked_packet = rank_graph_turbo_packet(&packet_bytes)?.ok_or_else(|| {
-        "search failure requires asp-graph-turbo with failure-frontier support".to_string()
-    })?;
+    let ranked_packet = rank_graph_turbo_packet(&packet_bytes)
+        .await?
+        .ok_or_else(|| {
+            "search failure requires asp-graph-turbo with failure-frontier support".to_string()
+        })?;
     let request = agent_semantic_search_projection::SearchProjectionRequestV1::new(
         "ranked-frontier",
         agent_semantic_search_projection::SearchProjectionDensityV1::Terse,

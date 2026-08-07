@@ -63,7 +63,6 @@ where
 
 fn run(args: Vec<String>) -> Result<(), String> {
     match args.first().map(String::as_str) {
-        Some("hook") => run_hook(&args[1..]),
         Some("doctor") => run_doctor(&args[1..]),
         Some("install") => run_install(&args[1..]),
         Some("paths") => run_paths(&args[1..]),
@@ -89,28 +88,7 @@ fn run_paths(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn run_hook(args: &[String]) -> Result<(), String> {
-    let client = flag_value(args, "--client")
-        .ok_or_else(|| "missing required --client <client>".to_string())?;
-    ensure_supported_client(client)?;
-    let emit = flag_value(args, "--emit").unwrap_or("platform");
-    let event = first_positional(args).ok_or_else(|| "missing hook event".to_string())?;
-    let stdin = match hook_runtime_stdin::read_hook_stdin_bounded() {
-        Ok(stdin) => stdin,
-        Err(error) => {
-            emit_hook_runtime_failure(
-                client,
-                event,
-                emit,
-                &format!("failed to read hook payload from stdin: {error}"),
-            )?;
-            return Ok(());
-        }
-    };
-    run_hook_from_bootstrap(args, stdin)
-}
-
-pub(crate) fn run_hook_from_bootstrap(args: &[String], stdin: String) -> Result<(), String> {
+pub(crate) async fn run_hook_from_bootstrap(args: &[String], stdin: String) -> Result<(), String> {
     let client = flag_value(args, "--client")
         .ok_or_else(|| "missing required --client <client>".to_string())?;
     ensure_supported_client(client)?;
@@ -121,10 +99,10 @@ pub(crate) fn run_hook_from_bootstrap(args: &[String], stdin: String) -> Result<
     } else {
         event
     };
-    run_hook_with_input(args, client, event, emit, classification_event, stdin)
+    run_hook_with_input(args, client, event, emit, classification_event, stdin).await
 }
 
-fn run_hook_with_input(
+async fn run_hook_with_input(
     args: &[String],
     client: &str,
     event: &str,
@@ -163,14 +141,28 @@ fn run_hook_with_input(
     let payload_root = fs::canonicalize(&payload_root).unwrap_or(payload_root);
     let project_root = hook_workspace_candidate(&payload, &payload_root);
     let project_root = fs::canonicalize(&project_root).unwrap_or(project_root);
+    // Hook startup is a best-effort global lifecycle ensure. It never derives
+    // daemon identity from the payload workspace and never overrides an
+    // explicit operator stop.
+    if let Ok(state_home) = crate::server::runtime_server::state_home()
+        && let Err(error) =
+            crate::server::runtime_server_supervisor::ensure_runtime_server_for_hook(&state_home)
+    {
+        eprintln!("[agent-semantic-hook] Runtime Server ensure unavailable: {error}");
+    }
     match hook_runtime_host_lifecycle::record_host_lifecycle_event(
         client,
         event,
         &payload,
         &project_root,
-    ) {
-        Ok(true) => return Ok(()),
-        Ok(false) => {}
+    )
+    .await
+    {
+        Ok(hook_runtime_host_lifecycle::HostLifecycleDisposition::Recorded) => return Ok(()),
+        Ok(hook_runtime_host_lifecycle::HostLifecycleDisposition::NotLifecycle) => {}
+        Ok(hook_runtime_host_lifecycle::HostLifecycleDisposition::Denied(decision)) => {
+            return emit_decision(emit, &decision);
+        }
         Err(error) => {
             emit_hook_runtime_failure(client, event, emit, &error)?;
             return Ok(());

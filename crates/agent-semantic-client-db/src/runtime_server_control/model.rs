@@ -201,6 +201,8 @@ pub struct RuntimeServerAgentSessionStatus {
     pub name: String,
     pub physical_generation: u64,
     pub lifecycle_state: RuntimeServerAgentSessionLifecycleState,
+    #[serde(default)]
+    pub host_binding: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -212,6 +214,7 @@ pub struct AgentSessionControlPlaneState {
     pub state: String,
     pub generation: u64,
     pub reason_kind: Option<String>,
+    pub host_binding: Option<serde_json::Value>,
 }
 
 impl RuntimeServerStatusSnapshot {

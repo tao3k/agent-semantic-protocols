@@ -16,7 +16,7 @@ const FLOW_DIRS: &[&str] = &["plans", "sdd", "bdd", "tdd", "bdr"];
 const DEFAULT_ASP_ORG_REPO_URL: &str = "https://github.com/tao3k/org.git";
 const ASP_ORG_REPO_URL_ENV: &str = "ASP_ORG_REPO_URL";
 
-pub(crate) fn run_org_capture_command(args: &[String]) -> Result<(), String> {
+pub(crate) async fn run_org_capture_command(args: &[String]) -> Result<(), String> {
     if args
         .iter()
         .any(|arg| matches!(arg.as_str(), "-h" | "--help" | "help"))
@@ -31,15 +31,16 @@ pub(crate) fn run_org_capture_command(args: &[String]) -> Result<(), String> {
         );
     }
     if capture_contract_requested(args) {
-        return run_contract_capture(args);
+        return run_contract_capture(args).await;
     }
     Err("asp org capture expects `--contract CONTRACT_ID`".to_string())
 }
 
-fn run_contract_capture(args: &[String]) -> Result<(), String> {
+async fn run_contract_capture(args: &[String]) -> Result<(), String> {
     let contract_id = capture_contract_id(args)?;
-    let template_path = resolve_capture_template(&contract_id)?;
-    let contract_registry_path = resolve_capture_contract_registry_from_args(args, &contract_id)?;
+    let template_path = resolve_capture_template(&contract_id).await?;
+    let contract_registry_path =
+        resolve_capture_contract_registry_from_args(args, &contract_id).await?;
     let capture_args = match materialize_contract_capture_args(
         args,
         &contract_id,
@@ -62,7 +63,7 @@ fn run_contract_capture(args: &[String]) -> Result<(), String> {
     agent::run_org_cli_command(orgize_args)
 }
 
-pub(crate) fn run_org_state_sync(project_root: &Path) -> Result<OrgStateSync, String> {
+pub(crate) async fn run_org_state_sync(project_root: &Path) -> Result<OrgStateSync, String> {
     let paths = project_state_paths(project_root)?;
     let state_root = paths.protocol_home.join("org");
     let mut sync = sync_default_org_state(&state_root)?;
@@ -73,7 +74,9 @@ pub(crate) fn run_org_state_sync(project_root: &Path) -> Result<OrgStateSync, St
             &state_root,
             mutation_id,
             vec![".".to_owned()],
-        ) {
+        )
+        .await
+        {
             Ok(receipt) => {
                 sync.source_index_status = "runtime-admitted".to_string();
                 sync.source_index_generation = receipt
@@ -354,7 +357,7 @@ fn capture_contract_id(args: &[String]) -> Result<String, String> {
     })
 }
 
-fn resolve_capture_contract_registry(contract_id: &str) -> Result<PathBuf, String> {
+async fn resolve_capture_contract_registry(contract_id: &str) -> Result<PathBuf, String> {
     let project_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
     let state_root = project_state_paths(&project_root)?
@@ -364,7 +367,7 @@ fn resolve_capture_contract_registry(contract_id: &str) -> Result<PathBuf, Strin
         .join("contracts")
         .join(contract_registry_file_name(contract_id)?);
     if !registry_path.is_file() {
-        run_org_state_sync(&project_root)?;
+        run_org_state_sync(&project_root).await?;
     }
     if registry_path.is_file() {
         return Ok(registry_path);
@@ -375,14 +378,14 @@ fn resolve_capture_contract_registry(contract_id: &str) -> Result<PathBuf, Strin
     ))
 }
 
-fn resolve_capture_contract_registry_from_args(
+async fn resolve_capture_contract_registry_from_args(
     args: &[String],
     contract_id: &str,
 ) -> Result<PathBuf, String> {
     if let Some(path) = capture_contract_registry_arg(args)? {
         return Ok(path);
     }
-    resolve_capture_contract_registry(contract_id)
+    resolve_capture_contract_registry(contract_id).await
 }
 
 fn capture_contract_registry_arg(args: &[String]) -> Result<Option<PathBuf>, String> {
@@ -403,7 +406,7 @@ fn capture_contract_registry_arg(args: &[String]) -> Result<Option<PathBuf>, Str
     Ok(None)
 }
 
-fn resolve_capture_template(contract_id: &str) -> Result<Option<PathBuf>, String> {
+async fn resolve_capture_template(contract_id: &str) -> Result<Option<PathBuf>, String> {
     let project_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
     let state_root = project_state_paths(&project_root)?
@@ -412,7 +415,7 @@ fn resolve_capture_template(contract_id: &str) -> Result<Option<PathBuf>, String
     let template_file_name = contract_registry_file_name(contract_id)?;
     let template_path = state_root.join("templates").join(&template_file_name);
     if !template_path.is_file() {
-        run_org_state_sync(&project_root)?;
+        run_org_state_sync(&project_root).await?;
     }
     if template_path.is_file() {
         return Ok(Some(template_path));

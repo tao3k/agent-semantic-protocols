@@ -35,6 +35,17 @@ fn session_status(
     generation: u64,
     routable: bool,
 ) -> RuntimeServerAgentSessionStatus {
+    let host_binding = routable.then(|| {
+        serde_json::json!({
+            "schemaVersion": "1",
+            "rootSessionId": root_session_id,
+            "hostChildId": session_id,
+            "residentId": name,
+            "generation": generation,
+            "lifecycleState": "live",
+            "routable": true,
+        })
+    });
     RuntimeServerAgentSessionStatus {
         workspace_identity: workspace_identity.to_owned(),
         project_id: project_id.to_owned(),
@@ -47,6 +58,7 @@ fn session_status(
         } else {
             RuntimeServerAgentSessionLifecycleState::Invalid
         },
+        host_binding,
     }
 }
 
@@ -65,6 +77,31 @@ fn empty_projection_requires_registration_for_an_observed_root() {
     assert_eq!(state.root_session_id.as_deref(), Some("root-1"));
     assert_eq!(state.generation, 0);
     assert_eq!(state.reason_kind, None);
+    assert_eq!(state.host_binding, None);
+}
+
+#[test]
+fn routable_name_without_exact_host_binding_fails_closed() {
+    let mut session = session_status(
+        "workspace-1",
+        "/project-1",
+        "root-1",
+        "child-1",
+        "asp_explorer",
+        3,
+        true,
+    );
+    session.host_binding = None;
+    let state = resolve_runtime_server_agent_session_status(
+        &[session],
+        "workspace-1",
+        None,
+        Some("root-1"),
+        "asp_explorer",
+    )
+    .expect("unbound matched child is a typed registration-required state");
+    assert_eq!(state.state, "registration-required");
+    assert_eq!(state.reason_kind.as_deref(), Some("unbound-matched-child"));
 }
 
 #[test]

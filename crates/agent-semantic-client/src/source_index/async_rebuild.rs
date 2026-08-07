@@ -118,27 +118,30 @@ pub async fn prepare_runtime_server_workspace_generation_async(
     project_root: PathBuf,
 ) -> Result<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuild, String> {
     let snapshot = ProviderRegistrySnapshot::load(&project_root)?;
-    prepare_runtime_server_workspace_generation_with_registry_async(project_root, snapshot).await
+    prepare_runtime_server_workspace_generation_with_registry_async(
+        project_root,
+        snapshot,
+        SourceIndexCollectionScope::CompleteGeneration,
+    )
+    .await
 }
 
 pub async fn prepare_runtime_server_workspace_generation_with_registry_async(
     project_root: PathBuf,
     snapshot: ProviderRegistrySnapshot,
+    collection_scope: SourceIndexCollectionScope,
 ) -> Result<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuild, String> {
     let trace_started = Instant::now();
     let context = SourceIndexRefreshContext::resolve(&project_root)?;
     trace("context-resolved", trace_started);
     trace("provider-registry-admitted", trace_started);
     let registry = snapshot.evidence(&project_root);
-    let collection = collect_source_index_scope_async(
-        &project_root,
-        &snapshot,
-        &SourceIndexCollectionScope::CompleteGeneration,
-    )
-    .await?;
+    let collection =
+        collect_source_index_scope_async(&project_root, &snapshot, &collection_scope).await?;
     trace("scope-files-collected", trace_started);
     context
         .prepare_generation_async(SourceIndexGenerationRefresh {
+            changed_owner_paths: collection_scope.explicit_owner_paths(),
             index_root: &project_root,
             files: &collection.files,
             project_resolutions: &collection.project_resolutions,

@@ -291,23 +291,8 @@
       }
     },
     "profile": {
-      "enum": [
-        "owner-query",
-        "query-deps",
-        "owner-tests",
-        "prime",
-        "read-frontier",
-        "failure-frontier",
-        "field-impact",
-        "type-impact",
-      "collection-impact",
-      "failure-evidence",
-      "test-selection",
-      "affected",
-      "evidence-quality",
-      "rust-evidence-quality"
-    ]
-  },
+      "$ref": "semantic-graph-turbo-definitions.v1.schema.json#/$defs/profile"
+    },
     "nodeId": {
       "type": "string",
       "minLength": 1

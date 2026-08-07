@@ -357,6 +357,15 @@ impl RuntimeServerWorkspaceRegistry {
                 task.await
                     .map_err(|error| format!("join runtime workspace writer lane: {error}"))?;
             }
+            for project_root in &project_roots {
+                let pointer_path = workspace_generation_pointer_path(
+                    &self.root,
+                    &workspace_identity,
+                    project_root,
+                )?;
+                WorkspaceGenerationDataPlaneClient::invalidate_committed_pointer(&pointer_path);
+                crate::runtime_server_workspace::WorkspaceExactProjectionDataPlaneClient::invalidate_committed_pointer(&pointer_path);
+            }
             let (live_lease_count, in_flight_request_count) = resident.activity.counts();
             let receipt = ResidentWorkspaceRetirementReceipt {
                 schema_id: RESIDENT_WORKSPACE_RETIREMENT_RECEIPT_SCHEMA_ID.to_owned(),
@@ -428,6 +437,7 @@ impl RuntimeServerWorkspaceRegistry {
                     std::path::Path::new(&project_root),
                 )?;
                 WorkspaceGenerationDataPlaneClient::invalidate_committed_pointer(&pointer_path);
+                crate::runtime_server_workspace::WorkspaceExactProjectionDataPlaneClient::invalidate_committed_pointer(&pointer_path);
             }
         }
         let receipt = RuntimeServerShutdownReceipt {

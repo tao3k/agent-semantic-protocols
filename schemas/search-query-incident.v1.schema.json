@@ -18,6 +18,7 @@
     "reasonKind",
     "state",
     "occurrenceCount",
+    "transitionSequence",
     "firstSeenUnixMicros",
     "lastSeenUnixMicros"
   ],
@@ -71,6 +72,10 @@
       ]
     },
     "occurrenceCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "transitionSequence": {
       "type": "integer",
       "minimum": 1
     },

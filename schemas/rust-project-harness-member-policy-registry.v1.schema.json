@@ -346,14 +346,7 @@
       }
     },
     "dependencyBaselinePackage": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["name", "version", "source_contains"],
-      "properties": {
-        "name": { "type": "string", "minLength": 1 },
-        "version": { "type": "string", "minLength": 1 },
-        "source_contains": { "type": "string", "minLength": 1 }
-      }
+      "$ref": "rust-project-harness-definitions.v1.schema.json#/$defs/dependencyBaselinePackage"
     },
     "taskKind": {
       "enum": [

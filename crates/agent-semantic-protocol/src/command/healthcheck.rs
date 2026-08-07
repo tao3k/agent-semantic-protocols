@@ -29,13 +29,16 @@ fn usage() -> String {
     "usage: asp healthcheck [--json]".to_owned()
 }
 
-pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
+pub(super) async fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
     let options = HealthcheckOptions::parse(args)?;
     let state_home = crate::server::runtime_server::state_home()?;
-    crate::server::runtime_server::block_on_runtime_server_client(
-        crate::server::runtime_server::await_healthy_runtime_server(&state_home),
-    )??;
-    let health = agent_semantic_client_db::runtime_server_health::cached_runtime_server_health()?;
+    crate::server::runtime_server::await_healthy_runtime_server(&state_home).await?;
+    let health = agent_semantic_client_db::runtime_server_health::cached_runtime_server_health_at(
+        &agent_semantic_client_db::runtime_server_control::runtime_server_runtime_base(
+            &state_home,
+        )?,
+    )
+    .await?;
     if options.json {
         println!(
             "{}",

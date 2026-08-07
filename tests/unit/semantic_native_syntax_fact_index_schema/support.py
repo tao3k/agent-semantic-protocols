@@ -31,6 +31,9 @@ def schema_validators() -> SchemaValidators:
     tree_sitter_provenance_schema = _load_schema(
         schema_dir / "semantic-tree-sitter-provenance.v1.schema.json"
     )
+    semantic_definitions_schema = _load_schema(
+        schema_dir / "semantic-definitions.v1.schema.json"
+    )
     registry = Registry().with_resources(
         [
             (native_schema["$id"], Resource.from_contents(native_schema)),
@@ -42,6 +45,10 @@ def schema_validators() -> SchemaValidators:
             (
                 tree_sitter_provenance_schema["$id"],
                 Resource.from_contents(tree_sitter_provenance_schema),
+            ),
+            (
+                semantic_definitions_schema["$id"],
+                Resource.from_contents(semantic_definitions_schema),
             ),
         ]
     )

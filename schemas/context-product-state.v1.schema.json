@@ -133,6 +133,22 @@
     }
   ],
   "$defs": {
+    "retainedProofList": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/retainedProof" }
+    },
+    "routeEdgeList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/routeEdge" }
+    },
+    "idList": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/id" }
+    },
     "id": {
       "type": "string",
       "minLength": 1,
@@ -548,11 +564,7 @@
           "const": "partial"
         },
         "retained": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/$defs/retainedProof"
-          }
+          "$ref": "#/$defs/retainedProofList"
         },
         "invalidatedProofRefs": {
           "$ref": "#/$defs/nonEmptyIdArray"
@@ -572,11 +584,7 @@
           "const": "complete"
         },
         "retained": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/$defs/retainedProof"
-          }
+          "$ref": "#/$defs/retainedProofList"
         },
         "invalidatedProofRefs": {
           "type": "array",
@@ -808,24 +816,7 @@
       }
     },
     "blockedDecision": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "kind",
-        "blockerCode",
-        "retryable"
-      ],
-      "properties": {
-        "kind": {
-          "const": "blocked"
-        },
-        "blockerCode": {
-          "$ref": "#/$defs/id"
-        },
-        "retryable": {
-          "type": "boolean"
-        }
-      }
+      "$ref": "#/$defs/blockedDisposition"
     },
     "activeProgram": {
       "oneOf": [
@@ -1562,10 +1553,7 @@
           }
         },
         "edges": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/routeEdge"
-          }
+          "$ref": "#/$defs/routeEdgeList"
         },
         "executionGroups": {
           "type": "array",
@@ -1619,13 +1607,7 @@
           ]
         },
         "nodeIds": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 10,
-          "uniqueItems": true,
-          "items": {
-            "$ref": "#/$defs/id"
-          }
+          "$ref": "#/$defs/idList"
         },
         "joinPolicy": {
           "enum": [
@@ -1816,13 +1798,7 @@
           "enum": ["batch", "serial", "parallel"]
         },
         "stageIds": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 10,
-          "uniqueItems": true,
-          "items": {
-            "$ref": "#/$defs/id"
-          }
+          "$ref": "#/$defs/idList"
         },
         "joinPolicy": {
           "enum": [
@@ -1977,10 +1953,7 @@
           }
         },
         "edges": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/routeEdge"
-          }
+          "$ref": "#/$defs/routeEdgeList"
         },
         "joins": {
           "type": "array",

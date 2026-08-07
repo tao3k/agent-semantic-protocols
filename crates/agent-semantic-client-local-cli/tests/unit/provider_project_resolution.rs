@@ -19,6 +19,7 @@ fn project_resolution_request_carries_typed_candidate_generation_identity() {
     let (_, request, _) = super::provider_project_resolution_invocation_with_candidates(
         &provider,
         project_root,
+        &super::ProviderProjectResolutionCollectionScope::CompleteGeneration,
         repository_candidates,
     )
     .expect("build provider project-resolution request");
@@ -48,6 +49,7 @@ fn provider_invocation_rebases_repository_snapshot_before_language_harness() {
     let (_, request, _) = super::provider_project_resolution_invocation_with_candidates(
         &provider,
         &project_root,
+        &super::ProviderProjectResolutionCollectionScope::CompleteGeneration,
         repository_candidates,
     )
     .expect("build scoped provider request");
