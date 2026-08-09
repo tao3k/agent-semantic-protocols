@@ -63,7 +63,16 @@ enabled = true
 }
 
 fn write_codex_plugin_fixture(root: &std::path::Path) {
-    let plugin_root = root.join("asp-codex-plugin");
+    let manifest: serde_json::Value = serde_json::from_slice(include_bytes!(
+        "../../../../../asp-codex-plugin/.codex-plugin/plugin.json"
+    ))
+    .expect("parse plugin manifest fixture");
+    let version = manifest["version"]
+        .as_str()
+        .expect("plugin manifest version");
+    let plugin_root = root
+        .join(".codex/plugins/cache/asp-project/asp-codex-plugin")
+        .join(version);
     for (relative, bytes) in [
         (
             ".codex-plugin/plugin.json",

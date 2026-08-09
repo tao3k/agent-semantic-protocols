@@ -1,12 +1,16 @@
 //! ASP downstream policy crate for Rust project harness evidence graphs.
 
 pub use rust_lang_project_harness::{
-    RustHarnessConfig, RustOwnerResponsibility, RustProjectHarnessDownstreamPolicy,
+    RustHarnessConfig, RustHarnessRunScope, RustOwnerResponsibility,
+    RustProjectHarnessDownstreamPolicy, RustProjectHarnessWorkspaceEvidenceGraphMemberInput,
+    RustProjectHarnessWorkspaceMemberRunReport, RustProjectHarnessWorkspaceRunReport,
     RustVerificationProfileHint, RustVerificationStabilityPictureConfig, RustVerificationTaskKind,
     assert_rust_project_harness_clean_with_config,
     assert_rust_project_harness_downstream_policy_from_env,
-    assert_rust_project_harness_verification_from_env_with_config, default_rust_harness_config,
-    rust_harness_config_for_project,
+    assert_rust_project_harness_verification_from_env_with_config,
+    assert_rust_workspace_harness_clean_with_config,
+    assert_rust_workspace_harness_downstream_policies, default_rust_harness_config,
+    run_rust_project_harness_with_config_for_scope, rust_harness_config_for_project,
 };
 
 pub mod build_gate;

@@ -9,12 +9,6 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use agent_semantic_client_db::runtime_server_control::{
-    RUNTIME_SERVER_HOOK_CONTROL_PROBE_BUDGET, RuntimeServerHookProbeError, RuntimeServerState,
-    probe_runtime_server_for_hook, read_runtime_server_endpoint,
-    validate_runtime_server_endpoint_for_state_home,
-};
-
 const OPERATOR_STOP_MARKER_FILE: &str = "operator-stop.v1.json";
 const RUN_INTENT_MARKER_FILE: &str = "run-intent.v1";
 const SPAWN_RECEIPT_FILE: &str = "owner-spawn.v1.json";
@@ -153,79 +147,29 @@ pub(crate) async fn ensure_runtime_server(
             return Ok(None);
         }
     }
+    // The endpoint is deliberately published only after the daemon has bound
+    // its IPC listener.  During that interval every CLI/hook caller observes
+    // the same missing endpoint.  A published spawn receipt is therefore the
+    // durable single-flight authority for that interval: spawning another
+    // daemon only contends for the election lock and creates avoidable I/O.
+    // A terminal owner receipt invalidates that authority, so the next caller
+    // can make exactly one replacement attempt.
+    if crate::server::runtime_server_exit_receipt::read_latest_owner_exit(protocol_home)
+        .await?
+        .is_none()
+        && read_runtime_server_spawn_receipt(protocol_home)
+            .await?
+            .is_some()
+    {
+        return Ok(None);
+    }
     spawn_detached_runtime_server(protocol_home).map(Some)
-}
-
-/// Hook fast path. The endpoint is discovery only; a bounded control-socket
-/// Status exchange is the liveness authority. The daemon election remains the
-/// singleton authority when an absent or refused endpoint requires a spawn.
-pub(crate) fn ensure_runtime_server_for_hook(protocol_home: &Path) -> Result<(), String> {
-    if operator_stop_marker_path(protocol_home).exists() {
-        return Ok(());
-    }
-    let should_spawn = match read_runtime_server_endpoint(protocol_home)? {
-        None => true,
-        Some(endpoint) => {
-            validate_runtime_server_endpoint_for_state_home(protocol_home, &endpoint)?;
-            match probe_runtime_server_for_hook(&endpoint, spawn_nonce()) {
-                Ok(receipt) if receipt.state == RuntimeServerState::Healthy => false,
-                Ok(receipt) => {
-                    return Err(runtime_server_hook_transient_error(
-                        receipt.state,
-                        receipt.reason.as_deref(),
-                    ));
-                }
-                Err(RuntimeServerHookProbeError::Stale(_)) => true,
-                Err(RuntimeServerHookProbeError::LiveTransient(reason)) => {
-                    return Err(runtime_server_hook_probe_error(
-                        "runtime-server-hook-control-live-transient",
-                        &reason,
-                    ));
-                }
-                Err(RuntimeServerHookProbeError::FailClosed(reason)) => {
-                    return Err(runtime_server_hook_probe_error(
-                        "runtime-server-hook-control-identity-failure",
-                        &reason,
-                    ));
-                }
-            }
-        }
-    };
-    if !should_spawn {
-        return Ok(());
-    }
-    std::fs::create_dir_all(server_dir(protocol_home))
-        .map_err(|error| format!("create Runtime Server state directory: {error}"))?;
-    std::fs::write(run_intent_marker_path(protocol_home), [])
-        .map_err(|error| format!("create Runtime Server Hook run intent: {error}"))?;
-    let _ = spawn_detached_runtime_server(protocol_home)?;
-    Ok(())
-}
-
-fn runtime_server_hook_transient_error(state: RuntimeServerState, reason: Option<&str>) -> String {
-    runtime_server_hook_probe_error(
-        "runtime-server-hook-control-live-transient",
-        &format!("state={state:?} reason={}", reason.unwrap_or("none")),
-    )
-}
-
-fn runtime_server_hook_probe_error(reason_kind: &str, reason: &str) -> String {
-    serde_json::json!({
-        "schemaId": "agent.semantic-protocols.runtime-server-hook-liveness-failure.v1",
-        "schemaVersion": "1",
-        "state": "unavailable",
-        "stage": "runtime-server-hook-control-probe",
-        "reasonKind": reason_kind,
-        "reason": reason,
-        "executionBudgetMicros": RUNTIME_SERVER_HOOK_CONTROL_PROBE_BUDGET.as_micros(),
-        "retryAfterMs": 100,
-    })
-    .to_string()
 }
 
 fn spawn_detached_runtime_server(
     protocol_home: &Path,
 ) -> Result<RuntimeServerSpawnReceipt, String> {
+    crate::server::runtime_server_exit_receipt::remove_stale_sync(protocol_home)?;
     let runtime_artifact = canonical_supervisor_runtime_artifact_sync(protocol_home)?;
     let nonce = spawn_nonce();
     let stderr_path = server_dir(protocol_home).join("owner-stderr.log");
@@ -314,58 +258,44 @@ pub(crate) async fn reconcile_healthy_runtime_server(
     super::runtime_server::await_healthy_runtime_server(protocol_home).await
 }
 
-pub(super) async fn configured_graph_turbo_python_at_state_home(
+pub(super) async fn configured_graph_turbo_artifact_at_state_home(
     state_home: &Path,
-    configured: Option<PathBuf>,
-) -> Result<Option<PathBuf>, String> {
-    let config_path = server_dir(state_home).join("graph-turbo-resident-config.v1.json");
-    if let Some(configured) = configured {
-        let configured = validate_graph_turbo_python(state_home, configured).await?;
-        let document = serde_json::json!({
-            "schemaId": "agent.semantic-protocols.semantic-graph-turbo-resident-config",
-            "schemaVersion": "1",
-            "pythonExecutionLocator": configured,
-        });
-        tokio::fs::create_dir_all(server_dir(state_home))
-            .await
-            .map_err(|error| format!("create Graph Turbo config directory: {error}"))?;
-        tokio::fs::write(
-            &config_path,
-            serde_json::to_vec_pretty(&document)
-                .map_err(|error| format!("encode Graph Turbo resident config: {error}"))?,
-        )
-        .await
-        .map_err(|error| format!("write Graph Turbo resident config: {error}"))?;
-        return Ok(Some(configured));
-    }
-    let document = match tokio::fs::read(&config_path).await {
-        Ok(document) => document,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(format!("read Graph Turbo resident config: {error}")),
+) -> Result<Option<ConfiguredGraphTurboArtifact>, String> {
+    let Some(authority) =
+        crate::runtime_artifact::validated_graph_turbo_resident_config(state_home).await?
+    else {
+        return Ok(None);
     };
-    let document: serde_json::Value = serde_json::from_slice(&document)
-        .map_err(|error| format!("decode Graph Turbo resident config: {error}"))?;
-    let configured = document
-        .get("pythonExecutionLocator")
-        .and_then(serde_json::Value::as_str)
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .ok_or_else(|| "Graph Turbo resident config locator is missing".to_owned())?;
-    validate_graph_turbo_python(state_home, configured)
-        .await
-        .map(Some)
+    let mut configured = validate_graph_turbo_artifact(
+        state_home,
+        authority.locator,
+        authority.execution_artifact_digest,
+    )
+    .await?;
+    configured.runtime_artifact_digest = authority.runtime_artifact_digest;
+    Ok(Some(configured))
 }
 
-async fn validate_graph_turbo_python(
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct ConfiguredGraphTurboArtifact {
+    pub(super) locator: PathBuf,
+    pub(super) runtime_artifact_digest: String,
+}
+
+async fn validate_graph_turbo_artifact(
     state_home: &Path,
-    configured: PathBuf,
-) -> Result<PathBuf, String> {
-    if !configured.is_absolute() {
-        return Err("ASP_GRAPH_TURBO_PYTHON must be an absolute path".to_owned());
+    locator: PathBuf,
+    runtime_artifact_digest: String,
+) -> Result<ConfiguredGraphTurboArtifact, String> {
+    if !locator.is_absolute() {
+        return Err("Graph Turbo executionArtifactLocator must be an absolute path".to_owned());
     }
-    let canonical = tokio::fs::canonicalize(&configured)
+    if !runtime_artifact_digest.starts_with("blake3-256:") {
+        return Err("Graph Turbo runtimeArtifactDigest must use blake3-256".to_owned());
+    }
+    let canonical = tokio::fs::canonicalize(&locator)
         .await
-        .map_err(|error| format!("resolve Graph Turbo Python artifact: {error}"))?;
+        .map_err(|error| format!("resolve Graph Turbo execution artifact: {error}"))?;
     let managed_root = tokio::fs::canonicalize(state_home.join("runtime"))
         .await
         .map_err(|error| format!("resolve managed Runtime root: {error}"))?;
@@ -376,7 +306,21 @@ async fn validate_graph_turbo_python(
             managed_root.display()
         ));
     }
-    Ok(canonical)
+    let actual_digest = format!(
+        "blake3-256:{}",
+        crate::command::protocol_binary::canonical_protocol_binary_artifact_digest(&canonical)
+            .await?
+    );
+    if actual_digest != runtime_artifact_digest {
+        return Err(format!(
+            "Graph Turbo runtime artifact digest drift: expected={runtime_artifact_digest} actual={actual_digest} artifact={}",
+            canonical.display()
+        ));
+    }
+    Ok(ConfiguredGraphTurboArtifact {
+        locator: canonical,
+        runtime_artifact_digest,
+    })
 }
 
 fn canonical_supervisor_runtime_artifact_sync(protocol_home: &Path) -> Result<PathBuf, String> {

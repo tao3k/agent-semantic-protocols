@@ -23,6 +23,7 @@ pub(crate) fn registry() -> HookRuntime {
         rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: vec![typescript_provider()],
+        policy_providers: Vec::new(),
     }
 }
 
@@ -31,6 +32,7 @@ pub(crate) fn registry_without_providers() -> HookRuntime {
         rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: Vec::new(),
+        policy_providers: Vec::new(),
     }
 }
 
@@ -39,6 +41,7 @@ pub(crate) fn rust_registry() -> HookRuntime {
         rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: vec![rust_provider()],
+        policy_providers: Vec::new(),
     }
 }
 
@@ -65,6 +68,7 @@ pub(crate) fn builtin_programming_runtime() -> HookRuntime {
         rankers: Vec::new(),
         project_root: ".".to_string(),
         providers,
+        policy_providers: Vec::new(),
     }
 }
 

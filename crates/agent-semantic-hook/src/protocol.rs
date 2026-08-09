@@ -155,6 +155,26 @@ pub struct HookDecision {
     pub fields: BTreeMap<String, Value>,
 }
 
+#[path = "protocol_compact_decision.rs"]
+mod compact_decision;
+
+impl HookDecision {
+    /// Encode an immutable matcher shard without JSON tokenization on the
+    /// one-shot reader path.
+    pub fn to_compact_binary(&self) -> Result<Vec<u8>, String> {
+        compact_decision::encode(self)
+    }
+
+    /// Decode the policy compiler's immutable decision shard.
+    pub fn from_compact_binary(bytes: &[u8]) -> Result<Self, String> {
+        compact_decision::decode(bytes)
+    }
+
+    /// Substitute the one source identity minted by the shard compiler.
+    pub fn replace_template_marker(&mut self, marker: &str, source_path: &str) -> bool {
+        compact_decision::replace_template_marker(self, marker, source_path)
+    }
+}
 impl serde::Serialize for HookDecision {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -336,6 +356,9 @@ fn deserialize_optional_stdin_mode<'de, D>(deserializer: D) -> Result<Option<Std
 where
     D: de::Deserializer<'de>,
 {
+    if !deserializer.is_human_readable() {
+        return Option::<StdinMode>::deserialize(deserializer);
+    }
     let value = Value::deserialize(deserializer)?;
     if value.is_null() {
         return Err(de::Error::custom("stdinMode must be omitted, not null"));

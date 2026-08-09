@@ -9,6 +9,71 @@ use crate::tool_action::{
     AgentAction, AgentActionAuthority, AgentActionKind, AgentActionSubject, AgentActionSubjectKind,
 };
 
+fn action_policy(
+    id: &str,
+    action_any: Vec<HookClientActionKind>,
+    subject_kind_any: Vec<HookClientActionSubjectKind>,
+) -> agent_semantic_config::HookClientActionPolicyConfig {
+    agent_semantic_config::HookClientActionPolicyConfig {
+        id: id.to_owned(),
+        action_any,
+        effect_any: Vec::new(),
+        subject_kind_any,
+        authority_any: Vec::new(),
+        authority_exclude_any: Vec::new(),
+    }
+}
+
+#[test]
+fn composed_action_policies_obey_all_any_and_none() {
+    let matcher = AgentActionMatch::new(AgentActionMatchConfig {
+        policy_all: vec![
+            action_policy("read", vec![HookClientActionKind::Read], Vec::new()),
+            action_policy(
+                "registered",
+                Vec::new(),
+                vec![HookClientActionSubjectKind::RegisteredLanguageSource],
+            ),
+        ],
+        policy_any: vec![
+            action_policy(
+                "read-or-search-read",
+                vec![HookClientActionKind::Read],
+                Vec::new(),
+            ),
+            action_policy(
+                "read-or-search-search",
+                vec![HookClientActionKind::Search],
+                Vec::new(),
+            ),
+        ],
+        policy_none: vec![action_policy(
+            "not-delete",
+            vec![HookClientActionKind::Delete],
+            Vec::new(),
+        )],
+        ..Default::default()
+    });
+    let registered_read = AgentAction {
+        action: AgentActionKind::Read,
+        effect: AgentActionKind::Read,
+        authority: AgentActionAuthority::RawHostAction,
+        subjects: vec![AgentActionSubject {
+            value: "src/lib.rs".to_owned(),
+            kind: AgentActionSubjectKind::RegisteredLanguageSource,
+        }],
+    };
+    assert!(matcher.matches_envelope(&registered_read));
+
+    let mut wrong_extension = registered_read.clone();
+    wrong_extension.subjects[0].kind = AgentActionSubjectKind::Other;
+    assert!(!matcher.matches_envelope(&wrong_extension));
+
+    let mut wrong_action = registered_read;
+    wrong_action.action = AgentActionKind::Delete;
+    assert!(!matcher.matches_envelope(&wrong_action));
+}
+
 #[test]
 fn source_expansion_requires_read_effect_even_for_registered_source_patterns() {
     let matcher = AgentActionMatch::new(AgentActionMatchConfig {
@@ -90,6 +155,7 @@ fn structured_query_program_is_not_projected_as_a_shell_subject() {
         rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: Vec::new(),
+        policy_providers: Vec::new(),
     };
     let matcher = AgentActionMatch::new(AgentActionMatchConfig::default());
     let schema_path = "schemas/semantic-search-packet.v1.schema.json".to_string();
@@ -129,6 +195,7 @@ fn slash_operator_does_not_create_path_authority() {
         rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: Vec::new(),
+        policy_providers: Vec::new(),
     };
     let matcher = AgentActionMatch::new(AgentActionMatchConfig::default());
     let schema_path = "schemas/semantic-search-packet.v1.schema.json".to_string();
@@ -163,6 +230,7 @@ fn registered_source_path_remains_a_typed_shell_subject() {
         rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: Vec::new(),
+        policy_providers: Vec::new(),
     };
     let source = "crates/agent-semantic-hook/src/tool_action.rs".to_string();
     let projected = crate::source_selector::project_shell_subject_paths(

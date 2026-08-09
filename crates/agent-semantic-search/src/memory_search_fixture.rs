@@ -96,8 +96,8 @@ impl MemorySearchScenarioContract {
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 pub struct MemorySearchBenchmarkContract {
-    pub max_cold_lookup_micros: u128,
-    pub max_warm_lookup_micros: u128,
+    pub max_cold_lookup_micros: u64,
+    pub max_warm_lookup_micros: u64,
     pub max_provider_process_count: usize,
     pub max_source_bytes_materialized: usize,
     pub max_db_opens: usize,

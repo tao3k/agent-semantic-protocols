@@ -47,7 +47,28 @@ fn args(values: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn doctor_and_paths_delegate_to_hook_runtime() {
+fn accept_host_doctor_and_paths_delegate_to_hook_runtime() {
+    assert_eq!(
+        hook::forwarded_hook_args(&args(&[
+            "accept-host",
+            "--host-rollout",
+            "task.jsonl",
+            "--host-probe-path",
+            "probe.rs",
+            "--host-sentinel",
+            "TOKEN",
+        ]))
+        .unwrap(),
+        args(&[
+            "accept-host",
+            "--host-rollout",
+            "task.jsonl",
+            "--host-probe-path",
+            "probe.rs",
+            "--host-sentinel",
+            "TOKEN",
+        ])
+    );
     assert_eq!(
         hook::forwarded_hook_args(&args(&["doctor", "--client", "codex", "."])).unwrap(),
         args(&["doctor", "--client", "codex", "."])
@@ -64,13 +85,18 @@ fn help_requests_do_not_forward_to_hook_runtime() {
         assert!(hook::is_help_request(&args(values)), "{values:?}");
     }
     for values in [
+        &["accept-host", "--help"][..],
         &["doctor", "-h"][..],
         &["paths", "--help"][..],
         &["event", "--help"][..],
     ] {
         assert!(!hook::is_help_request(&args(values)), "{values:?}");
     }
-    for values in [&["doctor", "-h"][..], &["paths", "--help"][..]] {
+    for values in [
+        &["accept-host", "--help"][..],
+        &["doctor", "-h"][..],
+        &["paths", "--help"][..],
+    ] {
         assert!(hook::is_lifecycle_help_request(&args(values)), "{values:?}");
     }
     assert!(!hook::is_lifecycle_help_request(&args(&[
@@ -82,6 +108,48 @@ fn help_requests_do_not_forward_to_hook_runtime() {
     assert!(!hook::is_help_request(&args(&[
         "install", "--client", "codex", "."
     ])));
+}
+
+#[test]
+fn accept_host_cli_returns_a_schema_valid_success_receipt() {
+    let root = temp_project_root("accept-host-cli");
+    let rollout_path = root.join("normal-task.jsonl");
+    std::fs::write(
+        &rollout_path,
+        concat!(
+            "{\"type\":\"world_state\",\"payload\":{\"state\":{\"plugins_instructions\":true}}}\n",
+            "{\"type\":\"response_item\",\"payload\":{\"type\":\"function_call\",\"arguments\":\"probe.rs\"}}\n",
+            "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"content\":\"<hook_prompt>[asp-hook] {\\\"schemaId\\\":\\\"agent.semantic-protocols.hook.decision\\\",\\\"decision\\\":\\\"deny\\\"}</hook_prompt>\"}}\n",
+            "{\"type\":\"response_item\",\"payload\":{\"type\":\"function_call_output\",\"output\":\"\"}}\n"
+        ),
+    )
+    .expect("write normal-task rollout");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .current_dir(&root)
+        .args([
+            "hook",
+            "accept-host",
+            "--host-rollout",
+            rollout_path.to_str().expect("utf8 rollout path"),
+            "--host-probe-path",
+            "probe.rs",
+            "--host-sentinel",
+            "ASP_HOST_SENTINEL",
+        ])
+        .output()
+        .expect("run accept-host");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let receipt: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("parse Host acceptance receipt");
+    assert_eq!(receipt["state"], "accepted");
+    assert_eq!(receipt["reasonKind"], "normal-task-hook-deny-observed");
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]

@@ -101,8 +101,8 @@ pub(crate) fn resolve(
             item_name: requested.symbol.as_str().to_owned(),
             candidates: Vec::new(),
             actual_kinds: Vec::new(),
-            state: "selector-stale",
-            reason_kind: "selector-not-in-active-generation",
+            state: "owner-missing",
+            reason_kind: "owner-not-in-workspace",
         }));
     };
     let candidates = owner
@@ -150,3 +150,7 @@ pub(crate) fn resolve(
 #[cfg(test)]
 #[path = "../tests/unit/resident_exact_projection.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../tests/unit/resident_exact_projection_generation_identity.rs"]
+mod generation_identity_tests;

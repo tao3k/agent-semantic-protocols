@@ -40,7 +40,7 @@ pub(super) struct GlobalProviderCatalogPublication {
     pub(super) changed_leaf_count: usize,
     pub(super) binary_byte_reads: usize,
     pub(super) catalog_write: bool,
-    pub(super) elapsed_micros: u128,
+    pub(super) elapsed_micros: u64,
     pub(super) receipt_read_micros: u128,
     pub(super) manifest_digest_micros: u128,
     pub(super) registry_digest_micros: u128,
@@ -51,7 +51,7 @@ pub(super) struct GlobalProviderCatalogPublication {
 pub(crate) struct GlobalProviderCatalogReadiness {
     pub(crate) catalog_generation: String,
     pub(crate) provider_count: usize,
-    pub(crate) elapsed_micros: u128,
+    pub(crate) elapsed_micros: u64,
 }
 
 fn catalog_path() -> Result<PathBuf, String> {
@@ -224,7 +224,11 @@ pub(crate) fn read_global_provider_catalog_readiness()
     Ok(GlobalProviderCatalogReadiness {
         catalog_generation: catalog.catalog_generation.clone(),
         provider_count: catalog.providers.len(),
-        elapsed_micros: started_at.elapsed().as_micros(),
+        elapsed_micros: started_at
+            .elapsed()
+            .as_micros()
+            .try_into()
+            .unwrap_or(u64::MAX),
     })
 }
 
@@ -330,7 +334,11 @@ pub(super) fn publish_global_provider_catalog(
             changed_leaf_count: 0,
             binary_byte_reads: 0,
             catalog_write: false,
-            elapsed_micros: started_at.elapsed().as_micros(),
+            elapsed_micros: started_at
+                .elapsed()
+                .as_micros()
+                .try_into()
+                .unwrap_or(u64::MAX),
             receipt_read_micros,
             manifest_digest_micros,
             registry_digest_micros,
@@ -450,7 +458,11 @@ pub(super) fn publish_global_provider_catalog(
             changed_leaf_count: 0,
             binary_byte_reads: 0,
             catalog_write: false,
-            elapsed_micros: started_at.elapsed().as_micros(),
+            elapsed_micros: started_at
+                .elapsed()
+                .as_micros()
+                .try_into()
+                .unwrap_or(u64::MAX),
             receipt_read_micros,
             manifest_digest_micros,
             registry_digest_micros,
@@ -511,7 +523,11 @@ pub(super) fn publish_global_provider_catalog(
             changed_leaf_count: 0,
             binary_byte_reads: 0,
             catalog_write: false,
-            elapsed_micros: started_at.elapsed().as_micros(),
+            elapsed_micros: started_at
+                .elapsed()
+                .as_micros()
+                .try_into()
+                .unwrap_or(u64::MAX),
             receipt_read_micros,
             manifest_digest_micros,
             registry_digest_micros,
@@ -557,7 +573,11 @@ pub(super) fn publish_global_provider_catalog(
         changed_leaf_count,
         binary_byte_reads: 0,
         catalog_write: true,
-        elapsed_micros: started_at.elapsed().as_micros(),
+        elapsed_micros: started_at
+            .elapsed()
+            .as_micros()
+            .try_into()
+            .unwrap_or(u64::MAX),
         receipt_read_micros,
         manifest_digest_micros,
         registry_digest_micros,

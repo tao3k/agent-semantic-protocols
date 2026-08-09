@@ -306,6 +306,22 @@ pub fn codex_rollout_session_metadata(
     Ok(None)
 }
 
+/// Parse one exact Codex rollout locator and verify its embedded session id
+/// against the typed `session_meta` record before returning metadata.
+pub fn codex_rollout_session_metadata_at_path(
+    rollout_path: &Path,
+) -> Result<Option<CodexRolloutSessionMetadata>, RuntimeSessionStatusError> {
+    let stem = rollout_path
+        .file_stem()
+        .and_then(std::ffi::OsStr::to_str)
+        .ok_or_else(|| "Codex rollout locator has no UTF-8 file stem".to_owned())?;
+    let session_id = stem
+        .get(stem.len().saturating_sub(36)..)
+        .filter(|candidate| uuid::Uuid::parse_str(candidate).is_ok())
+        .ok_or_else(|| "Codex rollout locator has no canonical session UUID suffix".to_owned())?;
+    read_codex_rollout_metadata(rollout_path, session_id).map_err(Into::into)
+}
+
 /// Resolve Codex rollout metadata only when it is inside a registration window.
 pub fn codex_rollout_session_metadata_recent(
     session_id: &RuntimeSessionId,

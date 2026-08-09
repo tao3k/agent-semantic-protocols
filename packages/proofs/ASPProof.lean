@@ -58,6 +58,12 @@ import ASPProof.HookSessionMaterialization
 import ASPProof.HookLazyLoaderCapability
 import ASPProof.HookBootstrapRepair
 import ASPProof.HookExecutionPlane
+import ASPProof.HookPolicyAntiHardcoding
+import ASPProof.RustHarnessPackageAtomicity
+import ASPProof.HookMatcherPublicationSeparation
+import ASPProof.Audit.RustHarnessPackageAtomicity
+import ASPProof.HookRecoveryDeadlockFreedom
+import ASPProof.Audit.HookRecoveryDeadlockFreedom
 import ASPProof.HookToolMatcherCoverage
 import ASPProof.HookEnforcementKernel
 import ASPProof.HostAuthoritativeAgentProfile
@@ -72,6 +78,7 @@ import ASPProof.Audit.MultiAgentLifeSession
 import ASPProof.AgentSessionLifecycleExecutableRefinement
 import ASPProof.CodexMultiAgentV2ControlPlane
 import ASPProof.CodexMultiAgentV2RegistryMaterialization
+import ASPProof.CodexMultiAgentV2DurableChoicePlane
 import ASPProof.CodexMultiAgentV2FocusedDelegation
 import ASPProof.CodexMultiAgentV2DurableDelegation
 import ASPProof.CodexMultiAgentV2AuthorityCurrentAdmission
@@ -275,3 +282,10 @@ import ASPProof.ASPWorkspaceGenerationRelationOverlay
 import ASPProof.RuntimeReadQueryAuthority
 import ASPProof.CodexMultiAgentV2NamespaceResumption
 import ASPProof.CodexMultiAgentV2WorkspaceAdmissionLifecycle
+import ASPProof.RuntimeIndependentParserReadAuthority
+import ASPProof.ParserReadAuthorityLoadOnce
+import ASPProof.ParserReadAuthorityEpochFencing
+import ASPProof.HookMemoryInboxDeadlockFreedom
+import ASPProof.Audit.HookMemoryInboxDeadlockFreedom
+import ASPProof.HookSourceAccessReplayIdentity
+import ASPProof.Audit.HookSourceAccessReplayIdentity

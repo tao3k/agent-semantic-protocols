@@ -21,17 +21,6 @@ pub struct GraphTurboResidentLaunchSpec {
     pub request_timeout: Duration,
 }
 
-pub fn admit_candidate_rank_receipt(receipt: Value) -> Result<Value, String> {
-    if receipt.get("status").and_then(Value::as_str) != Some("rank-completed")
-        || receipt.get("authority").and_then(Value::as_str) != Some("candidate")
-    {
-        return Err(
-            "Graph Turbo resident receipt crossed the candidate-only authority boundary".to_owned(),
-        );
-    }
-    Ok(receipt)
-}
-
 pub struct GraphTurboResidentProcess {
     child: Child,
     stdin: ChildStdin,
@@ -109,14 +98,25 @@ impl GraphTurboResidentProcess {
     }
 
     pub async fn request(&mut self, message: &Value) -> Result<Value, String> {
+        self.request_with_timeout(message, self.request_timeout)
+            .await
+    }
+
+    pub async fn request_with_timeout(
+        &mut self,
+        message: &Value,
+        request_timeout: Duration,
+    ) -> Result<Value, String> {
         if self.closed {
             return Err("resident Graph Turbo process is already closed".to_string());
         }
         let request_id = message
             .get("requestId")
-            .and_then(Value::as_str)
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| "resident Graph Turbo requestId must be non-empty".to_string())?;
+            .filter(|value| value.as_u64().is_some_and(|id| id > 0))
+            .cloned()
+            .ok_or_else(|| {
+                "resident Graph Turbo requestId must be a positive integer".to_string()
+            })?;
         let encoded = serde_json::to_vec(message)
             .map_err(|error| format!("failed to encode resident Graph Turbo request: {error}"))?;
         self.stdin
@@ -131,12 +131,12 @@ impl GraphTurboResidentProcess {
             .flush()
             .await
             .map_err(|error| format!("failed to flush resident Graph Turbo request: {error}"))?;
-        let line = tokio::time::timeout(self.request_timeout, self.receipts.next_line())
+        let line = tokio::time::timeout(request_timeout, self.receipts.next_line())
             .await
             .map_err(|_| {
                 format!(
                     "resident Graph Turbo receipt exceeded {:?}",
-                    self.request_timeout
+                    request_timeout
                 )
             })?
             .map_err(|error| format!("failed to read resident Graph Turbo receipt: {error}"))?;
@@ -155,7 +155,7 @@ impl GraphTurboResidentProcess {
         };
         let receipt = serde_json::from_str::<Value>(&line)
             .map_err(|error| format!("resident Graph Turbo emitted invalid JSON: {error}"))?;
-        if receipt.get("requestId").and_then(Value::as_str) != Some(request_id) {
+        if receipt.get("requestId") != Some(&request_id) {
             return Err("resident Graph Turbo receipt requestId mismatch".to_string());
         }
         Ok(receipt)
@@ -163,7 +163,7 @@ impl GraphTurboResidentProcess {
 
     pub async fn shutdown(&mut self, message: &Value) -> Result<Value, String> {
         let receipt = self.request(message).await?;
-        if receipt.get("status").and_then(Value::as_str) != Some("shutdown-accepted") {
+        if receipt.get("state").and_then(Value::as_str) != Some("cancelled") {
             return Err("resident Graph Turbo rejected shutdown".to_string());
         }
         self.closed = true;

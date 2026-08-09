@@ -142,22 +142,7 @@ PATCH
 }
 
 #[test]
-fn hook_decision_survives_an_unavailable_event_projection_lock() {
-    fn find_event_state(root: &std::path::Path) -> Option<std::path::PathBuf> {
-        for entry in std::fs::read_dir(root).ok()?.flatten() {
-            let path = entry.path();
-            if path.file_name().and_then(|name| name.to_str()) == Some("events.jsonl") {
-                return Some(path);
-            }
-            if path.is_dir()
-                && let Some(found) = find_event_state(&path)
-            {
-                return Some(found);
-            }
-        }
-        None
-    }
-
+fn hook_decision_does_not_enter_the_event_projection_lock_plane() {
     let root = temp_project_root("event-projection-unavailable");
     let activation_path = write_rust_activation(&root);
     write_config(&root, "");
@@ -165,30 +150,51 @@ fn hook_decision_survives_an_unavailable_event_projection_lock() {
         "tool_name": "Read",
         "tool_input": { "file_path": "src/lib.rs" }
     });
-    let first = run_hook_decision(&root, &activation_path, payload.clone());
-    let event_path = find_event_state(&root).expect("first Hook run must create event projection");
-    let lock_path = event_path.with_file_name("events.jsonl.lock");
-    std::fs::remove_file(&lock_path).expect("remove event projection lock file");
-    std::fs::create_dir(&lock_path).expect("make event projection lock unavailable");
-
-    let second = run_hook_decision(&root, &activation_path, payload);
-    assert_eq!(second["decision"], first["decision"]);
-    assert_eq!(second["reasonKind"], first["reasonKind"]);
-    assert_eq!(second["schemaId"], first["schemaId"]);
-    assert_eq!(second["fields"]["hookEventProjectionStatus"], "unavailable");
-    assert_eq!(second["fields"]["hookDecisionBudgetMicros"], 1_000_000);
+    let decision = run_hook_decision(&root, &activation_path, payload);
+    assert_eq!(decision["decision"], "deny");
     assert_eq!(
-        second["fields"]["hookDecisionBudgetStatus"],
-        "within-budget"
+        decision["fields"]["hookEventProjectionStatus"],
+        "out-of-band"
     );
     assert!(
-        second["fields"]["hookEventProjectionLockWaitMicros"]
-            .as_u64()
-            .is_some_and(|micros| micros < 100_000),
-        "diagnostic projection must remain below its maintenance lock budget: {second}"
+        decision["fields"]
+            .get("hookEventProjectionLockWaitMicros")
+            .is_none()
     );
+    assert!(decision["fields"].get("denyReplay").is_none());
 
     std::fs::remove_dir_all(root).expect("remove temp project root");
+}
+
+#[test]
+fn warm_read_hook_denies_without_runtime_server_side_effects() {
+    let root = temp_project_root("runtime-independent-read-deny");
+    let activation_path = write_rust_activation(&root);
+    write_config(&root, "");
+    let payload = json!({
+        "tool_name": "Read",
+        "tool_input": { "file_path": "src/lib.rs" }
+    });
+
+    let cold = run_hook_decision(&root, &activation_path, payload.clone());
+    assert_eq!(cold["decision"], "deny");
+    let started = std::time::Instant::now();
+    let warm = run_hook_decision(&root, &activation_path, payload);
+    assert_eq!(warm["decision"], "deny");
+    assert!(
+        started.elapsed() < std::time::Duration::from_millis(250),
+        "warm Hook subprocess exceeded 250ms: {:?}",
+        started.elapsed()
+    );
+
+    let server_dir = root.join(".agent-semantic-protocols/runtime/server");
+    for forbidden in ["endpoint.v1.json", "run-intent.v1", "owner-spawn.v1.json"] {
+        assert!(
+            !server_dir.join(forbidden).exists(),
+            "Hook recreated forbidden Runtime Server artifact {forbidden}"
+        );
+    }
+    std::fs::remove_dir_all(root).expect("cleanup runtime-independent Hook root");
 }
 
 #[test]

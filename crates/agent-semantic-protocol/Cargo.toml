@@ -19,6 +19,7 @@ agent-semantic-client = { path = "../agent-semantic-client" }
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-hook = { path = "../agent-semantic-hook" }
 memmap2.workspace = true
+fs2.workspace = true
 agent-semantic-command-match = { path = "../agent-semantic-command-match" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
@@ -54,6 +55,8 @@ asp-rust-project-harness-policy = { workspace = true }
 [dev-dependencies]
 rs-harness = { path = "../../languages/rust-lang-project-harness/rs-harness" }
 rust-lang-project-harness = { workspace = true }
+gix.workspace = true
+gix-config.workspace = true
 toml.workspace = true
 insta.workspace = true
 asp-rust-project-harness-policy = { path = "../../build-support/asp-rust-project-harness-policy" }

@@ -56,59 +56,27 @@ fn codex_rollout_topology_verifies_root_and_preserves_nested_parent() {
 }
 
 #[test]
-fn only_native_subagent_start_and_stop_own_host_lifecycle() {
-    let payload = serde_json::json!({
-        "agent_id": "child-session",
-        "agent_type": "asp_explorer",
-    });
+fn only_native_codex_v2_subagent_events_own_host_lifecycle() {
+    assert_eq!(super::host_lifecycle_kind("codex", "pre-tool"), None);
     assert_eq!(
-        super::host_lifecycle_kind("codex", "pre-tool", &payload),
-        None
-    );
-    assert_eq!(
-        super::host_lifecycle_kind("codex", "subagent-stop", &payload),
+        super::host_lifecycle_kind("codex", "subagent-stop"),
         Some(agent_semantic_client_db::workspace_db_ipc::AgentHostLifecycleEventKind::Stopped)
     );
     assert_eq!(
-        super::host_lifecycle_kind("codex", "subagent-start", &payload),
+        super::host_lifecycle_kind("codex", "subagent-start"),
         Some(agent_semantic_client_db::workspace_db_ipc::AgentHostLifecycleEventKind::Started)
     );
-}
-
-#[test]
-fn focused_registered_subagent_denies_nested_child_start() {
-    let decision = super::focused_nested_subagent_denial(
-        "codex",
-        "subagent-start",
-        "asp-testing-session",
-        "nested-session",
-        "explorer",
-    );
-    assert_eq!(decision.decision, agent_semantic_hook::DecisionKind::Deny);
     assert_eq!(
-        decision.reason_kind,
-        agent_semantic_hook::ReasonKind::FocusedSubagentNestedStart
+        super::host_lifecycle_kind("codex", "subagent-resume"),
+        Some(agent_semantic_client_db::workspace_db_ipc::AgentHostLifecycleEventKind::Resumed)
     );
     assert_eq!(
-        decision.fields["focusMode"],
-        serde_json::Value::String("leaf".to_owned())
+        super::host_lifecycle_kind("codex", "subagent-achieved"),
+        Some(agent_semantic_client_db::workspace_db_ipc::AgentHostLifecycleEventKind::Achieved)
     );
-    assert_eq!(
-        decision.fields["parentCapability"],
-        serde_json::Value::String("focused-leaf".to_owned())
-    );
-    assert_eq!(
-        decision.fields["childSessionId"],
-        serde_json::Value::String("nested-session".to_owned())
-    );
-    assert!(decision.message.contains("cannot start nested subagent"));
 }
 
 #[test]
 fn root_pre_tool_is_not_a_child_lifecycle_event() {
-    let payload = serde_json::json!({"session_id": "root-session"});
-    assert_eq!(
-        super::host_lifecycle_kind("codex", "pre-tool", &payload),
-        None
-    );
+    assert_eq!(super::host_lifecycle_kind("codex", "pre-tool"), None);
 }

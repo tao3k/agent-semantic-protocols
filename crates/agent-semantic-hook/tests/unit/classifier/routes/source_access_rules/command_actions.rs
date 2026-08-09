@@ -129,7 +129,14 @@ fn git_object_and_tree_reads_match_source_access_rule() {
                 .is_some_and(|rule_id| rule_id.starts_with("deny-uncontrolled-")),
             "command={command} decision={decision:#?}"
         );
-        assert!(decision.routes.is_empty(), "command={command}");
+        if command.starts_with("git diff HEAD -- ") {
+            assert!(
+                !decision.routes.is_empty(),
+                "exact registered-source reads must carry a parser-owned next route: command={command}"
+            );
+        } else {
+            assert!(decision.routes.is_empty(), "command={command}");
+        }
         assert!(!decision.message.is_empty(), "command={command}");
     }
 }

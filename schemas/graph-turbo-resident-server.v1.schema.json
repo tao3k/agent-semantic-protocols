@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/graph-turbo-resident-server.v1.schema.json",
+  "title": "Graph Turbo Resident Server v1",
+  "type": "object",
+  "required": ["schemaId", "schemaVersion", "messageKind", "requestId"],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.graph-turbo-resident-server"
+    },
+    "schemaVersion": { "const": "1" },
+    "messageKind": {
+      "enum": [
+        "hello",
+        "load-generation",
+        "apply-delta",
+        "rank",
+        "cancel",
+        "health",
+        "shutdown",
+        "receipt"
+      ]
+    },
+    "requestId": { "type": "integer", "minimum": 1 },
+    "workspaceIdentity": { "type": "string", "minLength": 1 },
+    "generationDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "protocolDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "pageRoots": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^blake3-256:[0-9a-f]{64}$"
+      }
+    },
+    "terms": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "profile": { "type": "string", "minLength": 1 },
+    "budget": { "type": "integer", "minimum": 1 },
+    "deadlineUnixMicros": { "type": "integer", "minimum": 1 },
+    "rankPayload": {
+      "type": "object",
+      "description": "Query-local, parser-owned ranking controls. It must not carry workspace, generation, or graph identity; those fields are authoritative at the envelope level."
+    },
+    "generationPayload": {
+      "type": "object",
+      "description": "Runtime-owned immutable graph page supplied only by load-generation. It must not carry workspace or generation identity."
+    },
+    "runtimeArtifactDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "executionCommandDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "processIdentity": { "type": "object" },
+    "result": { "type": "object" },
+    "state": {
+      "enum": ["building", "ready", "completed", "cancelled", "unavailable"]
+    },
+    "reasonKind": { "type": "string" },
+    "rankedNodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["nodeId", "score", "evidenceDigest"],
+        "properties": {
+          "nodeId": { "type": "string", "minLength": 1 },
+          "score": { "type": "number" },
+          "evidenceDigest": {
+            "type": "string",
+            "pattern": "^blake3-256:[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "processSpawns": { "type": "integer", "minimum": 0 },
+    "generationLoads": { "type": "integer", "minimum": 0 },
+    "graphPageReads": { "type": "integer", "minimum": 0 }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"messageKind": {"const": "load-generation"}}},
+      "then": {"required": ["workspaceIdentity", "generationDigest", "pageRoots", "generationPayload"]}
+    },
+    {
+      "if": {"properties": {"messageKind": {"const": "rank"}}},
+      "then": {"required": ["workspaceIdentity", "generationDigest", "pageRoots", "terms", "rankPayload"]}
+    },
+    {
+      "if": {"properties": {"messageKind": {"const": "receipt"}}},
+      "then": {"required": ["state"]}
+    }
+  ],
+  "additionalProperties": false
+}

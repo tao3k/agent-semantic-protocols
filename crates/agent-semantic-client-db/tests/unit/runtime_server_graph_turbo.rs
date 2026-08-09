@@ -132,6 +132,7 @@ async fn graph_turbo_lease_miss_rejects_before_python_builder() {
     .await
     .expect("bind Runtime Server")
     .with_graph_turbo_evaluation_builder(builder);
+    let mut workspace_count = server.workspace_registry().subscribe_workspace_count();
     let shutdown = server.shutdown_handle();
     let server = tokio::spawn(server.serve());
     let session = WorkspaceDbIpcSession::for_runtime_server(
@@ -155,6 +156,11 @@ async fn graph_turbo_lease_miss_rejects_before_python_builder() {
         invocation_count.load(std::sync::atomic::Ordering::Relaxed),
         0,
         "Python Graph Turbo builder must not run before Rust validates the active generation"
+    );
+    assert_eq!(
+        *workspace_count.borrow_and_update(),
+        0,
+        "a projection-only v1 IPC read must not start a full workspace writer resident"
     );
 
     shutdown.shutdown();

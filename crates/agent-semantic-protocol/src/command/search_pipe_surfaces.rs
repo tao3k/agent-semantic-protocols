@@ -61,33 +61,6 @@ pub(super) fn normalized_search_surfaces(surfaces: &[String]) -> Vec<String> {
     }
 }
 
-pub(super) fn include_owner_context(surfaces: &[String]) -> bool {
-    include_owner(surfaces)
-        || include_items(surfaces)
-        || include_tests(surfaces)
-        || include_deps(surfaces)
-}
-
-pub(super) fn include_items(surfaces: &[String]) -> bool {
-    surfaces.iter().any(|surface| surface == "items")
-}
-
-pub(super) fn include_tests(surfaces: &[String]) -> bool {
-    surfaces.iter().any(|surface| surface == "tests")
-}
-
-pub(super) fn include_deps(surfaces: &[String]) -> bool {
-    surfaces.iter().any(|surface| surface == "deps")
-}
-
-pub(super) fn include_topology(surfaces: &[String]) -> bool {
-    surfaces.iter().any(|surface| surface == "topology")
-}
-
-fn include_owner(surfaces: &[String]) -> bool {
-    surfaces.iter().any(|surface| surface == "owner")
-}
-
 fn parse_search_surface(surface: &str) -> Result<SearchSurface, String> {
     match surface {
         "owner" => Ok(SearchSurface::Owner),

@@ -122,13 +122,7 @@ fn evaluate_hook_break_glass_inner(
     input: &[u8],
 ) -> Result<Option<HookBreakGlassCapability>, String> {
     let state_root = break_glass_root()?;
-    let inherited_request = (std::env::var_os("ASP_NO_AGENT").as_deref()
-        == Some(std::ffi::OsStr::new("1")))
-    .then(|| std::env::var(BREAK_GLASS_ENV))
-    .transpose()
-    .map_err(|_| {
-        "naked ASP_NO_AGENT request rejected: ASP_BREAK_GLASS_CAPABILITY is required".to_owned()
-    })?;
+    let inherited_request = std::env::var(BREAK_GLASS_ENV).ok();
     evaluate_hook_break_glass_inner_at(
         input,
         &state_root,
@@ -221,15 +215,8 @@ fn validate_capability(
 
 fn inline_break_glass_request(command: &str) -> Result<Option<(String, String)>, String> {
     let command = command.trim_start();
-    let Some(rest) = strip_leading_assignment(command, "ASP_NO_AGENT=1") else {
+    let Some(rest) = strip_leading_assignment_prefix(command, "ASP_BREAK_GLASS_CAPABILITY=") else {
         return Ok(None);
-    };
-    let rest = rest.trim_start();
-    let Some(rest) = rest.strip_prefix("ASP_BREAK_GLASS_CAPABILITY=") else {
-        return Err(
-            "naked ASP_NO_AGENT request rejected: ASP_BREAK_GLASS_CAPABILITY is required"
-                .to_owned(),
-        );
     };
     let boundary = rest
         .find(char::is_whitespace)
@@ -239,13 +226,8 @@ fn inline_break_glass_request(command: &str) -> Result<Option<(String, String)>,
     Ok(Some((nonce, protected_command)))
 }
 
-fn strip_leading_assignment<'a>(command: &'a str, assignment: &str) -> Option<&'a str> {
-    let rest = command.strip_prefix(assignment)?;
-    if rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace) {
-        Some(rest)
-    } else {
-        None
-    }
+fn strip_leading_assignment_prefix<'a>(command: &'a str, prefix: &str) -> Option<&'a str> {
+    command.strip_prefix(prefix)
 }
 
 fn hook_payload_command(payload: &Value) -> Option<&str> {

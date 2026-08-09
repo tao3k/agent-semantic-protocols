@@ -966,9 +966,15 @@ pub(super) async fn turso_record_host_non_match(
                         observation.child_session_id.as_str(),
                         observation.host_task_name.as_str(),
                         match observation.kind {
-                            crate::workspace_db_ipc::AgentHostLifecycleEventKind::Started => "live",
+                            crate::workspace_db_ipc::AgentHostLifecycleEventKind::Started
+                            | crate::workspace_db_ipc::AgentHostLifecycleEventKind::Resumed => {
+                                "live"
+                            }
                             crate::workspace_db_ipc::AgentHostLifecycleEventKind::Stopped => {
                                 "stopped"
+                            }
+                            crate::workspace_db_ipc::AgentHostLifecycleEventKind::Achieved => {
+                                "achieved"
                             }
                         },
                         observation.payload_digest.as_str(),

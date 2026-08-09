@@ -21,8 +21,8 @@ use validation::{
 pub use crate::workspace_db_ipc_server::serve_workspace_db_session_until_shutdown;
 pub use crate::workspace_db_owner_election::try_acquire_workspace_db_owner_election;
 pub use agent_session_registry::{
-    AgentHostLifecycleEventIpc, AgentHostLifecycleEventKind, AgentHostNonMatchIpc,
-    AgentSessionModelObservationIpc, AgentSessionRegisterIpcRequest,
+    AgentHostExecutionObservationIpc, AgentHostLifecycleEventIpc, AgentHostLifecycleEventKind,
+    AgentHostNonMatchIpc, AgentSessionModelObservationIpc, AgentSessionRegisterIpcRequest,
     AgentSessionRegistryIpcOperation, AgentSessionRegistryIpcResult,
 };
 pub use graph_facts::{RuntimeGraphFactSource, RuntimeGraphFactsRead};

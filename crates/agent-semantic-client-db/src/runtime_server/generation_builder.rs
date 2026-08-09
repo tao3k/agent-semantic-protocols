@@ -48,3 +48,99 @@ where
     let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
     result
 }
+
+pub(crate) async fn publish_mutation_generation(
+    owner_projection_builder: &crate::runtime_server_admission::WorkspaceOwnerProjectionBuilder,
+    memory_registry: &std::sync::Arc<
+        crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
+    >,
+    workspace_identity: &str,
+    project_root: &std::path::Path,
+    changed_paths: &std::collections::BTreeSet<std::path::PathBuf>,
+    request_id: String,
+    mut candidate: crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
+) -> Result<
+    crate::runtime_server_admission::WorkspaceGenerationBuildCompletion,
+    WorkspaceGenerationBuildFailure,
+> {
+    let mut owners = Vec::new();
+    let mut tombstones = Vec::new();
+    for changed_path in changed_paths {
+        let owner_path = changed_path
+            .strip_prefix(project_root)
+            .map_err(|_| {
+                WorkspaceGenerationBuildFailure::new(
+                    crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
+                    format!(
+                        "changed owner is outside Runtime workspace: workspace={} owner={}",
+                        project_root.display(),
+                        changed_path.display()
+                    ),
+                )
+            })?
+            .to_string_lossy()
+            .replace('\\', "/");
+        if tokio::fs::try_exists(changed_path).await.map_err(|error| {
+            WorkspaceGenerationBuildFailure::new(
+                crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
+                format!("failed to inspect changed owner: owner={owner_path} error={error}"),
+            )
+        })? {
+            owners.push(
+                owner_projection_builder(
+                    workspace_identity.to_owned(),
+                    project_root.to_path_buf(),
+                    owner_path,
+                )
+                .await
+                .map_err(|error| {
+                    WorkspaceGenerationBuildFailure::new(
+                        crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
+                        error,
+                    )
+                })?,
+            );
+        } else {
+            tombstones.push(owner_path);
+        }
+    }
+    let published = memory_registry
+        .publish_owner_delta(
+            request_id,
+            workspace_identity,
+            project_root,
+            owners,
+            tombstones,
+        )
+        .await
+        .map_err(|error| {
+            WorkspaceGenerationBuildFailure::new(
+                crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
+                error,
+            )
+        })?;
+    let mut candidate_digest = blake3::Hasher::new();
+    candidate_digest.update(b"workspace-mutation-candidate-v1\0");
+    candidate_digest.update(published.source_root_digest.as_bytes());
+    candidate.candidate_generation.digest = format!("blake3:{}", candidate_digest.finalize());
+    let commit = crate::runtime_server_admission::WorkspaceGenerationCommitReceipt::from_recovery(
+        &published,
+    )
+    .map_err(|error| {
+        WorkspaceGenerationBuildFailure::new(
+            crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
+            error,
+        )
+    })?;
+    crate::runtime_server_admission::WorkspaceGenerationBuildCompletion::new(candidate, commit)
+        .map_err(|error| {
+            WorkspaceGenerationBuildFailure::new(
+                crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
+                error,
+            )
+        })
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/runtime_server_generation_builder_mutation.rs"]
+mod mutation_tests;

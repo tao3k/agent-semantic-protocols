@@ -1,0 +1,95 @@
+#+title: Python Graph Turbo Resident IPC
+#+property: schema_id agent.semantic-protocols.graph-turbo-resident-server
+#+property: schema_version 1
+
+* Authority
+
+Graph Turbo is a local resident IPC service, not a remote RPC service and not a
+per-query Python process. The shared authority is
+=schemas/graph-turbo-resident-server.v1.schema.json=.
+
+The Rust Search adapter, Runtime Server lifecycle, and Python Graph Turbo daemon
+must refine that one contract. A parallel request packet with different
+generation identity semantics is forbidden.
+
+* Lifecycle
+
+1. Runtime Server starts or resumes one Python Graph Turbo daemon for the active
+   ASP runtime generation.
+2. Runtime publishes a typed local IPC endpoint and health receipt.
+3. Search submits =GraphTurboResidentRequest= over the local framed transport.
+4. The daemon loads immutable graph pages for the request's exact
+   =workspaceIdentity + generationDigest= key.
+5. Concurrent requests share the resident process and generation load.
+6. Runtime owns cancellation, drain, restart, and endpoint replacement.
+
+The agent-facing Search process never spawns Python and never repairs the daemon
+by installing a provider.
+
+* Managed artifact
+
+The release boundary MUST publish Graph Turbo as a platform-native standalone
+directory bundle.  The bundle owns its Python interpreter, extension modules,
+SciPy libraries, Memory Engine package, and resident entry executable.  A shell
+wrapper, =PYTHONPATH= site directory, project =.venv=, =uv run=, or host Python
+locator is not a Runtime artifact.
+
+The ASP binary and =asp-graph-turbo-resident.bundle= are sibling release
+artifacts.  Install computes a deterministic Merkle digest over every relative
+bundle path, file kind, mode, and content digest, copies the complete bundle to
+the content-addressed Runtime artifact store, verifies it there, and only then
+publishes the v1 resident config and switches the ASP binary.  The config binds:
+
+- =runtimeArtifactDigest=: the complete standalone-directory Merkle root;
+- =executionArtifactLocator=: the executable inside that exact directory;
+- =executionArtifactDigest=: the executable content digest;
+- =artifactKind= =standalone-directory=.
+
+Runtime validates all four fields before spawning.  It MUST reject a locator
+outside the digest-addressed bundle and MUST NOT fall back to an interpreter,
+module invocation, package install, or query-time repair.  A missing or invalid
+bundle fails the install transaction before either artifact becomes active.
+
+* Identity
+
+=generationDigest= identifies the admitted Runtime generation.
+=pageRoots= identify immutable graph materialization pages. A source snapshot
+root or workspace Merkle root must never be substituted for
+=generationDigest=.
+
+Request and receipt must echo the same =requestId=, =workspaceIdentity=, and
+=generationDigest=. A mismatch is a typed IPC protocol defect and must be
+recorded by OpenTelemetry.
+
+* Qualification gates
+
+- First search starts at most one Python daemon and reaches Ready.
+- Two hundred fifty-six concurrent searches report one process spawn and one
+  generation load for a shared generation.
+- A second warm search reports zero process spawns and zero generation loads.
+- Runtime restart replaces the endpoint atomically and reconnects without an
+  agent-visible install or sync step.
+- Cancellation and shutdown drain all Python tasks, file descriptors, and IPC
+  streams.
+- Request and receipt reject root-digest substitution for =generationDigest=.
+- Rust, Python, schema, and installed black-box fixtures consume the same v1
+  request and receipt examples under =schemas/fixtures/=.
+- The release bundle runs with an empty environment and no Python on =PATH=.
+- Mutating any bundled file changes =runtimeArtifactDigest=; mutating only the
+  entry executable also changes =executionArtifactDigest=.
+- Missing/partial bundle publication cannot switch either ASP or the resident
+  config, and idempotent reinstall performs zero artifact rewrites.
+- Installed qualification starts from a missing workspace generation and must
+  reach Ready through the Host PostTool writer path without a manual refresh.
+- Runtime publishes its endpoint before any workspace generation discovery or
+  materialization. A slow workspace build cannot revoke daemon health.
+- A generation is an immutable page-root manifest, not one monolithic encoded
+  segment. Unchanged admission reads zero owner bytes and writes zero page
+  bytes; a changed-owner admission replaces only pages reachable from those
+  owners.
+- Page sizing is selected from the Runtime memory budget and active workspace
+  pressure. The encoded working set and resident process memory must remain
+  below the published adaptive budget for every accepted generation.
+- Thirty consecutive resident generation opens have p99 below one millisecond.
+  A budget-exceeded event is a failing gate and an active Turso incident, not a
+  retryable normal state.

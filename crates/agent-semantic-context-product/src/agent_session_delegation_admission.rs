@@ -100,7 +100,10 @@ impl AgentSessionDelegationAdmissionReceipt {
             ("projectId", self.project_id.as_str()),
             ("rootSessionId", self.root_session_id.as_str()),
             ("currentSessionId", self.current_session_id.as_str()),
-            ("proposedChildSessionId", self.proposed_child_session_id.as_str()),
+            (
+                "proposedChildSessionId",
+                self.proposed_child_session_id.as_str(),
+            ),
             ("preStateDigest", self.pre_state_digest.as_str()),
             ("postStateDigest", self.post_state_digest.as_str()),
         ] {
@@ -109,7 +112,11 @@ impl AgentSessionDelegationAdmissionReceipt {
             }
         }
 
-        if self.evidence_refs.iter().any(|value| value.trim().is_empty()) {
+        if self
+            .evidence_refs
+            .iter()
+            .any(|value| value.trim().is_empty())
+        {
             return Err("evidenceRefs must contain only non-empty text".to_owned());
         }
 
@@ -136,8 +143,7 @@ impl AgentSessionDelegationAdmissionReceipt {
                     && self.reason_kind.as_deref() != Some("focused-agent-delegation-denied")
                 {
                     return Err(
-                        "focused-leaf denial requires focused-agent-delegation-denied"
-                            .to_owned(),
+                        "focused-leaf denial requires focused-agent-delegation-denied".to_owned(),
                     );
                 }
             }

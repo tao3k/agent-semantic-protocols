@@ -27,9 +27,6 @@ fn temp_root(name: &str) -> PathBuf {
 }
 
 fn git_init(root: &std::path::Path) {
-    let _git_fixture = crate::integration_fixture::GIT_FIXTURE_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let status = crate::integration_fixture::isolated_git_command()
         .args(["init", "-q", "--template="])
         .current_dir(root)

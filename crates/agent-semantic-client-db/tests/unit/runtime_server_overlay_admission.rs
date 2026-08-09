@@ -303,6 +303,80 @@ async fn moved_owner_overlay_publishes_one_atomic_relocation_epoch() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn multi_owner_delta_publishes_one_atomic_generation_epoch() {
+    let root = fixture_root();
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(root.clone()).expect("create workspace registry");
+    let workspace_identity = "workspace-owner-delta";
+    registry
+        .publish(
+            "publish-canonical-before-delta",
+            WorkspaceRecoverySource::TursoGeneration,
+            generation(workspace_identity, &root, 1, b"fn previous() {}\n"),
+        )
+        .await
+        .expect("publish canonical generation");
+    let old_lease = registry
+        .lease(workspace_identity, &root)
+        .expect("lease generation before delta");
+    let first = b"fn first() {}\n";
+    let second = b"fn second() {}\n";
+    let receipt = registry
+        .publish_owner_delta(
+            "publish-owner-delta-atomically",
+            workspace_identity,
+            &root,
+            vec![
+                WorkspaceOwnerSnapshot {
+                    owner_path: "src/first.rs".to_owned(),
+                    content_digest: format!("blake3-256:{}", blake3::hash(first).to_hex()),
+                    bytes: first.to_vec(),
+                    selectors: Vec::new(),
+                },
+                WorkspaceOwnerSnapshot {
+                    owner_path: "src/second.rs".to_owned(),
+                    content_digest: format!("blake3-256:{}", blake3::hash(second).to_hex()),
+                    bytes: second.to_vec(),
+                    selectors: Vec::new(),
+                },
+            ],
+            vec!["src/lib.rs".to_owned()],
+        )
+        .await
+        .expect("publish owner delta in one writer epoch");
+
+    assert_eq!(receipt.active_epoch, 1);
+    assert_eq!(receipt.target_epoch, 2);
+    assert_eq!(old_lease.epoch(), 1);
+    assert!(old_lease.owner("src/lib.rs").is_some());
+    let current = registry
+        .lease(workspace_identity, &root)
+        .expect("lease generation after delta");
+    assert_eq!(current.epoch(), 2);
+    assert!(current.owner("src/lib.rs").is_none());
+    assert_eq!(
+        current.owner("src/first.rs").as_deref(),
+        Some(first.as_slice())
+    );
+    assert_eq!(
+        current.owner("src/second.rs").as_deref(),
+        Some(second.as_slice())
+    );
+    assert_eq!(current.generation().source_snapshot.leaf_count, 2);
+    assert_eq!(current.generation().workspace_generation.owner_count, 2);
+    assert_eq!(
+        current.generation().workspace_generation.root_digest,
+        current.generation().source_snapshot.root_digest
+    );
+
+    registry
+        .shutdown()
+        .await
+        .expect("drain owner delta writer lane");
+    let _ = tokio::fs::remove_dir_all(root).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
     let root = fixture_root();
     tokio::fs::create_dir_all(&root)

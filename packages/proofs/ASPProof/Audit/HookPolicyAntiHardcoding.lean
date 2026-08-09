@@ -1,0 +1,22 @@
+import ASPProof.HookPolicyAntiHardcoding
+
+namespace ASPProof.Audit.HookPolicyAntiHardcoding
+
+open ASPProof.HookPolicyAntiHardcoding
+
+#check all_of_requires_every_policy_component
+#check winning_rule_shard_preserves_denial
+#check normalized_facts_determine_every_policy_decision
+#check arbitrary_raw_relabeling_is_policy_invariant
+#check raw_name_gate_violates_policy_extensibility
+#check every_provider_extension_uses_the_same_policy_constructor
+#check every_command_profile_uses_the_same_policy_constructor
+#check config_auto_covers_every_direct_extension_slot
+#check config_auto_covers_every_shell_policy_combination
+#check config_auto_white_mutation_is_unregistered
+#check host_blackbox_refines_config_coverage
+#check target_agent_dispatch_is_idempotent
+#check non_target_agent_requires_dispatch
+#check wrapped_testing_is_only_one_policy_instance
+
+end ASPProof.Audit.HookPolicyAntiHardcoding

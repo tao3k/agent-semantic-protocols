@@ -41,6 +41,7 @@ fn source_expansion_rule_rejects_non_read_effect_contract() {
         rule,
         &agents,
         &[],
+        &config.action_policies,
         agent_semantic_config::WrapperMatchMode::Enable,
     ) {
         Ok(_) => panic!("source expansion must require a typed read effect"),

@@ -62,6 +62,12 @@ asp server daemon
 entrypoint used by the installed supervisor definition.  It is not a
 per-workspace bootstrap command.
 
+=healthcheck= is also Global and accepts no project root.  It reconciles runtime
+artifact and provider-catalog authority, asks the supervisor to ensure the
+daemon, and then observes the typed health postcondition.  It must not merely
+poll an absent endpoint.  A historical spawn receipt or PID is diagnostic data,
+never liveness authority and never a reason to suppress a replacement epoch.
+
 =restart= means:
 
 1. validate endpoint epoch, binding token, runtime artifact digest, and
@@ -226,6 +232,10 @@ after their callers have moved to the Global control and data contracts.
 - typed stop publishes terminal artifact-absence evidence and is idempotent;
 - removed or replacement status memory invalidates every cached mapping;
 - the supervisor replaces a stale or exited daemon;
+- healthcheck against an absent endpoint creates or requests exactly one fresh
+  daemon epoch before awaiting health;
+- an exited owner receipt cannot suppress replacement, and a fresh reconcile
+  publishes a fresh spawn/supervisor receipt;
 - installed runtime artifact and endpoint digest agree.
 
 ** Concurrency

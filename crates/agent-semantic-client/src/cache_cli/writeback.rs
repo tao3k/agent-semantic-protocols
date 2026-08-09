@@ -5,7 +5,7 @@ use std::path::Path;
 
 use agent_semantic_client_core::{
     CacheArtifactId, CacheExportMethod, CacheManifestStatus, ClientCacheManifest, ClientRequest,
-    ElapsedMillis, ProviderCommandReceipt, ProviderRegistrySnapshot,
+    ElapsedMillis, ProviderCommandReceipt, ProviderRegistrySnapshot, project_client_cache_dir,
 };
 use agent_semantic_client_db::ClientDbEngine;
 use bytes::Bytes;
@@ -163,6 +163,10 @@ pub(crate) async fn write_prompt_output_cache_after_provider_success(
     let cache_probe = (async {
         let cache_root = cache_report.cache_root.as_ref()?;
         let manifest_path = cache_report.manifest_path.as_ref()?;
+        let materialized_cache_root = project_client_cache_dir(project_root).ok()?;
+        if materialized_cache_root != *cache_root {
+            return None;
+        }
         let mut manifest =
             load_existing_or_empty_manifest(cache_root, manifest_path, &cache_report.status);
         let mut generation = match artifact_kind {
@@ -326,6 +330,10 @@ pub(crate) async fn write_search_packet_cache_after_provider_success(
     let cache_report = ClientCacheManifest::inspect_project(project_root);
     let cache_root = cache_report.cache_root.as_ref()?;
     let manifest_path = cache_report.manifest_path.as_ref()?;
+    let materialized_cache_root = project_client_cache_dir(project_root).ok()?;
+    if materialized_cache_root != *cache_root {
+        return None;
+    }
     let mut manifest =
         load_existing_or_empty_manifest(cache_root, manifest_path, &cache_report.status);
     let mut generation = search_packet_generation_from_packet(

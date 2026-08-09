@@ -1,55 +1,22 @@
 use agent_semantic_hook::{
     ActivationAdmissionDecision, ActivationAdmissionReason, HookActivation,
-    build_default_activation, load_or_refresh_default_activation, load_or_sync_activation,
-    materialize_active_asp_artifact_receipt_for_current_process,
+    build_default_activation_with_state_home, load_or_refresh_default_activation_with_state_home,
+    load_or_refresh_default_activation_with_state_home_and_binary,
+    load_or_sync_activation_with_state_home,
+    materialize_active_asp_artifact_receipt_for_current_process_with_state_home,
     verify_active_asp_artifact_receipt, write_activation,
 };
 use std::fs;
 
 use super::temp_root;
 
-struct ProtocolBinEnvGuard(Option<std::ffi::OsString>);
-
-impl ProtocolBinEnvGuard {
-    fn set(path: &std::path::Path) -> Self {
-        let previous = std::env::var_os("SEMANTIC_AGENT_PROTOCOL_BIN");
-        unsafe {
-            std::env::set_var("SEMANTIC_AGENT_PROTOCOL_BIN", path);
-        }
-        Self(previous)
-    }
-
-    fn replace(&mut self, path: &std::path::Path) {
-        unsafe {
-            std::env::set_var("SEMANTIC_AGENT_PROTOCOL_BIN", path);
-        }
-    }
-}
-
-impl Drop for ProtocolBinEnvGuard {
-    fn drop(&mut self) {
-        match self.0.take() {
-            Some(previous) => unsafe {
-                std::env::set_var("SEMANTIC_AGENT_PROTOCOL_BIN", previous);
-            },
-            None => unsafe {
-                std::env::remove_var("SEMANTIC_AGENT_PROTOCOL_BIN");
-            },
-        }
-    }
-}
-
 #[test]
 fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
-    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = temp_root("stale-coverage-defaults");
     super::git_init(&root);
     fs::create_dir_all(root.join("src")).expect("create Rust source root");
     let state_parent = temp_root("stale-coverage-defaults-state");
     let state_home = state_parent.join(".agent-semantic-protocols");
-    let _state_home_guard = super::activation_bin::StateHomeEnvGuard::set(&state_home);
     fs::write(
         root.join("Cargo.toml"),
         "[package]\nname = \"sample\"\nversion = \"0.1.0\"\n",
@@ -59,7 +26,8 @@ fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
     super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
 
     let activation_path = test_activation_path(&root, &state_parent);
-    let mut activation = build_default_activation(&root).expect("build activation");
+    let mut activation =
+        build_default_activation_with_state_home(&root, &state_home).expect("build activation");
     let rust_provider = activation
         .providers
         .iter_mut()
@@ -71,7 +39,8 @@ fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
     rust_provider.coverage.config_files.clear();
     write_activation(&activation_path, &activation).expect("write stale activation");
 
-    let runtime = load_or_sync_activation(&activation_path, &root).expect("sync activation");
+    let runtime = load_or_sync_activation_with_state_home(&activation_path, &root, &state_home)
+        .expect("sync activation");
     let runtime_rust_provider = runtime
         .providers
         .iter()
@@ -102,8 +71,9 @@ fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
         refreshed_rust_provider.coverage.config_files, expected_config_files,
         "activation sync should durably refresh manifest config files"
     );
-    let unchanged = load_or_refresh_default_activation(&activation_path, &root)
-        .expect("unchanged typed candidate generation should reuse activation");
+    let unchanged =
+        load_or_refresh_default_activation_with_state_home(&activation_path, &root, &state_home)
+            .expect("unchanged typed candidate generation should reuse activation");
     assert_eq!(unchanged.status, "reused");
     assert_eq!(
         unchanged.admission.decision,
@@ -130,14 +100,10 @@ fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
 
 #[test]
 fn missing_generated_activation_is_rebuilt_without_stale_fallback() {
-    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = temp_root("missing-generated-activation");
     super::git_init(&root);
     fs::create_dir_all(root.join("src")).expect("create Rust source root");
     let state_home = root.join(".asp-state-home");
-    let _state_home_guard = super::activation_bin::StateHomeEnvGuard::set(&state_home);
     fs::write(
         root.join("Cargo.toml"),
         "[package]\nname = \"sample\"\nversion = \"0.1.0\"\n",
@@ -148,8 +114,9 @@ fn missing_generated_activation_is_rebuilt_without_stale_fallback() {
 
     let activation_path = test_activation_path(&root, &root);
     assert!(!activation_path.exists());
-    let sync = load_or_refresh_default_activation(&activation_path, &root)
-        .expect("missing activation should rebuild from typed provider and Git state");
+    let sync =
+        load_or_refresh_default_activation_with_state_home(&activation_path, &root, &state_home)
+            .expect("missing activation should rebuild from typed provider and Git state");
     assert_eq!(sync.status, "created");
     assert_eq!(
         sync.admission.decision,
@@ -172,14 +139,10 @@ fn missing_generated_activation_is_rebuilt_without_stale_fallback() {
 
 #[test]
 fn generated_activation_rebuild_failure_does_not_serve_old_activation() {
-    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = temp_root("failed-rebuild-no-stale-fallback");
     super::git_init(&root);
     fs::create_dir_all(root.join("src")).expect("create Rust source root");
     let state_home = root.join(".asp-state-home");
-    let _state_home_guard = super::activation_bin::StateHomeEnvGuard::set(&state_home);
     fs::write(
         root.join("Cargo.toml"),
         "[package]\nname = \"sample\"\nversion = \"0.1.0\"\n",
@@ -190,11 +153,12 @@ fn generated_activation_rebuild_failure_does_not_serve_old_activation() {
         super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
 
     let activation_path = test_activation_path(&root, &root);
-    load_or_sync_activation(&activation_path, &root).expect("create initial activation");
+    load_or_sync_activation_with_state_home(&activation_path, &root, &state_home)
+        .expect("create initial activation");
     assert!(activation_path.is_file());
 
     fs::remove_file(&provider_bin).expect("remove active provider to force rebuild failure");
-    let error = load_or_sync_activation(&activation_path, &root)
+    let error = load_or_sync_activation_with_state_home(&activation_path, &root, &state_home)
         .expect_err("failed rebuild must not return the previously persisted activation");
     assert!(
         error.contains("provider") || error.contains("installed"),
@@ -206,9 +170,6 @@ fn generated_activation_rebuild_failure_does_not_serve_old_activation() {
 
 #[test]
 fn generated_activation_refreshes_a_new_digest_addressed_runtime_binary() {
-    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = temp_root("runtime-binary-selection-drift");
     super::git_init(&root);
     fs::create_dir_all(root.join("src")).expect("create Rust source root");
@@ -220,7 +181,6 @@ fn generated_activation_refreshes_a_new_digest_addressed_runtime_binary() {
     fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
     let state_parent = temp_root("runtime-binary-selection-drift-state");
     let state_home = state_parent.join(".agent-semantic-protocols");
-    let _state_home_guard = super::activation_bin::StateHomeEnvGuard::set(&state_home);
     super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
 
     let first_digest = "a".repeat(64);
@@ -231,11 +191,14 @@ fn generated_activation_refreshes_a_new_digest_addressed_runtime_binary() {
     fs::create_dir_all(first_binary.parent().expect("first binary parent"))
         .expect("create first artifact directory");
     fs::write(&first_binary, b"first runtime").expect("write first runtime");
-    let mut binary_guard = ProtocolBinEnvGuard::set(&first_binary);
-
     let activation_path = test_activation_path(&root, &state_parent);
-    let initial = load_or_refresh_default_activation(&activation_path, &root)
-        .expect("publish initial activation");
+    let initial = load_or_refresh_default_activation_with_state_home_and_binary(
+        &activation_path,
+        &root,
+        &state_home,
+        &first_binary,
+    )
+    .expect("publish initial activation");
     assert_eq!(initial.status, "created");
 
     let second_digest = "b".repeat(64);
@@ -246,10 +209,13 @@ fn generated_activation_refreshes_a_new_digest_addressed_runtime_binary() {
     fs::create_dir_all(second_binary.parent().expect("second binary parent"))
         .expect("create second artifact directory");
     fs::write(&second_binary, b"second runtime").expect("write second runtime");
-    binary_guard.replace(&second_binary);
-
-    let refreshed = load_or_refresh_default_activation(&activation_path, &root)
-        .expect("refresh runtime binary selection");
+    let refreshed = load_or_refresh_default_activation_with_state_home_and_binary(
+        &activation_path,
+        &root,
+        &state_home,
+        &second_binary,
+    )
+    .expect("refresh runtime binary selection");
     assert_eq!(refreshed.status, "refreshed");
     assert_eq!(
         refreshed.admission.reason,
@@ -276,8 +242,13 @@ fn generated_activation_refreshes_a_new_digest_addressed_runtime_binary() {
         receipt.asp_binary_leaf().artifact_digest().as_str(),
         second_digest
     );
-    let unchanged = load_or_refresh_default_activation(&activation_path, &root)
-        .expect("reuse refreshed activation");
+    let unchanged = load_or_refresh_default_activation_with_state_home_and_binary(
+        &activation_path,
+        &root,
+        &state_home,
+        &second_binary,
+    )
+    .expect("reuse refreshed activation");
     assert_eq!(unchanged.status, "reused");
 
     fs::remove_dir_all(root).expect("remove temp root");
@@ -286,16 +257,12 @@ fn generated_activation_refreshes_a_new_digest_addressed_runtime_binary() {
 
 #[test]
 fn generated_activation_sync_admits_a_newly_installed_nested_provider() {
-    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = temp_root("newly-installed-nested-provider");
     super::git_init(&root);
     fs::create_dir_all(root.join("src")).expect("create Rust source root");
     let python_root = root.join("packages").join("python");
     fs::create_dir_all(python_root.join("src")).expect("create Python source root");
     let state_home = root.join(".asp-state-home");
-    let _state_home_guard = super::activation_bin::StateHomeEnvGuard::set(&state_home);
     fs::write(
         root.join("Cargo.toml"),
         "[package]\nname = \"sample\"\nversion = \"0.1.0\"\n",
@@ -315,8 +282,8 @@ fn generated_activation_sync_admits_a_newly_installed_nested_provider() {
     super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
 
     let activation_path = test_activation_path(&root, &root);
-    let initial =
-        load_or_sync_activation(&activation_path, &root).expect("create initial activation");
+    let initial = load_or_sync_activation_with_state_home(&activation_path, &root, &state_home)
+        .expect("create initial activation");
     assert!(
         initial
             .providers
@@ -325,8 +292,8 @@ fn generated_activation_sync_admits_a_newly_installed_nested_provider() {
     );
 
     super::install_state_home_provider(&state_home, "python", "py-harness", "py-harness");
-    let refreshed =
-        load_or_sync_activation(&activation_path, &root).expect("refresh provider generation");
+    let refreshed = load_or_sync_activation_with_state_home(&activation_path, &root, &state_home)
+        .expect("refresh provider generation");
     let python = refreshed
         .providers
         .iter()
@@ -340,14 +307,10 @@ fn generated_activation_sync_admits_a_newly_installed_nested_provider() {
 
 #[test]
 fn generated_activation_with_unknown_field_and_valid_receipt_rebuilds() {
-    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = temp_root("generated-unknown-field");
     super::git_init(&root);
     fs::create_dir_all(root.join("src")).expect("create Rust source root");
     let state_home = root.join(".asp-state-home");
-    let _state_home_guard = super::activation_bin::StateHomeEnvGuard::set(&state_home);
     fs::write(
         root.join("Cargo.toml"),
         "[package]\nname = \"sample\"\nversion = \"0.1.0\"\n",
@@ -357,8 +320,8 @@ fn generated_activation_with_unknown_field_and_valid_receipt_rebuilds() {
     super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
 
     let activation_path = test_activation_path(&root, &root);
-    let runtime =
-        load_or_sync_activation(&activation_path, &root).expect("create generated activation");
+    let runtime = load_or_sync_activation_with_state_home(&activation_path, &root, &state_home)
+        .expect("create generated activation");
     let mut activation_json: serde_json::Value = serde_json::from_str(
         &fs::read_to_string(&activation_path).expect("read generated activation"),
     )
@@ -375,13 +338,17 @@ fn generated_activation_with_unknown_field_and_valid_receipt_rebuilds() {
         serde_json::to_string_pretty(&activation_json).expect("serialize future activation"),
     )
     .expect("write future generated activation");
-    materialize_active_asp_artifact_receipt_for_current_process(&activation_path, &runtime)
-        .expect("materialize valid receipt for future generated activation");
+    materialize_active_asp_artifact_receipt_for_current_process_with_state_home(
+        &activation_path,
+        &runtime,
+        &state_home,
+    )
+    .expect("materialize valid receipt for future generated activation");
     let current_exe = std::env::current_exe().expect("current test executable");
     verify_active_asp_artifact_receipt(&activation_path, &[&current_exe])
         .expect("future generated activation receipt should be valid");
 
-    load_or_sync_activation(&activation_path, &root)
+    load_or_sync_activation_with_state_home(&activation_path, &root, &state_home)
         .expect("unknown generated field should trigger atomic rebuild");
     let refreshed_text = fs::read_to_string(&activation_path).expect("read rebuilt activation");
     let refreshed_value: serde_json::Value =
@@ -398,14 +365,10 @@ fn generated_activation_with_unknown_field_and_valid_receipt_rebuilds() {
 
 #[test]
 fn non_generated_activation_with_unknown_field_fails_closed() {
-    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = temp_root("custom-unknown-field");
     super::git_init(&root);
     fs::create_dir_all(root.join("src")).expect("create Rust source root");
     let state_home = root.join(".asp-state-home");
-    let _state_home_guard = super::activation_bin::StateHomeEnvGuard::set(&state_home);
     fs::write(
         root.join("Cargo.toml"),
         "[package]\nname = \"sample\"\nversion = \"0.1.0\"\n",
@@ -414,7 +377,8 @@ fn non_generated_activation_with_unknown_field_fails_closed() {
     fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
     super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
     let activation_path = root.join("custom-activation.json");
-    let activation = build_default_activation(&root).expect("build activation");
+    let activation =
+        build_default_activation_with_state_home(&root, &state_home).expect("build activation");
     let mut activation_json =
         serde_json::to_value(activation).expect("serialize custom activation value");
     activation_json
@@ -427,7 +391,7 @@ fn non_generated_activation_with_unknown_field_fails_closed() {
     )
     .expect("write custom activation");
 
-    let error = load_or_sync_activation(&activation_path, &root)
+    let error = load_or_sync_activation_with_state_home(&activation_path, &root, &state_home)
         .expect_err("non-generated activation must remain fail-closed");
     assert!(
         error.contains("unknown field `futureUserField`"),

@@ -364,7 +364,7 @@ impl ExactQueryRuntime {
             })
         };
         let owner_builder: agent_semantic_client_db::runtime_server_admission::WorkspaceOwnerProjectionBuilder =
-            Arc::new(move |_workspace_identity, project_root, owner_path, _language_id| {
+            Arc::new(move |_workspace_identity, project_root, owner_path| {
                 Box::pin(async move {
                     let bytes = tokio::fs::read(project_root.join(&owner_path))
                         .await

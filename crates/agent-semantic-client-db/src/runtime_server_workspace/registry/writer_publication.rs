@@ -55,6 +55,62 @@ pub(super) async fn publish_staged_overlay_generation(
     Ok(receipt)
 }
 
+pub(super) async fn publish_owner_delta(
+    target: &WorkspaceWriteTarget,
+    request_id: String,
+    workspace_identity: &str,
+    owners: Vec<crate::runtime_server_workspace::WorkspaceOwnerSnapshot>,
+    tombstones: Vec<String>,
+    counters: &RuntimeDataPlaneCounterState,
+) -> Result<WorkspaceRecoveryReceipt, String> {
+    let base = current_generation(&target.current, workspace_identity)?;
+    let staged = target
+        .overlays
+        .publish_owner_delta(base.generation(), owners, tombstones)?;
+    publish_staged_overlay_generation(
+        target,
+        request_id,
+        staged,
+        base.generation().active_epoch,
+        counters,
+    )
+    .await
+}
+
+#[derive(Debug)]
+pub(super) struct PublishOwnerDeltaCommand {
+    pub(super) target: super::core::WorkspaceWriteTarget,
+    pub(super) request_id: String,
+    pub(super) workspace_identity: String,
+    pub(super) owners: Vec<crate::runtime_server_workspace::WorkspaceOwnerSnapshot>,
+    pub(super) tombstones: Vec<String>,
+    pub(super) reply: tokio::sync::oneshot::Sender<
+        Result<crate::runtime_server_workspace::WorkspaceRecoveryReceipt, String>,
+    >,
+}
+
+pub(super) async fn publish_owner_delta_command(
+    command: PublishOwnerDeltaCommand,
+    counters: &super::core::RuntimeDataPlaneCounterState,
+) -> Option<(
+    String,
+    crate::runtime_server_workspace::WorkspaceRecoveryReceipt,
+)> {
+    let scope_key = command.target.scope_key.clone();
+    let result = publish_owner_delta(
+        &command.target,
+        command.request_id,
+        &command.workspace_identity,
+        command.owners,
+        command.tombstones,
+        counters,
+    )
+    .await;
+    let committed = result.as_ref().ok().cloned();
+    let _ = command.reply.send(result);
+    committed.map(|receipt| (scope_key, receipt))
+}
+
 pub(super) fn active_epoch(current: &watch::Sender<Option<Arc<WorkspaceMemoryBackend>>>) -> u64 {
     current
         .borrow()

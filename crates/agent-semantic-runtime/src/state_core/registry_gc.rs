@@ -8,9 +8,89 @@ use std::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::ResolvedState;
+use super::{ResolvedState, WorkspaceId, WorkspaceLifecycle, is_temporary_checkout_path};
 
 const LAST_SEEN_FILE: &str = ".last-seen-ms";
+
+/// Controls retirement of path-bound cache for temporary workspaces.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemporaryWorkspaceCacheGcOptions {
+    pub apply: bool,
+    pub grace_period_ms: u64,
+}
+
+/// One temporary workspace evaluated for cache retirement.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemporaryWorkspaceCacheGcCandidate {
+    repo_id: super::identity::RepoId,
+    workspace_id: WorkspaceId,
+    workspace_dir: PathBuf,
+    root: PathBuf,
+    last_seen_ms: Option<u64>,
+    age_ms: Option<u64>,
+    protected: bool,
+    eligible: bool,
+    cache_present: bool,
+    retired: bool,
+}
+
+impl TemporaryWorkspaceCacheGcCandidate {
+    /// Project identity inherited by this workspace.
+    pub fn repo_id(&self) -> &super::identity::RepoId {
+        &self.repo_id
+    }
+
+    /// Stable identity of this derived workspace.
+    pub fn workspace_id(&self) -> &WorkspaceId {
+        &self.workspace_id
+    }
+
+    /// Last recorded checkout root for this workspace.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Milliseconds since the workspace was last observed.
+    pub fn age_ms(&self) -> Option<u64> {
+        self.age_ms
+    }
+
+    /// Whether this is the workspace from which GC is running.
+    pub const fn protected(&self) -> bool {
+        self.protected
+    }
+
+    /// Whether cache retirement passed the scan-time checks.
+    pub const fn eligible(&self) -> bool {
+        self.eligible
+    }
+
+    /// Whether path-bound cache was present when this candidate was evaluated.
+    pub const fn cache_present(&self) -> bool {
+        self.cache_present
+    }
+
+    /// Whether this apply pass retired the path-bound cache.
+    pub const fn retired(&self) -> bool {
+        self.retired
+    }
+}
+
+/// Auditable result of temporary-workspace cache retirement.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemporaryWorkspaceCacheGcReport {
+    pub state_home: PathBuf,
+    pub apply: bool,
+    pub grace_period_ms: u64,
+    pub scanned_workspace_count: usize,
+    pub temporary_workspace_count: usize,
+    pub eligible_count: usize,
+    pub retired_count: usize,
+    pub candidates: Vec<TemporaryWorkspaceCacheGcCandidate>,
+}
 
 /// Controls a project-registry garbage-collection pass.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -341,6 +421,201 @@ impl ResolvedState {
             candidates,
         })
     }
+}
+
+impl ResolvedState {
+    /// Retire path-bound cache for disappeared temporary workspaces while preserving artifacts.
+    pub fn gc_temporary_workspace_cache(
+        &self,
+        options: TemporaryWorkspaceCacheGcOptions,
+    ) -> Result<TemporaryWorkspaceCacheGcReport, String> {
+        let now_ms = now_ms()?;
+        let mut candidates = Vec::new();
+        let mut scanned_workspace_count = 0usize;
+        let mut temporary_workspace_count = 0usize;
+        let projects = match fs::read_dir(&self.paths.projects_by_id_dir) {
+            Ok(projects) => projects,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(TemporaryWorkspaceCacheGcReport {
+                    state_home: self.state_home.clone(),
+                    apply: options.apply,
+                    grace_period_ms: options.grace_period_ms,
+                    scanned_workspace_count: 0,
+                    temporary_workspace_count: 0,
+                    eligible_count: 0,
+                    retired_count: 0,
+                    candidates,
+                });
+            }
+            Err(error) => return Err(format!("failed to scan project registry: {error}")),
+        };
+
+        for project in projects.flatten() {
+            if !project.file_type().is_ok_and(|kind| kind.is_dir()) {
+                continue;
+            }
+            let repo_id =
+                super::identity::RepoId(project.file_name().to_string_lossy().into_owned());
+            let Ok(workspaces) = fs::read_dir(project.path().join("workspaces")) else {
+                continue;
+            };
+            for workspace in workspaces.flatten() {
+                if !workspace.file_type().is_ok_and(|kind| kind.is_dir()) {
+                    continue;
+                }
+                scanned_workspace_count += 1;
+                let workspace_dir = workspace.path();
+                let Some((workspace_id, root, lifecycle)) =
+                    recorded_workspace_identity(&workspace_dir)
+                else {
+                    continue;
+                };
+                if !lifecycle.is_temporary() {
+                    continue;
+                }
+                temporary_workspace_count += 1;
+                let protected =
+                    repo_id == self.repo.repo_id && workspace_id == self.workspace.workspace_id;
+                let last_seen_ms = workspace_last_seen_ms(&workspace_dir);
+                let age_ms = last_seen_ms.map(|last_seen| now_ms.saturating_sub(last_seen));
+                let old_enough = age_ms.is_some_and(|age| age >= options.grace_period_ms);
+                let cache_present = temporary_workspace_cache_present(&workspace_dir);
+                candidates.push(TemporaryWorkspaceCacheGcCandidate {
+                    repo_id: repo_id.clone(),
+                    workspace_id,
+                    workspace_dir,
+                    root: root.clone(),
+                    last_seen_ms,
+                    age_ms,
+                    protected,
+                    eligible: !protected && !root.exists() && old_enough && cache_present,
+                    cache_present,
+                    retired: false,
+                });
+            }
+        }
+
+        if options.apply {
+            for candidate in &mut candidates {
+                if !candidate.eligible {
+                    continue;
+                }
+                let Some((workspace_id, root, lifecycle)) =
+                    recorded_workspace_identity(&candidate.workspace_dir)
+                else {
+                    candidate.eligible = false;
+                    continue;
+                };
+                if workspace_id != candidate.workspace_id
+                    || !lifecycle.is_temporary()
+                    || root.exists()
+                    || workspace_last_seen_ms(&candidate.workspace_dir) != candidate.last_seen_ms
+                {
+                    candidate.eligible = false;
+                    continue;
+                }
+                retire_temporary_workspace_cache(candidate, now_ms)?;
+                candidate.cache_present = false;
+                candidate.retired = true;
+            }
+        }
+
+        Ok(TemporaryWorkspaceCacheGcReport {
+            state_home: self.state_home.clone(),
+            apply: options.apply,
+            grace_period_ms: options.grace_period_ms,
+            scanned_workspace_count,
+            temporary_workspace_count,
+            eligible_count: candidates
+                .iter()
+                .filter(|candidate| candidate.eligible)
+                .count(),
+            retired_count: candidates
+                .iter()
+                .filter(|candidate| candidate.retired)
+                .count(),
+            candidates,
+        })
+    }
+}
+
+fn recorded_workspace_identity(
+    workspace_dir: &Path,
+) -> Option<(WorkspaceId, PathBuf, WorkspaceLifecycle)> {
+    let bytes = fs::read(workspace_dir.join("workspace.json")).ok()?;
+    let value = serde_json::from_slice::<Value>(&bytes).ok()?;
+    let workspace_id = WorkspaceId(value.get("workspaceId")?.as_str()?.to_string());
+    let root = PathBuf::from(value.get("root")?.as_str()?);
+    let lifecycle = match value.get("lifecycle").and_then(Value::as_str) {
+        Some("temporary") => WorkspaceLifecycle::Temporary,
+        Some("durable") => WorkspaceLifecycle::Durable,
+        // Migration-only compatibility for records written before lifecycle existed.
+        None if is_temporary_checkout_path(&root) => WorkspaceLifecycle::Temporary,
+        _ => WorkspaceLifecycle::Durable,
+    };
+    Some((workspace_id, root, lifecycle))
+}
+
+fn temporary_workspace_cache_present(workspace_dir: &Path) -> bool {
+    workspace_dir.join("live/client").exists() || workspace_dir.join("hooks").exists()
+}
+
+fn workspace_last_seen_ms(workspace_dir: &Path) -> Option<u64> {
+    read_timestamp(&workspace_dir.join(LAST_SEEN_FILE)).or_else(|| {
+        [
+            workspace_dir.join("workspace.json"),
+            workspace_dir.join("live/client"),
+            workspace_dir.join("hooks"),
+            workspace_dir.join("artifacts"),
+        ]
+        .iter()
+        .filter_map(|path| modified_ms(path))
+        .max()
+    })
+}
+
+fn retire_temporary_workspace_cache(
+    candidate: &TemporaryWorkspaceCacheGcCandidate,
+    retired_at_ms: u64,
+) -> Result<(), String> {
+    for cache_dir in [
+        candidate.workspace_dir.join("live/client"),
+        candidate.workspace_dir.join("hooks"),
+    ] {
+        match fs::remove_dir_all(&cache_dir) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!(
+                    "failed to retire temporary workspace cache {}: {error}",
+                    cache_dir.display()
+                ));
+            }
+        }
+    }
+    let receipt_dir = candidate.workspace_dir.join(".state");
+    fs::create_dir_all(&receipt_dir)
+        .map_err(|error| format!("create workspace retirement receipt dir: {error}"))?;
+    let receipt = serde_json::to_vec_pretty(&serde_json::json!({
+        "schemaId": "agent.semantic-protocols.temporary-workspace-cache-retirement.v1",
+        "schemaVersion": "1",
+        "repoId": candidate.repo_id,
+        "workspaceId": candidate.workspace_id,
+        "root": candidate.root,
+        "retiredAtMs": retired_at_ms,
+        "removed": ["live/client", "hooks"],
+        "preserved": ["workspace.json", "artifacts"],
+    }))
+    .map_err(|error| format!("encode workspace retirement receipt: {error}"))?;
+    let receipt_path = receipt_dir.join("temporary-workspace-cache-retirement.v1.json");
+    let staging_path = receipt_dir.join(format!(
+        ".temporary-workspace-cache-retirement.v1.json.tmp-{}",
+        std::process::id()
+    ));
+    fs::write(&staging_path, receipt)
+        .map_err(|error| format!("write workspace retirement receipt: {error}"))?;
+    fs::rename(&staging_path, &receipt_path)
+        .map_err(|error| format!("publish workspace retirement receipt: {error}"))
 }
 
 fn recorded_checkout_roots(project_dir: &Path) -> Vec<PathBuf> {

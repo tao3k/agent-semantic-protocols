@@ -97,8 +97,9 @@ pub struct HookSessionAgentRoute {
     pub subject_command: Option<String>,
 }
 
-fn should_preserve_agent_session_route_message(decision: &HookDecision) -> bool {
-    decision.has_configured_resident_dispatch()
+fn should_preserve_parser_route_message(decision: &HookDecision) -> bool {
+    !decision.routes.is_empty()
+        || decision.has_configured_resident_dispatch()
         || decision.fields.contains_key("agentSessionAction")
             && decision.fields.contains_key("agentSessionRoute")
 }
@@ -122,9 +123,8 @@ pub fn apply_repeated_deny_replay(
         Value::String(recovery_ref.clone()),
     );
     let source_access_replay = is_source_access_replay_key(&replay_key);
-    let preserve_agent_session_route_message =
-        should_preserve_agent_session_route_message(decision);
-    if source_access_replay && !preserve_agent_session_route_message {
+    let preserve_parser_route_message = should_preserve_parser_route_message(decision);
+    if source_access_replay && !preserve_parser_route_message {
         insert_resident_recovery_action_fields(decision);
     }
     let compact_first_source_access_replay =
@@ -135,10 +135,10 @@ pub fn apply_repeated_deny_replay(
             "denyReplay".to_string(),
             Value::String("record".to_string()),
         );
-        if preserve_agent_session_route_message {
+        if preserve_parser_route_message {
             decision.fields.insert(
                 "denyReplayMessagePolicy".to_string(),
-                Value::String("preserve-agent-session-route".to_string()),
+                Value::String("preserve-parser-route".to_string()),
             );
         } else if compact_first_source_access_replay {
             decision.message = compact_source_access_deny_message(decision, &recovery_ref);
@@ -150,10 +150,10 @@ pub fn apply_repeated_deny_replay(
         "denyReplay".to_string(),
         Value::String("repeated".to_string()),
     );
-    if preserve_agent_session_route_message {
+    if preserve_parser_route_message {
         decision.fields.insert(
             "denyReplayMessagePolicy".to_string(),
-            Value::String("preserve-agent-session-route".to_string()),
+            Value::String("preserve-parser-route".to_string()),
         );
         return Ok(true);
     }

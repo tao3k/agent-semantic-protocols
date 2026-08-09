@@ -233,3 +233,22 @@ implementation defect by default.
 - making multi-agent execution mandatory;
 - using a cache or daemon as source authority;
 - silently falling back from a declared native provider.
+
+* Agent-facing diagnostics and durable budget incidents
+
+The public =search= and =query= surfaces expose one shared diagnostics model.
+=--verbose= reports the final typed route and compact cost receipt, =--debug=
+adds admitted authority and cache decisions, and =--trace= adds ordered stage
+durations.  These flags refine diagnostics only: they MUST NOT select a
+different route, change a generation, invoke a provider, or alter stdout's
+primary code/projection contract.  Every search/query adapter consumes the
+same flags; silently ignoring an unknown diagnostics flag is invalid.
+
+An agent-facing wall-budget failure is a production bug incident.  The
+foreground ASP process constructs the v1 performance observation, but it is
+not telemetry authority and MUST NOT open Turso or depend on a process-local
+daemon handle.  It submits the observation through the existing Tokio Runtime
+Server telemetry IPC ingress.  The daemon-owned telemetry lane is the only
+writer that deduplicates, persists, queries, and resolves the incident.  A
+rendered budget error without a corresponding queryable incident is an
+invalid lifecycle trace.

@@ -38,6 +38,29 @@ fn cache_gc_is_clap_owned_and_accepts_no_project_path() {
 }
 
 #[test]
+fn cache_clean_is_clap_owned_and_requires_an_explicit_positive_retention() {
+    super::cache_command()
+        .try_get_matches_from(["cache", "clean", "--day"])
+        .expect("cache clean --day must select the one-day retention window");
+    super::cache_command()
+        .try_get_matches_from(["cache", "clean", "--day", "14"])
+        .expect("cache clean must accept a larger explicit retention window");
+
+    let missing = super::cache_command()
+        .try_get_matches_from(["cache", "clean"])
+        .expect_err("cache clean must require --day");
+    assert_eq!(
+        missing.kind(),
+        clap::error::ErrorKind::MissingRequiredArgument
+    );
+
+    let zero = super::cache_command()
+        .try_get_matches_from(["cache", "clean", "--day=0"])
+        .expect_err("cache clean must reject a zero-day retention window");
+    assert_eq!(zero.kind(), clap::error::ErrorKind::ValueValidation);
+}
+
+#[test]
 fn install_language_receipt_reconciliation_is_clap_owned_and_exclusive() {
     install_command()
         .try_get_matches_from(["install", "language", "rust", "--reconcile-receipt"])

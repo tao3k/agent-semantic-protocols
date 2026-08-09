@@ -1,6 +1,7 @@
 use super::{
-    PROBE_SENTINEL, run_doctor_with_env, stderr, stdout, temp_project_root, write_activation,
-    write_client_config, write_codex_plugin_fixture, write_executable,
+    PROBE_SENTINEL, run_doctor_with_env, run_doctor_with_env_and_args, stderr, stdout,
+    temp_project_root, write_activation, write_client_config, write_codex_plugin_fixture,
+    write_executable,
 };
 
 #[test]
@@ -158,5 +159,92 @@ decision = "deny"
     assert!(stdout.contains("|enforcement status=configured-but-not-enforced"));
     assert!(stdout.contains("sentinel=true"));
     assert!(stdout.contains("hookEvent=true"));
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
+fn doctor_rejects_normal_task_rollout_when_plugin_delivery_is_missing() {
+    let root = temp_project_root("doctor-host-rollout-plugin-missing");
+    let activation_path = write_activation(&root);
+    write_codex_plugin_fixture(&root);
+    write_client_config(
+        &root,
+        r#"
+[[rules]]
+id = "valid-doctor-rule"
+decision = "deny"
+"#,
+    );
+    let rollout_path = root.join("normal-task.jsonl");
+    std::fs::write(
+        &rollout_path,
+        concat!(
+            "{\"type\":\"world_state\",\"payload\":{\"state\":{\"plugins_instructions\":false}}}\n",
+            "{\"type\":\"response_item\",\"payload\":{\"type\":\"function_call\",\"arguments\":\"probe.rs\"}}\n",
+            "{\"type\":\"response_item\",\"payload\":{\"type\":\"function_call_output\",\"output\":\"ASP_HOST_SENTINEL\"}}\n"
+        ),
+    )
+    .expect("write normal-task rollout");
+    let bin_dir = root.join(".test-bin");
+    write_executable(&bin_dir, "asp", "#!/bin/sh\nexit 0\n");
+
+    let output = run_doctor_with_env_and_args(
+        &root,
+        &activation_path,
+        &[],
+        &[],
+        Some(&bin_dir),
+        &[
+            "--host-rollout",
+            rollout_path.to_str().expect("utf8 rollout path"),
+            "--host-probe-path",
+            "probe.rs",
+            "--host-sentinel",
+            "ASP_HOST_SENTINEL",
+        ],
+    );
+
+    assert!(!output.status.success());
+    let stdout = stdout(&output);
+    assert!(stdout.contains("|host-acceptance"), "{stdout}");
+    assert!(
+        stdout.contains("activation=.agent-semantic-protocols/"),
+        "Host flags must not replace the explicit project root: {stdout}"
+    );
+    assert!(stdout.contains("\"state\":\"rejected\""), "{stdout}");
+    assert!(
+        stdout.contains("\"reasonKind\":\"plugin-not-loaded\""),
+        "{stdout}"
+    );
+    assert!(
+        stderr(&output).contains("normal-task Hook Host acceptance failed"),
+        "{}",
+        stderr(&output)
+    );
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
+fn doctor_requires_a_sentinel_for_every_explicit_host_rollout() {
+    let root = temp_project_root("doctor-host-rollout-pair");
+    let activation_path = write_activation(&root);
+
+    let output = run_doctor_with_env_and_args(
+        &root,
+        &activation_path,
+        &[],
+        &[],
+        None,
+        &["--host-rollout", "normal-task.jsonl"],
+    );
+
+    assert!(!output.status.success());
+    assert!(
+        stderr(&output).contains(
+            "--host-rollout, --host-probe-path, and --host-sentinel must be supplied together"
+        ),
+        "{}",
+        stderr(&output)
+    );
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }

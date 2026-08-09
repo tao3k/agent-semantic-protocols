@@ -228,6 +228,28 @@ async fn mapped_locator_resolves_canonical_scope_without_runtime_or_git() {
 }
 
 #[tokio::test]
+async fn mapped_locator_projects_nested_language_project_to_admitted_workspace() {
+    let root = fixture_root();
+    let path = root.join("catalog.json");
+    let workspace_root = root.join("checkout");
+    let nested_project = workspace_root.join("packages/python/asp_graph_turbo");
+    let catalog = RuntimeWorkspaceAdmissionCatalog::load(path.clone())
+        .await
+        .unwrap();
+    let workspace_entry = RuntimeWorkspaceAdmissionCatalogEntry {
+        workspace_identity: "workspace-repository".to_owned(),
+        project_root: workspace_root.clone(),
+    };
+    catalog.record(workspace_entry.clone()).await.unwrap();
+
+    assert_eq!(
+        RuntimeWorkspaceAdmissionCatalog::resolve_mapped(&path, &nested_project).unwrap(),
+        workspace_entry
+    );
+    tokio::fs::remove_dir_all(root).await.unwrap();
+}
+
+#[tokio::test]
 async fn mapped_locator_reloads_after_atomic_catalog_publication() {
     let root = fixture_root();
     let path = root.join("catalog.json");

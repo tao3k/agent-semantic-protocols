@@ -73,8 +73,8 @@ pub struct MemorySearchGenerationReceipt {
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MemorySearchPerformanceReceipt {
-    pub generation_load_micros: u128,
-    pub index_lookup_micros: u128,
+    pub generation_load_micros: u64,
+    pub index_lookup_micros: u64,
     pub candidate_count: usize,
     pub source_bytes_materialized: usize,
     pub db_opens: usize,

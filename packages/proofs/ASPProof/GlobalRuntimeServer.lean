@@ -219,6 +219,30 @@ theorem runtime_ensure_preserves_fixed_hook_contract (control : ControlPlane) :
     (ensureControlPlane control).installedHookDigest = control.installedHookDigest := by
   rfl
 
+inductive HealthcheckDecision where
+  | observeHealthy
+  | ensureSupervisor
+  deriving DecidableEq, Repr
+
+/-- Historical spawn receipts are diagnostics only. Endpoint health is the
+authoritative input to the Global healthcheck reconciliation decision. -/
+def healthcheckDecision
+    (endpointHealthy : Bool) (_spawnReceiptPresent : Bool) : HealthcheckDecision :=
+  if endpointHealthy then .observeHealthy else .ensureSupervisor
+
+theorem absent_endpoint_requires_supervisor_even_with_stale_spawn_receipt :
+    healthcheckDecision false true = .ensureSupervisor := by
+  rfl
+
+theorem absent_endpoint_requires_supervisor_without_spawn_receipt :
+    healthcheckDecision false false = .ensureSupervisor := by
+  rfl
+
+theorem healthy_endpoint_avoids_redundant_supervisor_reconcile
+    (spawnReceiptPresent : Bool) :
+    healthcheckDecision true spawnReceiptPresent = .observeHealthy := by
+  cases spawnReceiptPresent <;> rfl
+
 /-- Endpoint hints are discovery inputs; only a fully authenticated handshake
 admits the resident server as live. -/
 structure SocketObservation where

@@ -1,14 +1,18 @@
 use crate::workspace_db_ipc::{
-    AgentHostLifecycleEventIpc, AgentHostLifecycleEventKind, AgentSessionRegistryIpcResult,
+    AgentHostExecutionObservationIpc, AgentHostLifecycleEventIpc, AgentHostLifecycleEventKind,
+    AgentSessionRegistryIpcResult,
 };
 
 #[test]
-fn host_start_registers_and_host_stop_archives_one_physical_generation() {
+fn host_stop_resume_and_achieve_preserve_one_durable_generation() {
     let root = tempfile::tempdir().expect("Host lifecycle registry tempdir");
     let registry =
         crate::AgentSessionRegistry::open_or_create_state_root(root.path().join("state"))
             .expect("open Host lifecycle registry");
     let start = AgentHostLifecycleEventIpc {
+        host_event_id: "host-event-1".to_owned(),
+        host_event_sequence: 1,
+        namespace_id: "asp-testing".to_owned(),
         kind: AgentHostLifecycleEventKind::Started,
         platform: "codex".to_owned(),
         project_id: "workspace-1".to_owned(),
@@ -55,9 +59,11 @@ fn host_start_registers_and_host_stop_archives_one_physical_generation() {
     let stopped = super::record_host_lifecycle_event(
         &registry,
         AgentHostLifecycleEventIpc {
+            host_event_id: "host-event-2".to_owned(),
+            host_event_sequence: 2,
             kind: AgentHostLifecycleEventKind::Stopped,
             observed_at: 20,
-            ..start
+            ..start.clone()
         },
     )
     .expect("record Host stop event");
@@ -65,20 +71,236 @@ fn host_start_registers_and_host_stop_archives_one_physical_generation() {
         stopped,
         AgentSessionRegistryIpcResult::Changed { changed: true }
     );
-    let archived = registry
+    let stopped = registry
         .session_by_id("workspace-1", "child-1")
-        .expect("query archived generation")
-        .expect("archived generation exists");
-    assert_eq!(archived.status.as_str(), "archived");
+        .expect("query stopped generation")
+        .expect("stopped generation exists");
+    assert_eq!(stopped.status.as_str(), "stopped");
+    assert_eq!(stopped.physical_generation, 1);
+
+    super::record_host_lifecycle_event(
+        &registry,
+        AgentHostLifecycleEventIpc {
+            host_event_id: "host-event-3".to_owned(),
+            host_event_sequence: 3,
+            kind: AgentHostLifecycleEventKind::Resumed,
+            observed_at: 30,
+            ..start.clone()
+        },
+    )
+    .expect("resume exact durable namespace");
+    let resumed = registry
+        .session_by_id("workspace-1", "child-1")
+        .expect("query resumed generation")
+        .expect("resumed generation exists");
+    assert_eq!(resumed.status.as_str(), "active");
+    assert_eq!(resumed.physical_generation, 1);
+
+    super::record_host_lifecycle_event(
+        &registry,
+        AgentHostLifecycleEventIpc {
+            host_event_id: "host-event-4".to_owned(),
+            host_event_sequence: 4,
+            kind: AgentHostLifecycleEventKind::Achieved,
+            observed_at: 40,
+            ..start
+        },
+    )
+    .expect("achieve exact durable namespace");
+    let achieved = registry
+        .session_by_id("workspace-1", "child-1")
+        .expect("query achieved generation")
+        .expect("achieved generation exists");
+    assert_eq!(achieved.status.as_str(), "achieved");
+    assert_eq!(achieved.physical_generation, 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn host_execution_observation_resumes_exact_namespace_without_new_generation() {
+    let root = tempfile::tempdir().expect("Host execution registry tempdir");
+    let registry = std::sync::Arc::new(
+        crate::AgentSessionRegistry::open_or_create_state_root(root.path().join("state"))
+            .expect("open Host execution registry"),
+    );
+    let start = AgentHostLifecycleEventIpc {
+        host_event_id: "host-event-1".to_owned(),
+        host_event_sequence: 1,
+        namespace_id: "asp-explorer".to_owned(),
+        kind: AgentHostLifecycleEventKind::Started,
+        platform: "codex".to_owned(),
+        project_id: "workspace-1".to_owned(),
+        root_session_id: "root-1".to_owned(),
+        parent_session_id: "root-1".to_owned(),
+        child_session_id: "child-1".to_owned(),
+        host_task_name: "asp_explorer".to_owned(),
+        platform_host_agent_name: "asp_explorer".to_owned(),
+        route_key: "asp_explorer".to_owned(),
+        profile_id: "agents/asp_explorer.toml".to_owned(),
+        role: "explore".to_owned(),
+        model: "gpt-test".to_owned(),
+        model_digest: "blake3-256:model".to_owned(),
+        profile_digest: "blake3-256:profile".to_owned(),
+        sandbox_mode: "read-only".to_owned(),
+        session_lifetime: "resident".to_owned(),
+        payload_digest: "blake3-256:payload".to_owned(),
+        transcript_path: Some("/tmp/child.jsonl".to_owned()),
+        observed_at: 10,
+    };
+    super::record_host_lifecycle_event(&registry, start.clone()).expect("start namespace");
+    super::record_host_lifecycle_event(
+        &registry,
+        AgentHostLifecycleEventIpc {
+            host_event_id: "host-event-2".to_owned(),
+            host_event_sequence: 2,
+            kind: AgentHostLifecycleEventKind::Stopped,
+            observed_at: 20,
+            ..start
+        },
+    )
+    .expect("stop namespace");
+
+    let tasks = (0..64).map(|index| {
+        let registry = std::sync::Arc::clone(&registry);
+        tokio::spawn(async move {
+            registry
+                .record_host_execution_observation_local(&AgentHostExecutionObservationIpc {
+                    observation_id: format!("tool-{index}"),
+                    project_id: "workspace-1".to_owned(),
+                    root_session_id: "root-1".to_owned(),
+                    child_session_id: "child-1".to_owned(),
+                    platform_host_agent_name: "asp_explorer".to_owned(),
+                    transcript_path: "/tmp/child.jsonl".to_owned(),
+                    observed_at: 30 + index,
+                })
+                .await
+        })
+    });
+    for task in tasks {
+        assert!(
+            task.await
+                .expect("observation task")
+                .expect("observe child")
+        );
+    }
+
+    let resumed = registry
+        .query_sessions_local(
+            "workspace-1".to_owned(),
+            Some("root-1".into()),
+            Some("asp_explorer".into()),
+        )
+        .await
+        .expect("query resumed namespace")
+        .pop()
+        .expect("resumed namespace exists");
+    assert_eq!(resumed.status(), "active");
+    assert_eq!(resumed.physical_generation, 1);
+    assert_eq!(resumed.message_target_id(), Some("child-1"));
+    assert!(resumed.metadata_json().contains("lastExecutionObservation"));
+    assert!(resumed.metadata_json().contains("\"routable\":true"));
+}
+
+#[tokio::test]
+async fn host_execution_observation_never_creates_or_rebinds_a_namespace() {
+    let root = tempfile::tempdir().expect("Host execution registry tempdir");
+    let registry =
+        crate::AgentSessionRegistry::open_or_create_state_root(root.path().join("state"))
+            .expect("open Host execution registry");
+    let observation = AgentHostExecutionObservationIpc {
+        observation_id: "tool-1".to_owned(),
+        project_id: "workspace-1".to_owned(),
+        root_session_id: "root-1".to_owned(),
+        child_session_id: "child-1".to_owned(),
+        platform_host_agent_name: "asp_explorer".to_owned(),
+        transcript_path: "/tmp/child.jsonl".to_owned(),
+        observed_at: 30,
+    };
+
+    let absent = registry
+        .record_host_execution_observation_local(&observation)
+        .await
+        .expect_err("an execution observation must not create a namespace");
+    assert!(absent.contains("namespace"), "{absent}");
+    assert!(
+        registry
+            .query_sessions_local("workspace-1".to_owned(), None, None)
+            .await
+            .expect("query empty registry")
+            .is_empty()
+    );
+
+    let start = AgentHostLifecycleEventIpc {
+        host_event_id: "host-event-1".to_owned(),
+        host_event_sequence: 1,
+        namespace_id: "asp-explorer".to_owned(),
+        kind: AgentHostLifecycleEventKind::Started,
+        platform: "codex".to_owned(),
+        project_id: "workspace-1".to_owned(),
+        root_session_id: "root-1".to_owned(),
+        parent_session_id: "root-1".to_owned(),
+        child_session_id: "child-1".to_owned(),
+        host_task_name: "asp_explorer".to_owned(),
+        platform_host_agent_name: "asp_explorer".to_owned(),
+        route_key: "asp_explorer".to_owned(),
+        profile_id: "agents/asp_explorer.toml".to_owned(),
+        role: "explore".to_owned(),
+        model: "gpt-test".to_owned(),
+        model_digest: "blake3-256:model".to_owned(),
+        profile_digest: "blake3-256:profile".to_owned(),
+        sandbox_mode: "read-only".to_owned(),
+        session_lifetime: "resident".to_owned(),
+        payload_digest: "blake3-256:payload".to_owned(),
+        transcript_path: Some("/tmp/child.jsonl".to_owned()),
+        observed_at: 10,
+    };
+    super::record_host_lifecycle_event(&registry, start.clone()).expect("start namespace");
+
+    let wrong_child = registry
+        .record_host_execution_observation_local(&AgentHostExecutionObservationIpc {
+            child_session_id: "child-2".to_owned(),
+            ..observation.clone()
+        })
+        .await
+        .expect_err("an execution observation must not rebind another child");
+    assert!(
+        wrong_child.starts_with("host-execution-observation-identity-mismatch:"),
+        "{wrong_child}"
+    );
+
+    super::record_host_lifecycle_event(
+        &registry,
+        AgentHostLifecycleEventIpc {
+            host_event_id: "host-event-2".to_owned(),
+            host_event_sequence: 2,
+            kind: AgentHostLifecycleEventKind::Achieved,
+            observed_at: 40,
+            ..start
+        },
+    )
+    .expect("achieve namespace");
+    let achieved = registry
+        .record_host_execution_observation_local(&observation)
+        .await
+        .expect_err("execution evidence must not revive an achieved namespace");
+    assert!(!achieved.is_empty());
+    let terminal = registry
+        .session_by_id("workspace-1", "child-1")
+        .expect("query achieved namespace")
+        .expect("achieved namespace exists");
+    assert_eq!(terminal.status, "achieved");
+    assert_eq!(terminal.physical_generation, 1);
 }
 
 #[test]
-fn resident_namespace_prefers_live_instance_and_rejects_terminal_reuse() {
+fn existing_namespace_rejects_second_start_and_requires_native_resume() {
     let root = tempfile::tempdir().expect("Host lifecycle registry tempdir");
     let registry =
         crate::AgentSessionRegistry::open_or_create_state_root(root.path().join("state"))
             .expect("open Host lifecycle registry");
     let start = AgentHostLifecycleEventIpc {
+        host_event_id: "host-event-1".to_owned(),
+        host_event_sequence: 1,
+        namespace_id: "asp-testing".to_owned(),
         kind: AgentHostLifecycleEventKind::Started,
         platform: "codex".to_owned(),
         project_id: "workspace-1".to_owned(),
@@ -109,11 +331,13 @@ fn resident_namespace_prefers_live_instance_and_rejects_terminal_reuse() {
     };
     let duplicate_error = super::record_host_lifecycle_event(&registry, duplicate)
         .expect_err("a live resident must be called or resumed before another spawn");
-    assert!(duplicate_error.starts_with("resident-first-call-resume-required:"));
+    assert!(duplicate_error.starts_with("existing-host-namespace-identity-mismatch:"));
 
     super::record_host_lifecycle_event(
         &registry,
         AgentHostLifecycleEventIpc {
+            host_event_id: "host-event-2".to_owned(),
+            host_event_sequence: 2,
             kind: AgentHostLifecycleEventKind::Stopped,
             observed_at: 12,
             ..start.clone()
@@ -123,10 +347,31 @@ fn resident_namespace_prefers_live_instance_and_rejects_terminal_reuse() {
     let reuse_error = super::record_host_lifecycle_event(
         &registry,
         AgentHostLifecycleEventIpc {
+            host_event_id: "host-event-3".to_owned(),
+            host_event_sequence: 3,
+            payload_digest: "blake3-256:restart-attempt".to_owned(),
             observed_at: 13,
+            ..start.clone()
+        },
+    )
+    .expect_err("existing child identity must use resume");
+    assert!(reuse_error.starts_with("existing-host-namespace-requires-resume:"));
+
+    super::record_host_lifecycle_event(
+        &registry,
+        AgentHostLifecycleEventIpc {
+            host_event_id: "host-event-4".to_owned(),
+            host_event_sequence: 4,
+            kind: AgentHostLifecycleEventKind::Resumed,
+            observed_at: 14,
             ..start
         },
     )
-    .expect_err("terminal child identity must not be reused");
-    assert!(reuse_error.starts_with("terminal-host-instance-reuse:"));
+    .expect("resume existing child identity");
+    let resumed = registry
+        .session_by_id("workspace-1", "child-1")
+        .expect("query resumed namespace")
+        .expect("resumed namespace exists");
+    assert_eq!(resumed.status.as_str(), "active");
+    assert_eq!(resumed.physical_generation, 1);
 }

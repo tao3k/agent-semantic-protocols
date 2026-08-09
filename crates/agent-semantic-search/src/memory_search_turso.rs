@@ -192,7 +192,7 @@ impl TursoMemorySearchBackend {
             },
             performance: MemorySearchPerformanceReceipt {
                 generation_load_micros: 0,
-                index_lookup_micros: started.elapsed().as_micros(),
+                index_lookup_micros: started.elapsed().as_micros().try_into().unwrap_or(u64::MAX),
                 candidate_count,
                 source_bytes_materialized: 0,
                 db_opens: 0,

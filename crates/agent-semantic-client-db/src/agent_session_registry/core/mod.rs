@@ -1,6 +1,7 @@
 //! Agent-session registry facade over storage and synchronous API ownership.
 
 mod api;
+mod host_execution;
 mod retirement;
 mod storage;
 mod storage_bootstrap;

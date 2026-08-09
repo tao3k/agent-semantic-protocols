@@ -22,10 +22,8 @@ fn canonical_plugin_payload_is_marketplace_owned_and_complete() {
 
     let manifest: serde_json::Value =
         serde_json::from_str(ASP_CODEX_PLUGIN_MANIFEST_JSON).expect("valid plugin manifest");
-    assert_eq!(
-        manifest.get("hooks").and_then(serde_json::Value::as_str),
-        Some("./hooks/hooks.json")
-    );
+    assert!(manifest.get("hooks").is_none());
+    assert!(manifest.get("skills").is_none());
     let marketplace: serde_json::Value = serde_json::from_str(ASP_CODEX_PLUGIN_MARKETPLACE_JSON)
         .expect("valid marketplace manifest");
     assert_eq!(

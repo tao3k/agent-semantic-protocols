@@ -18,13 +18,14 @@ pub(crate) struct RuntimeServerSearchSnapshot {
 
 impl RuntimeServerSearchDataPlane {
     pub(crate) fn current_snapshot(&self) -> Result<RuntimeServerSearchSnapshot, String> {
+        let authority = &self.authority;
         let workspace_generation =
             agent_semantic_content_identity::workspace_generation_evidence::ValidatedWorkspaceGenerationV1::new(
-                self.authority.workspace_generation.clone(),
+                authority.workspace_generation.clone(),
             )
             .map_err(|error| format!("resident search generation evidence is incomplete: {error}"))?;
         Ok(RuntimeServerSearchSnapshot {
-            source_snapshot: self.authority.source_snapshot.clone(),
+            source_snapshot: authority.source_snapshot.clone(),
             workspace_generation,
         })
     }
@@ -42,13 +43,6 @@ impl RuntimeServerSearchDataPlane {
         self.session.read_source_index(&request).await
     }
 
-    pub(crate) async fn read_graph_facts(
-        &self,
-        sources: Vec<agent_semantic_client_db::workspace_db_ipc::RuntimeGraphFactSource>,
-    ) -> Result<agent_semantic_client_db::workspace_db_ipc::RuntimeGraphFactsRead, String> {
-        self.session.runtime_graph_facts(sources).await
-    }
-
     pub(crate) async fn read_owner(
         &self,
         owner_path: &str,
@@ -58,18 +52,11 @@ impl RuntimeServerSearchDataPlane {
     }
 }
 
-async fn generation_session(
-    project_root: &Path,
-) -> Result<agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession, String> {
-    // The global Runtime Server owns workspace routing and generation opens.
-    // Query clients receive no mmap locator or workspace-owner socket.
-    crate::server::runtime_server::runtime_server_workspace_session_async(project_root).await
-}
-
 pub(crate) async fn runtime_server_search_data_plane_async(
     project_root: &Path,
 ) -> Result<RuntimeServerSearchDataPlane, String> {
-    let session = generation_session(project_root).await?;
+    let session =
+        crate::server::runtime_server::runtime_server_workspace_session_async(project_root).await?;
     let authority = session.runtime_search_generation_authority().await?;
     Ok(RuntimeServerSearchDataPlane { session, authority })
 }
@@ -86,7 +73,8 @@ pub(crate) async fn runtime_server_workspace_exact_projection_async(
     structural_selector: &str,
 ) -> Result<agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead, String>
 {
-    let session = generation_session(project_root).await?;
+    let session =
+        crate::server::runtime_server::runtime_server_workspace_session_async(project_root).await?;
     session
         .read_runtime_selector(language_id, projection_kind, structural_selector)
         .await

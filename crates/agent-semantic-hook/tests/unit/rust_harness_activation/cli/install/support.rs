@@ -6,7 +6,31 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(super) fn git_project_root(name: &str) -> PathBuf {
     let root = temp_project_root(name);
-    std::fs::create_dir_all(root.join(".git")).expect("create temp git toplevel marker");
+    let repository = gix::open(&root).expect("open temporary Git workspace with gix");
+    let config_path = repository.git_dir().join("config");
+    let mut config =
+        gix_config::File::from_path_no_includes(config_path.clone(), gix_config::Source::Local)
+            .expect("load temporary Git config with gix-config");
+    let remote_url = format!("https://example.invalid/asp/{name}.git");
+    config
+        .set_raw_value_by("remote", Some("origin".into()), "url", remote_url.as_str())
+        .expect("set durable fixture remote with gix-config");
+    let mut config_bytes = Vec::new();
+    config
+        .write_to(&mut config_bytes)
+        .expect("serialize temporary Git config with gix-config");
+    std::fs::write(&config_path, config_bytes).expect("write temporary Git config");
+
+    let resolved = agent_semantic_runtime::state_core::ResolvedState::resolve_with_state_home(
+        &root,
+        root.join(".fixture-state-home"),
+    )
+    .expect("resolve gix-owned fixture identity");
+    assert_eq!(
+        resolved.repo.persistence,
+        agent_semantic_runtime::state_core::RepoPersistence::Git,
+        "install fixture must be admitted from its gix-derived remote identity"
+    );
     write_test_codex_plugin(&root);
     write_fake_codex_cli(&root);
     root
@@ -140,9 +164,6 @@ fn local_test_org_repo() -> PathBuf {
 }
 
 fn run_git(root: &Path, args: &[&str]) {
-    let _git_fixture = crate::integration_fixture::GIT_FIXTURE_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let output = crate::integration_fixture::isolated_git_command()
         .current_dir(root)
         .args(args)

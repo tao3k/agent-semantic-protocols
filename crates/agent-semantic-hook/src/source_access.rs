@@ -454,13 +454,13 @@ pub fn codex_shell_egress_suppression_decision(
     let route = match matched.kind {
         SourceSelectorKind::ExactPath => matched.provider.route_from_template(
             DecisionRouteKind::Owner,
-            &matched.provider.routes.owner,
+            &matched.provider.owner_route,
             Some(&matched.route_selector),
             None,
         ),
         SourceSelectorKind::Pattern => matched.provider.route_from_template(
             DecisionRouteKind::Lexical,
-            &matched.provider.routes.lexical,
+            &matched.provider.lexical_route,
             Some(&matched.route_selector),
             Some(&matched.route_selector),
         ),

@@ -1,9 +1,32 @@
 #[test]
+fn db_engine_rejects_uncommitted_state_core_path_without_creating_project_shell() {
+    let state_home = temp_root("db-engine-uncommitted-state-home");
+    let projects_by_id = state_home.join("projects/by-id");
+    let client_dir = projects_by_id
+        .join("repo-uncommitted")
+        .join("workspaces/workspace-uncommitted/live/client");
+
+    let Err(error) = ClientDbEngine::open_write_session_client_dir(&client_dir) else {
+        panic!("naked DB path must not materialize State Core ancestors");
+    };
+
+    assert!(error.contains("state-core-materialization-required"));
+    assert!(
+        !projects_by_id.exists(),
+        "rejected DB write must create no project registry shell"
+    );
+}
+
+#[test]
 fn db_engine_write_session_imports_manifest_without_exposing_retired_db_handle() {
     let project_root = temp_root("db-engine-write-session-project");
     let state_home = temp_root("db-engine-write-session-state-home");
+    init_git_repository(&project_root);
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
+    state
+        .ensure_minimal_layout()
+        .expect("commit State Core identity before DB write");
     fs::create_dir_all(project_root.join("src")).expect("create src dir");
     fs::write(
         project_root.join("src/lib.rs"),
@@ -99,8 +122,12 @@ fn db_engine_write_session_imports_manifest_without_exposing_retired_db_handle()
 async fn db_engine_cache_status_survives_concurrent_read_write_smoke() {
     let project_root = temp_root("db-engine-cache-status-concurrent-project");
     let state_home = temp_root("db-engine-cache-status-concurrent-state-home");
+    init_git_repository(&project_root);
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
+    state
+        .ensure_minimal_layout()
+        .expect("commit State Core identity before DB write");
     ClientDbEngine::from_resolved_state(&state)
         .bootstrap_active_turso()
         .await
@@ -386,10 +413,7 @@ fn agent_session_claim_replaces_archived_resident_child_for_root_and_name() {
         )
         .expect("claim replacement resident child");
 
-    assert_eq!(
-        replacement.session_id(),
-        "archived-claim-replacement"
-    );
+    assert_eq!(replacement.session_id(), "archived-claim-replacement");
     assert_eq!(
         registry
             .session_by_name(project_id, root_session_id, "asp-explore")

@@ -367,11 +367,14 @@ fn resolve_catalog_entry(
     entries_by_root: &BTreeMap<PathBuf, RuntimeWorkspaceAdmissionCatalogEntry>,
     project_root: &std::path::Path,
 ) -> Result<RuntimeWorkspaceAdmissionCatalogEntry, RuntimeWorkspaceAdmissionCatalogResolveError> {
-    entries_by_root.get(project_root).cloned().ok_or_else(|| {
-        RuntimeWorkspaceAdmissionCatalogResolveError::WorkspaceNotAdmitted(
-            project_root.to_path_buf(),
-        )
-    })
+    project_root
+        .ancestors()
+        .find_map(|candidate| entries_by_root.get(candidate).cloned())
+        .ok_or_else(|| {
+            RuntimeWorkspaceAdmissionCatalogResolveError::WorkspaceNotAdmitted(
+                project_root.to_path_buf(),
+            )
+        })
 }
 
 #[cfg(unix)]

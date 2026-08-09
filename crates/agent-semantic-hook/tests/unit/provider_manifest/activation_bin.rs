@@ -1,44 +1,12 @@
-use agent_semantic_hook::build_default_activation;
-use std::env;
-use std::ffi::OsString;
+use agent_semantic_hook::build_default_activation_with_state_home;
 use std::fs;
 
 use super::{git_init, make_executable, temp_root};
 
-pub(crate) struct StateHomeEnvGuard {
-    previous: Option<OsString>,
-}
-
-impl StateHomeEnvGuard {
-    pub(crate) fn set(state_home: &std::path::Path) -> Self {
-        let previous = env::var_os("ASP_STATE_HOME");
-        unsafe {
-            env::set_var("ASP_STATE_HOME", state_home);
-        }
-        Self { previous }
-    }
-}
-
-impl Drop for StateHomeEnvGuard {
-    fn drop(&mut self) {
-        unsafe {
-            if let Some(previous) = &self.previous {
-                env::set_var("ASP_STATE_HOME", previous);
-            } else {
-                env::remove_var("ASP_STATE_HOME");
-            }
-        }
-    }
-}
-
 #[test]
 fn default_activation_uses_state_home_runtime_provider_receipt() {
-    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = temp_root("state-home-runtime-provider");
     let state_home = root.join(".asp-state-home");
-    let _state_home_guard = StateHomeEnvGuard::set(&state_home);
     git_init(&root);
     fs::create_dir_all(root.join("src")).expect("create src");
     fs::write(
@@ -49,7 +17,8 @@ fn default_activation_uses_state_home_runtime_provider_receipt() {
     fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
     install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
 
-    let activation = build_default_activation(&root).expect("build activation");
+    let activation =
+        build_default_activation_with_state_home(&root, &state_home).expect("build activation");
     let rust = activation
         .providers
         .iter()
@@ -67,12 +36,8 @@ fn default_activation_uses_state_home_runtime_provider_receipt() {
 
 #[test]
 fn default_activation_resolves_nested_provider_project_entries() {
-    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = temp_root("nested-provider-project-entry");
     let state_home = root.join(".asp-state-home");
-    let _state_home_guard = StateHomeEnvGuard::set(&state_home);
     git_init(&root);
     let package_root = root.join("packages").join("python");
     fs::create_dir_all(package_root.join("src")).expect("create nested Python source root");
@@ -88,7 +53,8 @@ fn default_activation_resolves_nested_provider_project_entries() {
     .expect("write nested Python candidate");
     install_state_home_provider(&state_home, "python", "py-harness", "py-harness");
 
-    let activation = build_default_activation(&root).expect("build nested provider activation");
+    let activation = build_default_activation_with_state_home(&root, &state_home)
+        .expect("build nested provider activation");
     let python = activation
         .providers
         .iter()
@@ -110,12 +76,8 @@ fn default_activation_resolves_nested_provider_project_entries() {
 
 #[test]
 fn default_activation_rejects_project_relative_provider_override() {
-    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = temp_root("reject-project-relative-provider");
     let state_home = root.join(".asp-state-home");
-    let _state_home_guard = StateHomeEnvGuard::set(&state_home);
     fs::create_dir_all(root.join("src")).expect("create src");
     fs::write(
         root.join("Cargo.toml"),
@@ -127,7 +89,7 @@ fn default_activation_rejects_project_relative_provider_override() {
         "[providers.rust]\nbinary = \".bin/custom-rs-harness\"\n",
     );
 
-    let error = build_default_activation(&root)
+    let error = build_default_activation_with_state_home(&root, &state_home)
         .expect_err("project-relative provider override must fail closed");
     assert!(
         error.contains("binary must be a logical basename resolved under State Home runtime/bin"),
@@ -139,12 +101,8 @@ fn default_activation_rejects_project_relative_provider_override() {
 
 #[test]
 fn default_activation_rejects_absolute_provider_override() {
-    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = temp_root("reject-absolute-provider");
     let state_home = root.join(".asp-state-home");
-    let _state_home_guard = StateHomeEnvGuard::set(&state_home);
     fs::create_dir_all(root.join("src")).expect("create src");
     fs::write(
         root.join("Cargo.toml"),
@@ -159,8 +117,8 @@ fn default_activation_rejects_absolute_provider_override() {
         ),
     );
 
-    let error =
-        build_default_activation(&root).expect_err("absolute provider override must fail closed");
+    let error = build_default_activation_with_state_home(&root, &state_home)
+        .expect_err("absolute provider override must fail closed");
     assert!(
         error.contains("binary must be a logical basename resolved under State Home runtime/bin"),
         "{error}"
@@ -171,12 +129,8 @@ fn default_activation_rejects_absolute_provider_override() {
 
 #[test]
 fn document_language_flags_do_not_create_executable_activation_entries() {
-    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = temp_root("document-provider-disable");
     let state_home = root.join(".asp-state-home");
-    let _state_home_guard = StateHomeEnvGuard::set(&state_home);
     git_init(&root);
     fs::write(root.join("README.md"), "# fixture\n").expect("write Markdown candidate");
     install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
@@ -199,7 +153,8 @@ enabled = false
 "#,
     );
 
-    let activation = build_default_activation(&root).expect("build activation");
+    let activation =
+        build_default_activation_with_state_home(&root, &state_home).expect("build activation");
 
     assert!(
         !activation
@@ -226,12 +181,8 @@ enabled = false
 
 #[test]
 fn top_level_asp_toml_no_longer_configures_provider_activation() {
-    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = temp_root("top-level-ignored");
     let state_home = root.join(".asp-state-home");
-    let _state_home_guard = StateHomeEnvGuard::set(&state_home);
     git_init(&root);
     fs::write(root.join("README.md"), "# fixture\n").expect("write Markdown candidate");
     fs::write(root.join("fixture.org"), "* Fixture\n").expect("write Org candidate");
@@ -239,7 +190,8 @@ fn top_level_asp_toml_no_longer_configures_provider_activation() {
     fs::write(root.join("asp.toml"), "[providers.rust]\nenabled = false\n")
         .expect("write ignored top-level asp.toml");
 
-    let activation = build_default_activation(&root).expect("build activation");
+    let activation =
+        build_default_activation_with_state_home(&root, &state_home).expect("build activation");
 
     assert!(
         activation

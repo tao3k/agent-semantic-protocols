@@ -3,6 +3,27 @@ use super::{
     load_client_config, temp_root,
 };
 
+#[cfg(unix)]
+fn current_thread_cpu_nanos() -> u128 {
+    let mut time = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: `time` is a valid writable timespec and the clock is process-local.
+    let status = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut time) };
+    assert_eq!(status, 0, "read current-thread CPU clock");
+    (time.tv_sec as u128) * 1_000_000_000 + (time.tv_nsec as u128)
+}
+
+#[cfg(not(unix))]
+fn current_thread_cpu_nanos() -> u128 {
+    static STARTED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    STARTED
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_nanos()
+}
+
 #[test]
 fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
     let root = temp_root("config-driven-match-engine-contract");
@@ -156,6 +177,7 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
         registry.project_root
     );
     let case_sequence = std::cell::Cell::new(0_u64);
+    let measured_matcher_shapes = std::cell::RefCell::new(std::collections::BTreeSet::new());
     let run_case = |tool_name: &str, tool_input: serde_json::Value, case_id: &str| {
         let case_index = case_sequence.get();
         case_sequence.set(case_index + 1);
@@ -175,18 +197,34 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
             })
         };
         let decision = classify_sample(&production_config, "decision");
+        let rule_id = case_id.split(':').next().expect("case rule id");
+        let shape = if case_id.contains(":wrapper:") {
+            "wrapper"
+        } else {
+            "direct"
+        };
+        if !measured_matcher_shapes
+            .borrow_mut()
+            .insert((rule_id.to_owned(), shape))
+        {
+            return decision;
+        }
+        // Keep the conformance matrix broad while bounding its aggregate wall
+        // time under Cargo's default parallel test scheduler. Correctness still
+        // covers every witness; latency is sampled once per rule and envelope
+        // shape so repeated wrapper strings do not multiply the wall budget.
         const MATCHER_SAMPLE_BATCH: u128 = 8;
         let mut elapsed_samples = [0_u128; 5];
         for (batch_index, elapsed_micros) in elapsed_samples.iter_mut().enumerate() {
             let measure = |config: &ClientHookConfig, label: &str| {
-                let started = std::time::Instant::now();
+                let started = current_thread_cpu_nanos();
                 for sample_index in 0..MATCHER_SAMPLE_BATCH {
                     let _ = classify_sample(
                         config,
                         &format!("performance-{batch_index}-{label}-{sample_index}"),
                     );
                 }
-                started.elapsed().as_micros() / MATCHER_SAMPLE_BATCH
+                (current_thread_cpu_nanos() - started) / 1_000 / MATCHER_SAMPLE_BATCH
             };
             let (production_micros, baseline_micros) = if batch_index % 2 == 0 {
                 let baseline = measure(&baseline_config, "baseline");
@@ -201,11 +239,10 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
         }
         elapsed_samples.sort_unstable();
         let elapsed_micros = elapsed_samples[0];
-        let rule_id = case_id.split(':').next().expect("case rule id");
         if !external_evidence_rule_ids.contains(rule_id) {
             assert!(
                 elapsed_micros <= max_matcher_micros,
-                "matcher exceeded config-test.toml uncontended gate: case={case_id} bestBatchMeanMicros={elapsed_micros} samples={elapsed_samples:?} maxMatcherMicros={max_matcher_micros}"
+                "matcher exceeded config-test.toml current-thread CPU gate: case={case_id} bestBatchMeanMicros={elapsed_micros} samples={elapsed_samples:?} maxMatcherMicros={max_matcher_micros}"
             );
         }
         decision
@@ -281,7 +318,25 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
                         Some("asp session --agents choice-plane"),
                         "positive case changed the Org Agent window: {case_id}"
                     );
-                    for forbidden in ["receiptKind", "residentName", "targetAgentName"] {
+                    assert!(
+                        decision_json["fields"]["targetAgentName"]
+                            .as_str()
+                            .is_some_and(|name| !name.is_empty()),
+                        "positive case omitted tag-selected typed agent: {case_id}"
+                    );
+                    assert!(
+                        decision_json["fields"]["targetAgentRole"]
+                            .as_str()
+                            .is_some_and(|role| !role.is_empty()),
+                        "positive case omitted tag-selected agent role: {case_id}"
+                    );
+                    assert!(
+                        decision_json["fields"]["targetAgentDescription"]
+                            .as_str()
+                            .is_some_and(|description| !description.is_empty()),
+                        "positive case omitted agent description: {case_id}"
+                    );
+                    for forbidden in ["receiptKind", "residentName"] {
                         assert!(
                             decision_json["fields"].get(forbidden).is_none(),
                             "positive case preselected a resident through {forbidden}: {case_id}"

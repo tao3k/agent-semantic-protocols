@@ -25,11 +25,14 @@ use crate::tool_action::{ToolAction, subject_for_action};
 #[derive(Debug)]
 /// Compiled hook rules loaded from the global ASP state root.
 pub struct ClientHookConfig {
-    source_config: agent_semantic_config::HookClientConfigFile,
+    source_config: Option<agent_semantic_config::HookClientConfigFile>,
     pub(in crate::hook_config) rules: Vec<CompiledHookRule>,
     rule_candidates: RuleCandidateIndex,
     policy_receipt: std::sync::OnceLock<HookPolicyReceipt>,
     language_providers: Vec<agent_semantic_config::HookClientLanguageProviderConfig>,
+    policy_generation_digest: String,
+    provider_projections:
+        Vec<crate::protocol_activation::protocol_activation_manifest::HookProviderProjection>,
     contract_fingerprint: Option<String>,
     semantic_ast_patch_disabled: bool,
     agent_org_artifacts: CompiledAgentOrgArtifactsConfig,
@@ -67,11 +70,12 @@ pub(in crate::hook_config) struct CompiledHookRule {
 
 #[derive(Debug)]
 pub(in crate::hook_config) struct CompiledRuleDispatch {
-    transport: agent_semantic_config::HookClientRuleDispatchTransport,
+    pub(super) transport: agent_semantic_config::HookClientRuleDispatchTransport,
     pub(in crate::hook_config) resident_name: String,
     pub(in crate::hook_config) resident_codex_agent_name: String,
     pub(in crate::hook_config) resident_role: String,
-    receipt_kind: String,
+    pub(in crate::hook_config) resident_description: String,
+    pub(super) receipt_kind: String,
     lazy_provider: Option<agent_semantic_config::HookClientLazyProviderPolicy>,
 }
 
@@ -92,7 +96,20 @@ pub(super) struct RuleMatch {
     pub(super) argv_workspace_regular_file: bool,
     pub(super) argv_structured_document_file: bool,
     pub(super) argv_registered_source_file: bool,
-    structured_projection: Option<agent_semantic_config::HookClientStructuredProjectionMatchConfig>,
+    structured_projection: Option<CompiledStructuredProjection>,
+}
+
+#[derive(Debug)]
+struct CompiledStructuredProjection {
+    config: agent_semantic_config::HookClientStructuredProjectionMatchConfig,
+    capability_available: bool,
+}
+
+#[derive(Default)]
+struct ResolvedActionPolicies {
+    all: Vec<agent_semantic_config::HookClientActionPolicyConfig>,
+    any: Vec<agent_semantic_config::HookClientActionPolicyConfig>,
+    none: Vec<agent_semantic_config::HookClientActionPolicyConfig>,
 }
 
 #[derive(Debug)]
@@ -241,51 +258,11 @@ impl CompiledHookRule {
         {
             decision_fields.insert("agentAction".to_string(), agent_action);
         }
-        if let Some(dispatch) = self.dispatch.as_ref() {
-            for (field, value) in [
-                ("transport", dispatch.transport.as_str()),
-                ("residentName", dispatch.resident_name.as_str()),
-                (
-                    "targetAgentName",
-                    dispatch.resident_codex_agent_name.as_str(),
-                ),
-                ("targetAgentRole", dispatch.resident_role.as_str()),
-                ("agentSessionAction", "dispatch-configured-resident"),
-                ("receiptKind", dispatch.receipt_kind.as_str()),
-                ("targetAgentSelectionSource", "hook-config-rule-dispatch"),
-            ] {
-                decision_fields.insert(
-                    field.to_string(),
-                    serde_json::Value::String(value.to_string()),
-                );
-            }
-            if let Some(command) = action.command.as_deref() {
-                use sha2::{Digest, Sha256};
-                decision_fields.insert(
-                    "commandDigest".to_string(),
-                    serde_json::Value::String(format!(
-                        "sha256:{:x}",
-                        Sha256::digest(command.as_bytes())
-                    )),
-                );
-            }
-            decision_fields.insert(
-                "requiredAction".to_string(),
-                serde_json::Value::String("open-org-interactive-resident-agent-window".to_string()),
-            );
-            decision_fields.insert(
-                "nextAction".to_string(),
-                serde_json::Value::String("run-asp-session-agent-window".to_string()),
-            );
-            decision_fields.insert(
-                "agentWindowCommand".to_string(),
-                serde_json::Value::String("asp session --agents choice-plane".to_string()),
-            );
-            decision_fields.insert(
-                "choicePlaneOwner".to_string(),
-                serde_json::Value::String("org-contract:agent-interactive".to_string()),
-            );
-        }
+        super::dispatch_fields::extend_dispatch_fields(
+            &mut decision_fields,
+            self.dispatch.as_ref(),
+            action,
+        );
         let registered_asp = crate::hook_config::core::registered_asp::match_registered_asp_command(
             &self.match_config.argv_pattern_any,
             runtime,
@@ -344,6 +321,8 @@ impl RuleMatch {
     fn try_from_config(
         mut config: HookClientRuleMatchConfig,
         durable_matcher: Option<DurableRuleMatcherArtifact>,
+        policies: ResolvedActionPolicies,
+        executable_capabilities: Option<&std::collections::BTreeSet<String>>,
     ) -> Result<Self, String> {
         let mut tool_any = std::mem::take(&mut config.tool_any);
         if let Some(tool) = config.tool.take() {
@@ -374,6 +353,9 @@ impl RuleMatch {
                     authority_exclude_any: std::mem::take(&mut config.authority_exclude_any),
                     authority_rules: std::mem::take(&mut config.authority_rules),
                     effect_rules: std::mem::take(&mut config.effect_rules),
+                    policy_all: policies.all,
+                    policy_any: policies.any,
+                    policy_none: policies.none,
                 },
             ),
             wrapper_match: agent_semantic_config::WrapperMatchMode::default(),
@@ -390,7 +372,19 @@ impl RuleMatch {
             argv_workspace_regular_file: config.argv_workspace_regular_file,
             argv_structured_document_file: config.argv_structured_document_file,
             argv_registered_source_file: config.argv_registered_source_file,
-            structured_projection: config.structured_projection,
+            structured_projection: config.structured_projection.map(|config| {
+                let capability_available = executable_capabilities.map_or_else(
+                    || {
+                        crate::executable::resolve_executable_with_status(&config.binary).status
+                            == crate::executable::ExecutableStatus::Available
+                    },
+                    |available| available.contains(&config.binary),
+                );
+                CompiledStructuredProjection {
+                    config,
+                    capability_available,
+                }
+            }),
         })
     }
 
@@ -429,9 +423,13 @@ impl RuleMatch {
         let Some(projection) = self.structured_projection.as_ref() else {
             return Ok(None);
         };
-        crate::hook_config::core::structured_projection::match_source_operands(projection, action)
-            .map(Some)
-            .ok_or(())
+        crate::hook_config::core::structured_projection::match_source_operands(
+            &projection.config,
+            projection.capability_available,
+            action,
+        )
+        .map(Some)
+        .ok_or(())
     }
 
     fn matches_paths(&self, paths: &[String]) -> bool {
@@ -620,7 +618,7 @@ impl RuleMatch {
             return true;
         };
         let format = structured_document_format(candidate);
-        format.is_some_and(|format| format == projection.document_format)
+        format.is_some_and(|format| format == projection.config.document_format)
     }
 }
 
@@ -684,49 +682,6 @@ impl RuleRoute {
     }
 }
 
-fn merge_agent_session_messages(
-    mut config: agent_semantic_config::HookClientAgentSessionMessagesConfig,
-    defaults: agent_semantic_config::HookClientAgentSessionMessagesConfig,
-) -> agent_semantic_config::HookClientAgentSessionMessagesConfig {
-    if config.session_start_reuse.is_none() {
-        config.session_start_reuse = defaults.session_start_reuse;
-    }
-    if config.session_start_bootstrap.is_none() {
-        config.session_start_bootstrap = defaults.session_start_bootstrap;
-    }
-    if config.missing_resident_explore.is_none() {
-        config.missing_resident_explore = defaults.missing_resident_explore;
-    }
-    if config.main_restricted_with_child.is_none() {
-        config.main_restricted_with_child = defaults.main_restricted_with_child;
-    }
-    if config.main_restricted_without_child.is_none() {
-        config.main_restricted_without_child = defaults.main_restricted_without_child;
-    }
-    if config.binary_gate_with_child.is_none() {
-        config.binary_gate_with_child = defaults.binary_gate_with_child;
-    }
-    if config.binary_gate_without_child.is_none() {
-        config.binary_gate_without_child = defaults.binary_gate_without_child;
-    }
-    if config.binary_gate_invalid_child.is_none() {
-        config.binary_gate_invalid_child = defaults.binary_gate_invalid_child;
-    }
-    if config.binary_gate_registry_blocked.is_none() {
-        config.binary_gate_registry_blocked = defaults.binary_gate_registry_blocked;
-    }
-    if config.source_access_compact.is_none() {
-        config.source_access_compact = defaults.source_access_compact;
-    }
-    if config.source_access_compact_repeated.is_none() {
-        config.source_access_compact_repeated = defaults.source_access_compact_repeated;
-    }
-    if config.source_access_compact_subagent.is_none() {
-        config.source_access_compact_subagent = defaults.source_access_compact_subagent;
-    }
-    config
-}
-
 impl TryFrom<HookClientRuleConfig> for CompiledHookRule {
     type Error = String;
 
@@ -735,6 +690,7 @@ impl TryFrom<HookClientRuleConfig> for CompiledHookRule {
         Self::try_from_with_agents(
             config,
             &agents,
+            &[],
             &[],
             agent_semantic_config::WrapperMatchMode::default(),
         )
@@ -746,13 +702,16 @@ impl CompiledHookRule {
         config: HookClientRuleConfig,
         agents: &agent_semantic_config::HookClientAgentsConfig,
         command_profiles: &[agent_semantic_config::HookClientCommandProfileConfig],
+        action_policies: &[agent_semantic_config::HookClientActionPolicyConfig],
         wrapper_match: agent_semantic_config::WrapperMatchMode,
     ) -> Result<Self, String> {
         Self::try_from_with_agents_and_matcher(
             config,
             agents,
             command_profiles,
+            action_policies,
             wrapper_match,
+            None,
             None,
         )
     }
@@ -761,8 +720,10 @@ impl CompiledHookRule {
         config: HookClientRuleConfig,
         agents: &agent_semantic_config::HookClientAgentsConfig,
         command_profiles: &[agent_semantic_config::HookClientCommandProfileConfig],
+        action_policies: &[agent_semantic_config::HookClientActionPolicyConfig],
         wrapper_match: agent_semantic_config::WrapperMatchMode,
         durable_matcher: Option<DurableRuleMatcherArtifact>,
+        executable_capabilities: Option<&std::collections::BTreeSet<String>>,
     ) -> Result<Self, String> {
         let dispatch = config
             .dispatch
@@ -793,6 +754,7 @@ impl CompiledHookRule {
                     resident_name: resident_name.clone(),
                     resident_codex_agent_name: resident.codex_agent_name.clone(),
                     resident_role: resident.role.clone(),
+                    resident_description: resident.description.clone(),
                     receipt_kind: dispatch.receipt_kind.as_str().to_owned(),
                     lazy_provider: dispatch.lazy_provider,
                 })
@@ -808,14 +770,32 @@ impl CompiledHookRule {
             || !config.match_config.authority_any.is_empty()
             || !config.match_config.authority_exclude_any.is_empty()
             || !config.match_config.authority_rules.is_empty()
-            || !config.match_config.effect_rules.is_empty();
+            || !config.match_config.effect_rules.is_empty()
+            || !config.match_config.action_policy_all.is_empty()
+            || !config.match_config.action_policy_any.is_empty()
+            || !config.match_config.action_policy_none.is_empty();
         if typed_action_contract
             && matches!(
                 reason_kind,
                 ReasonKind::DirectSourceRead | ReasonKind::BulkSourceDump
             )
         {
-            let effect_any = &config.match_config.effect_any;
+            let referenced_effects = config
+                .match_config
+                .action_policy_all
+                .iter()
+                .filter_map(|reference| {
+                    action_policies
+                        .iter()
+                        .find(|policy| policy.id == *reference)
+                })
+                .flat_map(|policy| policy.effect_any.iter().copied())
+                .collect::<Vec<_>>();
+            let effect_any = if config.match_config.effect_any.is_empty() {
+                referenced_effects.as_slice()
+            } else {
+                config.match_config.effect_any.as_slice()
+            };
             let includes_read =
                 effect_any.contains(&agent_semantic_config::HookClientActionKind::Read);
             let effects_are_typed_read = effect_any
@@ -837,7 +817,39 @@ impl CompiledHookRule {
                 raw_match_config.argv_prefix_any.push(prefix);
             }
         }
-        let mut match_config = RuleMatch::try_from_config(raw_match_config, durable_matcher)?;
+        let resolve_action_policies = |axis: &str, references: &mut Vec<String>| {
+            std::mem::take(references)
+                .into_iter()
+                .map(|reference| {
+                    action_policies
+                        .iter()
+                        .find(|policy| policy.id == reference)
+                        .cloned()
+                        .ok_or_else(|| {
+                            format!(
+                                "rule `{}` {axis} references unknown action policy `{reference}`",
+                                config.id
+                            )
+                        })
+                })
+                .collect::<Result<Vec<_>, String>>()
+        };
+        let policy_all =
+            resolve_action_policies("actionPolicyAll", &mut raw_match_config.action_policy_all)?;
+        let policy_any =
+            resolve_action_policies("actionPolicyAny", &mut raw_match_config.action_policy_any)?;
+        let policy_none =
+            resolve_action_policies("actionPolicyNone", &mut raw_match_config.action_policy_none)?;
+        let mut match_config = RuleMatch::try_from_config(
+            raw_match_config,
+            durable_matcher,
+            ResolvedActionPolicies {
+                all: policy_all,
+                any: policy_any,
+                none: policy_none,
+            },
+            executable_capabilities,
+        )?;
         match_config.wrapper_match = wrapper_match;
         Ok(Self {
             id: config.id,
@@ -870,7 +882,7 @@ impl TryFrom<HookClientRuleMatchConfig> for RuleMatch {
     type Error = String;
 
     fn try_from(config: HookClientRuleMatchConfig) -> Result<Self, Self::Error> {
-        Self::try_from_config(config, None)
+        Self::try_from_config(config, None, ResolvedActionPolicies::default(), None)
     }
 }
 
@@ -955,7 +967,9 @@ mod client_config;
 #[path = "compiled_rule_durable_artifact.rs"]
 mod durable_artifact;
 
-pub(in crate::hook_config) use client_config::compile_config;
+pub(in crate::hook_config) use client_config::{
+    compile_config, compile_config_with_executable_capabilities,
+};
 pub use durable_artifact::DurableHookConfigArtifact;
 use durable_artifact::{
     DURABLE_HOOK_MATCHER_SCHEMA_ID, DURABLE_HOOK_MATCHER_SCHEMA_VERSION, DurableRuleMatcherArtifact,

@@ -89,6 +89,18 @@ fn project_resolution_is_provider_semantics_without_workspace_identity() {
 }
 
 #[test]
+fn project_resolution_metrics_are_json_safe_at_the_v1_integer_boundary() {
+    let mut receipt = scope("json-boundary");
+    receipt.metrics.elapsed_micros = u64::MAX;
+    let encoded = serde_json::to_value(&receipt)
+        .expect("v1 ProjectResolution metrics must remain representable on Runtime IPC");
+    assert_eq!(
+        encoded["metrics"]["elapsedMicros"],
+        serde_json::json!(u64::MAX)
+    );
+}
+
+#[test]
 fn package_graph_and_candidate_base_are_generation_identity() {
     let first = AdmittedProjectResolution::new("packages/first", scope("first"))
         .expect("first admitted scope");

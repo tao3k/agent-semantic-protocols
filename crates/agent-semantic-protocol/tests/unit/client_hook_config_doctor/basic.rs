@@ -46,7 +46,7 @@ tool = "Bash"
     assert!(stdout.contains("eventStateBytes=0"));
     assert!(stdout.contains("eventStateAgeMs=unavailable"));
     assert!(stdout.contains("enforcement=unavailable"));
-    assert!(stdout.contains("enforcementReason=project-hook-missing"));
+    assert!(stdout.contains("enforcementReason=plugin-hook-missing"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -134,11 +134,11 @@ tool = "Bash"
         "{stdout}"
     );
     assert!(stdout.contains("pluginHook=false"), "{stdout}");
-    assert!(stdout.contains("trust=true"), "{stdout}");
+    assert!(stdout.contains("nativeInlineHookTrust=true"), "{stdout}");
     assert!(stdout.contains("projectTrust=false"), "{stdout}");
-    assert!(stdout.contains("hookStateTrust=true"), "{stdout}");
-    assert!(stdout.contains("trustMissing=0"), "{stdout}");
-    assert!(stdout.contains("enforcement=unproven"), "{stdout}");
+    assert!(stdout.contains("trustStatus=trusted"), "{stdout}");
+    assert!(stdout.contains("nativeInlineTrustMissing=0"), "{stdout}");
+    assert!(stdout.contains("enforcement=unavailable"), "{stdout}");
     assert!(
         stdout.contains("backgroundThreadHook=host-surface-unproven"),
         "{stdout}"
@@ -152,10 +152,10 @@ tool = "Bash"
         "{stdout}"
     );
     assert!(
-        stdout.contains("enforcementReason=codex-exec-probe-disabled"),
+        stdout.contains("enforcementReason=plugin-hook-missing"),
         "{stdout}"
     );
-    assert!(!stdout.contains("project-hook-missing"), "{stdout}");
+    assert!(!stdout.contains("codex-exec-probe-disabled"), "{stdout}");
     assert!(stdout.contains("|trust project=untrusted"), "{stdout}");
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }

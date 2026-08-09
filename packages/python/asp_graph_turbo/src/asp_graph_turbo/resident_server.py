@@ -28,14 +28,12 @@ def serve_json_lines(reader: IO[str], writer: IO[str]) -> int:
                 error.code if isinstance(error, ResidentProtocolError) else "invalid-json"
             )
             receipt = {
-                "schemaId": "agent.semantic-protocols.semantic-graph-turbo-resident-receipt",
+                "schemaId": "agent.semantic-protocols.graph-turbo-resident-server",
                 "schemaVersion": "1",
-                "protocolId": "agent.semantic-protocols.semantic-language",
-                "protocolVersion": "1",
-                "packetKind": "graph-turbo-resident-receipt",
+                "messageKind": "receipt",
                 "requestId": request_id,
-                "status": "rejected",
-                "failure": {"code": code, "message": str(error)},
+                "state": "unavailable",
+                "reasonKind": code,
             }
         writer.write(json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n")
         writer.flush()

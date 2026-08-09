@@ -13,6 +13,7 @@ mod registry_gc_tests;
 pub use crate::git::RemoteUrl;
 pub use identity::{
     RepoId, RepoIdentity, RepoPersistence, ScopeId, WorkspaceId, WorkspaceIdentity,
+    WorkspaceLifecycle, is_temporary_checkout_path,
 };
 pub use layout::{
     ASP_STATE_HOME_ENV, CLIENT_DB_FILE, DEFAULT_SCOPE_ID, DEFAULT_STATE_HOME_DIR,
@@ -21,5 +22,7 @@ pub use layout::{
 };
 pub use registry_gc::{
     ProjectRegistryGcCandidate, ProjectRegistryGcOptions, ProjectRegistryGcReport,
+    TemporaryWorkspaceCacheGcCandidate, TemporaryWorkspaceCacheGcOptions,
+    TemporaryWorkspaceCacheGcReport,
 };
 pub use resolution::{ResolvedState, StateLocateReport, locate_state};

@@ -186,8 +186,8 @@ pub struct RuntimeServerStatusSnapshot {
 #[serde(rename_all = "kebab-case")]
 pub enum RuntimeServerAgentSessionLifecycleState {
     Routable,
-    Expired,
-    Archived,
+    Stopped,
+    Achieved,
     Invalid,
 }
 

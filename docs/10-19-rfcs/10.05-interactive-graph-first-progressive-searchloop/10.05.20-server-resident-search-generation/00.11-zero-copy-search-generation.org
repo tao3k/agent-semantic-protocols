@@ -1,0 +1,93 @@
+#+title: Zero-copy Search Generation
+#+startup: overview
+
+* Status
+
+This module is normative for the agent-facing Search and Query data plane.
+It refines the resident-generation decision without changing the v1 protocol
+version.
+
+* Problem
+
+An immutable file is not a memory data plane when every CLI process maps the
+file and then deserializes the complete workspace generation into an owned
+object graph.  That design makes a cold command proportional to repository
+size, rebuilds indexes in every process, duplicates resident memory, and turns
+a large repository into an agent-facing wall-budget failure.
+
+* V1 segment authority
+
+The v1 workspace generation is a content-addressed segment set published by
+the single Runtime writer lane.  Its root segment contains a fixed binary
+header and a validated directory.  Directory entries identify independently
+addressable sections for generation evidence, project resolutions, owner
+metadata, owner bytes, lexical index, selector index, and graph relations.
+
+Every entry carries its byte range, record count, representation identifier,
+and content digest.  Ranges must be ordered, non-overlapping, in bounds, and
+covered by the root generation digest.  Publication becomes visible only by
+an atomic pointer switch after every section and the directory validate.
+
+There is one v1 contract.  Experimental v2/v3 aliases and compatibility
+readers are forbidden; a development-time layout replacement updates the v1
+schema, producer, consumer, fixture, and active receipt together.
+
+* Query-path prohibition
+
+Agent-facing =search= and exact =query= are immutable readers.  They must not:
+
+- connect to the Runtime Unix control socket;
+- open Turso or a provider process;
+- deserialize the complete workspace generation;
+- rebuild a workspace-wide owner, lexical, selector, or relation index;
+- publish freshness, admission, repair, or overlay mutations.
+
+The reader validates the root header and directory once, maps only the needed
+sections, and performs bounded lookup directly over their published binary
+indexes.  Missing admission or a stale/corrupt directory is a typed terminal
+state; it is never converted into a timeout or an implicit writer action.
+
+* Runtime ownership
+
+Turso remains the durable canonical authority.  The Runtime owns one Tokio
+writer lane per workspace, derives the immutable section set from a committed
+generation, and atomically publishes the newest complete pointer.  Concurrent
+readers hold leases to old epochs until their mappings drop.  Different
+workspaces publish independently.  Shutdown cancels and joins builders before
+releasing the final publication handle.
+
+* Strong performance fixtures
+
+The production representation must be qualified with black-box, multi-process
+fixtures, not only an in-process warm cache:
+
+- a fresh CLI process opens the root directory and one lookup section below
+  one millisecond p99 over thirty runs;
+- unchanged repeated Search reads zero owner-source bytes and performs zero
+  Turso opens, provider spawns, manifest writes, or control-socket connects;
+- 256 concurrent readers observe one immutable epoch without file locks or a
+  Runtime request queue;
+- source-index, owner, exact-selector, and graph-relation reads return the same
+  generation digest and root evidence;
+- corrupt, truncated, overlapping, stale, and cross-workspace sections fail
+  closed before returning semantic evidence;
+- OpenTelemetry records mapped bytes, touched section bytes, validation time,
+  lookup time, RSS delta, and any budget violation in the resident Turso
+  incident store.
+
+Passing an in-process OnceCell replay is not evidence for this gate because
+each =asp= invocation is a new process.
+
+* Refinement obligation
+
+The executable transition must refine:
+
+#+begin_example
+Committed(g) -> PublishSections(g) -> ValidateDirectory(g)
+             -> AtomicPointer(g) -> ReadLease(g) -> Evidence(g)
+#+end_example
+
+=Evidence(g)= is permitted only when every touched section validates against
+the directory rooted in =g=.  No Ready or semantic result may be observed
+before =AtomicPointer(g)=, and a reader of =g= cannot observe a section from a
+different epoch.

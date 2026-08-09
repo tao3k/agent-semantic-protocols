@@ -24,9 +24,38 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
     validate_resident_agents(&config.agents.resident_agents)?;
     validate_agent_placeholders(&config.agents)?;
     validate_command_profiles(&config.command_profiles)?;
+    validate_action_policies(&config.action_policies)?;
     validate_rule_dispatches(&config.rules, &config.agents)?;
     validate_unique_rule_ids(&config.rules)?;
-    validate_rule_schema_shape(&config.rules, &config.command_profiles)
+    validate_rule_schema_shape(
+        &config.rules,
+        &config.command_profiles,
+        &config.action_policies,
+    )
+}
+
+fn validate_action_policies(
+    policies: &[super::routing::HookClientActionPolicyConfig],
+) -> Result<(), String> {
+    let mut ids = HashSet::new();
+    for policy in policies {
+        validate_identifier("actionPolicies[].id", &policy.id)?;
+        if !ids.insert(policy.id.as_str()) {
+            return Err(format!("duplicate action policy id `{}`", policy.id));
+        }
+        if policy.action_any.is_empty()
+            && policy.effect_any.is_empty()
+            && policy.subject_kind_any.is_empty()
+            && policy.authority_any.is_empty()
+            && policy.authority_exclude_any.is_empty()
+        {
+            return Err(format!(
+                "action policy `{}` must declare at least one typed predicate axis",
+                policy.id
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_language_providers(
@@ -293,7 +322,12 @@ fn validate_unique_rule_ids(rules: &[HookClientRuleConfig]) -> Result<(), String
 fn validate_rule_schema_shape(
     rules: &[HookClientRuleConfig],
     profiles: &[HookClientCommandProfileConfig],
+    action_policies: &[super::routing::HookClientActionPolicyConfig],
 ) -> Result<(), String> {
+    let action_policy_ids = action_policies
+        .iter()
+        .map(|policy| policy.id.as_str())
+        .collect::<HashSet<_>>();
     for rule in rules {
         validate_identifier("rules[].id", &rule.id)?;
         validate_optional_non_empty("rules[].message", rule.message.as_deref())?;
@@ -301,7 +335,7 @@ fn validate_rule_schema_shape(
         validate_optional_platform(rule.platform.as_deref())?;
         validate_unique_values("rules[].languageIds", &rule.language_ids)?;
         validate_identifiers("rules[].languageIds[]", &rule.language_ids)?;
-        validate_match_schema_shape(&rule.match_config, profiles)?;
+        validate_match_schema_shape(&rule.match_config, profiles, &action_policy_ids)?;
         if rule.decision_materializer.is_some() && !rule.routes.is_empty() {
             return Err(format!(
                 "hook rule `{}` cannot combine decisionMaterializer with static routes",
@@ -318,7 +352,23 @@ fn validate_rule_schema_shape(
 fn validate_match_schema_shape(
     match_config: &HookClientRuleMatchConfig,
     profiles: &[HookClientCommandProfileConfig],
+    action_policy_ids: &HashSet<&str>,
 ) -> Result<(), String> {
+    for (axis, references) in [
+        ("actionPolicyAll", &match_config.action_policy_all),
+        ("actionPolicyAny", &match_config.action_policy_any),
+        ("actionPolicyNone", &match_config.action_policy_none),
+    ] {
+        validate_non_empty_values(&format!("rules[].match.{axis}[]"), references)?;
+        validate_unique_values(&format!("rules[].match.{axis}"), references)?;
+        for reference in references {
+            if !action_policy_ids.contains(reference.as_str()) {
+                return Err(format!(
+                    "rules[].match.{axis} references unknown action policy `{reference}`"
+                ));
+            }
+        }
+    }
     let mut profile_references = HashSet::new();
     for reference in &match_config.command_profile_any {
         validate_identifier(

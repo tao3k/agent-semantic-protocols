@@ -71,7 +71,7 @@ pub(super) fn run_hook_break_glass(args: &[String]) -> Result<(), String> {
             "defectKind": capability.defect_kind,
             "expiresAtUnixMs": capability.expires_at_unix_ms,
             "oneShotCommand": format!(
-                "ASP_NO_AGENT=1 ASP_BREAK_GLASS_CAPABILITY={} {}",
+                "ASP_BREAK_GLASS_CAPABILITY={} {}",
                 capability.nonce, protected_command,
             ),
         })

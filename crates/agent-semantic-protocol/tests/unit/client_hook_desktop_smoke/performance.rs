@@ -127,7 +127,11 @@ fn codex_desktop_hook_large_stale_state_exits_inside_gate() {
     let decision = decision_from_stdout(&stdout);
     assert_eq!(decision["decision"], "deny");
     assert_eq!(decision["reasonKind"], "bulk-source-dump");
-    assert_eq!(decision["fields"]["denyReplay"], "record");
+    assert_eq!(
+        decision["fields"]["hookEventProjectionStatus"],
+        "out-of-band"
+    );
+    assert!(decision["fields"].get("denyReplay").is_none());
 }
 
 #[test]
@@ -157,7 +161,11 @@ fn codex_desktop_hook_large_recent_nonmatching_state_exits_inside_gate() {
     let decision = decision_from_stdout(&stdout);
     assert_eq!(decision["decision"], "deny");
     assert_eq!(decision["reasonKind"], "bulk-source-dump");
-    assert_eq!(decision["fields"]["denyReplay"], "record");
+    assert_eq!(
+        decision["fields"]["hookEventProjectionStatus"],
+        "out-of-band"
+    );
+    assert!(decision["fields"].get("denyReplay").is_none());
 }
 
 fn performance_gate_guard() -> std::sync::MutexGuard<'static, ()> {

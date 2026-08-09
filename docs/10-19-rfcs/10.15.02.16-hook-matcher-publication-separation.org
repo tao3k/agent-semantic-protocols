@@ -1,0 +1,131 @@
+#+TITLE: Hook Matcher Publication Separation
+#+PROPERTY: schemaId agent.semantic-protocols.rfc.hook-matcher-publication-separation
+#+PROPERTY: schemaVersion 1
+
+* Status
+
+Normative executable-refinement contract.
+
+* Problem
+
+The Host action evaluator previously treated a missing, stale, or corrupt
+matcher as permission to read TOML, synchronize managed config, compile policy,
+and publish several mmap shards.  That coupled a sub-millisecond data plane to
+filesystem discovery and recovery work.  Under concurrent Hook actions it also
+allowed evaluation to wait on the same publication or lifecycle authority that
+the denied action needed to repair, producing recursive denial and terminal
+deadlock.
+
+* Control-plane publication
+:PROPERTIES:
+:CONTRACT_ID: ASP-RFC-10.15.02.16-CONTROL-PLANE-PUBLICATION
+:END:
+
+Only canonical install, plugin install, or =asp hook refresh= may:
+
+- materialize and validate =hooks/config.toml=;
+- combine provider language extensions and configured policy rules;
+- compile complete, direct-read, wrapped-read, and command-profile projections;
+- publish a Hook matcher generation.
+
+Publication writes one Binary v1 bundle containing a typed section index and
+all immutable projections.  The temporary file is unique per concurrent
+publisher, is flushed before publication, and the whole generation becomes
+visible through one atomic rename.  Readers can therefore observe either the
+old complete generation or the new complete generation, never a mixture of
+shards from both.
+
+Binary v1 section integrity uses BLAKE3-256.  The command-profile section is
+generated from the finite =commandProfiles.categories= prefix space and the
+same Policy Kernel that produces the complete matcher.  Runtime selection is a
+normalized argv-prefix lookup followed by exact Host-envelope rebinding; it
+must not encode language, toolchain, =cargo test=, or wrapper literals in the
+Hook data-plane implementation.
+
+* Host-action data plane
+:PROPERTIES:
+:CONTRACT_ID: ASP-RFC-10.15.02.16-DATA-PLANE-READ
+:END:
+
+The Hook action evaluator may only:
+
+1. normalize the Host action;
+2. open and mmap =active-matcher.v1.bin=;
+3. locate one section from the immutable index;
+4. validate and decode only that section;
+5. return the policy decision.
+
+It must not parse or stat policy sources, invoke Runtime Server, acquire a
+publication lock, synchronize config, compile matchers, or repair corruption.
+A missing/corrupt generation terminates as a typed local-policy-unavailable
+decision whose first recovery command is
+=asp hook refresh --client codex=.  The workspace identity is derived from the
+current Git workspace and the command accepts no path argument. =ASP_NO_AGENT=1=
+remains a higher-priority passthrough before any state access.
+
+The refresh grammar is exactly:
+
+#+begin_src sh
+asp hook refresh --client codex
+#+end_src
+
+Neither =.= nor an explicit workspace path is accepted.  Git workspace
+resolution is an internal control-plane responsibility.
+
+* Recovery override and recursive-dispatch fixed point
+:PROPERTIES:
+:CONTRACT_ID: ASP-RFC-10.15.02.16-RECOVERY-FIXED-POINT
+:END:
+
+The retired dependency chain admits this concrete cycle:
+
+1. the installed old binary denies the command that builds its replacement;
+2. the denial targets the testing Agent, but the same testing policy dispatches
+   again after the Host has entered that typed Agent;
+3. Runtime/ChoicePlane authority is unavailable, so the recursive dispatch
+   cannot become executable work;
+4. canonical install requires the replacement binary that step 1 prevented.
+
+The new ordering detects =ASP_NO_AGENT= in either the Hook process environment
+or a normalized shell-command environment assignment before break-glass,
+matcher state, Policy Kernel, Runtime, locks, or telemetry.  It emits an empty
+Host-success response and terminates.  The override is therefore a recovery
+authority, not another policy rule.  This precedence is scoped by the CLI
+grammar: the process must first be an actual =asp hook <event>= dispatch.
+=ASP_NO_AGENT=1 asp --version= remains an ordinary CLI invocation and cannot be
+captured by the synchronous Hook bootstrap.
+
+Typed target dispatch is idempotent: when both current =agent_type=/=agent_id=
+equal the policy target, evaluation returns allow.  Missing or blank typed
+identity must be enriched from the Host session context before policy
+evaluation; an =is_subagent= boolean alone is not a dispatch identity.
+
+The Lean model contains the four-node legacy cycle as a reachable
+counterexample and proves that either recovery-override origin makes every
+pre-kernel source transition terminal, so that cycle is unreachable.  It also
+proves the typed-target dispatch fixed point.
+
+* Concurrency and performance gates
+:PROPERTIES:
+:CONTRACT_ID: ASP-RFC-10.15.02.16-CONCURRENCY-PERFORMANCE
+:END:
+
+- evaluation CPU boundary: strictly less than 1,000 microseconds;
+- typical wall target: at least 75 percent at or below 500 microseconds;
+- process terminal safety boundary: one second;
+- no single-thread runtime, global mutex, Runtime Server warm dependency, or
+  recursive publication is permitted;
+- pre-tool and permission-request policy evaluation completes synchronously
+  before any Tokio runtime is constructed;
+- asynchronous lifecycle events use a bounded multi-worker Tokio profile; this
+  runtime owns local lifecycle only and does not connect the Hook policy data
+  plane to Runtime Server;
+- black-box witnesses are generated from configured policy combinations rather
+  than a hard-coded command list;
+- missing-generation, selected-section corruption, concurrent readers, and
+  concurrent publishers are mandatory scenarios.
+
+The Lean refinement is
+=ASPProof.HookMatcherPublicationSeparation=.  Its coupled-model counterexample
+shows that evaluation-owned publication can self-wait; the separated model
+proves missing generation terminates and evaluation preserves generation.

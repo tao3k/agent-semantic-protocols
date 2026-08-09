@@ -280,4 +280,59 @@ theorem evolution_without_compatibility_witness_cannot_be_applied
   rw [incompatible] at compatible
   exact Bool.noConfusion compatible
 
+/-! ## Atomic activation-generation publication -/
+
+structure ActivationGenerationSnapshot where
+  generation : Nat
+  activationDigest : Nat
+  receiptActivationDigest : Nat
+  providerGeneration : Nat
+  configGeneration : Nat
+  complete : Bool
+  deriving DecidableEq, Repr
+
+def GenerationConsistent (snapshot : ActivationGenerationSnapshot) : Prop :=
+  snapshot.complete = true ∧
+  snapshot.activationDigest = snapshot.receiptActivationDigest
+
+def publishGeneration
+    (current candidate : ActivationGenerationSnapshot) : ActivationGenerationSnapshot :=
+  if candidate.complete &&
+      decide (candidate.activationDigest = candidate.receiptActivationDigest)
+  then candidate
+  else current
+
+theorem incomplete_candidate_cannot_replace_published_generation
+    (current candidate : ActivationGenerationSnapshot)
+    (incomplete : candidate.complete = false) :
+    publishGeneration current candidate = current := by
+  simp [publishGeneration, incomplete]
+
+theorem digest_mismatched_candidate_cannot_replace_published_generation
+    (current candidate : ActivationGenerationSnapshot)
+    (mismatch : candidate.activationDigest ≠ candidate.receiptActivationDigest) :
+    publishGeneration current candidate = current := by
+  simp [publishGeneration, mismatch]
+
+theorem consistent_candidate_is_the_only_new_visible_generation
+    (current candidate : ActivationGenerationSnapshot)
+    (complete : candidate.complete = true)
+    (consistent : candidate.activationDigest = candidate.receiptActivationDigest) :
+    publishGeneration current candidate = candidate := by
+  simp [publishGeneration, complete, consistent]
+
+def mixedTwoFileGeneration : ActivationGenerationSnapshot where
+  generation := 2
+  activationDigest := 22
+  receiptActivationDigest := 11
+  providerGeneration := 2
+  configGeneration := 2
+  complete := true
+
+/-- Writing activation and receipt as separate visible files admits a mixed
+generation that the atomic publication protocol must reject. -/
+theorem two_file_activation_then_receipt_publish_is_not_consistent :
+    ¬ GenerationConsistent mixedTwoFileGeneration := by
+  simp [GenerationConsistent, mixedTwoFileGeneration]
+
 end ASPProof.ActivationLifecycleAudit

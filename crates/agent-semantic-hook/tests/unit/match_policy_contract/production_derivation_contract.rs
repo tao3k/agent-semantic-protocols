@@ -13,10 +13,23 @@ fn raw_source_action_match() -> (
         .expect("production hook config parses");
     let rule = document
         .rules
-        .into_iter()
+        .iter()
         .find(|rule| rule.id == "deny-raw-registered-source-action")
         .expect("production raw-source action rule");
-    let config = rule.match_config;
+    let config = rule.match_config.clone();
+    let resolve = |references: &[String]| {
+        references
+            .iter()
+            .map(|reference| {
+                document
+                    .action_policies
+                    .iter()
+                    .find(|policy| policy.id == *reference)
+                    .cloned()
+                    .expect("production action policy reference")
+            })
+            .collect::<Vec<_>>()
+    };
     let effect_rules = config.effect_rules.clone();
     let authority_rules = config.authority_rules.clone();
     (
@@ -28,6 +41,9 @@ fn raw_source_action_match() -> (
             subject_kind_any: config.subject_kind_any,
             authority_any: config.authority_any,
             authority_exclude_any: config.authority_exclude_any,
+            policy_all: resolve(&config.action_policy_all),
+            policy_any: resolve(&config.action_policy_any),
+            policy_none: resolve(&config.action_policy_none),
         }),
         effect_rules,
         authority_rules,
@@ -62,6 +78,7 @@ fn runtime() -> HookRuntime {
         project_root: ".".to_owned(),
         rankers: Vec::new(),
         providers: Vec::new(),
+        policy_providers: Vec::new(),
     }
 }
 

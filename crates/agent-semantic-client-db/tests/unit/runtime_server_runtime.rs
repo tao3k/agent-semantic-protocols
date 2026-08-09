@@ -111,6 +111,24 @@ fn client_profile_completes_bounded_control_work() {
 }
 
 #[test]
+fn cli_profile_never_collapses_hook_processes_onto_one_tokio_worker() {
+    assert!(
+        agent_semantic_client_db::runtime_server_runtime::ASP_CLI_WORKER_COUNT > 1,
+        "the ASP CLI and Hook bootstrap must not use a single-worker Tokio runtime"
+    );
+    let runtime = RuntimeServerRuntimeBuilder::new_cli()
+        .enable_all()
+        .build()
+        .expect("CLI runtime");
+    let workers =
+        runtime.block_on(async { tokio::runtime::Handle::current().metrics().num_workers() });
+    assert_eq!(
+        workers,
+        agent_semantic_client_db::runtime_server_runtime::ASP_CLI_WORKER_COUNT
+    );
+}
+
+#[test]
 fn client_executor_is_load_once() {
     let first =
         agent_semantic_client_db::runtime_server_runtime::RuntimeServerClientExecutor::get()

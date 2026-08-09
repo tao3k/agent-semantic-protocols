@@ -1,5 +1,7 @@
 use std::{
     fs,
+    path::Path,
+    process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -17,7 +19,8 @@ fn project_gc_is_dry_run_by_default_and_revalidates_apply() {
     ));
     let checkout = fixture.join("active-checkout");
     let state_home = fixture.join("state");
-    fs::create_dir_all(checkout.join(".git")).expect("create active Git checkout");
+    fs::create_dir_all(&checkout).expect("create active checkout");
+    init_git_repository(&checkout);
     let state = ResolvedState::resolve_with_state_home(&checkout, &state_home)
         .expect("resolve fixture state");
     state.ensure_minimal_layout().expect("create fixture state");
@@ -76,7 +79,8 @@ fn project_gc_removes_noncanonical_identity_for_existing_checkout() {
     ));
     let checkout = fixture.join("active-checkout");
     let state_home = fixture.join("state");
-    fs::create_dir_all(checkout.join(".git")).expect("create active Git checkout");
+    fs::create_dir_all(&checkout).expect("create active checkout");
+    init_git_repository(&checkout);
     let state = ResolvedState::resolve_with_state_home(&checkout, &state_home)
         .expect("resolve canonical fixture state");
     state
@@ -145,7 +149,8 @@ fn project_gc_removes_legacy_path_identity_for_existing_non_git_root() {
     let current_checkout = fixture.join("current-checkout");
     let ordinary_root = fixture.join("plugins/cache");
     let state_home = fixture.join("state");
-    fs::create_dir_all(current_checkout.join(".git")).expect("create current Git checkout");
+    fs::create_dir_all(&current_checkout).expect("create current checkout");
+    init_git_repository(&current_checkout);
     fs::create_dir_all(&ordinary_root).expect("create ordinary non-Git root");
     let state = ResolvedState::resolve_with_state_home(&current_checkout, &state_home)
         .expect("resolve current fixture state");
@@ -181,4 +186,28 @@ fn project_gc_removes_legacy_path_identity_for_existing_non_git_root() {
     assert!(state.paths.project_dir.exists());
 
     fs::remove_dir_all(&fixture).expect("remove non-Git identity GC fixture");
+}
+
+fn init_git_repository(root: &Path) {
+    let output = Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(root)
+        .output()
+        .expect("run git init for Gix-owned test identity");
+    assert!(
+        output.status.success(),
+        "git init failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let output = Command::new("git")
+        .args([
+            "remote",
+            "add",
+            "origin",
+            "https://example.invalid/asp/registry-gc-fixture.git",
+        ])
+        .current_dir(root)
+        .output()
+        .expect("add durable remote to registry GC fixture");
+    assert!(output.status.success(), "git remote add failed");
 }

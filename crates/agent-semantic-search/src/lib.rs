@@ -24,6 +24,7 @@ mod graph_query_owner_seed;
 mod graph_seed_decision;
 mod graph_selector_seed_projection;
 mod graph_topology_projection;
+mod graph_turbo_resident_protocol;
 mod lexical_overlay;
 pub mod memory_search;
 pub mod memory_search_fixture;
@@ -115,6 +116,11 @@ pub use graph_topology_projection::{
     graph_owner_missing_topology_projection, graph_path_is_under, graph_project_submodule_paths,
     graph_project_submodule_paths_from_content, graph_project_topology_projection,
     graph_submodule_owner_edges,
+};
+pub use graph_turbo_resident_protocol::{
+    GRAPH_TURBO_RESIDENT_SERVER_SCHEMA_ID, GRAPH_TURBO_RESIDENT_SERVER_SCHEMA_VERSION,
+    GraphTurboMessageKind, GraphTurboRankedNode, GraphTurboResidentReceipt,
+    GraphTurboResidentRequest, GraphTurboServerState,
 };
 pub use lexical_overlay::{
     LexicalOverlayCandidateHit, LexicalOverlayDocument, LexicalOverlaySearchHit,

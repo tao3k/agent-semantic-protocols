@@ -1,0 +1,23 @@
+#+TITLE: Host-envelope mutation normalization
+#+OPTIONS: toc:nil
+
+* Status
+
+Normative refinement of mutation owner-delta atomicity.
+
+* Contract
+
+Mutation authority begins at the semantic tool action, not at a client-specific
+outer envelope. If a host executes =apply_patch= through an orchestration tool
+such as =functions.exec=, the Hook normalizer MUST project the nested patch and
+its paths into the same typed =ApplyPatch= action used by a direct tool call.
+
+An outer envelope that hides a successful patch is not a no-op. It is a missing
+generation mutation and MUST fail the mutation-normalization gate. A literal
+patch argument and a statically bound string argument are projectable. Dynamic
+or interpolated code is not guessed; the host must expose a typed nested-tool
+receipt for inputs that cannot be projected without executing the program.
+
+The resulting changed-owner set enters the existing per-workspace single-flight
+writer lane and is published as one complete generation epoch. Exact query may
+not continue serving the previous Ready epoch after that mutation receipt.

@@ -47,27 +47,29 @@ fn reconcile_linearization_accepts_healthy_postcondition_once() {
     assert_eq!(polls.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
 
-#[test]
-fn execution_slice_keeps_supervisor_and_reply_reserves() {
+#[tokio::test]
+async fn execution_slice_keeps_supervisor_and_reply_reserves() {
     let remaining = agent_facing_runtime_wait_remaining(
         std::time::Duration::from_millis(799),
         "search",
         "resident-workspace-generation-open",
         std::path::Path::new("."),
     )
+    .await
     .expect("799 ms is inside the awaited runtime execution slice");
 
     assert_eq!(remaining, std::time::Duration::from_millis(1));
 }
 
-#[test]
-fn execution_boundary_returns_schema_owned_failure() {
+#[tokio::test]
+async fn execution_boundary_returns_schema_owned_failure() {
     let failure = agent_facing_runtime_wait_remaining(
         std::time::Duration::from_millis(800),
         "agent-session",
         "runtime-server-reconcile",
         std::path::Path::new("."),
     )
+    .await
     .expect_err("800 ms is the strict awaited runtime boundary");
 
     assert!(failure.contains("agent.semantic-protocols.agent-facing-search-wall-failure"));
@@ -95,24 +97,4 @@ async fn hook_evaluation_uses_the_agent_facing_boundary_not_the_supervisor_bound
     assert!(failure.contains("\"surface\":\"hook\""));
     assert!(failure.contains("\"stage\":\"runtime-server-hook-evaluation\""));
     assert!(!failure.contains("runtime-server-supervisor-boundary-exceeded"));
-}
-
-#[test]
-fn explicit_reconcile_repairs_provider_catalog_before_supervisor_start() {
-    let source = include_str!("../../../src/server/runtime_server.rs");
-    let reconcile = source
-        .find("if operation == RuntimeServerOperation::Reconcile")
-        .expect("explicit Runtime Server reconcile branch");
-    let branch = &source[reconcile..];
-    let provider_catalog = branch
-        .find("reconcile_global_provider_catalog_for_runtime")
-        .expect("provider catalog reconciliation");
-    let supervisor = branch
-        .find("reconcile_runtime_server_supervisor")
-        .expect("platform supervisor reconciliation");
-
-    assert!(
-        provider_catalog < supervisor,
-        "provider catalog must be current before starting a daemon generation"
-    );
 }

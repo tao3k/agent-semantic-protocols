@@ -1,13 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/semantic-graph-turbo-resident-config.v1.schema.json",
-  "title": "Semantic Graph Turbo Resident Config v1",
+  "$id": "https://schemas.agent-semantic-protocols.dev/semantic-graph-turbo-resident-config.v1.schema.json",
+  "title": "Graph Turbo resident artifact configuration",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schemaId",
     "schemaVersion",
-    "pythonExecutionLocator"
+    "artifactKind",
+    "executionArtifactLocator",
+    "executionArtifactDigest",
+    "runtimeArtifactDigest"
   ],
   "properties": {
     "schemaId": {
@@ -16,9 +19,20 @@
     "schemaVersion": {
       "const": "1"
     },
-    "pythonExecutionLocator": {
+    "artifactKind": {
+      "const": "standalone-directory"
+    },
+    "executionArtifactLocator": {
       "type": "string",
       "minLength": 1
+    },
+    "executionArtifactDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "runtimeArtifactDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
     }
   }
 }

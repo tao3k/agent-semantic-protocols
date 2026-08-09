@@ -1,0 +1,105 @@
+#+title: Hook Recovery Override and Recursive-Dispatch Deadlock Freedom
+#+property: schemaId agent.semantic-protocols.rfc.hook-recovery-deadlock-freedom
+#+property: schemaVersion 1
+#+property: rfcClauseId ASP-RFC-10.15-HOOK-RECOVERY-DEADLOCK-FREEDOM
+
+* Status
+
+Normative P0 refinement of the local Hook execution plane.
+
+* Failure counterexample
+
+A dispatch rule that denies both the calling Agent and the configured target
+Agent creates a recursive fixed point: the target is instructed to delegate the
+same command to itself.  If building or installing the repaired ASP binary is
+also subject to that rule, no in-band repair transition exists.
+
+This is a control-plane deadlock, not evidence that ASP, Cargo, or the target
+Agent is globally unavailable.  A deny message MUST distinguish the current
+Agent boundary from system availability and MUST name the exact ChoicePlane,
+typed target/lane, and scoped command that advances the state.
+
+* Architecture
+
+=ASP_NO_AGENT= is an entry-plane recovery override, not a configurable policy
+rule.  Its precedence is absolute:
+
+#+begin_example
+parse bounded Host envelope
+  -> detect process-environment or normalized command assignment ASP_NO_AGENT
+  -> terminal allow receipt
+  -> stop
+#+end_example
+
+The terminal branch MUST execute before workspace discovery, configuration or
+provider projection, mmap/file locks, Runtime or ASP Server access, lifecycle
+observation, and telemetry.  Presence of the variable is sufficient; the
+value is not interpreted.  Command-scoped assignments are recognized from the
+structured normalized shell-token projection, independent of the concrete
+shell or wrapper name. The complete recovery decision path, including bounded
+payload parsing, MUST satisfy =hookDecisionCpuMicros < 1000=. This exclusive
+hard boundary measures work owned by Hook; =hookDecisionElapsedMicros= remains
+an observed wall receipt and MUST NOT be relabeled as deterministic algorithm
+work because Host scheduling delay is external to the decision function.
+The CPU hard boundary is not the operating target. At least 75% of a 32-process
+concurrent pressure sample MUST satisfy wall =elapsedMicros <= 500=. Thus a result
+such as 823us is still admitted by the fail-closed boundary but is a performance
+regression because it lacks sufficient scheduling and filesystem headroom.
+
+Hook invocation is one-shot but not low-concurrency. Concurrent Host actions
+MUST map the same immutable active generation and evaluate independently. The
+read path MUST NOT serialize behind a writer, queue for Runtime capacity, or
+publish a new generation. Update/refresh owns binary snapshot compilation and
+atomic active-artifact replacement; readers either observe the prior complete
+generation or the next complete generation.
+
+Each active matcher shard is one atomically replaced file, not an active-JSON
+to generation-file lookup chain. Its fixed header carries the config and agent
+owner stamps plus the generation digest; its body carries the compiled matcher.
+The complete matcher and policy-derived direct-read decision-template shards
+share the same generation and owner stamps. A direct-read shard is rendered by
+the complete composed policy compiler and contains the winning typed decision
+with a safely substituted source-path placeholder; the one-shot reader does not
+rehydrate the complete config, project providers, or rule graph. Shard identities are derived from normalized
+ToolAction facts plus provider-owned extensions, never raw Host tool names or
+hard-coded rule ids. The reader performs one read-only mmap and never discovers
+Git/Runtime workspace identity. The cache key is derived directly from the
+normalized Host workspace path. A serialized-reader implementation is
+non-conforming even when its
+single-reader median is below budget: queue delay from sibling readers is not
+part of the local decision and can violate the strict boundary.
+
+Without the override, dispatch is a typed identity state machine.  When the
+current =agent_type= and non-empty =agent_id= identify the configured target,
+the dispatch obligation is satisfied and the decision is terminal allow.
+Only a different or unproven identity may receive the dispatch deny.
+
+* Formal obligations
+
+=ASPProof.HookRecoveryDeadlockFreedom= must prove:
+
+- the legacy recursive dispatcher admits a target-self-dispatch counterexample;
+- the recovery override dominates every policy and identity state;
+- target identity is an allow fixed point when recovery is not active;
+- recovery evaluation has no Runtime, configuration, lock, or telemetry
+  dependency;
+- a broken-binary recursive-deny state is not repairable under the legacy
+  transition but becomes repairable when the recovery override is present.
+- a serialized reader queue has a concrete budget-violation counterexample;
+- lock-free reader latency and policy outcomes are invariant under reader count;
+- atomic publication exposes only the prior or next complete generation, never
+  a torn matcher state.
+- 823us of Hook CPU is a concrete counterexample that satisfies the 1ms hard boundary but
+  violates the 500us operating target, and 24/32 is the minimum typical quorum.
+- a decision with 240us of Hook CPU and 6000us of external scheduler delay
+  satisfies the algorithm boundary while its observed wall time exceeds 1ms;
+  therefore a universal wall-max assertion is not a valid refinement theorem.
+
+* Executable refinement gates
+
+Rust tests MUST cover process-environment bypass with missing state/config,
+direct and arbitrarily wrapped command assignments, a similarly named variable
+that cannot bypass policy, target-Agent dispatch idempotence, non-target deny
+guidance, and absence of Runtime Server artifacts.  The final acceptance matrix
+must run through the installed plugin Hook in a normal Codex task after the
+user enables it.

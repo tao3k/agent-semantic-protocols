@@ -5,7 +5,8 @@ use crate::protocol_activation::protocol_activation_runtime::parse_activation;
 use crate::provider_manifest::{
     DefaultActivationSelections, ProviderCommandSelection, ProviderCommandSelectionScopeV1,
     build_default_activation_from_selections, default_activation_selections_for_scope,
-    provider_manifests,
+    default_activation_selections_for_scope_with_state_home,
+    default_activation_selections_with_state_home_and_binary, provider_manifests,
 };
 use agent_semantic_runtime::project_activation_path;
 use std::{
@@ -31,6 +32,22 @@ pub fn load_or_sync_activation(
 ) -> Result<HookRuntime, String> {
     if is_generated_activation_path_for_project(activation_path, project_root) {
         return sync_activation(project_root, activation_path);
+    }
+    load_activation(activation_path)
+}
+
+pub fn load_or_sync_activation_with_state_home(
+    activation_path: &Path,
+    project_root: &Path,
+    state_home: &Path,
+) -> Result<HookRuntime, String> {
+    if is_generated_activation_path_for_project(activation_path, project_root) {
+        let sync = load_or_refresh_default_activation_with_state_home(
+            activation_path,
+            project_root,
+            state_home,
+        )?;
+        return activation_to_runtime(&sync.activation);
     }
     load_activation(activation_path)
 }
@@ -133,12 +150,62 @@ pub fn load_or_refresh_default_activation(
     activation_path: &Path,
     project_root: &Path,
 ) -> Result<DefaultActivationSync, String> {
-    let started = std::time::Instant::now();
-    let current_selections = default_activation_selections_for_scope(
+    load_or_refresh_default_activation_inner(activation_path, project_root, None, None)
+}
+
+pub fn load_or_refresh_default_activation_with_state_home(
+    activation_path: &Path,
+    project_root: &Path,
+    state_home: &Path,
+) -> Result<DefaultActivationSync, String> {
+    load_or_refresh_default_activation_inner(activation_path, project_root, Some(state_home), None)
+}
+
+pub fn load_or_refresh_default_activation_with_state_home_and_binary(
+    activation_path: &Path,
+    project_root: &Path,
+    state_home: &Path,
+    asp_binary: &Path,
+) -> Result<DefaultActivationSync, String> {
+    load_or_refresh_default_activation_inner(
+        activation_path,
         project_root,
-        &ProviderCommandSelectionScopeV1::CompleteGeneration,
-        None,
-    )?;
+        Some(state_home),
+        Some(asp_binary),
+    )
+}
+
+fn load_or_refresh_default_activation_inner(
+    activation_path: &Path,
+    project_root: &Path,
+    state_home: Option<&Path>,
+    asp_binary: Option<&Path>,
+) -> Result<DefaultActivationSync, String> {
+    let started = std::time::Instant::now();
+    let current_selections = match (state_home, asp_binary) {
+        (Some(state_home), Some(asp_binary)) => {
+            default_activation_selections_with_state_home_and_binary(
+                project_root,
+                state_home,
+                asp_binary,
+                None,
+            )?
+        }
+        (Some(state_home), None) => default_activation_selections_for_scope_with_state_home(
+            project_root,
+            state_home,
+            &ProviderCommandSelectionScopeV1::CompleteGeneration,
+            None,
+        )?,
+        (None, None) => default_activation_selections_for_scope(
+            project_root,
+            &ProviderCommandSelectionScopeV1::CompleteGeneration,
+            None,
+        )?,
+        (None, Some(_)) => {
+            return Err("explicit ASP binary requires explicit State Home".to_string());
+        }
+    };
     emit_activation_timing("provider-selections", started);
     let reusable_started = std::time::Instant::now();
     let assessment = assess_activation(activation_path, project_root, &current_selections)?;
@@ -159,7 +226,12 @@ pub fn load_or_refresh_default_activation(
     emit_activation_timing("build-activation", build_started);
     let write_started = std::time::Instant::now();
     write_activation(activation_path, &activation)?;
-    materialize_activation_receipt(activation_path, project_root, &current_selections)?;
+    materialize_activation_receipt(
+        activation_path,
+        project_root,
+        state_home,
+        &current_selections,
+    )?;
     emit_activation_timing("write-activation", write_started);
     Ok(DefaultActivationSync {
         activation,
@@ -171,6 +243,7 @@ pub fn load_or_refresh_default_activation(
 fn materialize_activation_receipt(
     activation_path: &Path,
     project_root: &Path,
+    state_home: Option<&Path>,
     selections: &DefaultActivationSelections,
 ) -> Result<(), String> {
     let provider_artifacts = selections
@@ -184,12 +257,21 @@ fn materialize_activation_receipt(
                     selection.provider_id()
                 )
             })?;
-            crate::active_provider_artifact_input(
-                project_root,
-                selection.language_id(),
-                selection.provider_id(),
-                PathBuf::from(executable),
-            )
+            match state_home {
+                Some(state_home) => crate::active_provider_artifact_input_with_state_home(
+                    project_root,
+                    state_home,
+                    selection.language_id(),
+                    selection.provider_id(),
+                    PathBuf::from(executable),
+                ),
+                None => crate::active_provider_artifact_input(
+                    project_root,
+                    selection.language_id(),
+                    selection.provider_id(),
+                    PathBuf::from(executable),
+                ),
+            }
         })
         .collect::<Result<Vec<_>, String>>()?;
     let graph_turbo = selections.graph_turbo();

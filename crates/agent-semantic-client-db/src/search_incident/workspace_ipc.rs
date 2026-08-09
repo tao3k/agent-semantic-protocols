@@ -9,6 +9,8 @@ use super::{
     IncidentSurface, RequestedProjection, ResourceObservation, SearchIncidentTerminalContext,
 };
 
+pub const AGENT_FACING_SEARCH_BUDGET_MICROS: u64 = 800_000;
+
 pub(crate) fn workspace_ipc_terminal_context(
     request: &WorkspaceDbIpcRequest,
 ) -> Option<SearchIncidentTerminalContext> {
@@ -32,6 +34,24 @@ pub(crate) fn workspace_ipc_terminal_context(
             RequestedProjection::Seeds,
             "source-index-read",
         ),
+        WorkspaceDbIpcOperation::ReadRuntimeSearchGenerationAuthority { .. } => (
+            "runtime".to_owned(),
+            IncidentSurface::Search,
+            RequestedProjection::Seeds,
+            "resident-exact-generation-open",
+        ),
+        WorkspaceDbIpcOperation::ReadRuntimeOwner { .. } => (
+            "runtime".to_owned(),
+            IncidentSurface::Search,
+            RequestedProjection::Seeds,
+            "runtime-owner-read",
+        ),
+        WorkspaceDbIpcOperation::ReadRuntimeGraphFacts { .. } => (
+            "runtime".to_owned(),
+            IncidentSurface::Search,
+            RequestedProjection::Seeds,
+            "runtime-graph-facts-read",
+        ),
         _ => return None,
     };
     let canonical_request = serde_json::to_vec(&request.operation).ok()?;
@@ -48,7 +68,7 @@ pub(crate) fn workspace_ipc_terminal_context(
         runtime_artifact_digest: None,
         provider_contract_digest: None,
         generation_digest: None,
-        budget_micros: None,
+        budget_micros: Some(AGENT_FACING_SEARCH_BUDGET_MICROS),
         elapsed_micros: None,
         observed_at_unix_micros: SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -67,17 +87,23 @@ pub(crate) fn record_workspace_ipc_terminal(
     Option<super::IncidentRecord>,
     crate::runtime_telemetry_bus::RuntimeIncidentAdmissionError,
 > {
-    let (Some(sender), Some(mut context), WorkspaceDbIpcResult::Failed { code, .. }) =
-        (sender, context, result)
-    else {
+    let (Some(sender), Some(mut context)) = (sender, context) else {
         return Ok(None);
     };
     context.elapsed_micros = Some(elapsed.as_micros() as u64);
+    let reason_kind = match result {
+        WorkspaceDbIpcResult::Failed { code, .. } => code.clone(),
+        _ if context
+            .budget_micros
+            .is_some_and(|budget| context.elapsed_micros.is_some_and(|value| value > budget)) =>
+        {
+            "agent-facing-search-wall-budget-exceeded".to_owned()
+        }
+        _ => return Ok(None),
+    };
     sender.try_record_search_terminal(
         context,
-        super::SearchIncidentTerminalOutcome::Failed {
-            reason_kind: code.clone(),
-        },
+        super::SearchIncidentTerminalOutcome::Failed { reason_kind },
     )
 }
 

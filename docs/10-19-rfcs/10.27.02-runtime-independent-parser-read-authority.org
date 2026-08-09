@@ -1,0 +1,121 @@
+#+title: Runtime-Independent Parser Read Authority
+#+property: RFC_STATE normative
+
+* Problem
+
+Agent-facing =search= and exact =query= currently treat Runtime Server endpoint
+availability as a prerequisite for parser-owned reads.  This couples a durable,
+already-committed source generation to the mutation control plane.  When the
+Runtime is intentionally stopped, restarting, or unavailable, a valid source
+generation becomes unreadable and callers receive transport or wrapper-byte
+errors instead of parser evidence.
+
+This is an authority error.  Runtime owns mutation, admission, publication,
+and writer serialization.  It must not be the only reader of an immutable
+generation that has already been validated and committed.
+
+* Normative authority split
+
+** Mutation authority
+
+Only the Runtime workspace writer lane may:
+
+- admit a repository candidate;
+- build or replace a source generation;
+- publish an active-generation pointer;
+- mutate selector overlays;
+- repair, invalidate, or garbage-collect durable state.
+
+Mutation requires a healthy Runtime, the canonical workspace identity, and the
+current writer epoch.  Search and query never perform any of these operations.
+
+** Read authority
+
+An immutable generation is readable without a Runtime endpoint when all of the
+following evidence is available and agrees:
+
+- canonical project and workspace identity;
+- canonical workspace root;
+- committed generation digest;
+- source-snapshot root digest;
+- provider manifest digest and parser schema identity;
+- atomic active-generation pointer;
+- complete owner/source-byte membership for the requested generation.
+
+The consumer loads that generation once through the Memory Backend.  A durable
+mmap checkpoint is the process-cold transport; the in-process Memory Backend is
+the warm transport.  Neither transport opens Turso, spawns a provider, scans the
+workspace, canonicalizes the root, or writes state on a read.
+
+* Acquisition state machine
+
+The read acquisition result is one of:
+
+- =resident-memory=: the validated generation is already loaded;
+- =durable-mmap=: the validated immutable checkpoint is loaded exactly once;
+- =generation-required=: no committed generation exists;
+- =generation-stale=: pointer, generation, provider, or root evidence differs;
+- =generation-corrupt=: committed membership or source bytes are incomplete.
+
+=Runtime stopped=, =endpoint unavailable=, and =ChoicePlane unavailable= are
+not read-acquisition states.  They affect mutation and agent scheduling only.
+
+No state authorizes a direct source read, provider subprocess fallback, query-
+time activation refresh, query-time Turso open, or workspace scan.  Missing,
+stale, and corrupt generations fail closed with typed evidence and leave repair
+to the Runtime writer lane.
+
+* Search and exact-query refinement
+
+Both search and exact query consume the same validated read-authority handle.
+Search reads the immutable owner/fact graph.  Exact query additionally proves
+selector membership and source-byte membership in the same generation before
+projection.  A transport failure cannot be rendered as an item-missing,
+owner-missing, kind-mismatch, or wrapper-byte error.
+
+The CLI and Hook are adapters.  They may request a registered read-only agent,
+but agent-session availability must not change whether a committed generation
+is readable.
+
+* Tokio lifecycle
+
+Each workspace read authority is managed by one Tokio-owned load-once cell.
+Concurrent readers join the same load.  Cancellation before publication leaves
+the previous generation readable.  Replacement publishes a new immutable
+handle atomically; existing reader leases finish on the old handle.  Shutdown
+joins all loader tasks and cannot detach a file descriptor or mmap lease.
+
+Each acquisition owns an internal monotonic ticket.  The ticket whose loader
+initializes the cell is the only receipt that may report =durable-mmap= and
+nonzero mapped bytes.  Coalesced and later readers report =resident-memory= and
+zero mapped bytes.  Cancellation by the loader releases an uninitialized cell
+for retry; cancellation by a non-owner cannot clear a resident generation.
+
+* Telemetry and hard gates
+
+Every acquisition emits a bounded typed receipt containing route, generation,
+validation state, bytes mapped, database opens, provider spawns, filesystem
+source reads, and elapsed time.  Runtime endpoint state is diagnostic context,
+not a routing input.
+
+Required gates:
+
+1. Runtime stopped plus valid checkpoint: search and exact source projection
+   succeed without starting Runtime.
+2. 256 concurrent process-cold readers perform one mmap load.
+3. Warm search/query perform zero database opens, provider spawns, source-file
+   reads, workspace canonicalizations, activation refreshes, and writes.
+4. Warm exact selector p99 is below one millisecond; the stricter projection
+   fixture retains its 250-microsecond gate.
+5. Missing, stale, corrupt, and incomplete generations return distinct typed
+   states and never invoke a fallback channel.
+6. Multi-workspace readers are isolated; replacement in one workspace cannot
+   invalidate another workspace or an existing reader lease.
+
+* Prohibited compatibility
+
+There is no legacy Runtime-required read mode.  There is no direct-provider or
+raw-source compatibility path.  The only architecture is committed immutable
+generation -> durable mmap -> load-once Memory Backend -> parser-owned read.
+There is no public =cache runtime-source= repair command: acquisition is an
+automatic read concern, while repair remains an internal Runtime writer action.

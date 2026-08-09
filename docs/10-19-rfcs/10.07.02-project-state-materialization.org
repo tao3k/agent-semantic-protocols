@@ -101,6 +101,41 @@ One Git repository maps to one repository ID.  Identity preference is:
 3. canonical Git directory
 4. no implicit persistent identity for a non-Git path
 
+Gitoxide (=gix=) discovery is the sole admission authority for new durable
+State Core identity.  Filesystem marker probing and =git= subprocess output
+may remain migration or diagnostic inputs, but they MUST NOT turn a path into
+a durable repository and MUST NOT authorize creation beneath
+=projects/by-id=.  If =gix::discover= cannot open the repository and establish
+its worktree/common-directory facts, the path is ephemeral for persistence
+purposes.
+
+For a repository with a canonical network remote, the normalized remote URL is
+the project identity: all local clones and linked worktrees of that URL resolve
+the same repository ID.  A linked worktree derives only a workspace ID beneath
+that repository; its checkout path or per-worktree Git directory never creates
+a second top-level project.  A repository without a network remote falls back
+to the Gix-owned common Git directory identity, preserving the same worktree
+nesting rule for local-only repositories.
+
+A checkout rooted in an operating-system temporary directory needs an
+additional admission check.  If its canonical common Git directory is outside
+the temporary tree, it is a linked worktree and MUST inherit that real
+repository identity; only its workspace identity may be temporary.  If both
+the checkout and its Git metadata are temporary and no canonical network
+remote exists, it is a standalone temporary repository.  Such a repository is
+=ephemeral-path= for State Core persistence and MUST NOT allocate an independent
+=projects/by-id/<repo-id>= entry.  A caller that needs durable state for
+temporary data must supply an owner checkout whose repository identity is the
+project and use the temporary checkout only as a workspace/data input.
+
+Temporary is therefore a workspace lifecycle, not a closed scenario.  State
+Core MUST expose an owner-bound resolution operation for providers that create
+a fresh temporary Git repository rather than a linked worktree.  The operation
+uses the owner checkout for the repository ID and the temporary checkout for a
+distinct workspace ID.  Temporary workspace metadata records its lifecycle and
+is eligible for workspace-only retention after its checkout disappears; GC
+MUST NOT remove the owner project as a consequence of retiring that workspace.
+
 An ordinary non-Git directory is an ephemeral search root, not a repository.
 Resolving it MUST NOT allocate or materialize a =projects/by-id/<repo-id>=
 entry.  The resolved identity MUST expose that it is ephemeral so callers
@@ -137,6 +172,45 @@ below the same repository directory.  Moving between subdirectories in one
 checkout does not create another repository or workspace directory.
 
 * Materialization gates
+
+The canonical repository and workspace directory names are commit points, not
+staging areas.  A newly visible =projects/by-id/<repo-id>= directory MUST
+already contain =project.json= and the workspace that admitted it beneath
+=workspaces/=.  A newly visible
+=workspaces/<workspace-id>= directory MUST already contain =workspace.json=
+and its minimal =live/client/manifest.json=.  Implementations MUST build these
+trees under private sibling staging names and publish them with one directory
+rename.  Failed or racing writers remove only their private staging tree.
+
+Lower-level DB, cache, provider-runtime, and artifact writers MUST NOT create
+the canonical repository, workspace, or client ancestors from a naked path.
+When a path is inside the State Core =projects/by-id= layout, those writers
+require the repository and workspace identity manifests to exist before their
+first filesystem mutation; otherwise they fail closed with
+=state-core-materialization-required=.  Arbitrary caller-owned temporary DB
+directories remain valid low-level test and migration inputs because they are
+not State Core identity paths.
+
+Consequently, every visible =repo-*= entry is an admitted project identity and
+every visible =workspace-*= entry is an admitted workspace identity.  A
+directory created only by =create_dir_all= on a derived cache or DB path is a
+contract violation, even if GC would later remove it.
+
+* Runtime Server materialization owner
+
+ASP Runtime Server is the normal long-lived owner for workspace DB admission.
+Its admission path MUST coordinate resolution and first materialization through
+the Tokio runtime.  Blocking Gix discovery and same-filesystem directory commit
+run through =tokio::task::spawn_blocking=; Tokio async tasks, =OnceCell=, and
+workspace mutation lanes coordinate concurrent admissions without blocking an
+executor worker.
+
+Tokio does not replace the filesystem commit primitive.  The final publication
+of a staged identity tree remains an atomic same-filesystem directory rename.
+The synchronous State Core entrypoint remains available only for bounded CLI,
+hook bootstrap, installation, migration, and test boundaries.  Server code
+must use the async materialization entrypoint before opening Turso or publishing
+a workspace admission.
 
 A change is not closed until all of the following scenarios pass against a
 fresh temporary State Home:

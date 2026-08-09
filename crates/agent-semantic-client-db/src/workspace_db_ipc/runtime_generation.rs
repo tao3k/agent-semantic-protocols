@@ -585,7 +585,9 @@ impl WorkspaceDbIpcSession {
         &self,
     ) -> Result<crate::runtime_server_workspace::WorkspaceSearchGenerationAuthority, String> {
         let Some(pointer_path) = self.runtime_generation_pointer_path() else {
-            return self.fetch_runtime_search_generation_authority().await;
+            return Err(
+                crate::runtime_server_workspace::ACTIVE_WORKSPACE_GENERATION_REQUIRED.to_owned(),
+            );
         };
         if let Some(authority) =
             crate::runtime_server_workspace::resident_search_generation_authority(pointer_path)
@@ -626,28 +628,6 @@ impl WorkspaceDbIpcSession {
             })
             .await?;
         cache.read(self).await
-    }
-
-    async fn fetch_runtime_search_generation_authority(
-        &self,
-    ) -> Result<crate::runtime_server_workspace::WorkspaceSearchGenerationAuthority, String> {
-        let project_root = self.runtime_project_root()?.display().to_string();
-        match self
-            .call_operation(
-                WorkspaceDbIpcOperation::ReadRuntimeSearchGenerationAuthority { project_root },
-            )
-            .await?
-        {
-            WorkspaceDbIpcResult::RuntimeSearchGenerationAuthority {
-                authority: Some(authority),
-            } => Ok(authority),
-            WorkspaceDbIpcResult::RuntimeSearchGenerationAuthority { authority: None } => {
-                Err("Runtime Server has no admitted search generation authority".to_owned())
-            }
-            other => Err(format!(
-                "Runtime Server returned unexpected search generation authority result: {other:?}"
-            )),
-        }
     }
 
     pub async fn publish_runtime_owner(

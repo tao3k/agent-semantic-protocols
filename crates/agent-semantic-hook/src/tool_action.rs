@@ -232,6 +232,41 @@ pub(crate) struct ToolAction {
 }
 
 impl ToolAction {
+    pub(crate) fn normalized_direct_policy_action(path: String) -> Self {
+        Self {
+            tool_name: String::new(),
+            surface: ToolSurface::CodexDirectRead,
+            operation: OperationIntent::DirectRead,
+            command: None,
+            command_tokens: None,
+            paths: vec![path],
+        }
+    }
+
+    pub(crate) fn normalized_shell_policy_action(command: String, path: String) -> Self {
+        let command_tokens = semantic_shell_tokens(&command);
+        Self {
+            tool_name: String::new(),
+            surface: ToolSurface::CodexShell,
+            operation: OperationIntent::ShellCommand,
+            command: Some(command),
+            command_tokens: Some(command_tokens),
+            paths: vec![path],
+        }
+    }
+
+    pub(crate) fn normalized_shell_command_action(command: String, tool_name: String) -> Self {
+        let command_tokens = semantic_shell_tokens(&command);
+        Self {
+            tool_name,
+            surface: ToolSurface::CodexShell,
+            operation: OperationIntent::ShellCommand,
+            command: Some(command),
+            command_tokens: Some(command_tokens),
+            paths: Vec::new(),
+        }
+    }
+
     pub(crate) fn semantic_command_text(&self) -> Option<&str> {
         self.command.as_deref()
     }
@@ -432,6 +467,48 @@ pub fn direct_source_read_paths(tool_name: &str, tool_input: &Value) -> Option<V
         .map(|action| action.paths)
 }
 
+/// Parser-owned Host-envelope projections used by the black-box policy
+/// generator. Keeping these beside normalization prevents tests from copying a
+/// second, inevitably drifting list of Host tool spellings and input fields.
+pub(crate) fn direct_read_host_envelopes(path: &str) -> Vec<(String, Value)> {
+    [
+        ("Read", "file_path"),
+        ("functions.read", "path"),
+        ("fsReadFile", "fileName"),
+        ("mcp__filesystem__read_file", "uri"),
+    ]
+    .into_iter()
+    .map(|(tool_name, path_key)| {
+        let mut input = serde_json::Map::new();
+        input.insert(path_key.to_owned(), Value::String(path.to_owned()));
+        (tool_name.to_owned(), Value::Object(input))
+    })
+    .collect()
+}
+
+/// Parser-owned command-envelope projections paired with
+/// `direct_read_host_envelopes` for generated wrapped-command coverage.
+pub(crate) fn shell_host_envelopes(command: &str) -> Vec<(String, Value)> {
+    let encoded = serde_json::to_string(command).expect("command JSON encoding");
+    vec![
+        ("Bash".to_owned(), serde_json::json!({"command": command})),
+        (
+            "functions.exec_command".to_owned(),
+            serde_json::json!({"cmd": command}),
+        ),
+        (
+            "exec_command".to_owned(),
+            serde_json::json!({"args": semantic_shell_tokens(command)}),
+        ),
+        (
+            "functions.exec".to_owned(),
+            Value::String(format!(
+                "const receipt = await tools.exec_command({{cmd: {encoded}}}); text(receipt);"
+            )),
+        ),
+    ]
+}
+
 /// Returns whether a Codex tool envelope can reach any ASP policy-bearing
 /// action without loading configuration or contacting the Runtime Server.
 ///
@@ -458,9 +535,7 @@ pub fn codex_tool_event_requires_policy_evaluation(payload: &Value) -> Option<bo
     // the local evaluator must fail closed instead of treating it as an
     // unrelated host action merely because no literal command was projected.
     if tool_name == "functions.exec"
-        && tool_input
-            .get("code")
-            .and_then(Value::as_str)
+        && functions_exec::functions_exec_source(tool_input)
             .is_some_and(|code| code.contains("tools.exec_command"))
     {
         return Some(true);
@@ -727,6 +802,14 @@ pub fn workspace_mutation_paths(tool_name: &str, tool_input: &Value) -> Vec<Stri
     paths
 }
 
+#[cfg(test)]
+#[path = "../tests/unit/tool_action_functions_exec.rs"]
+mod functions_exec_tests;
+
+#[cfg(test)]
+#[path = "../tests/unit/tool_action_workspace_mutation.rs"]
+mod workspace_mutation_tests;
+
 pub(crate) fn subject_for_action(action: &ToolAction) -> DecisionSubject {
     DecisionSubject {
         tool_name: if action.tool_name.is_empty() {
@@ -788,12 +871,13 @@ fn tool_input_needs_action_scan(tool_name: &str, tool_input: &Value) -> bool {
     if is_codex_command_execution_tool_name(tool_name) {
         return true;
     }
+    if tool_name == "functions.exec" && functions_exec::functions_exec_source(tool_input).is_some()
+    {
+        return true;
+    }
     let Some(object) = tool_input.as_object() else {
         return false;
     };
-    if tool_name == "functions.exec" && object.get("code").and_then(Value::as_str).is_some() {
-        return true;
-    }
     ACTION_SCAN_KEYS.iter().any(|key| object.contains_key(*key))
 }
 

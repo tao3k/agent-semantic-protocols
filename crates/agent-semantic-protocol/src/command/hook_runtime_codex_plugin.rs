@@ -14,7 +14,7 @@ const ASP_CODEX_PLUGIN_MARKETPLACE_NAME: &str = "asp-project";
 mod authority;
 #[cfg(test)]
 pub(in crate::command) use authority::{
-    ASP_CODEX_PLUGIN_HOOKS_JSON, ASP_CODEX_PLUGIN_MARKETPLACE_JSON,
+    ASP_CODEX_PLUGIN_HOOK_LAUNCHER, ASP_CODEX_PLUGIN_HOOKS_JSON, ASP_CODEX_PLUGIN_MARKETPLACE_JSON,
 };
 pub(in crate::command) use authority::{
     ASP_CODEX_PLUGIN_MANIFEST_JSON, codex_plugin_hook_present,

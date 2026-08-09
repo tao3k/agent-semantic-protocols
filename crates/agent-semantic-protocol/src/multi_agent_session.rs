@@ -2,11 +2,21 @@
 
 use std::path::{Path, PathBuf};
 
-use agent_semantic_client_db::{AgentSessionControlPlaneState, AgentSessionRegistry};
+use agent_semantic_client_db::workspace_db_ipc::{
+    AgentHostExecutionObservationIpc, AgentHostLifecycleEventIpc, AgentHostLifecycleEventKind,
+    AgentSessionRegistryIpcResult,
+};
+use agent_semantic_client_db::{
+    AgentSessionControlPlaneState, AgentSessionRegistry, SessionControlPlaneAgentRegistration,
+    SessionControlPlaneDelegationProposal,
+};
 use agent_semantic_config::agent_route_registry::{
     AgentsRegistry, CompiledAgentRoute, compile_agent_route, load_agent_route_registry,
 };
 use agent_semantic_config::load_hook_client_config_file;
+use agent_semantic_context_product::agent_session_delegation_admission::{
+    AgentSessionDelegationCapability, AgentSessionDelegationDecision,
+};
 use agent_semantic_hook::{HookSessionAgentRoute, latest_hook_session_agent_route};
 
 use crate::command::org_capture_interactive::{
@@ -57,6 +67,7 @@ pub(crate) async fn open_choice_plane(request: ChoicePlaneRequest<'_>) -> Result
         async {
             crate::server::runtime_server::observe_agent_facing_runtime_server(&state.state_home)
                 .await?;
+            reconcile_pending_hook_memory_events(request.project_root).await?;
             Ok(SessionRegistryContext::resolve(
                 request.project_root,
                 None,
@@ -90,6 +101,165 @@ pub(crate) async fn open_choice_plane(request: ChoicePlaneRequest<'_>) -> Result
         &context,
         &choices,
     )
+}
+
+async fn reconcile_pending_hook_memory_events(project_root: &Path) -> Result<(), String> {
+    let pending =
+        crate::command::hook_runtime_memory_inbox::pending_hook_events(project_root).await?;
+    if pending.is_empty() {
+        return Ok(());
+    }
+    let runtime_registry = AgentSessionRegistry::open_runtime_project_proxy(project_root)?
+        .ok_or_else(|| "Runtime Server agent-session registry proxy is unavailable".to_owned())?;
+    let state = agent_semantic_runtime::state_core::ResolvedState::resolve(project_root)?;
+    let routes = load_agent_route_registry(&agents_root(&state.state_home).join("config.toml"))?;
+    for record in pending {
+        match record.entry_kind.as_str() {
+            "host-lifecycle" => {
+                let event = serde_json::from_value::<AgentHostLifecycleEventIpc>(record.event)
+                    .map_err(|error| {
+                        format!("failed to decode pending Host lifecycle event: {error}")
+                    })?;
+                let route = compile_agent_route(&routes, &event.route_key, "codex")?;
+                if event.kind == AgentHostLifecycleEventKind::Started {
+                    if event.parent_session_id == event.root_session_id {
+                        runtime_registry
+                            .register_control_plane_agent(SessionControlPlaneAgentRegistration {
+                                project_id: event.project_id.clone(),
+                                root_session_id: event.root_session_id.clone(),
+                                session_id: event.root_session_id.clone(),
+                                parent_session_id: None,
+                                resident_name: "codex-root".to_owned(),
+                                capability: AgentSessionDelegationCapability::Standard,
+                            })
+                            .await?;
+                    }
+                    let snapshot = runtime_registry
+                        .read_control_plane_snapshot(
+                            event.project_id.clone(),
+                            event.root_session_id.clone(),
+                        )
+                        .await?;
+                    let proposed_child_capability = match route.focus_mode {
+                        agent_semantic_config::agent_route_registry::AgentFocusMode::Standard => {
+                            AgentSessionDelegationCapability::Standard
+                        }
+                        agent_semantic_config::agent_route_registry::AgentFocusMode::Leaf => {
+                            AgentSessionDelegationCapability::FocusedLeaf
+                        }
+                    };
+                    let transaction = runtime_registry
+                        .admit_control_plane_delegation(SessionControlPlaneDelegationProposal {
+                            event_id: event.host_event_id.clone(),
+                            project_id: event.project_id.clone(),
+                            root_session_id: event.root_session_id.clone(),
+                            current_session_id: event.parent_session_id.clone(),
+                            proposed_child_session_id: event.child_session_id.clone(),
+                            proposed_child_resident_name: event.route_key.clone(),
+                            proposed_child_capability,
+                            expected_generation: snapshot.generation,
+                            evidence_refs: vec![
+                                event.payload_digest.clone(),
+                                event.profile_digest.clone(),
+                                format!("route:{}", event.route_key),
+                            ],
+                            observed_at_ms: event.observed_at.saturating_mul(1_000),
+                        })
+                        .await?;
+                    if transaction.admission.decision == AgentSessionDelegationDecision::Denied {
+                        return Err(transaction
+                            .admission
+                            .reason_kind
+                            .unwrap_or_else(|| "focused-agent-delegation-denied".to_owned()));
+                    }
+                }
+                let kind = event.kind;
+                let result = runtime_registry
+                    .record_host_lifecycle_event_async(event)
+                    .await?;
+                match (kind, result) {
+                    (
+                        AgentHostLifecycleEventKind::Started,
+                        AgentSessionRegistryIpcResult::Registered { .. },
+                    )
+                    | (
+                        AgentHostLifecycleEventKind::Resumed
+                        | AgentHostLifecycleEventKind::Stopped
+                        | AgentHostLifecycleEventKind::Achieved,
+                        AgentSessionRegistryIpcResult::Changed { .. },
+                    ) => {}
+                    _ => {
+                        return Err(
+                            "Runtime Server returned an unexpected Host lifecycle result"
+                                .to_owned(),
+                        );
+                    }
+                }
+            }
+            "host-execution-observation" => {
+                let observation =
+                    serde_json::from_value::<AgentHostExecutionObservationIpc>(record.event)
+                        .map_err(|error| {
+                            format!("failed to decode pending Host execution observation: {error}")
+                        })?;
+                match runtime_registry
+                    .record_host_execution_observation_async(observation)
+                    .await?
+                {
+                    AgentSessionRegistryIpcResult::Changed { .. } => {}
+                    _ => {
+                        return Err(
+                            "Runtime Server returned an unexpected Host execution result"
+                                .to_owned(),
+                        );
+                    }
+                }
+            }
+            "workspace-mutation" => {
+                let mutation_id = record
+                    .event
+                    .get("mutationId")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or_else(|| "pending workspace mutation omitted mutationId".to_owned())?
+                    .to_owned();
+                let changed_paths = record
+                    .event
+                    .get("changedPaths")
+                    .and_then(serde_json::Value::as_array)
+                    .ok_or_else(|| "pending workspace mutation omitted changedPaths".to_owned())?
+                    .iter()
+                    .map(|value| {
+                        value.as_str().map(str::to_owned).ok_or_else(|| {
+                            "pending workspace mutation contains a non-string path".to_owned()
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                crate::server::runtime_server_hook_mutation::submit(
+                    project_root,
+                    mutation_id,
+                    changed_paths,
+                )
+                .await?
+                .validate()?;
+            }
+            "runtime-performance-observation" => {
+                crate::server::runtime_server_hook_mutation::submit_pending_wall_failure(
+                    record.event,
+                    project_root,
+                )
+                .await?;
+            }
+            other => {
+                return Err(format!("unsupported Hook memory inbox entry kind {other}"));
+            }
+        }
+        crate::command::hook_runtime_memory_inbox::acknowledge_hook_event(
+            project_root,
+            record.inbox_sequence,
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 struct ResolvedHookSessionRoute {

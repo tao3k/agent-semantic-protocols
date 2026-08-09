@@ -124,6 +124,7 @@ fn runtime_profiles_for_runtime_uses_activation_command_prefix() {
         rankers: Vec::new(),
         project_root: root.display().to_string(),
         providers: vec![provider],
+        policy_providers: Vec::new(),
     };
     let provider = &runtime.providers[0];
     let profiles = runtime_profiles_for_runtime(&root, &runtime);
@@ -160,6 +161,7 @@ fn runtime_profiles_for_runtime_fails_closed_when_activation_executable_is_missi
         rankers: Vec::new(),
         project_root: root.display().to_string(),
         providers: vec![provider],
+        policy_providers: Vec::new(),
     };
     std::fs::remove_file(&wrapper).expect("remove activated provider executable");
 

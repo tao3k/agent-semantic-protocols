@@ -1,31 +1,25 @@
 use agent_semantic_config::HookClientLanguageProviderConfig;
 use agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest_v1;
-use std::collections::{BTreeSet, HashMap};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::collections::BTreeSet;
 
 pub(crate) const HOOK_POLICY_KERNEL_VERSION: &str = "hook-enforcement-kernel-v1";
 
 #[derive(Clone, Debug)]
 pub(crate) struct HookPolicySnapshot {
-    pub kernel_version: &'static str,
     pub generation_digest: String,
     pub provider_projections:
         Vec<crate::protocol_activation::protocol_activation_manifest::HookProviderProjection>,
 }
 
-static ACTIVE_POLICY_SNAPSHOTS: OnceLock<RwLock<HashMap<String, Arc<HookPolicySnapshot>>>> =
-    OnceLock::new();
-
-fn snapshot_store() -> &'static RwLock<HashMap<String, Arc<HookPolicySnapshot>>> {
-    ACTIVE_POLICY_SNAPSHOTS.get_or_init(|| RwLock::new(HashMap::new()))
-}
-
-fn compile_language_provider_snapshot(
+pub(crate) fn compile_language_provider_snapshot(
     language_providers: &[HookClientLanguageProviderConfig],
 ) -> Result<HookPolicySnapshot, String> {
-    if language_providers.is_empty() {
-        return Err("hook policy snapshot requires at least one language provider".to_owned());
-    }
+    compile_language_provider_snapshot_inner(language_providers)
+}
+
+fn compile_language_provider_snapshot_inner(
+    language_providers: &[HookClientLanguageProviderConfig],
+) -> Result<HookPolicySnapshot, String> {
     let mut providers = language_providers.to_vec();
     providers.sort_by(|left, right| {
         (&left.language_id, &left.provider_id).cmp(&(&right.language_id, &right.provider_id))
@@ -104,6 +98,8 @@ fn compile_language_provider_snapshot(
                 .project_resolution()
                 .map(|descriptor| descriptor.entry_markers.clone())
                 .unwrap_or_default();
+            let routes =
+                crate::materialize_provider_routes(manifest).map_err(|error| error.to_string())?;
             Ok(
                 crate::protocol_activation::protocol_activation_manifest::HookProviderProjection {
                     language_id: manifest.language_id().clone(),
@@ -114,47 +110,17 @@ fn compile_language_provider_snapshot(
                     source_extensions: provider.source_extensions.clone(),
                     config_files,
                     policy: manifest.policy().clone(),
-                    routes: crate::materialize_provider_routes(manifest)
-                        .map_err(|error| error.to_string())?,
+                    owner_route: routes.owner,
+                    lexical_route: routes.lexical,
+                    ingest_route: routes.ingest,
                 },
             )
         })
         .collect::<Result<Vec<_>, String>>()?;
     Ok(HookPolicySnapshot {
-        kernel_version: HOOK_POLICY_KERNEL_VERSION,
         generation_digest: format!("blake3-256:{}", digest.as_str()),
         provider_projections,
     })
-}
-
-pub(crate) fn publish_language_provider_snapshot(
-    project_root: &str,
-    language_providers: &[HookClientLanguageProviderConfig],
-) -> Result<Arc<HookPolicySnapshot>, String> {
-    let candidate = Arc::new(compile_language_provider_snapshot(language_providers)?);
-    let mut snapshots = snapshot_store()
-        .write()
-        .map_err(|_| "hook policy snapshot store is poisoned".to_owned())?;
-    if let Some(active) = snapshots.get(project_root)
-        && active.generation_digest == candidate.generation_digest
-    {
-        return Ok(Arc::clone(active));
-    }
-    snapshots.insert(project_root.to_owned(), Arc::clone(&candidate));
-    Ok(candidate)
-}
-
-pub(crate) fn active_policy_snapshot(project_root: &str) -> Option<Arc<HookPolicySnapshot>> {
-    snapshot_store()
-        .read()
-        .ok()
-        .and_then(|snapshots| snapshots.get(project_root).cloned())
-}
-
-pub(crate) fn active_provider_projections(
-    project_root: &str,
-) -> Option<Vec<crate::protocol_activation::protocol_activation_manifest::HookProviderProjection>> {
-    active_policy_snapshot(project_root).map(|snapshot| snapshot.provider_projections.clone())
 }
 
 #[cfg(test)]

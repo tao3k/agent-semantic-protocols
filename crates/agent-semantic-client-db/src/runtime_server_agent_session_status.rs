@@ -8,21 +8,24 @@ use tokio::sync::watch;
 pub(crate) struct AgentSessionStatusHandle {
     value: Arc<RwLock<Vec<crate::runtime_server_control::RuntimeServerAgentSessionStatus>>>,
     generation: watch::Sender<u64>,
+    published_generation: watch::Sender<u64>,
 }
 
 impl AgentSessionStatusHandle {
     pub(crate) fn new() -> Self {
         let (generation, _) = watch::channel(0);
+        let (published_generation, _) = watch::channel(0);
         Self {
             value: Arc::new(RwLock::new(Vec::new())),
             generation,
+            published_generation,
         }
     }
 
     pub(crate) async fn refresh(
         &self,
         registry: &crate::AgentSessionRegistry,
-    ) -> Result<(), String> {
+    ) -> Result<u64, String> {
         let now = crate::agent_session_unix_timestamp()?;
         let sessions = registry
             .query_all_sessions_local()
@@ -33,11 +36,17 @@ impl AgentSessionStatusHandle {
                     std::path::Path::new(record.project_id()),
                 )?;
                 let lifecycle_state = if record.expires_at().is_some_and(|expires| expires <= now) {
-                    crate::runtime_server_control::RuntimeServerAgentSessionLifecycleState::Expired
+                    crate::runtime_server_control::RuntimeServerAgentSessionLifecycleState::Stopped
                 } else {
                     match record.status() {
+                        "stopped" => {
+                            crate::runtime_server_control::RuntimeServerAgentSessionLifecycleState::Stopped
+                        }
+                        "achieved" => {
+                            crate::runtime_server_control::RuntimeServerAgentSessionLifecycleState::Achieved
+                        }
                         crate::AGENT_SESSION_STATUS_ARCHIVED => {
-                            crate::runtime_server_control::RuntimeServerAgentSessionLifecycleState::Archived
+                            crate::runtime_server_control::RuntimeServerAgentSessionLifecycleState::Stopped
                         }
                         crate::AGENT_SESSION_STATUS_INVALID => {
                             crate::runtime_server_control::RuntimeServerAgentSessionLifecycleState::Invalid
@@ -58,8 +67,8 @@ impl AgentSessionStatusHandle {
                 if let Some(binding) = host_binding.as_mut().and_then(serde_json::Value::as_object_mut) {
                     let (state, routable) = match &lifecycle_state {
                         crate::runtime_server_control::RuntimeServerAgentSessionLifecycleState::Routable => ("live", true),
-                        crate::runtime_server_control::RuntimeServerAgentSessionLifecycleState::Archived => ("archived", false),
-                        crate::runtime_server_control::RuntimeServerAgentSessionLifecycleState::Expired => ("stopped", false),
+                        crate::runtime_server_control::RuntimeServerAgentSessionLifecycleState::Stopped => ("stopped", false),
+                        crate::runtime_server_control::RuntimeServerAgentSessionLifecycleState::Achieved => ("achieved", false),
                         crate::runtime_server_control::RuntimeServerAgentSessionLifecycleState::Invalid => ("unregistered", false),
                     };
                     binding.insert("lifecycleState".to_owned(), state.into());
@@ -87,7 +96,7 @@ impl AgentSessionStatusHandle {
                 *generation = generation.saturating_add(1);
             });
         }
-        Ok(())
+        Ok(*self.generation.borrow())
     }
 
     pub(crate) fn shared(
@@ -98,5 +107,30 @@ impl AgentSessionStatusHandle {
 
     pub(crate) fn subscribe(&self) -> watch::Receiver<u64> {
         self.generation.subscribe()
+    }
+
+    pub(crate) fn mark_current_published(&self) {
+        let generation = *self.generation.borrow();
+        self.published_generation.send_replace(generation);
+    }
+
+    pub(crate) async fn wait_published(&self, required_generation: u64) -> Result<(), String> {
+        let mut published = self.published_generation.subscribe();
+        loop {
+            if *published.borrow() >= required_generation {
+                return Ok(());
+            }
+            published.changed().await.map_err(|_| {
+                "Runtime Server agent-session status publication channel closed".to_owned()
+            })?;
+        }
+    }
+
+    pub(crate) async fn refresh_and_wait_published(
+        &self,
+        registry: &crate::AgentSessionRegistry,
+    ) -> Result<(), String> {
+        let generation = self.refresh(registry).await?;
+        self.wait_published(generation).await
     }
 }

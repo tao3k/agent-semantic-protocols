@@ -5,6 +5,7 @@
 //! advanced beyond that binary's enum vocabulary.
 
 use std::ffi::OsString;
+use std::future::Future;
 use std::io::{Read, Write};
 
 const MAX_HOOK_INPUT_BYTES: usize = 1024 * 1024;
@@ -21,6 +22,10 @@ const HOOK_EVENTS: &[&str] = &[
     "subagent-stop",
 ];
 
+#[cfg(test)]
+#[path = "../tests/unit/hook_bootstrap_publication_recovery.rs"]
+mod publication_recovery_tests;
+
 /// Return whether the public CLI arguments name an actual Hook event.
 ///
 /// Lifecycle diagnostics such as `asp hook doctor` and `asp hook paths` must
@@ -34,6 +39,47 @@ where
 {
     let args = args.into_iter().map(Into::into).collect::<Vec<_>>();
     args.first().and_then(|arg| arg.to_str()) == Some("hook") && hook_event(&args).is_some()
+}
+
+/// Policy-enforcing Host actions are mmap-backed synchronous work and must
+/// complete before any Tokio runtime is constructed. A process-level recovery
+/// override has the same precedence for every Hook event.
+#[doc(hidden)]
+pub fn is_synchronous_hook_dispatch<I, S>(args: I) -> bool
+where
+    I: IntoIterator<Item = S>,
+    S: Into<OsString>,
+{
+    let args = args.into_iter().map(Into::into).collect::<Vec<_>>();
+    is_synchronous_hook_dispatch_with_override(&args, std::env::var_os("ASP_NO_AGENT").is_some())
+}
+
+fn is_synchronous_hook_dispatch_with_override(args: &[OsString], override_present: bool) -> bool {
+    if !is_hook_event_dispatch(args.iter().cloned()) {
+        return false;
+    }
+    override_present
+        || args
+            .iter()
+            .filter_map(|arg| arg.to_str())
+            .any(|arg| matches!(arg, "pre-tool" | "permission-request"))
+}
+
+/// Poll the synchronous policy data plane without a Tokio runtime. Reaching
+/// `Pending` is a contract violation; only lifecycle events may own async work.
+#[doc(hidden)]
+pub fn run_synchronous_hook_bootstrap_from_env() -> i32 {
+    let mut future = std::pin::pin!(run_hook_bootstrap_from_env());
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    match future.as_mut().poll(&mut context) {
+        std::task::Poll::Ready(code) => code,
+        std::task::Poll::Pending => {
+            eprintln!(
+                "[asp-hook] status=failed error=synchronous-policy-data-plane-yielded-to-runtime"
+            );
+            2
+        }
+    }
 }
 
 /// Run the canonical hook command, repairing the development artifact on a
@@ -73,6 +119,16 @@ async fn run_hook_bootstrap(args: Vec<OsString>) -> Result<i32, String> {
     let started = std::time::Instant::now();
     validate_hook_args(&args)?;
     let input = read_bounded_stdin()?;
+    if bootstrap_asp_no_agent_passthrough_requested(&input)? {
+        if std::env::var_os(TRACE_ENV).is_some() {
+            eprintln!(
+                "[asp-hook] route=bootstrap-asp-no-agent-passthrough elapsedMicros={}",
+                started.elapsed().as_micros()
+            );
+        }
+        emit_empty_success()?;
+        return Ok(0);
+    }
     match crate::hook_break_glass::evaluate_hook_break_glass(&input) {
         crate::hook_break_glass::HookBreakGlassEvaluation::Authorized(capability) => {
             if std::env::var_os(TRACE_ENV).is_some() {
@@ -152,6 +208,17 @@ async fn run_hook_bootstrap(args: Vec<OsString>) -> Result<i32, String> {
     }
 }
 
+fn bootstrap_asp_no_agent_passthrough_requested(input: &[u8]) -> Result<bool, String> {
+    if std::env::var_os("ASP_NO_AGENT").is_some() {
+        return Ok(true);
+    }
+    let payload = serde_json::from_slice::<serde_json::Value>(input)
+        .map_err(|error| format!("hook payload must be JSON before recovery override: {error}"))?;
+    Ok(agent_semantic_hook::asp_no_agent_passthrough_requested(
+        &payload,
+    ))
+}
+
 fn emit_empty_success() -> Result<(), String> {
     let mut stdout = std::io::stdout().lock();
     stdout
@@ -173,7 +240,7 @@ fn local_hook_policy_unavailable(event: &str, error: &str) -> String {
     let canonical_install_target = agent_semantic_runtime::resolve_state_home()
         .ok()
         .map(|state_home| state_home.join("runtime/bin/asp"));
-    let recovery_command = canonical_install_target
+    let canonical_install_command = canonical_install_target
         .as_ref()
         .map(|target| {
             format!(
@@ -192,10 +259,11 @@ fn local_hook_policy_unavailable(event: &str, error: &str) -> String {
         "event": event,
         "state": "unavailable",
         "reasonKind": "local-hook-policy-authority-unavailable",
-        "recoveryCommand": recovery_command,
+        "recoveryCommand": "asp hook refresh --client codex",
         "recoveryCommands": [
+            "asp hook refresh --client codex",
             "asp hook doctor --client codex",
-            recovery_command
+            canonical_install_command
         ],
         "canonicalBinaryInstallTarget": canonical_install_target,
         "error": single_line(error),
@@ -250,6 +318,16 @@ fn hook_event_is_canonical_recovery(args: &[OsString], input: &[u8]) -> bool {
         return false;
     }
     let words = stages[0].words();
+    if words.windows(3).any(|candidate| {
+        candidate[0]
+            .rsplit(['/', '\\'])
+            .next()
+            .is_some_and(|name| name == "asp")
+            && candidate[1] == "hook"
+            && candidate[2] == "refresh"
+    }) {
+        return true;
+    }
     let Some(asp_index) = words.iter().position(|word| {
         word.rsplit(['/', '\\'])
             .next()

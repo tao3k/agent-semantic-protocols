@@ -32,6 +32,15 @@ pub(super) async fn run_operation(
                 },
             );
         }
+        crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::RecordHostExecutionObservation {
+            observation,
+        } => {
+            return Ok(crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Changed {
+                changed: registry
+                    .record_host_execution_observation_local(&observation)
+                    .await?,
+            });
+        }
         operation => operation,
     };
     tokio::task::spawn_blocking(move || {
@@ -43,7 +52,8 @@ pub(super) async fn run_operation(
         match operation {
             Operation::RegisterControlPlaneAgent { .. }
             | Operation::AdmitControlPlaneDelegation { .. }
-            | Operation::ReadControlPlaneSnapshot { .. } => Err(
+            | Operation::ReadControlPlaneSnapshot { .. }
+            | Operation::RecordHostExecutionObservation { .. } => Err(
                 "session control-plane operation reached the blocking registry dispatcher"
                     .to_owned(),
             ),
@@ -243,27 +253,46 @@ fn record_host_lifecycle_event(
                     if current.session_id() == event.child_session_id
                         && current.is_routable_at(event.observed_at) =>
                 {
+                    let metadata: serde_json::Value =
+                        serde_json::from_str(current.metadata_json()).map_err(|_| {
+                            "host-event-replay-authority-missing: current namespace metadata is invalid"
+                                .to_owned()
+                        })?;
+                    let exact_replay = metadata
+                        .get("hostEventId")
+                        .and_then(serde_json::Value::as_str)
+                        == Some(event.host_event_id.as_str())
+                        && metadata
+                            .get("hostEventSequence")
+                            .and_then(serde_json::Value::as_u64)
+                            == Some(event.host_event_sequence)
+                        && metadata
+                            .get("payloadDigest")
+                            .and_then(serde_json::Value::as_str)
+                            == Some(event.payload_digest.as_str());
+                    if !exact_replay {
+                        return Err(format!(
+                            "existing-host-namespace-requires-resume: namespace={} generation={}",
+                            event.namespace_id, current.physical_generation,
+                        ));
+                    }
                     u64::try_from(current.physical_generation).unwrap_or(0)
                 }
                 Some(current) if current.session_id() == event.child_session_id => {
                     return Err(format!(
-                        "terminal-host-instance-reuse: child={} generation={}",
+                        "existing-host-namespace-requires-resume: child={} generation={}",
                         current.session_id(),
                         current.physical_generation,
                     ));
                 }
-                Some(current) if current.is_routable_at(event.observed_at) => {
+                Some(current) => {
                     return Err(format!(
-                        "resident-first-call-resume-required: namespace={}/{} liveChild={} proposedChild={}",
-                        event.root_session_id,
-                        event.route_key,
+                        "existing-host-namespace-identity-mismatch: namespace={} currentChild={} proposedChild={}",
+                        event.namespace_id,
                         current.session_id(),
                         event.child_session_id,
                     ));
                 }
-                Some(current) => u64::try_from(current.physical_generation)
-                    .unwrap_or(0)
-                    .saturating_add(1),
                 None => 1,
             };
             let registration_id = format!(
@@ -308,6 +337,9 @@ fn record_host_lifecycle_event(
                 "routable": true,
                 "evidenceSequence": generation,
                 "temporaryAuthority": null,
+                "namespaceId": event.namespace_id,
+                "hostEventId": event.host_event_id,
+                "hostEventSequence": event.host_event_sequence,
             });
             let metadata_json = serde_json::json!({
                 "event": "subagent-start",
@@ -321,6 +353,9 @@ fn record_host_lifecycle_event(
                 "transcriptPath": event.transcript_path,
                 "matchDecision": "matched",
                 "payloadDigest": event.payload_digest,
+                "namespaceId": event.namespace_id,
+                "hostEventId": event.host_event_id,
+                "hostEventSequence": event.host_event_sequence,
                 "hostBinding": host_binding,
             })
             .to_string();
@@ -345,17 +380,37 @@ fn record_host_lifecycle_event(
                 now: event.observed_at,
             };
             let session = match existing {
-                Some(current) if current.session_id() != event.child_session_id => {
-                    registry.archive_session(
-                        event.project_id.clone(),
-                        current.session_id().to_owned(),
-                        event.observed_at,
-                    )?;
-                    registry.replace_resident_session(current.session_id().to_owned(), request)?
-                }
-                _ => registry.register_session(request)?,
+                Some(current) => current,
+                None => registry.register_session(request)?,
             };
             Ok(IpcResult::Registered { session })
+        }
+        EventKind::Resumed => {
+            let current = registry
+                .session_by_name(
+                    event.project_id.clone(),
+                    event.root_session_id.clone(),
+                    event.platform_host_agent_name.clone(),
+                )?
+                .ok_or_else(|| {
+                    "resume-requires-existing-host-namespace: namespace is absent".to_owned()
+                })?;
+            if current.session_id() != event.child_session_id {
+                return Err(format!(
+                    "resume-host-namespace-identity-mismatch: namespace={} currentChild={} proposedChild={}",
+                    event.namespace_id,
+                    current.session_id(),
+                    event.child_session_id,
+                ));
+            }
+            Ok(IpcResult::Changed {
+                changed: registry.update_session_status(
+                    event.project_id,
+                    event.child_session_id,
+                    "active".to_owned(),
+                    event.observed_at,
+                )?,
+            })
         }
         EventKind::Stopped => {
             let current = registry
@@ -396,13 +451,22 @@ fn record_host_lifecycle_event(
                 return Err("host-binding-terminal-identity-drift: stop evidence does not exact-match the live instance".to_owned());
             }
             Ok(IpcResult::Changed {
-                changed: registry.archive_session(
+                changed: registry.update_session_status(
                     event.project_id,
                     event.child_session_id,
+                    "stopped".to_owned(),
                     event.observed_at,
                 )?,
             })
         }
+        EventKind::Achieved => Ok(IpcResult::Changed {
+            changed: registry.update_session_status(
+                event.project_id,
+                event.child_session_id,
+                "achieved".to_owned(),
+                event.observed_at,
+            )?,
+        }),
     }
 }
 

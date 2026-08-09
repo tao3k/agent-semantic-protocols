@@ -84,6 +84,60 @@ impl ResidentOverlayStore {
         Ok(ResidentOverlaySnapshot { state })
     }
 
+    pub(super) fn publish_owner_delta(
+        &self,
+        base: &WorkspaceMemoryGeneration,
+        owners: Vec<WorkspaceOwnerSnapshot>,
+        tombstones: Vec<String>,
+    ) -> Result<ResidentOverlaySnapshot, String> {
+        if owners.is_empty() && tombstones.is_empty() {
+            return Err("runtime owner delta must not be empty".to_owned());
+        }
+        let mut state = self.staged_state(base);
+        let mut changed = std::collections::BTreeMap::new();
+        let mut removed = std::collections::BTreeSet::new();
+        for owner in owners {
+            validate_owner(&owner)?;
+            let owner_path = owner.owner_path.clone();
+            if removed.contains(&owner_path)
+                || changed
+                    .insert(owner_path.clone(), owner.content_digest.clone())
+                    .is_some()
+            {
+                return Err(format!(
+                    "runtime owner delta contains a duplicate owner: {owner_path}"
+                ));
+            }
+            state.owners.insert(owner_path.clone(), owner);
+            state.tombstones.remove(&owner_path);
+            state
+                .selectors
+                .retain(|_, selector| selector.owner_path != owner_path);
+        }
+        for owner_path in tombstones {
+            if changed.contains_key(&owner_path) || !removed.insert(owner_path.clone()) {
+                return Err(format!(
+                    "runtime owner delta contains a duplicate owner: {owner_path}"
+                ));
+            }
+            if state.owners.remove(&owner_path).is_none() && base_owner(base, &owner_path).is_none()
+            {
+                return Err(format!(
+                    "runtime owner tombstone target is unavailable: {owner_path}"
+                ));
+            }
+            state.tombstones.insert(owner_path.clone());
+            state
+                .selectors
+                .retain(|_, selector| selector.owner_path != owner_path);
+        }
+        state.workspace_snapshot = state
+            .workspace_snapshot
+            .with_overlay_delta(changed, removed);
+        state.advance();
+        Ok(ResidentOverlaySnapshot { state })
+    }
+
     pub(super) fn tombstone_owner(
         &self,
         base: &WorkspaceMemoryGeneration,

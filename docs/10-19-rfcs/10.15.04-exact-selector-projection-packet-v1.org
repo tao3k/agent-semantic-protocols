@@ -97,6 +97,21 @@ The provider process is never launched before the validated lookup completes.
 Cache corruption, snapshot drift, identity drift, or malformed packets fail
 closed to a typed miss or explicit error; they never return cached bytes.
 
+** Active-generation projection completeness
+
+Projection capability is generation-wide authority, not a per-selector best
+effort hint.  When an activated provider declares a projection mode, every
+parser-minted selector admitted to that generation must carry either the exact
+projection bytes or a typed parser-owned statement that the selector kind is
+outside that mode's domain.  A generation may not publish =Ready= with source
+bytes for a selector while silently omitting a supported derived projection.
+
+Therefore =projection-mode-not-in-active-generation= is a generation build
+failure when the provider capability includes that mode.  It is not a query
+miss and must not recommend lexical rediscovery.  Method, function, nested
+item, and other callable identities use the same language-neutral completeness
+rule; Rust-specific fallback synthesis is forbidden.
+
 * Performance contract
 
 - validated in-memory lookup p95: at most 100 microseconds
@@ -120,3 +135,7 @@ runtime timeouts.
    latency budgets above.
 6. Other language providers have a registry-visible alignment status; no
    Rust-private field is added to the shared packet.
+7. For every supported projection mode, generation publication verifies
+   selector/projection cardinality and rejects partial materialization.
+8. A parser-minted method selector returns both =source= and
+   =callable-skeleton= from the same generation identity.

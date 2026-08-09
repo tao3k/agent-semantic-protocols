@@ -2,8 +2,12 @@
 fn db_engine_active_backend_contract_tracks_turso_default() {
     let project_root = temp_root("db-engine-active-project");
     let state_home = temp_root("db-engine-active-state-home");
+    init_git_repository(&project_root);
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
+    state
+        .ensure_minimal_layout()
+        .expect("commit State Core identity before DB manifest write");
     let engine = ClientDbEngine::from_resolved_state(&state);
     let report = engine.inspect();
 

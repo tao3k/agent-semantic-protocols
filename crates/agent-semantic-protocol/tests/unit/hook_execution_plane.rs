@@ -1,3 +1,26 @@
+fn refresh_fixture_matcher(
+    workspace: &std::path::Path,
+    home: &std::path::Path,
+    state_home: &std::path::Path,
+) -> String {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
+        .current_dir(workspace)
+        .args(["hook", "refresh", "--client", "codex"])
+        .env_clear()
+        .env("HOME", home)
+        .env("ASP_STATE_HOME", state_home)
+        .output()
+        .expect("run path-free Hook matcher refresh");
+    let stdout = String::from_utf8(output.stdout).expect("Hook refresh stdout UTF-8");
+    let stderr = String::from_utf8(output.stderr).expect("Hook refresh stderr UTF-8");
+    assert!(output.status.success(), "stdout={stdout} stderr={stderr}");
+    assert!(
+        stdout.contains("binarySchemaVersion=1"),
+        "refresh omitted Binary v1 receipt: {stdout}"
+    );
+    stdout
+}
+
 #[test]
 fn generic_runtime_hook_policy_plane_is_absent() {
     let hook = include_str!("../../src/command/hook.rs");
@@ -114,13 +137,25 @@ fn codex_wildcard_is_transport_coverage_not_runtime_routing() {
     for event in ["PreToolUse", "PermissionRequest"] {
         assert_eq!(hooks["hooks"][event][0]["matcher"].as_str(), Some("*"));
     }
-    assert!(
-        !std::path::Path::new(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../asp-codex-plugin/hooks/hooks.json"
-        ))
-        .exists()
-    );
+    let plugin: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../asp-codex-plugin/hooks/hooks.json"
+    )))
+    .expect("parse fixed Codex plugin Hook transport");
+    for event in ["PreToolUse", "PermissionRequest"] {
+        assert_eq!(plugin["hooks"][event][0]["matcher"], "*");
+        assert_eq!(
+            plugin["hooks"][event][0]["hooks"][0]["command"],
+            format!(
+                "\"$PLUGIN_ROOT/bin/asp-hook\" {} --client codex",
+                if event == "PreToolUse" {
+                    "pre-tool"
+                } else {
+                    "permission-request"
+                }
+            )
+        );
+    }
 
     let bootstrap = include_str!("../../src/hook_bootstrap.rs");
     assert!(bootstrap.contains("bootstrap-local-action-passthrough"));
@@ -272,6 +307,9 @@ fn structured_rust_read_binary_path_is_local_bounded_and_runtime_free() {
             .expect("write isolated Agent registry projection");
     }
 
+    let refresh = refresh_fixture_matcher(workspace, &root, &state_home);
+    assert!(refresh.contains("generation="), "{refresh}");
+
     let binary = env!("CARGO_BIN_EXE_asp");
     let mut child = Command::new(binary)
         .current_dir(workspace)
@@ -317,13 +355,10 @@ fn structured_rust_read_binary_path_is_local_bounded_and_runtime_free() {
         .as_str()
         .expect("typed Hook decision context");
     assert!(context.contains("direct-source-read"), "{context}");
+    assert!(context.contains("mmap-hit"), "{context}");
     assert!(
-        context.contains("compiled-and-published"),
-        "cold Hook invocation must publish its immutable matcher snapshot: {context}"
-    );
-    assert!(
-        context.contains("\"agentWindowCommand\":\"asp session --agents choice-plane\""),
-        "{context}"
+        context.contains("asp rust search owner crates/agent-semantic-hook/src/protocol.rs items --workspace . --view seeds"),
+        "source deny must carry the exact parser-owned recovery command: {context}"
     );
     assert!(!context.contains("asp session @"), "{context}");
     assert!(!stderr.contains("runtime-server"), "stderr={stderr}");
@@ -401,12 +436,8 @@ fn structured_rust_read_binary_path_is_local_bounded_and_runtime_free() {
                 if let Some(found) = find_compiled_matcher(&candidate) {
                     return Some(found);
                 }
-            } else if candidate
-                .parent()
-                .and_then(|parent| parent.file_name())
-                .and_then(|name| name.to_str())
-                == Some("compiled-matchers")
-                && candidate.extension().and_then(|ext| ext.to_str()) == Some("json")
+            } else if candidate.file_name().and_then(|name| name.to_str())
+                == Some("active-matcher.v1.bin")
             {
                 return Some(candidate);
             }
@@ -414,7 +445,26 @@ fn structured_rust_read_binary_path_is_local_bounded_and_runtime_free() {
         None
     }
     let snapshot = find_compiled_matcher(&state_home).expect("compiled matcher snapshot");
-    std::fs::write(&snapshot, b"corrupt matcher snapshot").expect("corrupt fixture snapshot");
+    let matcher_dir = snapshot.parent().expect("active matcher parent");
+    let published_files = std::fs::read_dir(matcher_dir)
+        .expect("read active matcher directory")
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
+        .collect::<Vec<_>>();
+    assert!(
+        published_files.iter().all(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.starts_with("active-") && name.ends_with(".v1.bin"))
+        }),
+        "Hook hot path may own atomic policy shards but no pointer/generation chain: {published_files:?}"
+    );
+    for entry in &published_files {
+        std::fs::write(entry.path(), b"corrupt matcher snapshot")
+            .expect("corrupt fixture matcher shard");
+    }
+    refresh_fixture_matcher(workspace, &root, &state_home);
     let mut recovery = Command::new(binary)
         .current_dir(workspace)
         .args(["hook", "pre-tool", "--client", "codex"])
@@ -442,13 +492,13 @@ fn structured_rust_read_binary_path_is_local_bounded_and_runtime_free() {
     let recovery_context = recovery_response["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .expect("recovery Hook context");
-    assert!(
-        recovery_context.contains("compiled-and-published-after-corrupt-snapshot"),
-        "{recovery_context}"
-    );
+    assert!(recovery_context.contains("mmap-hit"), "{recovery_context}");
     let repaired = std::fs::read(&snapshot).expect("read repaired matcher snapshot");
-    let _artifact: agent_semantic_hook::DurableHookConfigArtifact =
-        serde_json::from_slice(&repaired).expect("decode repaired matcher snapshot");
+    assert_eq!(&repaired[..8], b"ASPHOOK1");
+    assert!(
+        repaired.len() > 120,
+        "repaired Binary v1 bundle omitted its section index"
+    );
     std::fs::remove_dir_all(root).expect("cleanup isolated Hook state");
 }
 
@@ -469,7 +519,7 @@ fn runtime_control_endpoint_is_published_before_optional_telemetry_starts() {
 }
 
 #[test]
-fn canonical_managed_config_fingerprint_drift_auto_syncs_without_server_recovery() {
+fn control_plane_refresh_repairs_managed_config_before_hook_evaluation() {
     use sha2::{Digest, Sha256};
     use std::io::Write;
     use std::process::{Command, Stdio};
@@ -507,6 +557,8 @@ fn canonical_managed_config_fingerprint_drift_auto_syncs_without_server_recovery
     )
     .expect("write matching managed ownership sidecar");
 
+    refresh_fixture_matcher(workspace, &root, &state_home);
+
     let payload = serde_json::json!({
         "session_id": "managed-config-auto-sync",
         "cwd": workspace,
@@ -536,25 +588,32 @@ fn canonical_managed_config_fingerprint_drift_auto_syncs_without_server_recovery
         .flush()
         .expect("flush Hook payload");
     drop(child.stdin.take());
-    let output = child.wait_with_output().expect("wait for Hook auto-sync");
+    let output = child
+        .wait_with_output()
+        .expect("wait for Hook mmap evaluation");
     let stdout = String::from_utf8(output.stdout).expect("Hook stdout UTF-8");
     let stderr = String::from_utf8(output.stderr).expect("Hook stderr UTF-8");
     assert!(output.status.success(), "stdout={stdout} stderr={stderr}");
     assert!(
         !stdout.contains("hook-local-policy-unavailable"),
-        "automatic sync must not emit the recovery deadlock: {stdout}"
+        "published matcher must not emit a recovery failure: {stdout}"
     );
     let response: serde_json::Value =
         serde_json::from_str(&stdout).expect("parse Hook decision response");
     let context = response["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .expect("typed Hook decision context");
-    assert!(context.contains("managed-config-auto-synced"), "{context}");
+    assert!(context.contains("mmap-hit"), "{context}");
     assert!(
         context.contains("Registered rust source reads are denied"),
         "{context}"
     );
-    assert!(context.contains("ASP route: `asp rust"), "{context}");
+    assert!(
+        context.contains(
+            "asp rust search owner crates/agent-semantic-hook/src/protocol.rs items --workspace . --view seeds"
+        ),
+        "{context}"
+    );
 
     for (language, path) in [("md", "docs/hook-policy.md"), ("org", "ASP_ORG_SKILL.org")] {
         let payload = serde_json::json!({
@@ -598,7 +657,9 @@ fn canonical_managed_config_fingerprint_drift_auto_syncs_without_server_recovery
             "{language}: {context}"
         );
         assert!(
-            context.contains(&format!("ASP route: `asp {language}")),
+            context.contains(&format!(
+                "asp {language} search owner {path} items --workspace . --view seeds"
+            )),
             "{language}: {context}"
         );
     }

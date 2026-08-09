@@ -16,6 +16,7 @@ fn registry_with_python() -> HookRuntime {
         rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: vec![typescript_provider(), python_provider()],
+        policy_providers: Vec::new(),
     }
 }
 
@@ -41,6 +42,7 @@ fn registry_with_documents() -> HookRuntime {
             document_provider("org", ".org"),
             document_provider("md", ".md"),
         ],
+        policy_providers: Vec::new(),
     }
 }
 
@@ -49,6 +51,7 @@ fn registry_with_rust_and_python() -> HookRuntime {
         rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: vec![typescript_provider(), rust_provider(), python_provider()],
+        policy_providers: Vec::new(),
     }
 }
 

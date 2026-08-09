@@ -136,6 +136,15 @@ pub enum HookClientActionAuthority {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientRuleMatchConfig {
+    /// Reusable typed action predicates that must all match this rule.
+    #[serde(default)]
+    pub action_policy_all: Vec<String>,
+    /// Reusable typed action predicates of which at least one must match.
+    #[serde(default)]
+    pub action_policy_any: Vec<String>,
+    /// Reusable typed action predicates none of which may match.
+    #[serde(default)]
+    pub action_policy_none: Vec<String>,
     #[serde(default)]
     pub command_profile_any: Vec<super::profiles::HookClientCommandProfileRef>,
     #[serde(default)]
@@ -190,6 +199,27 @@ pub struct HookClientRuleMatchConfig {
     /// Complete parser-owned structured projection matcher and lazy capability declaration.
     #[serde(default)]
     pub structured_projection: Option<HookClientStructuredProjectionMatchConfig>,
+}
+
+/// Named, reusable predicate over the normalized AgentAction envelope.
+///
+/// Policies own matching facts only. Decisions, priorities, messages, and
+/// dispatch remain rule-owned so composing predicates cannot accidentally
+/// compose side effects.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientActionPolicyConfig {
+    pub id: String,
+    #[serde(default)]
+    pub action_any: Vec<HookClientActionKind>,
+    #[serde(default)]
+    pub effect_any: Vec<HookClientActionKind>,
+    #[serde(default)]
+    pub subject_kind_any: Vec<HookClientActionSubjectKind>,
+    #[serde(default)]
+    pub authority_any: Vec<HookClientActionAuthority>,
+    #[serde(default)]
+    pub authority_exclude_any: Vec<HookClientActionAuthority>,
 }
 
 /// Structured document formats understood by hook projector capabilities.

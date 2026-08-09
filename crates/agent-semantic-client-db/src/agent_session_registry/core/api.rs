@@ -1,11 +1,12 @@
 //! Synchronous public registry operations over the Turso-owned core.
 
 use super::AgentSessionRegistry;
+use super::host_execution::turso_observe_host_execution;
 use super::storage::{
     block_on_agent_session_registry_async, turso_claim_resident_session, turso_delete_session,
-    turso_query_all_sessions, turso_query_sessions, turso_record_tool_event,
-    turso_record_host_non_match, turso_refresh_expired_sessions, turso_register_session, turso_session_by_id,
-    turso_session_by_id_any_project, turso_session_by_name,
+    turso_query_all_sessions, turso_query_sessions, turso_record_host_non_match,
+    turso_record_tool_event, turso_refresh_expired_sessions, turso_register_session,
+    turso_session_by_id, turso_session_by_id_any_project, turso_session_by_name,
     turso_session_for_root_session_id_any_project, turso_set_archived_status,
     turso_update_session_status,
 };
@@ -19,6 +20,69 @@ use crate::agent_session_registry::types::{
 };
 
 impl AgentSessionRegistry {
+    pub(crate) async fn record_host_execution_observation_local(
+        &self,
+        observation: &crate::workspace_db_ipc::AgentHostExecutionObservationIpc,
+    ) -> Result<bool, String> {
+        let current = self
+            .query_sessions_local(
+                observation.project_id.clone(),
+                Some(observation.root_session_id.clone().into()),
+                Some(observation.platform_host_agent_name.clone().into()),
+            )
+            .await?
+            .into_iter()
+            .next()
+            .ok_or_else(|| "host-execution-observation-requires-existing-namespace".to_owned())?;
+        if current.session_id() != observation.child_session_id {
+            return Err(format!(
+                "host-execution-observation-identity-mismatch: currentChild={} observedChild={}",
+                current.session_id(),
+                observation.child_session_id
+            ));
+        }
+        if matches!(current.status(), "achieved" | AGENT_SESSION_STATUS_INVALID) {
+            return Err(format!(
+                "host-execution-observation-terminal-namespace: status={}",
+                current.status()
+            ));
+        }
+        let mut metadata = serde_json::from_str::<serde_json::Value>(current.metadata_json())
+            .map_err(|_| "host-execution-observation-invalid-metadata".to_owned())?;
+        let binding = metadata
+            .get_mut("hostBinding")
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| "host-execution-observation-requires-host-binding".to_owned())?;
+        binding.insert(
+            "hostChildId".to_owned(),
+            observation.child_session_id.clone().into(),
+        );
+        binding.insert(
+            "agentInstanceId".to_owned(),
+            observation.child_session_id.clone().into(),
+        );
+        binding.insert("lifecycleState".to_owned(), "live".into());
+        binding.insert("routable".to_owned(), true.into());
+        metadata["lastExecutionObservation"] = serde_json::json!({
+            "observationId": observation.observation_id,
+            "transcriptPath": observation.transcript_path,
+            "observedAt": observation.observed_at,
+        });
+        turso_observe_host_execution(&self.db_path, observation, &metadata.to_string()).await
+    }
+
+    pub async fn record_host_execution_observation_async(
+        &self,
+        observation: crate::workspace_db_ipc::AgentHostExecutionObservationIpc,
+    ) -> Result<crate::workspace_db_ipc::AgentSessionRegistryIpcResult, String> {
+        self.runtime_operation_async(
+            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::RecordHostExecutionObservation {
+                observation,
+            },
+        )
+        .await
+    }
+
     pub(crate) async fn query_all_sessions_local(&self) -> Result<Vec<AgentSessionRecord>, String> {
         turso_query_all_sessions(&self.db_path).await
     }

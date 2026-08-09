@@ -242,6 +242,7 @@ pub fn render_hook_agent_routes(agents_root: &Path) -> Result<String, String> {
             enabled: true,
             name: codex.platform_host_agent_name.as_str().to_owned(),
             role: codex.route_key.as_str().to_owned(),
+            description: codex.description.clone(),
             roles: codex.roles.clone(),
             permissions: vec![sandbox_mode],
             codex_agent_name: codex.platform_host_agent_name.as_str().to_owned(),

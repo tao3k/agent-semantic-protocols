@@ -11,7 +11,6 @@ use sha2::{Digest, Sha256};
 
 use super::{
     provider_process::{provider_invocation_with_profile, run_provider_command_with_stdin},
-    search_pipe_model::Candidate,
     search_pipe_provider_facts::ProviderGraphFactsContext,
 };
 
@@ -58,23 +57,6 @@ pub(super) async fn collect_cached_manifest_dependency_facts(
         ));
     }
     collect_provider_dependency_topology_facts(language_id, project_root, cache_home, context).await
-}
-
-pub(super) async fn collect_cached_dependency_facts(
-    language_id: &str,
-    project_root: &Path,
-    cache_home: &Path,
-    provider_context: Option<&ProviderGraphFactsContext<'_>>,
-    _query: Option<&str>,
-    _candidates: &[Candidate],
-) -> Result<CachedDependencyFacts, String> {
-    collect_cached_manifest_dependency_facts(
-        language_id,
-        project_root,
-        cache_home,
-        provider_context,
-    )
-    .await
 }
 
 async fn collect_provider_dependency_topology_facts(

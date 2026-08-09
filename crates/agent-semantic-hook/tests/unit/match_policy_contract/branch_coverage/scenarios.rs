@@ -3,9 +3,8 @@ use std::fs;
 use serde_json::{Value, json};
 
 use super::{
-    CAPABILITY_CHILD_ENV, classify, default_client_config_template, load_client_config_for_project,
-    normalized_agent_action, registry, run_with_projection_capabilities_for, shell, shell_surface,
-    temp_project_root,
+    classify, default_client_config_template, load_policy_with_configured_capabilities,
+    normalized_agent_action, registry, shell, shell_surface, temp_project_root,
 };
 
 struct Scenario {
@@ -15,11 +14,7 @@ struct Scenario {
     forbidden_rule: Option<&'static str>,
 }
 
-fn run_scenarios(test_name: &str, scenarios: &[Scenario]) {
-    if std::env::var_os(CAPABILITY_CHILD_ENV).is_none() {
-        run_with_projection_capabilities_for(test_name);
-        return;
-    }
+fn run_scenarios(_test_name: &str, scenarios: &[Scenario]) {
     let root = temp_project_root();
     fs::create_dir_all(root.join("src")).expect("create scenario source root");
     fs::write(root.join("src/app.ts"), "export const value = 1;\n")
@@ -33,10 +28,9 @@ fn run_scenarios(test_name: &str, scenarios: &[Scenario]) {
     fs::write(root.join("Cargo.toml"), "[package]\nname = \"hook\"\n")
         .expect("write TOML projection fixture");
     let config_path = root.join("config.toml");
-    fs::write(&config_path, default_client_config_template())
-        .expect("write production hook config");
-    let config =
-        load_client_config_for_project(&config_path, &root).expect("load production hook config");
+    let template = default_client_config_template();
+    fs::write(&config_path, &template).expect("write production hook config");
+    let config = load_policy_with_configured_capabilities(&config_path, &root, &template);
     let mut runtime = registry();
     runtime.project_root = root.to_string_lossy().into_owned();
 
@@ -136,6 +130,15 @@ fn codex_payload_surfaces_are_equivalent() {
                 "tool_input": {
                     "code": "const r = await tools.exec_command({cmd: \"sed -n '1,8p' src/app.ts\", workdir: \"/workspace\", yield_time_ms: 10000}); text(JSON.stringify(r));"
                 },
+            }),
+            expected_rule: Some("deny-uncontrolled-source-materialization-commands"),
+            forbidden_rule: None,
+        },
+        Scenario {
+            name: "functions.exec freeform codex envelope",
+            payload: json!({
+                "tool_name": "functions.exec",
+                "tool_input": "const r = await tools.exec_command({cmd: \"sed -n '1,8p' src/app.ts\", workdir: \"/workspace\", yield_time_ms: 10000}); text(r);",
             }),
             expected_rule: Some("deny-uncontrolled-source-materialization-commands"),
             forbidden_rule: None,

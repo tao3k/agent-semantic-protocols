@@ -234,7 +234,7 @@ impl ProviderRuntimeStorageBinding {
         };
         let registration =
             agent_semantic_runtime::agent_session_registration_identity((None, None).into())?;
-        let engine = ClientDbEngine::resolve(project_root)?;
+        let engine = ClientDbEngine::resolve_for_write(project_root)?;
         let event_db_path = engine
             .db_path()
             .with_file_name(PROVIDER_RUNTIME_EVENT_DB_FILE);
@@ -293,7 +293,7 @@ impl ProviderRuntimeStorageBinding {
         let client = client.into();
         let session_id = session_id.into();
         let root_session_id = root_session_id.into();
-        let engine = ClientDbEngine::resolve(project_root)?;
+        let engine = ClientDbEngine::resolve_for_write(project_root)?;
         let event_db_path = engine
             .db_path()
             .with_file_name(PROVIDER_RUNTIME_EVENT_DB_FILE);

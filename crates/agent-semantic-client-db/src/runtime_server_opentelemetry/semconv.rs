@@ -47,6 +47,15 @@ pub(super) const RELATION_COUNT: &str = "asp.materialization.relation.count";
 pub(super) const SOURCE_BYTES: &str = "asp.materialization.source.bytes";
 pub(super) const PROJECTION_BYTES: &str = "asp.materialization.projection.bytes";
 pub(super) const CANONICAL_ENCODED_BYTES: &str = "asp.materialization.canonical.encoded.bytes";
+pub(super) const MEMORY_SEARCH_MAPPED_BYTES: &str = "asp.search.memory.mapped.bytes";
+pub(super) const MEMORY_SEARCH_DIRECTORY_BYTES_VALIDATED: &str =
+    "asp.search.memory.directory.bytes.validated";
+pub(super) const MEMORY_SEARCH_KEY_BYTES_TOUCHED: &str = "asp.search.memory.key.bytes.touched";
+pub(super) const MEMORY_SEARCH_VALUE_BYTES_TOUCHED: &str = "asp.search.memory.value.bytes.touched";
+pub(super) const MEMORY_SEARCH_SOURCE_BYTES_READ: &str = "asp.search.memory.source.bytes.read";
+pub(super) const MEMORY_SEARCH_TURSO_OPENS: &str = "asp.search.memory.turso.opens";
+pub(super) const MEMORY_SEARCH_SOCKET_CONNECTS: &str = "asp.search.memory.socket.connects";
+pub(super) const MEMORY_SEARCH_PROVIDER_SPAWNS: &str = "asp.search.memory.provider.spawns";
 pub(super) const ELAPSED_MICROS: &str = "asp.performance.elapsed";
 pub(super) const BUDGET_MICROS: &str = "asp.performance.budget";
 pub(super) const BUDGET_STATUS: &str = "asp.performance.budget.status";

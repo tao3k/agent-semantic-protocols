@@ -199,9 +199,13 @@ dependencies = [
  "aho-corasick",
  "asp-rust-project-harness-policy",
  "base64 0.23.1",
+ "blake3",
  "fs2",
+ "gix",
+ "gix-config",
  "globset",
  "jsonschema",
+ "libc",
  "postcard",
  "regex-automata",
  "regex-syntax",
@@ -245,6 +249,9 @@ dependencies = [
  "base64 0.22.1",
  "blake3",
  "clap",
+ "fs2",
+ "gix",
+ "gix-config",
  "globset",
  "ignore",
  "insta",
@@ -4031,6 +4038,7 @@ dependencies = [
  "rowan",
  "rust-lang-project-harness 0.1.2 (git+https://github.com/tao3k/rust-lang-project-harness?rev=8f23f6cd211c02f4b0146d842025f3c639fcf1cc)",
  "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -4709,7 +4717,6 @@ dependencies = [
 name = "rust-lang-project-harness"
 version = "0.1.2"
 dependencies = [
- "blake3",
  "cargo-lock",
  "cargo_toml",
  "proc-macro2",

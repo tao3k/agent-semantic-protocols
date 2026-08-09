@@ -17,5 +17,14 @@ fn default_registered_source_rule_infers_normalized_inner_read_through_effect_ru
             rule.argv_prefix == ["read"] && rule.effect == HookClientActionKind::Read
         })
     );
-    assert_eq!(rule.match_config.effect_any, [HookClientActionKind::Read]);
+    assert_eq!(
+        rule.match_config.action_policy_all,
+        ["raw-shell-read", "registered-language-source"]
+    );
+    let raw_shell_read = config
+        .action_policies
+        .iter()
+        .find(|policy| policy.id == "raw-shell-read")
+        .expect("raw-shell-read action policy");
+    assert_eq!(raw_shell_read.effect_any, [HookClientActionKind::Read]);
 }

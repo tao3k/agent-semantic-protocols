@@ -156,7 +156,7 @@ pub(super) async fn run_daemon() -> Result<(), String> {
         });
     let owner_builder_catalog = provider_catalog_generation.clone();
     let owner_projection_builder: agent_semantic_client_db::runtime_server_admission::WorkspaceOwnerProjectionBuilder =
-        std::sync::Arc::new(move |workspace_identity, project_root, owner_path, language_id| {
+        std::sync::Arc::new(move |workspace_identity, project_root, owner_path| {
             let provider_catalog_generation = owner_builder_catalog.clone();
             Box::pin(async move {
                 let (registry, current_catalog_generation) =
@@ -174,7 +174,6 @@ pub(super) async fn run_daemon() -> Result<(), String> {
                         project_root,
                         workspace_identity,
                         owner_path,
-                        language_id,
                         registry,
                     )
                     .await
@@ -240,7 +239,7 @@ pub(super) async fn run_daemon() -> Result<(), String> {
         )
         .await?;
     let mut graph_turbo =
-        graph_turbo_daemon::GraphTurboDaemon::start_from_environment(&state_home).await;
+        graph_turbo_daemon::GraphTurboDaemon::start_from_managed_config(&state_home).await;
     let server = server.with_graph_turbo_resident_status(graph_turbo.status());
     let server = match graph_turbo.evaluation_builder() {
         Some(builder) => server.with_graph_turbo_evaluation_builder(builder),

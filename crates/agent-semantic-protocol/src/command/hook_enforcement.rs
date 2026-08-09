@@ -49,11 +49,11 @@ impl CodexEnforcementReport {
 
 pub(super) fn codex_enforcement_report(
     project_root: &Path,
-    root_hook: bool,
+    plugin_hook: bool,
     hook_binary: bool,
 ) -> CodexEnforcementReport {
-    if !root_hook {
-        return CodexEnforcementReport::unavailable("project-hook-missing");
+    if !plugin_hook {
+        return CodexEnforcementReport::unavailable("plugin-hook-missing");
     }
     if !hook_binary {
         return CodexEnforcementReport::unavailable("asp-binary-missing");

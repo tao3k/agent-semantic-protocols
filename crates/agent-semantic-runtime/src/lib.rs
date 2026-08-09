@@ -8,7 +8,11 @@ pub use agent_session_status::RuntimeSessionId;
 mod agent_session_status_snapshot;
 mod agent_session_validation_report;
 mod async_bridge;
+mod codex_app_server_control_plane;
 mod codex_app_server_sessions;
+pub use codex_app_server_control_plane::{
+    CodexAppServerControlPlane, CodexHostThread, CodexHostThreadState,
+};
 pub use codex_app_server_sessions::{
     CodexChildSessionEvidence, CodexReasoningVisibility, codex_app_server_child_session_evidence,
 };
@@ -39,7 +43,8 @@ pub use agent_session_status::{
     agent_session_duplicate_worker_allowed, agent_session_health_status, agent_session_host_probe,
     agent_session_host_status, agent_session_host_status_reason, agent_session_host_status_source,
     agent_session_next_action, agent_session_timeout_semantics, codex_rollout_session_metadata,
-    codex_rollout_session_metadata_recent, current_agent_runtime_session,
+    codex_rollout_session_metadata_at_path, codex_rollout_session_metadata_recent,
+    current_agent_runtime_session,
 };
 pub use agent_session_status_snapshot::{
     AgentSessionRuntimeStatusSnapshot, AgentSessionRuntimeStatusSnapshotRequest,
@@ -94,7 +99,7 @@ pub use state::{
     project_activation_path, project_protocol_home_path, project_runtime_state,
     project_runtime_state_with_state_home, project_state_paths,
     project_state_paths_with_state_home, provider_package_dir, provider_receipt_dir,
-    provider_state_root,
+    provider_state_root, temporary_workspace_runtime_state_with_owner_and_state_home,
 };
 pub use state_core::resolve_state_home;
 pub use timeout_policy::{

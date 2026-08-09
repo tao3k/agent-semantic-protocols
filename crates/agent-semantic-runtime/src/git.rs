@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use agent_semantic_config::load_asp_project_config_file;
 
@@ -636,27 +635,12 @@ pub(crate) struct GitIdentity {
 }
 
 impl GitIdentity {
+    /// Discover the Git identity used to admit durable writes.
+    ///
+    /// Identity intentionally has no filesystem-marker or Git subprocess
+    /// fallback: only a repository opened by Gix may own persistent state.
     pub(crate) fn discover(cwd: &Path) -> Self {
-        if let Some(identity) = Self::discover_with_gix(cwd) {
-            return identity;
-        }
-        if let Some(identity) = Self::discover_from_filesystem(cwd) {
-            return identity;
-        }
-        if !has_git_marker(cwd) {
-            return Self::empty();
-        }
-        let toplevel = git_path(cwd, &["rev-parse", "--show-toplevel"]);
-        let git_dir = git_path(cwd, &["rev-parse", "--absolute-git-dir"]);
-        let common_git_dir = git_path(cwd, &["rev-parse", "--git-common-dir"]);
-        let remote_url = canonical_remote_url_from_git(cwd).map(RemoteUrl);
-
-        Self {
-            toplevel,
-            git_dir,
-            common_git_dir,
-            remote_url,
-        }
+        Self::discover_with_gix(cwd).unwrap_or_else(Self::empty)
     }
 
     fn empty() -> Self {
@@ -685,21 +669,6 @@ impl GitIdentity {
             remote_url,
         })
     }
-
-    fn discover_from_filesystem(cwd: &Path) -> Option<Self> {
-        let toplevel = find_git_toplevel(cwd)?;
-        let git_dir = git_dir_from_marker(&toplevel)?;
-        let common_git_dir =
-            common_git_dir_from_git_dir(&git_dir).unwrap_or_else(|| git_dir.clone());
-        let remote_url = canonical_remote_url_from_git_dir(&common_git_dir).map(RemoteUrl);
-
-        Some(Self {
-            toplevel: Some(toplevel),
-            git_dir: Some(canonicalize_if_possible(&git_dir)),
-            common_git_dir: Some(canonicalize_if_possible(&common_git_dir)),
-            remote_url,
-        })
-    }
 }
 
 pub(crate) fn canonicalize_if_possible(path: &Path) -> PathBuf {
@@ -710,50 +679,6 @@ pub(crate) fn path_identity(path: &Path) -> String {
     canonicalize_if_possible(path)
         .to_string_lossy()
         .replace('\\', "/")
-}
-
-fn has_git_marker(cwd: &Path) -> bool {
-    find_git_toplevel(cwd).is_some()
-}
-
-fn find_git_toplevel(cwd: &Path) -> Option<PathBuf> {
-    let mut current = Some(canonicalize_if_possible(cwd));
-    while let Some(path) = current {
-        if path.join(".git").exists() {
-            return Some(path);
-        }
-        current = path.parent().map(Path::to_path_buf);
-    }
-    None
-}
-
-fn git_dir_from_marker(toplevel: &Path) -> Option<PathBuf> {
-    let marker = toplevel.join(".git");
-    if marker.is_dir() {
-        return Some(marker);
-    }
-    let content = fs::read_to_string(&marker).ok()?;
-    let git_dir = content.trim().strip_prefix("gitdir:")?.trim();
-    let path = PathBuf::from(git_dir);
-    Some(if path.is_absolute() {
-        path
-    } else {
-        toplevel.join(path)
-    })
-}
-
-fn common_git_dir_from_git_dir(git_dir: &Path) -> Option<PathBuf> {
-    let content = fs::read_to_string(git_dir.join("commondir")).ok()?;
-    let common_dir = content.trim();
-    if common_dir.is_empty() {
-        return None;
-    }
-    let path = PathBuf::from(common_dir);
-    Some(if path.is_absolute() {
-        path
-    } else {
-        git_dir.join(path)
-    })
 }
 
 pub(crate) fn canonical_remote_url_from_repository(repository: &gix::Repository) -> Option<String> {
@@ -836,56 +761,4 @@ fn select_canonical_remote(
         }
     }
     (remotes.len() == 1).then(|| remotes[0].1.clone())
-}
-
-fn canonical_remote_url_from_git(cwd: &Path) -> Option<String> {
-    let configured_remote = git_stdout(cwd, &["config", "--get", "agent-semantic.canonicalRemote"]);
-    let push_default = git_stdout(cwd, &["config", "--get", "remote.pushDefault"]);
-    let remote_lines = git_stdout(cwd, &["config", "--get-regexp", r"^remote\..*\.url$"])?;
-    let remotes = remote_lines
-        .lines()
-        .filter_map(|line| {
-            let split_at = line.find(char::is_whitespace)?;
-            let (key, url) = line.split_at(split_at);
-            let name = key.strip_prefix("remote.")?.strip_suffix(".url")?;
-            Some((name.to_string(), url.trim().to_string()))
-        })
-        .collect::<Vec<_>>();
-    select_canonical_remote(
-        configured_remote.as_deref(),
-        push_default.as_deref(),
-        &remotes,
-    )
-}
-
-fn git_path(cwd: &Path, args: &[&str]) -> Option<PathBuf> {
-    git_stdout(cwd, args)
-        .map(PathBuf::from)
-        .map(|path| {
-            if path.is_absolute() {
-                path
-            } else {
-                cwd.join(path)
-            }
-        })
-        .map(|path| canonicalize_if_possible(&path))
-}
-
-fn git_stdout(cwd: &Path, args: &[&str]) -> Option<String> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(cwd)
-        .args(args)
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let stdout = String::from_utf8(output.stdout).ok()?;
-    let value = stdout.trim();
-    if value.is_empty() {
-        None
-    } else {
-        Some(value.to_string())
-    }
 }

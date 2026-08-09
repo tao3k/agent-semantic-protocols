@@ -13,7 +13,7 @@ use std::{
 use super::validation::validate_config;
 
 use super::agent_runtime::HookClientAgentsConfig;
-use super::routing::HookClientRuleConfig;
+use super::routing::{HookClientActionPolicyConfig, HookClientRuleConfig};
 
 /// Schema id for hook client config.
 pub const CLIENT_HOOK_CONFIG_SCHEMA_ID: &str = "agent.semantic-protocols.hook.client-config";
@@ -55,6 +55,8 @@ pub struct HookClientConfigFile {
     pub command_profiles: Vec<super::profiles::HookClientCommandProfileConfig>,
     #[serde(default)]
     pub language_providers: Vec<HookClientLanguageProviderConfig>,
+    #[serde(default)]
+    pub action_policies: Vec<HookClientActionPolicyConfig>,
     #[serde(default)]
     pub rules: Vec<HookClientRuleConfig>,
 }

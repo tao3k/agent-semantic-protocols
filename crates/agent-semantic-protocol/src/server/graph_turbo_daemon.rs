@@ -1,15 +1,10 @@
-//! Lazy, daemon-owned lifecycle for the optional Graph Turbo resident.
+//! Runtime-supervisor-owned lifecycle for the optional Graph Turbo resident.
 
 use std::collections::BTreeMap;
-use std::ffi::OsString;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
-use std::time::Duration;
+use std::sync::Arc;
 
 use agent_semantic_client_db::runtime_server::{
     GraphTurboEvaluationBuilder, GraphTurboResidentStatusHandle,
@@ -17,29 +12,19 @@ use agent_semantic_client_db::runtime_server::{
 use agent_semantic_client_db::runtime_server_control::{
     GraphTurboResidentState, GraphTurboResidentStatus,
 };
+use agent_semantic_search::{
+    GraphTurboResidentReceipt, GraphTurboResidentRequest, GraphTurboServerState,
+};
 use serde_json::{Value, json};
 use tokio::sync::{mpsc, oneshot, watch};
 
-use crate::{
-    GraphTurboResidentLaunchSpec, GraphTurboResidentProcess, admit_candidate_rank_receipt,
-};
-
-const PYTHON_ENV: &str = "ASP_GRAPH_TURBO_PYTHON";
-const RESIDENT_MODULE: &str = "asp_graph_turbo.resident_server";
-const IDENTITY_FIELDS: [&str; 5] = [
-    "sessionId",
-    "nodeId",
-    "snapshotDigest",
-    "workspaceGenerationRootDigest",
-    "routeId",
-];
+use crate::{GraphTurboResidentLaunchSpec, GraphTurboResidentProcess};
 
 /// Optional Graph Turbo actor whose process starts only after typed demand.
 pub struct GraphTurboDaemon {
     status: GraphTurboResidentStatusHandle,
     commands: Option<mpsc::Sender<GraphTurboActorCommand>>,
     shutdown: Option<watch::Sender<bool>>,
-    warm_admitted: Arc<AtomicBool>,
     actor: Option<
         agent_semantic_client_db::runtime_server_runtime::RuntimeServerOwnedTask<
             Result<(), String>,
@@ -48,7 +33,7 @@ pub struct GraphTurboDaemon {
 }
 
 enum GraphTurboActorCommand {
-    Warm,
+    Bootstrap,
     Evaluate {
         request: Value,
         response: oneshot::Sender<Result<Value, String>>,
@@ -58,26 +43,26 @@ enum GraphTurboActorCommand {
 type GraphTurboStartup = Pin<
     Box<dyn Future<Output = Result<(GraphTurboResidentProcess, PathBuf, String), String>> + Send>,
 >;
+type GraphTurboStartupFactory = Arc<dyn Fn() -> GraphTurboStartup + Send + Sync>;
 
 impl GraphTurboDaemon {
-    pub async fn start_from_environment(state_home: &Path) -> Self {
+    pub async fn start_from_managed_config(state_home: &Path) -> Self {
         let status = GraphTurboResidentStatusHandle::new(resident_status(
             GraphTurboResidentState::Unavailable,
             None,
             "graph-turbo-demand-admission-pending",
         ));
         let state_home = state_home.to_path_buf();
-        let startup = Box::pin(async move {
-            let configured_path = match std::env::var_os(PYTHON_ENV) {
-                Some(configured) => PathBuf::from(configured),
-                None => crate::server::runtime_server_supervisor::configured_graph_turbo_python_at_state_home(
+        let startup: GraphTurboStartupFactory = Arc::new(move || -> GraphTurboStartup {
+            let state_home = state_home.clone();
+            Box::pin(async move {
+                let configured = crate::server::runtime_server_supervisor::configured_graph_turbo_artifact_at_state_home(
                     &state_home,
-                    None,
                 )
                 .await?
-                .ok_or_else(|| "Graph Turbo managed Runtime artifact is not configured".to_owned())?,
-            };
-            start_resident(configured_path.into_os_string(), &state_home).await
+                .ok_or_else(|| "Graph Turbo managed Runtime artifact is not configured".to_owned())?;
+                start_resident(configured, &state_home).await
+            })
         });
         Self::start_configured(status, None, startup)
     }
@@ -85,12 +70,18 @@ impl GraphTurboDaemon {
     fn start_configured(
         status: GraphTurboResidentStatusHandle,
         configured_path: Option<PathBuf>,
-        startup: GraphTurboStartup,
+        startup: GraphTurboStartupFactory,
     ) -> Self {
         let (commands, command_receiver) = mpsc::channel(graph_turbo_actor_capacity());
         let (shutdown, shutdown_receiver) = watch::channel(false);
         let actor_status = status.clone();
-        let warm_admitted = Arc::new(AtomicBool::new(false));
+        status.update(resident_status(
+            GraphTurboResidentState::Starting,
+            configured_path
+                .as_ref()
+                .map(|path| path.display().to_string()),
+            "graph-turbo-supervisor-bootstrap",
+        ));
         let actor = agent_semantic_client_db::runtime_server_runtime::RuntimeServerOwnedTask::spawn(
             "graph-turbo-resident-actor",
             run_graph_turbo_actor(
@@ -101,11 +92,17 @@ impl GraphTurboDaemon {
                 shutdown_receiver,
             ),
         );
+        if let Err(error) = commands.try_send(GraphTurboActorCommand::Bootstrap) {
+            status.update(resident_status(
+                GraphTurboResidentState::Failed,
+                None,
+                &format!("Graph Turbo supervisor bootstrap failed: {error}"),
+            ));
+        }
         Self {
             status,
             commands: Some(commands),
             shutdown: Some(shutdown),
-            warm_admitted,
             actor: Some(actor),
         }
     }
@@ -117,46 +114,13 @@ impl GraphTurboDaemon {
     pub fn evaluation_builder(&self) -> Option<GraphTurboEvaluationBuilder> {
         let commands = self.commands.as_ref()?.clone();
         let status = self.status.clone();
-        let warm_admitted = self.warm_admitted.clone();
         Some(Arc::new(
             move |_workspace_identity, _project_root, message| {
                 let commands = commands.clone();
                 let status = status.clone();
-                let warm_admitted = warm_admitted.clone();
                 Box::pin(async move {
                     validate_rank_request(&message)?;
                     let snapshot = status.snapshot();
-                    if snapshot.state == GraphTurboResidentState::Unavailable {
-                        if warm_admitted
-                            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-                            .is_ok()
-                        {
-                            status.update(resident_status(
-                                GraphTurboResidentState::Starting,
-                                None,
-                                "graph-turbo-warm-admission-published",
-                            ));
-                            if let Err(error) = commands.try_send(GraphTurboActorCommand::Warm) {
-                                warm_admitted.store(false, Ordering::Release);
-                                status.update(resident_status(
-                                    GraphTurboResidentState::Failed,
-                                    None,
-                                    &format!("Graph Turbo resident warm admission failed: {error}"),
-                                ));
-                                return Err(format!(
-                                    "Graph Turbo resident warm admission failed: {error}"
-                                ));
-                            }
-                            return Err(
-                                "Graph Turbo resident warm admission scheduled; retry after the healthy receipt"
-                                    .to_owned(),
-                            );
-                        }
-                        return Err(
-                            "Graph Turbo resident is not ready: state=starting reason=warm-admission-coalesced"
-                                .to_owned(),
-                        );
-                    }
                     if snapshot.state != GraphTurboResidentState::Healthy {
                         return Err(format!(
                             "Graph Turbo resident is not ready: state={} reason={}",
@@ -165,11 +129,17 @@ impl GraphTurboDaemon {
                         ));
                     }
                     let (response, receipt) = oneshot::channel();
+                    // Rank work is bounded by the Runtime Server connection
+                    // lease and caller deadline.  The actor itself must apply
+                    // Tokio backpressure instead of rejecting ordinary
+                    // concurrent workspace requests because its short local
+                    // queue happened to fill.
                     commands
-                        .try_send(GraphTurboActorCommand::Evaluate {
+                        .send(GraphTurboActorCommand::Evaluate {
                             request: message.clone(),
                             response,
                         })
+                        .await
                         .map_err(|error| {
                             format!("Graph Turbo resident actor is unavailable: {error}")
                         })?;
@@ -210,15 +180,80 @@ fn graph_turbo_actor_capacity() -> usize {
         .max(1)
 }
 
+fn resident_generation_key(message: &Value) -> Result<String, String> {
+    let workspace = message
+        .get("workspaceIdentity")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "Graph Turbo rank intent omitted workspaceIdentity".to_owned())?;
+    let generation = message
+        .get("generationDigest")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "Graph Turbo rank intent omitted generationDigest".to_owned())?;
+    let page_roots = message
+        .get("pageRoots")
+        .ok_or_else(|| "Graph Turbo rank intent omitted pageRoots".to_owned())?;
+    let page_roots = serde_json::to_string(page_roots)
+        .map_err(|error| format!("encode Graph Turbo page roots: {error}"))?;
+    Ok(format!("{workspace}\u{1f}{generation}\u{1f}{page_roots}"))
+}
+
+fn resident_generation_load_message(message: &Value) -> Result<Value, String> {
+    validate_rank_request(message)?;
+    let graph = message
+        .get("rankPayload")
+        .and_then(Value::as_object)
+        .and_then(|payload| payload.get("graph"))
+        .cloned()
+        .filter(Value::is_object)
+        .ok_or_else(|| "Graph Turbo rank intent omitted canonical graph page".to_owned())?;
+    let mut load = message.clone();
+    let object = load
+        .as_object_mut()
+        .ok_or_else(|| "Graph Turbo rank intent must be an object".to_owned())?;
+    object.insert(
+        "messageKind".to_owned(),
+        Value::String("load-generation".to_owned()),
+    );
+    object.insert("generationPayload".to_owned(), json!({"graph": graph}));
+    object.remove("rankPayload");
+    Ok(load)
+}
+
+fn resident_rank_message(message: &Value) -> Result<Value, String> {
+    validate_rank_request(message)?;
+    let mut rank = message.clone();
+    let payload = rank
+        .get_mut("rankPayload")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| "Graph Turbo rank intent omitted rankPayload".to_owned())?;
+    payload.remove("graph");
+    Ok(rank)
+}
+
+fn admit_generation_load(request: &Value, receipt: Value) -> Result<(), String> {
+    let request: GraphTurboResidentRequest = serde_json::from_value(request.clone())
+        .map_err(|error| format!("decode Graph Turbo load-generation request: {error}"))?;
+    request.validate()?;
+    let validated: GraphTurboResidentReceipt = serde_json::from_value(receipt)
+        .map_err(|error| format!("decode Graph Turbo load-generation receipt: {error}"))?;
+    validated.validate_for(&request)?;
+    if validated.state != GraphTurboServerState::Ready {
+        return Err("Graph Turbo resident generation load did not become ready".to_owned());
+    }
+    Ok(())
+}
+
 async fn run_graph_turbo_actor(
     configured_path: Option<PathBuf>,
-    startup: GraphTurboStartup,
+    startup: GraphTurboStartupFactory,
     status: GraphTurboResidentStatusHandle,
     mut commands: mpsc::Receiver<GraphTurboActorCommand>,
     mut shutdown: watch::Receiver<bool>,
 ) -> Result<(), String> {
-    let mut startup = Some(startup);
     let mut process = None;
+    let mut loaded_generations = std::collections::BTreeSet::new();
     loop {
         tokio::select! {
             biased;
@@ -231,16 +266,18 @@ async fn run_graph_turbo_actor(
                 let Some(command) = command else {
                     break;
                 };
-                if matches!(&command, GraphTurboActorCommand::Warm) {
-                    let Some(startup) = startup.take() else {
-                        continue;
-                    };
+            if matches!(&command, GraphTurboActorCommand::Bootstrap) {
+                    if let Some(existing) = process.as_mut() {
+                        let _ = shutdown_resident_process(existing).await;
+                    }
+                    process = None;
+                    loaded_generations.clear();
                     status.update(resident_status(
                         GraphTurboResidentState::Starting,
                         configured_path
                             .as_ref()
                             .map(|path| path.display().to_string()),
-                        "graph-turbo-lazy-starting",
+                    "graph-turbo-supervisor-starting",
                     ));
                     let started = tokio::select! {
                         biased;
@@ -248,13 +285,13 @@ async fn run_graph_turbo_actor(
                             let _ = changed;
                             return Ok(());
                         }
-                        started = startup => started,
+                        started = (startup)() => started,
                     };
                     match started {
                         Ok((resident, artifact, command_digest)) => {
                             status.update(GraphTurboResidentStatus {
                                 state: GraphTurboResidentState::Healthy,
-                                process_id: Some(resident.process_id()),
+                                process_id: None,
                                 runtime_artifact: Some(artifact.display().to_string()),
                                 execution_command_digest: Some(command_digest),
                                 reason: None,
@@ -277,10 +314,22 @@ async fn run_graph_turbo_actor(
                     continue;
                 };
                 let result = match process.as_mut() {
-                    Some(process) => process
-                        .request(&request)
-                        .await
-                        .and_then(|receipt| admit_exact_candidate(&request, receipt)),
+                    Some(process) => async {
+                        let generation_key = resident_generation_key(&request)?;
+                        if loaded_generations.insert(generation_key) {
+                            let load = resident_generation_load_message(&request)?;
+                            process
+                                .request(&load)
+                                .await
+                                .and_then(|receipt| admit_generation_load(&load, receipt))?;
+                        }
+                        let rank = resident_rank_message(&request)?;
+                        process
+                            .request(&rank)
+                            .await
+                            .and_then(|receipt| admit_exact_candidate(&rank, receipt))
+                    }
+                    .await,
                     None => Err("Graph Turbo resident process is not admitted".to_owned()),
                 };
                 if let Err(error) = &result {
@@ -304,67 +353,48 @@ async fn run_graph_turbo_actor(
 }
 
 async fn start_resident(
-    configured: OsString,
+    configured: crate::server::runtime_server_supervisor::ConfiguredGraphTurboArtifact,
     state_home: &Path,
 ) -> Result<(GraphTurboResidentProcess, PathBuf, String), String> {
-    let configured = PathBuf::from(configured);
-    if !configured.is_absolute() {
-        return Err(format!("{PYTHON_ENV} must be an absolute path"));
-    }
-    let artifact = tokio::fs::canonicalize(&configured)
-        .await
-        .map_err(|error| {
-            format!(
-                "failed to resolve Graph Turbo Python artifact `{}`: {error}",
-                configured.display()
-            )
-        })?;
-    let artifact_digest = format!(
-        "blake3-256:{}",
-        crate::command::protocol_binary::canonical_protocol_binary_artifact_digest(&artifact)
-            .await?
-    );
-    let command_digest = command_digest(&configured);
+    let command_digest = command_digest(&configured.locator);
     let state_home = state_home.to_path_buf();
     let mut process = GraphTurboResidentProcess::spawn(GraphTurboResidentLaunchSpec {
-        program: configured.clone(),
-        args: vec![OsString::from("-m"), OsString::from(RESIDENT_MODULE)],
+        program: configured.locator.clone(),
+        args: Vec::new(),
         cwd: state_home,
         env: BTreeMap::new(),
         execution_command_digest: command_digest.clone(),
-        request_timeout: Duration::from_secs(30),
+        request_timeout: super::AGENT_FACING_EXECUTION_BUDGET,
     })
     .await?;
     let receipt = process
-        .request(&json!({
-            "schemaId": "agent.semantic-protocols.semantic-graph-turbo-resident-message",
-            "schemaVersion": "1",
-            "protocolId": "agent.semantic-protocols.semantic-language",
-            "protocolVersion": "1",
-            "messageKind": "process-handshake",
-            "requestId": "graph-turbo-daemon-handshake",
-            "runtimeArtifactDigest": artifact_digest,
-            "executionCommandDigest": command_digest
-        }))
+        .request_with_timeout(
+            &json!({
+                "schemaId": "agent.semantic-protocols.graph-turbo-resident-server",
+                "schemaVersion": "1",
+                "messageKind": "hello",
+                "requestId": 1,
+                "runtimeArtifactDigest": configured.runtime_artifact_digest,
+                "executionCommandDigest": command_digest
+            }),
+            super::OPERATOR_RUNTIME_SERVER_STARTUP_BUDGET,
+        )
         .await?;
     validate_handshake(
         &receipt,
-        process.process_id(),
-        &artifact_digest,
+        &configured.runtime_artifact_digest,
         &command_digest,
     )?;
-    Ok((process, configured, command_digest))
+    Ok((process, configured.locator, command_digest))
 }
 
 async fn shutdown_resident_process(process: &mut GraphTurboResidentProcess) -> Result<(), String> {
     let receipt = process
         .shutdown(&json!({
-            "schemaId": "agent.semantic-protocols.semantic-graph-turbo-resident-message",
+            "schemaId": "agent.semantic-protocols.graph-turbo-resident-server",
             "schemaVersion": "1",
-            "protocolId": "agent.semantic-protocols.semantic-language",
-            "protocolVersion": "1",
             "messageKind": "shutdown",
-            "requestId": "graph-turbo-daemon-shutdown"
+            "requestId": 2
         }))
         .await?;
     if receipt.get("schemaVersion").and_then(Value::as_str) != Some("1") {
@@ -384,23 +414,21 @@ fn resident_state_label(state: GraphTurboResidentState) -> &'static str {
 }
 
 fn command_digest(artifact: &Path) -> String {
-    let command = format!("{}\0-m\0{RESIDENT_MODULE}", artifact.display());
+    let command = format!("{}\0", artifact.display());
     format!("blake3-256:{}", blake3::hash(command.as_bytes()).to_hex())
 }
 
 fn validate_handshake(
     receipt: &Value,
-    process_id: u32,
     artifact_digest: &str,
     command_digest: &str,
 ) -> Result<(), String> {
     let identity = receipt.get("processIdentity");
-    let exact = receipt.get("schemaVersion").and_then(Value::as_str) == Some("1")
-        && receipt.get("status").and_then(Value::as_str) == Some("process-handshake-accepted")
-        && identity
-            .and_then(|value| value.get("processId"))
-            .and_then(Value::as_u64)
-            == Some(u64::from(process_id))
+    let exact = receipt.get("schemaId").and_then(Value::as_str)
+        == Some("agent.semantic-protocols.graph-turbo-resident-server")
+        && receipt.get("schemaVersion").and_then(Value::as_str) == Some("1")
+        && receipt.get("messageKind").and_then(Value::as_str) == Some("receipt")
+        && receipt.get("state").and_then(Value::as_str) == Some("ready")
         && identity
             .and_then(|value| value.get("runtimeArtifactDigest"))
             .and_then(Value::as_str)
@@ -415,38 +443,24 @@ fn validate_handshake(
 }
 
 fn validate_rank_request(message: &Value) -> Result<(), String> {
-    if message.get("schemaVersion").and_then(Value::as_str) != Some("1")
-        || message.get("messageKind").and_then(Value::as_str) != Some("rank")
-    {
-        return Err("Graph Turbo daemon accepts only resident rank message v1".to_owned());
-    }
-    for field in IDENTITY_FIELDS {
-        if message
-            .get(field)
-            .and_then(Value::as_str)
-            .is_none_or(str::is_empty)
-        {
-            return Err(format!("Graph Turbo rank message requires {field}"));
-        }
-    }
-    Ok(())
+    let request: GraphTurboResidentRequest = serde_json::from_value(message.clone())
+        .map_err(|error| format!("decode Graph Turbo resident v1 rank request: {error}"))?;
+    request.validate()
 }
 
 fn admit_exact_candidate(request: &Value, receipt: Value) -> Result<Value, String> {
-    if receipt.get("schemaVersion").and_then(Value::as_str) != Some("1") {
-        return Err("Graph Turbo resident rank receipt version mismatch".to_owned());
+    let request: GraphTurboResidentRequest = serde_json::from_value(request.clone())
+        .map_err(|error| format!("decode Graph Turbo resident v1 rank request: {error}"))?;
+    let validated: GraphTurboResidentReceipt = serde_json::from_value(receipt.clone())
+        .map_err(|error| format!("decode Graph Turbo resident v1 rank receipt: {error}"))?;
+    validated.validate_for(&request)?;
+    if validated.state != GraphTurboServerState::Completed {
+        return Err("Graph Turbo resident rank did not complete".to_owned());
     }
-    let identity = receipt
-        .get("graphSessionIdentity")
-        .ok_or_else(|| "Graph Turbo rank receipt omitted graphSessionIdentity".to_owned())?;
-    for field in IDENTITY_FIELDS {
-        if identity.get(field) != request.get(field) {
-            return Err(format!(
-                "Graph Turbo rank receipt substituted graph-session field {field}"
-            ));
-        }
-    }
-    admit_candidate_rank_receipt(receipt)
+    receipt
+        .get("result")
+        .cloned()
+        .ok_or_else(|| "Graph Turbo resident receipt omitted parser-owned result".to_owned())
 }
 
 fn resident_status(

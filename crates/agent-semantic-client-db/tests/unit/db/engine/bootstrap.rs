@@ -2,8 +2,12 @@
 async fn turso_0_7_bootstrap_rejects_existing_db_without_format_receipt() {
     let project_root = temp_root("turso-legacy-sqlite-project");
     let state_home = temp_root("turso-legacy-sqlite-state-home");
+    init_git_repository(&project_root);
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
+    state
+        .ensure_minimal_layout()
+        .expect("commit State Core identity before DB bootstrap");
     let engine = ClientDbEngine::from_resolved_state(&state);
     let turso_path = engine.db_path().to_path_buf();
     std::fs::create_dir_all(turso_path.parent().expect("Turso parent"))
@@ -31,19 +35,22 @@ async fn turso_0_7_bootstrap_rejects_existing_db_without_format_receipt() {
 async fn turso_backend_bootstrap_smoke_creates_local_file() {
     let project_root = temp_root("turso-bootstrap-project");
     let state_home = temp_root("turso-bootstrap-state-home");
+    init_git_repository(&project_root);
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
+    state
+        .ensure_minimal_layout()
+        .expect("commit State Core identity before DB bootstrap");
     let engine = ClientDbEngine::from_resolved_state(&state);
     let turso_path = engine.db_path().to_path_buf();
-    let source_snapshot =
-        agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes([(
-            "src/source_index_fixture.rs",
-            "abcdef0123456789".repeat(4),
-        )])
-        .evidence(
-            agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-            "rs-harness",
-        );
+    let source_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes([(
+        "src/source_index_fixture.rs",
+        "abcdef0123456789".repeat(4),
+    )])
+    .evidence(
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        "rs-harness",
+    );
 
     let report = engine
         .bootstrap_active_turso()
@@ -219,8 +226,12 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
 async fn turso_backend_bootstrap_accepts_preexisting_empty_operation_lock_file() {
     let project_root = temp_root("turso-bootstrap-preexisting-lock-project");
     let state_home = temp_root("turso-bootstrap-preexisting-lock-state-home");
+    init_git_repository(&project_root);
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
+    state
+        .ensure_minimal_layout()
+        .expect("commit State Core identity before DB bootstrap");
     let engine = ClientDbEngine::from_resolved_state(&state);
     let turso_path = engine.db_path().to_path_buf();
     std::fs::create_dir_all(
@@ -249,8 +260,12 @@ async fn turso_backend_bootstrap_accepts_preexisting_empty_operation_lock_file()
 async fn turso_backend_bootstrap_is_idempotent_across_two_sequential_calls() {
     let project_root = temp_root("turso-bootstrap-idempotent-project");
     let state_home = temp_root("turso-bootstrap-idempotent-state-home");
+    init_git_repository(&project_root);
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
+    state
+        .ensure_minimal_layout()
+        .expect("commit State Core identity before DB bootstrap");
     let engine = ClientDbEngine::from_resolved_state(&state);
     let turso_path = engine.db_path().to_path_buf();
 

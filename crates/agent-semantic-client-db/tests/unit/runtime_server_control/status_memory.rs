@@ -81,7 +81,7 @@ fn empty_projection_requires_registration_for_an_observed_root() {
 }
 
 #[test]
-fn routable_name_without_exact_host_binding_fails_closed() {
+fn existing_unbound_namespace_is_resumable_without_replacement() {
     let mut session = session_status(
         "workspace-1",
         "/project-1",
@@ -99,9 +99,13 @@ fn routable_name_without_exact_host_binding_fails_closed() {
         Some("root-1"),
         "asp_explorer",
     )
-    .expect("unbound matched child is a typed registration-required state");
-    assert_eq!(state.state, "registration-required");
-    assert_eq!(state.reason_kind.as_deref(), Some("unbound-matched-child"));
+    .expect("unbound matched child is a typed resumable state");
+    assert_eq!(state.state, "resumable");
+    assert_eq!(
+        state.reason_kind.as_deref(),
+        Some("registered-namespace-needs-resume")
+    );
+    assert_eq!(state.generation, 3);
 }
 
 #[test]
@@ -128,37 +132,32 @@ fn routable_projection_resolves_registered_generation() {
 }
 
 #[test]
-fn invalid_or_expired_projection_requires_archiving_before_replacement() {
-    for lifecycle_state in [
-        RuntimeServerAgentSessionLifecycleState::Invalid,
-        RuntimeServerAgentSessionLifecycleState::Expired,
-    ] {
-        let mut session = session_status(
-            "workspace-1",
-            "/project-1",
-            "root-1",
-            "session-1",
-            "asp_explorer",
-            8,
-            false,
-        );
-        session.lifecycle_state = lifecycle_state;
-        let state = resolve_runtime_server_agent_session_status(
-            &[session],
-            "workspace-1",
-            Some("session-1"),
-            Some("root-1"),
-            "asp_explorer",
-        )
-        .expect("stale status resolves to a lifecycle action");
+fn stopped_projection_resumes_the_same_durable_generation() {
+    let mut session = session_status(
+        "workspace-1",
+        "/project-1",
+        "root-1",
+        "session-1",
+        "asp_explorer",
+        8,
+        false,
+    );
+    session.lifecycle_state = RuntimeServerAgentSessionLifecycleState::Stopped;
+    let state = resolve_runtime_server_agent_session_status(
+        &[session],
+        "workspace-1",
+        Some("session-1"),
+        Some("root-1"),
+        "asp_explorer",
+    )
+    .expect("stopped physical child remains resumable");
 
-        assert_eq!(state.state, "archive-required");
-        assert_eq!(state.generation, 8);
-    }
+    assert_eq!(state.state, "resumable");
+    assert_eq!(state.generation, 8);
 }
 
 #[test]
-fn archived_projection_requires_a_new_generation() {
+fn achieved_projection_is_terminal_and_never_replaced() {
     let mut session = session_status(
         "workspace-1",
         "/project-1",
@@ -168,7 +167,7 @@ fn archived_projection_requires_a_new_generation() {
         9,
         false,
     );
-    session.lifecycle_state = RuntimeServerAgentSessionLifecycleState::Archived;
+    session.lifecycle_state = RuntimeServerAgentSessionLifecycleState::Achieved;
     let state = resolve_runtime_server_agent_session_status(
         &[session],
         "workspace-1",
@@ -176,10 +175,35 @@ fn archived_projection_requires_a_new_generation() {
         Some("root-1"),
         "asp_explorer",
     )
-    .expect("archived status resolves to replacement");
+    .expect("achieved namespace resolves to terminal state");
 
-    assert_eq!(state.state, "archived");
+    assert_eq!(state.state, "achieved");
     assert_eq!(state.generation, 9);
+}
+
+#[test]
+fn invalid_projection_is_blocked_and_never_replaced_implicitly() {
+    let mut session = session_status(
+        "workspace-1",
+        "/project-1",
+        "root-1",
+        "session-1",
+        "asp_explorer",
+        10,
+        false,
+    );
+    session.lifecycle_state = RuntimeServerAgentSessionLifecycleState::Invalid;
+    let state = resolve_runtime_server_agent_session_status(
+        &[session],
+        "workspace-1",
+        Some("session-1"),
+        Some("root-1"),
+        "asp_explorer",
+    )
+    .expect("invalid namespace resolves to a fail-closed state");
+
+    assert_eq!(state.state, "blocked");
+    assert_eq!(state.generation, 10);
 }
 
 #[test]

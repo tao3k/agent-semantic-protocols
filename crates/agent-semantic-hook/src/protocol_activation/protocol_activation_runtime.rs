@@ -148,6 +148,7 @@ fn resolve_activation(
         project_root: activation.project_root.clone(),
         rankers: activation.rankers.clone(),
         providers,
+        policy_providers: Vec::new(),
     })
 }
 

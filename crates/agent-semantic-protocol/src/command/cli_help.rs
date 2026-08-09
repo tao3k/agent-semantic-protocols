@@ -51,7 +51,6 @@ fn healthcheck_command() -> Command {
         .bin_name("asp healthcheck")
         .about("Check ASP runtime health")
         .arg(Arg::new("json").long("json").action(ArgAction::SetTrue))
-        .arg(project_root_arg())
 }
 
 fn live_corpus_command() -> Command {
@@ -427,9 +426,9 @@ pub(crate) fn selected_command(args: &[String]) -> Command {
                 |command| document_subcommand(document, command),
             ),
         [language, leaf, ..] if is_language_facade(language) => {
-            facade_leaf_help(language, leaf).unwrap_or_else(|| selected_command_default(args))
+            facade_leaf_help(language, leaf).unwrap_or_else(|| selected_command_default(path))
         }
-        _ => selected_command_default(args),
+        _ => selected_command_default(path),
     }
 }
 
@@ -439,6 +438,7 @@ fn selected_command_default(args: &[String]) -> Command {
     match (first, second) {
         (Some("install"), Some("plugin")) => install_plugin_command(),
         (Some("install"), _) => install_command(),
+        (Some("hook"), Some("accept-host")) => hook_accept_host_command(),
         (Some("hook"), Some("doctor")) => hook_doctor_command(),
         (Some("hook"), Some("break-glass")) => super::hook_break_glass::break_glass_command(),
         (Some("hook"), _) => hook_command(),
@@ -449,6 +449,9 @@ fn selected_command_default(args: &[String]) -> Command {
         (Some("tools"), _) => tools_command(),
         (Some("wrap"), _) => wrap_command(),
         (Some("cache"), Some("gc")) => agent_semantic_client::project_registry_gc_clap_command(),
+        (Some("cache"), Some("clean")) => {
+            agent_semantic_client::project_registry_clean_clap_command()
+        }
         (Some("cache"), _) => cache_command(),
         (Some("cloud"), _) => cloud_command(),
         (Some("paths"), _) => paths_command(),

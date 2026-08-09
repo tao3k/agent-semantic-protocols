@@ -1,5 +1,6 @@
 import ASPProof.Audit.Core
 import ASPProof.HookExecutionPlane
+import ASPProof.HookPolicyAntiHardcoding
 
 namespace ASPProof.Audit.HookExecutionPlane
 
@@ -82,6 +83,12 @@ def targets : List Target :=
   , { name := `ASPProof.HookExecutionPlane.enabled_rule_and_registered_extension_require_executable_witness
       theoremFamily := "hook-conformance-generated-rule-extension-witness"
       rfcClauseIds := ["ASP-RFC-10.15-HOOK-EXECUTION-PLANE"] }
+  , { name := `ASPProof.HookExecutionPlane.registered_extension_read_is_denied_independent_of_wrapper
+      theoremFamily := "hook-read-provider-extension-wrapper-independent"
+      rfcClauseIds := ["ASP-RFC-10.15-HOOK-EXECUTION-PLANE"] }
+  , { name := `ASPProof.HookExecutionPlane.plugin_disabled_task_cannot_complete_host_acceptance
+      theoremFamily := "hook-host-acceptance-requires-plugin-delivery"
+      rfcClauseIds := ["ASP-RFC-10.15-HOOK-EXECUTION-PLANE"] }
   , { name := `ASPProof.HookExecutionPlane.asp_direct_config_mutation_is_not_valid_authority
       theoremFamily := "hook-marketplace-authority-owner-separation"
       rfcClauseIds := ["ASP-RFC-10.15-HOOK-EXECUTION-PLANE"] }
@@ -114,6 +121,15 @@ def targets : List Target :=
       rfcClauseIds := ["ASP-RFC-10.15-HOOK-EXECUTION-PLANE"] }
   , { name := `ASPProof.HookExecutionPlane.hook_data_path_cannot_schedule_codex_agent
       theoremFamily := "hook-no-codex-agent-scheduling"
+      rfcClauseIds := ["ASP-RFC-10.15-HOOK-EXECUTION-PLANE"] }
+  , { name := `ASPProof.HookExecutionPlane.plugin_disabled_task_cannot_complete_host_acceptance
+      theoremFamily := "hook-host-acceptance-plugin-provenance"
+      rfcClauseIds := ["ASP-RFC-10.15-HOOK-EXECUTION-PLANE"] }
+  , { name := `ASPProof.HookExecutionPlane.source_byte_leak_cannot_complete_host_acceptance
+      theoremFamily := "hook-host-acceptance-no-source-leak"
+      rfcClauseIds := ["ASP-RFC-10.15-HOOK-EXECUTION-PLANE"] }
+  , { name := `ASPProof.HookExecutionPlane.missing_host_delivery_evidence_cannot_complete_host_acceptance
+      theoremFamily := "hook-host-acceptance-delivery-evidence"
       rfcClauseIds := ["ASP-RFC-10.15-HOOK-EXECUTION-PLANE"] }
   , { name := `ASPProof.HookExecutionPlane.hook_data_path_cannot_install_binary
       theoremFamily := "hook-no-binary-install"
@@ -162,6 +178,15 @@ def targets : List Target :=
       rfcClauseIds := ["ASP-RFC-10.15-HOOK-EXECUTION-PLANE"] }
   , { name := `ASPProof.HookExecutionPlane.isolated_test_home_cannot_target_user_supervisor
       theoremFamily := "hook-test-supervisor-isolation"
+      rfcClauseIds := ["ASP-RFC-10.15-HOOK-EXECUTION-PLANE"] }
+  , { name := `ASPProof.HookExecutionPlane.registered_source_read_requires_composed_policy_axes
+      theoremFamily := "hook-composable-action-policy-conjunction"
+      rfcClauseIds := ["ASP-RFC-10.15-HOOK-EXECUTION-PLANE"] }
+  , { name := `ASPProof.HookExecutionPlane.materialized_deny_preserves_message_route_and_registration
+      theoremFamily := "hook-materialized-deny-authority-composition"
+      rfcClauseIds := ["ASP-RFC-10.15-HOOK-EXECUTION-PLANE"] }
+  , { name := `ASPProof.HookExecutionPlane.plugin_bootstrap_cannot_leak_exit_127_or_enter_runtime_server
+      theoremFamily := "hook-plugin-bootstrap-typed-exec-failure"
       rfcClauseIds := ["ASP-RFC-10.15-HOOK-EXECUTION-PLANE"] }
   ]
 

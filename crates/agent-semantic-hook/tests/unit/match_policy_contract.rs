@@ -1,15 +1,12 @@
 use agent_semantic_hook::{
     DecisionKind, HookClassificationRequest, ReasonKind, classify_hook_with_config,
     default_client_config_template, evaluate_match_policy_conformance,
-    load_client_config_for_project,
+    load_client_config_for_project_with_executable_capabilities,
 };
 use serde_json::{Value, json};
-use std::{collections::BTreeSet, fs, path::PathBuf, process::Command};
+use std::{collections::BTreeSet, fs, path::PathBuf};
 
 use super::classifier::{builtin_programming_runtime, registry};
-
-const CAPABILITY_CHILD_ENV: &str = "ASP_HOOK_MATCH_POLICY_CAPABILITY_CHILD";
-const CONTRACT_TEST_NAME: &str = "match_policy_contract::production_match_policy_contract";
 
 fn temp_project_root() -> PathBuf {
     let nonce = std::time::SystemTime::now()
@@ -44,7 +41,8 @@ fn canonical_config_covers_builtin_programming_native_read_matrix() {
     fs::create_dir_all(&root).expect("matrix root");
     let config_path = root.join("config.toml");
     fs::write(&config_path, default_client_config_template()).expect("write config");
-    let config = load_client_config_for_project(&config_path, &root).expect("compile config");
+    let config = agent_semantic_hook::load_client_config_for_project(&config_path, &root)
+        .expect("compile config");
     let mut runtime = builtin_programming_runtime();
     runtime.project_root = root.to_string_lossy().into_owned();
     let mut count = 0usize;
@@ -152,45 +150,28 @@ fn embedded_hook_policy_does_not_require_project_agent_routes() {
     std::fs::remove_dir_all(project_root).ok();
 }
 
-fn run_with_projection_capabilities() {
-    run_with_projection_capabilities_for(CONTRACT_TEST_NAME);
+fn configured_executable_capabilities(template: &str) -> BTreeSet<String> {
+    let config: agent_semantic_config::HookClientConfigFile =
+        toml::from_str(template).expect("production Hook template parses");
+    config
+        .rules
+        .into_iter()
+        .filter_map(|rule| rule.match_config.structured_projection)
+        .map(|projection| projection.binary)
+        .collect()
 }
 
-fn run_with_projection_capabilities_for(test_name: &str) {
-    // Each fixture temporarily projects the test binary as a capability probe.
-    // Serialize the process tree so parallel tests cannot multiply the same
-    // executable/probe lifecycle and starve the Hook contract runner.
-    let _capability_fixture = crate::match_policy_fixture::capability_guard();
-    let capability_root = std::env::temp_dir().join(format!(
-        "agent-semantic-hook-match-policy-capabilities-{}-{}",
-        std::process::id(),
-        test_name.replace("::", "-")
-    ));
-    let bin_dir = capability_root.join("bin");
-    fs::create_dir_all(&bin_dir).expect("create match-policy capability bin");
-    let current_exe = std::env::current_exe().expect("resolve current test executable");
-    let yq = bin_dir.join("yq");
-    if fs::hard_link(&current_exe, &yq).is_err() {
-        fs::copy(&current_exe, &yq).expect("materialize executable yq capability");
-    }
-    let existing_path = std::env::var_os("PATH").unwrap_or_default();
-    let path = std::env::join_paths(
-        std::iter::once(bin_dir.clone()).chain(std::env::split_paths(&existing_path)),
+fn load_policy_with_configured_capabilities(
+    config_path: &std::path::Path,
+    project_root: &std::path::Path,
+    template: &str,
+) -> agent_semantic_hook::ClientHookConfig {
+    load_client_config_for_project_with_executable_capabilities(
+        config_path,
+        project_root,
+        configured_executable_capabilities(template),
     )
-    .expect("compose isolated capability PATH");
-    let output = Command::new(current_exe)
-        .args(["--exact", test_name, "--nocapture"])
-        .env(CAPABILITY_CHILD_ENV, "1")
-        .env("PATH", path)
-        .output()
-        .expect("run isolated match-policy capability child");
-    fs::remove_dir_all(capability_root).expect("cleanup match-policy capability root");
-    assert!(
-        output.status.success(),
-        "isolated production match-policy contract failed\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+    .expect("compile policy with config-derived executable capability snapshot")
 }
 
 fn shell(command: &str) -> Value {
@@ -224,16 +205,11 @@ struct MatchCase {
 
 #[test]
 fn production_match_policy_contract() {
-    if std::env::var_os(CAPABILITY_CHILD_ENV).is_none() {
-        run_with_projection_capabilities();
-        return;
-    }
-
     let root = temp_project_root();
     fs::create_dir_all(&root).expect("create match-policy contract root");
     let config_path = root.join("config.toml");
     let template = default_client_config_template();
-    fs::write(&config_path, template).expect("write production hook config");
+    fs::write(&config_path, &template).expect("write production hook config");
     fs::write(
         root.join("package.json"),
         "{\"package\":{\"name\":\"hook\"}}\n",
@@ -242,8 +218,7 @@ fn production_match_policy_contract() {
     fs::write(root.join("Cargo.toml"), "[package]\nname = \"hook\"\n")
         .expect("write TOML projection fixture");
 
-    let config =
-        load_client_config_for_project(&config_path, &root).expect("load production hook config");
+    let config = load_policy_with_configured_capabilities(&config_path, &root, &template);
     let rule_ids = config.rule_ids().collect::<BTreeSet<_>>();
     assert_eq!(config.rule_count(), rule_ids.len());
 

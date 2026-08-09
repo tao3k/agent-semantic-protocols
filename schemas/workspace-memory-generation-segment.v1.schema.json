@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/workspace-memory-generation-segment.v1.schema.json",
+  "title": "Workspace Memory Generation Segment V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "generationDigest",
+    "activeEpoch",
+    "rootDepth",
+    "byteLength",
+    "sections"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.workspace-memory-generation-segment"
+    },
+    "schemaVersion": { "const": "1" },
+    "workspaceIdentity": { "type": "string", "minLength": 1 },
+    "generationDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "activeEpoch": { "type": "integer", "minimum": 1 },
+    "rootDepth": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "integer", "minimum": 0, "maximum": 255 },
+        { "type": "integer", "minimum": 0, "maximum": 255 }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "byteLength": { "type": "integer", "minimum": 1 },
+    "sections": {
+      "type": "array",
+        "minItems": 7,
+        "maxItems": 7,
+      "items": { "$ref": "#/$defs/section" }
+    }
+  },
+  "$defs": {
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "offset",
+        "length",
+        "recordCount",
+        "representation",
+        "digest"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "generation-evidence",
+            "project-resolutions",
+            "owner-directory",
+            "owner-bytes",
+            "lexical-index",
+            "selector-index",
+            "graph-relations"
+          ]
+        },
+        "offset": { "type": "integer", "minimum": 0 },
+        "length": { "type": "integer", "minimum": 0 },
+        "recordCount": { "type": "integer", "minimum": 0 },
+        "representation": {
+          "enum": [
+          "sorted-offset-table",
+          "utf8-json",
+          "opaque-bytes"
+          ]
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

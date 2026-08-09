@@ -10,6 +10,7 @@ agent-semantic-config = { path = "../agent-semantic-config" }
 asp-rust-project-harness-policy = { path = "../../build-support/asp-rust-project-harness-policy" }
 
 [dependencies]
+blake3.workspace = true
 agent-semantic-command-match = { path = "../agent-semantic-command-match" }
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-content-identity = { path = "../agent-semantic-content-identity" }
@@ -28,4 +29,7 @@ toml.workspace = true
 
 [dev-dependencies]
 asp-rust-project-harness-policy = { path = "../../build-support/asp-rust-project-harness-policy" }
+gix.workspace = true
+gix-config.workspace = true
 jsonschema.workspace = true
+libc.workspace = true

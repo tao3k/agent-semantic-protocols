@@ -105,21 +105,26 @@ pub struct RepoIdentity {
 
 impl RepoIdentity {
     pub(super) fn from_checkout(git: &GitIdentity, checkout: &CheckoutIdentity) -> Self {
-        let git_basis = git
+        let remote_basis = git
             .remote_url
             .as_ref()
             .and_then(RemoteUrl::canonical_identity)
-            .map(|remote| format!("git-remote:{remote}"))
-            .or_else(|| {
-                git.common_git_dir
-                    .as_deref()
-                    .map(|git_dir| format!("git-common-dir:{}", path_identity(git_dir)))
-            })
-            .or_else(|| {
-                git.git_dir
-                    .as_deref()
-                    .map(|git_dir| format!("git-dir:{}", path_identity(git_dir)))
-            });
+            .map(|remote| format!("git-remote:{remote}"));
+        let checkout_is_temporary = is_temporary_checkout_path(&checkout.root);
+        let git_basis = remote_basis.or_else(|| {
+            git.common_git_dir
+                .as_deref()
+                .filter(|git_dir| !checkout_is_temporary || !is_temporary_checkout_path(git_dir))
+                .map(|git_dir| format!("git-common-dir:{}", path_identity(git_dir)))
+                .or_else(|| {
+                    git.git_dir
+                        .as_deref()
+                        .filter(|git_dir| {
+                            !checkout_is_temporary || !is_temporary_checkout_path(git_dir)
+                        })
+                        .map(|git_dir| format!("git-dir:{}", path_identity(git_dir)))
+                })
+        });
         let persistence = if git_basis.is_some() {
             RepoPersistence::Git
         } else {
@@ -143,6 +148,23 @@ impl RepoIdentity {
     }
 }
 
+/// Return whether a checkout path is owned by an operating-system temporary root.
+pub fn is_temporary_checkout_path(path: &Path) -> bool {
+    let path = path_identity(path);
+    path == "/tmp"
+        || path.starts_with("/tmp/")
+        || path == "/private/tmp"
+        || path.starts_with("/private/tmp/")
+        || path == "/var/folders"
+        || path.starts_with("/var/folders/")
+        || path == "/private/var/folders"
+        || path.starts_with("/private/var/folders/")
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/state_core_temporary_checkout.rs"]
+mod temporary_checkout_tests;
+
 /// Workspace identity and the facts used to derive it.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -152,6 +174,26 @@ pub struct WorkspaceIdentity {
     pub root: PathBuf,
     pub git_dir: Option<PathBuf>,
     pub identity_basis: String,
+    #[serde(default)]
+    pub lifecycle: WorkspaceLifecycle,
+}
+
+/// Lifetime class for one checkout/worktree beneath a durable project.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WorkspaceLifecycle {
+    /// A checkout whose path is expected to remain available.
+    #[default]
+    Durable,
+    /// A checkout under an operating-system temporary root.
+    Temporary,
+}
+
+impl WorkspaceLifecycle {
+    /// Return whether path-bound cache should follow temporary-workspace retention rules.
+    pub const fn is_temporary(self) -> bool {
+        matches!(self, Self::Temporary)
+    }
 }
 
 impl WorkspaceIdentity {
@@ -177,6 +219,11 @@ impl WorkspaceIdentity {
             root: checkout.root.clone(),
             git_dir: git.git_dir.clone(),
             identity_basis: workspace_basis,
+            lifecycle: if is_temporary_checkout_path(&checkout.root) {
+                WorkspaceLifecycle::Temporary
+            } else {
+                WorkspaceLifecycle::Durable
+            },
         }
     }
 }
@@ -205,5 +252,9 @@ impl CheckoutIdentity {
             .to_string();
 
         Self { root, display_name }
+    }
+
+    pub(super) fn root(&self) -> &Path {
+        &self.root
     }
 }

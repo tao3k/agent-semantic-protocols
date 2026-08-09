@@ -7,6 +7,7 @@ fn shell_subject_projection_fades_flags_and_non_file_operands() {
         rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: Vec::new(),
+        policy_providers: Vec::new(),
     };
     let paths = ["-n", "-xx", "self-apply-findings.ss", "1,10p"]
         .map(str::to_string)

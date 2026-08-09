@@ -10,25 +10,24 @@ pub async fn prepare_runtime_server_owner_projection_with_registry_async(
     project_root: PathBuf,
     workspace_identity: String,
     owner_path: String,
-    language_id: String,
     snapshot: ProviderRegistrySnapshot,
 ) -> Result<agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot, String> {
-    let provider = snapshot
-        .providers
-        .iter()
-        .find(|provider| {
-            provider.language_id.as_str() == language_id
-                && provider.language_projection.is_some()
-                && provider
-                    .source_extensions
-                    .iter()
-                    .any(|extension| owner_path.ends_with(extension.as_str()))
-        })
-        .ok_or_else(|| {
-            format!(
-                "runtime owner projection has no registered provider: languageId={language_id} ownerPath={owner_path}"
-            )
-        })?;
+    let mut providers = snapshot.providers.iter().filter(|provider| {
+        provider.language_projection.is_some()
+            && provider
+                .source_extensions
+                .iter()
+                .any(|extension| owner_path.ends_with(extension.as_str()))
+    });
+    let provider = providers.next().ok_or_else(|| {
+        format!("runtime owner projection has no registered provider: ownerPath={owner_path}")
+    })?;
+    if let Some(ambiguous) = providers.next() {
+        return Err(format!(
+            "runtime owner projection provider ownership is ambiguous: ownerPath={owner_path} providers={},{}",
+            provider.provider_id, ambiguous.provider_id
+        ));
+    }
     let source_path = agent_semantic_client_core::scoped_child_path(&project_root, &owner_path)
         .ok_or_else(|| {
             format!("runtime owner projection escaped workspace: ownerPath={owner_path}")

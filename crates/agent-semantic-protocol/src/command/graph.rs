@@ -31,11 +31,9 @@ async fn run_graph_render_command(args: &[String]) -> Result<(), String> {
     let packet_bytes = read_packet_bytes(&request.packet_path)?;
     let packet = parse_packet(&packet_bytes)?;
     if is_graph_turbo_request(&packet) {
-        let ranked_packet = rank_graph_turbo_packet(&packet_bytes)
-            .await?
-            .ok_or_else(|| {
-                "graph render requires the asp-graph-turbo typed JSON ranker".to_string()
-            })?;
+        let project_root = std::env::current_dir()
+            .map_err(|error| format!("failed to resolve graph project root: {error}"))?;
+        let ranked_packet = rank_graph_turbo_packet(&project_root, &packet_bytes).await?;
         if request.frontier_receipt_out.is_some() {
             write_graph_turbo_receipt(
                 &packet_bytes,
@@ -166,53 +164,29 @@ fn is_graph_turbo_request(packet: &Value) -> bool {
 }
 
 pub(super) async fn rank_graph_turbo_packet(
+    project_root: &Path,
     packet_bytes: &[u8],
-) -> Result<Option<agent_semantic_search_projection::GraphTurboResultPacketV1>, String> {
-    let cwd = std::env::current_dir()
-        .map_err(|error| format!("failed to resolve current directory: {error}"))?;
-    let output = match run_provider_process_async(ProviderProcessSpec {
-        program: graph_turbo_program(),
-        args: vec![
-            "rank".to_string(),
-            "-".to_string(),
-            "--format".to_string(),
-            "json".to_string(),
-        ],
-        cwd,
-        env: BTreeMap::new(),
-        stdin: StdinMode::bytes(packet_bytes.to_vec()),
-        stdout: OutputMode::Capture,
-        stderr: OutputMode::Capture,
-        limits: ProviderProcessLimits::default(),
-    })
-    .await
-    {
-        Ok(output) => output,
-        Err(error) => {
-            eprintln!(
-                "[asp-graph] fallback=rust-ranker reason=asp-graph-turbo-unavailable detail={error}"
-            );
-            return Ok(None);
-        }
-    };
-    if !output.stderr.is_empty() {
-        io::stderr()
-            .write_all(output.stderr.as_ref())
-            .map_err(|error| format!("failed to write asp-graph-turbo stderr: {error}"))?;
-    }
-    if !output.status.success() {
-        eprintln!(
-            "[asp-graph] fallback=rust-ranker reason=asp-graph-turbo-exit status={}",
-            output.status.code().unwrap_or(1)
-        );
-        return Ok(None);
-    }
-    let value = serde_json::from_slice(output.stdout.as_ref())
-        .map_err(|error| format!("asp-graph-turbo emitted invalid JSON result: {error}"))?;
-    let packet = agent_semantic_search_projection::GraphTurboResultPacketV1::from_value(value)
-        .map_err(|error| format!("asp-graph-turbo emitted invalid typed result: {error}"))?;
-    Ok(Some(packet))
+) -> Result<agent_semantic_search_projection::GraphTurboResultPacketV1, String> {
+    let session =
+        crate::server::runtime_server::runtime_server_workspace_session_async(project_root).await?;
+    let message = resident_graph_turbo_message(packet_bytes)?;
+    let value = session.evaluate_graph_turbo(message).await?;
+    agent_semantic_search_projection::GraphTurboResultPacketV1::from_value(value)
+        .map_err(|error| format!("Graph Turbo resident emitted invalid typed result: {error}"))
 }
+
+fn resident_graph_turbo_message(packet_bytes: &[u8]) -> Result<serde_json::Value, String> {
+    let message = serde_json::from_slice::<serde_json::Value>(packet_bytes)
+        .map_err(|error| format!("failed to decode typed Graph Turbo request: {error}"))?;
+    message
+        .is_object()
+        .then_some(message)
+        .ok_or_else(|| "Graph Turbo rank intent must be a JSON object".to_owned())
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/command/graph_runtime_resident.rs"]
+mod graph_runtime_resident_tests;
 
 pub(super) struct GraphTurboReceiptCapture<'a> {
     pub(super) out_path: &'a Path,

@@ -6,7 +6,6 @@ use super::support::{
 
 #[test]
 fn cli_install_refuses_protocol_bin_dir_outside_path() {
-    let _install_fixture = crate::integration_fixture::install_fixture_guard();
     let root = git_project_root("install-protocol-bin-path");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
@@ -37,7 +36,6 @@ fn cli_install_refuses_protocol_bin_dir_outside_path() {
 
 #[test]
 fn cli_install_refuses_to_overwrite_invalid_codex_toml() {
-    let _install_fixture = crate::integration_fixture::install_fixture_guard();
     let root = git_project_root("install-invalid-toml");
     let asp_state_home = root.join(".asp-state-home");
     write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");

@@ -10,6 +10,6 @@ pub(crate) use core::HookPolicyCandidate;
 pub use core::{ClientHookConfig, ConfiguredResidentTarget, DurableHookConfigArtifact};
 pub use core_load::{
     default_client_config_path, default_client_config_template, load_client_config,
-    load_client_config_for_project, load_client_config_overlay_for_project,
-    load_embedded_client_config_for_project,
+    load_client_config_for_project, load_client_config_for_project_with_executable_capabilities,
+    load_client_config_overlay_for_project, load_embedded_client_config_for_project,
 };

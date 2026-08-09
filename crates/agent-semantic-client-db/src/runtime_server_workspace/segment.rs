@@ -158,19 +158,26 @@ impl WorkspaceGenerationPublisher {
             None,
         );
         let generation_encode_started = tokio::time::Instant::now();
-        let (generation, segment, exact_segment, durable_commit_digest) =
+        let (generation, segment, exact_segment, search_segment, durable_commit_digest) =
             tokio::task::spawn_blocking(move || {
                 generation.validate()?;
                 let segment = encode_segment(&generation)?;
                 let exact_segment =
                     super::exact_segment::encode_exact_projection_segment(&generation)?;
+                let search_segment =
+                    super::encode_workspace_search_generation_segment(&generation)?;
                 let segment_digest =
                     agent_semantic_content_identity::ArtifactHash::blake3(&segment).value;
                 let exact_segment_digest =
                     agent_semantic_content_identity::ArtifactHash::blake3(&exact_segment).value;
+                let search_segment_digest =
+                    agent_semantic_content_identity::ArtifactHash::blake3(&search_segment).value;
                 let durable_commit_binding = format!(
-                    "{}\u{1f}{}\u{1f}{}",
-                    generation.generation_digest, segment_digest, exact_segment_digest
+                    "{}\u{1f}{}\u{1f}{}\u{1f}{}",
+                    generation.generation_digest,
+                    segment_digest,
+                    exact_segment_digest,
+                    search_segment_digest,
                 );
                 let durable_commit_digest = format!(
                     "blake3-256:{}",
@@ -179,7 +186,13 @@ impl WorkspaceGenerationPublisher {
                     )
                     .value,
                 );
-                Ok::<_, String>((generation, segment, exact_segment, durable_commit_digest))
+                Ok::<_, String>((
+                    generation,
+                    segment,
+                    exact_segment,
+                    search_segment,
+                    durable_commit_digest,
+                ))
             })
             .await
             .map_err(|error| format!("workspace generation encoder task failed: {error}"))??;
@@ -194,11 +207,16 @@ impl WorkspaceGenerationPublisher {
             .directory
             .join(format!("generation-{}.mmap", generation.active_epoch));
         let exact_path = super::exact_segment::exact_projection_segment_path(&final_path);
+        let search_path = super::workspace_search_generation_segment_path(&final_path);
         let temporary_path = self
             .directory
             .join(format!(".generation-{}.pending", generation.active_epoch));
         let exact_temporary_path = self.directory.join(format!(
             ".generation-{}.exact.pending",
+            generation.active_epoch
+        ));
+        let search_temporary_path = self.directory.join(format!(
+            ".generation-{}.search.pending",
             generation.active_epoch
         ));
         write_durable_pending(&temporary_path, &segment, "workspace generation").await?;
@@ -208,12 +226,21 @@ impl WorkspaceGenerationPublisher {
             "workspace exact projection",
         )
         .await?;
+        write_durable_pending(
+            &search_temporary_path,
+            &search_segment,
+            "workspace search generation",
+        )
+        .await?;
         fs::rename(&temporary_path, &final_path)
             .await
             .map_err(|error| format!("publish workspace generation segment: {error}"))?;
         fs::rename(&exact_temporary_path, &exact_path)
             .await
             .map_err(|error| format!("publish workspace exact projection segment: {error}"))?;
+        fs::rename(&search_temporary_path, &search_path)
+            .await
+            .map_err(|error| format!("publish workspace search generation segment: {error}"))?;
         fs::File::open(&self.directory)
             .await
             .map_err(|error| format!("open workspace generation directory: {error}"))?
@@ -320,6 +347,8 @@ async fn prune_obsolete_generation_segments(
 ) -> Result<(), String> {
     let readable_exact_path =
         readable_generation_path.map(super::exact_segment::exact_projection_segment_path);
+    let readable_search_path =
+        readable_generation_path.map(super::workspace_search_generation_segment_path);
     let mut entries = fs::read_dir(directory)
         .await
         .map_err(|error| format!("inspect workspace generation retention: {error}"))?;
@@ -337,6 +366,9 @@ async fn prune_obsolete_generation_segments(
         }
         if readable_generation_path.is_some_and(|readable| path == readable)
             || readable_exact_path
+                .as_ref()
+                .is_some_and(|readable| path == *readable)
+            || readable_search_path
                 .as_ref()
                 .is_some_and(|readable| path == *readable)
         {

@@ -186,7 +186,7 @@ argvPrefixAny = [[]]
 }
 
 #[test]
-fn configured_git_diff_opens_org_choice_plane_without_preselecting_a_resident() {
+fn configured_git_diff_projects_the_tag_selected_agent_into_org_choice_plane_guidance() {
     let config = ClientHookConfig::default();
     let registry = registry();
     let payload = json!({
@@ -230,17 +230,17 @@ fn configured_git_diff_opens_org_choice_plane_without_preselecting_a_resident() 
             .and_then(serde_json::Value::as_str),
         Some("org-contract:agent-interactive")
     );
-    for forbidden in [
-        "residentName",
-        "residentChildName",
-        "targetAgentName",
-        "targetAgentRole",
-        "canonicalTarget",
-        "targetAgentSelectionSource",
-    ] {
+    assert_eq!(decision.fields["targetAgentName"], "asp_testing");
+    assert_eq!(decision.fields["targetAgentRole"], "asp_testing");
+    assert!(
+        decision.fields["targetAgentDescription"]
+            .as_str()
+            .is_some_and(|description| !description.is_empty())
+    );
+    for forbidden in ["residentName", "residentChildName", "canonicalTarget"] {
         assert!(
             !decision.fields.contains_key(forbidden),
-            "Hook policy must not preselect an Agent through {forbidden}"
+            "Hook must not materialize Runtime lifecycle state through {forbidden}"
         );
     }
     assert_eq!(
@@ -336,8 +336,14 @@ fn configurable_hook_default_rule_classification_stays_fast() {
     ];
     // Keep the total decision count high while using short samples so unrelated
     // parallel tests cannot dominate every measurement with scheduler stalls.
-    let samples = 50;
-    let iterations = 1_000;
+    // The shipped performance contract is exercised by the release black-box
+    // matrix. Keep ordinary debug `cargo test` bounded so parallel functional
+    // tests cannot turn this microbenchmark into a multi-minute CPU convoy.
+    let (samples, iterations) = if cfg!(debug_assertions) {
+        (4, 250)
+    } else {
+        (50, 1_000)
+    };
     let mut best_elapsed = Duration::MAX;
     let mut best_denied = 0usize;
 
@@ -385,7 +391,7 @@ fn configurable_hook_default_rule_classification_stays_fast() {
         );
     }
 
-    assert_eq!(best_denied, iterations * 3 / 4);
+    assert_eq!(best_denied, (iterations / 4) * 3 + (iterations % 4).min(3));
     // Debug builds exercise the functional path but include instrumentation and
     // allocator noise that are not representative of the shipped hook binary.
     // Keep the production performance gate strict in release builds.

@@ -149,3 +149,7 @@ pub(super) fn root_structural_selector_language(args: &[String]) -> Result<Optio
         .map_err(|_| format!("invalid structural selector `{selector}`"))?;
     Ok(Some(selector.language_id.as_str().to_string()))
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/command/provider_selector_exact.rs"]
+mod exact_query_tests;

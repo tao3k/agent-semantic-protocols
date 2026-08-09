@@ -2,8 +2,6 @@
 
 use std::collections::BTreeMap;
 
-use crate::CommandStageV1;
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// One bounded structured-filter path segment.
 pub enum BoundedPathSegmentV1 {
@@ -52,38 +50,29 @@ fn classify_single_bounded_path_command_impl(
     let Ok(stages) = crate::parse_bash_command_candidates(command) else {
         return StructuredFilterClassificationV1::Invalid;
     };
-    if stages.len() != 1 {
+    if stages.iter().any(|stage| {
+        stage.words().len() == 1 && crate::bash_parser::is_separator(stage.words()[0].as_str())
+    }) {
         return StructuredFilterClassificationV1::Compound;
     }
-    let stage = &stages[0];
-    if stage
-        .executable()
-        .is_some_and(|executable| executable.rsplit('/').next() == Some(spec.binary))
-    {
-        return classify_bounded_path_stage(stage, &spec);
-    }
-    if crate::command_match::command_stages_match_wrapped_prefix(
-        &stages,
-        &[spec.binary.to_string()],
-    ) != crate::command_match::PrefixMatch::Matched
-    {
-        return StructuredFilterClassificationV1::Invalid;
-    }
-    stage
-        .words()
+    let matching = stages
         .iter()
-        .enumerate()
-        .filter(|(_, word)| word.rsplit('/').next() == Some(spec.binary))
-        .map(|(index, _)| classify_bounded_path_words(&stage.words()[index..], &spec))
-        .find(|classification| *classification != StructuredFilterClassificationV1::Invalid)
-        .unwrap_or(StructuredFilterClassificationV1::Invalid)
-}
-
-fn classify_bounded_path_stage(
-    stage: &CommandStageV1,
-    spec: &BoundedPathCommandSpecV1<'_>,
-) -> StructuredFilterClassificationV1 {
-    classify_bounded_path_words(stage.words(), spec)
+        .flat_map(|stage| {
+            stage
+                .words()
+                .iter()
+                .enumerate()
+                .filter_map(|(index, word)| {
+                    (word.rsplit('/').next() == Some(spec.binary))
+                        .then_some(&stage.words()[index..])
+                })
+        })
+        .collect::<Vec<_>>();
+    match matching.as_slice() {
+        [words] => classify_bounded_path_words(words, &spec),
+        [] => StructuredFilterClassificationV1::Invalid,
+        _ => StructuredFilterClassificationV1::Compound,
+    }
 }
 
 fn classify_bounded_path_words(

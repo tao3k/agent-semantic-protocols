@@ -1,6 +1,7 @@
 //! Runtime provider status rendering and source selector matching.
 
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
+use std::borrow::Cow;
 
 use crate::protocol::normalize_source_selector;
 
@@ -15,26 +16,33 @@ impl HookRuntime {
     pub(crate) fn providers_for_selector(&self, selector: &str) -> Vec<ProviderSelectorMatch> {
         let matcher = SourceSelectorMatcher::new(selector);
         hook_provider_projections(self)
-            .into_iter()
+            .iter()
             .filter_map(|provider| {
                 provider
                     .match_source_selector_with(&matcher)
-                    .map(|kind| ProviderSelectorMatch { provider, kind })
+                    .map(|kind| ProviderSelectorMatch {
+                        provider: provider.clone(),
+                        kind,
+                    })
             })
             .collect()
     }
 }
 
-pub(crate) fn hook_provider_projections(runtime: &HookRuntime) -> Vec<HookProviderProjection> {
-    crate::hook_policy_kernel::active_provider_projections(&runtime.project_root).unwrap_or_else(
-        || {
+pub(crate) fn hook_provider_projections(
+    runtime: &HookRuntime,
+) -> Cow<'_, [HookProviderProjection]> {
+    if runtime.policy_providers.is_empty() {
+        Cow::Owned(
             runtime
                 .providers
                 .iter()
                 .map(HookProviderProjection::from)
-                .collect()
-        },
-    )
+                .collect(),
+        )
+    } else {
+        Cow::Borrowed(&runtime.policy_providers)
+    }
 }
 
 impl From<&ActivatedProvider> for HookProviderProjection {
@@ -48,7 +56,9 @@ impl From<&ActivatedProvider> for HookProviderProjection {
             source_extensions: provider.source_extensions.clone(),
             config_files: provider.config_files.clone(),
             policy: provider.policy.clone(),
-            routes: provider.routes.clone(),
+            owner_route: provider.routes.owner.clone(),
+            lexical_route: provider.routes.lexical.clone(),
+            ingest_route: provider.routes.ingest.clone(),
         }
     }
 }

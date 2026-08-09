@@ -1,9 +1,6 @@
 use agent_semantic_config::HookClientLanguageProviderConfig;
 
-use super::{
-    active_policy_snapshot, active_provider_projections, compile_language_provider_snapshot,
-    publish_language_provider_snapshot,
-};
+use super::compile_language_provider_snapshot;
 
 fn provider(
     language_id: &str,
@@ -30,25 +27,18 @@ fn provider(
 }
 
 #[test]
-fn snapshot_projects_inactive_document_provider_without_runtime_server() {
-    let project = "hook-policy-kernel-markdown";
-    publish_language_provider_snapshot(project, &[provider("md", "orgize", &[".md", ".markdown"])])
-        .expect("publish Markdown hook policy snapshot");
-    let projections = active_provider_projections(project).expect("active projections");
-    assert_eq!(projections.len(), 1);
-    assert_eq!(projections[0].language_id.as_str(), "md");
+fn snapshot_compiles_inactive_document_provider_without_runtime_or_global_state() {
+    let snapshot =
+        compile_language_provider_snapshot(&[provider("md", "orgize", &[".md", ".markdown"])])
+            .expect("compile Markdown hook policy snapshot");
+    assert_eq!(snapshot.provider_projections.len(), 1);
+    assert_eq!(snapshot.provider_projections[0].language_id.as_str(), "md");
 }
 
 #[test]
-fn invalid_refresh_preserves_last_known_good_snapshot() {
-    let project = "hook-policy-kernel-last-known-good";
-    let active =
-        publish_language_provider_snapshot(project, &[provider("rust", "rs-harness", &[".rs"])])
-            .expect("publish admitted snapshot");
+fn invalid_snapshot_is_rejected_without_mutating_global_state() {
     let invalid = provider("rust", "rs-harness", &[]);
-    assert!(publish_language_provider_snapshot(project, &[invalid]).is_err());
-    let retained = active_policy_snapshot(project).expect("retain last known good snapshot");
-    assert_eq!(retained.generation_digest, active.generation_digest);
+    assert!(compile_language_provider_snapshot(&[invalid]).is_err());
 }
 
 #[test]

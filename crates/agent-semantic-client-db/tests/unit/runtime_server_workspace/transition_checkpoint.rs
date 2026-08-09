@@ -488,10 +488,60 @@ async fn generation_pointer_never_exposes_a_torn_epoch_during_publication() {
         [
             "generation-31.exact.mmap",
             "generation-31.mmap",
+            "generation-31.search.mmap",
             "generation-32.exact.mmap",
             "generation-32.mmap",
+            "generation-32.search.mmap",
         ]
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn published_search_generation_reads_lexical_and_owner_sections_without_full_generation() {
+    let temporary = tempdir().expect("temporary runtime root");
+    let publisher = WorkspaceGenerationPublisher::new(temporary.path().join("published"))
+        .await
+        .expect("generation publisher");
+    publisher
+        .publish(
+            generation(
+                "workspace-search",
+                1,
+                owner(
+                    "src/lib.rs",
+                    "rust://src/lib.rs#item/function/run_search",
+                    b"fn run_search() {}",
+                ),
+            )
+            .into(),
+            false,
+        )
+        .await
+        .expect("publish searchable generation");
+
+    let client = agent_semantic_client_db::runtime_server_workspace::
+        WorkspaceSearchGenerationDataPlaneClient::open(
+            publisher.pointer_path(),
+            &project_root("workspace-search"),
+        )
+        .await
+        .expect("open zero-copy search generation");
+    let lookup = client
+        .read_source_index("run_search", None, 8)
+        .expect("read lexical section");
+    assert_eq!(lookup.candidates.len(), 1);
+    assert_eq!(lookup.candidates[0].path, "src/lib.rs");
+
+    let read = client.read_owner("src/lib.rs").expect("read owner section");
+    let agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::Owner {
+        owner,
+        ..
+    } = read
+    else {
+        panic!("published owner must be readable");
+    };
+    assert_eq!(owner.bytes, b"fn run_search() {}");
+    assert_eq!(client.authority().active_epoch, 1);
 }
 
 #[tokio::test(flavor = "multi_thread")]

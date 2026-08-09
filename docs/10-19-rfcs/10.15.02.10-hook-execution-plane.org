@@ -36,6 +36,10 @@ classified and MUST NOT inherit this admission.
 
 The emitted Hook decision is the authoritative transaction result. The
 =events.jsonl= record is a diagnostic projection, not a commit prerequisite.
+The local decode, projection, policy, and response-decision path has a strict
+=elapsedMicros < 1000= budget. One millisecond is an exclusive boundary, not
+a target average and not a one-second fallback. Conformance MUST fail when any
+black/white matrix decision reaches or exceeds the boundary.
 The decision path MUST use a single non-blocking writer-lock attempt for that
 projection; lock contention, compaction failure, rename failure, or storage
 failure MUST NOT change, suppress, or delay the already-computed decision and
@@ -54,6 +58,49 @@ single-language examples are regression cases only and MUST NOT establish
 completeness. Compact native reads and nested =commandActions= envelopes are
 separate generated envelope families; an outer aggregator such as
 =functions.exec= is normalization coverage, not a required host matcher alias.
+Because =functions.exec= is a freeform tool, its =tool_input= MAY be the raw
+JavaScript string or a structured object containing =code=; both encodings MUST
+project the same nested actions and both require executable witnesses.
+
+The testing framework has three non-substitutable gates:
+
+1. a schema-validated black/white matrix proves rule, language extension,
+   provider, route, message, latency, and zero-Runtime behavior;
+2. a freshly linked binary replay proves the real Hook entry point consumes
+   Host envelopes without contacting the Runtime Server;
+3. a fresh normal Codex task proves the installed trusted plugin actually
+   receives =PreToolUse= and denies the underlying action before execution.
+
+Calling =asp hook= directly proves only gates 1 and 2. It MUST NOT be reported
+as Host/plugin acceptance. A normal-task source body in tool output is a
+terminal failed acceptance even when the same payload is denied by direct
+binary replay.
+
+A task whose Host metadata disables plugin loading is a delivery-negative
+witness, not a normal-task acceptance witness. It MUST fail the gate and MUST
+NOT be reclassified as matcher success or repaired through direct Hook replay.
+Host acceptance requires positive plugin-load provenance, an observed probe
+call, an ASP Hook event, an observed deny, and absence of protected source
+bytes. The diagnostic-plane command
+=asp hook accept-host --host-rollout PATH --host-probe-path PATH --host-sentinel TOKEN= emits
+=agent.semantic-protocols.hook-host-acceptance= version =1= and returns a
+non-zero status for =plugin-not-loaded=, =probe-call-missing=,
+=source-bytes-leaked=, =hook-event-missing=, or =hook-deny-missing=. It reads
+only the explicitly supplied bounded rollout; the Hook event path itself MUST
+NOT discover or scan Codex sessions or rollouts.
+
+For a Hook-only plugin, positive plugin-load provenance is the emitted ASP Hook
+event/decision itself. =world_state.plugins_instructions= describes plugin
+instruction or skill injection and MUST NOT be used as Hook-load authority; a
+valid Hook-only plugin may intentionally report it as false.
+
+All direct and wrapped source-read envelopes reduce to the same policy key:
+=action=Read= plus =target.extension in provider.sourceExtensions=. Wrapper
+names and shell program names are normalization evidence only; they MUST NOT
+own language classification. The canonical Codex =Bash= envelope with
+=tool_input.command= and compact direct =Read= envelopes MUST be generated for
+every provider-advertised extension, with an unrelated =pwd= action as a white
+witness.
 
 The assurance model treats a missing normalization witness as an executable
 counterexample: host admission alone does not imply policy admission. Every
@@ -105,6 +152,63 @@ an explicitly unrelated typed identity is local passthrough.
 The Runtime Server MUST NOT expose a generic Hook-policy evaluation operation,
 materialize resident Hook snapshots, compile every admitted workspace's Hook
 configuration at daemon startup, or return a final Hook platform response.
+
+* Plugin bootstrap and composable policy algebra
+
+The plugin-owned =$PLUGIN_ROOT/bin/asp-hook= is a Host-discoverable bootstrap,
+not a Hook Runtime or policy authority. Its only responsibilities are resolving
+the canonical =$ASP_STATE_HOME/runtime/bin/asp= artifact, executing exactly
+=asp hook EVENT --client codex=, and converting missing/non-executable or
+=126=/=127= execution failures into a typed local unavailable response. It MUST
+NOT parse =hooks/config.toml=, open a Runtime Server endpoint, reconcile a
+supervisor, classify an action, or cache workspace state. This bootstrap is
+necessary because the Host supplies =PLUGIN_ROOT= but does not establish the
+ASP state environment or interactive =PATH= as plugin authority.
+
+The in-process matcher compiles reusable =actionPolicies= over orthogonal
+normalized axes: action, effect, authority, and provider-owned subject kind.
+Rules compose those predicates with =actionPolicyAll=, =actionPolicyAny=, and
+=actionPolicyNone=. Rule priority, decision, message, dispatch, and recovery
+materializer remain rule-owned and are never merged implicitly. In particular,
+a registered-language read is the conjunction of a read-shaped action predicate
+and a =registered-language-source= subject derived from provider-advertised
+=sourceExtensions=; neither the Host tool name nor a hard-coded extension set is
+language authority.
+
+Predicate evaluation is two-phase. Action/effect/authority are checked before
+provider subject projection; extension and path projection occurs only for a
+surviving candidate that requires a subject predicate. This preserves the
+semantic conjunction without charging every unrelated rule for provider lookup.
+
+Wrapper enablement is universal over policy consumers, including provider-owned
+=commandProfiles=. Wrapper identity is structural: the Tree-sitter Bash graph
+projects every executable nested command stage and the profile matcher evaluates
+the normalized argv of those stages. It MUST NOT enumerate =bash=, =sh=, =zsh=,
+absolute shell paths, or client-specific wrapper names as policy identity.
+=/bin/bash -c 'cargo test'= is therefore denied because the AST contains a
+nested =cargo test= command stage, not because the outer executable happens to
+be named =bash=. Shell =$0= and positional arguments that are not part of the
+nested command node MUST NOT be concatenated into its normalized argv.
+
+The Lean refinement MUST contain an executable countermodel in which the outer
+command does not match a testing profile while a reachable nested AST command
+does. The shallow matcher must allow that model and the wrapped structural
+matcher must deny it. A proof of only the final deny state is insufficient: it
+does not demonstrate that the model can discover loss of nested-stage
+reachability, which was the observed implementation escape.
+
+A materialized deny MUST preserve both authorities: configuration contributes
+the natural-language policy explanation and Org ChoicePlane registration
+fields, while the parser materializer contributes the exact executable ASP
+route. Configuration MUST NOT overwrite and erase the parser route; the parser
+route MUST NOT erase the configured next-action/registration contract.
+
+The Cargo conformance framework MUST generate black and white direct/wrapped
+Read witnesses for every registered provider extension, run them with no
+Runtime Server endpoint, and retain the one-millisecond matcher gate. Correctness
+may enumerate all wrapper witnesses, while performance sampling is bounded once
+per rule and envelope shape under Cargo's normal parallel scheduler. Serial test
+execution is diagnostic only and is not an admitted gate.
 
 * ChoicePlane boundary
 
@@ -301,6 +405,15 @@ the local path because the Hook event plane has zero Runtime calls.
 - a response owner does not flush before immediate process termination;
 - plugin =*= coverage, local action classification, or provider language
   extension projection drifts.
+- freeform and structured =functions.exec= envelopes project different nested
+  actions;
+- source-access replay identity omits reason, language, owner, or parser route,
+  causing distinct denials to collapse into one lane;
+- replay rendering replaces an available parser-owned route with generic
+  ChoicePlane guidance or omits the executable next command;
+- a normal-task Host receipt accepts without plugin-load provenance, the probe
+  call, an ASP Hook event, deny evidence, or with protected source bytes in the
+  tool output;
 
 The Lean model =ASPProof.HookExecutionPlane= proves the execution-plane
 partition, zero Runtime Server calls for every Hook action, the

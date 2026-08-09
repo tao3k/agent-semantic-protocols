@@ -37,6 +37,7 @@ pub struct RuntimeServerRuntimeBuilder {
 }
 
 pub const RUNTIME_SERVER_CLIENT_WORKER_COUNT: usize = 2;
+pub const ASP_CLI_WORKER_COUNT: usize = 2;
 pub const RUNTIME_SERVER_CONNECTION_IO_BUDGET: std::time::Duration =
     std::time::Duration::from_millis(25);
 
@@ -175,9 +176,11 @@ impl Drop for RuntimeServerConnectionLease {
 
 impl RuntimeServerRuntimeBuilder {
     pub fn new_cli() -> Self {
-        Self {
-            builder: tokio::runtime::Builder::new_current_thread(),
-        }
+        let mut builder = tokio::runtime::Builder::new_multi_thread();
+        builder
+            .worker_threads(ASP_CLI_WORKER_COUNT)
+            .thread_name("asp-cli");
+        Self { builder }
     }
 
     pub fn new_daemon() -> Self {

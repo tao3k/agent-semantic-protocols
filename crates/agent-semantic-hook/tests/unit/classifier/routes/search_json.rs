@@ -38,10 +38,14 @@ fn search_json_routes_to_compact_search() {
             "seeds"
         ]
     );
-    assert_eq!(
-        decision.message,
-        "agent-search-json denied; route: asp typescript search lexical projectRoot owner tests --workspace . --view seeds"
+    assert!(
+        decision
+            .message
+            .contains("Agent-facing search JSON is denied")
     );
+    assert!(decision.message.contains(
+        "route: asp typescript search lexical projectRoot owner tests --workspace . --view seeds"
+    ));
 }
 
 #[test]
@@ -78,10 +82,14 @@ fn search_json_owner_routes_to_provider_owner_query() {
             "seeds"
         ]
     );
-    assert_eq!(
-        decision.message,
-        "agent-search-json denied; route: asp typescript search owner cli/agent-hooks.ts items --workspace src --view seeds"
+    assert!(
+        decision
+            .message
+            .contains("Agent-facing search JSON is denied")
     );
+    assert!(decision.message.contains(
+        "route: asp typescript search owner cli/agent-hooks.ts items --workspace src --view seeds"
+    ));
 }
 
 #[test]

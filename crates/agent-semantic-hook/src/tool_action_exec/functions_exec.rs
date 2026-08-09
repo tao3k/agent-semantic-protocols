@@ -8,7 +8,7 @@ pub(super) fn nested_code_actions(tool_name: &str, tool_input: &Value) -> Vec<Ne
     if tool_name != "functions.exec" {
         return Vec::new();
     }
-    let Some(code) = tool_input.get("code").and_then(Value::as_str) else {
+    let Some(code) = functions_exec_source(tool_input) else {
         return Vec::new();
     };
     let mut actions = Vec::new();
@@ -31,7 +31,97 @@ pub(super) fn nested_code_actions(tool_name: &str, tool_input: &Value) -> Vec<Ne
         }
         cursor = object_end;
     }
+    cursor = 0;
+    while let Some(call_start) = next_tool_call(code, cursor, "tools.apply_patch") {
+        let Some((patch, call_end)) = call_string_argument(code, call_start) else {
+            cursor = call_start;
+            continue;
+        };
+        actions.push(NestedToolAction {
+            tool_name: "apply_patch".to_owned(),
+            input: Value::String(patch),
+        });
+        cursor = call_end;
+    }
     actions
+}
+
+pub(super) fn functions_exec_source(tool_input: &Value) -> Option<&str> {
+    tool_input
+        .as_str()
+        .or_else(|| tool_input.get("code").and_then(Value::as_str))
+}
+
+fn next_tool_call(code: &str, start: usize, callee: &str) -> Option<usize> {
+    let bytes = code.as_bytes();
+    let mut string = JsStringScan::default();
+    let mut cursor = start;
+    while cursor < bytes.len() {
+        let byte = bytes[cursor];
+        if string.consume(byte) {
+            cursor += 1;
+            continue;
+        }
+        if matches!(byte, b'\'' | b'"' | b'`') {
+            string.open(byte);
+            cursor += 1;
+            continue;
+        }
+        if code[cursor..].starts_with(callee) {
+            return Some(cursor + callee.len());
+        }
+        cursor += 1;
+    }
+    None
+}
+
+fn call_string_argument(code: &str, mut cursor: usize) -> Option<(String, usize)> {
+    let bytes = code.as_bytes();
+    skip_whitespace(bytes, &mut cursor);
+    if bytes.get(cursor) != Some(&b'(') {
+        return None;
+    }
+    cursor += 1;
+    skip_whitespace(bytes, &mut cursor);
+    if matches!(bytes.get(cursor), Some(b'\'' | b'"' | b'`')) {
+        return decode_js_string_with_end(code, cursor);
+    }
+    let identifier_start = cursor;
+    if !bytes
+        .get(cursor)
+        .is_some_and(|byte| is_identifier_start(*byte))
+    {
+        return None;
+    }
+    cursor += 1;
+    while bytes.get(cursor).is_some_and(|byte| is_identifier(*byte)) {
+        cursor += 1;
+    }
+    let identifier = &code[identifier_start..cursor];
+    let patch = string_binding_before(code, identifier, identifier_start)?;
+    Some((patch, cursor))
+}
+
+fn string_binding_before(code: &str, identifier: &str, before: usize) -> Option<String> {
+    let prefix = code.get(..before)?;
+    for declaration in ["const", "let", "var"] {
+        let needle = format!("{declaration} {identifier}");
+        let Some(binding_start) = prefix.rfind(&needle) else {
+            continue;
+        };
+        let mut cursor = binding_start + needle.len();
+        let bytes = code.as_bytes();
+        skip_whitespace(bytes, &mut cursor);
+        if bytes.get(cursor) != Some(&b'=') {
+            continue;
+        }
+        cursor += 1;
+        skip_whitespace(bytes, &mut cursor);
+        if let Some((value, _)) = decode_js_string_with_end(code, cursor) {
+            return Some(value);
+        }
+    }
+    None
 }
 
 fn next_exec_command_call(code: &str, start: usize) -> Option<usize> {
@@ -142,6 +232,10 @@ fn read_command_field<'a>(object: &'a str, cursor: &mut usize) -> Option<(&'stat
 }
 
 fn decode_js_string_at(source: &str, start: usize) -> Option<String> {
+    decode_js_string_with_end(source, start).map(|(decoded, _)| decoded)
+}
+
+fn decode_js_string_with_end(source: &str, start: usize) -> Option<(String, usize)> {
     let bytes = source.as_bytes();
     let quote = *bytes.get(start)?;
     if !matches!(quote, b'\'' | b'"' | b'`') {
@@ -152,7 +246,7 @@ fn decode_js_string_at(source: &str, start: usize) -> Option<String> {
     while cursor < bytes.len() {
         let character = source[cursor..].chars().next()?;
         if character == char::from(quote) {
-            return Some(decoded);
+            return Some((decoded, cursor + character.len_utf8()));
         }
         if quote == b'`' && source[cursor..].starts_with("${") {
             return None;

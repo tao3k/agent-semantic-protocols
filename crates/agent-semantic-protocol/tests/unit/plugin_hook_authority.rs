@@ -1,6 +1,6 @@
 use super::{
-    ASP_CODEX_PLUGIN_HOOKS_JSON, ASP_CODEX_PLUGIN_MANIFEST_JSON, ASP_CODEX_PLUGIN_MARKETPLACE_JSON,
-    remove_codex_managed_global_hook_config,
+    ASP_CODEX_PLUGIN_HOOK_LAUNCHER, ASP_CODEX_PLUGIN_HOOKS_JSON, ASP_CODEX_PLUGIN_MANIFEST_JSON,
+    ASP_CODEX_PLUGIN_MARKETPLACE_JSON, remove_codex_managed_global_hook_config,
 };
 use std::path::PathBuf;
 
@@ -16,13 +16,11 @@ fn temp_root(label: &str) -> PathBuf {
 }
 
 #[test]
-fn bundled_manifest_declares_plugin_hook_authority() {
+fn bundled_manifest_uses_standard_hook_directory_without_unsupported_fields() {
     let manifest: serde_json::Value =
         serde_json::from_str(ASP_CODEX_PLUGIN_MANIFEST_JSON).expect("valid plugin manifest");
-    assert_eq!(
-        manifest.get("hooks").and_then(serde_json::Value::as_str),
-        Some("./hooks/hooks.json")
-    );
+    assert!(manifest.get("hooks").is_none());
+    assert!(manifest.get("skills").is_none());
 
     let hooks: serde_json::Value =
         serde_json::from_str(ASP_CODEX_PLUGIN_HOOKS_JSON).expect("valid plugin hooks");
@@ -76,7 +74,7 @@ fn bundled_manifest_declares_plugin_hook_authority() {
                 };
                 assert_eq!(
                     handler["command"].as_str(),
-                    Some(format!("asp hook {suffix} --client codex").as_str())
+                    Some(format!("\"$PLUGIN_ROOT/bin/asp-hook\" {suffix} --client codex").as_str())
                 );
             }
         }
@@ -88,6 +86,99 @@ fn bundled_manifest_declares_plugin_hook_authority() {
         marketplace["plugins"][0]["source"]["path"].as_str(),
         Some("./asp-codex-plugin")
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn plugin_launcher_types_missing_binary_instead_of_exiting_127() {
+    let root = temp_root("launcher-missing-binary");
+    std::fs::create_dir_all(&root).expect("create isolated launcher state");
+    let launcher = root.join("asp-hook");
+    std::fs::write(&launcher, ASP_CODEX_PLUGIN_HOOK_LAUNCHER)
+        .expect("write isolated plugin launcher");
+    let output = std::process::Command::new("/bin/sh")
+        .arg(&launcher)
+        .args(["pre-tool", "--client", "codex"])
+        .env("ASP_STATE_HOME", root.join("missing-state"))
+        .env("HOME", root.join("missing-home"))
+        .env("PATH", "")
+        .output()
+        .expect("run plugin launcher without PATH");
+    assert_eq!(output.status.code(), Some(0));
+    let receipt: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("typed missing binary receipt");
+    assert_eq!(receipt["hookSpecificOutput"]["permissionDecision"], "deny");
+    assert!(
+        receipt["hookSpecificOutput"]["permissionDecisionReason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("canonical binary missing or non-executable"))
+    );
+    std::fs::remove_dir_all(root).expect("remove isolated launcher state");
+}
+
+#[cfg(unix)]
+#[test]
+fn plugin_launcher_executes_only_the_canonical_one_shot_hook_binary() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = temp_root("launcher-canonical-runtime");
+    let runtime_dir = root.join("runtime/bin");
+    std::fs::create_dir_all(&runtime_dir).expect("create canonical runtime fixture");
+    let invocation = root.join("invocation.txt");
+    let runtime = runtime_dir.join("asp");
+    std::fs::write(
+        &runtime,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" > '{}'\nprintf '%s\\n' '{{\"decision\":\"allow\"}}'\n",
+            invocation.display()
+        ),
+    )
+    .expect("write canonical runtime fixture");
+    let mut permissions = std::fs::metadata(&runtime)
+        .expect("canonical runtime metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&runtime, permissions).expect("make canonical runtime executable");
+    let launcher = root.join("asp-hook");
+    std::fs::write(&launcher, ASP_CODEX_PLUGIN_HOOK_LAUNCHER)
+        .expect("write isolated plugin launcher");
+
+    let output = std::process::Command::new("/bin/sh")
+        .arg(&launcher)
+        .args(["pre-tool", "--client", "codex"])
+        .env("ASP_STATE_HOME", &root)
+        .env("HOME", root.join("missing-home"))
+        .env("PATH", "")
+        .output()
+        .expect("run plugin launcher with canonical runtime");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        std::fs::read_to_string(&invocation).expect("read canonical runtime invocation"),
+        "hook pre-tool --client codex\n"
+    );
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout)
+            .expect("canonical runtime output"),
+        serde_json::json!({"decision": "allow"})
+    );
+    std::fs::remove_dir_all(root).expect("remove isolated launcher state");
+}
+
+#[test]
+fn plugin_launcher_contains_no_policy_or_runtime_server_plane() {
+    for forbidden in [
+        "config.toml",
+        "server reconcile",
+        "server healthcheck",
+        "runtime/server",
+        "curl ",
+        "nc ",
+    ] {
+        assert!(
+            !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains(forbidden),
+            "plugin launcher crossed into evaluator/server responsibility: {forbidden}"
+        );
+    }
 }
 
 #[test]

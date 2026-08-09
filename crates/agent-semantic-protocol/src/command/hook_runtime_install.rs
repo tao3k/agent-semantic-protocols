@@ -137,6 +137,8 @@ fn run_install_for_client(
             )
         },
     )?;
+    let hook_matcher_generation =
+        super::publish_hook_matcher_generation(&client_config_path, &project_root)?;
     timings.mark("user-config");
     let mut provider_artifacts = runtime_profiles
         .providers
@@ -269,10 +271,11 @@ fn run_install_for_client(
         user_config_status.as_str()
     );
     println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} activeArtifactReceipt={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic providerBinariesMissing={} retiredArtifactCleanup={} retiredArtifactGenerationsRemoved={} mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} hookMatcherGeneration={} activeArtifactReceipt={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic providerBinariesMissing={} retiredArtifactCleanup={} retiredArtifactGenerationsRemoved={} mode=updated",
         display_path(&project_root, &activation_path),
         activation_status,
         user_config_receipt,
+        hook_matcher_generation,
         display_path(&project_root, &active_artifact.receipt_path),
         active_artifact.receipt.artifact_root_digest().as_str(),
         active_artifact.artifact_byte_reads,

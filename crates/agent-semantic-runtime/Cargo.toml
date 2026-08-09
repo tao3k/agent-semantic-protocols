@@ -10,27 +10,18 @@ agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 blake3.workspace = true
 bytes = "1"
-gix = { version = "0.85.0", default-features = false, features = [
+gix = { workspace = true, features = [
   "blocking-network-client",
   "blocking-http-transport-reqwest-rust-tls",
   "sha1",
   "status",
   "worktree-mutation",
 ] }
-gix-config = { version = "0.58.0", features = ["sha1", "sha256"] }
+gix-config.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-tokio = { version = "1", features = [
-    "fs",
-    "io-std",
-    "io-util",
-    "macros",
-    "net",
-    "process",
-    "rt",
-    "time",
-] }
+tokio.workspace = true
 uuid = "1.23.4"
 
 [dev-dependencies]

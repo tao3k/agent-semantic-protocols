@@ -28,15 +28,22 @@ mod hook_runtime_stdin;
 mod hook_runtime_subagent;
 #[path = "hook_runtime_workspace_candidate.rs"]
 mod hook_runtime_workspace_candidate;
+#[path = "hook_runtime_workspace_mutation.rs"]
+mod hook_runtime_workspace_mutation;
 
 #[cfg(test)]
 #[path = "../../tests/unit/command/hook_workspace_candidate.rs"]
 mod hook_workspace_candidate_tests;
 
+#[cfg(test)]
+#[path = "../../tests/unit/command/hook_refresh.rs"]
+mod hook_refresh_tests;
+
 use super::{codex_enforcement_report, payload_indicates_subagent_context};
 use agent_semantic_hook::{
-    HookClassificationRequest, HookDecision, apply_repeated_deny_replay, classify_hook_with_config,
-    default_client_config_path, parse_payload,
+    HookClassificationRequest, HookDecision, asp_no_agent_passthrough_decision,
+    asp_no_agent_passthrough_requested, classify_hook_with_config, default_client_config_path,
+    parse_payload,
 };
 use agent_semantic_runtime::project_state_paths;
 use hook_runtime_cli_args::{display_path, optional_flag_value};
@@ -45,6 +52,76 @@ use hook_runtime_doctor::run_doctor;
 pub(super) use hook_runtime_install::run_codex_plugin_install_args;
 use hook_runtime_install::run_install;
 use hook_runtime_source_access_materialize::materialize_source_access_deny_message;
+const HOOK_DECISION_BUDGET_MICROS: u64 = 1_000;
+
+pub(crate) fn publish_hook_matcher_generation(
+    config_path: &std::path::Path,
+    project_root: &std::path::Path,
+) -> Result<String, String> {
+    hook_runtime_config_recovery::publish_hook_matcher_generation(config_path, project_root)
+}
+
+fn current_thread_cpu_micros() -> Option<u64> {
+    let mut value = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: `value` is valid writable storage and the clock call does not
+    // retain the pointer. Failure is represented as an unavailable sample.
+    if unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut value) } != 0 {
+        return None;
+    }
+    let seconds = u64::try_from(value.tv_sec).ok()?;
+    let nanos = u64::try_from(value.tv_nsec).ok()?;
+    seconds.checked_mul(1_000_000)?.checked_add(nanos / 1_000)
+}
+
+fn annotate_hook_decision_budget(
+    decision: &mut HookDecision,
+    started: std::time::Instant,
+    cpu_started_micros: Option<u64>,
+) {
+    let elapsed_micros = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
+    let cpu_micros = cpu_started_micros
+        .zip(current_thread_cpu_micros())
+        .and_then(|(start, end)| end.checked_sub(start));
+    let budget_micros = cpu_micros.unwrap_or(elapsed_micros);
+    decision.fields.insert(
+        "hookDecisionElapsedMicros".to_owned(),
+        serde_json::json!(elapsed_micros),
+    );
+    decision.fields.insert(
+        "hookDecisionCpuMicros".to_owned(),
+        cpu_micros.map_or(serde_json::Value::Null, serde_json::Value::from),
+    );
+    decision.fields.insert(
+        "hookDecisionBudgetBasis".to_owned(),
+        serde_json::Value::String(
+            if cpu_micros.is_some() {
+                "thread-cpu"
+            } else {
+                "wall-fallback"
+            }
+            .to_owned(),
+        ),
+    );
+    decision.fields.insert(
+        "hookDecisionBudgetMicros".to_owned(),
+        serde_json::json!(HOOK_DECISION_BUDGET_MICROS),
+    );
+    decision.fields.insert(
+        "hookDecisionBudgetStatus".to_owned(),
+        serde_json::Value::String(
+            if budget_micros < HOOK_DECISION_BUDGET_MICROS {
+                "within-budget"
+            } else {
+                "budget-exceeded"
+            }
+            .to_owned(),
+        ),
+    );
+}
+
 pub(crate) fn read_hook_input_bounded() -> Result<String, String> {
     hook_runtime_stdin::read_hook_stdin_bounded()
         .map_err(|error| format!("failed to read hook payload from stdin: {error}"))
@@ -63,13 +140,47 @@ where
 
 fn run(args: Vec<String>) -> Result<(), String> {
     match args.first().map(String::as_str) {
+        Some("accept-host") => super::hook_host_acceptance::run_accept_host(&args[1..]),
         Some("doctor") => run_doctor(&args[1..]),
         Some("install") => run_install(&args[1..]),
         Some("paths") => run_paths(&args[1..]),
+        Some("refresh") => run_refresh(&args[1..]),
         _ => Err(
-            "usage: asp hook <install|doctor|paths|hook> --client codex [PROJECT_ROOT]".to_string(),
+            "usage: asp hook <accept-host|install|doctor|paths|refresh|hook> --client codex"
+                .to_string(),
         ),
     }
+}
+
+fn run_refresh(args: &[String]) -> Result<(), String> {
+    let client = flag_value(args, "--client").unwrap_or("codex");
+    ensure_supported_client(client)?;
+    let mut index = 0;
+    while index < args.len() {
+        if args[index] == "--client" {
+            if args.get(index + 1).is_none() {
+                return Err("asp hook refresh --client requires a value".to_owned());
+            }
+            index += 2;
+            continue;
+        }
+        return Err(
+            "usage: asp hook refresh --client <codex|claude>; workspace is derived from the current directory"
+                .to_owned(),
+        );
+    }
+    let project_root = project_root_arg(&[])?;
+    let state_home = hook_runtime_config_recovery::hook_state_home()?;
+    let config_path = state_home.join("hooks/config.toml");
+    let config_status = crate::command::managed_hook_config::materialize(&config_path)?;
+    let generation = publish_hook_matcher_generation(&config_path, &project_root)?;
+    println!(
+        "[hook-refresh] client={client} projectRoot={} config={} configStatus={} binarySchemaVersion=1 generation={generation} mode=atomically-published",
+        project_root.display(),
+        config_path.display(),
+        config_status.as_str(),
+    );
+    Ok(())
 }
 
 fn run_paths(args: &[String]) -> Result<(), String> {
@@ -102,6 +213,87 @@ pub(crate) async fn run_hook_from_bootstrap(args: &[String], stdin: String) -> R
     run_hook_with_input(args, client, event, emit, classification_event, stdin).await
 }
 
+fn enrich_codex_subagent_context(client: &str, payload: &mut serde_json::Value) {
+    if client != "codex" || payload_has_complete_typed_agent_identity(payload) {
+        return;
+    }
+    let Some(transcript_path) = string_field(payload, &["transcript_path", "transcriptPath"])
+    else {
+        return;
+    };
+    let Ok(Some(metadata)) = agent_semantic_runtime::codex_rollout_session_metadata_at_path(
+        std::path::Path::new(transcript_path.as_str()),
+    ) else {
+        return;
+    };
+    let (Some(root_session_id), Some(agent_role)) =
+        (metadata.root_session_id(), metadata.agent_role())
+    else {
+        return;
+    };
+    apply_codex_subagent_context(
+        payload,
+        metadata.session_id().as_str(),
+        root_session_id.as_str(),
+        metadata.parent_thread_id().map(|value| value.as_str()),
+        agent_role,
+    );
+}
+
+fn payload_has_complete_typed_agent_identity(payload: &serde_json::Value) -> bool {
+    string_field(payload, &["agent_id", "agentId"])
+        .filter(|value| !value.trim().is_empty())
+        .zip(
+            string_field(payload, &["agent_type", "agentType"])
+                .filter(|value| !value.trim().is_empty()),
+        )
+        .is_some()
+}
+
+fn apply_codex_subagent_context(
+    payload: &mut serde_json::Value,
+    session_id: &str,
+    root_session_id: &str,
+    parent_session_id: Option<&str>,
+    agent_role: &str,
+) {
+    let Some(object) = payload.as_object_mut() else {
+        return;
+    };
+    object
+        .entry("is_subagent".to_owned())
+        .or_insert(serde_json::Value::Bool(true));
+    insert_missing_or_blank(object, "agent_id", session_id);
+    insert_missing_or_blank(object, "agent_type", agent_role);
+    insert_missing_or_blank(
+        object,
+        "parent_session_id",
+        parent_session_id.unwrap_or(root_session_id),
+    );
+}
+
+fn insert_missing_or_blank(
+    object: &mut serde_json::Map<String, serde_json::Value>,
+    field: &str,
+    value: &str,
+) {
+    if object
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|current| !current.trim().is_empty())
+    {
+        return;
+    }
+    object.insert(
+        field.to_owned(),
+        serde_json::Value::String(value.to_owned()),
+    );
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/hook_runtime_subagent_context.rs"]
+mod hook_runtime_subagent_context_tests;
+
 async fn run_hook_with_input(
     args: &[String],
     client: &str,
@@ -111,15 +303,17 @@ async fn run_hook_with_input(
     stdin: String,
 ) -> Result<(), String> {
     let hook_started = std::time::Instant::now();
+    let hook_cpu_started_micros = current_thread_cpu_micros();
+    let trace_enabled = std::env::var_os("ASP_HOOK_BOOTSTRAP_TRACE").is_some();
     let trace_stage = |stage: &str| {
-        if std::env::var_os("ASP_HOOK_BOOTSTRAP_TRACE").is_some() {
+        if trace_enabled {
             eprintln!(
                 "[asp-hook] route=local-policy-evaluator stage={stage} elapsedMicros={}",
                 hook_started.elapsed().as_micros()
             );
         }
     };
-    let payload = match parse_payload(&stdin) {
+    let mut payload = match parse_payload(&stdin) {
         Ok(payload) => payload,
         Err(error) => {
             emit_hook_runtime_failure(
@@ -131,6 +325,14 @@ async fn run_hook_with_input(
             return Ok(());
         }
     };
+    let parsed_micros = hook_started.elapsed().as_micros();
+    if std::env::var_os("ASP_NO_AGENT").is_some() || asp_no_agent_passthrough_requested(&payload) {
+        trace_stage("asp-no-agent-passthrough");
+        let mut decision = asp_no_agent_passthrough_decision(client, event, &payload);
+        annotate_hook_decision_budget(&mut decision, hook_started, hook_cpu_started_micros);
+        return emit_decision(emit, &decision);
+    }
+    enrich_codex_subagent_context(client, &mut payload);
     let payload_root = payload
         .get("cwd")
         .and_then(serde_json::Value::as_str)
@@ -138,18 +340,14 @@ async fn run_hook_with_input(
         .map(PathBuf::from)
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| PathBuf::from("."));
-    let payload_root = fs::canonicalize(&payload_root).unwrap_or(payload_root);
     let project_root = hook_workspace_candidate(&payload, &payload_root);
-    let project_root = fs::canonicalize(&project_root).unwrap_or(project_root);
-    // Hook startup is a best-effort global lifecycle ensure. It never derives
-    // daemon identity from the payload workspace and never overrides an
-    // explicit operator stop.
-    if let Ok(state_home) = crate::server::runtime_server::state_home()
-        && let Err(error) =
-            crate::server::runtime_server_supervisor::ensure_runtime_server_for_hook(&state_home)
-    {
-        eprintln!("[agent-semantic-hook] Runtime Server ensure unavailable: {error}");
-    }
+    let workspace_micros = hook_started.elapsed().as_micros();
+    hook_runtime_workspace_mutation::relay_post_tool_workspace_mutation(
+        event,
+        &payload,
+        &project_root,
+    )
+    .await?;
     match hook_runtime_host_lifecycle::record_host_lifecycle_event(
         client,
         event,
@@ -160,105 +358,133 @@ async fn run_hook_with_input(
     {
         Ok(hook_runtime_host_lifecycle::HostLifecycleDisposition::Recorded) => return Ok(()),
         Ok(hook_runtime_host_lifecycle::HostLifecycleDisposition::NotLifecycle) => {}
-        Ok(hook_runtime_host_lifecycle::HostLifecycleDisposition::Denied(decision)) => {
-            return emit_decision(emit, &decision);
-        }
         Err(error) => {
             emit_hook_runtime_failure(client, event, emit, &error)?;
             return Ok(());
         }
     }
-    hook_runtime_performance_failure::relay_post_tool_wall_failure(event, &payload, &project_root)?;
+    hook_runtime_performance_failure::relay_post_tool_wall_failure(event, &payload, &project_root)
+        .await?;
+    let local_event_micros = hook_started.elapsed().as_micros();
     let mut runtime = agent_semantic_hook::HookRuntime {
         project_root: project_root.display().to_string(),
         rankers: Vec::new(),
         providers: Vec::new(),
+        policy_providers: Vec::new(),
     };
     let config_path = flag_value(args, "--config")
         .map(PathBuf::from)
         .unwrap_or_else(|| default_client_config_path(&project_root.to_string_lossy()));
+    let direct_read_key = agent_semantic_hook::direct_read_source_key(&payload);
+    let shell_read_key = direct_read_key
+        .is_none()
+        .then(|| agent_semantic_hook::shell_read_source_key(&payload))
+        .flatten();
+    let shell_command_key = direct_read_key
+        .is_none()
+        .then(|| agent_semantic_hook::shell_command_key(&payload))
+        .flatten();
     let (loaded_hook_config, hook_matcher_generation_status) =
-        hook_runtime_config_recovery::load_fresh_hook_config(&config_path, &project_root)?;
+        hook_runtime_config_recovery::load_fresh_hook_config(
+            &config_path,
+            &project_root,
+            direct_read_key.as_ref().map(|key| key.extension.as_str()),
+            direct_read_key.as_ref().map(|key| key.path.as_str()),
+            shell_read_key.as_ref(),
+            shell_command_key.as_ref(),
+        )?;
+    let config_micros = hook_started.elapsed().as_micros();
     trace_stage("config-loaded");
-    let hook_config = &loaded_hook_config.config;
-    hook_runtime_config_recovery::apply_language_provider_projection(
-        hook_config,
-        &mut runtime,
-        &config_path,
-    )?;
-    let mut decision = classify_hook_with_config(HookClassificationRequest {
-        registry: &runtime,
-        config: hook_config,
-        platform: client,
-        event: classification_event,
-        payload: &payload,
-    });
+    let hook_runtime_config_recovery::LoadedHookConfig {
+        mut config,
+        decision,
+        projection,
+    } = loaded_hook_config;
+    let matcher_projection = projection.unwrap_or("complete-policy-matcher");
+    let mut decision = if let Some(decision) = decision {
+        if shell_command_key.is_some() {
+            agent_semantic_hook::rebind_command_decision_to_payload(decision, &payload)
+        } else {
+            decision
+        }
+    } else {
+        let hook_config = config
+            .as_mut()
+            .ok_or_else(|| "Hook matcher loaded neither config nor decision shard".to_owned())?;
+        hook_runtime_config_recovery::move_language_provider_projection(
+            hook_config,
+            &mut runtime,
+            &config_path,
+        )?;
+        classify_hook_with_config(HookClassificationRequest {
+            registry: &runtime,
+            config: hook_config,
+            platform: client,
+            event: classification_event,
+            payload: &payload,
+        })
+    };
+    if let Some(key) = &direct_read_key {
+        if decision.subject.tool_name.as_deref() != Some(key.tool_name.as_str()) {
+            decision.subject.tool_name = Some(key.tool_name.clone());
+        }
+    }
+    let provider_projection_micros = hook_started.elapsed().as_micros();
+    let classified_micros = hook_started.elapsed().as_micros();
     trace_stage("classified");
     decision.fields.insert(
         "hookMatcherGeneration".to_owned(),
         serde_json::Value::String(hook_matcher_generation_status.to_owned()),
     );
-    decision.event = event.to_string();
+    decision.fields.insert(
+        "hookMatcherProjection".to_owned(),
+        serde_json::Value::String(matcher_projection.to_owned()),
+    );
+    decision.fields.insert(
+        "hookPolicySynchronousDependencies".to_owned(),
+        serde_json::Value::Array(Vec::new()),
+    );
+    if decision.event != event {
+        decision.event = event.to_owned();
+    }
     annotate_payload_context(&mut decision, &payload);
     materialize_source_access_deny_message(&mut decision);
-    if let Err(error) = apply_repeated_deny_replay(&project_root, &mut decision) {
-        eprintln!("[agent-semantic-hook] failed to inspect hook replay state: {error}");
-    }
     hook_runtime_agent_session_dispatch::materialize_org_choice_plane_reference(&mut decision);
-    let decision_elapsed_micros =
-        u64::try_from(hook_started.elapsed().as_micros()).unwrap_or(u64::MAX);
-    let decision_budget_micros = 1_000_000_u64;
-    decision.fields.insert(
-        "hookDecisionElapsedMicros".to_owned(),
-        serde_json::json!(decision_elapsed_micros),
-    );
-    decision.fields.insert(
-        "hookDecisionBudgetMicros".to_owned(),
-        serde_json::json!(decision_budget_micros),
-    );
-    decision.fields.insert(
-        "hookDecisionBudgetStatus".to_owned(),
-        serde_json::Value::String(
-            if decision_elapsed_micros <= decision_budget_micros {
-                "within-budget"
-            } else {
-                "budget-exceeded"
-            }
-            .to_owned(),
-        ),
-    );
+    let materialized_micros = hook_started.elapsed().as_micros();
+    if trace_enabled {
+        decision.fields.insert(
+            "hookStageCumulativeMicros".to_owned(),
+            serde_json::json!({
+                "parsed": parsed_micros,
+                "workspace": workspace_micros,
+                "localEvents": local_event_micros,
+                "config": config_micros,
+                "providerProjection": provider_projection_micros,
+                "classified": classified_micros,
+                "materialized": materialized_micros,
+            }),
+        );
+    }
+    annotate_hook_decision_budget(&mut decision, hook_started, hook_cpu_started_micros);
     decision.fields.insert(
         "hookEventProjectionStatus".to_owned(),
-        serde_json::Value::String("recorded".to_owned()),
-    );
-    let event_projection_started = std::time::Instant::now();
-    // The decision plane is authoritative; the JSONL event file is only a
-    // diagnostic projection. A contended or damaged telemetry sink must never
-    // suppress an already-computed allow/deny decision.
-    if let Err(error) = agent_semantic_hook::try_append_hook_event_state(&project_root, &decision) {
-        decision.fields.insert(
-            "hookEventProjectionStatus".to_owned(),
-            serde_json::Value::String("unavailable".to_owned()),
-        );
-        eprintln!(
-            "[agent-semantic-hook] event projection unavailable; decision remains authoritative: {error}"
-        );
-    }
-    decision.fields.insert(
-        "hookEventProjectionLockWaitMicros".to_owned(),
-        serde_json::json!(
-            u64::try_from(event_projection_started.elapsed().as_micros()).unwrap_or(u64::MAX)
-        ),
+        serde_json::Value::String("out-of-band".to_owned()),
     );
     trace_stage("complete");
     emit_decision(emit, &decision)
 }
 
 fn annotate_payload_context(decision: &mut HookDecision, payload: &serde_json::Value) {
-    annotate_host_root_session_identity(
-        &mut decision.fields,
-        std::env::var("CODEX_THREAD_ID").ok().as_deref(),
-    );
+    let dispatch_relevant = decision.reason_kind
+        == agent_semantic_hook::ReasonKind::SubagentReceiptRequired
+        || decision.fields.contains_key("targetAgentName")
+        || decision.fields.contains_key("residentChildName");
+    if dispatch_relevant {
+        annotate_host_root_session_identity(
+            &mut decision.fields,
+            std::env::var("CODEX_THREAD_ID").ok().as_deref(),
+        );
+    }
     for (field, keys) in [
         ("sessionId", &["session_id", "sessionId"][..]),
         ("transcriptPath", &["transcript_path", "transcriptPath"][..]),
@@ -339,7 +565,15 @@ fn positionals(args: &[String]) -> Vec<&str> {
         }
         if matches!(
             arg.as_str(),
-            "--client" | "--activation" | "--config" | "--emit" | "--output" | "--subagent-model"
+            "--client"
+                | "--activation"
+                | "--config"
+                | "--emit"
+                | "--host-probe-path"
+                | "--host-rollout"
+                | "--host-sentinel"
+                | "--output"
+                | "--subagent-model"
         ) {
             skip_next = true;
             continue;

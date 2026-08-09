@@ -155,10 +155,18 @@ async fn run_install_binary(args: &[String]) -> Result<(), String> {
     let reconciliation_guard = super::protocol_binary::ProtocolBinaryReconciliationGuard::acquire(
         &runtime_state.protocol_home,
     )?;
+    let current_executable =
+        env::current_exe().map_err(|error| format!("resolve ASP candidate executable: {error}"))?;
+    let graph_turbo_artifact = crate::runtime_artifact::publish_graph_turbo_resident_sibling(
+        &runtime_state.protocol_home,
+        &current_executable,
+    )
+    .await?;
     let installed = super::protocol_binary::ensure_protocol_binary_installed(&plan)?;
     let hook_config_publication =
-        super::install_binary_config_admission::publish_embedded_hook_config(
+        super::install_binary_config_admission::publish_embedded_hook_config_for_project(
             &runtime_state.protocol_home,
+            &project_root,
         )?;
     let active_artifact_receipt = agent_semantic_hook::rebind_active_asp_binary_receipt_if_present(
         &installed.path,
@@ -172,11 +180,14 @@ async fn run_install_binary(args: &[String]) -> Result<(), String> {
         )
         .await;
     println!(
-        "[asp-install-binary] binaryPath={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic hookConfigPublication={} hookConfigCoupling=binary-generation runtimeServerReconcile={} providerReconciliation=not-on-binary-install globalProviderCatalog=not-on-binary-install activeArtifactReceipt={} installSource=current-executable",
+        "[asp-install-binary] binaryPath={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic graphTurboArtifact={} graphTurboArtifactDigest={} graphTurboArtifactLocator={} graphTurboConfigPublication=atomic hookConfigPublication={} hookConfigCoupling=binary-generation runtimeServerReconcile={} providerReconciliation=not-on-binary-install globalProviderCatalog=not-on-binary-install activeArtifactReceipt={} installSource=current-executable",
         installed.path.display(),
         installed.status,
         installed.artifact_digest,
         installed.path.display(),
+        graph_turbo_artifact.publication,
+        graph_turbo_artifact.runtime_artifact_digest,
+        graph_turbo_artifact.locator.display(),
         hook_config_publication,
         if runtime_server_reconcile.is_ok() {
             "complete"

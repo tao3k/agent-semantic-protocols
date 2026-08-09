@@ -147,6 +147,36 @@ impl RuntimeServerWorkspaceRegistry {
             .map_err(|_| "runtime workspace writer lane dropped its receipt".to_owned())?
     }
 
+    pub async fn publish_owner_delta(
+        &self,
+        request_id: impl Into<String>,
+        workspace_identity: impl Into<String>,
+        project_root: &std::path::Path,
+        owners: Vec<WorkspaceOwnerSnapshot>,
+        tombstones: Vec<String>,
+    ) -> Result<WorkspaceRecoveryReceipt, String> {
+        let workspace_identity = workspace_identity.into();
+        let entry = self.entry(&workspace_identity, project_root).await?;
+        let (reply, receive) = oneshot::channel();
+        entry
+            .writer
+            .send(WorkspaceWriteCommand::PublishOwnerDelta(
+                super::writer_publication::PublishOwnerDeltaCommand {
+                    target: entry.write_target(),
+                    request_id: request_id.into(),
+                    workspace_identity,
+                    owners,
+                    tombstones,
+                    reply,
+                },
+            ))
+            .await
+            .map_err(|_| "runtime workspace writer lane is unavailable".to_owned())?;
+        receive
+            .await
+            .map_err(|_| "runtime workspace writer lane dropped its receipt".to_owned())?
+    }
+
     pub async fn tombstone_owner_overlay(
         &self,
         request_id: impl Into<String>,

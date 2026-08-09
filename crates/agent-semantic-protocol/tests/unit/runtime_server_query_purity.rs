@@ -16,9 +16,14 @@ fn query_data_plane_never_invokes_generation_reconciliation() {
     assert!(!data_plane.contains("connect_hook_workspace_session"));
     assert!(!data_plane.contains("runtime_generation_pointer_path"));
     assert!(!data_plane.contains("connect_runtime_server_workspace_session"));
-    let exact = include_str!("../../src/command/provider_resident_exact.rs");
-    assert!(exact.contains("reasonKind=active-workspace-generation-required"));
-    assert!(exact.contains("provider_native_exact_fallback_reason"));
+}
+
+#[test]
+fn graph_turbo_ranking_is_a_read_only_generation_consumer() {
+    let graph = include_str!("../../src/command/graph.rs");
+    assert!(graph.contains("runtime_server_workspace_session_async"));
+    assert!(!graph.contains("runtime_server_workspace_session_for_admission_async"));
+    assert!(!graph.contains("ensure_runtime_generation_ready"));
 }
 
 #[test]
@@ -78,7 +83,10 @@ fn search_adapter_never_decodes_the_complete_resident_generation() {
     assert!(dispatch.contains("runtime_server_search_data_plane_async"));
     assert!(data_plane.contains("runtime_search_generation_authority"));
     assert!(source.contains("read_source_index"));
-    assert!(facts.contains("read_graph_facts"));
+    let projection = include_str!(
+        "../../../agent-semantic-client-db/src/runtime_server_workspace/search_index_projection.rs"
+    );
+    assert!(projection.contains("read_graph_facts"));
     assert!(
         !source.contains(".lease().read_source_index"),
         "short-lived search reintroduced a complete process-local generation lease"

@@ -10,16 +10,6 @@ pub(crate) fn deny_replay_key(decision: &HookDecision) -> Option<String> {
     let mut language_ids = decision.language_ids.clone();
     language_ids.sort();
     language_ids.dedup();
-    if is_source_access_replay_reason(reason.as_str()) {
-        let key = json!({
-            "platform": decision.platform,
-            "replayFamily": "source-access-recovery",
-            "cwd": decision.fields.get("cwd").cloned().unwrap_or(Value::Null),
-            "sessionId": decision.fields.get("sessionId").cloned().unwrap_or(Value::Null),
-            "transcriptPath": decision.fields.get("transcriptPath").cloned().unwrap_or(Value::Null),
-        });
-        return serde_json::to_string(&key).ok();
-    }
     let routes = decision
         .routes
         .iter()
@@ -32,6 +22,20 @@ pub(crate) fn deny_replay_key(decision: &HookDecision) -> Option<String> {
             })
         })
         .collect::<Vec<_>>();
+    if is_source_access_replay_reason(reason.as_str()) {
+        let key = json!({
+            "platform": decision.platform,
+            "replayFamily": "source-access-recovery",
+            "reasonKind": reason,
+            "languageIds": language_ids,
+            "routes": routes,
+            "subject": decision.subject,
+            "cwd": decision.fields.get("cwd").cloned().unwrap_or(Value::Null),
+            "sessionId": decision.fields.get("sessionId").cloned().unwrap_or(Value::Null),
+            "transcriptPath": decision.fields.get("transcriptPath").cloned().unwrap_or(Value::Null),
+        });
+        return serde_json::to_string(&key).ok();
+    }
     let subject = if routes.is_empty() {
         serde_json::to_value(&decision.subject).unwrap_or(Value::Null)
     } else {

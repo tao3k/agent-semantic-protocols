@@ -227,6 +227,13 @@ pub(crate) fn run_cache(
                 receipt_json,
             )
         }
+        [subcommand, rest @ ..] if subcommand == "clean" => {
+            super::project_registry_gc_command::run_project_registry_clean(
+                project_root,
+                rest,
+                receipt_json,
+            )
+        }
         [subcommand] if subcommand == "status" => run_runtime_cache_control(
             RuntimeCacheControlRequest::Status {
                 project_root: project_root_text,
@@ -275,7 +282,7 @@ pub(crate) fn run_cache(
             )
         }
         _ => Err(
-            "usage: asp cache <status|gc [--grace-days <n>] [--apply]|import|source-index refresh|source-index lookup --query <term> [--index-root <path>] [--limit <n>]|invalidate|flush [syntax-rows]>; use asp <language> cache source-index lookup ... for language-scoped lookup"
+            "usage: asp cache <status|gc [--grace-days <n>] [--apply]|clean --day[=<days>]|import|source-index refresh|source-index lookup --query <term> [--index-root <path>] [--limit <n>]|invalidate|flush [syntax-rows]>; use asp <language> cache source-index lookup ... for language-scoped lookup"
                 .to_owned(),
         ),
     }

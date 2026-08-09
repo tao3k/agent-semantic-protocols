@@ -96,6 +96,8 @@ lock on the Memory Search path.
 
 * Typed Ranker Artifact
 
+The Runtime Server MUST launch the activated standalone =asp-graph-turbo= artifact directly as its v1 IPC peer. The immutable runtime catalog binds that artifact locator and content digest before daemon publication. A Python interpreter locator, =python -m= launch, query-time materialization, healthcheck-time installation, =uv= environment, or checkout execution is a contract violation, not a recovery path.
+
 Graph ranking is an installed runtime capability, not a source-checkout
 fallback.  Activation MUST bind each ranker by ranker ID, capability ID,
 entrypoint, content digest, artifact-metadata digest, and protocol version.

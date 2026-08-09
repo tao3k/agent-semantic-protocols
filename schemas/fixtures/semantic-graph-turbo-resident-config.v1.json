@@ -1,0 +1,8 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-graph-turbo-resident-config",
+  "schemaVersion": "1",
+  "artifactKind": "standalone-directory",
+  "executionArtifactLocator": "/managed/runtime/artifacts/blake3-256/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/asp-graph-turbo-resident.bundle/asp-graph-turbo-resident",
+  "executionArtifactDigest": "blake3-256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+  "runtimeArtifactDigest": "blake3-256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+}

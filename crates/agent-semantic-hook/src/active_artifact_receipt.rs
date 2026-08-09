@@ -496,6 +496,30 @@ pub fn materialize_active_asp_artifact_receipt_for_current_process(
     activation_path: &Path,
     activation: &crate::HookRuntime,
 ) -> Result<bool, String> {
+    materialize_active_asp_artifact_receipt_for_current_process_inner(
+        activation_path,
+        activation,
+        None,
+    )
+}
+
+pub fn materialize_active_asp_artifact_receipt_for_current_process_with_state_home(
+    activation_path: &Path,
+    activation: &crate::HookRuntime,
+    state_home: &Path,
+) -> Result<bool, String> {
+    materialize_active_asp_artifact_receipt_for_current_process_inner(
+        activation_path,
+        activation,
+        Some(state_home),
+    )
+}
+
+fn materialize_active_asp_artifact_receipt_for_current_process_inner(
+    activation_path: &Path,
+    activation: &crate::HookRuntime,
+    state_home: Option<&Path>,
+) -> Result<bool, String> {
     let ranker = activation
         .rankers
         .iter()
@@ -514,7 +538,17 @@ pub fn materialize_active_asp_artifact_receipt_for_current_process(
         ));
     }
     let project_root = Path::new(&activation.project_root);
-    let runtime_profiles = crate::runtime_profiles_for_runtime(project_root, activation);
+    let runtime_profiles = match state_home {
+        Some(state_home) => crate::runtime_profiles_for_runtime_with_state_home(
+            project_root,
+            state_home,
+            activation,
+        ),
+        None => Ok(crate::runtime_profiles_for_runtime(
+            project_root,
+            activation,
+        )),
+    }?;
     let mut provider_artifacts = activation
         .providers
         .iter()
@@ -538,15 +572,27 @@ pub fn materialize_active_asp_artifact_receipt_for_current_process(
                     provider.language_id, provider.provider_id
                 )
             })?;
-            active_provider_artifact_input(
-                project_root,
-                &provider.language_id,
-                &provider.provider_id,
-                PathBuf::from(binary),
-            )
+            match state_home {
+                Some(state_home) => active_provider_artifact_input_with_state_home(
+                    project_root,
+                    state_home,
+                    &provider.language_id,
+                    &provider.provider_id,
+                    PathBuf::from(binary),
+                ),
+                None => active_provider_artifact_input(
+                    project_root,
+                    &provider.language_id,
+                    &provider.provider_id,
+                    PathBuf::from(binary),
+                ),
+            }
         })
         .collect::<Result<Vec<_>, String>>()?;
-    let runtime_config = crate::default_client_config_path(&activation.project_root);
+    let runtime_config = match state_home {
+        Some(state_home) => state_home.join("hooks").join("config.toml"),
+        None => crate::default_client_config_path(&activation.project_root),
+    };
     if runtime_config.is_file() {
         let artifact_digest =
             agent_semantic_content_identity::file_content_digest_v1(&runtime_config)?;

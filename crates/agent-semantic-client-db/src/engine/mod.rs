@@ -4,6 +4,7 @@ mod contract;
 pub(crate) mod facade;
 mod facade_turso_report;
 mod search_facade;
+mod session_control_plane;
 mod session_facade;
 mod source_index_candidate_projection;
 mod source_index_candidate_selection;
@@ -11,7 +12,6 @@ mod source_index_candidate_types;
 mod source_index_facade;
 mod source_index_query_scoring;
 mod turso;
-mod session_control_plane;
 mod turso_artifact;
 mod turso_artifact_graph;
 mod turso_batch;
@@ -53,6 +53,12 @@ pub use facade::{
 pub use facade::{
     ClientDbEngineSourceIndexReadModelReport, ClientDbEngineStructuralIndexReadModelReport,
 };
+pub use session_control_plane::{
+    SessionControlPlaneAgentRegistration, SessionControlPlaneDelegationProposal,
+    SessionControlPlaneRuntime, SessionControlPlaneRuntimeMetricsSnapshot,
+    SessionControlPlaneRuntimeRegistry, SessionControlPlaneSnapshot,
+    SessionControlPlaneTransactionReceipt,
+};
 pub use turso::TURSO_BOOTSTRAP_TABLE;
 pub use turso::TursoClientDbEngineReport;
 pub(crate) use turso::shared_turso_database;
@@ -73,10 +79,4 @@ pub use turso_source_index::{
     ProviderSearchWorkspaceSession, TursoResidentSelectorCandidate, TursoResidentSelectorQuery,
     TursoResidentSelectorRead, WorkspaceDbRegistry, WorkspaceDbRegistryCounters,
     WorkspaceDbWriteFinishMode, WorkspaceDbWriteFinishReceipt,
-};
-pub use session_control_plane::{
-    SessionControlPlaneAgentRegistration, SessionControlPlaneDelegationProposal,
-    SessionControlPlaneRuntimeMetricsSnapshot, SessionControlPlaneSnapshot,
-    SessionControlPlaneRuntime, SessionControlPlaneRuntimeRegistry,
-    SessionControlPlaneTransactionReceipt,
 };

@@ -1,68 +1,14 @@
 use std::path::Path;
 
 use agent_semantic_client_db::workspace_db_ipc::{
-    AgentHostLifecycleEventIpc, AgentHostLifecycleEventKind, AgentSessionRegistryIpcResult,
-};
-use agent_semantic_client_db::{
-    SessionControlPlaneAgentRegistration, SessionControlPlaneDelegationProposal,
+    AgentHostLifecycleEventIpc, AgentHostLifecycleEventKind,
 };
 use agent_semantic_config::agent_route_registry::load_agent_route_registry;
-use agent_semantic_context_product::agent_session_delegation_admission::{
-    AgentSessionDelegationCapability, AgentSessionDelegationDecision,
-};
 use serde_json::Value;
-
-fn focused_nested_subagent_denial(
-    client: &str,
-    event: &str,
-    parent_session_id: &str,
-    child_session_id: &str,
-    child_agent_type: &str,
-) -> agent_semantic_hook::HookDecision {
-    let mut fields = std::collections::BTreeMap::new();
-    fields.insert(
-        "focusMode".to_owned(),
-        serde_json::Value::String("leaf".to_owned()),
-    );
-    fields.insert(
-        "parentSessionId".to_owned(),
-        serde_json::Value::String(parent_session_id.to_owned()),
-    );
-    fields.insert(
-        "parentCapability".to_owned(),
-        serde_json::Value::String("focused-leaf".to_owned()),
-    );
-    fields.insert(
-        "childSessionId".to_owned(),
-        serde_json::Value::String(child_session_id.to_owned()),
-    );
-    fields.insert(
-        "childAgentType".to_owned(),
-        serde_json::Value::String(child_agent_type.to_owned()),
-    );
-    agent_semantic_hook::HookDecision {
-        schema_id: agent_semantic_hook::HOOK_DECISION_SCHEMA_ID,
-        schema_version: agent_semantic_hook::HOOK_DECISION_SCHEMA_VERSION,
-        protocol_id: agent_semantic_hook::HOOK_PROTOCOL_ID,
-        protocol_version: agent_semantic_hook::HOOK_PROTOCOL_VERSION,
-        platform: client.to_owned(),
-        event: event.to_owned(),
-        decision: agent_semantic_hook::DecisionKind::Deny,
-        reason_kind: agent_semantic_hook::ReasonKind::FocusedSubagentNestedStart,
-        language_ids: Vec::new(),
-        subject: agent_semantic_hook::DecisionSubject::default(),
-        routes: Vec::new(),
-        message: format!(
-            "registered ASP focused-leaf session `{parent_session_id}` cannot start nested subagent `{child_agent_type}`"
-        ),
-        fields,
-    }
-}
 
 pub(super) enum HostLifecycleDisposition {
     NotLifecycle,
     Recorded,
-    Denied(agent_semantic_hook::HookDecision),
 }
 
 pub(super) async fn record_host_lifecycle_event(
@@ -125,92 +71,31 @@ pub(super) async fn record_host_lifecycle_event(
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| format!("failed to resolve Host lifecycle timestamp: {error}"))?;
     let observed_at = observed_duration.as_secs() as i64;
-    let observed_at_ms = i64::try_from(observed_duration.as_millis())
-        .map_err(|_| "Host lifecycle timestamp exceeds i64 milliseconds".to_owned())?;
-    let runtime_registry =
-        agent_semantic_client_db::AgentSessionRegistry::open_runtime_project_proxy(project_root)?
-            .ok_or_else(|| "Runtime Server agent-session registry proxy is unavailable".to_owned())?;
     let project_id = agent_semantic_client_db::AgentSessionRegistry::workspace_id(project_root)?;
     let payload_digest = format!(
         "blake3-256:{}",
         blake3::hash(payload.to_string().as_bytes()).to_hex()
     );
     let profile_digest = format!("blake3-256:{}", blake3::hash(&profile).to_hex());
-    if matches!(kind, AgentHostLifecycleEventKind::Started) {
-        if parent_session_id == root_session_id {
-            runtime_registry
-                .register_control_plane_agent(SessionControlPlaneAgentRegistration {
-                    project_id: project_id.clone(),
-                    root_session_id: root_session_id.to_owned(),
-                    session_id: root_session_id.to_owned(),
-                    parent_session_id: None,
-                    resident_name: "codex-root".to_owned(),
-                    capability: AgentSessionDelegationCapability::Standard,
-                })
-                .await?;
-        }
-        let snapshot = runtime_registry
-            .read_control_plane_snapshot(project_id.clone(), root_session_id.to_owned())
-            .await?;
-        let proposed_child_capability = match route.focus_mode {
-            agent_semantic_config::agent_route_registry::AgentFocusMode::Standard => {
-                AgentSessionDelegationCapability::Standard
-            }
-            agent_semantic_config::agent_route_registry::AgentFocusMode::Leaf => {
-                AgentSessionDelegationCapability::FocusedLeaf
-            }
-        };
-        let event_identity = format!(
-            "{client}\0{event}\0{project_id}\0{root_session_id}\0{parent_session_id}\0{child_session_id}"
-        );
-        let transaction_receipt = runtime_registry
-            .admit_control_plane_delegation(SessionControlPlaneDelegationProposal {
-                event_id: format!(
-                    "blake3-256:{}",
-                    blake3::hash(event_identity.as_bytes()).to_hex()
-                ),
-                project_id: project_id.clone(),
-                root_session_id: root_session_id.to_owned(),
-                current_session_id: parent_session_id.clone(),
-                proposed_child_session_id: child_session_id.to_owned(),
-                proposed_child_resident_name: route.route_key.as_str().to_owned(),
-                proposed_child_capability,
-                expected_generation: snapshot.generation,
-                evidence_refs: vec![
-                    payload_digest.clone(),
-                    profile_digest.clone(),
-                    format!("route:{}", route.route_key.as_str()),
-                ],
-                observed_at_ms,
-            })
-            .await?;
-        match transaction_receipt.admission.decision {
-            AgentSessionDelegationDecision::Accepted => {}
-            AgentSessionDelegationDecision::Denied => {
-                let reason_kind = transaction_receipt
-                    .admission
-                    .reason_kind
-                    .as_deref()
-                    .unwrap_or("focused-agent-delegation-denied");
-                if reason_kind != "focused-agent-delegation-denied" {
-                    return Err(format!(
-                        "unexpected Session Control Plane delegation denial: {reason_kind}"
-                    ));
-                }
-                return Ok(HostLifecycleDisposition::Denied(
-                    focused_nested_subagent_denial(
-                        client,
-                        event,
-                        &parent_session_id,
-                        child_session_id,
-                        agent_type,
-                    ),
-                ));
-            }
-        }
-    }
-    let result = runtime_registry
-        .record_host_lifecycle_event_async(AgentHostLifecycleEventIpc {
+    let event_identity = format!(
+        "{client}\0{event}\0{project_id}\0{root_session_id}\0{parent_session_id}\0{child_session_id}\0{agent_type}\0{payload_digest}"
+    );
+    let namespace_identity = format!(
+        "codex\0{project_id}\0{root_session_id}\0{}",
+        route.route_key.as_str()
+    );
+    crate::command::hook_runtime_memory_inbox::append_host_lifecycle_event(
+        project_root,
+        AgentHostLifecycleEventIpc {
+            host_event_id: format!(
+                "blake3-256:{}",
+                blake3::hash(event_identity.as_bytes()).to_hex()
+            ),
+            host_event_sequence: 0,
+            namespace_id: format!(
+                "blake3-256:{}",
+                blake3::hash(namespace_identity.as_bytes()).to_hex()
+            ),
             kind,
             platform: "codex".to_owned(),
             project_id,
@@ -230,18 +115,10 @@ pub(super) async fn record_host_lifecycle_event(
             payload_digest,
             transcript_path: string_field(payload, "transcript_path").map(str::to_owned),
             observed_at,
-        })
-        .await?;
-    match (kind, result) {
-        (
-            AgentHostLifecycleEventKind::Started,
-            AgentSessionRegistryIpcResult::Registered { .. },
-        )
-        | (AgentHostLifecycleEventKind::Stopped, AgentSessionRegistryIpcResult::Changed { .. }) => {
-            Ok(HostLifecycleDisposition::Recorded)
-        }
-        _ => Err("Runtime Server returned an unexpected Host lifecycle result".to_owned()),
-    }
+        },
+    )
+    .await?;
+    Ok(HostLifecycleDisposition::Recorded)
 }
 
 fn host_lifecycle_kind(client: &str, event: &str) -> Option<AgentHostLifecycleEventKind> {
@@ -250,7 +127,9 @@ fn host_lifecycle_kind(client: &str, event: &str) -> Option<AgentHostLifecycleEv
     }
     match event {
         "subagent-start" => Some(AgentHostLifecycleEventKind::Started),
+        "subagent-resume" => Some(AgentHostLifecycleEventKind::Resumed),
         "subagent-stop" => Some(AgentHostLifecycleEventKind::Stopped),
+        "subagent-achieved" => Some(AgentHostLifecycleEventKind::Achieved),
         _ => None,
     }
 }
@@ -381,9 +260,6 @@ fn string_field<'a>(payload: &'a Value, name: &str) -> Option<&'a str> {
         .filter(|value| !value.trim().is_empty())
 }
 
-#[cfg(test)]
-#[path = "../../tests/unit/command/hook_runtime_host_lifecycle.rs"]
-mod tests;
 #[cfg(test)]
 #[path = "../../tests/unit/command/hook_runtime_host_lifecycle.rs"]
 mod hook_runtime_host_lifecycle_tests;

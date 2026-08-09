@@ -55,6 +55,22 @@ def targets : List Target :=
       ``evolution_without_compatibility_witness_cannot_be_applied
       "missing-compatibility-counterexample"
       [ "ASP-RFC-10.05-ALAE-EVOLUTION" ]
+  , Target.mk
+      ``incomplete_candidate_cannot_replace_published_generation
+      "atomic-incomplete-candidate-rejection"
+      [ "ASP-RFC-10.05-ALAE-ATOMIC-GENERATION" ]
+  , Target.mk
+      ``digest_mismatched_candidate_cannot_replace_published_generation
+      "atomic-mixed-generation-rejection"
+      [ "ASP-RFC-10.05-ALAE-ATOMIC-GENERATION" ]
+  , Target.mk
+      ``consistent_candidate_is_the_only_new_visible_generation
+      "atomic-publication-linearization"
+      [ "ASP-RFC-10.05-ALAE-ATOMIC-GENERATION" ]
+  , Target.mk
+      ``two_file_activation_then_receipt_publish_is_not_consistent
+      "two-file-publication-counterexample"
+      [ "ASP-RFC-10.05-ALAE-ATOMIC-GENERATION" ]
   ]
 
 def auditJson : Lean.Elab.TermElabM Lean.Json :=

@@ -85,3 +85,30 @@ async fn successful_exact_requests_do_not_emit_incidents() {
     assert!(admitted.is_none());
     assert!(bus.receiver.try_recv().is_err());
 }
+
+#[tokio::test]
+async fn successful_response_exceeding_agent_budget_emits_a_bug_incident() {
+    let mut bus = RuntimeTelemetryBus::new();
+    let request = selector_request("workspace-budget");
+    let record = record_workspace_ipc_terminal(
+        Some(&bus.sender),
+        workspace_ipc_terminal_context(&request),
+        &WorkspaceDbIpcResult::Healthy,
+        Duration::from_micros(super::AGENT_FACING_SEARCH_BUDGET_MICROS + 1),
+    )
+    .expect("budget terminal classification")
+    .expect("budget failure incident");
+    assert_eq!(
+        record.identity.reason_kind,
+        "agent-facing-search-wall-budget-exceeded"
+    );
+    let RuntimeTelemetryEvent::SearchIncident(event) =
+        bus.receiver.recv().await.expect("budget incident")
+    else {
+        panic!("expected budget search incident")
+    };
+    assert_eq!(
+        event.observation.budget_micros,
+        Some(super::AGENT_FACING_SEARCH_BUDGET_MICROS)
+    );
+}

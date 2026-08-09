@@ -724,6 +724,44 @@ Each profile decides:
 - Which verification receipts must be persisted
 - Which performance baselines belong to =source_baseline=
 
+* Cargo package atoms and explicit workspace composition
+:PROPERTIES:
+:CUSTOM_ID: rust-harness-package-atomicity
+:CONTRACT_ID: ASP-RFC-10.02-RUST-HARNESS-PACKAGE-ATOMICITY
+:END:
+
+The library/build-support API resolves =Cargo.toml= into a package graph before
+source analysis.  A downstream =build.rs= or dev-dependency gate selects exactly
+the package named by =CARGO_MANIFEST_DIR=.  Its targets, manifest, source roots,
+cache snapshot, rerun inputs, verification plan, and findings are one package
+atom.  A filesystem prefix, nested directory, shell wrapper, or executable name
+is not package-membership evidence.
+
+Workspace evaluation is explicit composition over those package atoms.  It may
+expand only member and path-dependency edges emitted by the Cargo manifest
+parser, then evaluate each selected package with its own policy.  It must not
+replace that graph with a recursive workspace walk or apply one member's policy
+to siblings.  Consequently:
+
+- changing an unselected sibling cannot invalidate a package cache key;
+- a package root that is also a workspace root still excludes declared members;
+- arbitrary nested =Cargo.toml= files do not invent package-graph edges;
+- Hook scenarios call focused Cargo package/test/function atoms and never own
+  Rust workspace discovery;
+- only a separately named workspace API may select more than one package.
+
+The executable refinement must test both directions: package noninterference
+under sibling mutation and explicit workspace visibility of that same mutation.
+The Lean model rejects path-prefix ownership and command-spelling admission, so
+an implementation cannot recover broad scanning by hardcoding wrappers or tool
+names.
+
+No root =Cargo.toml= means there is no package-graph anchor.  The harness must
+return a typed non-package result; it must not recursively search for nested
+manifests and promote them to owners.  Workspace glob expansion is legal only
+after parsing an anchored =[workspace].members= pattern and is bounded to that
+pattern's fixed prefix.
+
 * The Bottom Line
 
 Rust harness's correct evolution is not "make the agent guess better."  It's

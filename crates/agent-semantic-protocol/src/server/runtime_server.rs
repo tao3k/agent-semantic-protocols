@@ -44,6 +44,49 @@ pub(crate) fn runtime_server_command() -> Command {
     ServerArgs::command()
 }
 
+async fn emit_agent_facing_wall_budget_observation(
+    surface: &'static str,
+    stage: &'static str,
+    elapsed: std::time::Duration,
+    project_root: &Path,
+) {
+    let Ok(state_home) = state_home() else {
+        return;
+    };
+    let budget_micros =
+        u64::try_from(AGENT_FACING_EXECUTION_BUDGET.as_micros()).unwrap_or(u64::MAX);
+    let mut observation =
+        agent_semantic_client_db::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
+            surface,
+            stage,
+            u64::try_from(elapsed.as_micros()).unwrap_or(u64::MAX),
+            budget_micros,
+            "budget-exceeded",
+        );
+    observation.failure_reason = Some("agent-facing-search-wall-budget-exceeded".to_owned());
+    observation.retry_after_ms = Some(250);
+    let admission_catalog_path = state_home
+        .join("runtime")
+        .join("server")
+        .join("workspace-admissions.v1.json");
+    if let Ok(admission) = agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog::resolve_mapped(
+        &admission_catalog_path,
+        project_root,
+    ) {
+        observation.workspace_identity = Some(admission.workspace_identity);
+    }
+    observation.seal_budget_failure_identity();
+    let ingress_socket_path = runtime_server_telemetry_socket_path(&state_home);
+    let _ = tokio::time::timeout(
+        std::time::Duration::from_millis(5),
+        agent_semantic_client_db::runtime_server_opentelemetry::admit_to_runtime(
+            &ingress_socket_path,
+            &observation,
+        ),
+    )
+    .await;
+}
+
 pub(crate) async fn await_agent_facing_runtime_server_client<F, T>(
     started: tokio::time::Instant,
     surface: &'static str,
@@ -54,20 +97,22 @@ pub(crate) async fn await_agent_facing_runtime_server_client<F, T>(
 where
     F: std::future::Future<Output = Result<T, String>>,
 {
-    agent_facing_runtime_wait_remaining(started.elapsed(), surface, stage, project_root)?;
+    agent_facing_runtime_wait_remaining(started.elapsed(), surface, stage, project_root).await?;
     let deadline = started + AGENT_FACING_EXECUTION_BUDGET;
     match tokio::time::timeout_at(deadline, future).await {
         Ok(result) => result,
-        Err(_) => Err(agent_facing_wall_budget_error(
-            surface,
-            stage,
-            started.elapsed(),
-            project_root,
-        )),
+        Err(_) => {
+            Err(
+                agent_facing_wall_budget_error(surface, stage, started.elapsed(), project_root)
+                    .await,
+            )
+        }
     }
 }
 
-const AGENT_FACING_EXECUTION_BUDGET: std::time::Duration = std::time::Duration::from_millis(800);
+const AGENT_FACING_EXECUTION_BUDGET: std::time::Duration = std::time::Duration::from_micros(
+    agent_semantic_client_db::search_incident::AGENT_FACING_SEARCH_BUDGET_MICROS,
+);
 pub(crate) const RUNTIME_SERVER_SUPERVISOR_EXECUTION_BUDGET: std::time::Duration =
     std::time::Duration::from_millis(800);
 pub(crate) const OPERATOR_RUNTIME_SERVER_STARTUP_BUDGET: std::time::Duration =
@@ -90,19 +135,23 @@ where
     }
 }
 
-pub(crate) fn agent_facing_runtime_wait_remaining(
+pub(crate) async fn agent_facing_runtime_wait_remaining(
     elapsed: std::time::Duration,
     surface: &'static str,
     stage: &'static str,
     project_root: &Path,
 ) -> Result<std::time::Duration, String> {
-    AGENT_FACING_EXECUTION_BUDGET
+    if let Some(remaining) = AGENT_FACING_EXECUTION_BUDGET
         .checked_sub(elapsed)
         .filter(|remaining| !remaining.is_zero())
-        .ok_or_else(|| agent_facing_wall_budget_error(surface, stage, elapsed, project_root))
+    {
+        Ok(remaining)
+    } else {
+        Err(agent_facing_wall_budget_error(surface, stage, elapsed, project_root).await)
+    }
 }
 
-fn agent_facing_wall_budget_error(
+async fn agent_facing_wall_budget_error(
     surface: &'static str,
     stage: &'static str,
     elapsed: std::time::Duration,
@@ -110,33 +159,7 @@ fn agent_facing_wall_budget_error(
 ) -> String {
     let budget_micros =
         u64::try_from(AGENT_FACING_EXECUTION_BUDGET.as_micros()).unwrap_or(u64::MAX);
-    if let Ok(state_home) = state_home() {
-        let mut observation =
-            agent_semantic_client_db::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
-                surface,
-                stage,
-                u64::try_from(elapsed.as_micros()).unwrap_or(u64::MAX),
-                budget_micros,
-                "budget-exceeded",
-            );
-        observation.failure_reason = Some("agent-facing-search-wall-budget-exceeded".to_owned());
-        observation.retry_after_ms = Some(250);
-        let admission_catalog_path = state_home
-            .join("runtime")
-            .join("server")
-            .join("workspace-admissions.v1.json");
-        if let Ok(admission) = agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog::resolve_mapped(
-            &admission_catalog_path,
-            project_root,
-        ) {
-            observation.workspace_identity = Some(admission.workspace_identity);
-        }
-        observation.seal_budget_failure_identity();
-        let _ =
-            agent_semantic_client_db::runtime_server_opentelemetry::try_record_to_active_runtime(
-                observation,
-            );
-    }
+    emit_agent_facing_wall_budget_observation(surface, stage, elapsed, project_root).await;
     serde_json::json!({
         "schemaId": "agent.semantic-protocols.agent-facing-search-wall-failure",
         "schemaVersion": "1",
@@ -326,6 +349,13 @@ async fn prepare_runtime_server_start(state_home: &Path) -> Result<(), String> {
     Ok(())
 }
 
+pub(crate) async fn reconcile_runtime_server_for_healthcheck(
+    state_home: &Path,
+) -> Result<RuntimeServerControlReceipt, String> {
+    prepare_runtime_server_start(state_home).await?;
+    super::runtime_server_supervisor::reconcile_healthy_runtime_server(state_home).await
+}
+
 pub(crate) async fn await_healthy_runtime_server(
     state_home: &Path,
 ) -> Result<RuntimeServerControlReceipt, String> {
@@ -381,6 +411,24 @@ async fn await_healthy_runtime_server_with_budget(
             Ok(receipt) => format!("state={:?} reason={:?}", receipt.state, receipt.reason),
             Err(error) => error,
         };
+        let owner_exit =
+            crate::server::runtime_server_exit_receipt::read_latest_owner_exit(state_home)
+                .await
+                .map_err(|error| format!("read Runtime Server exit receipt: {error}"))?;
+        if let Some(exit) = owner_exit {
+            return Err(serde_json::json!({
+                "schemaId": "agent.semantic-protocols.runtime-server-supervisor-owner-exited",
+                "schemaVersion": "1",
+                "surface": surface,
+                "state": "unavailable",
+                "reasonKind": "runtime-server-owner-exited",
+                "observation": observation,
+                "ownerEpoch": exit.owner_epoch,
+                "cleanDrain": exit.clean_drain,
+                "errors": exit.errors,
+            })
+            .to_string());
+        }
         if tokio::time::Instant::now() >= deadline {
             return Err(format!(
                 "{surface} did not publish a healthy Runtime Server within {}ms: {}",
@@ -446,10 +494,8 @@ pub(crate) async fn healthcheck_runtime_server_at(
         RuntimeServerArtifactAction::Status
             if endpoint.transport_contract_digest == expected_transport_contract_digest =>
         {
-            call_runtime_server(
-                &endpoint,
-                RuntimeServerOperation::Status,
-                canonical_runtime_artifact_digest.clone(),
+            agent_semantic_client_db::runtime_server_control::read_runtime_server_cached_health_status(
+                Path::new(&endpoint.status_memory_path),
                 request_identity("healthcheck").await?,
             )
             .await?
@@ -476,20 +522,6 @@ pub(crate) async fn healthcheck_runtime_server_at(
             agent_semantic_client_db::runtime_server_control::RuntimeServerState::Starting;
         unavailable.reason = Some("Runtime Server endpoint is not present".to_owned());
         return Ok(unavailable);
-    }
-    if receipt.state
-        == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
-        && tokio::net::UnixStream::connect(runtime_server_telemetry_query_socket_path(state_home))
-            .await
-            .is_err()
-    {
-        return call_runtime_server(
-            &endpoint,
-            RuntimeServerOperation::Restart,
-            canonical_runtime_artifact_digest,
-            request_identity("healthcheck-telemetry-restart").await?,
-        )
-        .await;
     }
     Ok(receipt)
 }

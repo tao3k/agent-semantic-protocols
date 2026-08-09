@@ -436,7 +436,7 @@ impl WorkspaceGenerationAdmission {
                 project_root,
                 candidate,
                 1,
-                super::WorkspaceGenerationBuildMode::RebuildAfterMutation,
+                super::WorkspaceGenerationBuildMode::RestoreOrBuild,
             );
             return Ok(receipt);
         }
@@ -536,6 +536,7 @@ impl WorkspaceGenerationAdmission {
             entry.building.store(true, Ordering::Release);
             let attempt = claimed_attempt;
             let accepted = claimed_submission.clone();
+            let build_mode = super::observed_mutation_build_mode(&entry.observed());
             entry.receipt.send_replace(accepted.clone());
             entry
                 .active_mutation
@@ -552,7 +553,7 @@ impl WorkspaceGenerationAdmission {
                 project_root,
                 candidate,
                 attempt,
-                super::WorkspaceGenerationBuildMode::RebuildAfterMutation,
+                build_mode,
             );
             return Ok(accepted);
         }

@@ -1,0 +1,78 @@
+#+title: Incremental Memory Search Page Store
+#+startup: overview
+
+* Problem
+
+The v1 sectioned generation removes full payload decoding from search/query,
+but a monolithic search segment still makes every changed owner rewrite owner
+bytes, lexical keys, selectors, and graph relations for the whole workspace.
+That publication cost can saturate storage even when the foreground read path
+is sub-millisecond.
+
+* Normative v1 refinement
+
+The logical seven-section generation remains v1.  Large sections are stored as
+immutable content-addressed pages.  The generation root contains only section
+roots and fixed evidence.  This is a representation refinement, not a second
+protocol version.
+
+Each page has exactly one digest-derived identity.  A page is either:
+
+- a branch containing ordered key bounds and child page digests;
+- a leaf containing sorted key/value records and record digests; or
+- an owner-byte blob addressed by the canonical owner content digest.
+
+Owner directory, lexical index, selector index, and graph relations use the
+same language-neutral page contract.  Providers emit semantic facts; they do
+not select storage pages or publication policy.
+
+* Incremental transition
+
+For a set of changed canonical owners, the Runtime single-writer lane MUST:
+
+1. derive owner additions, replacements, moves, and tombstones from the admitted
+   source snapshot and its changed-owner evidence;
+2. path-copy only pages whose logical records change;
+3. reuse every unchanged page digest from the previous admitted generation;
+4. durably publish new pages and owner blobs before publishing the new section
+   roots;
+5. durably publish the complete generation root before committing the pointer;
+6. retain pages reachable from the current and readable previous generation;
+7. collect unreachable pages only after pointer publication and reader-lease
+   release.
+
+An unchanged admission MUST write zero page bytes and MUST preserve every
+section root.  One changed owner MUST NOT enumerate or rewrite unrelated owner
+bytes.  A tombstone MUST remove the old owner, selector, lexical, and graph
+records from the new reachable page graph in the same generation transition.
+
+* Read path
+
+Search/query maps the generation root and only the page path needed for the
+requested key.  It validates the root-to-leaf digest chain and the returned
+record digest.  It MUST NOT open Turso, connect a Runtime socket, spawn a
+provider, rebuild a generation, or scan all pages.
+
+The resident workspace entry may retain mapped pages under an adaptive bounded
+cache.  Cache eviction changes performance only; it never changes generation
+identity or correctness.
+
+* Required receipts
+
+Every publication emits typed counters for changed owners, reused pages, new
+pages, bytes written, tombstones, relation mutations, and pointer epoch.  Every
+read emits mapped bytes, digest nodes validated, key bytes touched, value bytes
+touched, source bytes returned, and zero-side-effect counters.
+
+* Strong gates
+
+- unchanged admission: zero page writes and identical section roots;
+- one-owner edit: only path-copy pages and that owner's blob may be new;
+- rename: one tombstone plus one added owner in one committed epoch;
+- relation mutation: graph root changes while unrelated section roots remain;
+- 256 concurrent readers observe one epoch and valid root-to-leaf proofs;
+- 30 fresh-process reads remain below one millisecond p99;
+- cancellation before pointer commit leaves the previous generation readable;
+- long-run publication and collection return task, descriptor, mapped-byte, and
+  disk-write counters to their configured bounds.
+

@@ -28,8 +28,6 @@ mod event_state_subagent_model_drift;
 
 #[path = "unit/integration_fixture.rs"]
 mod integration_fixture;
-#[path = "unit/match_policy_fixture.rs"]
-mod match_policy_fixture;
 
 #[path = "unit/provider_manifest/mod.rs"]
 mod provider_manifest;
@@ -37,6 +35,8 @@ mod provider_manifest;
 #[path = "unit/protocol_roundtrip.rs"]
 mod protocol_roundtrip;
 
+#[path = "unit/hook_scenario_contract.rs"]
+mod hook_scenario_contract;
 #[path = "unit/match_policy_contract.rs"]
 mod match_policy_contract;
 #[path = "unit/rust_harness_activation/mod.rs"]

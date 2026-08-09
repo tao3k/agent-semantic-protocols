@@ -65,6 +65,25 @@ fn canonical_owner_runtime_root_ignores_long_process_temp_directory() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn runtime_server_registry_rejects_non_gix_root_without_project_shell() {
+    let fixture = TempDir::new().expect("create non-Gix registry fixture");
+    let state_home = fixture.path().join("state");
+    let project_root = fixture.path().join("ordinary-files");
+    std::fs::create_dir_all(&project_root).expect("create ordinary file root");
+    let registry = WorkspaceDbRegistry::with_state_home(&state_home);
+
+    let Err(error) = registry.bootstrap_workspace(&project_root).await else {
+        panic!("Runtime Server must reject a root not admitted by Gix");
+    };
+
+    assert!(error.contains("refusing to materialize ephemeral non-Git search root"));
+    assert!(
+        !state_home.join("projects/by-id").exists(),
+        "rejected Tokio admission must create no State Core project shell"
+    );
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn deep_state_home_uses_short_private_socket_and_roundtrips_typed_frame() {
     let fixture = TempDir::new().expect("create workspace IPC tempfile");
@@ -204,7 +223,7 @@ async fn ipc_session_roundtrips_all_workspace_db_operations() {
     let _environment = environment_lock();
     let fixture = tempfile::TempDir::new().expect("create IPC fixture");
     let _state_home = StateHomeGuard::install(&fixture.path().join("state"));
-    let (_project_root, _resolved, scope) = workspace(fixture.path(), "ipc-project-all-ops");
+    let (_project_root, resolved, scope) = workspace(fixture.path(), "ipc-project-all-ops");
     let endpoint = prepare_workspace_db_owner_endpoint(
         &fixture.path().join("r"),
         &scope.workspace_identity,
@@ -221,6 +240,9 @@ async fn ipc_session_roundtrips_all_workspace_db_operations() {
         .bootstrap_workspace(&_project_root)
         .await
         .expect("bootstrap the resident workspace before publishing its IPC endpoint");
+    assert!(resolved.paths.project_json.is_file());
+    assert!(resolved.paths.workspace_json.is_file());
+    assert!(resolved.paths.client_manifest_json.is_file());
     let session = WorkspaceDbIpcSession::new(endpoint.clone());
     assert_eq!(
         session.workspace_identity(),

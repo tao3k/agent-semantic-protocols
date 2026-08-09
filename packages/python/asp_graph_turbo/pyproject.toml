@@ -10,6 +10,7 @@ dependencies = [
 
 [project.scripts]
 asp-graph-turbo = "asp_graph_turbo.graph_turbo_cli:main"
+asp-graph-turbo-resident = "asp_graph_turbo.resident_cli:main"
 
 [dependency-groups]
 dev = [

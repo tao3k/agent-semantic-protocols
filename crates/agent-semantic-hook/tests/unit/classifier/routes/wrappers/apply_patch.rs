@@ -160,6 +160,52 @@ fn direct_apply_patch_tool_to_source_requires_semantic_ast_patch() {
 }
 
 #[test]
+fn completed_apply_patch_is_observed_without_retroactive_denial() {
+    let patch = r#"*** Begin Patch
+*** Update File: src/cli/agent-hooks.ts
+@@
+-const before = true;
++const after = true;
+*** End Patch
+"#;
+    let decision = classify_hook(
+        &registry(),
+        "codex",
+        "post-tool",
+        &json!({
+            "tool_name": "functions.apply_patch",
+            "tool_use_id": "completed-apply-patch-1",
+            "tool_input": { "patch": patch }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert_eq!(decision.event, "post-tool");
+    assert_eq!(decision.subject.paths, ["src/cli/agent-hooks.ts"]);
+}
+
+#[test]
+fn pending_apply_patch_is_authorized_only_in_pre_tool_phase() {
+    let patch = r#"*** Begin Patch
+*** Update File: src/cli/agent-hooks.ts
+@@
+-const before = true;
++const after = true;
+*** End Patch
+"#;
+    let decision = classify_hook(
+        &registry(),
+        "codex",
+        "pre-tool",
+        &json!({ "tool_name": "functions.apply_patch", "tool_input": { "patch": patch } }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::SemanticAstPatchRequired);
+    assert_eq!(decision.event, "pre-tool");
+}
+
+#[test]
 fn apply_patch_to_non_source_file_is_allowed() {
     let command = r#"apply_patch <<'PATCH'
 *** Begin Patch

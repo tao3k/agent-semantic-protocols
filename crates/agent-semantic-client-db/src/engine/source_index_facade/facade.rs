@@ -56,7 +56,9 @@ impl ClientDbEngine {
         >,
         record: &agent_semantic_content_identity::exact_selector_cache::ExactSelectorProjectionRecordV1,
     ) -> Result<(), String> {
-        let db_path = Self::turso_path_for_client_dir(client_dir.as_ref());
+        let client_dir = client_dir.as_ref();
+        crate::engine::facade::prepare_client_dir_for_write(client_dir)?;
+        let db_path = Self::turso_path_for_client_dir(client_dir);
         let language_id = key.language_id.to_owned();
         let workspace_root_digest = key.workspace_root_digest.clone();
         let owner_path = key.owner_path.to_owned();

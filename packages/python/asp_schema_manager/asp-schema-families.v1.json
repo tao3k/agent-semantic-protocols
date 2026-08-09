@@ -64,6 +64,11 @@
     },
     {
       "familyId": "asp.schema-family.semantic-graph-turbo",
+      "membershipOverrides": {
+        "includeSchemaPaths": [
+          "schemas/graph-turbo-resident-server.v1.schema.json"
+        ]
+      },
       "definitionSchemaPath": "schemas/semantic-graph-turbo-definitions.v1.schema.json",
       "definitionVisibility": "family",
       "owner": "schemas",

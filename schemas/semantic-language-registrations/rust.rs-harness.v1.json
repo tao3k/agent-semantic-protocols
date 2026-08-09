@@ -130,6 +130,7 @@
         "argv": [
           "rs-harness",
           "search",
+          "lexical",
           "{query}",
           "owner",
           "tests",
@@ -144,6 +145,7 @@
         "schemaVersion": "1",
         "tokens": [
           {"kind": "literal", "value": "search"},
+          {"kind": "literal", "value": "lexical"},
           {"kind": "slot", "name": "query", "valueType": "string"},
           {"kind": "literal", "value": "owner"},
           {"kind": "literal", "value": "tests"},

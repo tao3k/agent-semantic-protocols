@@ -1,5 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::{Arc, Barrier};
 
 use super::{
     ensure_dir, project_root_for_activation_path, project_runtime_state_with_state_home,
@@ -12,7 +14,7 @@ fn runtime_state_materializes_state_core_layout() {
     let state_home = temp_root("runtime-state-home");
     let package_root = root.join("crates/example");
     fs::create_dir_all(&package_root).expect("create package root");
-    fs::create_dir_all(root.join(".git")).expect("create git marker");
+    init_git_repository(&root);
 
     let state =
         project_runtime_state_with_state_home(&package_root, &state_home).expect("runtime state");
@@ -61,7 +63,7 @@ fn runtime_state_materializes_state_core_layout() {
 fn canonical_state_activation_path_resolves_workspace_root_without_legacy_fallback() {
     let root = temp_root("canonical-activation-root");
     let state_home = temp_root("canonical-activation-state-home");
-    fs::create_dir_all(root.join(".git")).expect("create git marker");
+    init_git_repository(&root);
 
     let state = project_runtime_state_with_state_home(&root, &state_home).expect("runtime state");
     fs::write(&state.activation_path, "{}\n").expect("write canonical activation");
@@ -90,7 +92,7 @@ fn project_state_path_resolution_never_materializes_project_directories() {
     let state_home = temp_root("state-paths-pure-home");
     let package_root = root.join("crates/example");
     fs::create_dir_all(&package_root).expect("create package root");
-    fs::create_dir_all(root.join(".git")).expect("create git marker");
+    init_git_repository(&root);
 
     for _ in 0..1_000 {
         let paths = crate::state::project_state_paths_with_state_home(&package_root, &state_home)
@@ -133,11 +135,63 @@ fn ordinary_non_git_roots_are_ephemeral_and_never_materialized() {
     else {
         panic!("an ordinary non-Git root must not own durable runtime state");
     };
-    assert!(error.contains("refusing to materialize ephemeral non-Git search root"));
+    assert!(error.contains("refusing to materialize ephemeral or standalone temporary checkout"));
     assert!(
         !state_home.join("projects/by-id").exists(),
         "ephemeral resolution and rejected materialization must create no project directory"
     );
+    let _ = fs::remove_dir_all(root);
+    let _ = fs::remove_dir_all(state_home);
+}
+
+#[test]
+fn filesystem_git_marker_without_gix_repository_is_not_admitted() {
+    let root = temp_root("state-fake-git-marker");
+    let state_home = temp_root("state-fake-git-marker-home");
+    fs::create_dir_all(root.join(".git")).expect("create unowned Git marker");
+
+    let resolved = crate::state_core::ResolvedState::resolve_with_state_home(&root, &state_home)
+        .expect("resolve fake Git marker as ephemeral");
+    assert_eq!(
+        resolved.repo.persistence,
+        crate::state_core::RepoPersistence::EphemeralPath
+    );
+    let error = resolved
+        .ensure_minimal_layout()
+        .expect_err("filesystem marker must not bypass Gix admission");
+    assert!(error.contains("refusing to materialize ephemeral or standalone temporary checkout"));
+    assert!(!state_home.join("projects/by-id").exists());
+
+    let _ = fs::remove_dir_all(root);
+    let _ = fs::remove_dir_all(state_home);
+}
+
+#[test]
+fn standalone_temporary_git_repository_never_materializes_a_project_id() {
+    let root = temp_root("state-standalone-temporary-git");
+    let state_home = temp_root("state-standalone-temporary-git-home");
+    let output = Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(&root)
+        .output()
+        .expect("initialize standalone temporary Git fixture");
+    assert!(output.status.success());
+
+    let resolved = crate::state_core::ResolvedState::resolve_with_state_home(&root, &state_home)
+        .expect("resolve standalone temporary Git fixture");
+    assert_eq!(
+        resolved.repo.persistence,
+        crate::state_core::RepoPersistence::EphemeralPath
+    );
+    let error = resolved
+        .ensure_minimal_layout()
+        .expect_err("standalone temporary Git fixture must not materialize");
+    assert!(error.contains("standalone temporary checkout"));
+    assert!(
+        !state_home.join("projects/by-id").exists(),
+        "rejected temporary Git checkout must create no project ID"
+    );
+
     let _ = fs::remove_dir_all(root);
     let _ = fs::remove_dir_all(state_home);
 }
@@ -150,7 +204,7 @@ fn repeated_writers_in_one_checkout_materialize_one_repository_and_workspace() {
     let second_package = root.join("crates/second");
     fs::create_dir_all(&first_package).expect("create first package root");
     fs::create_dir_all(&second_package).expect("create second package root");
-    fs::create_dir_all(root.join(".git")).expect("create git marker");
+    init_git_repository(&root);
 
     let first = project_runtime_state_with_state_home(&first_package, &state_home)
         .expect("materialize first package state");
@@ -187,6 +241,73 @@ fn repeated_writers_in_one_checkout_materialize_one_repository_and_workspace() {
         workspace_count, 1,
         "subdirectories in one checkout must share one workspace directory"
     );
+    for repository_dir in &repository_dirs {
+        assert!(
+            repository_dir.join("project.json").is_file(),
+            "every visible repository directory must have committed identity metadata"
+        );
+        for workspace in
+            fs::read_dir(repository_dir.join("workspaces")).expect("read committed workspaces")
+        {
+            let workspace = workspace.expect("read committed workspace").path();
+            if workspace.is_dir() {
+                assert!(workspace.join("workspace.json").is_file());
+                assert!(workspace.join("live/client/manifest.json").is_file());
+            }
+        }
+    }
+    assert!(
+        fs::read_dir(&projects_by_id)
+            .expect("read registry staging entries")
+            .filter_map(Result::ok)
+            .all(|entry| !entry.file_name().to_string_lossy().contains(".staging-")),
+        "successful materialization must leave no staging directory"
+    );
+    let _ = fs::remove_dir_all(root);
+    let _ = fs::remove_dir_all(state_home);
+}
+
+#[test]
+fn concurrent_writers_publish_one_complete_project_tree() {
+    let root = temp_root("state-concurrent-writer");
+    let state_home = temp_root("state-concurrent-writer-home");
+    init_git_repository(&root);
+    let resolved = Arc::new(
+        crate::state_core::ResolvedState::resolve_with_state_home(&root, &state_home)
+            .expect("resolve concurrent writer state"),
+    );
+    let writer_count = 8;
+    let barrier = Arc::new(Barrier::new(writer_count));
+    let mut writers = Vec::new();
+    for _ in 0..writer_count {
+        let resolved = Arc::clone(&resolved);
+        let barrier = Arc::clone(&barrier);
+        writers.push(std::thread::spawn(move || {
+            barrier.wait();
+            resolved.ensure_minimal_layout()
+        }));
+    }
+    for writer in writers {
+        writer
+            .join()
+            .expect("join concurrent State Core writer")
+            .expect("concurrent State Core materialization");
+    }
+
+    assert!(resolved.paths.project_json.is_file());
+    assert!(resolved.paths.workspace_json.is_file());
+    assert!(resolved.paths.client_manifest_json.is_file());
+    let workspaces_dir = resolved.paths.project_dir.join("workspaces");
+    for directory in [&resolved.paths.projects_by_id_dir, &workspaces_dir] {
+        assert!(
+            fs::read_dir(directory)
+                .expect("read State Core commit parent")
+                .filter_map(Result::ok)
+                .all(|entry| !entry.file_name().to_string_lossy().contains(".staging-")),
+            "concurrent commit must leave no staging directory"
+        );
+    }
+
     let _ = fs::remove_dir_all(root);
     let _ = fs::remove_dir_all(state_home);
 }
@@ -197,7 +318,7 @@ fn ensure_helpers_create_only_the_requested_runtime_dir() {
     let state_home = temp_root("runtime-state-single-dir-home");
     let package_root = root.join("crates/example");
     fs::create_dir_all(&package_root).expect("create package root");
-    fs::create_dir_all(root.join(".git")).expect("create git marker");
+    init_git_repository(&root);
 
     let paths = project_state_paths_with_state_home(&package_root, &state_home)
         .expect("resolve project state paths");
@@ -258,6 +379,30 @@ fn temp_root(label: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("agent-semantic-runtime-{label}-{nonce}"));
     fs::create_dir_all(&root).expect("create temp root");
     canonical(&root)
+}
+
+fn init_git_repository(root: &Path) {
+    let output = Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(root)
+        .output()
+        .expect("run git init for Gix-owned test identity");
+    assert!(
+        output.status.success(),
+        "git init failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let output = Command::new("git")
+        .args([
+            "remote",
+            "add",
+            "origin",
+            "https://example.invalid/asp/runtime-state-fixture.git",
+        ])
+        .current_dir(root)
+        .output()
+        .expect("add durable remote to State Core fixture");
+    assert!(output.status.success(), "git remote add failed");
 }
 
 fn canonical(path: &Path) -> PathBuf {

@@ -1,10 +1,9 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::runtime_server_admission::WorkspaceGenerationAdmission;
 use crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry;
 use crate::workspace_db_ipc::WorkspaceDbIpcResult;
 
-const GENERATION_DISCOVERY_DEADLINE: std::time::Duration = std::time::Duration::from_millis(800);
 const GENERATION_DISCOVERY_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-workspace-generation-discovery.v1";
 
@@ -26,7 +25,6 @@ pub struct WorkspaceGenerationDiscoveryReceipt {
     pub state: WorkspaceGenerationDiscoveryState,
     pub attempt: u64,
     pub started_at_unix_ms: u64,
-    pub deadline_unix_ms: u64,
     pub finished_at_unix_ms: Option<u64>,
     pub reason_kind: Option<String>,
     pub error: Option<String>,
@@ -62,6 +60,14 @@ struct GenerationDiscoveryKey {
 static GENERATION_DISCOVERY_TASKS: std::sync::LazyLock<dashmap::DashSet<GenerationDiscoveryKey>> =
     std::sync::LazyLock::new(dashmap::DashSet::new);
 
+/// Completion is separate from admission state: candidate discovery can fail
+/// before it creates a Building receipt.  Every waiting search/query caller
+/// therefore observes the one task completion and then reads the authoritative
+/// admission terminal state, rather than polling or launching another scan.
+static GENERATION_DISCOVERY_COMPLETIONS: std::sync::LazyLock<
+    dashmap::DashMap<GenerationDiscoveryKey, tokio::sync::watch::Sender<bool>>,
+> = std::sync::LazyLock::new(dashmap::DashMap::new);
+
 fn generation_is_active(
     state: &crate::runtime_server_admission::WorkspaceGenerationAdmissionState,
 ) -> bool {
@@ -73,6 +79,58 @@ fn generation_is_active(
     }
 }
 
+pub(super) fn require_terminal_generation_for_read(
+    generation_admission: Option<&WorkspaceGenerationAdmission>,
+    workspace_identity: &str,
+    project_root: &Path,
+) -> Result<(), String> {
+    let Some(receipt) = generation_admission
+        .and_then(|admission| admission.current(workspace_identity, project_root))
+    else {
+        return Ok(());
+    };
+    if receipt.state == crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
+        && receipt.commit.is_some()
+    {
+        return Ok(());
+    }
+    Err(format!(
+        "active workspace generation is required before resident read: workspaceIdentity={workspace_identity} state={:?} reasonKind=active-workspace-generation-required",
+        receipt.state
+    ))
+}
+
+pub(super) fn resident_read_project_root(
+    operation: &crate::workspace_db_ipc::WorkspaceDbIpcOperation,
+) -> Option<&Path> {
+    let project_root = match operation {
+        crate::workspace_db_ipc::WorkspaceDbIpcOperation::ReadRuntimeSelector {
+            project_root,
+            ..
+        }
+        | crate::workspace_db_ipc::WorkspaceDbIpcOperation::ReadRuntimeOwner {
+            project_root,
+            ..
+        }
+        | crate::workspace_db_ipc::WorkspaceDbIpcOperation::ReadRuntimeSearchGenerationAuthority {
+            project_root,
+        }
+        | crate::workspace_db_ipc::WorkspaceDbIpcOperation::ReadRuntimeGraphFacts {
+            project_root,
+            ..
+        }
+        | crate::workspace_db_ipc::WorkspaceDbIpcOperation::EvaluateGraphTurbo {
+            project_root,
+            ..
+        } => project_root,
+        crate::workspace_db_ipc::WorkspaceDbIpcOperation::ReadSourceIndex { request } => {
+            return Some(request.project_root.as_path());
+        }
+        _ => return None,
+    };
+    Some(Path::new(project_root))
+}
+
 struct GenerationDiscoveryTaskGuard {
     key: GenerationDiscoveryKey,
     finished: bool,
@@ -81,6 +139,7 @@ struct GenerationDiscoveryTaskGuard {
 impl Drop for GenerationDiscoveryTaskGuard {
     fn drop(&mut self) {
         GENERATION_DISCOVERY_TASKS.remove(&self.key);
+        GENERATION_DISCOVERY_COMPLETIONS.remove(&self.key);
         if !self.finished {
             if let Some(mut receipt) = GENERATION_DISCOVERY_RECEIPTS.get_mut(&self.key) {
                 receipt.state = WorkspaceGenerationDiscoveryState::Cancelled;
@@ -96,19 +155,32 @@ fn schedule_single_flight_discovery(
     admission: std::sync::Arc<WorkspaceGenerationAdmission>,
     workspace_identity: &str,
     project_root: &std::path::Path,
-) -> bool {
-    if let Some(receipt) = admission.current(workspace_identity, project_root)
-        && generation_is_active(&receipt.state)
-    {
-        return false;
-    }
+) -> tokio::sync::watch::Receiver<bool> {
     let key = GenerationDiscoveryKey {
         workspace_identity: workspace_identity.to_owned(),
         project_root: project_root.to_path_buf(),
     };
-    if !GENERATION_DISCOVERY_TASKS.insert(key.clone()) {
-        return false;
+    if let Some(receipt) = admission.current(workspace_identity, project_root)
+        && generation_is_active(&receipt.state)
+    {
+        if let Some(completion) = GENERATION_DISCOVERY_COMPLETIONS.get(&key) {
+            return completion.subscribe();
+        }
+        // A Ready/Building receipt may have been admitted by the mutation or
+        // restore lane rather than discovery.  It already has its own
+        // admission watch; never fabricate a second source scan here.
+        let (completion, receiver) = tokio::sync::watch::channel(true);
+        drop(completion);
+        return receiver;
     }
+    if !GENERATION_DISCOVERY_TASKS.insert(key.clone()) {
+        return GENERATION_DISCOVERY_COMPLETIONS
+            .get(&key)
+            .expect("existing discovery owns a completion sender")
+            .subscribe();
+    }
+    let (completion, completion_receiver) = tokio::sync::watch::channel(false);
+    GENERATION_DISCOVERY_COMPLETIONS.insert(key.clone(), completion.clone());
     let started_at_unix_ms = unix_time_ms();
     GENERATION_DISCOVERY_RECEIPTS.insert(
         key.clone(),
@@ -120,8 +192,6 @@ fn schedule_single_flight_discovery(
             state: WorkspaceGenerationDiscoveryState::Discovering,
             attempt: 1,
             started_at_unix_ms,
-            deadline_unix_ms: started_at_unix_ms
-                .saturating_add(GENERATION_DISCOVERY_DEADLINE.as_millis() as u64),
             finished_at_unix_ms: None,
             reason_kind: None,
             error: None,
@@ -137,19 +207,11 @@ fn schedule_single_flight_discovery(
             task_admission,
             guard.key.workspace_identity.clone(),
             guard.key.project_root.clone(),
-            GENERATION_DISCOVERY_DEADLINE,
         )
         .await;
         let failure = match result {
             Ok(_) => None,
-            Err(error) => {
-                let reason = if error.contains("exceeded") {
-                    "discovery-timeout"
-                } else {
-                    "discovery-failed"
-                };
-                Some((reason, error))
-            }
+            Err(error) => Some(("discovery-failed", error)),
         };
         if let Some((reason_kind, error)) = failure {
             if let Some(mut receipt) = GENERATION_DISCOVERY_RECEIPTS.get_mut(&guard.key) {
@@ -165,27 +227,23 @@ fn schedule_single_flight_discovery(
             );
         }
         guard.finished = true;
+        completion.send_replace(true);
     });
     admission.track_submission_task(task);
-    true
+    completion_receiver
 }
 
 async fn run_discovery(
     admission: std::sync::Arc<WorkspaceGenerationAdmission>,
     workspace_identity: String,
     project_root: PathBuf,
-    deadline: std::time::Duration,
 ) -> Result<crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt, String> {
-    tokio::time::timeout(deadline, async move {
-        let candidate =
-            crate::runtime_server_admission::discover_workspace_generation_candidate(&project_root)
-                .await?;
-        admission
-            .ensure(&workspace_identity, &project_root, candidate)
-            .await
-    })
-    .await
-    .map_err(|_| format!("workspace candidate discovery exceeded {deadline:?}"))?
+    let candidate =
+        crate::runtime_server_admission::discover_workspace_generation_candidate(&project_root)
+            .await?;
+    admission
+        .ensure(&workspace_identity, &project_root, candidate)
+        .await
 }
 
 fn discovery_in_progress(
@@ -204,6 +262,10 @@ fn discovery_in_progress(
 #[cfg(test)]
 #[path = "../tests/unit/workspace_db_ipc_server_generation_discovery.rs"]
 mod discovery_task_tests;
+
+#[cfg(test)]
+#[path = "../tests/unit/workspace_db_ipc_server_generation_mutation.rs"]
+mod mutation_submission_tests;
 
 pub(super) fn submit_mutation(
     memory_registry: std::sync::Arc<RuntimeServerWorkspaceRegistry>,
@@ -254,27 +316,58 @@ pub(super) fn submit_mutation(
     if queued {
         let admission_task = std::sync::Arc::clone(&generation_admission);
         let task = tokio::spawn(async move {
-            let candidate =
-                crate::runtime_server_admission::discover_workspace_generation_candidate(
-                    std::path::Path::new(&project_root),
-                )
-                .await;
-            let result = match candidate {
-                Ok(candidate) => {
-                    admit_mutation(
+            let project_root_path = std::path::Path::new(&project_root);
+            let initial_readiness = if admission_task
+                .current(&workspace_identity, project_root_path)
+                .is_none()
+            {
+                Some(
+                    ensure_terminal_ready(
                         &memory_registry,
-                        Some(&admission_task),
+                        Some(std::sync::Arc::clone(&admission_task)),
                         &workspace_identity,
-                        mutation_id,
-                        project_root,
-                        changed_paths,
-                        candidate,
+                        project_root.clone(),
                     )
-                    .await
+                    .await,
+                )
+            } else {
+                None
+            };
+            let result = match initial_readiness {
+                Some(WorkspaceDbIpcResult::Failed { code, message }) => {
+                    WorkspaceDbIpcResult::Failed { code, message }
                 }
-                Err(message) => WorkspaceDbIpcResult::Failed {
-                    code: "runtime-server-generation-candidate-discovery-failed".to_owned(),
-                    message,
+                Some(WorkspaceDbIpcResult::RuntimeGenerationReadiness { .. }) | None => {
+                    match admission_task.current(&workspace_identity, project_root_path) {
+                        Some(current) => {
+                            let candidate = crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity {
+                                candidate_generation: current.candidate_generation,
+                                policy_overlay_digest: current.policy_overlay_digest,
+                            };
+                            admit_mutation(
+                                &memory_registry,
+                                Some(&admission_task),
+                                &workspace_identity,
+                                mutation_id,
+                                project_root,
+                                changed_paths,
+                                candidate,
+                            )
+                            .await
+                        }
+                        None => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-generation-not-admitted".to_owned(),
+                            message: format!(
+                                "runtime generation mutation discovery completed without an admitted resident generation: workspaceIdentity={workspace_identity} projectRoot={project_root}"
+                            ),
+                        },
+                    }
+                }
+                Some(_) => WorkspaceDbIpcResult::Failed {
+                    code: "runtime-server-generation-ready-gate-failed".to_owned(),
+                    message: format!(
+                        "runtime generation mutation received an unexpected readiness result: workspaceIdentity={workspace_identity} projectRoot={project_root}"
+                    ),
                 },
             };
             if let WorkspaceDbIpcResult::Failed { code, message } = result {
@@ -384,7 +477,7 @@ pub(super) async fn ensure_current_or_build(
         }
         return WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt };
     }
-    schedule_single_flight_discovery(
+    let _ = schedule_single_flight_discovery(
         std::sync::Arc::clone(&admission),
         workspace_identity,
         &project_root,
@@ -410,20 +503,51 @@ pub(super) async fn ensure_terminal_ready(
         };
     };
     let project_root = PathBuf::from(project_root);
-    let receipt = match admission.current(workspace_identity, &project_root) {
+    let mut receipt = match admission.current(workspace_identity, &project_root) {
         Some(receipt) if generation_is_active(&receipt.state) => receipt,
         _ => {
-            schedule_single_flight_discovery(
+            let mut completion = schedule_single_flight_discovery(
                 std::sync::Arc::clone(&admission),
                 workspace_identity,
                 &project_root,
             );
-            return discovery_in_progress(workspace_identity, &project_root);
+            if !*completion.borrow() {
+                if completion.changed().await.is_err() {
+                    return WorkspaceDbIpcResult::Failed {
+                        code: "runtime-server-generation-ready-gate-failed".to_owned(),
+                        message: "Runtime Server generation discovery completion channel closed"
+                            .to_owned(),
+                    };
+                }
+            }
+            match admission
+                .wait_terminal(workspace_identity, &project_root)
+                .await
+            {
+                Ok(receipt) => receipt,
+                Err(message) => {
+                    return WorkspaceDbIpcResult::Failed {
+                        code: "runtime-server-generation-ready-gate-failed".to_owned(),
+                        message,
+                    };
+                }
+            }
         }
     };
     if receipt.state == crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Building
     {
-        return discovery_in_progress(workspace_identity, &project_root);
+        receipt = match admission
+            .wait_terminal(workspace_identity, &project_root)
+            .await
+        {
+            Ok(receipt) => receipt,
+            Err(message) => {
+                return WorkspaceDbIpcResult::Failed {
+                    code: "runtime-server-generation-ready-gate-failed".to_owned(),
+                    message,
+                };
+            }
+        };
     }
     let ensured = async {
         let terminal = receipt;

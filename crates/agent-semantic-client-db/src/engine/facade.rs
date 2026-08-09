@@ -369,12 +369,7 @@ impl ClientDbEngine {
         client_dir: impl AsRef<Path>,
     ) -> Result<ClientDbEngineWriteSession, String> {
         let client_dir = client_dir.as_ref().to_path_buf();
-        fs::create_dir_all(&client_dir).map_err(|error| {
-            format!(
-                "failed to create DB Engine client dir `{}`: {error}",
-                client_dir.display()
-            )
-        })?;
+        prepare_client_dir_for_write(&client_dir)?;
         let turso_db_path = Self::turso_path_for_client_dir(&client_dir);
         let bootstrap_path = turso_db_path.clone();
         block_on_db_engine_async(async move {
@@ -438,12 +433,7 @@ impl ClientDbEngine {
         events: &[ClientDbArtifactEvent],
     ) -> Result<u32, String> {
         let client_dir = client_dir.as_ref().to_path_buf();
-        fs::create_dir_all(&client_dir).map_err(|error| {
-            format!(
-                "failed to create DB Engine client dir `{}`: {error}",
-                client_dir.display()
-            )
-        })?;
+        prepare_client_dir_for_write(&client_dir)?;
         let db_path = Self::turso_path_for_client_dir(&client_dir);
         let events = events.to_vec();
         block_on_db_engine_async(async move {
@@ -475,12 +465,7 @@ impl ClientDbEngine {
         selections: &[ClientDbProviderCommandSelection],
     ) -> Result<(), String> {
         let client_dir = client_dir.as_ref().to_path_buf();
-        fs::create_dir_all(&client_dir).map_err(|error| {
-            format!(
-                "failed to create DB Engine client dir `{}`: {error}",
-                client_dir.display()
-            )
-        })?;
+        prepare_client_dir_for_write(&client_dir)?;
         let db_path = Self::turso_path_for_client_dir(&client_dir);
         let project_root = project_root.to_path_buf();
         let context_fingerprint = context_fingerprint.to_string();
@@ -503,12 +488,7 @@ impl ClientDbEngine {
         manifest: &ClientCacheManifest,
     ) -> Result<(), String> {
         let client_dir = client_dir.as_ref().to_path_buf();
-        fs::create_dir_all(&client_dir).map_err(|error| {
-            format!(
-                "failed to create DB Engine client dir `{}`: {error}",
-                client_dir.display()
-            )
-        })?;
+        prepare_client_dir_for_write(&client_dir)?;
         let db_path = Self::turso_path_for_client_dir(&client_dir);
         let manifest = manifest.clone();
         block_on_db_engine_async(async move {
@@ -528,12 +508,7 @@ impl ClientDbEngine {
         source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     ) -> Result<(), String> {
         let client_dir = client_dir.as_ref().to_path_buf();
-        fs::create_dir_all(&client_dir).map_err(|error| {
-            format!(
-                "failed to create DB Engine client dir `{}`: {error}",
-                client_dir.display()
-            )
-        })?;
+        prepare_client_dir_for_write(&client_dir)?;
         let import = parse_structural_index_packet_import(generation, packet_bytes)?;
         let db_path = Self::turso_path_for_client_dir(&client_dir);
         let source_snapshot = source_snapshot.clone();
@@ -552,12 +527,7 @@ impl ClientDbEngine {
         packet_bytes: &[u8],
     ) -> Result<(), String> {
         let client_dir = client_dir.as_ref().to_path_buf();
-        fs::create_dir_all(&client_dir).map_err(|error| {
-            format!(
-                "failed to create DB Engine client dir `{}`: {error}",
-                client_dir.display()
-            )
-        })?;
+        prepare_client_dir_for_write(&client_dir)?;
         let db_path = Self::turso_path_for_client_dir(&client_dir);
         let generation = generation.clone();
         let packet_bytes = packet_bytes.to_vec();
@@ -616,6 +586,7 @@ impl ClientDbEngine {
                 TURSO_BACKEND
             ));
         }
+        require_state_core_materialization(&self.client_dir)?;
         let report = bootstrap_turso_client_db(&self.db_path).await?;
         self.write_manifest()?;
         Ok(report)
@@ -755,8 +726,7 @@ impl ClientDbEngine {
 
     /// Write the DB Engine-owned client manifest for the active backend.
     pub fn write_manifest(&self) -> Result<(), String> {
-        fs::create_dir_all(&self.client_dir)
-            .map_err(|error| format!("create DB Engine client dir: {error}"))?;
+        prepare_client_dir_for_write(&self.client_dir)?;
         let report = self.inspect();
         let manifest = json!({
             "layoutVersion": report.layout_version,
@@ -865,6 +835,65 @@ impl ClientDbEngine {
     fn turso_backend(&self) -> TursoClientDbEngineBackend {
         TursoClientDbEngineBackend
     }
+}
+
+pub(super) fn prepare_client_dir_for_write(client_dir: &Path) -> Result<(), String> {
+    require_state_core_materialization(client_dir)?;
+    fs::create_dir_all(client_dir).map_err(|error| {
+        format!(
+            "failed to create DB Engine client dir `{}`: {error}",
+            client_dir.display()
+        )
+    })
+}
+
+pub(super) fn require_state_core_materialization(client_dir: &Path) -> Result<(), String> {
+    let Some((project_dir, workspace_dir)) = state_core_identity_dirs(client_dir) else {
+        return Ok(());
+    };
+    let required = [
+        project_dir.join("project.json"),
+        workspace_dir.join("workspace.json"),
+        client_dir.join(STATE_MANIFEST_FILE),
+    ];
+    if required.iter().all(|path| path.is_file()) {
+        return Ok(());
+    }
+    let missing = required
+        .iter()
+        .filter(|path| !path.is_file())
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(format!(
+        "state-core-materialization-required: DB Engine write requires committed identity metadata before mutating `{}`; missing: {missing}",
+        client_dir.display()
+    ))
+}
+
+fn state_core_identity_dirs(client_dir: &Path) -> Option<(PathBuf, PathBuf)> {
+    if client_dir.file_name()?.to_str()? != "client" {
+        return None;
+    }
+    let live_dir = client_dir.parent()?;
+    if live_dir.file_name()?.to_str()? != "live" {
+        return None;
+    }
+    let workspace_dir = live_dir.parent()?;
+    let workspaces_dir = workspace_dir.parent()?;
+    if workspaces_dir.file_name()?.to_str()? != "workspaces" {
+        return None;
+    }
+    let project_dir = workspaces_dir.parent()?;
+    let by_id_dir = project_dir.parent()?;
+    if by_id_dir.file_name()?.to_str()? != "by-id" {
+        return None;
+    }
+    let projects_dir = by_id_dir.parent()?;
+    if projects_dir.file_name()?.to_str()? != "projects" {
+        return None;
+    }
+    Some((project_dir.to_path_buf(), workspace_dir.to_path_buf()))
 }
 
 fn render_artifact_graph_compact_lines(

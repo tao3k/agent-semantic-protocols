@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-          "command": "asp hook session-start --client codex",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" session-start --client codex",
             "timeout": 1,
             "statusMessage": "Loading Agent Semantic Protocol activation"
           }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-          "command": "asp hook user-prompt --client codex",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" user-prompt --client codex",
             "timeout": 1,
             "statusMessage": "Planning Agent Semantic Protocol search flow"
           }
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-          "command": "asp hook pre-tool --client codex",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" pre-tool --client codex",
             "timeout": 1,
             "statusMessage": "Checking Agent Semantic Protocol search policy"
           }
@@ -40,11 +40,11 @@
     ],
     "PermissionRequest": [
       {
-      "matcher": "*",
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
-          "command": "asp hook permission-request --client codex",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" permission-request --client codex",
             "timeout": 1,
             "statusMessage": "Checking Agent Semantic Protocol approval policy"
           }
@@ -56,7 +56,7 @@
         "hooks": [
           {
             "type": "command",
-          "command": "asp hook post-tool --client codex",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" post-tool --client codex",
             "timeout": 1,
             "statusMessage": "Updating Agent Semantic Protocol search state"
           }
@@ -68,7 +68,7 @@
         "hooks": [
           {
             "type": "command",
-          "command": "asp hook subagent-start --client codex",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" subagent-start --client codex",
             "timeout": 1,
             "statusMessage": "Preparing Agent Semantic Protocol subagent context"
           }
@@ -80,7 +80,7 @@
         "hooks": [
           {
             "type": "command",
-          "command": "asp hook subagent-stop --client codex",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" subagent-stop --client codex",
             "timeout": 1,
             "statusMessage": "Checking Agent Semantic Protocol subagent evidence"
           }
@@ -92,7 +92,7 @@
         "hooks": [
           {
             "type": "command",
-          "command": "asp hook stop --client codex",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" stop --client codex",
             "timeout": 1,
             "statusMessage": "Checking Agent Semantic Protocol changed files"
           }

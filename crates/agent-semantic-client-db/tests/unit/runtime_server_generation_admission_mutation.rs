@@ -232,6 +232,230 @@ async fn changed_paths_fan_out_to_each_workspace_resident_without_git_rediscover
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn first_observed_mutation_admits_an_empty_workspace_catalog() {
+    let temp = tempfile::tempdir().expect("temporary resident catalog");
+    let project_root = temp.path().join("fresh-workspace");
+    tokio::fs::create_dir_all(project_root.join("src"))
+        .await
+        .expect("fresh workspace root");
+    let catalog = RuntimeWorkspaceAdmissionCatalog::load(temp.path().join("catalog.json"))
+        .await
+        .expect("load empty resident workspace catalog");
+
+    let builds = Arc::new(Mutex::new(Vec::new()));
+    let admission = WorkspaceGenerationAdmission::new(Arc::new({
+        let builds = Arc::clone(&builds);
+        move |workspace_identity,
+              project_root,
+              candidate,
+              build_mode,
+              changed_paths,
+              _cancellation| {
+            let builds = Arc::clone(&builds);
+            Box::pin(async move {
+                assert_ne!(
+                    format!("{build_mode:?}"),
+                    "RebuildAfterMutation",
+                    "the first observed mutation has no admitted base generation"
+                );
+                builds.lock().await.push((
+                    workspace_identity,
+                    project_root,
+                    (*changed_paths).clone(),
+                ));
+                completed_generation(candidate)
+            })
+        }
+    }))
+    .with_catalog(catalog);
+    let changed_owner = project_root.join("src/lib.rs");
+
+    let receipt = admission
+        .admit_observed_mutation(
+            "first-post-tool-mutation",
+            "workspace-fresh",
+            project_root.clone(),
+            vec![changed_owner.clone()],
+            candidate_identity(),
+        )
+        .await
+        .expect("first observed mutation admits a missing workspace");
+    receipt.validate().expect("valid first-mutation receipt");
+    assert_eq!(receipt.changed_path_count, 1);
+    assert_eq!(receipt.affected_workspace_count, 1);
+
+    admission
+        .wait_terminal("workspace-fresh", &project_root)
+        .await
+        .expect("fresh workspace reaches terminal Ready");
+    assert_eq!(
+        builds.lock().await.as_slice(),
+        &[(
+            "workspace-fresh".to_owned(),
+            project_root.clone(),
+            std::collections::BTreeSet::from([changed_owner]),
+        )]
+    );
+
+    admission
+        .shutdown()
+        .await
+        .expect("drain fresh-workspace admission lane");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn failed_missing_base_retry_remains_a_full_generation_build() {
+    let build_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let build_modes = Arc::new(Mutex::new(Vec::new()));
+    let admission = WorkspaceGenerationAdmission::new(Arc::new({
+        let build_count = Arc::clone(&build_count);
+        let build_modes = Arc::clone(&build_modes);
+        move |_, _, candidate, build_mode, _changed_paths, _cancellation| {
+            let build_count = Arc::clone(&build_count);
+            let build_modes = Arc::clone(&build_modes);
+            Box::pin(async move {
+                build_modes.lock().await.push(format!("{build_mode:?}"));
+                if build_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) == 0 {
+                    Err(WorkspaceGenerationBuildFailure::new(
+                        WorkspaceGenerationFailureStage::GenerationBuilder,
+                        "synthetic missing-base failure",
+                    ))
+                } else {
+                    completed_generation(candidate)
+                }
+            })
+        }
+    }));
+    let root = std::env::temp_dir().join("asp-mutation-failed-base-retry");
+    let changed_path = root.join("src/lib.rs");
+
+    admission
+        .admit_observed_mutation(
+            "mutation-failed-base-1",
+            "workspace-failed-base",
+            root.clone(),
+            vec![changed_path.clone()],
+            candidate_identity(),
+        )
+        .await
+        .expect("admit first missing-base mutation");
+    assert_eq!(
+        admission
+            .wait_terminal("workspace-failed-base", &root)
+            .await
+            .expect("first missing-base attempt reaches terminal state")
+            .state,
+        WorkspaceGenerationAdmissionState::Failed
+    );
+
+    admission
+        .admit_observed_mutation(
+            "mutation-failed-base-2",
+            "workspace-failed-base",
+            root.clone(),
+            vec![changed_path],
+            candidate_identity(),
+        )
+        .await
+        .expect("retry missing-base mutation");
+    assert_eq!(
+        admission
+            .wait_terminal("workspace-failed-base", &root)
+            .await
+            .expect("retry reaches terminal Ready")
+            .state,
+        WorkspaceGenerationAdmissionState::Ready
+    );
+    assert_eq!(
+        build_modes.lock().await.as_slice(),
+        &["RestoreOrBuild", "RestoreOrBuild"]
+    );
+    admission
+        .shutdown()
+        .await
+        .expect("drain retry admission lane");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn mutation_queued_after_failed_base_rechecks_base_authority() {
+    let build_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let build_modes = Arc::new(Mutex::new(Vec::new()));
+    let release_first = Arc::new(tokio::sync::Semaphore::new(0));
+    let admission = WorkspaceGenerationAdmission::new(Arc::new({
+        let build_count = Arc::clone(&build_count);
+        let build_modes = Arc::clone(&build_modes);
+        let release_first = Arc::clone(&release_first);
+        move |_, _, candidate, build_mode, _changed_paths, _cancellation| {
+            let build_count = Arc::clone(&build_count);
+            let build_modes = Arc::clone(&build_modes);
+            let release_first = Arc::clone(&release_first);
+            Box::pin(async move {
+                build_modes.lock().await.push(format!("{build_mode:?}"));
+                if build_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) == 0 {
+                    release_first
+                        .acquire_owned()
+                        .await
+                        .map_err(|_| {
+                            WorkspaceGenerationBuildFailure::new(
+                                WorkspaceGenerationFailureStage::GenerationBuilder,
+                                "failed-base release lane closed",
+                            )
+                        })?
+                        .forget();
+                    Err(WorkspaceGenerationBuildFailure::new(
+                        WorkspaceGenerationFailureStage::GenerationBuilder,
+                        "synthetic queued missing-base failure",
+                    ))
+                } else {
+                    completed_generation(candidate)
+                }
+            })
+        }
+    }));
+    let root = std::env::temp_dir().join("asp-mutation-queued-failed-base");
+    let changed_path = root.join("src/lib.rs");
+
+    admission
+        .admit_observed_mutation(
+            "mutation-queued-failed-base-1",
+            "workspace-queued-failed-base",
+            root.clone(),
+            vec![changed_path.clone()],
+            candidate_identity(),
+        )
+        .await
+        .expect("admit first missing-base mutation");
+    admission
+        .admit_observed_mutation(
+            "mutation-queued-failed-base-2",
+            "workspace-queued-failed-base",
+            root.clone(),
+            vec![changed_path],
+            candidate_identity(),
+        )
+        .await
+        .expect("queue successor while missing-base build is active");
+    release_first.add_permits(1);
+
+    assert_eq!(
+        admission
+            .wait_terminal("workspace-queued-failed-base", &root)
+            .await
+            .expect("queued retry reaches terminal Ready")
+            .state,
+        WorkspaceGenerationAdmissionState::Ready
+    );
+    assert_eq!(
+        build_modes.lock().await.as_slice(),
+        &["RestoreOrBuild", "RestoreOrBuild"]
+    );
+    admission
+        .shutdown()
+        .await
+        .expect("drain queued failed-base admission lane");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attempt() {
     let build_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let release = Arc::new(tokio::sync::Semaphore::new(0));

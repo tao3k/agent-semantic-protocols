@@ -18,14 +18,28 @@ pub(super) fn admit_embedded_hook_config() -> Result<(), String> {
 /// is deliberately not part of this local recovery edge.
 pub(super) fn publish_embedded_hook_config(protocol_home: &Path) -> Result<&'static str, String> {
     let path = protocol_home.join("hooks/config.toml");
-    super::managed_hook_config::materialize(&path)
-        .map(super::managed_hook_config::ManagedHookConfigStatus::as_str)
-        .map_err(|error| {
-            format!(
-                "ASP binary/config publication failed for {} after binary switch: {error}",
-                path.display()
-            )
-        })
+    let status = super::managed_hook_config::materialize(&path).map_err(|error| {
+        format!(
+            "ASP binary/config publication failed for {} after binary switch: {error}",
+            path.display()
+        )
+    })?;
+    Ok(status.as_str())
+}
+
+pub(super) fn publish_embedded_hook_config_for_project(
+    protocol_home: &Path,
+    project_root: &Path,
+) -> Result<&'static str, String> {
+    let status = publish_embedded_hook_config(protocol_home)?;
+    let path = protocol_home.join("hooks/config.toml");
+    super::hook_runtime::publish_hook_matcher_generation(&path, project_root).map_err(|error| {
+        format!(
+            "ASP binary/Hook matcher publication failed for {} after config switch: {error}",
+            project_root.display()
+        )
+    })?;
+    Ok(status)
 }
 
 #[cfg(test)]

@@ -168,6 +168,7 @@ fn known_root_session_denies_direct_provider_binary_without_dispatch_capability(
         project_root: ".".to_string(),
         rankers: Vec::new(),
         providers: Vec::new(),
+        policy_providers: Vec::new(),
     };
     let payload = serde_json::json!({
         "tool_name": "Bash",

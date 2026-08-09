@@ -499,9 +499,56 @@ fn source_access_replay_preserves_configured_resident_dispatch() {
             .fields
             .get("denyReplayMessagePolicy")
             .and_then(serde_json::Value::as_str),
-        Some("preserve-agent-session-route")
+        Some("preserve-parser-route")
     );
     assert!(!decision.fields.contains_key("completionReceipt"));
+
+    fs::remove_dir_all(project_root).ok();
+}
+
+#[test]
+fn source_access_replay_preserves_exact_parser_route_message() {
+    let _state_home = AspStateHomeGuard::activate_isolated();
+    let project_root = unique_project_root();
+    let mut first = decision("parser-route-replay", 0);
+    first.message = "Use parser evidence. ASP route: asp rust search owner src/lib.rs".to_string();
+    let original_message = first.message.clone();
+
+    assert!(!agent_semantic_hook::apply_repeated_deny_replay(&project_root, &mut first).unwrap());
+    append_hook_event_state(&project_root, &first).expect("record first parser route denial");
+
+    let mut repeated = decision("parser-route-replay", 0);
+    repeated.message = original_message.clone();
+    assert!(agent_semantic_hook::apply_repeated_deny_replay(&project_root, &mut repeated).unwrap());
+    assert_eq!(repeated.message, original_message);
+    assert_eq!(
+        repeated
+            .fields
+            .get("denyReplayMessagePolicy")
+            .and_then(Value::as_str),
+        Some("preserve-parser-route")
+    );
+
+    fs::remove_dir_all(project_root).ok();
+}
+
+#[test]
+fn source_access_replay_key_does_not_collapse_distinct_source_owners() {
+    let _state_home = AspStateHomeGuard::activate_isolated();
+    let project_root = unique_project_root();
+    let mut rust = decision("distinct-source-owner", 0);
+    assert!(!agent_semantic_hook::apply_repeated_deny_replay(&project_root, &mut rust).unwrap());
+    append_hook_event_state(&project_root, &rust).expect("record Rust source denial");
+
+    let mut python = decision("distinct-source-owner", 1);
+    python.language_ids = vec!["python".into()];
+    python.routes[0].language_id = "python".into();
+    python.routes[0].provider_id = "py-harness".into();
+    python.routes[0].argv = vec!["asp".to_string(), "python".to_string()];
+    assert!(
+        !agent_semantic_hook::apply_repeated_deny_replay(&project_root, &mut python).unwrap(),
+        "a different language/path/route must start a distinct replay lane"
+    );
 
     fs::remove_dir_all(project_root).ok();
 }

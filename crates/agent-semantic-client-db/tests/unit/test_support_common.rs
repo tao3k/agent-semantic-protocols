@@ -51,8 +51,16 @@ pub(crate) fn workspace(
 ) -> (PathBuf, ResolvedState, ProviderIncrementalScoped) {
     let project_root = parent.join(name);
     std::fs::create_dir_all(&project_root).expect("create workspace database test project");
-    std::fs::create_dir(project_root.join(".git"))
-        .expect("create workspace database Git identity marker");
+    let git_init = std::process::Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(&project_root)
+        .output()
+        .expect("run git init for Gix-owned workspace identity");
+    assert!(
+        git_init.status.success(),
+        "git init failed: {}",
+        String::from_utf8_lossy(&git_init.stderr)
+    );
     let project_root =
         std::fs::canonicalize(project_root).expect("canonicalize workspace database test project");
     let resolved = ResolvedState::resolve(&project_root).expect("resolve workspace database state");

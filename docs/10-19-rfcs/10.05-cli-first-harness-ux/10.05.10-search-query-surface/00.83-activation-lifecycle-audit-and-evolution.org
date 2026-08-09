@@ -165,6 +165,21 @@ Live observations MUST be tagged with the authority revision at which they were
 obtained.  A revision change invalidates Ready until the required observations
 are refreshed.
 
+** ASP-RFC-10.05-ALAE-ATOMIC-GENERATION — Activation is one published aggregate
+
+Activation JSON, its artifact receipt, provider generation, configuration
+generation, and executable capability snapshot MUST be constructed beneath an
+unpublished candidate generation.  The control plane MUST validate the entire
+candidate and publish it through one linearization point.  A reader pins that
+published generation for its whole decision and therefore observes either the
+previous complete generation or the next complete generation, never a mixture.
+
+The Hook data plane MUST NOT discover providers, hash artifacts, probe =PATH=,
+repair activation, wait on a publication lock, or spawn a capability child.
+Those operations belong to install/sync publication.  Hook policy compilation
+captures executable capabilities once; classification consumes only that
+immutable snapshot.
+
 * Lifecycle state machine
 
 #+begin_example
@@ -296,6 +311,10 @@ The Lean model is =ASPProof.ActivationLifecycleAudit=.
 | ALAE-EVOLUTION | =generation_regression_cannot_be_applied= |
 | ALAE-EVOLUTION | =evolution_without_rollback_cannot_be_applied= |
 | ALAE-EVOLUTION | =evolution_without_compatibility_witness_cannot_be_applied= |
+| ALAE-ATOMIC-GENERATION | =incomplete_candidate_cannot_replace_published_generation= |
+| ALAE-ATOMIC-GENERATION | =digest_mismatched_candidate_cannot_replace_published_generation= |
+| ALAE-ATOMIC-GENERATION | =consistent_candidate_is_the_only_new_visible_generation= |
+| ALAE-ATOMIC-GENERATION | =two_file_activation_then_receipt_publish_is_not_consistent= |
 
 The JSON audit is isolated in =ASPProof.Audit.ActivationLifecycleAudit=.
 

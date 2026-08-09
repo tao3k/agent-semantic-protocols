@@ -55,6 +55,63 @@ impl ResolvedState {
         })
     }
 
+    /// Resolve a temporary checkout as a workspace owned by a durable project checkout.
+    pub fn resolve_temporary_workspace_with_owner_and_state_home(
+        temporary_cwd: impl AsRef<Path>,
+        owner_cwd: impl AsRef<Path>,
+        state_home: impl AsRef<Path>,
+    ) -> Result<Self, String> {
+        let temporary_cwd = canonicalize_if_possible(temporary_cwd.as_ref());
+        let owner_cwd = canonicalize_if_possible(owner_cwd.as_ref());
+        let state_home = canonicalize_parent(state_home.as_ref().to_path_buf());
+        let temporary_git = GitIdentity::discover(&temporary_cwd);
+        let temporary_checkout = CheckoutIdentity::new(&temporary_cwd, &temporary_git);
+        if !super::is_temporary_checkout_path(temporary_checkout.root()) {
+            return Err(format!(
+                "owner-bound temporary workspace must be under an operating-system temporary root: {}",
+                temporary_checkout.root().display()
+            ));
+        }
+        if temporary_git.toplevel.is_none() {
+            return Err(format!(
+                "owner-bound temporary workspace is not a Gix repository: {}",
+                temporary_checkout.root().display()
+            ));
+        }
+
+        let owner_git = GitIdentity::discover(&owner_cwd);
+        let owner_checkout = CheckoutIdentity::new(&owner_cwd, &owner_git);
+        let repo = RepoIdentity::from_checkout(&owner_git, &owner_checkout);
+        if !repo.persistence.is_durable() {
+            return Err(format!(
+                "temporary workspace owner is not a durable project: {}",
+                owner_checkout.root().display()
+            ));
+        }
+        let discovered_temporary_repo =
+            RepoIdentity::from_checkout(&temporary_git, &temporary_checkout);
+        if discovered_temporary_repo.persistence.is_durable()
+            && discovered_temporary_repo.repo_id != repo.repo_id
+        {
+            return Err(format!(
+                "Gix resolved temporary checkout {} to project {}, not owner project {}",
+                temporary_checkout.root().display(),
+                discovered_temporary_repo.repo_id.as_str(),
+                repo.repo_id.as_str()
+            ));
+        }
+        let workspace =
+            WorkspaceIdentity::from_checkout(&temporary_git, &temporary_checkout, &repo.repo_id);
+        let paths = StatePaths::new(&state_home, &repo.repo_id, &workspace.workspace_id);
+        Ok(Self {
+            state_home,
+            repo,
+            workspace,
+            scope_id: ScopeId(DEFAULT_SCOPE_ID.to_string()),
+            paths,
+        })
+    }
+
     /// Render a diagnostic DTO for `asp state locate`.
     pub fn locate_report(&self) -> StateLocateReport {
         StateLocateReport {

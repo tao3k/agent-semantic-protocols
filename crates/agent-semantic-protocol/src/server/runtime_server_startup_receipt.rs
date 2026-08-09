@@ -8,7 +8,7 @@ pub(crate) struct RuntimeServerStartupReceipt<'a> {
     pub owner_epoch: u64,
     pub stage: &'a str,
     pub state: &'a str,
-    pub elapsed_micros: u128,
+    pub elapsed_micros: u64,
     pub error: Option<&'a str>,
 }
 
@@ -34,7 +34,7 @@ pub(crate) async fn publish(
         owner_epoch,
         stage,
         state,
-        elapsed_micros: started.elapsed().as_micros(),
+        elapsed_micros: started.elapsed().as_micros().try_into().unwrap_or(u64::MAX),
         error,
     })
     .map_err(|e| format!("encode startup receipt: {e}"))?;

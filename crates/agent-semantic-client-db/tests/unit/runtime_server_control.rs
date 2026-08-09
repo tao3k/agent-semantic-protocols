@@ -397,7 +397,10 @@ async fn failed_endpoint_publication_removes_every_bound_runtime_artifact() {
     .await
     .err()
     .expect("endpoint publication must fail");
-    assert!(error.contains("failed to create Runtime Server endpoint directory"));
+    assert!(
+        error.contains("failed to create Runtime Server endpoint directory"),
+        "unexpected endpoint publication failure: {error}"
+    );
     assert!(
         !tokio::fs::try_exists(&endpoint.socket_path)
             .await

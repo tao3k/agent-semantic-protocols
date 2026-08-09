@@ -4,8 +4,9 @@
 
 mod cli;
 mod command;
+pub mod session_control_plane;
 pub use command::graph_turbo_resident_process::{
-    GraphTurboResidentLaunchSpec, GraphTurboResidentProcess, admit_candidate_rank_receipt,
+    GraphTurboResidentLaunchSpec, GraphTurboResidentProcess,
 };
 pub use command::search_router_graph_state;
 mod exact_projection_diagnostic;
@@ -14,6 +15,7 @@ mod exact_projection_trace;
 mod hook_break_glass;
 mod multi_agent_session;
 mod resident_exact_projection;
+pub(crate) mod runtime_artifact;
 pub(crate) mod server;
 pub use agent_semantic_context_product as context_product_state;
 

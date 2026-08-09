@@ -313,13 +313,13 @@ fn direct_read_route(
     match selector_kind {
         SourceSelectorKind::ExactPath => provider.route_from_template(
             DecisionRouteKind::Owner,
-            &provider.routes.owner,
+            &provider.owner_route,
             Some(path),
             Some(path),
         ),
         SourceSelectorKind::Pattern => provider.route_from_template(
             DecisionRouteKind::Lexical,
-            &provider.routes.lexical,
+            &provider.lexical_route,
             Some(path),
             Some(path),
         ),
@@ -329,7 +329,7 @@ fn direct_read_route(
 fn source_access_ingest_route(provider: &HookProviderProjection) -> DecisionRoute {
     provider.route_from_template(
         DecisionRouteKind::Ingest,
-        &provider.routes.ingest,
+        &provider.ingest_route,
         None,
         None,
     )

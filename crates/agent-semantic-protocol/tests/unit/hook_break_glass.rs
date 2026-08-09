@@ -6,16 +6,9 @@ use serde_json::json;
 use tempfile::tempdir;
 
 #[test]
-fn naked_no_agent_assignment_is_not_authority() {
-    let error = inline_break_glass_request("ASP_NO_AGENT=1 cargo test")
-        .expect_err("naked bypass must be rejected");
-    assert!(error.contains("ASP_BREAK_GLASS_CAPABILITY"));
-}
-
-#[test]
 fn inline_capability_extracts_only_the_bound_protected_command() {
     let nonce = "a".repeat(64);
-    let command = format!("ASP_NO_AGENT=1 ASP_BREAK_GLASS_CAPABILITY={nonce} cargo test -p owner");
+    let command = format!("ASP_BREAK_GLASS_CAPABILITY={nonce} cargo test -p owner");
     let (actual_nonce, protected) = inline_break_glass_request(&command)
         .expect("parse request")
         .expect("break-glass request");
@@ -59,7 +52,7 @@ fn capability_is_consumed_once_and_replay_is_audited_failure() {
         "session_id": "root-session",
         "tool_input": {
             "cmd": format!(
-                "ASP_NO_AGENT=1 ASP_BREAK_GLASS_CAPABILITY={} {protected_command}",
+                "ASP_BREAK_GLASS_CAPABILITY={} {protected_command}",
                 capability.nonce
             )
         }

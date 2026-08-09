@@ -9,11 +9,71 @@ fn bash_ast_tokens_strip_quotes_from_source_dump_range() {
 }
 
 #[test]
-fn bash_ast_tokens_unwrap_login_shell_script() {
+fn bash_ast_tokens_surface_outer_and_nested_wrapper_stages() {
     assert_eq!(
         semantic_shell_tokens("bash -lc \"sed -n '1,40p' src/lib.rs\""),
-        vec!["sed", "-n", "1,40p", "src/lib.rs"]
+        vec![
+            "bash",
+            "-lc",
+            "sed -n '1,40p' src/lib.rs",
+            "sed",
+            "-n",
+            "1,40p",
+            "src/lib.rs"
+        ]
     );
+    assert_eq!(
+        semantic_shell_tokens("/opt/new-wrapper --program 'cargo test -p agent-semantic-hook'"),
+        vec![
+            "/opt/new-wrapper",
+            "--program",
+            "cargo test -p agent-semantic-hook",
+            "cargo",
+            "test",
+            "-p",
+            "agent-semantic-hook"
+        ]
+    );
+}
+
+#[test]
+fn bash_ast_tokens_preserve_absolute_shell_and_nested_command_modes() {
+    for command in [
+        "/bin/bash -c 'cargo test -p agent-semantic-hook'",
+        "/bin/bash -lc 'cargo test -p agent-semantic-hook'",
+        "/usr/bin/env /bin/zsh -c 'cargo test -p agent-semantic-hook'",
+    ] {
+        assert_eq!(
+            semantic_shell_tokens(command),
+            if command.starts_with("/usr/bin/env") {
+                vec![
+                    "/usr/bin/env",
+                    "/bin/zsh",
+                    "-c",
+                    "cargo test -p agent-semantic-hook",
+                    "cargo",
+                    "test",
+                    "-p",
+                    "agent-semantic-hook",
+                ]
+            } else {
+                vec![
+                    "/bin/bash",
+                    if command.contains(" -lc ") {
+                        "-lc"
+                    } else {
+                        "-c"
+                    },
+                    "cargo test -p agent-semantic-hook",
+                    "cargo",
+                    "test",
+                    "-p",
+                    "agent-semantic-hook",
+                ]
+            },
+            "{command}"
+        );
+    }
 }
 
 #[test]

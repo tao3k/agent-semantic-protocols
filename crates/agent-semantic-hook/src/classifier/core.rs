@@ -49,17 +49,158 @@ pub fn classify_hook(
     })
 }
 
+fn is_asp_no_agent_assignment(token: &str) -> bool {
+    token
+        .split_once('=')
+        .is_some_and(|(name, _)| name == "ASP_NO_AGENT")
+}
+
+/// Returns true when the intercepted command carries the process-scoped Hook
+/// recovery override. This uses the normalized shell token projection, so the
+/// result is independent of the concrete shell or wrapper executable name.
+pub fn asp_no_agent_passthrough_requested(payload: &Value) -> bool {
+    collect_payload_tool_actions(payload).iter().any(|action| {
+        action
+            .command_tokens()
+            .is_some_and(|tokens| tokens.iter().any(|token| is_asp_no_agent_assignment(token)))
+    })
+}
+
+/// Constructs the terminal allow receipt for the highest-priority recovery
+/// override. Callers may use this before project discovery, policy loading,
+/// Runtime access, locks, or telemetry.
+pub fn asp_no_agent_passthrough_decision(
+    platform: &str,
+    event: &str,
+    payload: &Value,
+) -> HookDecision {
+    let actions = collect_payload_tool_actions(payload);
+    let subject = actions.first().map(subject_for_action).unwrap_or_default();
+    let mut decision = allow(platform, event, subject);
+    decision.message = "Allowed because `ASP_NO_AGENT` is set. Hook policy evaluation was bypassed before configuration, Runtime, locks, and telemetry; ASP itself remains available.".to_owned();
+    decision.fields.insert(
+        "aspNoAgentPassthrough".to_owned(),
+        serde_json::Value::Bool(true),
+    );
+    decision.fields.insert(
+        "policyPriority".to_owned(),
+        serde_json::Value::String("recovery-override".to_owned()),
+    );
+    decision
+}
+
+fn normalized_agent_name(value: &str) -> &str {
+    value.trim().trim_start_matches('@')
+}
+
+fn dispatch_target_agent(decision: &HookDecision) -> Option<&str> {
+    ["targetAgentName", "residentChildName", "residentName"]
+        .iter()
+        .find_map(|field| decision.fields.get(*field))
+        .and_then(serde_json::Value::as_str)
+}
+
+fn dispatch_target_field<'a>(decision: &'a HookDecision, field: &str) -> Option<&'a str> {
+    decision
+        .fields
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+}
+
+pub(super) fn resolve_dispatch_decision(
+    mut decision: HookDecision,
+    payload: &serde_json::Value,
+) -> HookDecision {
+    if decision.decision == DecisionKind::Allow
+        || decision.reason_kind != ReasonKind::SubagentReceiptRequired
+    {
+        return decision;
+    }
+    let current_agent = payload
+        .get("agent_type")
+        .or_else(|| payload.get("agentType"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty());
+    let current_agent_id = payload
+        .get("agent_id")
+        .or_else(|| payload.get("agentId"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty());
+    let target_agent = dispatch_target_agent(&decision);
+    if current_agent
+        .zip(current_agent_id)
+        .is_some_and(|(current, _)| {
+            target_agent.is_some_and(|target| {
+                normalized_agent_name(current) == normalized_agent_name(target)
+            })
+        })
+    {
+        decision.decision = DecisionKind::Allow;
+        decision.reason_kind = ReasonKind::None;
+        decision.routes.clear();
+        decision.message = format!(
+            "Allowed: this command is already executing inside the configured typed `{}` Agent; dispatch is idempotent and must not recurse.",
+            current_agent.unwrap_or("subagent")
+        );
+        decision.fields.insert(
+            "dispatchSatisfied".to_owned(),
+            serde_json::Value::Bool(true),
+        );
+        decision.fields.insert(
+            "currentAgentType".to_owned(),
+            serde_json::Value::String(current_agent.unwrap_or_default().to_owned()),
+        );
+        return decision;
+    }
+
+    let execution_lane = decision
+        .fields
+        .get("executionLane")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("configured");
+    let target = target_agent.unwrap_or("the typed Agent returned by ChoicePlane");
+    let target_display = target.trim_start_matches('@');
+    let target_role = dispatch_target_field(&decision, "targetAgentRole").unwrap_or("configured");
+    let target_description = dispatch_target_field(&decision, "targetAgentDescription")
+        .unwrap_or("the configured typed execution Agent");
+    let job_scope = match execution_lane {
+        "testing" => "testing/build jobs",
+        "explore" | "search" => "search/query jobs",
+        lane => lane,
+    };
+    let scoped_command = decision
+        .subject
+        .command
+        .as_deref()
+        .unwrap_or("the denied command");
+    decision.message = format!(
+        "This command is denied only in the current Agent; ASP remains available and the job is not globally blocked. Keep the Hook enabled. Please use `asp session --agents choice-plane` to create or resume typed `@{target_display}` (role `{target_role}`: {target_description}) for {job_scope}, then run this exact scoped command there: `{scoped_command}`. Do not retry it in the current Agent."
+    );
+    decision.fields.insert(
+        "dispatchGuidance".to_owned(),
+        serde_json::Value::String("delegate-exact-command-to-typed-agent".to_owned()),
+    );
+    decision
+}
+
 /// Classify one hook payload using a named `HookClassificationRequest`.
 pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> HookDecision {
+    if asp_no_agent_passthrough_requested(request.payload) {
+        return asp_no_agent_passthrough_decision(request.platform, request.event, request.payload);
+    }
     let actions = collect_payload_tool_actions(request.payload);
     let decision = if let Some(decision) = classify_non_tool_event(&request) {
         decision
-    } else if let Some(decision) = classify_tool_actions(&request, &actions) {
+    } else if request.event == "pre-tool"
+        && let Some(decision) = classify_tool_actions(&request, &actions)
+    {
         decision
     } else {
         let subject = actions.first().map(subject_for_action).unwrap_or_default();
         allow(request.platform, request.event, subject)
     };
+    let decision = resolve_dispatch_decision(decision, request.payload);
     let decision = with_selector_only_subagent_message(decision);
     let decision = with_prompt_scope_fields(decision, request.payload);
     let decision =
@@ -68,7 +209,7 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
     enforce_org_choice_plane_boundary(decision)
 }
 
-fn enforce_org_choice_plane_boundary(mut decision: HookDecision) -> HookDecision {
+pub(super) fn enforce_org_choice_plane_boundary(mut decision: HookDecision) -> HookDecision {
     if decision.decision == DecisionKind::Allow {
         return decision;
     }
@@ -86,8 +227,6 @@ fn enforce_org_choice_plane_boundary(mut decision: HookDecision) -> HookDecision
         "transport",
         "residentName",
         "residentChildName",
-        "targetAgentName",
-        "targetAgentRole",
         "targetAgentSelectionSource",
         "canonicalTarget",
         "agentSessionAction",
@@ -114,10 +253,33 @@ fn enforce_org_choice_plane_boundary(mut decision: HookDecision) -> HookDecision
 }
 
 fn with_hook_match_receipt(
-    mut decision: HookDecision,
+    decision: HookDecision,
     payload: &Value,
     actions: &[ToolAction],
     config: &ClientHookConfig,
+) -> HookDecision {
+    let mut decision = with_action_receipt_fields(decision, payload, actions);
+    if let Some((generation_digest, kernel_version)) = config.hook_policy_receipt() {
+        decision.fields.insert(
+            "hookPolicySnapshotDigest".to_string(),
+            Value::String(generation_digest.to_owned()),
+        );
+        decision.fields.insert(
+            "hookPolicyKernelVersion".to_string(),
+            Value::String(kernel_version.to_owned()),
+        );
+        decision.fields.insert(
+            "hookPolicySynchronousDependencies".to_string(),
+            Value::Array(Vec::new()),
+        );
+    }
+    decision
+}
+
+pub(super) fn with_action_receipt_fields(
+    mut decision: HookDecision,
+    payload: &Value,
+    actions: &[ToolAction],
 ) -> HookDecision {
     let payload_keys = payload
         .as_object()
@@ -149,20 +311,6 @@ fn with_hook_match_receipt(
         "normalizedActions".to_string(),
         Value::Array(normalized_actions),
     );
-    if let Some((generation_digest, kernel_version)) = config.hook_policy_receipt() {
-        decision.fields.insert(
-            "hookPolicySnapshotDigest".to_string(),
-            Value::String(generation_digest.to_owned()),
-        );
-        decision.fields.insert(
-            "hookPolicyKernelVersion".to_string(),
-            Value::String(kernel_version.to_owned()),
-        );
-        decision.fields.insert(
-            "hookPolicySynchronousDependencies".to_string(),
-            Value::Array(Vec::new()),
-        );
-    }
     decision
 }
 
@@ -202,7 +350,7 @@ fn with_prompt_scope_fields(mut decision: HookDecision, payload: &Value) -> Hook
     decision
 }
 
-fn collect_payload_tool_actions(payload: &Value) -> Vec<ToolAction> {
+pub(super) fn collect_payload_tool_actions(payload: &Value) -> Vec<ToolAction> {
     let tool_name = payload_string(payload, "tool_name")
         .or_else(|| payload_string(payload, "toolName"))
         .unwrap_or_default();
@@ -214,6 +362,85 @@ fn collect_payload_tool_actions(payload: &Value) -> Vec<ToolAction> {
         .or_else(|| payload.get("arguments"))
         .unwrap_or(payload);
     collect_tool_actions(&tool_name, tool_input)
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DirectReadSourceKey {
+    pub path: String,
+    pub extension: String,
+    pub tool_name: String,
+}
+
+/// Normalized lookup key for a wrapped registered-source decision shard.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ShellReadSourceKey {
+    pub path: String,
+    pub extension: String,
+    pub command: String,
+    pub command_tokens: Vec<String>,
+    pub tool_name: String,
+}
+
+/// Return the normalized path and extension key for the direct-read matcher.
+///
+/// This consumes the same ToolAction normalization as the full policy engine;
+/// no Host tool name is matched by the cache layer itself.
+pub fn direct_read_source_key(payload: &Value) -> Option<DirectReadSourceKey> {
+    let actions = collect_payload_tool_actions(payload);
+    let mut relevant = actions
+        .iter()
+        .filter(|action| action.operation == crate::tool_action::OperationIntent::DirectRead);
+    let action = relevant.next()?;
+    if relevant.next().is_some() {
+        return None;
+    }
+    let [path] = action.paths.as_slice() else {
+        return None;
+    };
+    let dot = path.rfind('.')?;
+    Some(DirectReadSourceKey {
+        path: path.clone(),
+        extension: path[dot..].to_ascii_lowercase(),
+        tool_name: action.tool_name.clone(),
+    })
+}
+
+pub fn direct_read_source_extension(payload: &Value) -> Option<String> {
+    direct_read_source_key(payload).map(|key| key.extension)
+}
+
+/// Return the normalized command/path key for a one-action shell read.
+pub fn shell_read_source_key(payload: &Value) -> Option<ShellReadSourceKey> {
+    let actions = collect_payload_tool_actions(payload);
+    let mut relevant = actions.iter().filter(|action| {
+        action.surface == crate::tool_action::ToolSurface::CodexShell
+            && action.operation == crate::tool_action::OperationIntent::ShellCommand
+    });
+    let action = relevant.next()?;
+    if relevant.next().is_some() {
+        return None;
+    }
+    let path = action
+        .paths
+        .iter()
+        .rev()
+        .find(|path| path.rfind('.').is_some())?;
+    let dot = path.rfind('.')?;
+    Some(ShellReadSourceKey {
+        path: path.clone(),
+        extension: path[dot..].to_ascii_lowercase(),
+        command: action.command.clone()?,
+        command_tokens: action.command_tokens()?.into_owned(),
+        tool_name: action.tool_name.clone(),
+    })
+}
+
+pub(crate) fn default_allow_for_normalized_action(
+    platform: &str,
+    event: &str,
+    action: &ToolAction,
+) -> HookDecision {
+    allow(platform, event, subject_for_action(action))
 }
 
 fn classify_non_tool_event(request: &HookClassificationRequest<'_>) -> Option<HookDecision> {

@@ -128,11 +128,11 @@ impl RuntimeServer {
             generation_admission: None,
             graph_turbo_evaluation_builder: None,
             graph_turbo_resident_status: None,
-agent_session_registry_owner: None,
-session_control_plane_runtime_registry: Arc::new(
-    crate::SessionControlPlaneRuntimeRegistry::default(),
-),
-agent_session_status: None,
+            agent_session_registry_owner: None,
+            session_control_plane_runtime_registry: Arc::new(
+                crate::SessionControlPlaneRuntimeRegistry::default(),
+            ),
+            agent_session_status: None,
             codex_multi_agent_control_plane_owner: Arc::new(
                 crate::codex_multi_agent_control_plane_owner::CodexMultiAgentControlPlaneOwner::new(
                 ),

@@ -15,11 +15,12 @@ mod dependency_index;
 pub mod engine;
 pub use engine::{
     SessionControlPlaneAgentRegistration, SessionControlPlaneDelegationProposal,
-    SessionControlPlaneRuntimeMetricsSnapshot, SessionControlPlaneSnapshot,
-    SessionControlPlaneRuntime, SessionControlPlaneRuntimeRegistry,
+    SessionControlPlaneRuntime, SessionControlPlaneRuntimeMetricsSnapshot,
+    SessionControlPlaneRuntimeRegistry, SessionControlPlaneSnapshot,
     SessionControlPlaneTransactionReceipt,
 };
 pub mod graph_turbo_cache;
+pub mod parser_read_authority;
 mod runtime_concurrency;
 pub mod runtime_generation_cancellation;
 pub mod runtime_server;

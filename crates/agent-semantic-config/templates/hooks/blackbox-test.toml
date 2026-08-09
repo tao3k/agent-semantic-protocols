@@ -1,0 +1,12 @@
+schemaId = "agent.semantic-protocols.hook-blackbox-test"
+schemaVersion = "1"
+# Exclusive hard limit for Hook-owned thread CPU work.
+maxDecisionMicros = 1000
+# Wall-clock operating target, enforced at the configured sample quorum.
+typicalDecisionMicros = 500
+
+[coverage]
+generator = "compiled-policy-balanced-v1"
+maxWrapperDepth = 4
+includeNegativeExtensionMutation = true
+minimumWitnesses = 64

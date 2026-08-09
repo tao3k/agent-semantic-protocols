@@ -4,8 +4,8 @@ use std::fs;
 use serde_json::{Value, json};
 
 use super::{
-    CAPABILITY_CHILD_ENV, classify, default_client_config_template, load_client_config_for_project,
-    registry, run_with_projection_capabilities_for, shell, temp_project_root,
+    classify, default_client_config_template, load_policy_with_configured_capabilities, registry,
+    shell, temp_project_root,
 };
 
 #[path = "branch_coverage/scenarios.rs"]
@@ -584,12 +584,6 @@ fn validate_atom_witness(
 
 #[test]
 fn every_production_branch_atom_has_a_classifier_witness() {
-    const TEST_NAME: &str = "match_policy_contract::branch_coverage::every_production_branch_atom_has_a_classifier_witness";
-    if std::env::var_os(CAPABILITY_CHILD_ENV).is_none() {
-        run_with_projection_capabilities_for(TEST_NAME);
-        return;
-    }
-
     let root = temp_project_root();
     fs::create_dir_all(root.join("src")).expect("create branch contract source root");
     fs::write(root.join("src/app.ts"), "export const value = 1;\n")
@@ -602,10 +596,9 @@ fn every_production_branch_atom_has_a_classifier_witness() {
     fs::write(root.join("Cargo.toml"), "[package]\nname = \"hook\"\n")
         .expect("write TOML projection fixture");
     let config_path = root.join("config.toml");
-    fs::write(&config_path, default_client_config_template())
-        .expect("write production hook config");
-    let config =
-        load_client_config_for_project(&config_path, &root).expect("load production hook config");
+    let template = default_client_config_template();
+    fs::write(&config_path, &template).expect("write production hook config");
+    let config = load_policy_with_configured_capabilities(&config_path, &root, &template);
     let mut runtime = registry();
     runtime.project_root = root.to_string_lossy().into_owned();
     let policy = parse_production_policy();

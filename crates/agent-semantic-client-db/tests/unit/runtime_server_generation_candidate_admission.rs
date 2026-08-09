@@ -219,6 +219,75 @@ async fn tracked_source_edit_discovers_and_admits_a_new_generation() {
     admission.shutdown().await.expect("drain admission lane");
 }
 
+#[tokio::test]
+async fn untracked_source_owner_discovers_and_admits_a_new_generation() {
+    let fixture = tempfile::tempdir().expect("candidate admission fixture");
+    let project_root = fixture.path();
+    run_git(project_root, &["init", "--quiet"]);
+    fs::create_dir_all(project_root.join("src")).expect("create source root");
+    fs::write(
+        project_root.join("src/lib.rs"),
+        "pub fn value() -> u8 { 1 }\n",
+    )
+    .expect("write initial source");
+    run_git(project_root, &["add", "src/lib.rs"]);
+
+    let initial = discover_workspace_generation_candidate(project_root)
+        .await
+        .expect("discover initial candidate");
+    fs::write(
+        project_root.join("src/new_owner.rs"),
+        "pub fn newly_materialized_owner() -> u8 { 2 }\n",
+    )
+    .expect("write untracked source owner");
+    let advanced = discover_workspace_generation_candidate(project_root)
+        .await
+        .expect("discover candidate with untracked owner");
+
+    assert_ne!(
+        initial.candidate_generation.digest, advanced.candidate_generation.digest,
+        "a live untracked language owner must advance the candidate generation"
+    );
+
+    let builds = Arc::new(Mutex::new(Vec::new()));
+    let admission = WorkspaceGenerationAdmission::new(Arc::new({
+        let builds = Arc::clone(&builds);
+        move |_workspace_identity,
+              _project_root,
+              candidate,
+              _build_mode,
+              changed_paths,
+              _cancellation| {
+            let builds = Arc::clone(&builds);
+            Box::pin(async move {
+                builds.lock().await.push((
+                    candidate.candidate_generation.digest.clone(),
+                    (*changed_paths).clone(),
+                ));
+                completed_generation(candidate)
+            })
+        }
+    }));
+    admission
+        .admit(
+            "workspace-untracked-source-owner",
+            project_root.to_path_buf(),
+            advanced.clone(),
+        )
+        .await
+        .expect("admit candidate containing untracked owner");
+    let ready = admission
+        .wait_terminal("workspace-untracked-source-owner", project_root)
+        .await
+        .expect("wait for untracked owner candidate");
+    assert_eq!(
+        ready.candidate_generation.digest,
+        advanced.candidate_generation.digest
+    );
+    assert_eq!(builds.lock().await.len(), 1);
+    admission.shutdown().await.expect("drain admission lane");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn ensure_coalesces_an_advanced_candidate_behind_an_inflight_build() {
     let builds = Arc::new(Mutex::new(Vec::new()));

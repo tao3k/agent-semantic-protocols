@@ -44,28 +44,39 @@ fn codex_cli_hook_enforcement_probe_reports_real_status_when_enabled() {
         output.status.success(),
         "asp hook doctor probe failed: stdout={stdout} stderr={stderr}"
     );
-    if stdout.contains("enforcement=enforced") {
-        assert!(
-            stdout.contains("enforcementReason=hook-deny-observed"),
-            "enforced Codex CLI probe did not report the deny reason: stdout={stdout}"
-        );
-        assert!(
-            stdout.contains("sentinel=false"),
-            "enforced Codex CLI probe leaked the protected source sentinel: stdout={stdout}"
-        );
-    } else {
-        assert!(
-            stdout.contains("enforcement=configured-but-not-enforced"),
-            "Codex CLI probe must either enforce or report a fail-safe non-enforced state: stdout={stdout}"
-        );
-        assert!(
-            stdout.contains("enforcementReason=source-sentinel-leaked")
-                || stdout.contains("enforcementReason=hook-deny-not-observed"),
-            "non-enforced Codex CLI probe did not explain the hook gap: stdout={stdout}"
-        );
-    }
+    assert_codex_cli_hook_enforced(&stdout);
 
     let _ = fs::remove_dir_all(root);
+}
+
+fn assert_codex_cli_hook_enforced(stdout: &str) {
+    assert!(
+        stdout.contains("enforcement=enforced"),
+        "Codex CLI Hook E2E is a publication gate; configured-but-not-enforced, missing delivery, and source leakage are failures: stdout={stdout}"
+    );
+    assert!(
+        stdout.contains("enforcementReason=hook-deny-observed"),
+        "enforced Codex CLI probe did not report the deny reason: stdout={stdout}"
+    );
+    assert!(
+        stdout.contains("sentinel=false"),
+        "enforced Codex CLI probe leaked the protected source sentinel: stdout={stdout}"
+    );
+}
+
+#[test]
+fn codex_cli_publication_gate_accepts_observed_deny_without_source_bytes() {
+    assert_codex_cli_hook_enforced(
+        "enforcement=enforced enforcementReason=hook-deny-observed sentinel=false",
+    );
+}
+
+#[test]
+#[should_panic(expected = "publication gate")]
+fn codex_cli_publication_gate_rejects_configured_but_not_enforced() {
+    assert_codex_cli_hook_enforced(
+        "enforcement=configured-but-not-enforced enforcementReason=source-sentinel-leaked sentinel=true",
+    );
 }
 
 fn run_install_plugin(root: &Path, test_path: &std::ffi::OsStr, codex_home: &Path) -> Output {

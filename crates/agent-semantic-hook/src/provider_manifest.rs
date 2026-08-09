@@ -36,6 +36,19 @@ pub fn build_default_activation(project_root: &Path) -> Result<HookActivation, S
     build_default_activation_from_selections(project_root, &selections)
 }
 
+/// Build the default activation against an explicitly selected State Home.
+///
+/// Keeping State Home in the call graph makes concurrent callers independent;
+/// the environment-resolving entry point above is only a process-boundary
+/// convenience wrapper.
+pub fn build_default_activation_with_state_home(
+    project_root: &Path,
+    state_home: &Path,
+) -> Result<HookActivation, String> {
+    let selections = default_activation_selections_with_state_home(project_root, state_home)?;
+    build_default_activation_from_selections(project_root, &selections)
+}
+
 #[cfg(test)]
 #[path = "../tests/unit/provider_command_selection_scope.rs"]
 mod provider_command_selection_scope_tests;
@@ -379,23 +392,125 @@ pub fn default_activation_selections(
     )
 }
 
+pub fn default_activation_selections_with_state_home(
+    project_root: &Path,
+    state_home: &Path,
+) -> Result<DefaultActivationSelections, String> {
+    default_activation_selections_for_scope_with_state_home(
+        project_root,
+        state_home,
+        &ProviderCommandSelectionScopeV1::CompleteGeneration,
+        None,
+    )
+}
+
 pub fn default_activation_selections_for_scope(
     project_root: &Path,
     scope: &ProviderCommandSelectionScopeV1,
     activation_path: Option<&Path>,
 ) -> Result<DefaultActivationSelections, String> {
-    let providers = provider_command_selections_for_scope(project_root, scope)?;
-    let graph_turbo = capture_current_asp_binary_selection(activation_path)?;
+    let state_paths = agent_semantic_runtime::project_state_paths(project_root)
+        .map_err(|error| format!("failed to resolve ASP project state paths: {error}"))?;
+    default_activation_selections_for_scope_with_paths(
+        project_root,
+        &state_paths,
+        scope,
+        activation_path,
+    )
+}
+
+pub fn default_activation_selections_for_scope_with_state_home(
+    project_root: &Path,
+    state_home: &Path,
+    scope: &ProviderCommandSelectionScopeV1,
+    activation_path: Option<&Path>,
+) -> Result<DefaultActivationSelections, String> {
+    let state_paths =
+        agent_semantic_runtime::project_state_paths_with_state_home(project_root, state_home)
+            .map_err(|error| format!("failed to resolve ASP project state paths: {error}"))?;
+    default_activation_selections_for_scope_with_paths(
+        project_root,
+        &state_paths,
+        scope,
+        activation_path,
+    )
+}
+
+fn default_activation_selections_for_scope_with_paths(
+    project_root: &Path,
+    state_paths: &agent_semantic_runtime::state::ProjectStatePaths,
+    scope: &ProviderCommandSelectionScopeV1,
+    activation_path: Option<&Path>,
+) -> Result<DefaultActivationSelections, String> {
+    default_activation_selections_for_scope_with_context(
+        project_root,
+        state_paths,
+        scope,
+        activation_path,
+        None,
+    )
+}
+
+fn default_activation_selections_for_scope_with_context(
+    project_root: &Path,
+    state_paths: &agent_semantic_runtime::state::ProjectStatePaths,
+    scope: &ProviderCommandSelectionScopeV1,
+    activation_path: Option<&Path>,
+    asp_binary: Option<&Path>,
+) -> Result<DefaultActivationSelections, String> {
+    let providers =
+        provider_command_selections_for_scope_with_paths(project_root, state_paths, scope)?;
+    let graph_turbo = match asp_binary {
+        Some(binary) => capture_asp_binary_selection(binary, activation_path)?,
+        None => capture_current_asp_binary_selection(activation_path)?,
+    };
     Ok(DefaultActivationSelections::new(providers, graph_turbo))
+}
+
+pub fn default_activation_selections_with_state_home_and_binary(
+    project_root: &Path,
+    state_home: &Path,
+    asp_binary: &Path,
+    activation_path: Option<&Path>,
+) -> Result<DefaultActivationSelections, String> {
+    let state_paths =
+        agent_semantic_runtime::project_state_paths_with_state_home(project_root, state_home)
+            .map_err(|error| format!("failed to resolve ASP project state paths: {error}"))?;
+    default_activation_selections_for_scope_with_context(
+        project_root,
+        &state_paths,
+        &ProviderCommandSelectionScopeV1::CompleteGeneration,
+        activation_path,
+        Some(asp_binary),
+    )
 }
 
 pub fn provider_command_selections_for_scope(
     project_root: &Path,
     scope: &ProviderCommandSelectionScopeV1,
 ) -> Result<Vec<ProviderCommandSelection>, String> {
-    let project_config = ProjectProviderConfigSet::load(project_root)?;
     let state_paths = agent_semantic_runtime::project_state_paths(project_root)
         .map_err(|error| format!("failed to resolve ASP project state paths: {error}"))?;
+    provider_command_selections_for_scope_with_paths(project_root, &state_paths, scope)
+}
+
+pub fn provider_command_selections_for_scope_with_state_home(
+    project_root: &Path,
+    state_home: &Path,
+    scope: &ProviderCommandSelectionScopeV1,
+) -> Result<Vec<ProviderCommandSelection>, String> {
+    let state_paths =
+        agent_semantic_runtime::project_state_paths_with_state_home(project_root, state_home)
+            .map_err(|error| format!("failed to resolve ASP project state paths: {error}"))?;
+    provider_command_selections_for_scope_with_paths(project_root, &state_paths, scope)
+}
+
+fn provider_command_selections_for_scope_with_paths(
+    project_root: &Path,
+    state_paths: &agent_semantic_runtime::state::ProjectStatePaths,
+    scope: &ProviderCommandSelectionScopeV1,
+) -> Result<Vec<ProviderCommandSelection>, String> {
+    let project_config = ProjectProviderConfigSet::load(project_root)?;
     let mut providers = Vec::new();
     for manifest in provider_manifests() {
         if crate::provider_registry::registered_provider_kind(manifest.language_id.as_str())?

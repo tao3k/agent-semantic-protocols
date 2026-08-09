@@ -25,6 +25,9 @@ pub enum AgentSessionRegistryIpcOperation {
     RecordHostLifecycleEvent {
         event: AgentHostLifecycleEventIpc,
     },
+    RecordHostExecutionObservation {
+        observation: AgentHostExecutionObservationIpc,
+    },
     RecordHostNonMatch {
         observation: AgentHostNonMatchIpc,
     },
@@ -98,12 +101,17 @@ pub enum AgentSessionRegistryIpcOperation {
 #[serde(rename_all = "kebab-case")]
 pub enum AgentHostLifecycleEventKind {
     Started,
+    Resumed,
     Stopped,
+    Achieved,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AgentHostLifecycleEventIpc {
+    pub host_event_id: String,
+    pub host_event_sequence: u64,
+    pub namespace_id: String,
     pub kind: AgentHostLifecycleEventKind,
     pub platform: String,
     pub project_id: String,
@@ -126,7 +134,19 @@ pub struct AgentHostLifecycleEventIpc {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AgentHostExecutionObservationIpc {
+    pub observation_id: String,
+    pub project_id: String,
+    pub root_session_id: String,
+    pub child_session_id: String,
+    pub platform_host_agent_name: String,
+    pub transcript_path: String,
+    pub observed_at: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AgentHostNonMatchIpc {
     pub kind: AgentHostLifecycleEventKind,
     pub project_id: String,

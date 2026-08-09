@@ -186,6 +186,22 @@ the root development installer.
 
 **** Runtime generation incremental admission
 
+Exact source and callable-skeleton projection are terminal consumers of the
+admitted active generation.  After a request has been classified as an exact
+structural-selector query, failure to acquire Runtime generation authority MUST
+remain a typed terminal failure.  The adapter MUST NOT invoke the language
+provider again with the public query argv, because that second dispatch has no
+snapshot byte authority and can reinterpret exact-projection arguments as an
+unrelated provider query surface.
+
+This terminality rule is language-neutral.  Rust, Python, TypeScript, Julia,
+and future programming-language providers receive exact work only through the
+same admitted generation envelope.  Runtime unavailability, host-local IPC
+denial, missing workspace admission, and missing active generation are recovery
+states for the Runtime control plane; none authorizes a provider-native fallback.
+The executable invariant is refined by
+=packages/proofs/ASPProof/ExactProjectionTerminalAuthority.lean=.
+
 Runtime generation admission MUST be single-flight for the tuple of workspace
 identity, provider-registry evidence, schema evidence, and candidate Merkle
 identity.  Concurrent callers observe the same tracked build and receipt; a
@@ -338,7 +354,21 @@ Owns:
 
 ** 10.05.50 Adapters and transports
 
-A Host sandbox denial that prevents a local Runtime or workspace-owner Unix socket from being opened before any protocol frame is exchanged is a typed execution-capability boundary, not an endpoint transport failure. ASP MUST classify it as =host-local-ipc-permission-denied= instead of leaking platform error text. A parser-native lexical command MAY continue through the activated provider's registered bounded lexical surface, under the same process timeout, output, descendant, and memory guards as any provider invocation. Its receipt MUST name the degraded route and reason and MUST NOT claim resident generation, Memory Search, or source-index evidence. Endpoint decode, schema, workspace identity, peer identity, post-connect framing, and authority-validation failures remain terminal. Exact projection may use an analogous live-owner route only when the Provider Registry declares the required native-owner projection capability for that language; otherwise it remains fail closed.
+A Host sandbox denial that prevents a local Runtime or workspace-owner Unix socket
+from being opened before any protocol frame is exchanged is a typed
+execution-capability boundary, not an endpoint transport failure.  It MUST NOT
+degrade an already admitted read-only query into a provider subprocess, a
+database open, or a freshness write.  Runtime owns admission, generation build,
+and atomic publication; agent-facing =search= and =query= consume the published
+workspace identity catalog, generation pointer, and immutable validated mmap
+segments directly.  This read lease MUST validate workspace identity, epoch,
+generation digest, root digest, and projection kind before returning evidence.
+Only missing or invalid published authority is fail closed as
+=active-workspace-generation-required= or
+=active-workspace-generation-recovery-required=.  Unix socket transport remains
+the control/write plane and is never a prerequisite for immutable exact
+projection.  Raw platform =Operation not permitted= text MUST NOT escape as the
+semantic result of a read-only search/query operation.
 
 The degraded provider-native invocation MUST be materialized from the selected
 method descriptor's =provider-method-argument-projection.v1= contract.  The
@@ -659,6 +689,35 @@ catalog restore MUST only observe the current attempt to its terminal state;
 they MUST NOT schedule a second build when the admitted attempt completed
 between the two IPC requests.  =building= remains the only single-flight
 exclusion state, and repeated daemon restore remains idempotent.
+
+*** Runtime-owned Graph Turbo materialization
+
+Graph Turbo is a Runtime-owned local IPC service.  The CLI search adapter MUST
+submit a typed intent only; it MUST NOT construct graph nodes, graph edges,
+provider facts, or a rank payload from the checkout.  At generation
+publication, the per-workspace writer lane materializes the canonical graph
+page from the immutable =GraphRelations= section and publishes its digest with
+the generation.  The Runtime Server sends that page exactly once through the
+=load-generation= IPC message to the resident Python service.  A subsequent
+=rank= message carries only workspace identity, generation digest, page roots,
+terms, profile, budget, and query-local ranking controls.
+
+The resident Python service MUST reject a rank whose generation/page-root pair
+was not loaded by the Runtime Server.  It MUST NOT read a checkout, open Turso,
+or accept a caller-supplied graph.  A generation replacement atomically makes
+the old page unreachable for new rank intents while in-flight leases retain
+their immutable page.  This yields one authority chain:
+
+#+begin_example
+writer publication -> immutable GraphRelations page -> load-generation IPC
+                  -> resident generation cache -> rank intent -> projection
+#+end_example
+
+An agent-facing search failure is an OTel incident, not a normal retry result.
+Its receipt MUST include generation identity, graph page roots, payload bytes,
+process-spawn and generation-load counts, disk read/write bytes, resident
+memory, and event-loop lag.  A warm rank MUST perform zero checkout reads,
+zero Turso opens, zero provider spawns, and zero generation loads.
 
 Provider source envelopes bind two deliberately distinct digests.  The
 =addressProviderDigest= is derived from the admitted provider registry and is

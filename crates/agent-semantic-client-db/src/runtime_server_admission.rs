@@ -189,6 +189,16 @@ impl WorkspaceGenerationAdmissionReceipt {
     }
 }
 
+fn observed_mutation_build_mode(
+    receipt: &WorkspaceGenerationAdmissionReceipt,
+) -> WorkspaceGenerationBuildMode {
+    if receipt.state == WorkspaceGenerationAdmissionState::Ready && receipt.commit.is_some() {
+        WorkspaceGenerationBuildMode::RebuildAfterMutation
+    } else {
+        WorkspaceGenerationBuildMode::RestoreOrBuild
+    }
+}
+
 #[derive(Clone)]
 pub struct WorkspaceGenerationAdmission {
     builder: WorkspaceGenerationBuilder,
@@ -363,13 +373,12 @@ impl WorkspaceGenerationAdmission {
         workspace_identity: String,
         project_root: PathBuf,
         owner_path: String,
-        language_id: String,
     ) -> Result<crate::runtime_server_workspace::WorkspaceOwnerSnapshot, String> {
         let builder = self.owner_projection_builder.as_ref().ok_or_else(|| {
             "runtime owner projection builder is unavailable in the admitted ServerProcess"
                 .to_owned()
         })?;
-        builder(workspace_identity, project_root, owner_path, language_id).await
+        builder(workspace_identity, project_root, owner_path).await
     }
 
     pub fn with_catalog(
@@ -656,6 +665,7 @@ impl WorkspaceGenerationAdmission {
                 let transition = completed_entry.transition.lock().await;
                 let mut mutations = completed_entry.mutations.lock().await;
                 if let Some(next) = mutations.pending.pop_front() {
+                    build_mode = observed_mutation_build_mode(&completed);
                     candidate = next.candidate;
                     completed_entry
                         .active_mutation
@@ -666,7 +676,6 @@ impl WorkspaceGenerationAdmission {
                         }));
                     completed_entry.mutation_changed.notify_waiters();
                     attempt = next.attempt;
-                    build_mode = WorkspaceGenerationBuildMode::RebuildAfterMutation;
                     completed_entry
                         .receipt
                         .send_replace(WorkspaceGenerationAdmissionReceipt {

@@ -36,6 +36,14 @@ fn builtin_materialization_rule_is_permanent_and_source_scoped() {
                 .and_then(|id| id.as_str()),
             Some("deny-uncontrolled-source-materialization-commands")
         );
+        assert_eq!(decision.language_ids, ["rust"]);
+        assert_eq!(decision.routes.len(), 1);
+        assert_eq!(decision.routes[0].provider_id, "rs-harness");
+        assert_eq!(
+            &decision.routes[0].argv[..3],
+            ["asp", "rust", "search"],
+            "wrapped source reads must return an executable parser route"
+        );
     }
 
     let non_source_decision = classify_hook_with_config(HookClassificationRequest {
@@ -138,9 +146,19 @@ fn action_first_rule_denies_inferred_reads_before_shell_expansion() {
         native_read.fields["configRuleId"],
         "materialize-registered-source-read-action"
     );
-    assert_eq!(
-        native_read.message,
-        "Registered {{languageId}} source reads are denied. Use the parser-owned ASP route below instead of raw Read."
+    assert!(
+        native_read.message.starts_with(
+            "Registered {{languageId}} source reads are denied. Use the parser-owned ASP route below instead of raw Read."
+        ),
+        "{}",
+        native_read.message
+    );
+    assert!(
+        native_read
+            .message
+            .contains("asp rust search owner crates/agent-semantic-hook/src/tool_action.rs items"),
+        "{}",
+        native_read.message
     );
     assert_eq!(
         native_read.fields["normalizedActions"][0]["operationIntent"],

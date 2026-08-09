@@ -1,6 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    process::Command,
     sync::{Arc, Barrier},
     thread,
 };
@@ -52,4 +53,17 @@ fn temp_root(label: &str) -> PathBuf {
     root.push(unique);
     std::fs::create_dir_all(&root).expect("create temp root");
     root
+}
+
+fn init_git_repository(root: &Path) {
+    let output = Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(root)
+        .output()
+        .expect("run git init for Gix-owned test identity");
+    assert!(
+        output.status.success(),
+        "git init failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }

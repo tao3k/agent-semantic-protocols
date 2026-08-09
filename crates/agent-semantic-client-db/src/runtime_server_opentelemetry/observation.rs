@@ -47,6 +47,14 @@ pub struct RuntimePerformanceObservation {
     pub source_bytes: Option<u64>,
     pub projection_bytes: Option<u64>,
     pub canonical_encoded_bytes: Option<u64>,
+    pub memory_search_mapped_bytes: Option<u64>,
+    pub memory_search_directory_bytes_validated: Option<u64>,
+    pub memory_search_key_bytes_touched: Option<u64>,
+    pub memory_search_value_bytes_touched: Option<u64>,
+    pub memory_search_source_bytes_read: Option<u64>,
+    pub memory_search_turso_opens: Option<u64>,
+    pub memory_search_socket_connects: Option<u64>,
+    pub memory_search_provider_spawns: Option<u64>,
     pub elapsed_micros: u64,
     pub budget_micros: u64,
     pub budget_status: String,
@@ -184,6 +192,14 @@ impl RuntimePerformanceObservation {
             source_bytes: None,
             projection_bytes: None,
             canonical_encoded_bytes: None,
+            memory_search_mapped_bytes: None,
+            memory_search_directory_bytes_validated: None,
+            memory_search_key_bytes_touched: None,
+            memory_search_value_bytes_touched: None,
+            memory_search_source_bytes_read: None,
+            memory_search_turso_opens: None,
+            memory_search_socket_connects: None,
+            memory_search_provider_spawns: None,
             elapsed_micros,
             budget_micros,
             budget_status: budget_status.into(),
@@ -267,6 +283,25 @@ impl RuntimePerformanceObservation {
         self.relation_count = Some(relation_count);
         self.source_bytes = Some(source_bytes);
         self.projection_bytes = Some(projection_bytes);
+        self
+    }
+
+    pub fn with_memory_search_metrics(
+        mut self,
+        mapped_bytes: u64,
+        directory_bytes_validated: u64,
+        key_bytes_touched: u64,
+        value_bytes_touched: u64,
+        source_bytes_read: u64,
+    ) -> Self {
+        self.memory_search_mapped_bytes = Some(mapped_bytes);
+        self.memory_search_directory_bytes_validated = Some(directory_bytes_validated);
+        self.memory_search_key_bytes_touched = Some(key_bytes_touched);
+        self.memory_search_value_bytes_touched = Some(value_bytes_touched);
+        self.memory_search_source_bytes_read = Some(source_bytes_read);
+        self.memory_search_turso_opens = Some(0);
+        self.memory_search_socket_connects = Some(0);
+        self.memory_search_provider_spawns = Some(0);
         self
     }
 

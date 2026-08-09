@@ -15,6 +15,7 @@ const ROOT_COMMANDS: &[(&str, &str)] = &[
     ),
     ("paths", "Resolve ASP state and artifact paths"),
     ("healthcheck", "Check ASP runtime health"),
+    ("server", "Manage the Global ASP Runtime Server"),
     (
         "live-corpus",
         "Qualify and publish provider live-corpus artifacts",
@@ -172,6 +173,7 @@ fn cache_command() -> Command {
             .help("Select the workspace"),
     )
     .subcommand(agent_semantic_client::project_registry_gc_clap_command())
+    .subcommand(agent_semantic_client::project_registry_clean_clap_command())
 }
 
 fn cloud_command() -> Command {
@@ -187,6 +189,7 @@ fn hook_command() -> Command {
         "asp hook",
         "Run and inspect host hook integration",
         &[
+            ("accept-host", "Validate normal-task Host-to-Hook delivery"),
             ("doctor", "Diagnose host hook integration"),
             ("paths", "Resolve hook-owned paths"),
             ("break-glass", "Mint a bound one-shot defect capability"),
@@ -203,6 +206,30 @@ fn hook_command() -> Command {
             .value_parser(["codex", "claude"])
             .help("Select the host client"),
     )
+}
+
+fn hook_accept_host_command() -> Command {
+    Command::new("accept-host")
+        .bin_name("asp hook accept-host")
+        .about("Validate normal-task Host-to-Hook delivery")
+        .arg(
+            Arg::new("host-rollout")
+                .long("host-rollout")
+                .value_name("PATH")
+                .required(true),
+        )
+        .arg(
+            Arg::new("host-probe-path")
+                .long("host-probe-path")
+                .value_name("PATH")
+                .required(true),
+        )
+        .arg(
+            Arg::new("host-sentinel")
+                .long("host-sentinel")
+                .value_name("TOKEN")
+                .required(true),
+        )
 }
 
 fn hook_doctor_command() -> Command {

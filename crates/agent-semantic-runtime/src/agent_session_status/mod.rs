@@ -1,6 +1,7 @@
 //! Runtime status helpers for agent sessions and resident child activity.
 
 mod codex_rollout_metadata;
+pub use codex_rollout_metadata::codex_rollout_session_metadata_at_path;
 mod health;
 mod runtime_session;
 

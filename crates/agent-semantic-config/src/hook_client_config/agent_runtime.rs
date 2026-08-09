@@ -29,6 +29,8 @@ pub struct HookClientResidentAgentConfig {
     pub name: String,
     pub role: String,
     #[serde(default)]
+    pub description: String,
+    #[serde(default)]
     pub roles: Vec<String>,
     #[serde(default)]
     pub permissions: Vec<String>,

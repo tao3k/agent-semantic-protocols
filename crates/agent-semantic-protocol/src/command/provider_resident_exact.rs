@@ -91,25 +91,3 @@ fn registered_provider_id(language_id: &str) -> Result<String, String> {
         .map(|manifest| manifest.provider_id().as_str().to_owned())
         .ok_or_else(|| format!("no registered provider manifest for language {language_id}"))
 }
-
-pub(super) fn provider_native_exact_fallback_reason(error: &str) -> Option<&'static str> {
-    if agent_semantic_client_db::workspace_db_ipc::is_host_local_ipc_permission_denied(error) {
-        return Some("host-local-ipc-permission-denied");
-    }
-    if error.contains("reasonKind=active-workspace-generation-required")
-        || error.starts_with("canonical workspace scope is not admitted:")
-        || error.starts_with("workspace admission locator is unavailable at ")
-    {
-        return Some("active-workspace-generation-required");
-    }
-    if error.starts_with("Runtime Server endpoint is unavailable at ")
-        || error.starts_with("failed to connect Runtime Server data endpoint")
-    {
-        return Some("runtime-server-stable-ipc-unavailable");
-    }
-    None
-}
-
-#[cfg(test)]
-#[path = "../../tests/unit/command/provider_resident_exact.rs"]
-mod fallback_tests;

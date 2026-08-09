@@ -589,6 +589,50 @@ theorem enabled_rule_and_registered_extension_require_executable_witness
     ruleWitness = true ∧ extensionWitness = true := by
   exact ⟨hRule, hExtension⟩
 
+def normalizedRead : HostEnvelope → Bool
+  | .compactRead => true
+  | .nestedCommandActions => true
+
+def registeredSourceReadDenied (envelope : HostEnvelope)
+    (providerAdvertisesExtension : Bool) : Bool :=
+  normalizedRead envelope && providerAdvertisesExtension
+
+theorem registered_extension_read_is_denied_independent_of_wrapper
+    (envelope : HostEnvelope) :
+    registeredSourceReadDenied envelope true = true := by
+  cases envelope <;> rfl
+
+structure HostAcceptanceWitness where
+  pluginLoaded : Bool
+  probeCallObserved : Bool
+  hookEventObserved : Bool
+  denyObserved : Bool
+  sourceBytesReturned : Bool
+  deriving DecidableEq, Repr
+
+def completeHostAcceptance (w : HostAcceptanceWitness) : Prop :=
+  w.pluginLoaded = true ∧
+    w.probeCallObserved = true ∧
+    w.hookEventObserved = true ∧
+    w.denyObserved = true ∧
+    w.sourceBytesReturned = false
+
+theorem plugin_disabled_task_cannot_complete_host_acceptance
+    (w : HostAcceptanceWitness) (h : w.pluginLoaded = false) :
+    ¬ completeHostAcceptance w := by
+  simp [completeHostAcceptance, h]
+
+theorem source_byte_leak_cannot_complete_host_acceptance
+    (w : HostAcceptanceWitness) (h : w.sourceBytesReturned = true) :
+    ¬ completeHostAcceptance w := by
+  simp [completeHostAcceptance, h]
+
+theorem missing_host_delivery_evidence_cannot_complete_host_acceptance
+    (w : HostAcceptanceWitness)
+    (h : w.probeCallObserved = false ∨ w.hookEventObserved = false ∨ w.denyObserved = false) :
+    ¬ completeHostAcceptance w := by
+  rcases h with hProbe | hHook | hDeny <;> simp [completeHostAcceptance, *]
+
 inductive MarketplaceAuthority where
   | repositoryCatalog
   | codexUserRegistration
@@ -636,5 +680,59 @@ theorem desired_postcondition_subsumes_reconcile_step_failure
     (hAuthority : authorityComplete = true) :
     desiredHealthy = true ∧ authorityComplete = true := by
   exact ⟨hHealthy, hAuthority⟩
+
+structure ActionPolicyFacts where
+  readShaped : Bool
+  rawAuthority : Bool
+  registeredProviderSubject : Bool
+  deriving DecidableEq, Repr
+
+def composedRegisteredSourceReadDenied (facts : ActionPolicyFacts) : Bool :=
+  facts.readShaped && facts.rawAuthority && facts.registeredProviderSubject
+
+theorem registered_source_read_requires_composed_policy_axes
+    (facts : ActionPolicyFacts)
+    (hRead : facts.readShaped = true)
+    (hRaw : facts.rawAuthority = true)
+    (hProvider : facts.registeredProviderSubject = true) :
+    composedRegisteredSourceReadDenied facts = true := by
+  simp [composedRegisteredSourceReadDenied, hRead, hRaw, hProvider]
+
+structure MaterializedDenyReceipt where
+  configuredExplanation : Bool
+  parserRoute : Bool
+  choicePlaneRegistration : Bool
+  deriving DecidableEq, Repr
+
+def completeMaterializedDeny (receipt : MaterializedDenyReceipt) : Prop :=
+  receipt.configuredExplanation = true ∧ receipt.parserRoute = true ∧
+    receipt.choicePlaneRegistration = true
+
+theorem materialized_deny_preserves_message_route_and_registration
+    (receipt : MaterializedDenyReceipt)
+    (hExplanation : receipt.configuredExplanation = true)
+    (hRoute : receipt.parserRoute = true)
+    (hRegistration : receipt.choicePlaneRegistration = true) :
+    completeMaterializedDeny receipt := by
+  exact ⟨hExplanation, hRoute, hRegistration⟩
+
+inductive PluginBootstrapOutcome where
+  | canonicalExec
+  | typedUnavailable
+  | rawExit127
+  deriving DecidableEq, Repr
+
+def pluginBootstrapAdmitted : PluginBootstrapOutcome → Bool
+  | .canonicalExec | .typedUnavailable => true
+  | .rawExit127 => false
+
+def pluginBootstrapRuntimeServerCalls (_outcome : PluginBootstrapOutcome) : Nat := 0
+
+theorem plugin_bootstrap_cannot_leak_exit_127_or_enter_runtime_server :
+    pluginBootstrapAdmitted .rawExit127 = false ∧
+      pluginBootstrapAdmitted .typedUnavailable = true ∧
+      pluginBootstrapRuntimeServerCalls .canonicalExec = 0 ∧
+      pluginBootstrapRuntimeServerCalls .typedUnavailable = 0 := by
+  decide
 
 end ASPProof.HookExecutionPlane

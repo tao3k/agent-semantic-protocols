@@ -151,6 +151,15 @@ Its formal audit clause is
 =ASP-RFC-10.15-HOOK-LAZY-LOADER-CAPABILITY=.
 
 ** Configuration-independent bootstrap and server warm path
+Tool authorization is a =PreToolUse= transition. =PostToolUse= is an
+observational effect transition for a tool that has already completed: it MUST
+NOT retroactively emit deny/block. A mutating PostTool event MUST project
+exactly one typed workspace-generation mutation through the Runtime IPC lane;
+the policy decision plane MUST NOT submit a second copy of that mutation.
+Mutation identity, normalized changed-owner membership, and the Runtime receipt
+form one idempotency key. Reuse with different membership is a protocol error,
+not a recovery or compatibility path.
+
 
 The plugin command enters through the configuration-independent =asp hook=
 early-dispatch module before the complete matcher document is parsed.  A

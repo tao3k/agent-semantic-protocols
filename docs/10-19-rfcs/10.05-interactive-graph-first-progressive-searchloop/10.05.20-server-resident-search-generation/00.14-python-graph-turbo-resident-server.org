@@ -1,0 +1,93 @@
+#+title: Python Graph Turbo Resident Server
+#+startup: overview
+
+* Architectural correction
+
+Graph Turbo is a Python-owned graph reasoning engine.  Rust owns ASP Runtime
+lifecycle, admission, typed routing, generation identity, and result
+validation.  Rust MUST NOT duplicate the ranking algorithm and a search request
+MUST NOT start Python, import the graph package, load a workspace graph, or
+serialize the complete graph.
+
+ASP Runtime supervises one lazy global Graph Turbo Server process.  The Python
+server multiplexes independent workspace and generation keys and maintains a
+bounded in-memory graph cache for each admitted key.  This mirrors an LSP
+server: one durable process, many documents/workspaces, explicit lifecycle and
+versioned protocol.
+
+The replaced implementation is explicitly non-conforming: the seeds renderer
+serializes the complete graph request and =rank_graph_turbo_packet= invokes
+=run_provider_process_async= with =asp-graph-turbo rank - --format json= for
+every request.  Failure then silently returns =None= under a Rust-ranker
+fallback.  The development wrapper also enters =uv= at request time.  All four
+behaviors are removed by this RFC: full packet serialization, per-request
+spawn, package-manager runtime fallback, and algorithm fallback.
+
+* Authority boundaries
+
+| Owner | Responsibility |
+|-------+----------------|
+| ASP Runtime Server | lifecycle, artifact/schema digest, restart, backpressure, cancellation, workspace admission, telemetry |
+| Python Graph Turbo Server | graph load-once, incremental graph delta, ranking, path reasoning, explanation receipt |
+| Language providers | parser-owned semantic facts and project scopes only |
+| Rust search adapter | typed request/response validation and agent-facing rendering only |
+
+The Python artifact is resolved from the Global runtime catalog.  Production
+MUST NOT fall back to =uv run=, a source checkout, PATH discovery, or a
+per-request subprocess.  Development mode may select the configured source
+root during installation, but runtime requests still target the supervised
+server artifact.
+
+* Lifecycle
+
+1. ASP Runtime starts without Python when no graph route is requested.
+2. The first admitted Graph Turbo request enters a single-flight lazy start.
+3. Runtime validates Python artifact digest, protocol digest, and endpoint
+   ownership before publishing =Ready=.
+4. Concurrent callers receive a millisecond Building receipt and share the same
+   tracked start; they never launch another process.
+5. Runtime sends generation roots or incremental graph deltas once per
+   workspace-generation key.
+6. Query calls contain only workspace identity, generation digest, terms,
+   profile, budgets, and requested evidence classes.
+7. Shutdown drains accepted requests, cancels outstanding work, closes the
+   endpoint, joins stdout/stderr pumps, and reaps the child exactly once.
+8. Artifact or protocol digest drift causes supervised replacement; callers do
+   not kill processes or manipulate PIDs.
+
+* Transport
+
+The transport is a length-delimited typed v1 protocol over a Runtime-owned
+local endpoint.  Requests and responses carry monotonically increasing request
+IDs and exact workspace-generation identity.  A response from another epoch is
+rejected before rendering.
+
+Large graphs are transferred by immutable Memory Search page roots and
+incremental deltas, not JSON graph dumps.  Python may mmap the same page store
+read-only.  Ranked results contain stable node IDs, scores, paths, and evidence
+digests; they do not contain source dumps.
+
+* Backpressure and failure
+
+The Runtime-to-Python queue is bounded and workspace-fair.  Cancellation and
+deadline propagation are mandatory.  Server unavailability returns a typed
+=graph-turbo-server-unavailable= receipt.  It MUST NOT silently select another
+algorithm or invoke Python through a package manager.
+
+Python crashes, queue saturation, generation mismatch, protocol drift, and
+memory pressure are OpenTelemetry incidents persisted through the Runtime
+Turso exporter.  Recovery is supervised and bounded; restart loops use circuit
+breaking and never block normal exact/lexical reads.
+
+* Strong gates
+
+- 256 concurrent first requests create exactly one Python process;
+- 30 warm requests perform zero process spawns and zero graph reloads;
+- two workspaces remain isolated while executing concurrently;
+- generation delta changes only the addressed workspace-generation cache;
+- stale response and protocol/artifact drift are rejected;
+- crash and restart leave no child, task, pipe, endpoint, or mapped-page leak;
+- idle Runtime uses no Python process;
+- installed execution succeeds without =uv= or a source checkout;
+- request/response p99 and Python RSS/I/O/cache cardinality are queryable from
+  Runtime OpenTelemetry/Turso.

@@ -268,8 +268,5 @@ pub type WorkspaceOwnerProjectionBuildFuture = Pin<
     >,
 >;
 pub type WorkspaceOwnerProjectionBuilder = Arc<
-    dyn Fn(String, PathBuf, String, String) -> WorkspaceOwnerProjectionBuildFuture
-        + Send
-        + Sync
-        + 'static,
+    dyn Fn(String, PathBuf, String) -> WorkspaceOwnerProjectionBuildFuture + Send + Sync + 'static,
 >;

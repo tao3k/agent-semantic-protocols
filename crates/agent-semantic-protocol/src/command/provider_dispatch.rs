@@ -13,7 +13,6 @@ use super::client_backend_worker::run_client_backend_on_worker;
 use super::gerbil_check_cache::try_replay_gerbil_check_cache;
 use super::gerbil_deps::try_run_gerbil_deps_index_command;
 use super::protocol_version_line;
-use super::provider_argument_projection::provider_native_argument_values;
 use super::provider_fast_path::{
     run_activated_owner_language_preflight, run_pre_activation_search_command_preflight,
 };
@@ -139,7 +138,23 @@ pub(crate) async fn run_language_command(
         ));
     }
     let mut command_args = args.to_vec();
+    let diagnostic_options =
+        agent_semantic_search::command_diagnostics::take_search_command_diagnostic_options(
+            &mut command_args,
+        )?;
     let frontier_receipt = take_frontier_receipt_request(&mut command_args)?;
+    let mut command_diagnostics = diagnostic_options
+        .is_enabled()
+        .then(|| {
+            agent_semantic_search::command_diagnostics::SearchCommandDiagnostics::start(
+                language_id,
+                &command_args,
+                diagnostic_options,
+                process_started.into_std(),
+            )
+        })
+        .flatten();
+    let result: Result<(), String> = async {
     if frontier_receipt.is_some()
         && command_args
             .first()
@@ -176,6 +191,9 @@ pub(crate) async fn run_language_command(
         && agent_semantic_hook::registered_provider_kind(language_id)?
             == agent_semantic_hook::RegisteredProviderKind::ProgrammingLanguage
     {
+        if let Some(diagnostics) = command_diagnostics.as_mut() {
+            diagnostics.mark_stage("exact-query-resident-dispatch");
+        }
         let (exact_project_root, exact_provider_args) =
             super::provider_roots::explicit_workspace_project_root(
                 language_id,
@@ -183,29 +201,21 @@ pub(crate) async fn run_language_command(
                 &invocation_root,
             )?
             .unwrap_or_else(|| (invocation_root.clone(), command_args.clone()));
-        let resident_result = super::provider_resident_exact::run_resident_exact_query(
+        // Exact projection is terminal at the admitted Runtime generation.
+        // Missing authority must never fall through to public provider argv.
+        return super::provider_resident_exact::run_resident_exact_query(
             language_id,
             &exact_provider_args,
             &exact_project_root,
             exact_query_started,
         )
         .await;
-        match resident_result {
-            Ok(()) => return Ok(()),
-            Err(error) => {
-                let Some(reason_kind) =
-                    super::provider_resident_exact::provider_native_exact_fallback_reason(&error)
-                else {
-                    return Err(error);
-                };
-                eprintln!(
-                    "[query-route] state=degraded reasonKind={reason_kind} acquisitionRoute=provider-native-exact residentEvidence=none"
-                );
-            }
-        }
     }
     if super::search_pipe::is_search_owner_items_query(&command_args) {
         exact_query_trace("owner-resident-read-admitted", exact_query_started);
+        if let Some(diagnostics) = command_diagnostics.as_mut() {
+            diagnostics.mark_stage("owner-resident-read-admitted");
+        }
         return super::search_pipe::run_asp_incremental_owner_search_command(
             &command_args,
             super::search_pipe::IncrementalOwnerSearchContext {
@@ -227,6 +237,9 @@ pub(crate) async fn run_language_command(
         language_id,
     )?;
     exact_query_trace("activation-loaded", exact_query_started);
+    if let Some(diagnostics) = command_diagnostics.as_mut() {
+        diagnostics.mark_stage("activation-loaded");
+    }
     let activation_path = canonical_activation_path;
     let activation_root = activation_project_root(&activation_path, &runtime.project_root);
     let config = AspConfig::load(&invocation_root, &activation_root);
@@ -240,6 +253,9 @@ pub(crate) async fn run_language_command(
         &activation_root,
     )?;
     exact_query_trace("workspace-resolved", exact_query_started);
+    if let Some(diagnostics) = command_diagnostics.as_mut() {
+        diagnostics.mark_stage("workspace-resolved");
+    }
     let search_locator_root = if has_explicit_workspace {
         project_root.as_path()
     } else {
@@ -279,6 +295,9 @@ pub(crate) async fn run_language_command(
         &runtime,
     )?;
     exact_query_trace("owner-preflight-complete", exact_query_started);
+    if let Some(diagnostics) = command_diagnostics.as_mut() {
+        diagnostics.mark_stage("owner-preflight-complete");
+    }
     let tree_sitter_runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
     if !is_provider_owned_structural_selector_query(language_id, &provider_args)
         && super::workspace_tree_sitter_query::try_run_workspace_tree_sitter_query(
@@ -366,6 +385,9 @@ pub(crate) async fn run_language_command(
         // the executable; canonical identity equality binds the built-in
         // ranker to the currently running ASP artifact.
         exact_query_trace("ranker-admitted", exact_query_started);
+        if let Some(diagnostics) = command_diagnostics.as_mut() {
+            diagnostics.mark_stage("ranker-admitted");
+        }
         let current_search_data_plane =
             if super::search_pipe::fast_search_requires_source_index_snapshot(&provider_args) {
                 let result =
@@ -380,39 +402,6 @@ pub(crate) async fn run_language_command(
                     )
                     .await;
                 if let Err(error) = result {
-                    let lexical = provider_args.first().is_some_and(|arg| arg == "search")
-                        && provider_args.get(1).is_some_and(|arg| arg == "lexical");
-                    if lexical && frontier_receipt.is_none()
-                        && agent_semantic_client_db::workspace_db_ipc::is_host_local_ipc_permission_denied(&error)
-                    {
-                        let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
-                        let projection_values = provider_native_argument_values(
-                            "search/lexical",
-                            &provider_args,
-                            &project_root,
-                        )?;
-                        let projected_args =
-                            agent_semantic_hook::registered_provider_method_projected_argv_v1(
-                                language_id,
-                                provider.provider_id.as_str(),
-                                "search/lexical",
-                                &projection_values,
-                            )?;
-                        let invocation = provider_invocation_with_profile(
-                            &runtime_profiles,
-                            provider,
-                            &projected_args,
-                        )?;
-                        eprintln!("[search-route] state=degraded reasonKind=host-local-ipc-permission-denied acquisitionRoute=provider-native-lexical residentEvidence=none");
-                        return run_provider_command(
-                            language_id,
-                            provider,
-                            &invocation,
-                            &project_root,
-                            false,
-                        )
-                        .await;
-                    }
                     return Err(error);
                 }
                 Some(result.expect("runtime server data plane result checked above"))
@@ -426,6 +415,9 @@ pub(crate) async fn run_language_command(
         let provider_context_required =
             fast_search_needs_provider_context(&provider_args, provider)?;
         exact_query_trace("provider-context-classified", exact_query_started);
+        if let Some(diagnostics) = command_diagnostics.as_mut() {
+            diagnostics.mark_stage("provider-context-classified");
+        }
         if provider_context_required {
             exact_query_trace("provider-context-required", exact_query_started);
             let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
@@ -451,6 +443,7 @@ pub(crate) async fn run_language_command(
                         frontier_receipt: frontier_receipt.as_ref(),
                         source_index_snapshot: current_snapshot.as_ref(),
                         search_data_plane: current_search_data_plane.as_ref(),
+                        diagnostics: command_diagnostics.as_mut(),
                     },
                 ),
             )
@@ -475,6 +468,7 @@ pub(crate) async fn run_language_command(
                     frontier_receipt: frontier_receipt.as_ref(),
                     source_index_snapshot: current_snapshot.as_ref(),
                     search_data_plane: current_search_data_plane.as_ref(),
+                    diagnostics: command_diagnostics.as_mut(),
                 },
             ),
         )
@@ -516,6 +510,20 @@ pub(crate) async fn run_language_command(
         run_provider_command(language_id, provider, &invocation, &project_root, false).await?;
     }
     Ok(())
+    }
+    .await;
+    if let Some(diagnostics) = command_diagnostics.take() {
+        let receipt = diagnostics.finish(
+            agent_semantic_client_db::search_incident::AGENT_FACING_SEARCH_BUDGET_MICROS,
+            result.as_ref().err().map(String::as_str),
+        );
+        eprintln!(
+            "{}",
+            serde_json::to_string(&receipt)
+                .map_err(|error| format!("failed to encode search diagnostics receipt: {error}"))?
+        );
+    }
+    result
 }
 
 fn is_help(args: &[String]) -> bool {

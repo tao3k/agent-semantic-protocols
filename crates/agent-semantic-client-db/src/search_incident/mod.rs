@@ -2,6 +2,7 @@ mod lifecycle;
 mod model;
 mod terminal;
 mod workspace_ipc;
+pub use workspace_ipc::AGENT_FACING_SEARCH_BUDGET_MICROS;
 
 pub use lifecycle::{
     apply_replay, begin_repair, compact, observe, reopen_failed_verification, request_verification,

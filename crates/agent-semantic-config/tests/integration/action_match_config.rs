@@ -62,13 +62,19 @@ fn default_template_uses_one_top_level_wrapper_match_mode() {
         .expect("action-first source deny rule should exist");
     assert_eq!(config.wrapper_match, WrapperMatchMode::Enable);
     assert_eq!(
-        action_rule.match_config.action_any,
+        action_rule.match_config.action_policy_all,
+        ["raw-shell-read", "registered-language-source"]
+    );
+    let raw_shell_read = config
+        .action_policies
+        .iter()
+        .find(|policy| policy.id == "raw-shell-read")
+        .expect("raw-shell-read action policy");
+    assert_eq!(
+        raw_shell_read.action_any,
         vec![HookClientActionKind::Execute]
     );
-    assert_eq!(
-        action_rule.match_config.effect_any,
-        vec![HookClientActionKind::Read]
-    );
+    assert_eq!(raw_shell_read.effect_any, vec![HookClientActionKind::Read]);
     assert!(action_rule.match_config.effect_rules.iter().any(|rule| {
         rule.argv_prefix == ["git", "mv"] && rule.effect == HookClientActionKind::Edit
     }));

@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
 use super::{
-    GENERATION_DISCOVERY_RECEIPTS, GENERATION_DISCOVERY_SCHEMA_ID, GENERATION_DISCOVERY_TASKS,
-    GenerationDiscoveryKey, GenerationDiscoveryTaskGuard, WorkspaceGenerationDiscoveryReceipt,
+    GENERATION_DISCOVERY_COMPLETIONS, GENERATION_DISCOVERY_RECEIPTS,
+    GENERATION_DISCOVERY_SCHEMA_ID, GENERATION_DISCOVERY_TASKS, GenerationDiscoveryKey,
+    GenerationDiscoveryTaskGuard, WorkspaceGenerationDiscoveryReceipt,
     WorkspaceGenerationDiscoveryState, unix_time_ms,
 };
 
@@ -23,7 +24,6 @@ fn discovery_receipt_is_discovering_before_future_completes() {
             state: WorkspaceGenerationDiscoveryState::Discovering,
             attempt: 1,
             started_at_unix_ms: started,
-            deadline_unix_ms: started + 800,
             finished_at_unix_ms: None,
             reason_kind: None,
             error: None,
@@ -35,37 +35,6 @@ fn discovery_receipt_is_discovering_before_future_completes() {
         WorkspaceGenerationDiscoveryState::Discovering
     );
     assert!(receipt.finished_at_unix_ms.is_none());
-    drop(receipt);
-    GENERATION_DISCOVERY_RECEIPTS.remove(&key);
-}
-
-#[test]
-fn short_deadline_timeout_publishes_failed_terminal_receipt() {
-    let key = GenerationDiscoveryKey {
-        workspace_identity: "timeout-discovery-test".to_owned(),
-        project_root: PathBuf::from("/timeout-discovery-test"),
-    };
-    let now = unix_time_ms();
-    GENERATION_DISCOVERY_RECEIPTS.insert(
-        key.clone(),
-        WorkspaceGenerationDiscoveryReceipt {
-            schema_id: GENERATION_DISCOVERY_SCHEMA_ID.to_owned(),
-            schema_version: "1".to_owned(),
-            workspace_identity: key.workspace_identity.clone(),
-            project_root: key.project_root.display().to_string(),
-            state: WorkspaceGenerationDiscoveryState::Failed,
-            attempt: 1,
-            started_at_unix_ms: now.saturating_sub(10),
-            deadline_unix_ms: now,
-            finished_at_unix_ms: Some(now),
-            reason_kind: Some("discovery-timeout".to_owned()),
-            error: Some("workspace candidate discovery exceeded 5ms".to_owned()),
-        },
-    );
-    let receipt = GENERATION_DISCOVERY_RECEIPTS.get(&key).expect("receipt");
-    assert_eq!(receipt.state, WorkspaceGenerationDiscoveryState::Failed);
-    assert_eq!(receipt.reason_kind.as_deref(), Some("discovery-timeout"));
-    assert!(receipt.finished_at_unix_ms.is_some());
     drop(receipt);
     GENERATION_DISCOVERY_RECEIPTS.remove(&key);
 }
@@ -87,7 +56,6 @@ fn discovery_error_publishes_failed_terminal_receipt() {
             state: WorkspaceGenerationDiscoveryState::Failed,
             attempt: 1,
             started_at_unix_ms: now,
-            deadline_unix_ms: now + 800,
             finished_at_unix_ms: Some(now),
             reason_kind: Some("discovery-failed".to_owned()),
             error: Some("injected discovery error".to_owned()),
@@ -96,6 +64,36 @@ fn discovery_error_publishes_failed_terminal_receipt() {
     let receipt = GENERATION_DISCOVERY_RECEIPTS.get(&key).expect("receipt");
     assert_eq!(receipt.reason_kind.as_deref(), Some("discovery-failed"));
     assert_eq!(receipt.error.as_deref(), Some("injected discovery error"));
+    drop(receipt);
+    GENERATION_DISCOVERY_RECEIPTS.remove(&key);
+}
+
+#[test]
+fn discovery_failure_publishes_failed_terminal_receipt_without_wall_deadline() {
+    let key = GenerationDiscoveryKey {
+        workspace_identity: "timeout-discovery-test".to_owned(),
+        project_root: PathBuf::from("/timeout-discovery-test"),
+    };
+    let now = unix_time_ms();
+    GENERATION_DISCOVERY_RECEIPTS.insert(
+        key.clone(),
+        WorkspaceGenerationDiscoveryReceipt {
+            schema_id: GENERATION_DISCOVERY_SCHEMA_ID.to_owned(),
+            schema_version: "1".to_owned(),
+            workspace_identity: key.workspace_identity.clone(),
+            project_root: key.project_root.display().to_string(),
+            state: WorkspaceGenerationDiscoveryState::Failed,
+            attempt: 1,
+            started_at_unix_ms: now.saturating_sub(10),
+            finished_at_unix_ms: Some(now),
+            reason_kind: Some("discovery-failed".to_owned()),
+            error: Some("injected discovery failure".to_owned()),
+        },
+    );
+    let receipt = GENERATION_DISCOVERY_RECEIPTS.get(&key).expect("receipt");
+    assert_eq!(receipt.state, WorkspaceGenerationDiscoveryState::Failed);
+    assert_eq!(receipt.reason_kind.as_deref(), Some("discovery-failed"));
+    assert!(receipt.finished_at_unix_ms.is_some());
     drop(receipt);
     GENERATION_DISCOVERY_RECEIPTS.remove(&key);
 }
@@ -117,7 +115,6 @@ fn terminal_failed_receipt_is_not_discovery_in_progress() {
             state: WorkspaceGenerationDiscoveryState::Failed,
             attempt: 1,
             started_at_unix_ms: now,
-            deadline_unix_ms: now + 800,
             finished_at_unix_ms: Some(now),
             reason_kind: Some("discovery-failed".to_owned()),
             error: Some("terminal failure".to_owned()),
@@ -147,6 +144,8 @@ async fn cancellation_releases_the_generation_discovery_single_flight_key() {
         )),
     };
     assert!(GENERATION_DISCOVERY_TASKS.insert(key.clone()));
+    let (completion, _completion_receiver) = tokio::sync::watch::channel(false);
+    GENERATION_DISCOVERY_COMPLETIONS.insert(key.clone(), completion);
     let (started_sender, started_receiver) = tokio::sync::oneshot::channel();
     let task_key = key.clone();
     let task = tokio::spawn(async move {
@@ -169,5 +168,9 @@ async fn cancellation_releases_the_generation_discovery_single_flight_key() {
     assert!(
         !GENERATION_DISCOVERY_TASKS.contains(&key),
         "cancelled discovery must release its single-flight key"
+    );
+    assert!(
+        !GENERATION_DISCOVERY_COMPLETIONS.contains_key(&key),
+        "cancelled discovery must release its completion channel"
     );
 }

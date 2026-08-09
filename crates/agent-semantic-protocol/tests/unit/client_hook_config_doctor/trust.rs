@@ -27,12 +27,12 @@ decision = "deny"
     assert!(stdout.contains("projectTrust=false"));
     assert!(stdout.contains("|codex-app projectConfig=.codex/config.toml"));
     assert!(stdout.contains("|trust project=untrusted reason=project-not-trusted"));
-    assert!(stdout.contains("|trust missing="));
+    assert!(!stdout.contains("|trust missing="));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
 #[test]
-fn doctor_reports_stale_codex_hook_state() {
+fn plugin_mode_ignores_stale_native_inline_hook_state() {
     let root = temp_project_root("doctor-codex-stale-hook-state");
     let activation_path = write_activation(&root);
     write_codex_plugin_fixture(&root);
@@ -55,7 +55,7 @@ decision = "deny"
     assert!(stdout.contains("trustStatus=host-managed"));
     assert!(stdout.contains("aspPathStatus="));
     assert!(stdout.contains("aspPath="));
-    assert!(stdout.contains("|trust stale=pre-tool"));
-    assert!(stdout.contains("|trust missing="));
+    assert!(!stdout.contains("|trust stale="));
+    assert!(!stdout.contains("|trust missing="));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }

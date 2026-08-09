@@ -240,10 +240,13 @@ impl WorkspaceDbRegistry {
             .as_ref()
             .map_err(|error| format!("failed to resolve resident registry State Root: {error}"))?
             .to_path_buf();
-        spawn_workspace_resolution(state_home, project_root, |project_root, state_home| {
-            ResolvedState::resolve_with_state_home(project_root, state_home)
-        })
-        .await
+        let resolved =
+            spawn_workspace_resolution(state_home, project_root, |project_root, state_home| {
+                ResolvedState::resolve_with_state_home(project_root, state_home)
+            })
+            .await?;
+        resolved.ensure_minimal_layout_async().await?;
+        Ok(resolved)
     }
 
     pub fn workspace_entry_counts(&self) -> WorkspaceDbRegistryEntryCounts {

@@ -464,13 +464,11 @@ pub fn resolve_runtime_server_agent_session_status(
                 "registered".to_owned()
             }
             Some(super::RuntimeServerAgentSessionLifecycleState::Routable) => {
-                "registration-required".to_owned()
+                "resumable".to_owned()
             }
-            Some(super::RuntimeServerAgentSessionLifecycleState::Archived) => "archived".to_owned(),
-            Some(
-                super::RuntimeServerAgentSessionLifecycleState::Expired
-                | super::RuntimeServerAgentSessionLifecycleState::Invalid,
-            ) => "archive-required".to_owned(),
+            Some(super::RuntimeServerAgentSessionLifecycleState::Stopped) => "resumable".to_owned(),
+            Some(super::RuntimeServerAgentSessionLifecycleState::Achieved) => "achieved".to_owned(),
+            Some(super::RuntimeServerAgentSessionLifecycleState::Invalid) => "blocked".to_owned(),
             None => "registration-required".to_owned(),
         },
         generation: record.map(|entry| entry.physical_generation).unwrap_or(0),
@@ -481,7 +479,7 @@ pub fn resolve_runtime_server_agent_session_status(
             )
         }) && !live_exact_binding
         {
-            Some("unbound-matched-child".to_owned())
+            Some("registered-namespace-needs-resume".to_owned())
         } else {
             None
         },

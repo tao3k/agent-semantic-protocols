@@ -75,6 +75,7 @@ fn programming_provider_manifests_cover_compact_and_nested_native_reads() {
                 rankers: Vec::new(),
                 project_root: ".".to_string(),
                 providers: vec![provider.clone()],
+                policy_providers: Vec::new(),
             };
             for tool_input in [
                 json!({"type":"read", "path": path}),

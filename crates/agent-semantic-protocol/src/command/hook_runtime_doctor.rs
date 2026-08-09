@@ -15,6 +15,29 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
     let client = flag_value(args, "--client").unwrap_or("codex");
     ensure_supported_client(client)?;
     let project_root = project_root_arg(args)?;
+    let host_rollout_path = flag_value(args, "--host-rollout").map(PathBuf::from);
+    let host_probe_path = flag_value(args, "--host-probe-path");
+    let host_sentinel = flag_value(args, "--host-sentinel");
+    if ![
+        host_rollout_path.is_some(),
+        host_probe_path.is_some(),
+        host_sentinel.is_some(),
+    ]
+    .iter()
+    .all(|present| *present == host_rollout_path.is_some())
+    {
+        return Err(
+            "--host-rollout, --host-probe-path, and --host-sentinel must be supplied together for normal-task Host acceptance"
+                .to_owned(),
+        );
+    }
+    let host_acceptance = host_rollout_path
+        .as_deref()
+        .zip(host_probe_path.zip(host_sentinel))
+        .map(|(path, (probe_path, sentinel))| {
+            crate::command::hook_host_acceptance::inspect_host_rollout(path, probe_path, sentinel)
+        })
+        .transpose()?;
     let activation_path = flag_value(args, "--activation")
         .map(PathBuf::from)
         .unwrap_or_else(|| default_activation_path(&project_root));
@@ -155,7 +178,7 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
             registry: &runtime,
             config: &hook_config,
             platform: client,
-            event: "PreToolUse",
+            event: "pre-tool",
             payload: &probe_payload,
         });
         (
@@ -179,9 +202,11 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
     let match_policy_covered_rule_count = match_policy_report
         .as_ref()
         .map_or(0, |report| report.covered_rule_ids.len());
-    let match_policy_failure_count = match_policy_report
-        .as_ref()
-        .map_or(0, |report| report.failures.len());
+    let match_policy_failure_count = match_policy_report.as_ref().map_or(0, |report| {
+        report
+            .configured_rule_count
+            .saturating_sub(report.covered_rule_ids.len())
+    });
     let match_policy_status = match match_policy_report.as_ref() {
         None => "not-applicable",
         Some(report) if report.is_complete() => "complete",
@@ -198,18 +223,22 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         None
     };
     let configured_hook_binary_status = if client == "codex" {
-        match (
-            codex_global_hook_binary_path(&config)
-                .as_deref()
-                .and_then(crate::command::protocol_binary_artifact_path_digest),
-            active_hook_binary_path
-                .as_deref()
-                .and_then(crate::command::protocol_binary_artifact_path_digest),
-        ) {
-            (Some(configured), Some(active)) if configured == active => "match",
-            (Some(_), Some(_)) => "mismatch",
-            (None, _) => "missing",
-            _ => "unavailable",
+        if plugin_hook && !root_hook {
+            "host-managed"
+        } else {
+            match (
+                codex_global_hook_binary_path(&config)
+                    .as_deref()
+                    .and_then(crate::command::protocol_binary_artifact_path_digest),
+                active_hook_binary_path
+                    .as_deref()
+                    .and_then(crate::command::protocol_binary_artifact_path_digest),
+            ) {
+                (Some(configured), Some(active)) if configured == active => "match",
+                (Some(_), Some(_)) => "mismatch",
+                (None, _) => "missing",
+                _ => "unavailable",
+            }
         }
     } else {
         "not-applicable"
@@ -246,27 +275,61 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         .as_ref()
         .map(|status| status.trust_config_path.display().to_string())
         .unwrap_or_else(|| "unavailable".to_string());
-    let enforcement_status = enforcement
+    let host_acceptance_complete = host_acceptance
         .as_ref()
-        .map(|report| report.status)
-        .unwrap_or("not-applicable");
+        .is_some_and(|receipt| receipt.accepted());
+    let enforcement_status = if host_acceptance_complete {
+        "enforced"
+    } else {
+        enforcement
+            .as_ref()
+            .map(|report| report.status)
+            .unwrap_or("not-applicable")
+    };
+    let enforcement_probe = if host_acceptance_complete {
+        "normal-task-rollout"
+    } else {
+        enforcement
+            .as_ref()
+            .map(|report| report.probe)
+            .unwrap_or("not-applicable")
+    };
+    let enforcement_reason = if let Some(receipt) = host_acceptance.as_ref() {
+        receipt.reason_kind()
+    } else {
+        enforcement
+            .as_ref()
+            .map(|report| report.reason)
+            .unwrap_or("non-codex-client")
+    };
     let doctor_status = if config_contract_status != "match"
-        || binary_contract_status != "match"
+        || binary_contract_status == "mismatch"
+        || (binary_contract_status != "match" && !host_acceptance_complete)
         || hook_binary_probe.status != "found"
         || (client == "codex" && !plugin_hook)
         || (client == "codex" && root_hook)
-        || (client == "codex" && plugin_hook && hook_shell_binary_status != "match")
+        || (client == "codex" && plugin_hook && hook_shell_binary_status == "mismatch")
         || (client == "codex"
             && plugin_hook
-            && matches!(event_state_status, "missing" | "empty" | "unreadable"))
+            && hook_shell_binary_status != "match"
+            && !host_acceptance_complete)
+        || (client == "codex"
+            && plugin_hook
+            && matches!(event_state_status, "missing" | "empty" | "unreadable")
+            && !host_acceptance_complete)
         || (client == "codex" && matches!(enforcement_status, "unavailable" | "failed"))
         || (client == "codex" && match_policy_status != "complete")
+        || host_acceptance
+            .as_ref()
+            .is_some_and(|receipt| !receipt.accepted())
     {
         "warning"
     } else {
         "ok"
     };
-    let background_thread_hook = if client == "codex" {
+    let background_thread_hook = if let Some(receipt) = host_acceptance.as_ref() {
+        receipt.state()
+    } else if client == "codex" {
         "host-surface-unproven"
     } else {
         "not-applicable"
@@ -317,14 +380,8 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         match_policy_covered_rule_count,
         match_policy_failure_count,
         enforcement_status,
-        enforcement
-            .as_ref()
-            .map(|report| report.probe)
-            .unwrap_or("not-applicable"),
-        enforcement
-            .as_ref()
-            .map(|report| report.reason)
-            .unwrap_or("non-codex-client"),
+        enforcement_probe,
+        enforcement_reason,
         background_thread_hook,
         HOOK_PROTOCOL_ID,
     );
@@ -347,29 +404,51 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
             detail.saw_hook_event,
         );
     }
-    if client == "codex" && (plugin_hook || root_hook) {
+    if let Some(receipt) = host_acceptance.as_ref() {
         println!(
-            "|codex-app projectConfig={} hookMode={} pluginHook={} projectTrust={} trustMode={} trustStatus={} backgroundThreadHook={} hostSurface=codex_app.create_thread verificationHint=native-thread-required reloadHint=restart-native-codex-thread-after-plugin-install",
-            display_path(&project_root, &config_path),
-            hook_mode,
-            plugin_hook,
-            project_trust,
-            trust_mode,
-            trust_status,
-            background_thread_hook,
+            "|host-acceptance {}",
+            serde_json::to_string(receipt)
+                .map_err(|error| format!("failed to serialize Host acceptance receipt: {error}"))?
         );
+    }
+    if client == "codex" && (plugin_hook || root_hook) {
+        if host_acceptance.is_some() {
+            println!(
+                "|host-delivery projectConfig={} hookMode={} pluginHook={} projectTrust={} trustMode={} trustStatus={} backgroundThreadHook={} hostSurface=normal-task-rollout verificationHint=typed-host-acceptance-receipt",
+                display_path(&project_root, &project_config_path),
+                hook_mode,
+                plugin_hook,
+                project_trust,
+                trust_mode,
+                trust_status,
+                background_thread_hook,
+            );
+        } else {
+            println!(
+                "|codex-app projectConfig={} hookMode={} pluginHook={} projectTrust={} trustMode={} trustStatus={} backgroundThreadHook={} hostSurface=codex_app.create_thread verificationHint=native-thread-required reloadHint=restart-native-codex-thread-after-plugin-install",
+                display_path(&project_root, &project_config_path),
+                hook_mode,
+                plugin_hook,
+                project_trust,
+                trust_mode,
+                trust_status,
+                background_thread_hook,
+            );
+        }
     }
     if let Some(status) = project_trust_status.as_ref()
         && !status.project_trusted
     {
         println!("|trust project=untrusted reason=project-not-trusted");
     }
-    if let Some(status) = global_trust_status.as_ref()
+    if root_hook
+        && let Some(status) = global_trust_status.as_ref()
         && !status.missing_events.is_empty()
     {
         println!("|trust missing={}", status.missing_events.join(","));
     }
-    if let Some(status) = global_trust_status.as_ref()
+    if root_hook
+        && let Some(status) = global_trust_status.as_ref()
         && !status.stale_events.is_empty()
     {
         println!("|trust stale={}", status.stale_events.join(","));
@@ -418,16 +497,29 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
     }
     if args.iter().any(|arg| arg == "--strict-contract")
         && (config_contract_status != "match"
-            || binary_contract_status != "match"
+            || binary_contract_status == "mismatch"
+            || (binary_contract_status != "match" && !host_acceptance_complete)
             || hook_binary_probe.status != "found"
             || (client == "codex" && !plugin_hook)
             || (client == "codex" && root_hook)
             || (client == "codex" && match_policy_status != "complete")
-            || (client == "codex" && plugin_hook && hook_shell_binary_status != "match"))
+            || (client == "codex" && plugin_hook && hook_shell_binary_status == "mismatch")
+            || (client == "codex"
+                && plugin_hook
+                && hook_shell_binary_status != "match"
+                && !host_acceptance_complete))
     {
         return Err(format!(
             "hook contract freshness gate failed: config={config_contract_status} activeBinary={binary_contract_status} binaryPath={} aspPath={asp_path_status} hookShellBinary={hook_shell_binary_status}",
             hook_binary_probe.status,
+        ));
+    }
+    if let Some(receipt) = host_acceptance.as_ref()
+        && !receipt.accepted()
+    {
+        return Err(format!(
+            "normal-task Hook Host acceptance failed: reasonKind={}",
+            receipt.reason_kind()
         ));
     }
     Ok(())

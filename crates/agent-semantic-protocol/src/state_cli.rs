@@ -5,7 +5,9 @@ use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use agent_semantic_client_core::state_core::{ResolvedState, resolve_state_home};
+use agent_semantic_client_core::state_core::{
+    ResolvedState, is_temporary_checkout_path, resolve_state_home,
+};
 use agent_semantic_client_db::ClientDbEngine;
 
 /// Run the `asp` binary with pre-dispatch for State Core commands.
@@ -310,7 +312,7 @@ fn audit_state_project_dir(
 
     if let Some(checkout_root) = checkout_root.as_deref() {
         let checkout_path = PathBuf::from(checkout_root);
-        if is_temp_checkout_path(&checkout_path) {
+        if is_temporary_checkout_path(&checkout_path) {
             reasons.push("temp_checkout".to_string());
         }
         if path_is_inside_or_same(&checkout_path, state_home) {
@@ -812,13 +814,6 @@ fn json_string_field(value: &serde_json::Value, key: &str) -> Option<String> {
         .and_then(serde_json::Value::as_str)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
-}
-
-fn is_temp_checkout_path(path: &Path) -> bool {
-    let text = path.to_string_lossy();
-    text.starts_with("/private/var/folders/")
-        || text.starts_with("/var/folders/")
-        || text.starts_with("/tmp/")
 }
 
 fn path_is_inside_or_same(path: &Path, parent: &Path) -> bool {

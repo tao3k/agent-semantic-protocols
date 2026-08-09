@@ -7,7 +7,9 @@ use agent_semantic_config::{
     load_hook_client_config_overlay_file_with_agents, merge_asp_project_hook_config,
 };
 
-use crate::hook_config::core::{ClientHookConfig, compile_config};
+use crate::hook_config::core::{
+    ClientHookConfig, compile_config, compile_config_with_executable_capabilities,
+};
 use crate::hook_config_global::default_global_client_config_path;
 use crate::provider_manifest::project_agent_config_path;
 
@@ -100,6 +102,36 @@ pub fn load_client_config_for_project(
     let agent_config_path = project_agent_config_path(project_root);
     let project = load_asp_project_config_file(&agent_config_path)?;
     compile_config(merge_asp_project_hook_config(parsed, project)?)
+}
+
+/// Compile a policy against an explicit executable-capability snapshot.
+///
+/// This is the deterministic boundary used by black-box policy composition
+/// tests. Production callers use `load_client_config_for_project`, which
+/// captures the host snapshot once during compilation.
+pub fn load_client_config_for_project_with_executable_capabilities<I, S>(
+    path: &Path,
+    project_root: &Path,
+    capabilities: I,
+) -> Result<ClientHookConfig, String>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    let parsed = match load_project_agent_routes(project_root)? {
+        Some(agents) => load_hook_client_config_file_with_agents(path, agents)?,
+        None => agent_semantic_config::load_hook_client_config_file(path)?,
+    };
+    let agent_config_path = project_agent_config_path(project_root);
+    let project = load_asp_project_config_file(&agent_config_path)?;
+    let capabilities = capabilities
+        .into_iter()
+        .map(Into::into)
+        .collect::<std::collections::BTreeSet<_>>();
+    compile_config_with_executable_capabilities(
+        merge_asp_project_hook_config(parsed, project)?,
+        Some(&capabilities),
+    )
 }
 
 /// Load a partial hook config over the embedded defaults, then apply

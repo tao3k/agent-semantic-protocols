@@ -84,6 +84,30 @@ languageIds = ["gerbil-scheme"]
 [commandProfiles.categories]
 testing = [["gxpkg", "test"]]
 
+# Reusable predicates over the normalized AgentAction envelope. Rules compose
+# these facts; they do not duplicate tool-name or provider-extension heuristics.
+[[actionPolicies]]
+id = "registered-language-source"
+subjectKindAny = ["registered-language-source", "registered-language-source-pattern"]
+
+[[actionPolicies]]
+id = "raw-host-read"
+actionAny = ["read"]
+effectAny = ["read"]
+authorityAny = ["raw-host-action"]
+
+[[actionPolicies]]
+id = "raw-host-search"
+actionAny = ["search"]
+effectAny = ["search"]
+authorityAny = ["raw-host-action"]
+
+[[actionPolicies]]
+id = "raw-shell-read"
+actionAny = ["execute"]
+effectAny = ["read"]
+authorityAny = ["raw-shell"]
+
 # Registered-language reasoning query/search dispatch. The matcher expands
 # `<registered-language>` from the provider registry; the rule owns the complete
 # match, intent, decision, and resident dispatch policy.
@@ -146,9 +170,7 @@ reasonKind = "raw-broad-search"
 message = "Raw host search actions over registered source belong in `asp <language> search`."
 
 [rules.match]
-actionAny = ["search"]
-effectAny = ["search"]
-subjectKindAny = ["registered-language-source", "registered-language-source-pattern"]
+actionPolicyAll = ["raw-host-search", "registered-language-source"]
 
 [rules.dispatch]
 transport = "resident-agent"
@@ -165,10 +187,7 @@ message = "Raw semantic reads over registered language source are denied. Use pa
 event = "pre-tool"
 
 [rules.match]
-actionAny = ["execute"]
-effectAny = ["read"]
-subjectKindAny = ["registered-language-source", "registered-language-source-pattern"]
-authorityAny = ["raw-shell"]
+actionPolicyAll = ["raw-shell-read", "registered-language-source"]
 
 [[rules.match.effectRules]]
 argvPrefix = ["read"]
@@ -258,10 +277,7 @@ decisionMaterializer = "source-access"
 message = "Registered {{languageId}} source reads are denied. Use the parser-owned ASP route below instead of raw Read."
 
 [rules.match]
-actionAny = ["read"]
-effectAny = ["read"]
-subjectKindAny = ["registered-language-source", "registered-language-source-pattern"]
-authorityAny = ["raw-host-action"]
+actionPolicyAll = ["raw-host-read", "registered-language-source"]
 
 [[rules]]
 id = "materialize-structured-document-read-action"
@@ -360,6 +376,7 @@ argvStructuredDocumentFile = true
 id = "deny-uncontrolled-source-materialization-commands"
 priority = 10001
 decision = "deny"
+decisionMaterializer = "source-access"
 reasonKind = "bulk-source-dump"
 message = "Direct source materialization is permanently denied. Consume parser-owned ASP evidence; recovery receipts never authorize raw source reads."
 

@@ -157,7 +157,10 @@ pub struct ProjectResolutionMetrics {
     pub full_workspace_reads: u64,
     pub full_manifest_reparses: u64,
     pub db_opens: u64,
-    pub elapsed_micros: u128,
+    /// JSON v1 metrics are bounded to the unsigned 64-bit integer domain.
+    /// `serde_json` deliberately rejects `u128`, so a wider in-process timing
+    /// value must be saturated before it can cross a provider/Runtime IPC edge.
+    pub elapsed_micros: u64,
 }
 
 /// ASP-owned binding between an admitted candidate base and an unchanged

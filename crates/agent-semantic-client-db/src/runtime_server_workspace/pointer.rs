@@ -6,6 +6,8 @@ use super::{WorkspaceGenerationSnapshot, WorkspaceMemoryGeneration};
 const POINTER_FILE_NAME: &str = "active-generation.pointer";
 const POINTER_CONTEXT: &str = "workspace generation";
 
+pub(crate) const ACTIVE_WORKSPACE_GENERATION_REQUIRED: &str = "state=source-unavailable reasonKind=active-workspace-generation-required: active workspace generation lease is required";
+
 #[cfg(test)]
 #[path = "../../tests/unit/runtime_server_workspace_pointer.rs"]
 mod tests;
@@ -68,9 +70,9 @@ impl WorkspaceGenerationPointerReader {
     }
 
     pub async fn open(path: &Path) -> Result<Self, String> {
-        Ok(Self {
-            inner: AtomicSnapshotPointerReader::open(path, POINTER_CONTEXT).await?,
-        })
+        Self::open_optional(path)
+            .await?
+            .ok_or_else(|| ACTIVE_WORKSPACE_GENERATION_REQUIRED.to_owned())
     }
 
     pub async fn open_optional(path: &Path) -> Result<Option<Self>, String> {

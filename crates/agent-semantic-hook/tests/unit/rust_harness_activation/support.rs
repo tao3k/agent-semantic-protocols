@@ -83,19 +83,7 @@ pub(super) fn temp_project_root(name: &str) -> PathBuf {
         .as_nanos();
     let root = std::env::temp_dir().join(format!("agent-semantic-hook-{name}-{unique}"));
     std::fs::create_dir_all(&root).expect("create temp project root");
-    let _git_fixture = crate::integration_fixture::GIT_FIXTURE_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let output = crate::integration_fixture::isolated_git_command()
-        .args(["init", "--quiet", "--template="])
-        .current_dir(&root)
-        .output()
-        .expect("initialize temporary Git workspace");
-    assert!(
-        output.status.success(),
-        "git init failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    gix::init(&root).expect("initialize temporary Git workspace with gix");
     let agents_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join("agents");
@@ -115,9 +103,6 @@ pub(super) fn temp_project_root(name: &str) -> PathBuf {
 }
 
 pub(super) fn stage_project_candidates(root: &Path) {
-    let _git_fixture = crate::integration_fixture::GIT_FIXTURE_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let output = crate::integration_fixture::isolated_git_command()
         .args(["add", "."])
         .current_dir(root)

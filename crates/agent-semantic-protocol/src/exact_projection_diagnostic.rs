@@ -62,21 +62,13 @@ pub(crate) fn resolution_from_facts(
         item_name: facts.item_name,
         candidates: facts.candidates,
         actual_kinds: facts.actual_kinds,
-        recommended_next: matches!(
-            facts.resolution_state.as_str(),
-            "selector-stale" | "owner-missing"
-        )
-        .then(|| ProviderNativeExactRecommendedNext {
-            command: if facts.resolution_state == "selector-stale"
-                || facts.resolution_state == "owner-missing"
-            {
-                format!(
+        recommended_next: (facts.resolution_state == "owner-missing").then(|| {
+            ProviderNativeExactRecommendedNext {
+                command: format!(
                     "asp {} search lexical --query '{}' --query '{} {}' --workspace {} --view seeds",
                     facts.language_id, next_query, facts.item_kind, next_query, facts.workspace
-                )
-            } else {
-                unreachable!("recovery command exists only for stale or missing owner authority")
-            },
+                ),
+            }
         }),
     }
 }

@@ -702,6 +702,79 @@ async fn selector_overlay_binds_projection_kind_and_projection_bytes() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_projection_reads_share_one_slot_without_starting_a_writer_resident() {
+    let temporary = tempdir().expect("temporary runtime root");
+    let publisher =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let source = b"fn projection_target() {}";
+    let selector = "rust://src/lib.rs#item/function/projection_target";
+    publisher
+        .publish(
+            "projection-slot-generation",
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
+            generation(
+                "workspace-projection-slot",
+                1,
+                owner("src/lib.rs", selector, source),
+            ),
+        )
+        .await
+        .expect("publish projection generation");
+    drop(publisher);
+
+    let registry = std::sync::Arc::new(
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("cold registry"),
+    );
+    let mut tasks = tokio::task::JoinSet::new();
+    for _ in 0..256 {
+        let registry = std::sync::Arc::clone(&registry);
+        tasks.spawn(async move {
+            registry
+                .projection_search_generation_authority(
+                    "workspace-projection-slot",
+                    &project_root("workspace-projection-slot"),
+                )
+                .await
+        });
+    }
+    while let Some(result) = tasks.join_next().await {
+        let authority = result
+            .expect("join projection read")
+            .expect("read projection authority");
+        assert_eq!(authority.workspace_identity, "workspace-projection-slot");
+    }
+    assert_eq!(registry.search_projection_slot_count(), 1);
+    assert_eq!(
+        registry.workspace_count(),
+        0,
+        "projection-only reads must not decode the complete generation or start a writer lane"
+    );
+    let mut samples = Vec::with_capacity(30);
+    for _ in 0..30 {
+        let started = Instant::now();
+        registry
+            .projection_search_generation_authority(
+                "workspace-projection-slot",
+                &project_root("workspace-projection-slot"),
+            )
+            .await
+            .expect("read warm projection authority");
+        samples.push(started.elapsed().as_nanos());
+    }
+    samples.sort_unstable();
+    let p99 = samples[29];
+    eprintln!(
+        "[runtime-projection-slot-performance] concurrentFirstReads=256 slots={} writerResidents={} warmRuns=30 p99Nanos={p99} budgetNanos=1000000",
+        registry.search_projection_slot_count(),
+        registry.workspace_count(),
+    );
+    assert!(
+        p99 < 1_000_000,
+        "resident projection-slot p99 exceeded one millisecond: p99Nanos={p99}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn process_cold_exact_projection_open_and_lookup_is_sub_millisecond_at_p99() {
     let _performance = crate::test_support::performance_lock();
     const SELECTOR_COUNT: usize = 2_048;

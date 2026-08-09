@@ -28,7 +28,7 @@ impl SourceIndexRefreshContext {
     pub(super) fn resolve(project_root: &Path) -> Result<Self, String> {
         let project_context = ProjectContext::resolve(project_root)?;
         project_context.require_inside_workspace(project_root)?;
-        let db_engine = ClientDbEngine::resolve(project_root)?;
+        let db_engine = ClientDbEngine::resolve_for_write(project_root)?;
         Ok(Self {
             db_path: db_engine.db_path().to_path_buf(),
             schema_id: SemanticSchemaId::from(SOURCE_INDEX_SCHEMA_ID),

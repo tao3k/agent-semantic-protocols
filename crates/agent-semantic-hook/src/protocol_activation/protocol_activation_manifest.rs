@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{HookPolicy, HookRoutes};
+use crate::protocol::{CommandTemplate, HookPolicy, HookRoutes};
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -594,6 +594,8 @@ pub struct HookRuntime {
     pub project_root: String,
     pub rankers: Vec<ActivatedRankerConfig>,
     pub providers: Vec<ActivatedProvider>,
+    #[serde(default)]
+    pub policy_providers: Vec<HookProviderProjection>,
 }
 
 /// In-memory activated provider selected from a validated manifest.
@@ -626,8 +628,8 @@ pub struct ActivatedProvider {
 /// This deliberately excludes execution activation. A document provider or a
 /// language provider whose harness is not active still participates in Hook
 /// policy without pretending that an executable provider was activated.
-#[derive(Clone, Debug)]
-pub(crate) struct HookProviderProjection {
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct HookProviderProjection {
     pub language_id: agent_semantic_config::LanguageId,
     pub provider_id: agent_semantic_config::ProviderId,
     pub binary: String,
@@ -636,7 +638,9 @@ pub(crate) struct HookProviderProjection {
     pub source_extensions: Vec<String>,
     pub config_files: Vec<String>,
     pub policy: HookPolicy,
-    pub routes: HookRoutes,
+    pub owner_route: CommandTemplate,
+    pub lexical_route: CommandTemplate,
+    pub ingest_route: CommandTemplate,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SourceSelectorKind {

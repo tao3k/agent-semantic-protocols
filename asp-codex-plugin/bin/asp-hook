@@ -1,0 +1,73 @@
+#!/bin/sh
+
+# Stable plugin-owned bootstrap for the one-shot ASP Hook evaluator.
+# Codex runs plugin hooks from the session cwd and does not guarantee that the
+# user's interactive PATH is present. Resolve the canonical runtime artifact
+# directly; never contact or start ASP Runtime Server from this launcher.
+
+set -u
+
+event="${1:-unknown}"
+state_home="${ASP_STATE_HOME:-${HOME:-}/.agent-semantic-protocols}"
+runtime_bin="${state_home}/runtime/bin/asp"
+local_bin="${HOME:-}/.local/bin/asp"
+
+emit_unavailable() {
+  detail="$1"
+  reason="ASP Hook evaluator is unavailable (${detail}). Repair the canonical runtime binary with: asp install binary --target \$ASP_STATE_HOME/runtime/bin/asp"
+  case "$event" in
+    pre-tool)
+      printf '%s\n' "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"${reason}\"},\"systemMessage\":\"${reason}\"}"
+      ;;
+    permission-request)
+      printf '%s\n' "{\"hookSpecificOutput\":{\"hookEventName\":\"PermissionRequest\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"${reason}\"},\"systemMessage\":\"${reason}\"}"
+      ;;
+    *)
+      printf '%s\n' "{\"systemMessage\":\"${reason}\"}"
+      ;;
+  esac
+}
+
+run_hook() {
+  candidate="$1"
+  shift
+  if [ ! -f "$candidate" ] || [ ! -x "$candidate" ]; then
+    return 125
+  fi
+  "$candidate" hook "$@"
+  status=$?
+  case "$status" in
+    126|127)
+      emit_unavailable "canonical binary exec status ${status}"
+      return 0
+      ;;
+    *)
+      return "$status"
+      ;;
+  esac
+}
+
+run_hook "$runtime_bin" "$@"
+status=$?
+if [ "$status" -eq 0 ]; then
+  exit 0
+fi
+if [ "$status" -ne 125 ]; then
+  exit "$status"
+fi
+
+# The local installation is a canonical symlink installed by ASP. It is only
+# consulted when ASP_STATE_HOME was not explicitly supplied.
+if [ -z "${ASP_STATE_HOME:-}" ]; then
+  run_hook "$local_bin" "$@"
+  status=$?
+  if [ "$status" -eq 0 ]; then
+    exit 0
+  fi
+  if [ "$status" -ne 125 ]; then
+    exit "$status"
+  fi
+fi
+
+emit_unavailable "canonical binary missing or non-executable"
+exit 0

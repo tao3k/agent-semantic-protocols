@@ -5,6 +5,24 @@ use sha2::{Digest, Sha256};
 
 use super::{ManagedHookConfigStatus, materialize};
 
+#[cfg(unix)]
+fn current_thread_cpu_nanos() -> u128 {
+    let mut time = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: `time` is a valid writable timespec and the clock is process-local.
+    let status = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut time) };
+    assert_eq!(status, 0, "read current-thread CPU clock");
+    (time.tv_sec as u128) * 1_000_000_000 + (time.tv_nsec as u128)
+}
+
+#[cfg(not(unix))]
+fn current_thread_cpu_nanos() -> u128 {
+    static STARTED: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    STARTED.get_or_init(Instant::now).elapsed().as_nanos()
+}
+
 fn test_root(label: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -157,19 +175,20 @@ fn warm_fingerprint_gate_stays_millisecond_scale() {
     let path = root.join("hooks").join("config.toml");
     assert_eq!(materialize(&path), Ok(ManagedHookConfigStatus::Created));
 
-    let started = Instant::now();
+    let cpu_started_nanos = current_thread_cpu_nanos();
     for _ in 0..CYCLES {
         assert_eq!(materialize(&path), Ok(ManagedHookConfigStatus::Current));
     }
-    let elapsed = started.elapsed();
+    let elapsed_cpu_nanos = current_thread_cpu_nanos() - cpu_started_nanos;
     eprintln!(
-        "[hook-config-refresh] scenario=warm cycles={CYCLES} elapsedMicros={} averageMicros={}",
-        elapsed.as_micros(),
-        elapsed.as_micros() / u128::from(CYCLES)
+        "[hook-config-refresh] scenario=warm cycles={CYCLES} cpuMicros={} averageCpuMicros={}",
+        elapsed_cpu_nanos / 1_000,
+        elapsed_cpu_nanos / 1_000 / u128::from(CYCLES)
     );
     assert!(
-        elapsed < Duration::from_millis(512),
-        "warm hook config gate exceeded 4ms average: {elapsed:?}"
+        elapsed_cpu_nanos < Duration::from_millis(512).as_nanos(),
+        "warm hook config gate exceeded 4ms average of current-thread CPU: {}ns",
+        elapsed_cpu_nanos / u128::from(CYCLES)
     );
 
     let _ = std::fs::remove_dir_all(root);

@@ -130,6 +130,23 @@ pub fn project_runtime_state_with_state_home(
     materialize_project_runtime_state(paths)
 }
 
+/// Materialize a temporary Git checkout as a workspace beneath an explicit owner project.
+pub fn temporary_workspace_runtime_state_with_owner_and_state_home(
+    temporary_root: impl AsRef<Path>,
+    owner_project_root: impl AsRef<Path>,
+    state_home: impl AsRef<Path>,
+) -> Result<ProjectRuntimeState, String> {
+    let resolved =
+        crate::state_core::ResolvedState::resolve_temporary_workspace_with_owner_and_state_home(
+            temporary_root,
+            owner_project_root,
+            state_home,
+        )?;
+    resolved.ensure_minimal_layout()?;
+    let paths = project_state_paths_from_resolved(resolved);
+    materialize_project_runtime_state(paths)
+}
+
 fn materialize_project_runtime_state(
     paths: ProjectStatePaths,
 ) -> Result<ProjectRuntimeState, String> {

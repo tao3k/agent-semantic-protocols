@@ -415,8 +415,6 @@ mod agent_session;
 mod agent_session_registry_dispatch;
 #[path = "workspace_db_ipc_server_generation.rs"]
 mod generation;
-#[path = "workspace_db_ipc_server_graph_facts.rs"]
-mod graph_facts;
 #[path = "workspace_db_ipc_server_graph_turbo.rs"]
 mod graph_turbo;
 
@@ -515,6 +513,18 @@ pub async fn serve_runtime_server_workspace_stream(
                 code: "runtime-server-workspace-retiring".to_owned(),
                 message: message.clone(),
             }
+        } else if let Some(project_root) =
+            generation::resident_read_project_root(&request.operation)
+            && let Err(message) = generation::require_terminal_generation_for_read(
+                generation_admission.map(std::sync::Arc::as_ref),
+                &request.workspace_identity,
+                project_root,
+            )
+        {
+            WorkspaceDbIpcResult::Failed {
+                code: "active-workspace-generation-required".to_owned(),
+                message,
+            }
         } else {
             match request.operation {
                 WorkspaceDbIpcOperation::CacheControl {
@@ -533,12 +543,15 @@ pub async fn serve_runtime_server_workspace_stream(
                     language_id: _,
                     projection_kind,
                     structural_selector,
-                } => match memory_registry.read_runtime_selector(
-                    &request.workspace_identity,
-                    Path::new(&project_root),
-                    projection_kind,
-                    &structural_selector,
-                ) {
+                } => match memory_registry
+                    .read_projection_selector(
+                        &request.workspace_identity,
+                        Path::new(&project_root),
+                        projection_kind,
+                        &structural_selector,
+                    )
+                    .await
+                {
                     Ok(read) => WorkspaceDbIpcResult::RuntimeSelector { read },
                     Err(message) => WorkspaceDbIpcResult::Failed {
                         code: "runtime-server-selector-read-failed".to_owned(),
@@ -548,11 +561,14 @@ pub async fn serve_runtime_server_workspace_stream(
                 WorkspaceDbIpcOperation::ReadRuntimeOwner {
                     project_root,
                     owner_path,
-                } => match memory_registry.read_runtime_owner(
-                    &request.workspace_identity,
-                    Path::new(&project_root),
-                    &owner_path,
-                ) {
+                } => match memory_registry
+                    .read_projection_owner(
+                        &request.workspace_identity,
+                        Path::new(&project_root),
+                        &owner_path,
+                    )
+                    .await
+                {
                     Ok(read) => WorkspaceDbIpcResult::RuntimeOwner { read },
                     Err(message) => WorkspaceDbIpcResult::Failed {
                         code: "runtime-server-owner-read-failed".to_owned(),
@@ -560,13 +576,16 @@ pub async fn serve_runtime_server_workspace_stream(
                     },
                 },
                 WorkspaceDbIpcOperation::ReadRuntimeSearchGenerationAuthority { project_root } => {
-                    match memory_registry.read_search_generation_authority(
-                        &request.workspace_identity,
-                        Path::new(&project_root),
-                    ) {
-                        Ok(authority) => {
-                            WorkspaceDbIpcResult::RuntimeSearchGenerationAuthority { authority }
-                        }
+                    match memory_registry
+                        .projection_search_generation_authority(
+                            &request.workspace_identity,
+                            Path::new(&project_root),
+                        )
+                        .await
+                    {
+                        Ok(authority) => WorkspaceDbIpcResult::RuntimeSearchGenerationAuthority {
+                            authority: Some(authority),
+                        },
                         Err(message) => WorkspaceDbIpcResult::Failed {
                             code: "runtime-server-search-generation-authority-read-failed"
                                 .to_owned(),
@@ -577,12 +596,20 @@ pub async fn serve_runtime_server_workspace_stream(
                 WorkspaceDbIpcOperation::ReadRuntimeGraphFacts {
                     project_root,
                     sources,
-                } => graph_facts::read(
-                    memory_registry,
-                    &request.workspace_identity,
-                    &project_root,
-                    sources,
-                ),
+                } => match memory_registry
+                    .read_projection_graph_facts(
+                        &request.workspace_identity,
+                        Path::new(&project_root),
+                        &sources,
+                    )
+                    .await
+                {
+                    Ok(read) => WorkspaceDbIpcResult::RuntimeGraphFacts { read },
+                    Err(message) => WorkspaceDbIpcResult::Failed {
+                        code: "runtime-server-graph-facts-read-failed".to_owned(),
+                        message,
+                    },
+                },
                 WorkspaceDbIpcOperation::PublishRuntimeSelectorOverlay {
                     project_root,
                     overlay,
@@ -781,7 +808,7 @@ pub async fn serve_runtime_server_workspace_stream(
                     if changes_registry
                         && let (Some(status), Some(owner)) =
                             (agent_session_status, agent_session_registry_owner)
-                        && let Err(message) = status.refresh(owner).await
+                        && let Err(message) = status.refresh_and_wait_published(owner).await
                     {
                         WorkspaceDbIpcResult::Failed {
                             code: "runtime-server-agent-session-status-publication-failed"
@@ -829,23 +856,15 @@ pub async fn serve_runtime_server_workspace_stream(
                 WorkspaceDbIpcOperation::ReadSourceIndex {
                     request: lookup_request,
                 } => {
-                    let lookup = async {
-                        let project_root = Path::new(&lookup_request.project_root);
-                        let lease = memory_registry
-                            .lease(&request.workspace_identity, project_root)
-                            .map_err(|error| {
-                                format!(
-                                    "active workspace generation lease is required before source-index read: workspaceIdentity={} error={error}",
-                                    request.workspace_identity
-                                )
-                            })?;
-                        lease.read_source_index(
+                    let lookup = memory_registry
+                        .read_projection_source_index(
+                            &request.workspace_identity,
+                            Path::new(&lookup_request.project_root),
                             &lookup_request.query,
                             lookup_request.language_id.as_ref(),
                             lookup_request.limit,
                         )
-                    }
-                    .await;
+                        .await;
                     match lookup {
                         Ok(lookup) => WorkspaceDbIpcResult::SourceIndex { lookup },
                         Err(message) => WorkspaceDbIpcResult::Failed {

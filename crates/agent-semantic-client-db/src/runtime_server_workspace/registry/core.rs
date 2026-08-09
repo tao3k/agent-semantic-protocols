@@ -97,6 +97,7 @@ pub(super) enum WorkspaceWriteCommand {
         owner: WorkspaceOwnerSnapshot,
         reply: oneshot::Sender<Result<WorkspaceRecoveryReceipt, String>>,
     },
+    PublishOwnerDelta(super::writer_publication::PublishOwnerDeltaCommand),
     PublishSelectorOverlay {
         target: WorkspaceWriteTarget,
         workspace_identity: String,
@@ -149,6 +150,17 @@ pub(super) enum WorkspaceWriteCommand {
 pub struct RuntimeServerWorkspaceRegistry {
     pub(crate) root: PathBuf,
     entries: RwLock<HashMap<String, Arc<WorkspaceResident>>>,
+    search_projection_slots: dashmap::DashMap<
+        (String, String),
+        Arc<
+            tokio::sync::Mutex<
+                Option<(
+                    u64,
+                    Arc<crate::runtime_server_workspace::WorkspaceSearchGenerationDataPlaneClient>,
+                )>,
+            >,
+        >,
+    >,
     writer_capacity: usize,
     blocking_lane_ready: tokio::sync::OnceCell<()>,
     counters: Arc<RuntimeDataPlaneCounterState>,
@@ -163,6 +175,8 @@ pub(super) struct RuntimeDataPlaneCounterState {
 
 #[path = "counter_state.rs"]
 mod counter_state;
+#[path = "projection_slots.rs"]
+mod projection_slots;
 #[path = "search_authority.rs"]
 mod search_authority;
 
@@ -174,6 +188,7 @@ impl RuntimeServerWorkspaceRegistry {
         Ok(Self {
             root,
             entries: RwLock::new(HashMap::new()),
+            search_projection_slots: dashmap::DashMap::new(),
             writer_capacity,
             blocking_lane_ready: tokio::sync::OnceCell::new(),
             counters: Arc::new(RuntimeDataPlaneCounterState::default()),
@@ -643,6 +658,13 @@ async fn workspace_writer_lane(
                     last_receipts.insert(scope_key, receipt.clone());
                 }
                 let _ = reply.send(result);
+            }
+            WorkspaceWriteCommand::PublishOwnerDelta(command) => {
+                if let Some((scope_key, receipt)) =
+                    super::writer_publication::publish_owner_delta_command(command, &counters).await
+                {
+                    last_receipts.insert(scope_key, receipt);
+                }
             }
             WorkspaceWriteCommand::PublishSelectorOverlay {
                 target,

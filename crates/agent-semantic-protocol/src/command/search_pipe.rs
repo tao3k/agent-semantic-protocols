@@ -1,10 +1,6 @@
 //! ASP-owned search pipeline wrapper.
 
-use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
-use std::time::{Duration, Instant};
-
-use serde_json::Value;
 
 use super::graph::GraphTurboReceiptRequest;
 use super::search_config::AspConfig;
@@ -18,7 +14,7 @@ use super::search_pipe_model::SearchPipeSourceTrace;
 use super::search_pipe_owner_items::{
     SearchOwnerItemsContext, run_search_owner_items_query_command,
 };
-use super::search_pipe_provider_facts::{ProviderGraphFactsContext, collect_provider_graph_facts};
+use super::search_pipe_provider_facts::ProviderGraphFactsContext;
 use super::search_pipe_read_memory::read_loop_memory_selectors;
 use super::search_pipe_render::{render_empty_ingest_diagnostic, render_owner_tests_frontier};
 use super::search_pipe_selector_seed::{
@@ -56,6 +52,8 @@ pub(super) struct FastSearchContext<'a> {
         Option<&'a crate::server::runtime_server::RuntimeServerSearchSnapshot>,
     pub(super) search_data_plane:
         Option<&'a crate::server::runtime_server::RuntimeServerSearchDataPlane>,
+    pub(super) diagnostics:
+        Option<&'a mut agent_semantic_search::command_diagnostics::SearchCommandDiagnostics>,
 }
 
 impl FastSearchContext<'_> {
@@ -119,7 +117,7 @@ pub(super) fn is_asp_fast_search(args: &[String]) -> bool {
 
 pub(super) async fn run_asp_fast_search_command(
     args: &[String],
-    context: FastSearchContext<'_>,
+    mut context: FastSearchContext<'_>,
 ) -> Result<(), String> {
     if context.frontier_receipt.is_some()
         && (is_search_suggest(args)
@@ -132,7 +130,7 @@ pub(super) async fn run_asp_fast_search_command(
         );
     }
     if is_search_pipe(args) {
-        return run_search_pipe_command(args, &context).await;
+        return run_search_pipe_command(args, &mut context).await;
     }
     if is_search_suggest(args) {
         return run_search_suggest_command(context.language_id, args);
@@ -164,7 +162,7 @@ pub(super) async fn run_asp_fast_search_command(
         .await;
     }
     if is_search_lexical(args) {
-        return run_search_lexical_command(args, &context).await;
+        return run_search_lexical_command(args, &mut context).await;
     }
     if is_search_failure(args) {
         return run_search_failure_command(
@@ -280,9 +278,12 @@ fn explicit_view(args: &[String]) -> Option<&str> {
 
 async fn run_search_pipe_command(
     args: &[String],
-    context: &FastSearchContext<'_>,
+    context: &mut FastSearchContext<'_>,
 ) -> Result<(), String> {
     let pipe_args = parse_search_pipe_args(args)?;
+    if let Some(diagnostics) = context.diagnostics.as_deref_mut() {
+        diagnostics.mark_stage("search-pipe-args-parsed");
+    }
     let project_root = search_workspace_root(
         context.project_root,
         context.locator_root,
@@ -326,10 +327,15 @@ async fn run_search_pipe_command(
         );
         return Ok(());
     }
-    let current_snapshot = context.required_source_index_snapshot()?;
+    let current_snapshot = context
+        .source_index_snapshot
+        .ok_or_else(|| "search route requires an admitted source-index generation".to_owned())?;
     let search_data_plane = context.search_data_plane.ok_or_else(|| {
         "search pipe requires the resident Runtime Server search data plane".to_owned()
     })?;
+    if let Some(diagnostics) = context.diagnostics.as_deref_mut() {
+        diagnostics.mark_stage("search-pipe-authority-ready");
+    }
     let acquisition = collect_search_pipe_candidates(CollectSearchPipeCandidatesRequest {
         language_id: context.language_id,
         project_root: &project_root,
@@ -344,21 +350,10 @@ async fn run_search_pipe_command(
         require_multi_clause: true,
     })
     .await?;
-    let provider_facts_started_at = Instant::now();
-    let provider_facts = collect_provider_graph_facts(
-        context.language_id,
-        &project_root,
-        Some(&pipe_args.seed_query),
-        &acquisition.candidates,
-        context.provider_context,
-        context.search_data_plane,
-    )
-    .await?;
-    let source_trace = source_trace_with_provider_facts(
-        &acquisition.source_trace,
-        provider_facts_started_at.elapsed(),
-        &provider_facts,
-    );
+    if let Some(diagnostics) = context.diagnostics.as_deref_mut() {
+        diagnostics.mark_stage("search-pipe-candidates-collected");
+    }
+    let source_trace = acquisition.source_trace.clone();
     let rendered_source = resolved_search_pipe_source(pipe_args.source, &acquisition);
     let surfaces = normalized_search_surfaces(&pipe_args.surfaces);
     let source_snapshot = acquisition.source_snapshot.as_ref().ok_or_else(|| {
@@ -378,11 +373,9 @@ async fn run_search_pipe_command(
         source_snapshot,
         generation: &generation,
         locator_root: context.locator_root,
-        cache_home: context.cache_home,
         surface: "search-pipe",
         query: Some(&pipe_args.seed_query),
         candidates: &acquisition.candidates,
-        project_resolutions: search_data_plane.project_resolutions(),
         pipes: &surfaces,
         source: &rendered_source,
         candidate_sources: &acquisition.candidate_sources,
@@ -390,7 +383,6 @@ async fn run_search_pipe_command(
         scopes: &pipe_args.scopes,
         view: &pipe_args.view,
         include_pipe_plan: true,
-        provider_facts: &provider_facts,
         provider_context: context.provider_context,
         read_memory_selectors: &read_loop_memory_selectors(
             context.cache_home,
@@ -401,6 +393,9 @@ async fn run_search_pipe_command(
         frontier_receipt: context.frontier_receipt,
     })
     .await?;
+    if let Some(diagnostics) = context.diagnostics.as_deref_mut() {
+        diagnostics.mark_stage("search-pipe-view-rendered");
+    }
     Ok(())
 }
 
@@ -503,90 +498,6 @@ fn shell_arg(value: &str) -> String {
 #[path = "../../tests/unit/search_pipe_source_generation_route.rs"]
 mod source_generation_route_tests;
 
-fn source_trace_with_provider_facts(
-    source_trace: &[SearchPipeSourceTrace],
-    elapsed: Duration,
-    provider_facts: &super::search_pipe_provider_facts::ProviderGraphFacts,
-) -> Vec<SearchPipeSourceTrace> {
-    let mut trace = source_trace.to_vec();
-    let node_count = provider_facts.nodes.len();
-    let mut fields = BTreeMap::new();
-    fields.insert(
-        "elapsedMs".to_string(),
-        Value::from(elapsed_millis(elapsed)),
-    );
-    fields.insert("nodes".to_string(), Value::from(node_count));
-    fields.insert("edges".to_string(), Value::from(provider_facts.edges.len()));
-    fields.insert(
-        "inputCandidates".to_string(),
-        Value::from(provider_facts.input_candidates),
-    );
-    fields.insert(
-        "factCandidates".to_string(),
-        Value::from(provider_facts.fact_candidates),
-    );
-    fields.insert(
-        "truncatedCandidates".to_string(),
-        Value::from(provider_facts.truncated_candidates),
-    );
-    if let Some(descriptor_id) = provider_facts.descriptor_id.as_ref() {
-        fields.insert(
-            "descriptorId".to_string(),
-            Value::from(descriptor_id.clone()),
-        );
-    }
-    if let Some(descriptor_version) = provider_facts.descriptor_version.as_ref() {
-        fields.insert(
-            "descriptorVersion".to_string(),
-            Value::from(descriptor_version.clone()),
-        );
-    }
-    fields.insert(
-        "matchedAxes".to_string(),
-        Value::Array(
-            provider_facts
-                .matched_axes
-                .iter()
-                .cloned()
-                .map(Value::from)
-                .collect(),
-        ),
-    );
-    fields.insert(
-        "matchedTerms".to_string(),
-        Value::Array(
-            provider_facts
-                .matched_terms
-                .iter()
-                .cloned()
-                .map(Value::from)
-                .collect(),
-        ),
-    );
-    let skipped = node_count == 0
-        && provider_facts.edges.is_empty()
-        && provider_facts.input_candidates == 0
-        && provider_facts.fact_candidates == 0
-        && provider_facts.truncated_candidates == 0
-        && provider_facts.descriptor_id.is_none();
-    let state = if skipped { "skipped" } else { "used" };
-    trace.push(
-        SearchPipeSourceTrace::new(
-            "providerFacts",
-            state,
-            node_count,
-            usize::from(skipped),
-            node_count,
-        )
-        .with_fields(fields),
-    );
-    trace
-}
-
-fn elapsed_millis(duration: Duration) -> u64 {
-    duration.as_millis().try_into().unwrap_or(u64::MAX)
-}
-
 pub(super) fn search_workspace_root(
     project_root: &Path,
     locator_root: &Path,
@@ -676,19 +587,6 @@ async fn run_search_ingest_command(
     let candidates =
         parse_ingest_candidates(context.project_root, context.locator_root, stdin.as_slice());
     let current_snapshot = context.required_source_index_snapshot()?;
-    let provider_facts = collect_provider_graph_facts(
-        context.language_id,
-        context.project_root,
-        None,
-        &candidates,
-        context.provider_context,
-        context.search_data_plane,
-    )
-    .await?;
-    let project_resolutions = context
-        .search_data_plane
-        .map(|data_plane| data_plane.project_resolutions())
-        .unwrap_or(&[]);
     let generation =
         agent_semantic_search::graph_generation_authority::AdmittedGraphGenerationV1::admit(
             &current_snapshot.source_snapshot,
@@ -702,11 +600,9 @@ async fn run_search_ingest_command(
         source_snapshot: &current_snapshot.source_snapshot,
         generation: &generation,
         locator_root: context.locator_root,
-        cache_home: context.cache_home,
         surface: "search-ingest",
         query: None,
         candidates: &candidates,
-        project_resolutions,
         pipes: &ingest_args.pipes,
         source: "ingest",
         candidate_sources: &["ingest".to_string()],
@@ -720,7 +616,6 @@ async fn run_search_ingest_command(
         scopes: &[],
         view: &ingest_args.view,
         include_pipe_plan: false,
-        provider_facts: &provider_facts,
         provider_context: context.provider_context,
         read_memory_selectors: &[],
         frontier_receipt: context.frontier_receipt,
@@ -731,9 +626,12 @@ async fn run_search_ingest_command(
 
 async fn run_search_lexical_command(
     args: &[String],
-    context: &FastSearchContext<'_>,
+    context: &mut FastSearchContext<'_>,
 ) -> Result<(), String> {
     let pipe_args = parse_lexical_args(args)?;
+    if let Some(diagnostics) = context.diagnostics.as_deref_mut() {
+        diagnostics.mark_stage("search-lexical-args-parsed");
+    }
     if !matches!(pipe_args.view.as_str(), "seeds" | "graph-turbo-request") {
         return Err(
             "search lexical supports --view seeds; GraphRouter is selected by the built-in route wrapper".to_string(),
@@ -793,15 +691,9 @@ async fn run_search_lexical_command(
         require_multi_clause: false,
     })
     .await?;
-    let provider_facts = collect_provider_graph_facts(
-        context.language_id,
-        &project_root,
-        Some(&pipe_args.query),
-        &acquisition.candidates,
-        context.provider_context,
-        context.search_data_plane,
-    )
-    .await?;
+    if let Some(diagnostics) = context.diagnostics.as_deref_mut() {
+        diagnostics.mark_stage("search-lexical-candidates-collected");
+    }
     let source_label = acquisition
         .candidate_sources
         .first()
@@ -820,11 +712,9 @@ async fn run_search_lexical_command(
         source_snapshot: &current_snapshot.source_snapshot,
         generation: &generation,
         locator_root: context.locator_root,
-        cache_home: context.cache_home,
         surface: "search-lexical",
         query: Some(&pipe_args.query),
         candidates: &acquisition.candidates,
-        project_resolutions: search_data_plane.project_resolutions(),
         pipes: &pipe_args.pipes,
         source: source_label,
         candidate_sources: &acquisition.candidate_sources,
@@ -832,11 +722,13 @@ async fn run_search_lexical_command(
         scopes: &pipe_args.owners,
         view: &pipe_args.view,
         include_pipe_plan: false,
-        provider_facts: &provider_facts,
         provider_context: context.provider_context,
         read_memory_selectors: &[],
         frontier_receipt: context.frontier_receipt,
     })
     .await?;
+    if let Some(diagnostics) = context.diagnostics.as_deref_mut() {
+        diagnostics.mark_stage("search-lexical-view-rendered");
+    }
     Ok(())
 }

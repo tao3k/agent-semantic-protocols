@@ -37,8 +37,10 @@ mod hook_config_global;
 mod hook_policy_kernel;
 mod hook_recovery_prompt;
 mod match_policy_conformance;
+pub mod policy_testing;
 mod protocol;
 mod protocol_activation;
+mod shell_read_decision_shard;
 pub use protocol_activation::digest::provider_execution_command_digest;
 pub use protocol_activation::protocol_activation_manifest::{
     ProviderDevelopmentArtifactDomain, ProviderDevelopmentDescriptor,
@@ -70,21 +72,27 @@ pub use crate::activation_store::{
     ActivationAdmissionDecision, ActivationAdmissionGates, ActivationAdmissionReason,
     ActivationAdmissionReceipt, DefaultActivationSync, default_activation_path,
     discover_activation_path, load_activation, load_or_refresh_default_activation,
-    load_or_sync_activation, parse_hook_activation, write_activation,
+    load_or_refresh_default_activation_with_state_home,
+    load_or_refresh_default_activation_with_state_home_and_binary, load_or_sync_activation,
+    load_or_sync_activation_with_state_home, parse_hook_activation, write_activation,
 };
 pub use crate::active_artifact_receipt::{
     ActiveAspArtifactInput, ActiveAspArtifactMaterialization, active_asp_artifact_receipt_path,
     active_exact_selector_fixture_artifact_input_v1, active_provider_artifact_input,
     active_provider_artifact_input_with_state_home, materialize_active_asp_artifact_receipt,
     materialize_active_asp_artifact_receipt_for_current_process,
+    materialize_active_asp_artifact_receipt_for_current_process_with_state_home,
     reconcile_active_asp_artifact_receipt_from_materialized_set,
     verify_active_asp_artifact_receipt,
 };
 pub use classifier::{
-    HOOK_TRIGGER_PROMPT_FILE_NAME, HookClassificationRequest, classify_hook,
-    classify_hook_with_config, default_hook_trigger_prompt_message, hook_trigger_prompt_document,
+    DirectReadSourceKey, HOOK_TRIGGER_PROMPT_FILE_NAME, HookClassificationRequest, ShellCommandKey,
+    ShellReadSourceKey, asp_no_agent_passthrough_decision, asp_no_agent_passthrough_requested,
+    classify_hook, classify_hook_with_config, default_hook_trigger_prompt_message,
+    direct_read_source_extension, direct_read_source_key, hook_trigger_prompt_document,
     materialize_hook_trigger_prompt_agent_flow_for_client, merge_hook_trigger_prompt_document,
-    render_hook_trigger_prompt_document,
+    rebind_command_decision_to_payload, render_hook_trigger_prompt_document, shell_command_key,
+    shell_read_source_key,
 };
 pub use codex_config::{
     CodexUserTrustStatus, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, claude_hook_block, codex_hook_block,
@@ -110,8 +118,8 @@ pub use event_state_subagent_model_drift::{
 pub use hook_config::{
     AspSessionPolicy, ClientHookConfig, ConfiguredResidentTarget, DurableHookConfigArtifact,
     default_client_config_path, default_client_config_template, load_client_config,
-    load_client_config_for_project, load_client_config_overlay_for_project,
-    load_embedded_client_config_for_project,
+    load_client_config_for_project, load_client_config_for_project_with_executable_capabilities,
+    load_client_config_overlay_for_project, load_embedded_client_config_for_project,
 };
 pub use hook_config_global::default_global_client_config_path;
 pub use match_policy_conformance::{
@@ -138,8 +146,9 @@ pub use protocol_activation::protocol_activation_manifest::{
 pub use protocol_activation::protocol_activation_runtime::parse_activation;
 pub use provider_manifest::{
     ProviderCommandSelection, ProviderCommandSelectionScopeV1, build_default_activation,
-    build_default_activation_from_selections, builtin_provider_manifests,
-    project_agent_config_path, provider_command_selections, provider_command_selections_for_scope,
+    build_default_activation_from_selections, build_default_activation_with_state_home,
+    builtin_provider_manifests, project_agent_config_path, provider_command_selections,
+    provider_command_selections_for_scope, provider_command_selections_for_scope_with_state_home,
     validate_provider_manifest_contract,
 };
 pub use runtime_profile::{
@@ -150,6 +159,7 @@ pub use runtime_profile::{
     runtime_profiles_for_runtime, runtime_profiles_for_runtime_with_state_home,
     runtime_project_root_for_activation,
 };
+pub use shell_read_decision_shard::CommandDecisionShard;
 pub(crate) use source_selector::{SourceSelectorMatch, collect_source_selector_matches};
 pub use tool_action::workspace_mutation_paths;
 pub(crate) use tool_action::{

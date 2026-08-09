@@ -5,14 +5,19 @@ use agent_semantic_config::HookClientRecoveryPromptConfig;
 const DEFAULT_RECOVERY_TEMPLATE: &str = r#"ASP denied `{reason}`. Do not retry raw source tools.
 Use the ASP route below, or delegate the lookup to the configured resident ASP session when available.
 Return one compact `[asp-search-subagent]` graph-route receipt with `schema`, `intent`, `route`, `state`, ranked selector `evidence`, and exactly one safe parent `next` action.
-Do not return source bodies, snippets, or line-range selectors from the search child; the parent agent performs the final exact read.
+Do not run raw source tools again for this step. The file extension maps to the
+`languageId` in the route; use that language and the exact command below, then follow `next` from the same payload.
+```sh
+<command>
+```
 {routes}
 {agent_flow}
 "#;
 
 const CODEX_AGENT_FLOW: &str = r#"Codex: start the configured resident ASP subagent for ASP search/query work. Resolve the agent role and resident child name from hooks/config.toml.
-After the admitted host action completes, re-enter `asp session --agents choice-plane`. The native SubagentStart/host receipt is the only registration authority; agents must not mutate the session registry through a CLI fallback.
-Forward ASP search/query, owner/frontier ranking, dependency, and test reachability work to that resident child; keep the root agent on session, checkpoint, exact reads, edits, and recovery commands.
+If that typed resident is not registered, re-enter `asp session --agents choice-plane`, execute only its returned Host action, and require the native SubagentStart/host receipt before running the route.
+After the route command succeeds, continue exactly with the returned `next` action; no ChoicePlane re-run is needed for this denial.
+If denied repeatedly, do not switch to raw shell sources. Run the `next` action from this payload only after the route command completes.
 "#;
 
 const CLAUDE_AGENT_FLOW: &str = r#"Claude: run the selected safe route directly in this thread. Use Claude-native helper agents only when that client exposes them for this session.

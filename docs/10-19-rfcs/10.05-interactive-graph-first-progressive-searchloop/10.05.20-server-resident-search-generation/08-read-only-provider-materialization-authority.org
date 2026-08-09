@@ -1,0 +1,61 @@
+#+title: Read-only Provider Materialization Authority
+#+property: schema_id agent.semantic-protocols.read-only-provider-materialization-authority
+#+property: schema_version 1
+
+* Problem
+
+Agent-facing search and query execute in registered read-only subagents. A missing workspace generation or provider catalog entry must not cause that read-only data plane to run a provider build or installation command.
+
+* Normative contract
+
+- Search and query request provider and workspace readiness from the resident Runtime Server.
+- The Runtime Server returns a millisecond-scale typed Building or Ready receipt and owns all materialization through the workspace writer lane.
+- Concurrent readiness requests for the same workspace, language, provider identity, and source snapshot join one single-flight materialization.
+- Provider build locks and artifacts live under ASP state-home runtime storage; a read-only agent never writes a checkout-local cargo lock.
+- A missing generation segment is a workspace-admission state, not evidence that a language provider must be installed by the caller.
+- Hook recovery routes may resume the registered read-only subagent, but they must not prescribe =asp install language= from a search or query request.
+- Exact and search read leases become available only after provider catalog publication and terminal Ready generation publication have linearized.
+- Daemon startup restores durable workspace locators as lightweight resident
+  slots. Locator restoration may open the immutable generation pointer and its
+  bounded segments, but it must not rescan source owners, invoke providers, or
+  rebuild a generation.
+- A workspace omitted from resident memory is admitted lazily by the Runtime
+  Server on its first v1 IPC read. The client query remains read-only: the
+  server-owned slot admission is distinct from generation reconciliation and
+  joins one per-workspace =OnceCell= initialization.
+- Runtime Healthy publication means the Global control/data endpoints can
+  resolve every durable catalog locator. It does not require eagerly loading
+  every workspace generation or starting one writer task per historical
+  project identifier.
+- An observed mutation does not by itself prove an incremental base. A workspace
+  with no terminal Ready generation enters =RestoreOrBuild= while retaining its
+  changed-owner hints; =RebuildAfterMutation= is admissible only when the
+  Runtime owns a validated Ready commit for the same workspace.
+- If a build fails while another mutation is queued, the queued mutation must
+  re-evaluate base authority from the terminal receipt. It may not inherit an
+  incremental mode from the failed attempt.
+
+* Qualification gates
+
+- A fresh workspace search with an already registered developer provider returns Building without a checkout write and later reaches Ready.
+- Two hundred fifty-six concurrent searches cause one provider materialization and one generation publication.
+- A read-only ASP Explorer search never creates or mutates =.cargo-lock= in the checkout.
+- Missing provider authority produces a typed repair request consumed by the Runtime writer lane; it does not execute installation in the child session.
+- Rust, Python, TypeScript, Julia, and future providers share the same authority transition; no language-specific fallback is permitted.
+- First mutation, failed-base retry, and queued-after-failure scenarios all
+  prove that incremental execution implies an admitted base generation.
+- A process-cold v1 IPC selector read against an existing durable generation
+  creates exactly one resident workspace slot, performs no provider invocation
+  or source rescan, and returns the same generation authority as a warm read.
+- Concurrent first reads for one workspace share slot initialization; distinct
+  workspaces remain independent and no Global workspace lock is introduced.
+- Graph Turbo evaluation and exact/search projections consume that same slot
+  authority, so a catalogued workspace cannot fail as =not checked out= merely
+  because the daemon restarted.
+
+The executable scenario contract is
+=schemas/search-query-lifecycle-fixture.v1.schema.json=. The canonical fresh
+workspace case is
+=schemas/fixtures/search-query-lifecycle/fresh-read-only-workspace.v1.json=. Cargo,
+provider harnesses, sandtable runs, and installed subagent qualification must
+consume the same fixture rather than maintain independent expectations.

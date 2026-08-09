@@ -17,6 +17,18 @@ pub(super) struct AgentActionMatch {
     subject_kind_any: Vec<HookClientActionSubjectKind>,
     authority_any: Vec<HookClientActionAuthority>,
     authority_exclude_any: Vec<HookClientActionAuthority>,
+    policy_all: Vec<ActionPredicate>,
+    policy_any: Vec<ActionPredicate>,
+    policy_none: Vec<ActionPredicate>,
+}
+
+#[derive(Debug)]
+struct ActionPredicate {
+    action_any: Vec<HookClientActionKind>,
+    effect_any: Vec<HookClientActionKind>,
+    subject_kind_any: Vec<HookClientActionSubjectKind>,
+    authority_any: Vec<HookClientActionAuthority>,
+    authority_exclude_any: Vec<HookClientActionAuthority>,
 }
 
 #[cfg(test)]
@@ -32,6 +44,9 @@ pub(super) struct AgentActionMatchConfig {
     pub(super) subject_kind_any: Vec<HookClientActionSubjectKind>,
     pub(super) authority_any: Vec<HookClientActionAuthority>,
     pub(super) authority_exclude_any: Vec<HookClientActionAuthority>,
+    pub(super) policy_all: Vec<agent_semantic_config::HookClientActionPolicyConfig>,
+    pub(super) policy_any: Vec<agent_semantic_config::HookClientActionPolicyConfig>,
+    pub(super) policy_none: Vec<agent_semantic_config::HookClientActionPolicyConfig>,
 }
 
 impl AgentActionMatch {
@@ -44,6 +59,9 @@ impl AgentActionMatch {
             subject_kind_any,
             authority_any,
             authority_exclude_any,
+            policy_all,
+            policy_any,
+            policy_none,
         } = config;
         Self {
             authority_rules,
@@ -53,11 +71,17 @@ impl AgentActionMatch {
             subject_kind_any,
             authority_any,
             authority_exclude_any,
+            policy_all: policy_all.into_iter().map(ActionPredicate::from).collect(),
+            policy_any: policy_any.into_iter().map(ActionPredicate::from).collect(),
+            policy_none: policy_none.into_iter().map(ActionPredicate::from).collect(),
         }
     }
 
     pub(super) fn needs_subjects(&self) -> bool {
         !self.subject_kind_any.is_empty()
+            || self.policy_all.iter().any(ActionPredicate::needs_subjects)
+            || self.policy_any.iter().any(ActionPredicate::needs_subjects)
+            || self.policy_none.iter().any(ActionPredicate::needs_subjects)
     }
 
     pub(super) fn matches(
@@ -73,6 +97,9 @@ impl AgentActionMatch {
             && self.subject_kind_any.is_empty()
             && self.authority_any.is_empty()
             && self.authority_exclude_any.is_empty()
+            && self.policy_all.is_empty()
+            && self.policy_any.is_empty()
+            && self.policy_none.is_empty()
         {
             return true;
         }
@@ -80,7 +107,7 @@ impl AgentActionMatch {
         if !self.matches_non_subject_envelope(&agent_action) {
             return false;
         }
-        if self.subject_kind_any.is_empty() {
+        if !self.needs_subjects() {
             return true;
         }
         let agent_action = self.derive_agent_action(registry, action, match_paths, None, true);
@@ -88,25 +115,20 @@ impl AgentActionMatch {
     }
 
     fn matches_non_subject_envelope(&self, agent_action: &crate::tool_action::AgentAction) -> bool {
-        (self.action_any.is_empty()
-            || self.action_any.iter().copied().any(|configured| {
-                crate::tool_action::action_kind_matches(agent_action.action, configured)
-            }))
-            && (self.effect_any.is_empty()
-                || self.effect_any.iter().copied().any(|configured| {
-                    crate::tool_action::action_kind_matches(agent_action.effect, configured)
-                }))
-            && (self.authority_any.is_empty()
-                || self.authority_any.iter().copied().any(|configured| {
-                    crate::tool_action::authority_matches(agent_action.authority, configured)
-                }))
-            && !self
-                .authority_exclude_any
+        self.inline_predicate().matches_non_subject(agent_action)
+            && self
+                .policy_all
                 .iter()
-                .copied()
-                .any(|configured| {
-                    crate::tool_action::authority_matches(agent_action.authority, configured)
-                })
+                .all(|predicate| predicate.matches_non_subject(agent_action))
+            && (self.policy_any.is_empty()
+                || self
+                    .policy_any
+                    .iter()
+                    .any(|predicate| predicate.matches_non_subject(agent_action)))
+            && self
+                .policy_none
+                .iter()
+                .all(|predicate| !predicate.matches_non_subject(agent_action))
     }
 
     pub(super) fn derive_agent_action_for_rule(
@@ -157,8 +179,12 @@ impl AgentActionMatch {
         if let Some(authority) = self.infer_authority(registry, action) {
             agent_action.authority = authority;
         }
-        let needs_command_stages =
-            include_subjects || !self.effect_rules.is_empty() || !self.effect_any.is_empty();
+        let needs_command_stages = include_subjects
+            || !self.effect_rules.is_empty()
+            || !self.effect_any.is_empty()
+            || self.policy_all.iter().any(ActionPredicate::needs_effect)
+            || self.policy_any.iter().any(ActionPredicate::needs_effect)
+            || self.policy_none.iter().any(ActionPredicate::needs_effect);
         let command_stages = if needs_command_stages {
             self.command_stages(action)
         } else {
@@ -211,31 +237,30 @@ impl AgentActionMatch {
     }
 
     fn matches_envelope(&self, agent_action: &crate::tool_action::AgentAction) -> bool {
-        (self.action_any.is_empty()
-            || self.action_any.iter().copied().any(|configured| {
-                crate::tool_action::action_kind_matches(agent_action.action, configured)
-            }))
-            && (self.effect_any.is_empty()
-                || self.effect_any.iter().copied().any(|configured| {
-                    crate::tool_action::action_kind_matches(agent_action.effect, configured)
-                }))
-            && (self.authority_any.is_empty()
-                || self.authority_any.iter().copied().any(|configured| {
-                    crate::tool_action::authority_matches(agent_action.authority, configured)
-                }))
-            && !self
-                .authority_exclude_any
+        self.inline_predicate().matches(agent_action)
+            && self
+                .policy_all
                 .iter()
-                .copied()
-                .any(|configured| {
-                    crate::tool_action::authority_matches(agent_action.authority, configured)
-                })
-            && (self.subject_kind_any.is_empty()
-                || agent_action.subjects.iter().any(|subject| {
-                    self.subject_kind_any.iter().copied().any(|configured| {
-                        crate::tool_action::subject_kind_matches(subject.kind, configured)
-                    })
-                }))
+                .all(|predicate| predicate.matches(agent_action))
+            && (self.policy_any.is_empty()
+                || self
+                    .policy_any
+                    .iter()
+                    .any(|predicate| predicate.matches(agent_action)))
+            && self
+                .policy_none
+                .iter()
+                .all(|predicate| !predicate.matches(agent_action))
+    }
+
+    fn inline_predicate(&self) -> ActionPredicateRef<'_> {
+        ActionPredicateRef {
+            action_any: &self.action_any,
+            effect_any: &self.effect_any,
+            subject_kind_any: &self.subject_kind_any,
+            authority_any: &self.authority_any,
+            authority_exclude_any: &self.authority_exclude_any,
+        }
     }
 
     fn command_stages(&self, action: &ToolAction) -> Vec<CommandStageV1> {
@@ -285,6 +310,92 @@ impl AgentActionMatch {
                 .then(|| crate::tool_action::action_kind_from_config(rule.effect))
                 .flatten()
         })
+    }
+}
+
+struct ActionPredicateRef<'a> {
+    action_any: &'a [HookClientActionKind],
+    effect_any: &'a [HookClientActionKind],
+    subject_kind_any: &'a [HookClientActionSubjectKind],
+    authority_any: &'a [HookClientActionAuthority],
+    authority_exclude_any: &'a [HookClientActionAuthority],
+}
+
+impl ActionPredicate {
+    fn needs_subjects(&self) -> bool {
+        !self.subject_kind_any.is_empty()
+    }
+
+    fn needs_effect(&self) -> bool {
+        !self.effect_any.is_empty()
+    }
+
+    fn matches_non_subject(&self, action: &crate::tool_action::AgentAction) -> bool {
+        ActionPredicateRef {
+            action_any: &self.action_any,
+            effect_any: &self.effect_any,
+            subject_kind_any: &self.subject_kind_any,
+            authority_any: &self.authority_any,
+            authority_exclude_any: &self.authority_exclude_any,
+        }
+        .matches_non_subject(action)
+    }
+
+    fn matches(&self, action: &crate::tool_action::AgentAction) -> bool {
+        ActionPredicateRef {
+            action_any: &self.action_any,
+            effect_any: &self.effect_any,
+            subject_kind_any: &self.subject_kind_any,
+            authority_any: &self.authority_any,
+            authority_exclude_any: &self.authority_exclude_any,
+        }
+        .matches(action)
+    }
+}
+
+impl ActionPredicateRef<'_> {
+    fn matches_non_subject(&self, action: &crate::tool_action::AgentAction) -> bool {
+        (self.action_any.is_empty()
+            || self.action_any.iter().copied().any(|configured| {
+                crate::tool_action::action_kind_matches(action.action, configured)
+            }))
+            && (self.effect_any.is_empty()
+                || self.effect_any.iter().copied().any(|configured| {
+                    crate::tool_action::action_kind_matches(action.effect, configured)
+                }))
+            && (self.authority_any.is_empty()
+                || self.authority_any.iter().copied().any(|configured| {
+                    crate::tool_action::authority_matches(action.authority, configured)
+                }))
+            && !self
+                .authority_exclude_any
+                .iter()
+                .copied()
+                .any(|configured| {
+                    crate::tool_action::authority_matches(action.authority, configured)
+                })
+    }
+
+    fn matches(&self, action: &crate::tool_action::AgentAction) -> bool {
+        self.matches_non_subject(action)
+            && (self.subject_kind_any.is_empty()
+                || action.subjects.iter().any(|subject| {
+                    self.subject_kind_any.iter().copied().any(|configured| {
+                        crate::tool_action::subject_kind_matches(subject.kind, configured)
+                    })
+                }))
+    }
+}
+
+impl From<agent_semantic_config::HookClientActionPolicyConfig> for ActionPredicate {
+    fn from(policy: agent_semantic_config::HookClientActionPolicyConfig) -> Self {
+        Self {
+            action_any: policy.action_any,
+            effect_any: policy.effect_any,
+            subject_kind_any: policy.subject_kind_any,
+            authority_any: policy.authority_any,
+            authority_exclude_any: policy.authority_exclude_any,
+        }
     }
 }
 

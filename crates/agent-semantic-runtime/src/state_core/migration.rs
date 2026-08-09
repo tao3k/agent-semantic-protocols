@@ -12,23 +12,29 @@ use std::{
 };
 
 impl ResolvedState {
+    /// Materialize State Core from an async owner without blocking a Tokio worker.
+    pub async fn ensure_minimal_layout_async(&self) -> Result<(), String> {
+        let resolved = self.clone();
+        tokio::task::spawn_blocking(move || resolved.ensure_minimal_layout())
+            .await
+            .map_err(|error| format!("State Core materialization task failed: {error}"))?
+    }
+
     /// Create the minimal State Core v2 directory layout.
     pub fn ensure_minimal_layout(&self) -> Result<(), String> {
         if !self.repo.persistence.is_durable() {
             return Err(format!(
-                "refusing to materialize ephemeral non-Git search root: {}",
+                "refusing to materialize ephemeral or standalone temporary checkout: {}",
                 self.repo.checkout_root.display()
             ));
         }
         fs::create_dir_all(&self.paths.registry_dir).map_err(io_error("create registry dir"))?;
         fs::create_dir_all(&self.paths.aliases_by_display_name_dir)
             .map_err(io_error("create aliases dir"))?;
+        self.ensure_project_identity_layout()?;
+        self.ensure_workspace_identity_layout()?;
         self.migrate_legacy_state_tree()?;
-        fs::create_dir_all(&self.paths.project_dir).map_err(io_error("create project dir"))?;
-        fs::create_dir_all(&self.paths.workspace_dir).map_err(io_error("create workspace dir"))?;
-        fs::create_dir_all(&self.paths.hooks_dir).map_err(io_error("create hooks dir"))?;
-        fs::create_dir_all(&self.paths.client_dir).map_err(io_error("create client dir"))?;
-        fs::create_dir_all(&self.paths.artifacts_dir).map_err(io_error("create artifacts dir"))?;
+        self.ensure_workspace_identity_layout()?;
 
         write_if_missing(
             &self.paths.version_file,
@@ -44,48 +50,114 @@ impl ResolvedState {
             }),
         )?;
         write_if_missing(&self.paths.registry_events_jsonl, String::new())?;
-        write_json_if_missing(
-            &self.paths.project_json,
-            &json!({
-                "stateLayoutVersion": STATE_LAYOUT_VERSION,
-                "repoId": self.repo.repo_id,
-                "displayName": self.repo.display_name,
-                "checkoutRoot": self.repo.checkout_root,
-                "gitToplevel": self.repo.git_toplevel,
-                "gitDir": self.repo.git_dir,
-                "gitCommonDir": self.repo.git_common_dir,
-                "remoteUrl": self.repo.remote_url,
-                "identityBasis": self.repo.identity_basis,
-                "persistence": self.repo.persistence,
-            }),
-        )?;
-        write_json_if_missing(
-            &self.paths.workspace_json,
-            &json!({
-                "stateLayoutVersion": STATE_LAYOUT_VERSION,
-                "repoId": self.repo.repo_id,
-                "workspaceId": self.workspace.workspace_id,
-                "scopeId": self.scope_id,
-                "displayName": self.workspace.display_name,
-                "root": self.workspace.root,
-                "gitDir": self.workspace.git_dir,
-                "identityBasis": self.workspace.identity_basis,
-            }),
-        )?;
-        write_json_if_missing(
-            &self.paths.client_manifest_json,
-            &json!({
-                "stateLayoutVersion": STATE_LAYOUT_VERSION,
-                "backend": TURSO_BACKEND,
-                "repoId": self.repo.repo_id,
-                "workspaceId": self.workspace.workspace_id,
-                "scopeId": self.scope_id,
-                "dbPath": self.paths.client_db_path,
-                "artifactPath": self.paths.artifacts_dir,
-                "generationManifestPath": self.paths.client_cache_manifest_path,
-            }),
-        )?;
         Ok(())
+    }
+
+    fn ensure_project_identity_layout(&self) -> Result<(), String> {
+        if self.paths.project_dir.exists() {
+            if !self.paths.project_dir.is_dir() {
+                return Err(format!(
+                    "State Core project path is not a directory: {}",
+                    self.paths.project_dir.display()
+                ));
+            }
+            write_json_if_missing(&self.paths.project_json, &self.project_identity_json())?;
+            return require_state_identity_file(&self.paths.project_json, "project");
+        }
+        materialize_directory_atomically(&self.paths.project_dir, |staging_dir| {
+            write_json_atomically(
+                &staging_dir.join("project.json"),
+                &self.project_identity_json(),
+            )?;
+            let workspace_dir = staging_dir
+                .join("workspaces")
+                .join(self.workspace.workspace_id.as_str());
+            fs::create_dir_all(&workspace_dir).map_err(io_error("create staged workspace dir"))?;
+            self.populate_workspace_layout(&workspace_dir)
+        })?;
+        require_state_identity_file(&self.paths.project_json, "project")?;
+        self.require_workspace_identity_layout()
+    }
+
+    fn ensure_workspace_identity_layout(&self) -> Result<(), String> {
+        if self.paths.workspace_dir.exists() {
+            if !self.paths.workspace_dir.is_dir() {
+                return Err(format!(
+                    "State Core workspace path is not a directory: {}",
+                    self.paths.workspace_dir.display()
+                ));
+            }
+            self.populate_workspace_layout(&self.paths.workspace_dir)?;
+            return self.require_workspace_identity_layout();
+        }
+        materialize_directory_atomically(&self.paths.workspace_dir, |staging_dir| {
+            self.populate_workspace_layout(staging_dir)
+        })?;
+        self.require_workspace_identity_layout()
+    }
+
+    fn populate_workspace_layout(&self, workspace_dir: &Path) -> Result<(), String> {
+        let hooks_dir = workspace_dir.join("hooks");
+        let client_dir = workspace_dir.join("live/client");
+        let artifacts_dir = workspace_dir.join("artifacts");
+        write_json_if_missing(
+            &workspace_dir.join("workspace.json"),
+            &self.workspace_identity_json(),
+        )?;
+        fs::create_dir_all(&hooks_dir).map_err(io_error("create hooks dir"))?;
+        fs::create_dir_all(&client_dir).map_err(io_error("create client dir"))?;
+        fs::create_dir_all(&artifacts_dir).map_err(io_error("create artifacts dir"))?;
+        write_json_if_missing(
+            &client_dir.join("manifest.json"),
+            &self.client_manifest_json(),
+        )
+    }
+
+    fn require_workspace_identity_layout(&self) -> Result<(), String> {
+        require_state_identity_file(&self.paths.workspace_json, "workspace")?;
+        require_state_identity_file(&self.paths.client_manifest_json, "client manifest")
+    }
+
+    fn project_identity_json(&self) -> serde_json::Value {
+        json!({
+            "stateLayoutVersion": STATE_LAYOUT_VERSION,
+            "repoId": self.repo.repo_id,
+            "displayName": self.repo.display_name,
+            "checkoutRoot": self.repo.checkout_root,
+            "gitToplevel": self.repo.git_toplevel,
+            "gitDir": self.repo.git_dir,
+            "gitCommonDir": self.repo.git_common_dir,
+            "remoteUrl": self.repo.remote_url,
+            "identityBasis": self.repo.identity_basis,
+            "persistence": self.repo.persistence,
+        })
+    }
+
+    fn workspace_identity_json(&self) -> serde_json::Value {
+        json!({
+            "stateLayoutVersion": STATE_LAYOUT_VERSION,
+            "repoId": self.repo.repo_id,
+            "workspaceId": self.workspace.workspace_id,
+            "scopeId": self.scope_id,
+            "displayName": self.workspace.display_name,
+            "root": self.workspace.root,
+            "gitDir": self.workspace.git_dir,
+            "identityBasis": self.workspace.identity_basis,
+            "lifecycle": self.workspace.lifecycle,
+        })
+    }
+
+    fn client_manifest_json(&self) -> serde_json::Value {
+        json!({
+            "stateLayoutVersion": STATE_LAYOUT_VERSION,
+            "backend": TURSO_BACKEND,
+            "repoId": self.repo.repo_id,
+            "workspaceId": self.workspace.workspace_id,
+            "scopeId": self.scope_id,
+            "dbPath": self.paths.client_db_path,
+            "artifactPath": self.paths.artifacts_dir,
+            "generationManifestPath": self.paths.client_cache_manifest_path,
+        })
     }
 
     fn migrate_legacy_state_tree(&self) -> Result<(), String> {
@@ -416,6 +488,59 @@ fn write_if_missing(path: &Path, content: String) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(io_error("create parent dir"))?;
     }
     fs::write(path, content).map_err(io_error("write state file"))
+}
+
+fn require_state_identity_file(path: &Path, kind: &str) -> Result<(), String> {
+    if path.is_file() {
+        return Ok(());
+    }
+    Err(format!(
+        "State Core {kind} identity was not committed: {}",
+        path.display()
+    ))
+}
+
+fn materialize_directory_atomically(
+    target: &Path,
+    populate: impl FnOnce(&Path) -> Result<(), String>,
+) -> Result<(), String> {
+    let parent = target
+        .parent()
+        .ok_or_else(|| format!("State Core target has no parent: {}", target.display()))?;
+    fs::create_dir_all(parent).map_err(io_error("create State Core target parent"))?;
+    let leaf = target
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| format!("State Core target has no UTF-8 leaf: {}", target.display()))?;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| format!("system clock is before Unix epoch: {error}"))?
+        .as_nanos();
+    static NEXT_STAGING_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let staging_id = NEXT_STAGING_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let staging = parent.join(format!(
+        ".{leaf}.staging-{}-{nonce}-{staging_id}",
+        std::process::id()
+    ));
+    fs::create_dir(&staging).map_err(io_error("create State Core staging dir"))?;
+    if let Err(error) = populate(&staging) {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+    match fs::rename(&staging, target) {
+        Ok(()) => Ok(()),
+        Err(_) if target.is_dir() => {
+            let _ = fs::remove_dir_all(&staging);
+            Ok(())
+        }
+        Err(error) => {
+            let _ = fs::remove_dir_all(&staging);
+            Err(format!(
+                "commit State Core directory {}: {error}",
+                target.display()
+            ))
+        }
+    }
 }
 
 fn write_json_if_missing(path: &Path, value: &serde_json::Value) -> Result<(), String> {

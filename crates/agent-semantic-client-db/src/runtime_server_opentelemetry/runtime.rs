@@ -850,6 +850,46 @@ fn record_observation(
         semconv::CANONICAL_ENCODED_BYTES,
         observation.canonical_encoded_bytes,
     );
+    push_optional_u64(
+        &mut attributes,
+        semconv::MEMORY_SEARCH_MAPPED_BYTES,
+        observation.memory_search_mapped_bytes,
+    );
+    push_optional_u64(
+        &mut attributes,
+        semconv::MEMORY_SEARCH_DIRECTORY_BYTES_VALIDATED,
+        observation.memory_search_directory_bytes_validated,
+    );
+    push_optional_u64(
+        &mut attributes,
+        semconv::MEMORY_SEARCH_KEY_BYTES_TOUCHED,
+        observation.memory_search_key_bytes_touched,
+    );
+    push_optional_u64(
+        &mut attributes,
+        semconv::MEMORY_SEARCH_VALUE_BYTES_TOUCHED,
+        observation.memory_search_value_bytes_touched,
+    );
+    push_optional_u64(
+        &mut attributes,
+        semconv::MEMORY_SEARCH_SOURCE_BYTES_READ,
+        observation.memory_search_source_bytes_read,
+    );
+    push_optional_u64(
+        &mut attributes,
+        semconv::MEMORY_SEARCH_TURSO_OPENS,
+        observation.memory_search_turso_opens,
+    );
+    push_optional_u64(
+        &mut attributes,
+        semconv::MEMORY_SEARCH_SOCKET_CONNECTS,
+        observation.memory_search_socket_connects,
+    );
+    push_optional_u64(
+        &mut attributes,
+        semconv::MEMORY_SEARCH_PROVIDER_SPAWNS,
+        observation.memory_search_provider_spawns,
+    );
     if let Some(reason) = observation.failure_reason {
         attributes.push(KeyValue::new(semconv::FAILURE_REASON, reason.clone()));
         span.set_status(Status::error(reason));

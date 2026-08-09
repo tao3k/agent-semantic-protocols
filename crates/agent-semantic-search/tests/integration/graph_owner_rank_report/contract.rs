@@ -4,7 +4,7 @@ use agent_semantic_search::{
 
 #[test]
 fn graph_owner_rank_report_is_public_and_constructible() {
-    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let fixture = super::source_snapshot_fixture::canonical_test_snapshot();
     let generation =
         agent_semantic_search::graph_generation_authority::AdmittedGraphGenerationV1::admit(
             &fixture.evidence,

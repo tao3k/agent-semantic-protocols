@@ -210,14 +210,22 @@ fn unavailable_local_policy_authority_is_typed_and_names_the_escape_edge() {
     assert!(
         value["recoveryCommand"]
             .as_str()
-            .is_some_and(|command| command.contains("install binary --target"))
+            .is_some_and(|command| command == "asp hook refresh --client codex")
     );
-    assert_eq!(value["recoveryCommands"].as_array().map(Vec::len), Some(2));
+    assert_eq!(value["recoveryCommands"].as_array().map(Vec::len), Some(3));
     assert_eq!(
         value["recoveryCommands"][0],
+        "asp hook refresh --client codex"
+    );
+    assert_eq!(
+        value["recoveryCommands"][1],
         "asp hook doctor --client codex"
     );
-    assert_eq!(value["recoveryCommands"][1], value["recoveryCommand"]);
+    assert!(
+        value["recoveryCommands"][2]
+            .as_str()
+            .is_some_and(|command| command.contains("install binary --target"))
+    );
     assert!(value["canonicalBinaryInstallTarget"].is_string());
 }
 

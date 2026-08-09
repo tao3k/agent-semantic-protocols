@@ -85,6 +85,20 @@ pub(crate) async fn remove_stale(state_home: &Path) -> Result<(), String> {
     }
 }
 
+/// Synchronous spawn uses the same cleanup authority as the async control
+/// path.  A terminal receipt is scoped to exactly one detached-owner attempt.
+pub(crate) fn remove_stale_sync(state_home: &Path) -> Result<(), String> {
+    let path = receipt_path(state_home);
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!(
+            "failed to remove stale {}: {error}",
+            path.display()
+        )),
+    }
+}
+
 pub(crate) async fn publish_with_errors(
     state_home: &Path,
     owner_epoch: u64,
@@ -149,5 +163,23 @@ pub(crate) async fn await_owner_exit(
             .to_string());
         }
         tokio::task::yield_now().await;
+    }
+}
+
+/// Reads an already-published terminal receipt without waiting.  Supervisor
+/// reconciliation must not spend its health budget polling an owner that is
+/// still alive; it only needs to surface a daemon which has already exited.
+pub(crate) async fn read_latest_owner_exit(
+    state_home: &Path,
+) -> Result<Option<RuntimeServerExitReceipt>, String> {
+    let path = receipt_path(state_home);
+    match tokio::fs::read(&path).await {
+        Ok(bytes) => {
+            let receipt: RuntimeServerExitReceipt = serde_json::from_slice(&bytes)
+                .map_err(|error| format!("decode {}: {error}", path.display()))?;
+            Ok(Some(receipt))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("failed to read {}: {error}", path.display())),
     }
 }

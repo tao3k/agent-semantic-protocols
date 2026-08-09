@@ -1,0 +1,35 @@
+#+TITLE: Generation-qualified selector staleness
+#+OPTIONS: toc:nil
+
+* Status
+
+Normative. This note refines the resident exact-query failure contract.
+
+* Problem
+
+A canonical structural selector identifies a language, owner, item kind, symbol,
+and optional lexical scopes. It does not identify the generation from which the
+selector was obtained. Consequently, absence of its owner from the active
+generation cannot distinguish a never-existing owner, deletion, wrong workspace,
+or an older selector. Reporting =selector-stale= from owner absence alone invents
+generation evidence.
+
+* Normative contract
+
+1. =selector-stale / selector-not-in-active-generation= requires an explicit
+   requested-generation identity and a proven mismatch with the admitted active
+   generation.
+2. An unqualified selector whose owner is absent reports
+   =owner-missing / owner-not-in-workspace=.
+3. Item absence inside a present owner remains =item-missing=; a same-symbol,
+   different-kind observation remains =kind-mismatch=.
+4. Exact query is read-only and may inspect only a terminal Ready resident
+   generation. It must not infer or publish generation history.
+5. Every language provider consumes this shared typed resolution; no
+   provider-specific stale heuristic is permitted.
+
+* Qualification gate
+
+Cover never-existing owners, deleted owners, relocation, item deletion, kind
+mismatch, a genuinely generation-qualified mismatch, concurrent generation
+replacement, and active membership versus current worktree membership.

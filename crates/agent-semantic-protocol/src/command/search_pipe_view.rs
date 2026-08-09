@@ -6,11 +6,11 @@ use std::time::{Duration, Instant};
 
 use super::graph::{GraphTurboReceiptCapture, GraphTurboReceiptRequest, write_graph_turbo_receipt};
 use super::search_pipe_graph_turbo::{
-    GraphTurboSearchPipeRequest, graph_turbo_request, render_graph_turbo_request,
+    GraphTurboSearchPipeRequest, render_graph_turbo_request, resident_graph_turbo_intent,
 };
 use super::search_pipe_model::{Candidate, SearchPipeSourceTrace};
 use super::search_pipe_plan::{SearchPipePlanRequest, render_search_pipe_plan};
-use super::search_pipe_provider_facts::{ProviderGraphFacts, ProviderGraphFactsContext};
+use super::search_pipe_provider_facts::ProviderGraphFactsContext;
 use super::search_pipe_quality::analyze_search_pipe_quality;
 use super::search_pipe_query_pack::query_clause_texts;
 use super::search_pipe_render::render_ingest_frontier;
@@ -23,11 +23,9 @@ pub(super) struct SearchPipeViewRequest<'a> {
     pub(super) generation:
         &'a agent_semantic_search::graph_generation_authority::AdmittedGraphGenerationV1<'a>,
     pub(super) locator_root: &'a Path,
-    pub(super) cache_home: &'a Path,
     pub(super) surface: &'a str,
     pub(super) query: Option<&'a str>,
     pub(super) candidates: &'a [Candidate],
-    pub(super) project_resolutions: &'a [agent_semantic_runtime::AdmittedProjectResolution],
     pub(super) pipes: &'a [String],
     pub(super) source: &'a str,
     pub(super) candidate_sources: &'a [String],
@@ -35,7 +33,6 @@ pub(super) struct SearchPipeViewRequest<'a> {
     pub(super) scopes: &'a [PathBuf],
     pub(super) view: &'a str,
     pub(super) include_pipe_plan: bool,
-    pub(super) provider_facts: &'a ProviderGraphFacts,
     pub(super) provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
     pub(super) read_memory_selectors: &'a [String],
     pub(super) frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
@@ -50,11 +47,9 @@ pub(super) async fn print_search_pipe_view(
         source_snapshot,
         generation,
         locator_root,
-        cache_home,
         surface,
         query,
         candidates,
-        project_resolutions,
         pipes,
         source,
         candidate_sources,
@@ -62,7 +57,6 @@ pub(super) async fn print_search_pipe_view(
         scopes,
         view,
         include_pipe_plan,
-        provider_facts,
         provider_context,
         read_memory_selectors,
         frontier_receipt,
@@ -86,20 +80,14 @@ pub(super) async fn print_search_pipe_view(
         "graph-turbo-request" => {
             let request = render_graph_turbo_request(GraphTurboSearchPipeRequest {
                 surface,
-                language_id,
-                dependency_root: project_root,
                 generation,
-                cache_home,
                 query,
                 query_clauses: &graph_query_clauses,
                 candidates,
-                project_resolutions,
                 pipes,
                 source,
                 candidate_sources,
                 source_trace,
-                provider_facts,
-                provider_context,
                 read_memory_selectors,
                 action_frontier: &[],
             })
@@ -120,18 +108,15 @@ pub(super) async fn print_search_pipe_view(
                 language_id,
                 project_root,
                 locator_root,
-                cache_home,
                 surface,
                 query,
                 candidates,
-                project_resolutions,
                 pipes,
                 source,
                 candidate_sources,
                 source_trace,
                 scopes,
                 include_pipe_plan,
-                provider_facts,
                 provider_context,
                 read_memory_selectors,
                 frontier_receipt,
@@ -189,18 +174,15 @@ struct SearchPipeSeedsViewRequest<'a> {
     generation:
         &'a agent_semantic_search::graph_generation_authority::AdmittedGraphGenerationV1<'a>,
     locator_root: &'a Path,
-    cache_home: &'a Path,
     surface: &'a str,
     query: Option<&'a str>,
     candidates: &'a [Candidate],
-    project_resolutions: &'a [agent_semantic_runtime::AdmittedProjectResolution],
     pipes: &'a [String],
     source: &'a str,
     candidate_sources: &'a [String],
     source_trace: &'a [SearchPipeSourceTrace],
     scopes: &'a [PathBuf],
     include_pipe_plan: bool,
-    provider_facts: &'a ProviderGraphFacts,
     provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
     read_memory_selectors: &'a [String],
     frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
@@ -217,18 +199,15 @@ async fn render_search_pipe_seeds_view(
         language_id,
         project_root,
         locator_root,
-        cache_home,
         surface,
         query,
         candidates,
-        project_resolutions,
         pipes,
         source,
         candidate_sources,
         source_trace,
         scopes,
         include_pipe_plan,
-        provider_facts,
         provider_context,
         read_memory_selectors,
         frontier_receipt,
@@ -247,26 +226,20 @@ async fn render_search_pipe_seeds_view(
         .transpose()?;
     let quality_elapsed = quality_started_at.elapsed();
     let graph_started_at = Instant::now();
-    let request_packet = graph_turbo_request(&GraphTurboSearchPipeRequest {
+    // The public async builder is the only Search-to-resident IPC request boundary.
+    let request_packet = resident_graph_turbo_intent(&GraphTurboSearchPipeRequest {
         surface,
-        language_id,
-        dependency_root: project_root,
         generation,
-        cache_home,
         query,
         query_clauses: graph_query_clauses,
         candidates,
-        project_resolutions,
         pipes,
         source,
         candidate_sources,
         source_trace,
-        provider_facts,
-        provider_context,
         read_memory_selectors,
         action_frontier: &[],
-    })
-    .await?;
+    })?;
     let graph_elapsed = graph_started_at.elapsed();
     let receipt_started_at = Instant::now();
     if frontier_receipt.is_some() {
@@ -282,8 +255,7 @@ async fn render_search_pipe_seeds_view(
     }
     let receipt_elapsed = receipt_started_at.elapsed();
     let seed_started_at = Instant::now();
-    let dependency_action_targets =
-        super::search_pipe_graph_turbo::dependency_action_targets_from_graph(&request_packet);
+    let dependency_action_targets = Vec::new();
     let seed_plan_line = include_pipe_plan
         .then(|| seed_plan_detail_line(&request_packet))
         .flatten();
@@ -291,11 +263,7 @@ async fn render_search_pipe_seeds_view(
     let projection_started_at = Instant::now();
     let request_bytes = serde_json::to_vec(&request_packet)
         .map_err(|error| format!("failed to serialize graph turbo request: {error}"))?;
-    let ranked_packet = super::graph::rank_graph_turbo_packet(&request_bytes)
-        .await?
-        .ok_or_else(|| {
-            "search seeds requires the activated asp-graph-turbo typed ranker".to_string()
-        })?;
+    let ranked_packet = super::graph::rank_graph_turbo_packet(project_root, &request_bytes).await?;
     let projection_request = agent_semantic_search_projection::SearchProjectionRequestV1::new(
         "ranked-frontier",
         agent_semantic_search_projection::SearchProjectionDensityV1::Terse,

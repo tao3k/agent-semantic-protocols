@@ -59,6 +59,24 @@ def CanQuery (state : ServerState) (lease : GenerationLease) : Prop :=
 def CanQueryGeneration (state : ServerState) (generation : Generation) : Prop :=
   state.readerOnline = true ∧ generation = state.activeGeneration
 
+def acquireActiveLease (state : ServerState) : Option GenerationLease :=
+  if state.readerOnline = true then
+    some {
+      workspace := state.workspace
+      generation := state.activeGeneration
+      revision := state.revision
+    }
+  else
+    none
+
+def withWriterLifecycle
+    (state : ServerState)
+    (writerOnline : Bool)
+    (stagedGeneration : Option Generation) : ServerState :=
+  { state with
+      writerOnline := writerOnline
+      stagedGeneration := stagedGeneration }
+
 def stage (state : ServerState) (generation : Generation) : ServerState :=
   { state with stagedGeneration := some generation }
 
@@ -269,6 +287,37 @@ theorem writer_failure_preserves_active_query
         revision := state.revision
       } := by
   exact ⟨hReader, rfl, rfl, Nat.le_refl state.revision⟩
+
+theorem active_read_lease_is_writer_lifecycle_independent
+    (state : ServerState)
+    (writerOnline : Bool)
+    (stagedGeneration : Option Generation) :
+    acquireActiveLease
+        (withWriterLifecycle state writerOnline stagedGeneration) =
+      acquireActiveLease state := by
+  simp [acquireActiveLease, withWriterLifecycle]
+
+theorem pending_writer_cannot_revoke_active_query
+    (state : ServerState)
+    (pendingGeneration : Generation)
+    (hReader : state.readerOnline = true) :
+    CanQuery
+      (withWriterLifecycle state true (some pendingGeneration))
+      {
+        workspace := state.workspace
+        generation := state.activeGeneration
+        revision := state.revision
+      } := by
+  exact ⟨hReader, rfl, rfl, Nat.le_refl state.revision⟩
+
+theorem no_active_reader_fails_without_writer_observation
+    (state : ServerState)
+    (writerOnline : Bool)
+    (stagedGeneration : Option Generation)
+    (hReader : state.readerOnline = false) :
+    acquireActiveLease
+        (withWriterLifecycle state writerOnline stagedGeneration) = none := by
+  simp [acquireActiveLease, withWriterLifecycle, hReader]
 
 theorem supervisor_definition_before_drain_runs_canonical
     (state : SupervisorState)
