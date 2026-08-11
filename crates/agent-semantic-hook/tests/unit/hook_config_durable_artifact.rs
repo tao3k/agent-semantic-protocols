@@ -1,10 +1,12 @@
 use super::ClientHookConfig;
 
 #[test]
-fn complete_durable_hook_artifact_recovery_hydrate_p99_is_bounded() {
+fn complete_durable_hook_artifact_recovery_has_bounded_typical_and_hard_latency() {
     let live = ClientHookConfig::default();
-    let bytes = serde_json::to_vec(&live.durable_snapshot_config())
-        .expect("serialize complete durable Hook matcher artifact");
+    let bytes = live
+        .durable_snapshot_config()
+        .to_binary_bytes()
+        .expect("encode complete Binary v1 Hook matcher artifact");
     assert!(
         bytes.len() < 4 * 1024 * 1024,
         "complete durable Hook matcher artifact must fit the Runtime Server seqlock memory; observed {} bytes",
@@ -13,8 +15,8 @@ fn complete_durable_hook_artifact_recovery_hydrate_p99_is_bounded() {
     let mut samples = (0..100)
         .map(|_| {
             let started = std::time::Instant::now();
-            let artifact = serde_json::from_slice(&bytes)
-                .expect("decode complete durable Hook matcher artifact");
+            let artifact = super::DurableHookConfigArtifact::from_binary_bytes(&bytes)
+                .expect("decode complete Binary v1 Hook matcher artifact");
             let config = ClientHookConfig::from_durable_snapshot_config(artifact)
                 .expect("hydrate complete durable Hook matcher artifact");
             std::hint::black_box(config.rule_count());
@@ -22,16 +24,22 @@ fn complete_durable_hook_artifact_recovery_hydrate_p99_is_bounded() {
         })
         .collect::<Vec<_>>();
     samples.sort_unstable();
-    let p99 = samples[(samples.len() * 99) / 100];
+    let p95 = samples[(samples.len() * 95).div_ceil(100) - 1];
+    let max = *samples.last().expect("durable recovery samples");
     eprintln!(
-        "[hook-durable-artifact-recovery] bytes={} rules={} admissions=100 p99Nanos={}",
+        "[hook-durable-artifact-recovery] bytes={} rules={} admissions=100 p95Nanos={} maxNanos={} typicalBudgetNanos=50000000 hardBudgetNanos=500000000",
         bytes.len(),
         live.rule_count(),
-        p99.as_nanos()
+        p95.as_nanos(),
+        max.as_nanos()
     );
     assert!(
-        p99 < std::time::Duration::from_millis(50),
-        "one-time durable Hook generation recovery must remain below 50 ms p99, observed {p99:?}"
+        p95 < std::time::Duration::from_millis(50),
+        "one-time durable Hook generation recovery p95 exceeded 50ms: {p95:?}"
+    );
+    assert!(
+        max < std::time::Duration::from_millis(500),
+        "one-time durable Hook generation recovery exceeded the 500ms hard boundary: {max:?}"
     );
 }
 
@@ -92,12 +100,8 @@ fn binary_durable_hook_artifact_round_trips_without_json_or_base64() {
 }
 
 #[test]
-fn command_profile_shard_covers_every_configured_prefix_without_literal_fixtures() {
+fn command_shard_covers_every_configured_profile_and_rule_pattern_without_literal_fixtures() {
     let live = ClientHookConfig::default();
-    let source = live
-        .source_config
-        .as_ref()
-        .expect("default config retains publication source");
     let shard = live
         .durable_command_profile_decision_shard()
         .expect("compile command-profile decision shard");
@@ -107,17 +111,17 @@ fn command_profile_shard_covers_every_configured_prefix_without_literal_fixtures
         providers: Vec::new(),
         policy_providers: live.provider_projections.clone(),
     };
-    let configured_prefixes = source
-        .command_profiles
-        .iter()
-        .flat_map(|profile| profile.categories.values())
-        .flatten()
-        .collect::<Vec<_>>();
+    let configured_prefixes = live
+        .durable_command_decision_prefixes()
+        .expect("derive all finite command prefixes");
     assert!(!configured_prefixes.is_empty());
     for prefix in configured_prefixes {
-        let command = format!("direnv exec . /bin/bash -c {}", prefix.join(" "));
+        let mut absolute_prefix = prefix.clone();
+        absolute_prefix[0] = format!("/runtime/bin/{}", absolute_prefix[0]);
+        let command = absolute_prefix.join(" ");
         let payload = serde_json::json!({
             "tool_name": "Bash",
+            "session_id": "config-derived-command-shard-root",
             "tool_input": { "command": command },
         });
         let tokens = crate::semantic_shell_tokens(&command);
@@ -125,14 +129,21 @@ fn command_profile_shard_covers_every_configured_prefix_without_literal_fixtures
             .expect("decode command-profile shard")
             .expect("every configured prefix has a shard decision");
         let actual = crate::rebind_command_decision_to_payload(actual, &payload);
-        let expected = crate::classify_hook_with_config(crate::HookClassificationRequest {
-            registry: &runtime,
-            config: &live,
-            platform: "codex",
-            event: "pre-tool",
-            payload: &payload,
-        });
-        assert_eq!(actual.decision, expected.decision, "prefix={prefix:?}");
+        let action = crate::tool_action::ToolAction::normalized_shell_command_action(
+            command.clone(),
+            "Bash".to_owned(),
+        );
+        let expected = live
+            .classify_candidate(&runtime, "codex", "pre-tool", &action)
+            .map(|candidate| candidate.decision)
+            .unwrap_or_else(|| {
+                crate::classifier::default_allow_for_normalized_action("codex", "pre-tool", &action)
+            });
+        let expected = crate::rebind_command_decision_to_payload(expected, &payload);
+        assert_eq!(
+            actual.decision, expected.decision,
+            "prefix={prefix:?} actual={actual:?} expected={expected:?}"
+        );
         assert_eq!(
             actual.reason_kind, expected.reason_kind,
             "prefix={prefix:?}"
@@ -144,10 +155,16 @@ fn command_profile_shard_covers_every_configured_prefix_without_literal_fixtures
             "prefix={prefix:?}"
         );
         if expected.reason_kind == crate::ReasonKind::SubagentReceiptRequired {
+            let target_agent = actual
+                .fields
+                .get("targetAgentName")
+                .and_then(serde_json::Value::as_str)
+                .expect("dispatch decision projects its config-owned target agent");
             let typed_payload = serde_json::json!({
                 "tool_name": "Bash",
-                "agent_id": "asp_testing",
-                "agent_type": "asp_testing",
+                "session_id": "config-derived-command-shard-root",
+                "agent_id": target_agent,
+                "agent_type": target_agent,
                 "is_subagent": true,
                 "tool_input": { "command": command },
             });
@@ -166,4 +183,28 @@ fn command_profile_shard_covers_every_configured_prefix_without_literal_fixtures
             );
         }
     }
+}
+
+#[test]
+fn runtime_binary_policy_preempts_config_command_profile_shard() {
+    let payload = serde_json::json!({
+        "session_id": "runtime-binary-policy-root",
+        "tool_name": "Bash",
+        "tool_input": { "command": "rs-harness check" },
+    });
+    let decision = crate::runtime_binary_policy_decision_v1("codex", "pre-tool", &payload)
+        .expect("registered provider binary owns a config-independent fast decision");
+    assert_eq!(decision.decision, crate::DecisionKind::Deny);
+    assert_eq!(
+        decision.reason_kind,
+        crate::ReasonKind::ProviderBinaryDirectExecution
+    );
+    assert_eq!(
+        decision.fields["hookMatcherProjection"],
+        "runtime-binary-policy-v1"
+    );
+    assert_eq!(
+        decision.fields["hookPolicySynchronousDependencies"],
+        serde_json::json!([])
+    );
 }

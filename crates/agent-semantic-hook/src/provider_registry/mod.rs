@@ -4,10 +4,13 @@ mod argument_projection;
 mod catalog;
 mod runtime_binary;
 
-pub use argument_projection::{
-    ProviderMethodArgumentValuesV1, registered_provider_method_projected_argv_v1,
+pub use argument_projection::ProviderMethodArgumentValuesV1;
+pub(crate) use argument_projection::{
+    ProviderMethodArgumentSlotNameV1, ProviderMethodArgumentTokenV1,
+    ProviderMethodArgumentValueTypeV1,
 };
 pub(crate) use catalog::registered_language_id;
+pub use catalog::registered_provider_method_projected_argv_v1;
 pub use catalog::{
     ProviderDevelopmentRegistrationV1, RegisteredProviderCatalogIdentity, RegisteredProviderKind,
     materialize_provider_routes, registered_language_descriptor_digest, registered_language_ids,

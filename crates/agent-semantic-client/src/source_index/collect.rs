@@ -27,7 +27,6 @@ impl SourceIndexCollectionScope {
 }
 
 fn explicit_owner_paths(
-    project_root: &std::path::Path,
     scope: &SourceIndexCollectionScope,
 ) -> Result<Option<std::collections::BTreeSet<std::path::PathBuf>>, String> {
     let SourceIndexCollectionScope::ExplicitOwners { owner_paths } = scope else {
@@ -55,7 +54,7 @@ fn explicit_owner_paths(
                 owner_path.display()
             ));
         }
-        requested.insert(project_root.join(owner_path));
+        requested.insert(owner_path);
     }
     Ok(Some(requested))
 }
@@ -65,10 +64,16 @@ fn retain_explicit_owner_files(
     scope: &SourceIndexCollectionScope,
     files: &mut Vec<agent_semantic_client_db::ClientDbSourceIndexScopeFile>,
 ) -> Result<(), String> {
-    let Some(requested) = explicit_owner_paths(project_root, scope)? else {
+    let Some(requested) = explicit_owner_paths(scope)? else {
         return Ok(());
     };
-    files.retain(|file| requested.contains(&file.path));
+    files.retain(|file| {
+        let relative = file
+            .path
+            .strip_prefix(project_root)
+            .unwrap_or(file.path.as_path());
+        requested.contains(relative)
+    });
     Ok(())
 }
 

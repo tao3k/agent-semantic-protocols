@@ -103,13 +103,13 @@ impl Drop for EnvVarGuard {
     }
 }
 
-pub(crate) fn lookup_current_source_index_for_language(
+pub(crate) async fn lookup_current_source_index_for_language(
     project_root: &std::path::Path,
     language_id: Option<&agent_semantic_client_core::LanguageId>,
     query: &str,
     limit: u32,
 ) -> Result<crate::source_index::SourceIndexLookupResult, String> {
-    let snapshot = crate::source_index::current_source_index_snapshot(project_root)?;
+    let snapshot = crate::source_index::current_source_index_snapshot(project_root).await?;
     crate::source_index::lookup_source_index_for_language(
         project_root,
         &snapshot.source_snapshot,
@@ -117,10 +117,35 @@ pub(crate) fn lookup_current_source_index_for_language(
         query,
         limit,
     )
+    .await
 }
 
 pub(crate) fn v2_cache_root(workspace_state_root: &Path) -> PathBuf {
     workspace_state_root.join("live").join("client")
+}
+
+pub(crate) fn owner_backed_temp_root(label: &str) -> PathBuf {
+    static FIXTURE_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    static FIXTURE_BASE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+    let fixture_base = FIXTURE_BASE.get_or_init(|| {
+        let repository = gix::discover(env!("CARGO_MANIFEST_DIR"))
+            .expect("discover the owner-backed client test repository with Gix");
+        let worktree = repository
+            .worktree()
+            .expect("client tests require a non-bare owner checkout");
+        let base = worktree.base().join("target/asp-live-project-fixtures");
+        std::fs::create_dir_all(&base).expect("create owner-backed client fixture root");
+        base
+    });
+    let fixture_id = FIXTURE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let root = fixture_base.join(format!(
+        "agent-semantic-client-{label}-{}-{fixture_id}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).expect("create isolated owner-backed client fixture");
+    gix::init(&root).expect("initialize owner-backed client fixture with Gix");
+    root
 }
 
 pub(crate) fn artifacts_root_from_cache_root(cache_root: &Path) -> PathBuf {

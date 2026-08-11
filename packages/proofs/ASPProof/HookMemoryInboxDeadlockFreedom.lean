@@ -71,4 +71,63 @@ theorem reconcilePreservesHostIdentity (event : InboxEvent) :
     (reconcile event).materializedIdentity = event.hostIdentity := by
   rfl
 
+/-- Agent-session registry is the lifecycle authority. The mmap inbox is only a
+recovery log used when direct Runtime delivery is unavailable. -/
+inductive LifecycleDelivery
+  | registryCommitted
+  | recoveryLogAppended
+  | typedFailure
+  deriving DecidableEq
+
+def deliverHostLifecycle
+    (runtime : RuntimeState) (recoveryLogWritable : Bool) : LifecycleDelivery :=
+  match runtime with
+  | .healthy => .registryCommitted
+  | .unavailable =>
+      if recoveryLogWritable then .recoveryLogAppended else .typedFailure
+
+theorem healthy_runtime_does_not_depend_on_recovery_log_lock
+    (recoveryLogWritable : Bool) :
+    deliverHostLifecycle .healthy recoveryLogWritable = .registryCommitted := by
+  rfl
+
+inductive RegistryChoiceState
+  | live
+  | registrationRequired
+  | blocked
+  deriving DecidableEq
+
+inductive InboxReplayState
+  | reconciled
+  | lockOpenPermissionDenied
+  | corrupt
+  deriving DecidableEq
+
+/-- ChoicePlane state is projected only from authoritative registry state;
+recovery-log replay is observable diagnostics, never an admission dependency. -/
+def choicePlaneState
+    (registry : RegistryChoiceState) (_inbox : InboxReplayState) : RegistryChoiceState :=
+  registry
+
+theorem inbox_permission_denial_cannot_block_live_choice_plane :
+    choicePlaneState .live .lockOpenPermissionDenied = .live := by
+  rfl
+
+theorem inbox_permission_denial_cannot_block_registration_choice :
+    choicePlaneState .registrationRequired .lockOpenPermissionDenied =
+      .registrationRequired := by
+  rfl
+
+/-- Counterexample for the removed architecture: coupling ChoicePlane to inbox
+replay turns a non-authoritative lock error into a global lifecycle block. -/
+def legacyChoicePlaneState
+    (registry : RegistryChoiceState) (inbox : InboxReplayState) : RegistryChoiceState :=
+  match inbox with
+  | .reconciled => registry
+  | .lockOpenPermissionDenied | .corrupt => .blocked
+
+theorem legacy_inbox_lock_permission_denial_blocks_registration :
+    legacyChoicePlaneState .registrationRequired .lockOpenPermissionDenied = .blocked := by
+  rfl
+
 end ASPProof.HookMemoryInboxDeadlockFreedom

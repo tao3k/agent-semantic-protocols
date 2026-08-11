@@ -12,6 +12,7 @@ mod source_index_candidate_types;
 mod source_index_facade;
 mod source_index_query_scoring;
 mod turso;
+use turso::connect_turso_client_db;
 mod turso_artifact;
 mod turso_artifact_graph;
 mod turso_batch;

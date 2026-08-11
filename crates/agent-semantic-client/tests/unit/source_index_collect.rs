@@ -23,9 +23,8 @@ fn document_providers_use_git_candidates_without_project_resolution() {
 fn scope_file(path: std::path::PathBuf) -> agent_semantic_client_db::ClientDbSourceIndexScopeFile {
     agent_semantic_client_db::ClientDbSourceIndexScopeFile {
         path,
-        language_id: agent_semantic_client_core::LanguageId::new("rust").expect("test language id"),
-        provider_id: agent_semantic_client_core::ProviderId::new("rs-harness")
-            .expect("test provider id"),
+        language_id: agent_semantic_client_core::LanguageId::new("rust"),
+        provider_id: agent_semantic_client_core::ProviderId::new("rs-harness"),
         projection_coverage:
             agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
         selector_receipts: Vec::new(),

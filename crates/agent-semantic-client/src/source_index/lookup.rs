@@ -1,4 +1,4 @@
-//! Compatibility facade for source-index candidate lookup.
+//! Tokio-native facade for source-index candidate lookup.
 
 use agent_semantic_client_db::{ClientDbSourceIndexLookupResult, ClientDbSourceIndexSourceKind};
 use agent_semantic_search::{SearchPipeSourceIndexCandidate, SearchPipeSourceIndexLookup};
@@ -9,10 +9,10 @@ pub use agent_semantic_search::{
 };
 
 /// Lookup stable source-index owner candidates for search-pipe source acquisition.
-pub fn lookup_search_pipe_source_index_for_language(
+pub async fn lookup_search_pipe_source_index_for_language(
     request: SourceIndexLookupRequest<'_>,
 ) -> Result<SearchPipeSourceIndexLookup, String> {
-    let result = lookup_source_index_in_cache(request)?;
+    let result = lookup_source_index_in_cache(request).await?;
     Ok(search_pipe_source_index_lookup_from_client_result(result))
 }
 

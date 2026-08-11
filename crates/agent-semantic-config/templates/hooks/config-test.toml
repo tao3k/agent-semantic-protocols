@@ -140,10 +140,13 @@ id = "allow-bounded-json-projection"
 positiveCommands = [
   "jq -r '.properties.expected' schemas/semantic-hook-match-scenario.v1.schema.json",
   "jq -c '.properties.expected' schemas/semantic-hook-match-scenario.v1.schema.json",
+  "jq '.languages[0:16]' schemas/semantic-language-registry.providers.v1.json",
 ]
 negativeCommands = [
   "jq . schemas/semantic-hook-match-scenario.v1.schema.json",
   "jq '..' schemas/semantic-hook-match-scenario.v1.schema.json",
+  "jq '.languages[0:]' schemas/semantic-language-registry.providers.v1.json",
+  "jq '.languages[0:65]' schemas/semantic-language-registry.providers.v1.json",
 ]
 
 [[rules]]

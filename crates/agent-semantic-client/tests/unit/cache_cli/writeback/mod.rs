@@ -1,8 +1,5 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use agent_semantic_client_core::ResolvedProvider;
 use serde_json::{Value, json};
-use std::process::Command;
 
 mod prompt_output;
 mod search;
@@ -33,19 +30,7 @@ fn syntax_packet(input: &str, volatile_id: u64) -> Value {
 }
 
 fn temp_root(name: &str) -> std::path::PathBuf {
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock")
-        .as_nanos();
-    let root = std::env::temp_dir().join(format!("agent-semantic-client-{name}-{unique}"));
-    std::fs::create_dir_all(&root).expect("create temp root");
-    let status = Command::new("git")
-        .args(["init", "-q"])
-        .current_dir(&root)
-        .status()
-        .expect("initialize Git fixture");
-    assert!(status.success(), "initialize Git fixture");
-    root
+    crate::test_support::owner_backed_temp_root(name)
 }
 
 fn rust_provider() -> ResolvedProvider {

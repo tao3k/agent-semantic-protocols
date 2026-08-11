@@ -13,13 +13,13 @@ mod validation;
 
 use runtime_generation::{MutationWorkspaceLane, RuntimeSearchAuthorityCache};
 use session_pool::resident_state;
-use transport::{read_frame, runtime_server_data_connect_error, write_frame};
+use transport::runtime_server_data_connect_error;
+pub(crate) use transport::{read_frame, read_optional_frame, write_frame};
 use validation::{
     deserialize_changed_paths, deserialize_mutation_id, workspace_db_ipc_read_lane_capacity,
 };
 
-pub use crate::workspace_db_ipc_server::serve_workspace_db_session_until_shutdown;
-pub use crate::workspace_db_owner_election::try_acquire_workspace_db_owner_election;
+pub use crate::try_acquire_workspace_db_owner_election;
 pub use agent_session_registry::{
     AgentHostExecutionObservationIpc, AgentHostLifecycleEventIpc, AgentHostLifecycleEventKind,
     AgentHostNonMatchIpc, AgentSessionModelObservationIpc, AgentSessionRegisterIpcRequest,

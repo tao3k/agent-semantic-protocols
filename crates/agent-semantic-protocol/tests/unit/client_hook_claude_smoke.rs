@@ -60,7 +60,7 @@ fn install_fixture() -> InstallFixture {
     std::fs::create_dir_all(&bin_dir).expect("create fixture bin root");
     std::fs::hard_link(env!("CARGO_BIN_EXE_asp"), bin_dir.join("asp"))
         .expect("link local regular ASP test artifact");
-    let state_home = crate::state_home_fixture::default_state_home(&root);
+    let state_home = crate::unit_state_home_fixture::default_state_home(&root);
     crate::state_home_fixture::install_provider_script(&state_home, "rust", "#!/bin/sh\nexit 0\n");
     crate::state_home_fixture::write_activation(&root, &state_home, &["rust"]);
     write_agent_config_fixture(&root);

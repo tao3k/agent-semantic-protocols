@@ -21,6 +21,11 @@ pub(super) fn extend_dispatch_fields(
             dispatch.resident_codex_agent_name.as_str(),
         ),
         ("targetAgentRole", dispatch.resident_role.as_str()),
+        ("targetAgentKind", dispatch.resident_agent_kind.as_str()),
+        (
+            "targetAgentDisplayRole",
+            dispatch.resident_display_role.as_str(),
+        ),
         (
             "targetAgentDescription",
             dispatch.resident_description.as_str(),

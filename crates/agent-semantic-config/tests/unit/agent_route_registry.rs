@@ -29,12 +29,18 @@ fn hook_agent_routes_are_derived_from_platform_projection_owners() {
     assert!(residents.iter().any(|resident| {
         resident["name"].as_str() == Some("asp_explorer")
             && resident["role"].as_str() == Some("asp_explorer")
+            && resident["agentKind"].as_str() == Some("Subagent")
+            && resident["displayRole"].as_str() == Some("Evidence Explorer")
+            && resident["description"].as_str() == Some("for code and evidence search")
             && resident["codexAgentName"].as_str() == Some("asp_explorer")
             && resident["focusMode"].as_str() == Some("leaf")
     }));
     assert!(residents.iter().any(|resident| {
         resident["name"].as_str() == Some("asp_testing")
             && resident["role"].as_str() == Some("asp_testing")
+            && resident["agentKind"].as_str() == Some("Subagent")
+            && resident["displayRole"].as_str() == Some("Test Runner")
+            && resident["description"].as_str() == Some("for build and test jobs")
             && resident["codexAgentName"].as_str() == Some("asp_testing")
             && resident["focusMode"].as_str() == Some("leaf")
     }));
@@ -132,13 +138,18 @@ fn canonical_registry_compiles_host_routes() {
     assert!(codex.profile_path.ends_with("asp_explorer_codex.toml"));
     assert!(claude.profile_path.ends_with("asp_explorer_claude.md"));
     assert_eq!(codex.roles, vec!["explore", "subagent"]);
-    assert_eq!(codex.description, "ASP search/query evidence explorer.");
+    assert_eq!(codex.agent_kind, "Subagent");
+    assert_eq!(codex.display_role, "Evidence Explorer");
+    assert_eq!(codex.description, "for code and evidence search");
     assert_eq!(claude.description, codex.description);
     assert_eq!(codex.sandbox_mode.as_deref(), Some("read-only"));
     let testing =
         compile_agent_route(&loaded, "asp_testing", "codex").expect("Codex testing route");
     assert_eq!(testing.platform_host_agent_name.as_str(), "asp_testing");
     assert_eq!(testing.focus_mode, super::AgentFocusMode::Leaf);
+    assert_eq!(testing.agent_kind, "Subagent");
+    assert_eq!(testing.display_role, "Test Runner");
+    assert_eq!(testing.description, "for build and test jobs");
     assert!(testing.profile_path.ends_with("asp_testing_codex.toml"));
     assert_eq!(testing.sandbox_mode.as_deref(), Some("read-only"));
 }

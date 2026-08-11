@@ -215,6 +215,7 @@ argvWorkspaceRegularFile = true
 binary = "project-json"
 documentFormat = "json"
 filterGrammar = "bounded-path-v1"
+maxSliceItems = 64
 optionAny = ["--compact"]
 optionValueArity = { "--arg" = 2 }
 "#,
@@ -247,6 +248,7 @@ argvWorkspaceRegularFile = true
 binary = "../project-json"
 documentFormat = "json"
 filterGrammar = "bounded-path-v1"
+maxSliceItems = 64
 "#,
             "invalid rules[].match.structuredProjection.binary",
         ),
@@ -259,6 +261,7 @@ argvWorkspaceRegularFile = true
 binary = "project-json"
 documentFormat = "json"
 filterGrammar = "bounded-path-v1"
+maxSliceItems = 64
 optionValueArity = { "--arg" = 0 }
 "#,
             "must start with `-` and have positive arity",

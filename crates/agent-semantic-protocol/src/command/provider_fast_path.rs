@@ -15,27 +15,6 @@ pub(super) fn search_owner_items_owner_path(args: &[String]) -> Option<&str> {
     args.get(2).map(String::as_str)
 }
 
-pub(super) fn run_pre_activation_search_command_preflight(
-    language_id: &str,
-    command_args: &[String],
-    invocation_root: &Path,
-) -> Result<(), String> {
-    let outcome =
-        agent_semantic_search::search_command_preflight::preflight_search_command_args_at_invocation_root(
-        &language_id.into(),
-        command_args,
-        invocation_root,
-    );
-    match outcome {
-        agent_semantic_search::search_command_preflight::SearchCommandPreflightOutcome::Rejected(
-            error,
-        ) => Err(error),
-        agent_semantic_search::search_command_preflight::SearchCommandPreflightOutcome::Passed
-        | agent_semantic_search::search_command_preflight::SearchCommandPreflightOutcome::NotApplicable => {
-            Ok(())
-        }
-    }
-}
 
 pub(super) fn run_activated_owner_language_preflight(
     language_id: &str,

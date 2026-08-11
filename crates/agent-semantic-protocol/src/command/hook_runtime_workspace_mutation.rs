@@ -45,14 +45,15 @@ pub(super) async fn relay_post_tool_workspace_mutation(
     let Some(mutation) = post_tool_workspace_mutation(event, payload)? else {
         return Ok(());
     };
-    crate::command::hook_runtime_memory_inbox::append_workspace_mutation(
+    crate::server::runtime_server_hook_mutation::submit(
         project_root,
-        &mutation.mutation_id,
+        mutation.mutation_id,
         mutation.changed_paths,
     )
-    .await?;
+    .await?
+    .validate()?;
     if std::env::var_os("ASP_HOOK_BOOTSTRAP_TRACE").is_some() {
-        eprintln!("[asp-hook] route=local-mmap-inbox entryKind=workspace-mutation state=recorded");
+        eprintln!("[asp-hook] route=runtime-server entryKind=workspace-mutation state=recorded");
     }
     Ok(())
 }

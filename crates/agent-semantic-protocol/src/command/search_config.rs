@@ -1,7 +1,6 @@
 //! ASP facade configuration for language routing and cheap search.
 
 use std::collections::HashMap;
-use std::fs;
 use std::path::Path;
 
 #[derive(Debug, Clone, Default)]
@@ -31,11 +30,11 @@ impl Default for SearchConfig {
 }
 
 impl AspConfig {
-    pub(super) fn load(invocation_root: &Path, activation_root: &Path) -> Self {
+    pub(super) async fn load(invocation_root: &Path, activation_root: &Path) -> Self {
         let mut config = Self::default();
         for root in config_roots(invocation_root, activation_root) {
             for path in config_paths(root) {
-                let Ok(text) = fs::read_to_string(&path) else {
+                let Ok(text) = tokio::fs::read_to_string(&path).await else {
                     continue;
                 };
                 config.merge_text(&text);

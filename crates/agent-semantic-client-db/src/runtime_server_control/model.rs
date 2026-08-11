@@ -93,6 +93,7 @@ impl RuntimeServerEndpoint {
 #[serde(rename_all = "kebab-case")]
 pub enum RuntimeServerOperation {
     Status,
+    EnsureWorkspace,
     Reconcile,
     Restart,
 }
@@ -108,6 +109,8 @@ pub struct RuntimeServerControlRequest {
     pub transport_contract_digest: String,
     pub owner_epoch: u64,
     pub binding_token: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_root: Option<String>,
 }
 
 impl RuntimeServerControlRequest {
@@ -144,6 +147,19 @@ impl RuntimeServerControlRequest {
         match self.operation {
             RuntimeServerOperation::Status => {
                 self.validate_for_endpoint(endpoint)?;
+                Ok(false)
+            }
+            RuntimeServerOperation::EnsureWorkspace => {
+                self.validate_for_endpoint(endpoint)?;
+                if self
+                    .project_root
+                    .as_deref()
+                    .is_none_or(|project_root| project_root.trim().is_empty())
+                {
+                    return Err(
+                        "Runtime Server ensure-workspace requires a project root".to_owned()
+                    );
+                }
                 Ok(false)
             }
             RuntimeServerOperation::Reconcile => Ok(self.expected_runtime_artifact_digest

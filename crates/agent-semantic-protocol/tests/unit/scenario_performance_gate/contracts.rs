@@ -144,51 +144,9 @@ pub(super) fn assert_graph_evidence_projection_benchmark_contract(benchmark: &Sh
     assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
 }
 
-pub(super) fn assert_search_pipe_package_cohesion_benchmark_contract(
-    benchmark: &SharedBenchmarkToml,
-) {
-    assert_eq!(
-        benchmark.route_source.as_deref(),
-        Some("search-pipe-package-cohesion")
-    );
-    assert_eq!(benchmark.max_provider_process_count, Some(0));
-    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
-    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
-}
 
-pub(super) fn assert_search_pipe_query_pack_benchmark_contract(benchmark: &SharedBenchmarkToml) {
-    assert_eq!(
-        benchmark.route_source.as_deref(),
-        Some("search-pipe-query-pack")
-    );
-    assert_eq!(benchmark.max_provider_process_count, Some(0));
-    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
-    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
-}
 
-pub(super) fn assert_search_pipe_quality_decision_benchmark_contract(
-    benchmark: &SharedBenchmarkToml,
-) {
-    assert_eq!(
-        benchmark.route_source.as_deref(),
-        Some("search-pipe-quality-decision")
-    );
-    assert_eq!(benchmark.max_provider_process_count, Some(0));
-    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
-    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
-}
 
-pub(super) fn assert_search_pipe_evidence_classifier_benchmark_contract(
-    benchmark: &SharedBenchmarkToml,
-) {
-    assert_eq!(
-        benchmark.route_source.as_deref(),
-        Some("search-pipe-evidence-classifier")
-    );
-    assert_eq!(benchmark.max_provider_process_count, Some(0));
-    assert_eq!(benchmark.max_stdout_bytes, Some(4096));
-    assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
-}
 
 pub(super) fn assert_runtime_owner_items_receipt_benchmark_contract(
     benchmark: &SharedBenchmarkToml,

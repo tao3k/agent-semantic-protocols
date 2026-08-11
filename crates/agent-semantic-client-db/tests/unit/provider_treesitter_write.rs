@@ -7,8 +7,7 @@ use super::{
     ProviderTreeSitterOwnerResultState, ProviderTreeSitterQueryIdentity, scope_params,
 };
 use crate::engine::{ProviderSearchWorkspaceSession, WorkspaceDbRegistry};
-use crate::test_support::{StateHomeGuard, environment_lock, workspace};
-use tempfile::TempDir;
+use crate::test_support::{StateHomeGuard, TestDir, environment_lock, workspace};
 
 #[tokio::test(flavor = "current_thread")]
 async fn exact_rust_inventory_is_isolated_from_julia_and_gerbil_scopes() {
@@ -229,7 +228,7 @@ enum InvalidWrite {
 
 struct ProviderTreeSitterWriteFixture {
     _state_home: StateHomeGuard,
-    _temp: TempDir,
+    _temp: TestDir,
     _environment: MutexGuard<'static, ()>,
     base_scope: ProviderIncrementalScoped,
     registry: WorkspaceDbRegistry,
@@ -239,7 +238,7 @@ struct ProviderTreeSitterWriteFixture {
 impl ProviderTreeSitterWriteFixture {
     async fn new(label: &str) -> Self {
         let environment = environment_lock();
-        let temp = TempDir::new().expect("create provider Tree-sitter tempfile");
+        let temp = TestDir::new(label);
         let state_home = StateHomeGuard::install(&temp.path().join("state"));
         let (project_root, _resolved, base_scope) = workspace(temp.path(), label);
         let registry = WorkspaceDbRegistry::default();

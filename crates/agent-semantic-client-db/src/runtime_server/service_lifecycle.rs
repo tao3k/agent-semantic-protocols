@@ -127,6 +127,7 @@ impl RuntimeServer {
             events: None,
             generation_admission: None,
             graph_turbo_evaluation_builder: None,
+            runtime_search_service: None,
             graph_turbo_resident_status: None,
             agent_session_registry_owner: None,
             session_control_plane_runtime_registry: Arc::new(

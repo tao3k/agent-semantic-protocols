@@ -15,7 +15,15 @@ fn choice_plane_projection_removes_legacy_lifecycle_tokens() {
         ),
         (
             "targetAgentName".to_owned(),
-            Value::String("legacy".to_owned()),
+            Value::String("@asp_testing".to_owned()),
+        ),
+        (
+            "targetAgentRole".to_owned(),
+            Value::String("asp_testing".to_owned()),
+        ),
+        (
+            "targetAgentSelectionSource".to_owned(),
+            Value::String("command-tags".to_owned()),
         ),
     ]);
 
@@ -23,7 +31,20 @@ fn choice_plane_projection_removes_legacy_lifecycle_tokens() {
 
     assert!(!fields.contains_key("completionReceipt"));
     assert!(!fields.contains_key("requiredAction"));
-    assert!(!fields.contains_key("targetAgentName"));
+    assert_eq!(
+        fields.get("targetAgentName").and_then(Value::as_str),
+        Some("@asp_testing")
+    );
+    assert_eq!(
+        fields.get("targetAgentRole").and_then(Value::as_str),
+        Some("asp_testing")
+    );
+    assert_eq!(
+        fields
+            .get("targetAgentSelectionSource")
+            .and_then(Value::as_str),
+        Some("command-tags")
+    );
     assert_eq!(
         fields.get("agentWindowCommand").and_then(Value::as_str),
         Some("asp session --agents choice-plane")

@@ -33,6 +33,24 @@ fn validates_generation_bound_root_selector() {
 }
 
 #[test]
+fn exact_selector_path_preserves_ordered_descendant_identity() {
+    let selector = super::ExactStructuralSelectorPathV1::parse(
+        "rust://crates/example/src/lib.rs#item/function/run/segment/branch/ordinal-1/segment/binding/ordinal-2",
+    )
+    .expect("parse exact descendant selector");
+
+    assert_eq!(
+        selector.root_selector,
+        "rust://crates/example/src/lib.rs#item/function/run"
+    );
+    assert_eq!(selector.segments.len(), 2);
+    assert_eq!(selector.segments[0].kind, "branch");
+    assert_eq!(selector.segments[0].identity, "ordinal-1");
+    assert_eq!(selector.segments[1].kind, "binding");
+    assert_eq!(selector.segments[1].identity, "ordinal-2");
+}
+
+#[test]
 fn rejects_line_based_segment_identity() {
     let mut value = selector();
     value.segments.push(ExactStructuralSelectorSegmentV1 {

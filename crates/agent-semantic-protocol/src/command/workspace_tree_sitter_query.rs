@@ -20,12 +20,40 @@ pub(super) async fn try_run_workspace_tree_sitter_query(
     language_id: &str,
     args: &[String],
     project_root: &Path,
-    provider: &ActivatedProvider,
-    profiles: &agent_semantic_hook::RuntimeProfiles,
 ) -> Result<bool, String> {
-    let Some(request) = WorkspaceTreeSitterRequest::parse(args)? else {
+    let session =
+        crate::server::runtime_server::runtime_server_stateless_search_session_async(project_root)
+            .await?;
+    let Some(rendered) = session
+        .project_tree_sitter_query(project_root, language_id, args)
+        .await?
+    else {
         return Ok(false);
     };
+    print!("{rendered}");
+    Ok(true)
+}
+
+pub(crate) async fn run_runtime_server_tree_sitter_query(
+    language_id: &str,
+    args: &[String],
+    project_root: &Path,
+) -> Result<Option<String>, String> {
+    let Some(request) = WorkspaceTreeSitterRequest::parse(args)? else {
+        return Ok(None);
+    };
+    let activation_path = super::provider_activation::provider_activation_path(project_root);
+    let runtime = super::provider_activation::load_activation_for_language(
+        &activation_path,
+        project_root,
+        language_id,
+    )?;
+    let provider = runtime
+        .providers
+        .iter()
+        .find(|provider| provider.language_id == language_id)
+        .ok_or_else(|| format!("no activated provider for language {language_id}"))?;
+    let profiles = super::provider_dispatch::tree_sitter_runtime_profiles(project_root, &runtime);
     let language = agent_semantic_tree_sitter::registered_language_grammar(language_id.into())?;
     let query =
         agent_semantic_tree_sitter::compile_native_query_source(&language, &request.query_source)?;
@@ -39,7 +67,7 @@ pub(super) async fn try_run_workspace_tree_sitter_query(
         language_id,
         project_root,
         provider,
-        profiles,
+        &profiles,
         &request,
         &language,
         &query,
@@ -53,8 +81,8 @@ pub(super) async fn try_run_workspace_tree_sitter_query(
         result.total_captures,
         &result.read_state,
         &result.receipt,
-    )?;
-    Ok(true)
+    )
+    .map(Some)
 }
 
 impl WorkspaceTreeSitterRequest {
@@ -524,12 +552,14 @@ async fn process_owner(
             owner.owner_path, owner.probe.decision, owner.metadata.size_bytes
         );
     }
-    let source_bytes = std::fs::read(&owner.absolute_path).map_err(|error| {
-        format!(
-            "failed to read scheduled provider owner {}: {error}",
-            owner.absolute_path.display()
-        )
-    })?;
+    let source_bytes = tokio::fs::read(&owner.absolute_path)
+        .await
+        .map_err(|error| {
+            format!(
+                "failed to read scheduled provider owner {}: {error}",
+                owner.absolute_path.display()
+            )
+        })?;
     let mut fingerprint = agent_semantic_client_db::ProviderOwnerFingerprint {
         metadata: owner.metadata.clone(),
         content_digest: agent_semantic_content_identity::ArtifactHash::blake3(
@@ -555,12 +585,15 @@ async fn process_owner(
     let post_provider_metadata =
         super::provider_owner_native::provider_owner_metadata(owner.absolute_path.as_path())?;
     if post_provider_metadata != fingerprint.metadata {
-        let post_provider_source_bytes = std::fs::read(&owner.absolute_path).map_err(|error| {
-            format!(
-                "failed to verify scheduled provider owner after parse {}: {error}",
-                owner.absolute_path.display()
-            )
-        })?;
+        let post_provider_source_bytes =
+            tokio::fs::read(&owner.absolute_path)
+                .await
+                .map_err(|error| {
+                    format!(
+                        "failed to verify scheduled provider owner after parse {}: {error}",
+                        owner.absolute_path.display()
+                    )
+                })?;
         let post_provider_digest = agent_semantic_content_identity::ArtifactHash::blake3(
             post_provider_source_bytes.as_slice(),
         )
@@ -764,15 +797,13 @@ fn render_workspace_query(
     total_captures: usize,
     read_state: &agent_semantic_client_db::ProviderTreeSitterQueryReadState,
     receipt: &agent_semantic_client_db::ProviderTreeSitterQueryReceipt,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let native_fact_refs = captures
         .iter()
         .map(|capture| capture.native_fact_ref(language_id))
         .collect::<Vec<_>>();
     if request.json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&json!({
+        return serde_json::to_string_pretty(&json!({
                 "schemaId": "agent.semantic-protocols.semantic-tree-sitter-query",
                 "schemaVersion": "1",
                 "operation": "search",
@@ -806,12 +837,11 @@ fn render_workspace_query(
                     "unrelatedProviders": receipt.counters.unrelated_provider_count
                 }
             }))
-            .map_err(|error| format!("failed to render tree-sitter query JSON: {error}"))?
-        );
-        return Ok(());
+            .map(|json| format!("{json}\n"))
+            .map_err(|error| format!("failed to render tree-sitter query JSON: {error}"));
     }
-    println!(
-        "{}",
+    let mut rendered = format!(
+        "{}\n",
         render_tree_sitter_query_summary(
             language_id,
             total_captures,
@@ -826,27 +856,30 @@ fn render_workspace_query(
         super::tree_sitter_query_diagnostics::render_search_miss_guidance(language_id)
             .iter()
             .filter(|line| continuation_next.is_none() || !line.starts_with("next:"))
-            .for_each(|line| println!("{line}"));
+            .for_each(|line| {
+                rendered.push_str(line);
+                rendered.push('\n');
+            });
         if let Some(next) = continuation_next {
-            println!("{next}");
+            rendered.push_str(&next);
+            rendered.push('\n');
         }
-        return Ok(());
+        return Ok(rendered);
     }
-    println!(
-        "{}",
-        super::tree_sitter_query_diagnostics::render_search_match_guidance()
-    );
-    captures
-        .iter()
-        .for_each(|capture| println!("{}", capture.compact_line(language_id)));
-    println!(
-        "{}",
-        continuation_next.unwrap_or_else(|| {
+    rendered.push_str(super::tree_sitter_query_diagnostics::render_search_match_guidance());
+    rendered.push('\n');
+    captures.iter().for_each(|capture| {
+        rendered.push_str(&capture.compact_line(language_id));
+        rendered.push('\n');
+    });
+    rendered.push_str(
+        &continuation_next.unwrap_or_else(|| {
             "next: inspect one retained capture with `query --selector <exact-selector> --projection source`."
                 .to_string()
-        })
+        }),
     );
-    Ok(())
+    rendered.push('\n');
+    Ok(rendered)
 }
 
 impl WorkspaceTreeSitterCapture {

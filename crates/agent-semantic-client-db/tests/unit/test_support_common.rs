@@ -4,6 +4,31 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use agent_semantic_client_core::state_core::ResolvedState;
 use agent_semantic_client_db::ProviderIncrementalScoped;
+use tempfile::TempDir;
+
+pub(crate) struct TestDir(TempDir);
+
+impl TestDir {
+    pub(crate) fn new(label: &str) -> Self {
+        let repository = gix::discover(env!("CARGO_MANIFEST_DIR"))
+            .expect("discover the owner-backed test repository with Gix");
+        let worktree = repository
+            .worktree()
+            .expect("workspace database tests require a non-bare owner checkout");
+        let fixture_root = worktree.base().join("target/asp-live-project-fixtures");
+        std::fs::create_dir_all(&fixture_root)
+            .expect("create owner-backed live-project fixture root");
+        let fixture = tempfile::Builder::new()
+            .prefix(&format!("{label}-"))
+            .tempdir_in(fixture_root)
+            .expect("create isolated owner-backed live-project fixture");
+        Self(fixture)
+    }
+
+    pub(crate) fn path(&self) -> &Path {
+        self.0.path()
+    }
+}
 
 pub(crate) fn environment_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -51,16 +76,6 @@ pub(crate) fn workspace(
 ) -> (PathBuf, ResolvedState, ProviderIncrementalScoped) {
     let project_root = parent.join(name);
     std::fs::create_dir_all(&project_root).expect("create workspace database test project");
-    let git_init = std::process::Command::new("git")
-        .args(["init", "--quiet"])
-        .current_dir(&project_root)
-        .output()
-        .expect("run git init for Gix-owned workspace identity");
-    assert!(
-        git_init.status.success(),
-        "git init failed: {}",
-        String::from_utf8_lossy(&git_init.stderr)
-    );
     let project_root =
         std::fs::canonicalize(project_root).expect("canonicalize workspace database test project");
     let resolved = ResolvedState::resolve(&project_root).expect("resolve workspace database state");

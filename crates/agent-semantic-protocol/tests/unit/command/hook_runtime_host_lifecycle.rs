@@ -56,7 +56,7 @@ fn codex_rollout_topology_verifies_root_and_preserves_nested_parent() {
 }
 
 #[test]
-fn only_native_codex_v2_subagent_events_own_host_lifecycle() {
+fn only_native_codex_subagent_events_own_host_lifecycle() {
     assert_eq!(super::host_lifecycle_kind("codex", "pre-tool"), None);
     assert_eq!(
         super::host_lifecycle_kind("codex", "subagent-stop"),

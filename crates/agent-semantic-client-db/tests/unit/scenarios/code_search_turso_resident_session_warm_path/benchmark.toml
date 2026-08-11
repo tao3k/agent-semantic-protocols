@@ -9,6 +9,7 @@ concurrent_task_count = 32
 lookups_per_task = 16
 concurrent_target_p95_us = 1000
 concurrent_max_sample_us = 5000
+generation_publication_boundary_ms = 500
 engine = "turso-0.7"
 merkle_algorithm = "blake3-merkle-v1"
 require_resident_connection = true

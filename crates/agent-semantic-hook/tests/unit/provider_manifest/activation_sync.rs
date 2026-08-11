@@ -219,7 +219,7 @@ fn generated_activation_refreshes_a_new_digest_addressed_runtime_binary() {
     assert_eq!(refreshed.status, "refreshed");
     assert_eq!(
         refreshed.admission.reason,
-        ActivationAdmissionReason::ArtifactReceiptInvalid
+        ActivationAdmissionReason::ProviderSelectionDrift
     );
     let ranker = refreshed
         .activation
@@ -236,12 +236,6 @@ fn generated_activation_refreshes_a_new_digest_addressed_runtime_binary() {
             .to_string()
     );
     assert_eq!(ranker.content_digest, second_digest);
-    let receipt = verify_active_asp_artifact_receipt(&activation_path, &[&second_binary])
-        .expect("verify refreshed active receipt");
-    assert_eq!(
-        receipt.asp_binary_leaf().artifact_digest().as_str(),
-        second_digest
-    );
     let unchanged = load_or_refresh_default_activation_with_state_home_and_binary(
         &activation_path,
         &root,

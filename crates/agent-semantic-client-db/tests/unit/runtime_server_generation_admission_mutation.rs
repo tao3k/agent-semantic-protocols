@@ -102,6 +102,46 @@ async fn mutation_admission_rejects_non_normalized_paths_and_workspace_identity_
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn explicit_mutation_admission_returns_the_exact_attempt_terminal_receipt() {
+    let temp = tempfile::tempdir().expect("temporary resident workspace");
+    let project_root = temp.path().join("repository");
+    tokio::fs::create_dir_all(project_root.join("src"))
+        .await
+        .expect("create resident source root");
+    let admission = WorkspaceGenerationAdmission::new(Arc::new(
+        |_, _, candidate, _, _changed_paths, _cancellation| {
+            Box::pin(async move {
+                tokio::task::yield_now().await;
+                completed_generation(candidate)
+            })
+        },
+    ));
+
+    let receipt = admission
+        .admit_observed_mutation_terminal(
+            "mutation-terminal-attempt",
+            "workspace-terminal-attempt",
+            project_root.clone(),
+            vec![project_root.join("src/lib.rs")],
+            candidate_identity(),
+        )
+        .await
+        .expect("explicit mutation admission reaches its terminal attempt");
+
+    assert_eq!(receipt.affected_workspace_count, 1);
+    assert_eq!(receipt.receipts[0].attempt, 1);
+    assert_eq!(
+        receipt.receipts[0].state,
+        WorkspaceGenerationAdmissionState::Ready
+    );
+    assert!(receipt.receipts[0].commit.is_some());
+    admission
+        .shutdown()
+        .await
+        .expect("drain terminal mutation admission");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn changed_paths_fan_out_to_each_workspace_resident_without_git_rediscovery() {
     let temp = tempfile::tempdir().expect("temporary resident catalog");
     let parent_root = temp.path().join("repository");

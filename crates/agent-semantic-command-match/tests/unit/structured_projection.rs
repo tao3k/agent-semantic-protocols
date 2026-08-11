@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use super::{
     BoundedPathCommandSpecV1, StructuredFilterClassificationV1,
-    classify_single_bounded_path_command,
+    classify_single_bounded_path_command, classify_single_bounded_path_tokens,
 };
 
 fn spec<'a>(
@@ -16,6 +16,33 @@ fn spec<'a>(
         optional_subcommand_any: subcommands,
         option_any: options,
         option_value_arity: option_values,
+        max_slice_items: 64,
+    }
+}
+
+#[test]
+fn finite_array_slices_are_bounded_by_configured_cardinality() {
+    let options = Vec::new();
+    let option_values = BTreeMap::new();
+    assert!(matches!(
+        classify_single_bounded_path_command(
+            "jq '.languages[0:16]' registry.json",
+            spec("jq", &[], &options, &option_values),
+        ),
+        StructuredFilterClassificationV1::BoundedPath {
+            source_operands,
+            ..
+        } if source_operands == ["registry.json"]
+    ));
+    for filter in [".languages[0:]", ".languages[]", ".languages[0:65]"] {
+        let command = format!("jq '{filter}' registry.json");
+        assert!(!matches!(
+            classify_single_bounded_path_command(
+                &command,
+                spec("jq", &[], &options, &option_values),
+            ),
+            StructuredFilterClassificationV1::BoundedPath { .. }
+        ));
     }
 }
 
@@ -49,6 +76,40 @@ fn bounded_projection_survives_generic_command_wrappers() {
             ..
         } if source_operands == ["package.json"]
     ));
+}
+
+#[test]
+fn parser_tokens_preserve_wrappers_and_reject_compound_stages() {
+    let options = vec!["-r".to_string()];
+    let option_values = BTreeMap::new();
+    let bounded = [
+        "direnv",
+        "exec",
+        ".",
+        "/usr/bin/project-json",
+        "-r",
+        ".package.name",
+        "package.json",
+    ]
+    .map(str::to_owned);
+    assert!(matches!(
+        classify_single_bounded_path_tokens(
+            &bounded,
+            spec("project-json", &[], &options, &option_values),
+        ),
+        StructuredFilterClassificationV1::BoundedPath { source_operands, .. }
+            if source_operands == ["package.json"]
+    ));
+
+    let mut compound = bounded.to_vec();
+    compound.extend([";".to_owned(), "cat".to_owned(), "package.json".to_owned()]);
+    assert_eq!(
+        classify_single_bounded_path_tokens(
+            &compound,
+            spec("project-json", &[], &options, &option_values),
+        ),
+        StructuredFilterClassificationV1::Compound
+    );
 }
 
 #[test]

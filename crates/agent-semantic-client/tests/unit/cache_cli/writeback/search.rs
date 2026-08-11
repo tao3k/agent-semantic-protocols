@@ -98,8 +98,8 @@ O=owner:path(src/cache.rs)!owner;T=test:path(tests/unit/cache.rs)!tests\n";
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn search_packet_writeback_replays_rendered_stdout_artifact() {
+#[tokio::test]
+async fn search_packet_writeback_replays_rendered_stdout_artifact() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
@@ -150,6 +150,7 @@ rank=O frontier=O.owner\n";
         &packet,
         rendered_stdout.as_bytes(),
     )
+    .await
     .expect("writeback probe");
     let replay = probe.replay.expect("search output replay");
 
@@ -158,14 +159,14 @@ rank=O frontier=O.owner\n";
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn dependency_search_packet_writeback_replays_rendered_stdout_artifact() {
-    dependency_search_packet_writeback_replays_rendered_stdout_artifact_for("deps");
-    dependency_search_packet_writeback_replays_rendered_stdout_artifact_for("dependency");
+#[tokio::test]
+async fn dependency_search_packet_writeback_replays_rendered_stdout_artifact() {
+    dependency_search_packet_writeback_replays_rendered_stdout_artifact_for("deps").await;
+    dependency_search_packet_writeback_replays_rendered_stdout_artifact_for("dependency").await;
 }
 
-#[test]
-fn dependency_search_packet_without_locators_uses_manifest_hashes_for_replay() {
+#[tokio::test]
+async fn dependency_search_packet_without_locators_uses_manifest_hashes_for_replay() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
@@ -215,6 +216,7 @@ rank=D frontier=D.dependency\n";
         &packet,
         rendered_stdout.as_bytes(),
     )
+    .await
     .expect("writeback probe");
     let replay = probe.replay.expect("dependency search output replay");
 
@@ -223,8 +225,8 @@ rank=D frontier=D.dependency\n";
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn invalid_retired_manifest_is_discarded_and_rebuilt_on_writeback() {
+#[tokio::test]
+async fn invalid_retired_manifest_is_discarded_and_rebuilt_on_writeback() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
@@ -313,6 +315,7 @@ fn invalid_retired_manifest_is_discarded_and_rebuilt_on_writeback() {
         &stale_packet,
         b"[search-deps] q=regex\n",
     )
+    .await
     .expect("stale writeback probe");
     std::fs::write(
         &manifest_path,
@@ -389,6 +392,7 @@ fn invalid_retired_manifest_is_discarded_and_rebuilt_on_writeback() {
         &packet,
         rendered_stdout.as_bytes(),
     )
+    .await
     .expect("writeback probe");
     let replay = probe.replay.expect("dependency search output replay");
     let manifest = ClientCacheManifest::load_from_path(&manifest_path).expect("rebuilt manifest");
@@ -413,7 +417,7 @@ fn invalid_retired_manifest_is_discarded_and_rebuilt_on_writeback() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-fn dependency_search_packet_writeback_replays_rendered_stdout_artifact_for(view: &str) {
+async fn dependency_search_packet_writeback_replays_rendered_stdout_artifact_for(view: &str) {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
@@ -459,6 +463,7 @@ fn dependency_search_packet_writeback_replays_rendered_stdout_artifact_for(view:
         &packet,
         rendered_stdout.as_bytes(),
     )
+    .await
     .expect("writeback probe");
     let replay = probe.replay.expect("dependency search output replay");
 

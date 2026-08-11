@@ -62,6 +62,41 @@ fn receipt_is_sorted_and_binds_every_leaf() {
 }
 
 #[test]
+fn legacy_v1_receipt_without_materialization_digest_is_normalized_on_decode() {
+    let receipt = ActiveAspArtifactReceiptV1::build(
+        "asp-runtime",
+        vec![
+            leaf(
+                "state/activation.json",
+                ActiveArtifactKindV1::Activation,
+                b"activation",
+            ),
+            leaf(
+                "runtime/bin/by-digest/abc/asp",
+                ActiveArtifactKindV1::AspBinary,
+                b"asp",
+            ),
+        ],
+    )
+    .expect("active artifact receipt");
+    let expected_materialization_digest = receipt.materialization_root_digest().clone();
+    let mut legacy = serde_json::to_value(&receipt).expect("encode receipt");
+    legacy
+        .as_object_mut()
+        .expect("receipt object")
+        .remove("materializationRootDigest");
+
+    let decoded: ActiveAspArtifactReceiptV1 =
+        serde_json::from_value(legacy).expect("decode legacy v1 receipt");
+
+    assert_eq!(
+        decoded.materialization_root_digest(),
+        &expected_materialization_digest
+    );
+    decoded.validate().expect("normalized receipt validates");
+}
+
+#[test]
 fn content_root_is_stable_across_materialization_roots() {
     let activation = leaf(
         "state/activation.json",

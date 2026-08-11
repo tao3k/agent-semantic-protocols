@@ -259,7 +259,6 @@ import ASPProof.ASPWorkspaceGenerationReadiness
 import ASPProof.ASPWorkspaceReconcileClosure
 import ASPProof.ASPWorkspacePublicationRecovery
 import ASPProof.ASPInteractiveSearchLatency
-import ASPProof.ASPAgentFacingSearchWallBudget
 import ASPProof.ASPForegroundAcceptanceDeadline
 import ASPProof.ASPAgentSessionEndpointAdmission
 import ASPProof.OrgizeTypstLintEvidence

@@ -44,8 +44,8 @@ fn structured_evidence_artifacts_reject_prompt_output_and_unsafe_paths() {
     }
 }
 
-#[test]
-fn structured_evidence_artifacts_prevent_prompt_stdout_replay() {
+#[tokio::test]
+async fn structured_evidence_artifacts_prevent_prompt_stdout_replay() {
     let root = temp_root("structured-evidence-no-prompt-replay");
     let cache_root = v2_cache_root(&root);
     write_source(&root);
@@ -64,7 +64,9 @@ fn structured_evidence_artifacts_prevent_prompt_stdout_replay() {
         vec![CacheArtifactId::from("prompt-output/stale.txt")],
     );
     assert!(
-        load_replay_artifact(&cache_root, &prompt_only, &request).is_some(),
+        load_replay_artifact(&cache_root, &prompt_only, &request)
+            .await
+            .is_some(),
         "control generation should replay prompt stdout fallback"
     );
 
@@ -77,7 +79,9 @@ fn structured_evidence_artifacts_prevent_prompt_stdout_replay() {
         ],
     );
     assert!(
-        load_replay_artifact(&cache_root, &structured_evidence, &request).is_none(),
+        load_replay_artifact(&cache_root, &structured_evidence, &request)
+            .await
+            .is_none(),
         "structured evidence artifacts should suppress prompt stdout fallback"
     );
 

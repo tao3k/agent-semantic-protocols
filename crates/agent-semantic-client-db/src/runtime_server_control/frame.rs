@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::io::{Read, Write};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::UnixStream;
 
@@ -82,42 +81,6 @@ pub(super) async fn write_frame<W: AsyncWrite + Unpin, T: Serialize>(
         .write_all(&bytes)
         .await
         .map_err(|error| format!("failed to write Runtime Server frame: {error}"))
-}
-
-pub(super) fn write_frame_sync<W: Write, T: Serialize>(
-    stream: &mut W,
-    value: &T,
-) -> Result<(), String> {
-    let bytes = encode_frame(value)?;
-    let length: u32 = bytes
-        .len()
-        .try_into()
-        .map_err(|_| "frame length overflow")?;
-    stream
-        .write_all(&length.to_be_bytes())
-        .map_err(|error| format!("failed to write Runtime Server frame length: {error}"))?;
-    stream
-        .write_all(&bytes)
-        .map_err(|error| format!("failed to write Runtime Server frame: {error}"))
-}
-
-pub(super) fn read_frame_sync<R: Read, T: for<'de> Deserialize<'de>>(
-    stream: &mut R,
-) -> Result<T, String> {
-    let mut length = [0_u8; 4];
-    stream
-        .read_exact(&mut length)
-        .map_err(|error| format!("failed to read Runtime Server frame length: {error}"))?;
-    let length = u32::from_be_bytes(length) as usize;
-    if length > MAX_FRAME_BYTES {
-        return Err("Runtime Server frame exceeds size limit".to_owned());
-    }
-    let mut bytes = vec![0; length];
-    stream
-        .read_exact(&mut bytes)
-        .map_err(|error| format!("failed to read Runtime Server frame: {error}"))?;
-    serde_json::from_slice(&bytes)
-        .map_err(|error| format!("failed to decode Runtime Server frame: {error}"))
 }
 
 pub(super) async fn read_frame<R: AsyncRead + Unpin, T: for<'de> Deserialize<'de>>(

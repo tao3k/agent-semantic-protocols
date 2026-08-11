@@ -162,7 +162,7 @@ fn current_provider_source_index_snapshot_at_artifact_root_with_registry(
     })
 }
 
-fn ensure_provider_source_index_snapshot_at_artifact_root_with_registry(
+async fn ensure_provider_source_index_snapshot_at_artifact_root_with_registry(
     project_root: &std::path::Path,
     artifact_root: &std::path::Path,
     language_id: &agent_semantic_client_core::LanguageId,
@@ -176,10 +176,28 @@ fn ensure_provider_source_index_snapshot_at_artifact_root_with_registry(
         provider_id,
         provider_registry,
     })
+    .await
 }
 
-#[test]
-fn target_provider_publication_does_not_require_complete_generation() {
+async fn publish_rust_provider_workspace_envelope(
+    provider_workspace_root: &std::path::Path,
+    artifact_root: &std::path::Path,
+    provider_registry: &ProviderRegistrySnapshot,
+) -> Result<std::path::PathBuf, String> {
+    publish_target_provider_source_envelope_v1(TargetProviderSourceEnvelopePublicationRequestV1 {
+        collection_scope: SourceIndexCollectionScope::TargetProvider {
+            language_id: "rust".into(),
+            provider_id: "rs-harness".into(),
+        },
+        provider_registry,
+        artifact_root,
+        project_root: provider_workspace_root,
+    })
+    .await
+}
+
+#[tokio::test]
+async fn target_provider_publication_does_not_require_complete_generation() {
     let root = test_root("target-publication");
     let _environment = ProviderTestEnvironment::enter(&root);
     std::fs::create_dir_all(root.join("rust-src")).expect("create rust source root");
@@ -205,6 +223,7 @@ fn target_provider_publication_does_not_require_complete_generation() {
             &"rs-harness".into(),
             &provider_registry,
         )
+        .await
         .expect("collect first deterministic live provider snapshot");
     let second_live =
         agent_semantic_client::source_index::current_live_provider_source_index_snapshot_with_registry(
@@ -213,6 +232,7 @@ fn target_provider_publication_does_not_require_complete_generation() {
             &"rs-harness".into(),
             &provider_registry,
         )
+        .await
         .expect("collect second deterministic live provider snapshot");
     assert_eq!(first_live.source_snapshot, second_live.source_snapshot);
     let artifact_root = root.with_extension("artifacts");
@@ -228,6 +248,7 @@ fn target_provider_publication_does_not_require_complete_generation() {
             project_root: &root,
         },
     )
+    .await
     .expect("publish target provider without unrelated provider coverage");
 
     assert!(envelope.is_file());
@@ -238,6 +259,7 @@ fn target_provider_publication_does_not_require_complete_generation() {
             &"rs-harness".into(),
             &provider_registry,
         )
+        .await
         .expect("collect deterministic live provider snapshot after publication");
     assert_eq!(
         second_live.source_snapshot,
@@ -340,6 +362,7 @@ fn target_provider_publication_does_not_require_complete_generation() {
         &"rs-harness".into(),
         &provider_registry,
     )
+    .await
     .expect("reasoning search must explicitly materialize the requested provider");
     assert_eq!(rematerialized.source_blobs.iter().count(), 1);
     assert!(envelope.is_file());
@@ -347,8 +370,8 @@ fn target_provider_publication_does_not_require_complete_generation() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn target_provider_live_snapshot_does_not_require_published_envelope() {
+#[tokio::test]
+async fn target_provider_live_snapshot_does_not_require_published_envelope() {
     let root = test_root("provider-live-without-envelope");
     let _environment = ProviderTestEnvironment::enter(&root);
     std::fs::create_dir_all(&root).expect("create Gerbil workspace");
@@ -369,6 +392,7 @@ fn target_provider_live_snapshot_does_not_require_published_envelope() {
             &"gerbil-scheme-harness".into(),
             &provider_registry,
         )
+        .await
         .expect("capture target provider directly from the live worktree");
     assert_eq!(snapshot.source_blobs.iter().count(), 1);
     assert_eq!(
@@ -379,8 +403,8 @@ fn target_provider_live_snapshot_does_not_require_published_envelope() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn target_provider_gerbil_envelope_shape_publishes_source_owner() {
+#[tokio::test]
+async fn target_provider_gerbil_envelope_shape_publishes_source_owner() {
     let root = test_root("gerbil-envelope-shape");
     let _environment = ProviderTestEnvironment::enter(&root);
     std::fs::create_dir_all(&root).expect("create Gerbil workspace");
@@ -406,6 +430,7 @@ fn target_provider_gerbil_envelope_shape_publishes_source_owner() {
             project_root: &root,
         },
     )
+    .await
     .expect("publish real Gerbil provider envelope shape");
     let value: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&envelope).expect("read Gerbil envelope"))
@@ -426,8 +451,8 @@ fn target_provider_gerbil_envelope_shape_publishes_source_owner() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn target_provider_id_publication_materializes_only_the_registered_provider() {
+#[tokio::test]
+async fn target_provider_id_publication_materializes_only_the_registered_provider() {
     let root = test_root("target-provider-id-publication");
     let _environment = ProviderTestEnvironment::enter(&root);
     std::fs::create_dir_all(&root).expect("create provider-id workspace");
@@ -452,6 +477,7 @@ fn target_provider_id_publication_materializes_only_the_registered_provider() {
             project_root: &root,
         },
     )
+    .await
     .expect("registered provider id must publish independently");
     let value: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&envelope).expect("read provider-id envelope"))
@@ -474,8 +500,8 @@ fn target_provider_id_publication_materializes_only_the_registered_provider() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn same_provider_workspaces_publish_order_independent_envelopes() {
+#[tokio::test]
+async fn same_provider_workspaces_publish_order_independent_envelopes() {
     let root = test_root("same-provider-workspaces");
     let _environment = ProviderTestEnvironment::enter(&root);
     std::fs::create_dir_all(root.join(".git")).expect("create repository marker");
@@ -498,20 +524,6 @@ fn same_provider_workspaces_publish_order_independent_envelopes() {
         providers: vec![provider("rust", "rs-harness", "src", "rs")],
     };
     let artifact_root = root.with_extension("artifacts");
-    let publish = |provider_workspace_root: &std::path::Path| {
-        publish_target_provider_source_envelope_v1(
-            TargetProviderSourceEnvelopePublicationRequestV1 {
-                collection_scope: SourceIndexCollectionScope::TargetProvider {
-                    language_id: "rust".into(),
-                    provider_id: "rs-harness".into(),
-                },
-                provider_registry: &provider_registry,
-                artifact_root: &artifact_root,
-                project_root: provider_workspace_root,
-            },
-        )
-        .expect("publish provider workspace envelope")
-    };
     let load = |provider_workspace_root: &std::path::Path| {
         current_provider_source_index_snapshot_at_artifact_root_with_registry(
             provider_workspace_root,
@@ -523,8 +535,17 @@ fn same_provider_workspaces_publish_order_independent_envelopes() {
         .expect("load provider workspace envelope")
     };
 
-    let hook_envelope = publish(&hook_root);
-    let protocol_envelope = publish(&protocol_root);
+    let hook_envelope =
+        publish_rust_provider_workspace_envelope(&hook_root, &artifact_root, &provider_registry)
+            .await
+            .expect("publish hook provider workspace envelope");
+    let protocol_envelope = publish_rust_provider_workspace_envelope(
+        &protocol_root,
+        &artifact_root,
+        &provider_registry,
+    )
+    .await
+    .expect("publish protocol provider workspace envelope");
     assert_ne!(hook_envelope, protocol_envelope);
     assert!(hook_envelope.is_file());
     assert!(protocol_envelope.is_file());
@@ -587,8 +608,12 @@ fn same_provider_workspaces_publish_order_independent_envelopes() {
         Some(b"pub fn protocol_workspace_owner() {}\n".as_slice())
     );
 
-    publish(&protocol_root);
-    publish(&hook_root);
+    publish_rust_provider_workspace_envelope(&protocol_root, &artifact_root, &provider_registry)
+        .await
+        .expect("republish protocol provider workspace envelope");
+    publish_rust_provider_workspace_envelope(&hook_root, &artifact_root, &provider_registry)
+        .await
+        .expect("republish hook provider workspace envelope");
     assert_eq!(
         load(&hook_root)
             .source_blobs
@@ -606,8 +631,8 @@ fn same_provider_workspaces_publish_order_independent_envelopes() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn target_provider_id_publication_fails_closed_when_provider_is_missing() {
+#[tokio::test]
+async fn target_provider_id_publication_fails_closed_when_provider_is_missing() {
     let root = test_root("missing-target-publication");
     let _environment = ProviderTestEnvironment::enter(&root);
     let provider_registry = ProviderRegistrySnapshot {
@@ -626,6 +651,7 @@ fn target_provider_id_publication_fails_closed_when_provider_is_missing() {
             project_root: &root,
         },
     )
+    .await
     .expect_err("missing requested provider must fail closed");
 
     assert!(error.contains("requested target provider is not registered"));

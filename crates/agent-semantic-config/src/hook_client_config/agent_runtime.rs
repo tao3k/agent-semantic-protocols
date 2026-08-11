@@ -10,6 +10,10 @@ fn default_session_lifetime() -> String {
     "temporary".to_string()
 }
 
+fn default_agent_kind() -> String {
+    "Subagent".to_string()
+}
+
 /// Resident agent identities available to declarative hook rule dispatch.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -28,6 +32,10 @@ pub struct HookClientResidentAgentConfig {
     pub enabled: bool,
     pub name: String,
     pub role: String,
+    #[serde(default = "default_agent_kind")]
+    pub agent_kind: String,
+    #[serde(default)]
+    pub display_role: String,
     #[serde(default)]
     pub description: String,
     #[serde(default)]

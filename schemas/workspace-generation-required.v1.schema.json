@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/workspace-generation-required.v1.schema.json",
+  "title": "Workspace Generation Required v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "reasonKind",
+    "retryPolicy",
+    "choicePlaneCommand",
+    "argv",
+    "nextAction",
+    "cause"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.workspace-generation-required"
+    },
+    "schemaVersion": { "const": "1" },
+    "state": { "const": "deferred" },
+    "reasonKind": { "const": "active-workspace-generation-required" },
+    "retryPolicy": { "const": "do-not-retry-in-current-generation" },
+    "choicePlaneCommand": { "const": "asp session --agents choice-plane" },
+    "argv": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "type": "string" }
+    },
+    "nextAction": { "type": "string", "minLength": 1 },
+    "cause": { "type": "string", "minLength": 1 }
+  }
+}

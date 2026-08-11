@@ -6,8 +6,8 @@ use agent_semantic_provider_transport::{
 use agent_semantic_runtime::project_state_paths;
 use std::collections::BTreeMap;
 use std::env;
-use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use tokio::io::AsyncWriteExt;
 
 pub(super) async fn run_provider_command(
     language_id: &str,
@@ -21,11 +21,13 @@ pub(super) async fn run_provider_command(
         .ok_or_else(|| format!("language `{language_id}` has an empty provider command"))?;
     let output =
         run_provider_process(language_id, provider, program, forwarded, project_root).await?;
-    write_facade_stream(language_id, provider, output.stderr.as_ref(), io::stderr())?;
+    let mut stderr = tokio::io::stderr();
+    write_facade_stream(language_id, provider, output.stderr.as_ref(), &mut stderr).await?;
     if require_semantic_document_query_packet {
         validate_semantic_document_query_packet(output.stdout.as_ref(), provider)?;
     }
-    write_facade_stream(language_id, provider, output.stdout.as_ref(), io::stdout())?;
+    let mut stdout = tokio::io::stdout();
+    write_facade_stream(language_id, provider, output.stdout.as_ref(), &mut stdout).await?;
     if !output.status.success() {
         std::process::exit(output.status.code().unwrap_or(1));
     }
@@ -152,8 +154,9 @@ pub(super) async fn run_guide_command(
         .ok_or_else(|| format!("language `{language_id}` has an empty provider command"))?;
     let output =
         run_provider_process(language_id, provider, program, forwarded, project_root).await?;
-    io::stderr()
+    tokio::io::stderr()
         .write_all(&output.stderr)
+        .await
         .map_err(|error| format!("failed to write provider stderr: {error}"))?;
     if !output.status.success() {
         std::process::exit(output.status.code().unwrap_or(1));
@@ -161,8 +164,9 @@ pub(super) async fn run_guide_command(
     let stdout = std::str::from_utf8(output.stdout.as_ref())
         .map_err(|error| format!("provider guide emitted invalid UTF-8: {error}"))?;
     let stdout = render_facade_guide(language_id, provider, stdout);
-    io::stdout()
+    tokio::io::stdout()
         .write_all(stdout.as_bytes())
+        .await
         .map_err(|error| format!("failed to write provider stdout: {error}"))
 }
 
@@ -204,13 +208,13 @@ struct ProviderProcessRun<'a> {
 async fn run_provider_process_with_stdin(
     request: ProviderProcessRun<'_>,
 ) -> Result<ProviderProcessOutput, String> {
-    let (spec, language_id, provider_id) = provider_process_spec(request)?;
+    let (spec, language_id, provider_id) = provider_process_spec(request).await?;
     run_transport_process(spec).await.map_err(|error| {
         format!("failed to run provider `{provider_id}` for language `{language_id}`: {error}")
     })
 }
 
-fn provider_process_spec(
+async fn provider_process_spec(
     request: ProviderProcessRun<'_>,
 ) -> Result<(ProviderProcessSpec, String, String), String> {
     let ProviderProcessRun {
@@ -249,7 +253,7 @@ fn provider_process_spec(
 
     Ok((
         ProviderProcessSpec {
-            program: resolve_provider_program(program, project_root),
+            program: resolve_provider_program(program, project_root).await,
             args: forwarded.to_vec(),
             cwd: project_root.to_path_buf(),
             env: envs,
@@ -263,12 +267,12 @@ fn provider_process_spec(
     ))
 }
 
-fn resolve_provider_program(program: &str, project_root: &Path) -> String {
+async fn resolve_provider_program(program: &str, project_root: &Path) -> String {
     let launch_cwd = env::current_dir().ok();
-    resolve_provider_program_from(program, project_root, launch_cwd.as_deref())
+    resolve_provider_program_from(program, project_root, launch_cwd.as_deref()).await
 }
 
-fn resolve_provider_program_from(
+async fn resolve_provider_program_from(
     program: &str,
     project_root: &Path,
     launch_cwd: Option<&Path>,
@@ -284,11 +288,11 @@ fn resolve_provider_program_from(
         .chain(std::iter::once(project_root.join(program_path)));
 
     for candidate in candidates {
-        if !candidate.exists() {
+        if !tokio::fs::try_exists(&candidate).await.unwrap_or(false) {
             continue;
         }
-        return candidate
-            .canonicalize()
+        return tokio::fs::canonicalize(&candidate)
+            .await
             .unwrap_or(candidate)
             .to_string_lossy()
             .to_string();
@@ -436,18 +440,20 @@ fn render_facade_guide(
     output
 }
 
-fn write_facade_stream(
+async fn write_facade_stream(
     language_id: &str,
     provider: &ActivatedProvider,
     bytes: &[u8],
-    mut stream: impl Write,
+    stream: &mut (impl tokio::io::AsyncWrite + Unpin),
 ) -> Result<(), String> {
     match std::str::from_utf8(bytes) {
         Ok(text) => stream
             .write_all(rewrite_provider_command_mentions(language_id, provider, text).as_bytes())
+            .await
             .map_err(|error| format!("failed to write provider output: {error}")),
         Err(_) => stream
             .write_all(bytes)
+            .await
             .map_err(|error| format!("failed to write provider output: {error}")),
     }
 }

@@ -31,6 +31,7 @@ pub use event_state_subagent_model_drift::{
     ReasoningVerdict, reduce_reasoning_evidence,
 };
 mod executable;
+pub(crate) use executable::resolve_executable_with_status;
 mod hook_config;
 mod hook_config_agent_org;
 mod hook_config_global;
@@ -41,12 +42,14 @@ pub mod policy_testing;
 mod protocol;
 mod protocol_activation;
 mod shell_read_decision_shard;
+mod structured_projection_decision_shard;
 pub use protocol_activation::digest::provider_execution_command_digest;
 pub use protocol_activation::protocol_activation_manifest::{
     ProviderDevelopmentArtifactDomain, ProviderDevelopmentDescriptor,
 };
 mod provider_manifest;
 mod provider_registry;
+mod provider_runtime;
 pub use provider_registry::registered_language_ids;
 pub use provider_registry::{
     ProviderDevelopmentRegistrationV1, RegisteredProviderBinaryV1, RuntimeBinaryAdmissionDenialV1,
@@ -91,8 +94,9 @@ pub use classifier::{
     classify_hook, classify_hook_with_config, default_hook_trigger_prompt_message,
     direct_read_source_extension, direct_read_source_key, hook_trigger_prompt_document,
     materialize_hook_trigger_prompt_agent_flow_for_client, merge_hook_trigger_prompt_document,
-    rebind_command_decision_to_payload, render_hook_trigger_prompt_document, shell_command_key,
-    shell_read_source_key,
+    rebind_command_decision_to_payload, render_hook_trigger_prompt_document,
+    runtime_binary_policy_decision_v1, shell_command_key, shell_read_source_key,
+    shell_read_source_keys,
 };
 pub use codex_config::{
     CodexUserTrustStatus, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, claude_hook_block, codex_hook_block,
@@ -121,7 +125,11 @@ pub use hook_config::{
     load_client_config_for_project, load_client_config_for_project_with_executable_capabilities,
     load_client_config_overlay_for_project, load_embedded_client_config_for_project,
 };
+pub(crate) use hook_config_agent_org::{
+    AgentOrgArtifactsArchiveWarning, AgentOrgArtifactsRecovery, CompiledAgentOrgArtifactsConfig,
+};
 pub use hook_config_global::default_global_client_config_path;
+pub(crate) use hook_recovery_prompt::CompiledRecoveryPromptConfig;
 pub use match_policy_conformance::{
     MatchPolicyConformanceReport, evaluate_match_policy_conformance,
     validate_match_policy_rule_coverage,
@@ -161,6 +169,7 @@ pub use runtime_profile::{
 };
 pub use shell_read_decision_shard::CommandDecisionShard;
 pub(crate) use source_selector::{SourceSelectorMatch, collect_source_selector_matches};
+pub use structured_projection_decision_shard::StructuredProjectionDecisionShard;
 pub use tool_action::workspace_mutation_paths;
 pub(crate) use tool_action::{
     OperationIntent, ToolAction, collect_tool_actions, payload_string, subject_for_action,
@@ -186,3 +195,4 @@ pub use crate::provider_registry::{
 pub use agent_semantic_command_match as command_match;
 #[doc(hidden)]
 pub use agent_semantic_command_match::bash as bash_command_stages;
+mod agent_dispatch_message;

@@ -68,8 +68,8 @@ fn planner_file_locator_hot_path_stays_under_two_milliseconds() {
     );
 }
 
-#[test]
-fn source_index_adapter_uses_file_locator_on_cache_miss() {
+#[tokio::test]
+async fn source_index_adapter_uses_file_locator_on_cache_miss() {
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let project_root = tempfile::tempdir().expect("project tempdir");
     let locator = FileLocatorIndex::build(vec![PathBuf::from("src/search_planner.rs")]);
@@ -85,6 +85,7 @@ fn source_index_adapter_uses_file_locator_on_cache_miss() {
         },
         file_locator: Some(&locator),
     })
+    .await
     .expect("lookup with file locator planner");
 
     assert_eq!(

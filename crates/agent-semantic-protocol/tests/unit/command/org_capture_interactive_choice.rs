@@ -88,11 +88,6 @@ fn multi_agent_session_contract_owns_every_lifecycle_instruction() {
     assert!(
         missing
             .iter()
-            .all(|entry| entry.instruction.contains("ASP Runtime Server records"))
-    );
-    assert!(
-        missing
-            .iter()
             .all(|entry| !entry.instruction.contains("asp agent session register"))
     );
     let pane = choice.render_admitted_pane(

@@ -27,6 +27,7 @@ fn request(operation: RuntimeServerOperation) -> RuntimeServerControlRequest {
         schema_id: REQUEST_SCHEMA_ID.to_owned(),
         schema_version: SCHEMA_VERSION.to_owned(),
         operation,
+        project_root: None,
         expected_runtime_artifact_digest: "blake3-256:running-runtime".to_owned(),
         request_id: "supervisor-reconcile".to_owned(),
         transport_contract_digest: "blake3-256:running-transport".to_owned(),

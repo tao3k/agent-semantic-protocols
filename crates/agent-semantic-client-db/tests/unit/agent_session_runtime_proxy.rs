@@ -2,19 +2,19 @@ use agent_semantic_client_db::{
     AgentSessionRegistry, publish_runtime_server_endpoint, runtime_server_endpoint_path,
 };
 use std::os::unix::fs::PermissionsExt;
-use tempfile::TempDir;
 
-use crate::test_support::{StateHomeGuard, environment_lock, workspace};
+use crate::test_support::{StateHomeGuard, TestDir, environment_lock, workspace};
 
 #[test]
 fn project_registry_rejects_invalid_runtime_endpoint_descriptor() {
     let _environment = environment_lock();
-    let fixture = TempDir::new().expect("create agent-session proxy fixture");
+    let fixture = TestDir::new("agent-session-proxy");
     let state_home = fixture.path().join("state");
     std::fs::create_dir_all(&state_home).expect("create State Home fixture");
     let _state_home = StateHomeGuard::install(&state_home);
     let (project_root, resolved, _) = workspace(fixture.path(), "project");
-    let endpoint_path = runtime_server_endpoint_path(&resolved.state_home);
+    let endpoint_path = runtime_server_endpoint_path(&resolved.state_home)
+        .expect("derive Runtime Server endpoint path");
     let runtime_base = endpoint_path.parent().expect("runtime endpoint parent");
     std::fs::create_dir_all(runtime_base).expect("create runtime endpoint directory");
     std::fs::write(&endpoint_path, b"{}\n").expect("publish endpoint descriptor sentinel");
@@ -32,12 +32,14 @@ fn project_registry_rejects_invalid_runtime_endpoint_descriptor() {
 #[test]
 fn project_registry_never_direct_opens_without_runtime_server_endpoint() {
     let _environment = environment_lock();
-    let fixture = TempDir::new().expect("create agent-session fail-closed fixture");
+    let fixture = TestDir::new("agent-session-fail-closed");
     let state_home = fixture.path().join("state");
     std::fs::create_dir_all(&state_home).expect("create State Home fixture");
     let _state_home = StateHomeGuard::install(&state_home);
-    let (project_root, resolved, _) = workspace(fixture.path(), "project");
-    let endpoint_path = runtime_server_endpoint_path(&resolved.state_home);
+    let project_fixture = TestDir::new("agent-session-unix-proxy");
+    let (project_root, resolved, _) = workspace(project_fixture.path(), "project");
+    let endpoint_path = runtime_server_endpoint_path(&resolved.state_home)
+        .expect("derive Runtime Server endpoint path");
 
     assert!(!endpoint_path.exists());
     assert!(
@@ -67,7 +69,8 @@ async fn project_registry_selects_runtime_proxy_from_unix_socket_endpoint() {
     std::fs::create_dir_all(&state_home).expect("create State Home fixture");
     let _state_home = StateHomeGuard::install(&state_home);
     let (project_root, resolved, _) = workspace(fixture.path(), "project");
-    let endpoint_path = runtime_server_endpoint_path(&resolved.state_home);
+    let endpoint_path = runtime_server_endpoint_path(&resolved.state_home)
+        .expect("derive Runtime Server endpoint path");
     std::fs::create_dir_all(endpoint_path.parent().expect("runtime endpoint parent"))
         .expect("create runtime endpoint directory");
     let runtime_base = endpoint_path.parent().expect("runtime endpoint parent");

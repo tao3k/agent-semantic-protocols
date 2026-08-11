@@ -13,8 +13,7 @@
       "enum": [
         "host-lifecycle",
         "host-execution-observation",
-        "workspace-mutation",
-        "runtime-performance-observation"
+        "workspace-mutation"
       ]
     },
     "event": { "type": "object" }

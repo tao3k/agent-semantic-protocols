@@ -11,8 +11,14 @@ matcher = "*_claude.md"
 session_lifetime = "resident"
 focus_mode = "leaf"
 roles = ["explore", "subagent"]
+agent_kind = "Subagent"
+display_role = "Evidence Explorer"
+description = "for code and evidence search"
 
 [agents.asp_testing]
 session_lifetime = "resident"
 focus_mode = "leaf"
 roles = ["build", "subagent", "testing"]
+agent_kind = "Subagent"
+display_role = "Test Runner"
+description = "for build and test jobs"

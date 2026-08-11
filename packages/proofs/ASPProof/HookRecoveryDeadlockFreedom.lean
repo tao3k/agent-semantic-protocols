@@ -88,6 +88,33 @@ theorem recovery_override_breaks_recursive_repair_deadlock :
     repairReachable true false false false = true := by
   rfl
 
+/-- Publication and one-shot readers must derive authority from the same
+normalized workspace identity. Comparing raw lexical paths admits aliases such
+as `root` and `root/.` as different authorities. -/
+def rawAuthorityHit [DecidableEq RawWorkspace]
+    (published observed : RawWorkspace) : Bool :=
+  decide (published = observed)
+
+theorem lexical_alias_can_miss_raw_authority
+    [DecidableEq RawWorkspace]
+    (canonical alias : RawWorkspace)
+    (differentRaw : canonical ≠ alias) :
+    rawAuthorityHit canonical alias = false := by
+  simp [rawAuthorityHit, differentRaw]
+
+def normalizedAuthorityHit [DecidableEq WorkspaceKey]
+    (normalize : RawWorkspace → WorkspaceKey)
+    (published observed : RawWorkspace) : Bool :=
+  decide (normalize published = normalize observed)
+
+theorem normalized_aliases_share_authority
+    [DecidableEq WorkspaceKey]
+    (normalize : RawWorkspace → WorkspaceKey)
+    (canonical alias : RawWorkspace)
+    (sameIdentity : normalize canonical = normalize alias) :
+    normalizedAuthorityHit normalize canonical alias = true := by
+  simp [normalizedAuthorityHit, sameIdentity]
+
 def withinDecisionBudget (cpuMicros : Nat) : Prop :=
   cpuMicros < 1000
 

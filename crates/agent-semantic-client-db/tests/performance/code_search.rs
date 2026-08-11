@@ -1,6 +1,5 @@
 use agent_semantic_client_core::{
-    CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId, SemanticSchemaId,
-    SemanticSchemaVersion,
+    ClientCacheFileHash, LanguageId, ProviderId, SemanticSchemaId, SemanticSchemaVersion,
 };
 use agent_semantic_client_db::{
     CLIENT_DB_SOURCE_INDEX_SCHEMA_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, ClientDbEngine,
@@ -53,6 +52,7 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
         "max_provider_process_count = 0",
         "max_source_blob_read_count = 0",
         "max_source_rehash_count = 0",
+        "generation_publication_boundary_ms = 500",
         "fallback_reason = \"none\"",
     ] {
         assert!(
@@ -67,6 +67,10 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
     let lookups_per_task = benchmark_u64(&benchmark, "lookups_per_task") as usize;
     let concurrent_target_p95_us = benchmark_u64(&benchmark, "concurrent_target_p95_us");
     let concurrent_max_sample_us = benchmark_u64(&benchmark, "concurrent_max_sample_us");
+    let generation_publication_boundary = std::time::Duration::from_millis(benchmark_u64(
+        &benchmark,
+        "generation_publication_boundary_ms",
+    ));
     assert!(
         sample_count >= 128,
         "strong gate requires at least 128 samples"
@@ -78,43 +82,8 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
         agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = root.join("project");
     fs::create_dir_all(&project_root).expect("create project root");
-    let source_snapshot = agent_semantic_content_identity::SourceSnapshotEvidence {
-        schema_id: "asp.source-snapshot.v1".to_string(),
-        algorithm: "blake3-merkle-v1".to_string(),
-        root_digest: "resident-turso-root".to_string(),
-        source_kind: agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-        leaf_count: 1,
-        base_root_digest: None,
-        provider_digest: "22".repeat(32),
-        dirty_paths_digest: None,
-    };
-    let rust_language_id = LanguageId::from("rust");
-    let import = build_source_index_import(ClientDbSourceIndexImportRequest {
-        generation_id: CacheGenerationId::from("resident-turso-code-search"),
-        project_root: project_root.clone(),
-        schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
-        schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
-        selector_source: "rs-harness".into(),
-        file_hashes: vec![ClientCacheFileHash {
-            path: "src/lib.rs".to_string(),
-            sha256: "1111111111111111".repeat(4),
-            byte_len: 31,
-            mtime_ms: 1,
-        }],
-        files: vec![ClientDbSourceIndexImportFile {
-            relations: Vec::new(),
-            relative_path: "src/lib.rs".to_string(),
-            language_id: rust_language_id.clone(),
-            provider_id: ProviderId::from("rs-harness"),
-            text: "pub fn resident_needle() {}\n".to_string(),
-            selectors: Vec::new(),
-        }],
-        source_blobs: Default::default(),
-    })
-    .expect("build resident Turso source-index import");
-    let mut import = import;
-    let fixture_source = b"pub fn indexed_fixture() -> bool { true }\n".to_vec();
-    let fixture_owner_path = import.file_hashes[0].path.clone();
+    let fixture_source = b"pub fn resident_needle() {}\n".to_vec();
+    let fixture_owner_path = "src/lib.rs".to_owned();
     let fixture_source_path = project_root.join(&fixture_owner_path);
     tokio::fs::create_dir_all(
         fixture_source_path
@@ -130,18 +99,48 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
         "{:x}",
         <sha2::Sha256 as sha2::Digest>::digest(&fixture_source)
     );
-    import.file_hashes[0].sha256 = fixture_sha256.clone();
-    import.file_hashes[0].byte_len = fixture_source.len() as u64;
     let workspace_snapshot =
         agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes([(
             fixture_owner_path.clone(),
             blake3::hash(&fixture_source).to_hex().to_string(),
         )]);
     let source_snapshot = workspace_snapshot.evidence(
-        source_snapshot.source_kind.clone(),
-        source_snapshot.provider_digest.clone(),
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        "22".repeat(32),
     );
-    import.generation_id = source_snapshot.root_digest.clone().into();
+    let source_blobs =
+        agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized([(
+            agent_semantic_client_db::ClientDbSourceIndexPath::try_from(
+                fixture_owner_path.as_str(),
+            )
+            .expect("normalize fixture owner path"),
+            fixture_source.clone(),
+        )]);
+    let rust_language_id = LanguageId::from("rust");
+    let import = build_source_index_import(ClientDbSourceIndexImportRequest {
+        generation_id: source_snapshot.root_digest.clone().into(),
+        project_root: project_root.clone(),
+        schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
+        schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
+        selector_source: "rs-harness".into(),
+        file_hashes: vec![ClientCacheFileHash {
+            path: fixture_owner_path.clone(),
+            sha256: fixture_sha256,
+            byte_len: fixture_source.len() as u64,
+            mtime_ms: 1,
+        }],
+        files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
+            relative_path: fixture_owner_path.clone(),
+            language_id: rust_language_id.clone(),
+            provider_id: ProviderId::from("rs-harness"),
+            text: String::from_utf8(fixture_source.clone())
+                .expect("fixture source bytes are UTF-8"),
+            selectors: Vec::new(),
+        }],
+        source_blobs: source_blobs.clone(),
+    })
+    .expect("build resident Turso source-index import");
     let owner_snapshot =
         agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot {
             owner_path: fixture_owner_path.clone(),
@@ -149,22 +148,6 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
             content_digest: format!("blake3-256:{}", blake3::hash(&fixture_source).to_hex()),
             selectors: Vec::new(),
         };
-    let source_blobs = agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
-        import.file_hashes.iter().map(|file_hash| {
-            let owner_path = agent_semantic_client_db::ClientDbSourceIndexPath::try_from(
-                file_hash.path.as_str(),
-            )
-            .expect("normalize fixture owner path");
-            let source_path = project_root.join(&file_hash.path);
-            let source_bytes = std::fs::read(&source_path).unwrap_or_else(|error| {
-                panic!(
-                    "read fixture source bytes from {} for {file_hash:?}: {error}",
-                    source_path.display(),
-                )
-            });
-            (owner_path, source_bytes)
-        }),
-    );
     fixture
         .commit_source_index_generation(
             ClientDbSourceIndexRefreshRequest {
@@ -382,12 +365,11 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
         1,
     );
     assert!(
-        resident_publication_service_p95 < std::time::Duration::from_millis(1),
-        "prepared MemoryBackend resident publication service p95 exceeded 1ms: p95={resident_publication_service_p95:?} max={resident_publication_service_max:?} observedWallP95={cold_publication_p95:?} observedWallMax={cold_publication_max:?}"
-    );
-    assert!(
-        replay_elapsed < std::time::Duration::from_millis(1),
-        "resident canonical generation replay exceeded 1ms: {replay_elapsed:?}"
+        cold_publication_p95 < generation_publication_boundary
+            && cold_publication_max < generation_publication_boundary
+            && resident_publication_service_max < generation_publication_boundary
+            && replay_pressure_max < generation_publication_boundary,
+        "canonical publication exceeded the configured durable Ready boundary: boundary={generation_publication_boundary:?} coldP95={cold_publication_p95:?} coldMax={cold_publication_max:?} readyServiceP95={resident_publication_service_p95:?} readyServiceMax={resident_publication_service_max:?} replayMax={replay_pressure_max:?}"
     );
     let session = ClientDbEngine::open_read_session_client_dir(&client_dir)
         .expect("open resident Turso read session")

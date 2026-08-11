@@ -528,12 +528,7 @@ fn agent_session_registry_project_open_requires_runtime_owner() {
     let state_home = root.join("state");
     let project_root = root.join("project");
     std::fs::create_dir_all(&project_root).expect("create project root");
-    let git_status = Command::new("git")
-        .arg("init")
-        .current_dir(&project_root)
-        .status()
-        .expect("initialize project repository");
-    assert!(git_status.success(), "git init project repository");
+    gix::discover(&project_root).expect("resolve the owner-backed project repository with Gix");
 
     let status = Command::new(env::current_exe().expect("locate current test binary"))
         .arg("--exact")
@@ -937,5 +932,12 @@ fn temp_root(name: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("system time")
         .as_nanos();
-    std::env::temp_dir().join(format!("asp-client-db-{name}-{nanos}"))
+    let repository = gix::discover(env!("CARGO_MANIFEST_DIR"))
+        .expect("discover owner-backed database fixture repository with Gix");
+    repository
+        .worktree()
+        .expect("database fixtures require a non-bare owner checkout")
+        .base()
+        .join("target/asp-live-project-fixtures")
+        .join(format!("asp-client-db-{name}-{nanos}"))
 }

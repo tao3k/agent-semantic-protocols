@@ -186,6 +186,66 @@ the root development installer.
 
 **** Runtime generation incremental admission
 
+Registered language runtime cold start is a Tokio Runtime Server operation, not
+a CLI activation-materialization operation.  The V1 client sends a typed
+=EnsureProviderRuntime= intent and consumes the daemon's provider-runtime
+receipt.  The daemon owns provider catalog selection, executable identity,
+single-flight startup, and transition from =cold= to =ready=.  A language
+query MUST NOT read a workspace-local active ASP artifact receipt, rebuild a
+full Hook activation, or validate the ASP/Graph Turbo binary merely to select
+one provider.  ASP binary and ranker artifacts are daemon-global authority;
+workspace state contains only workspace identity and generation references.
+
+Legacy =active-asp-artifact-receipt.v1.json= files are not an authority or a
+recovery input for provider queries.  Their digest failure MUST NOT be surfaced
+as =registered-language-runtime-unavailable=; removal of the legacy reader is
+the migration.  Provider readiness failures are typed Runtime control-plane
+states bound to =languageId= and the active provider catalog generation.
+
+The V1 Runtime data plane MUST model generation bootstrap separately from
+workspace mutation.  =EnsureRuntimeGenerationReady= is a distinct typed IPC
+operation owned by the Runtime daemon; it MUST NOT be encoded as a mutation
+whose =changedPaths= list happens to be empty.  Mutation operations continue to
+require at least one normalized changed path, so their identity, coalescing,
+and incremental-rebuild semantics remain unambiguous.
+
+Provider-native owner and source projection for the current checkout is live
+parser authority, not an artifact-generation privilege.  A provider may
+publish that live owner/source authority before any durable artifact generation
+exists, and exact current-checkout projection MUST remain available while a
+generation is being built, restored, or replaced.  The admitted generation is
+the authority for artifact publication, durability, and generation-bound
+derived reads only; it MUST NOT be a prerequisite for discovering the owner or
+source needed to establish that generation.  In particular,
+=item-not-in-live-owner= may describe an actual current provider snapshot miss,
+but MUST NOT be synthesized merely because the active artifact generation is
+older than the checkout.
+
+The V1 control plane is generation-independent.  A Host lifecycle event MUST
+reach a Runtime-owned admission operation even when the workspace has no active
+generation.  Runtime MUST atomically ensure the workspace generation and the
+durable Agent namespace before returning registration or resume state.  The CLI
+is only a transport adapter: it MUST NOT own namespace creation, maintain a
+second lifecycle inbox, or fall back to process-local or mmap reconciliation.
+
+=search owner=, =search pipe=, and tree-sitter query/search remain distinct V1
+interfaces.  Owner resolves language items, pipe composes search kinds, and
+tree-sitter evaluates provider-owned syntax queries.  They share the same
+Tokio Runtime admission and source-snapshot authority, but one interface MUST
+NOT be reinterpreted as another when recovery is required.
+
+An exact structural selector is the canonical root selector plus an ordered
+sequence of descendant kind/identity segments.  Root item-kind validation MUST
+compare only the root selector.  A missing descendant in the admitted
+generation is a projection-availability failure, never a root kind mismatch.
+
+Persistent V1 receipts are normalized at their shared decode boundary.  A
+legacy receipt that omits a derivable materialization-root digest MUST be
+decoded by reconstructing that digest from its content identity; a supplied
+digest remains authoritative input and MUST fail validation when inconsistent.
+This pre-release migration remains V1 and does not introduce a parallel V2
+contract.
+
 Exact source and callable-skeleton projection are terminal consumers of the
 admitted active generation.  After a request has been classified as an exact
 structural-selector query, failure to acquire Runtime generation authority MUST
@@ -201,6 +261,17 @@ denial, missing workspace admission, and missing active generation are recovery
 states for the Runtime control plane; none authorizes a provider-native fallback.
 The executable invariant is refined by
 =packages/proofs/ASPProof/ExactProjectionTerminalAuthority.lean=.
+
+=search owner <path> items= is owner discovery, not exact source projection.
+ASP Server MUST own this operation as a stateless Tokio service and dispatch the
+provider-neutral =search/owner-native= interface with source-byte authority
+bounded to that one requested owner.  The CLI is only a typed IPC client; it
+MUST NOT read the owner, spawn the provider, open a database, or construct an
+activation.  The service creates no Workspace generation, writes no cache, and
+admits no exact source projection; it returns only canonical item selectors.
+Workspace or Provider generation availability therefore MUST NOT gate owner
+discovery, and a provider-local failure MUST NOT redirect the request through
+Agent ChoicePlane.
 
 Runtime generation admission MUST be single-flight for the tuple of workspace
 identity, provider-registry evidence, schema evidence, and candidate Merkle
@@ -633,11 +704,14 @@ construct a registered-language runtime therefore require an explicit receipt
 locator; an absent locator is a lifecycle admission error, not permission to
 fall back to byte hashing.
 
-=search owner <path> items= and exact-selector projection are resident data
-plane reads.  Both MUST route before activation construction and MUST consume
-the already admitted immutable generation without provider context, provider
+=search owner <path> items= and exact-selector projection are distinct Runtime
+Server data-plane services.  Owner discovery MUST route before activation
+construction through the stateless Tokio owner-query service and MUST NOT
+require an admitted generation.  Exact-selector projection MUST consume the
+already admitted immutable generation without provider context, provider
 spawn, database open, or control-socket roundtrip.  A missing generation is a
-lifecycle admission failure; the read command MUST NOT repair it.
+lifecycle admission failure only for the exact projection; it MUST NOT be
+projected onto owner discovery.
 
 Workspace admission is a two-phase typed lifecycle.  An
 =admit-runtime-generation= receipt in =building= state records accepted work;

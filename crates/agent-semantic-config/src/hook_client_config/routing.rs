@@ -236,6 +236,8 @@ pub struct HookClientStructuredProjectionMatchConfig {
     pub binary: String,
     pub document_format: HookClientStructuredFormat,
     pub filter_grammar: HookClientStructuredFilterGrammar,
+    /// Maximum number of array entries one finite slice may project.
+    pub max_slice_items: usize,
     #[serde(default)]
     pub optional_subcommand_any: Vec<String>,
     #[serde(default)]

@@ -238,6 +238,29 @@ pub(crate) fn ensure_protocol_binary_installed(
     Ok(install)
 }
 
+pub(crate) fn protocol_binary_switch_required(
+    plan: &ProtocolBinaryInstallPlan,
+) -> Result<bool, String> {
+    if !plan.target.is_file() {
+        return Ok(true);
+    }
+    let source_digest = agent_semantic_content_identity::file_content_digest_v1(&plan.current_exe)
+        .map_err(|error| {
+            format!(
+                "failed to derive candidate ASP binary digest for {}: {error}",
+                plan.current_exe.display()
+            )
+        })?;
+    let target_digest = agent_semantic_content_identity::file_content_digest_v1(&plan.target)
+        .map_err(|error| {
+            format!(
+                "failed to derive installed ASP binary digest for {}: {error}",
+                plan.target.display()
+            )
+        })?;
+    Ok(source_digest != target_digest)
+}
+
 fn install_protocol_binary_alias(
     alias: &Path,
     canonical_target: &Path,
@@ -504,7 +527,24 @@ fn managed_protocol_binary_path_aliases(
     primary_target: &Path,
     path_dirs: &[PathBuf],
 ) -> Result<Vec<PathBuf>, String> {
-    let mut aliases = Vec::new();
+    let runtime_root = artifact_root.parent().ok_or_else(|| {
+        format!(
+            "protocol artifact root has no runtime parent: {}",
+            artifact_root.display()
+        )
+    })?;
+    let protocol_home = runtime_root.parent().ok_or_else(|| {
+        format!(
+            "protocol runtime root has no State Home parent: {}",
+            runtime_root.display()
+        )
+    })?;
+    let state_home_alias = protocol_home.join(".bin").join(SEMANTIC_AGENT_PROTOCOL_BIN);
+    let mut aliases = if same_protocol_binary_entry(&state_home_alias, primary_target) {
+        Vec::new()
+    } else {
+        vec![state_home_alias]
+    };
     for candidate in path_dirs
         .iter()
         .map(|dir| dir.join(SEMANTIC_AGENT_PROTOCOL_BIN))

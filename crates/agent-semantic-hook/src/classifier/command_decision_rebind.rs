@@ -14,6 +14,7 @@ use super::core::{
 pub struct ShellCommandKey {
     pub command: String,
     pub command_tokens: Vec<String>,
+    pub paths: Vec<String>,
     pub tool_name: String,
 }
 
@@ -31,6 +32,7 @@ pub fn shell_command_key(payload: &Value) -> Option<ShellCommandKey> {
     Some(ShellCommandKey {
         command: action.command.clone()?,
         command_tokens: action.command_tokens()?.into_owned(),
+        paths: action.paths.clone(),
         tool_name: action.tool_name.clone(),
     })
 }

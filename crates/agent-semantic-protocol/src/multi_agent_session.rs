@@ -2,10 +2,6 @@
 
 use std::path::{Path, PathBuf};
 
-use agent_semantic_client_db::workspace_db_ipc::{
-    AgentHostExecutionObservationIpc, AgentHostLifecycleEventIpc, AgentHostLifecycleEventKind,
-    AgentSessionRegistryIpcResult,
-};
 use agent_semantic_client_db::{
     AgentSessionControlPlaneState, AgentSessionRegistry, SessionControlPlaneAgentRegistration,
     SessionControlPlaneDelegationProposal,
@@ -58,30 +54,132 @@ pub(crate) async fn open_choice_plane(request: ChoicePlaneRequest<'_>) -> Result
         CONTROL_PLANE_CONTRACT_FILE,
         "presentation",
     )?;
-    let runtime_observation_started = tokio::time::Instant::now();
-    let mut context = match crate::server::runtime_server::await_agent_facing_runtime_server_client(
-        runtime_observation_started,
-        "session-choice-plane",
-        "runtime-session-state",
+    let project_id = AgentSessionRegistry::workspace_id(request.project_root)?;
+    let route_identity = format!(
+        "codex\0{project_id}\0{}\0{}",
+        hook_route.root_session_id,
+        route.route_key.as_str(),
+    );
+    let stable_child_session_id = format!(
+        "blake3-256:{}",
+        blake3::hash(route_identity.as_bytes()).to_hex(),
+    );
+    let bootstrap_event_id = format!(
+        "choice-plane-bootstrap:{}",
+        blake3::hash(route_identity.as_bytes()).to_hex(),
+    );
+    crate::server::runtime_server_hook_mutation::ensure(
         request.project_root,
+        bootstrap_event_id.clone(),
+    )
+    .await?
+    .validate()?;
+    let runtime_registry =
+        AgentSessionRegistry::open_runtime_project_proxy(request.project_root)?.ok_or_else(|| {
+            "choice-plane-runtime-registry-required: generation admission completed without a Runtime registry proxy"
+                .to_owned()
+        })?;
+    let snapshot = match runtime_registry
+        .read_control_plane_snapshot(project_id.clone(), hook_route.root_session_id.clone())
+        .await
+    {
+        Ok(snapshot) => snapshot,
+        Err(_) => {
+            runtime_registry
+                .register_control_plane_agent(SessionControlPlaneAgentRegistration {
+                    project_id: project_id.clone(),
+                    root_session_id: hook_route.root_session_id.clone(),
+                    session_id: hook_route.root_session_id.clone(),
+                    parent_session_id: None,
+                    resident_name: "codex-root".to_owned(),
+                    capability: AgentSessionDelegationCapability::Standard,
+                })
+                .await?;
+            runtime_registry
+                .read_control_plane_snapshot(project_id.clone(), hook_route.root_session_id.clone())
+                .await?
+        }
+    };
+    let child_namespace_requires_admission =
+        match AgentSessionRegistry::resolve_project_session_control_plane(
+            request.project_root,
+            Some(stable_child_session_id.as_str()),
+            Some(hook_route.root_session_id.as_str()),
+            route.platform_host_agent_name.as_str(),
+        )
+        .await
+        {
+            Ok(state) => state.generation == 0 || state.state == "registration-required",
+            Err(_) => true,
+        };
+    if child_namespace_requires_admission {
+        let proposed_child_capability = match route.focus_mode {
+            agent_semantic_config::agent_route_registry::AgentFocusMode::Standard => {
+                AgentSessionDelegationCapability::Standard
+            }
+            agent_semantic_config::agent_route_registry::AgentFocusMode::Leaf => {
+                AgentSessionDelegationCapability::FocusedLeaf
+            }
+        };
+        let transaction = runtime_registry
+            .admit_control_plane_delegation(SessionControlPlaneDelegationProposal {
+                event_id: bootstrap_event_id,
+                project_id: project_id.clone(),
+                root_session_id: hook_route.root_session_id.clone(),
+                current_session_id: hook_route.root_session_id.clone(),
+                proposed_child_session_id: stable_child_session_id,
+                proposed_child_resident_name: route.platform_host_agent_name.as_str().to_owned(),
+                proposed_child_capability,
+                expected_generation: snapshot.generation,
+                evidence_refs: vec![
+                    format!("route:{}", route.route_key.as_str()),
+                    format!("profile:{}", route.profile_path),
+                    "authority:choice-plane-v1".to_owned(),
+                ],
+                observed_at_ms: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_err(|error| {
+                        format!("failed to resolve ChoicePlane admission timestamp: {error}")
+                    })?
+                    .as_millis() as i64,
+            })
+            .await?;
+        if transaction.admission.decision == AgentSessionDelegationDecision::Denied {
+            return Err(transaction
+                .admission
+                .reason_kind
+                .unwrap_or_else(|| "choice-plane-delegation-denied".to_owned()));
+        }
+    }
+    let (mut context, inbox_reconciliation_failure) = match tokio::time::timeout(
+        crate::server::runtime_server::RUNTIME_SERVER_SUPERVISOR_EXECUTION_BUDGET,
         async {
             crate::server::runtime_server::observe_agent_facing_runtime_server(&state.state_home)
                 .await?;
-            reconcile_pending_hook_memory_events(request.project_root).await?;
-            Ok(SessionRegistryContext::resolve(
-                request.project_root,
-                None,
-                Some(hook_route.root_session_id.clone()),
-                route.platform_host_agent_name.as_str(),
-            )
-            .await)
+            Ok((
+                SessionRegistryContext::resolve(
+                    request.project_root,
+                    None,
+                    Some(hook_route.root_session_id.clone()),
+                    route.platform_host_agent_name.as_str(),
+                )
+                .await,
+                None::<String>,
+            ))
         },
     )
     .await
     {
-        Ok(context) => context,
-        Err(error) => SessionRegistryContext::blocked(error),
+        Ok(Ok(result)) => result,
+        Ok(Err(error)) => (SessionRegistryContext::blocked(error), None),
+        Err(_) => (
+            SessionRegistryContext::blocked(
+                "runtime-server-session-control-plane-timeout".to_owned(),
+            ),
+            None,
+        ),
     };
+    context.apply_host_lifecycle_surface(inbox_reconciliation_failure.is_none());
     context.enforce_exact_binding(&route, sandbox_mode, &hook_route.root_session_id)?;
     let choices = interactive_contract.admit_matching(&[
         ("SESSION_STATE", context.state()),
@@ -99,167 +197,9 @@ pub(crate) async fn open_choice_plane(request: ChoicePlaneRequest<'_>) -> Result
         &route,
         sandbox_mode,
         &context,
+        inbox_reconciliation_failure.as_deref(),
         &choices,
     )
-}
-
-async fn reconcile_pending_hook_memory_events(project_root: &Path) -> Result<(), String> {
-    let pending =
-        crate::command::hook_runtime_memory_inbox::pending_hook_events(project_root).await?;
-    if pending.is_empty() {
-        return Ok(());
-    }
-    let runtime_registry = AgentSessionRegistry::open_runtime_project_proxy(project_root)?
-        .ok_or_else(|| "Runtime Server agent-session registry proxy is unavailable".to_owned())?;
-    let state = agent_semantic_runtime::state_core::ResolvedState::resolve(project_root)?;
-    let routes = load_agent_route_registry(&agents_root(&state.state_home).join("config.toml"))?;
-    for record in pending {
-        match record.entry_kind.as_str() {
-            "host-lifecycle" => {
-                let event = serde_json::from_value::<AgentHostLifecycleEventIpc>(record.event)
-                    .map_err(|error| {
-                        format!("failed to decode pending Host lifecycle event: {error}")
-                    })?;
-                let route = compile_agent_route(&routes, &event.route_key, "codex")?;
-                if event.kind == AgentHostLifecycleEventKind::Started {
-                    if event.parent_session_id == event.root_session_id {
-                        runtime_registry
-                            .register_control_plane_agent(SessionControlPlaneAgentRegistration {
-                                project_id: event.project_id.clone(),
-                                root_session_id: event.root_session_id.clone(),
-                                session_id: event.root_session_id.clone(),
-                                parent_session_id: None,
-                                resident_name: "codex-root".to_owned(),
-                                capability: AgentSessionDelegationCapability::Standard,
-                            })
-                            .await?;
-                    }
-                    let snapshot = runtime_registry
-                        .read_control_plane_snapshot(
-                            event.project_id.clone(),
-                            event.root_session_id.clone(),
-                        )
-                        .await?;
-                    let proposed_child_capability = match route.focus_mode {
-                        agent_semantic_config::agent_route_registry::AgentFocusMode::Standard => {
-                            AgentSessionDelegationCapability::Standard
-                        }
-                        agent_semantic_config::agent_route_registry::AgentFocusMode::Leaf => {
-                            AgentSessionDelegationCapability::FocusedLeaf
-                        }
-                    };
-                    let transaction = runtime_registry
-                        .admit_control_plane_delegation(SessionControlPlaneDelegationProposal {
-                            event_id: event.host_event_id.clone(),
-                            project_id: event.project_id.clone(),
-                            root_session_id: event.root_session_id.clone(),
-                            current_session_id: event.parent_session_id.clone(),
-                            proposed_child_session_id: event.child_session_id.clone(),
-                            proposed_child_resident_name: event.route_key.clone(),
-                            proposed_child_capability,
-                            expected_generation: snapshot.generation,
-                            evidence_refs: vec![
-                                event.payload_digest.clone(),
-                                event.profile_digest.clone(),
-                                format!("route:{}", event.route_key),
-                            ],
-                            observed_at_ms: event.observed_at.saturating_mul(1_000),
-                        })
-                        .await?;
-                    if transaction.admission.decision == AgentSessionDelegationDecision::Denied {
-                        return Err(transaction
-                            .admission
-                            .reason_kind
-                            .unwrap_or_else(|| "focused-agent-delegation-denied".to_owned()));
-                    }
-                }
-                let kind = event.kind;
-                let result = runtime_registry
-                    .record_host_lifecycle_event_async(event)
-                    .await?;
-                match (kind, result) {
-                    (
-                        AgentHostLifecycleEventKind::Started,
-                        AgentSessionRegistryIpcResult::Registered { .. },
-                    )
-                    | (
-                        AgentHostLifecycleEventKind::Resumed
-                        | AgentHostLifecycleEventKind::Stopped
-                        | AgentHostLifecycleEventKind::Achieved,
-                        AgentSessionRegistryIpcResult::Changed { .. },
-                    ) => {}
-                    _ => {
-                        return Err(
-                            "Runtime Server returned an unexpected Host lifecycle result"
-                                .to_owned(),
-                        );
-                    }
-                }
-            }
-            "host-execution-observation" => {
-                let observation =
-                    serde_json::from_value::<AgentHostExecutionObservationIpc>(record.event)
-                        .map_err(|error| {
-                            format!("failed to decode pending Host execution observation: {error}")
-                        })?;
-                match runtime_registry
-                    .record_host_execution_observation_async(observation)
-                    .await?
-                {
-                    AgentSessionRegistryIpcResult::Changed { .. } => {}
-                    _ => {
-                        return Err(
-                            "Runtime Server returned an unexpected Host execution result"
-                                .to_owned(),
-                        );
-                    }
-                }
-            }
-            "workspace-mutation" => {
-                let mutation_id = record
-                    .event
-                    .get("mutationId")
-                    .and_then(serde_json::Value::as_str)
-                    .ok_or_else(|| "pending workspace mutation omitted mutationId".to_owned())?
-                    .to_owned();
-                let changed_paths = record
-                    .event
-                    .get("changedPaths")
-                    .and_then(serde_json::Value::as_array)
-                    .ok_or_else(|| "pending workspace mutation omitted changedPaths".to_owned())?
-                    .iter()
-                    .map(|value| {
-                        value.as_str().map(str::to_owned).ok_or_else(|| {
-                            "pending workspace mutation contains a non-string path".to_owned()
-                        })
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                crate::server::runtime_server_hook_mutation::submit(
-                    project_root,
-                    mutation_id,
-                    changed_paths,
-                )
-                .await?
-                .validate()?;
-            }
-            "runtime-performance-observation" => {
-                crate::server::runtime_server_hook_mutation::submit_pending_wall_failure(
-                    record.event,
-                    project_root,
-                )
-                .await?;
-            }
-            other => {
-                return Err(format!("unsupported Hook memory inbox entry kind {other}"));
-            }
-        }
-        crate::command::hook_runtime_memory_inbox::acknowledge_hook_event(
-            project_root,
-            record.inbox_sequence,
-        )
-        .await?;
-    }
-    Ok(())
 }
 
 struct ResolvedHookSessionRoute {
@@ -373,6 +313,28 @@ impl SessionRegistryContext {
         }
     }
 
+    fn apply_host_lifecycle_surface(&mut self, available: bool) {
+        let Self::Ready(state) = self else {
+            return;
+        };
+        let resolved = crate::agent_session_choice_state::resolve_agent_session_choice_state(
+            state.state.as_str(),
+            state.reason_kind.as_deref(),
+            if available {
+                crate::agent_session_choice_state::HostLifecycleSurface::Available
+            } else {
+                crate::agent_session_choice_state::HostLifecycleSurface::Unavailable
+            },
+        );
+        let resolved_state = resolved.state.to_owned();
+        let resolved_reason_kind = resolved.reason_kind.map(str::to_owned);
+        if resolved_state != state.state {
+            state.state = resolved_state;
+            state.reason_kind = resolved_reason_kind;
+            state.host_binding = None;
+        }
+    }
+
     fn generation(&self) -> u64 {
         match self {
             Self::Ready(state) => state.generation,
@@ -480,6 +442,7 @@ fn render_session_pane(
     route: &CompiledAgentRoute,
     sandbox_mode: &str,
     context: &SessionRegistryContext,
+    inbox_reconciliation_failure: Option<&str>,
     choices: &[AdmittedAgentInteractiveChoice],
 ) -> Result<String, String> {
     if let SessionRegistryContext::Ready(resolved) = context
@@ -504,6 +467,7 @@ fn render_session_pane(
             })
         })
         .collect::<Vec<_>>();
+    let hook_inbox = hook_inbox_reconciliation_receipt(inbox_reconciliation_failure);
     let receipt = serde_json::json!({
         "schemaId": PANE_SCHEMA_ID,
         "schemaVersion": "1",
@@ -529,6 +493,7 @@ fn render_session_pane(
             "reasonKind": reason_kind,
             "failure": failure,
         },
+        "hookInbox": hook_inbox,
         "agent": {
             "routeKey": route.route_key.as_str(),
             "sessionName": route.platform_host_agent_name.as_str(),
@@ -560,6 +525,11 @@ fn render_session_pane(
     if let Some(failure) = failure {
         pane_context.push_str(&format!(" failure={failure}"));
     }
+    if let Some(inbox_failure) = inbox_reconciliation_failure {
+        pane_context.push_str(&format!(
+            " hookInboxState=degraded hookInboxBlocksChoicePlane=false hookInboxFailure={inbox_failure}"
+        ));
+    }
     if choices.len() == 1 && choices[0].presentation == "action" {
         return Ok(interactive_contract.render_admitted_action(
             CONTROL_PLANE_CONTRACT_ID,
@@ -582,6 +552,15 @@ fn render_session_pane(
         &rendered_choices,
         &pane_context,
     ))
+}
+
+pub(crate) fn hook_inbox_reconciliation_receipt(failure: Option<&str>) -> serde_json::Value {
+    serde_json::json!({
+        "authority": "recovery-log-only",
+        "state": if failure.is_some() { "degraded" } else { "reconciled" },
+        "failure": failure,
+        "blocksChoicePlane": false,
+    })
 }
 
 fn pane_history_cursor(context: &SessionRegistryContext, generation: u64) -> String {

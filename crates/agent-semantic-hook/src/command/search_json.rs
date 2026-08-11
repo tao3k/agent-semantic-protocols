@@ -42,6 +42,26 @@ pub(crate) fn is_asp_facade_command(tokens: &[String]) -> bool {
     tokens.iter().any(|token| command_name(token) == "asp")
 }
 
+pub(crate) fn asp_command_tokens(tokens: &[String]) -> bool {
+    is_asp_facade_command(tokens)
+}
+
+pub(crate) fn command_line(argv: &[String]) -> String {
+    argv.iter()
+        .map(|arg| {
+            if arg
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"_-./:".contains(&byte))
+            {
+                arg.clone()
+            } else {
+                format!("'{}'", arg.replace('\'', "'\\''"))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn provider_command_index(
     provider: &ActivatedProvider,
     tokens: &[String],

@@ -17,6 +17,7 @@ fn publication_request_carries_explicit_collection_scope() {
             SourceIndexCollectionScope::CompleteGeneration => {}
             SourceIndexCollectionScope::TargetProvider { .. } => {}
             SourceIndexCollectionScope::TargetProviderId { .. } => {}
+            SourceIndexCollectionScope::ExplicitOwners { .. } => {}
         }
     }
 
@@ -32,6 +33,8 @@ fn publication_receipt_exposes_one_complete_generation_identity() {
                 agent_semantic_search::exact_selector_fixture_publication::ExactSelectorFixturePublicationReceiptV1 { .. },
             generation_directory: _,
             provider_envelope_path: _,
+            provider_relation_path: _,
+            provider_relation_digest: _,
             exact_selector_fixture_path: _,
             generation_digest: _,
             fixture_digest: _,

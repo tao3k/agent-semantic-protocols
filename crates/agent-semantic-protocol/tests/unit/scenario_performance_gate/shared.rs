@@ -230,17 +230,3 @@ printf '%s' {legacy_stdout}\n",
 fn shell_single_quote_fixture(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
-
-#[derive(Debug, Deserialize)]
-pub(super) struct SearchFrameReferenceBenchmarkToml {
-    #[serde(default, rename = "codebaseMemoryMcpQueryRounds")]
-    pub(super) codebase_memory_mcp_query_rounds: Option<u32>,
-    #[serde(default, rename = "aspSearchQueryRounds")]
-    pub(super) asp_search_query_rounds: Option<u32>,
-    #[serde(default, rename = "roundDelta")]
-    pub(super) round_delta: Option<i32>,
-    #[serde(default, rename = "selectorEvidence")]
-    pub(super) selector_evidence: Option<String>,
-    #[serde(default, rename = "evidenceAdvantage")]
-    pub(super) evidence_advantage: Option<String>,
-}

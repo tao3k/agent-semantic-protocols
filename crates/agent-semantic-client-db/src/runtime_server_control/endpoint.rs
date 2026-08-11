@@ -36,17 +36,14 @@ pub fn runtime_server_runtime_base(state_home: &Path) -> Result<PathBuf, String>
         .join(format!("state-{}", &identity[..24])))
 }
 
-pub fn runtime_server_endpoint_path(state_home: &Path) -> PathBuf {
-    state_home
-        .join("runtime")
-        .join("server")
-        .join("endpoint.v1.json")
+pub fn runtime_server_endpoint_path(state_home: &Path) -> Result<PathBuf, String> {
+    Ok(runtime_server_runtime_base(state_home)?.join("endpoint.v1.json"))
 }
 
 pub fn read_runtime_server_endpoint(
     state_home: &Path,
 ) -> Result<Option<RuntimeServerEndpoint>, String> {
-    let endpoint_path = runtime_server_endpoint_path(state_home);
+    let endpoint_path = runtime_server_endpoint_path(state_home)?;
     let metadata = match std::fs::symlink_metadata(&endpoint_path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),

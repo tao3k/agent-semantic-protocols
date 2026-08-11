@@ -62,6 +62,16 @@ pub struct AgentRouteSpec {
     #[serde(default)]
     pub focus_mode: AgentFocusMode,
     pub roles: Vec<String>,
+    #[serde(default = "default_agent_kind")]
+    pub agent_kind: String,
+    #[serde(default)]
+    pub display_role: String,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+fn default_agent_kind() -> String {
+    "Subagent".to_owned()
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
@@ -127,6 +137,8 @@ pub struct CompiledAgentRoute {
     pub session_lifetime: AgentSessionLifetime,
     pub focus_mode: AgentFocusMode,
     pub roles: Vec<String>,
+    pub agent_kind: String,
+    pub display_role: String,
     pub description: String,
     pub platform: PlatformId,
     pub platform_host_agent_name: PlatformHostAgentName,
@@ -242,6 +254,8 @@ pub fn render_hook_agent_routes(agents_root: &Path) -> Result<String, String> {
             enabled: true,
             name: codex.platform_host_agent_name.as_str().to_owned(),
             role: codex.route_key.as_str().to_owned(),
+            agent_kind: codex.agent_kind.clone(),
+            display_role: codex.display_role.clone(),
             description: codex.description.clone(),
             roles: codex.roles.clone(),
             permissions: vec![sandbox_mode],
@@ -356,7 +370,9 @@ fn compile_agent_route_from_source(
         session_lifetime: agent.session_lifetime,
         focus_mode: agent.focus_mode,
         roles: agent.roles.clone(),
-        description,
+        agent_kind: agent.agent_kind.clone(),
+        display_role: agent.display_role.clone(),
+        description: agent.description.clone().unwrap_or(description),
         platform: PlatformId(platform.to_string()),
         platform_host_agent_name: PlatformHostAgentName(host_agent_name),
         profile_path: projection_path.display().to_string(),

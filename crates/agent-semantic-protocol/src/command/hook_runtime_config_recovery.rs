@@ -1,6 +1,8 @@
 //! Immutable, process-independent Hook matcher snapshot publication and loading.
 
-use agent_semantic_hook::{ClientHookConfig, DurableHookConfigArtifact, HookRuntime};
+use agent_semantic_hook::{
+    ClientHookConfig, DecisionKind, DurableHookConfigArtifact, HookDecision, HookRuntime,
+};
 use memmap2::MmapOptions;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
@@ -25,6 +27,7 @@ enum MatcherSectionKind {
     DirectRead = 1,
     ShellRead = 2,
     ShellCommand = 3,
+    StructuredProjection = 4,
 }
 
 struct MatcherSection {
@@ -65,9 +68,11 @@ fn matcher_cache_dir(project_root: &Path) -> Result<PathBuf, String> {
     // cache must not pay Runtime/checkout identity discovery on every Host
     // action. The canonical workspace path is sufficient cache identity; the
     // generation content still binds the complete config and agent owners.
+    let normalized_project_root =
+        super::hook_runtime_workspace_candidate::normalize_workspace_path(project_root);
     let workspace_key = format!(
         "{:x}",
-        Sha256::digest(project_root.as_os_str().as_encoded_bytes())
+        Sha256::digest(normalized_project_root.as_os_str().as_encoded_bytes())
     );
     Ok(hook_state_home()?
         .join("hooks")
@@ -197,7 +202,7 @@ fn load_active_matcher(
     project_root: &Path,
     direct_read_extension: Option<&str>,
     direct_read_path: Option<&str>,
-    shell_read_key: Option<&agent_semantic_hook::ShellReadSourceKey>,
+    shell_read_keys: &[agent_semantic_hook::ShellReadSourceKey],
     shell_command_key: Option<&agent_semantic_hook::ShellCommandKey>,
 ) -> Result<Option<LoadedHookConfig>, String> {
     let started = std::time::Instant::now();
@@ -256,7 +261,8 @@ fn load_active_matcher(
     // exists to prevent.
     let _ = (config_path, project_root);
     let bundle = &mapped[offset..];
-    if let Some(key) = shell_read_key {
+    let mut shell_read_allow: Option<HookDecision> = None;
+    for key in shell_read_keys {
         if let Some(table) = select_matcher_section(
             bundle,
             MatcherSectionKind::ShellRead,
@@ -273,16 +279,39 @@ fn load_active_matcher(
                 }
                 decision.subject.command = Some(key.command.clone());
                 decision.subject.tool_name = Some(key.tool_name.clone());
-                trace("shell-decision-shard");
-                return Ok(Some(LoadedHookConfig {
-                    config: None,
-                    decision: Some(decision),
-                    projection: Some("shell-read-decision-shard"),
-                }));
+                if decision.decision == DecisionKind::Deny {
+                    trace("shell-decision-shard");
+                    return Ok(Some(LoadedHookConfig {
+                        config: None,
+                        decision: Some(decision),
+                        projection: Some("shell-read-decision-shard"),
+                    }));
+                }
+                shell_read_allow.get_or_insert(decision);
             }
         }
     }
+    if let Some(decision) = shell_read_allow {
+        trace("shell-decision-shard");
+        return Ok(Some(LoadedHookConfig {
+            config: None,
+            decision: Some(decision),
+            projection: Some("shell-read-decision-shard"),
+        }));
+    }
     if let Some(key) = shell_command_key {
+        if let Some(shard) =
+            select_matcher_section(bundle, MatcherSectionKind::StructuredProjection, [0; 8])?
+            && let Some(decision) =
+                agent_semantic_hook::StructuredProjectionDecisionShard::select(shard, key)?
+        {
+            trace("structured-projection-decision-shard");
+            return Ok(Some(LoadedHookConfig {
+                config: None,
+                decision: Some(decision),
+                projection: Some("structured-projection-decision-shard"),
+            }));
+        }
         let Some(table) = select_matcher_section(bundle, MatcherSectionKind::ShellCommand, [0; 8])?
         else {
             return Ok(None);
@@ -392,13 +421,28 @@ fn publish_active_matcher(
     for (extension, _placeholder, decision_json) in
         compiled.durable_direct_read_decision_shards()?
     {
+        let mut decision = agent_semantic_hook::HookDecision::from_compact_binary(&decision_json)?;
+        super::materialize_source_access_deny_message(&mut decision);
+        super::hook_runtime_agent_session_dispatch::materialize_org_choice_plane_reference(
+            &mut decision,
+        );
         sections.push(MatcherSection {
             kind: MatcherSectionKind::DirectRead,
             key: matcher_section_key(&extension),
-            bytes: decision_json,
+            bytes: decision.to_compact_binary()?,
         });
     }
     for (extension, _placeholder, table) in compiled.durable_shell_read_decision_shards()? {
+        let table = agent_semantic_hook::CommandDecisionShard::map_binary_decisions(
+            &table,
+            |mut decision| {
+                super::materialize_source_access_deny_message(&mut decision);
+                super::hook_runtime_agent_session_dispatch::materialize_org_choice_plane_reference(
+                    &mut decision,
+                );
+                decision
+            },
+        )?;
         sections.push(MatcherSection {
             kind: MatcherSectionKind::ShellRead,
             key: matcher_section_key(&extension),
@@ -406,9 +450,24 @@ fn publish_active_matcher(
         });
     }
     sections.push(MatcherSection {
+        kind: MatcherSectionKind::StructuredProjection,
+        key: [0; 8],
+        bytes: compiled.durable_structured_projection_decision_shard()?,
+    });
+    let command_profile_table = agent_semantic_hook::CommandDecisionShard::map_binary_decisions(
+        &compiled.durable_command_profile_decision_shard()?,
+        |mut decision| {
+            super::materialize_source_access_deny_message(&mut decision);
+            super::hook_runtime_agent_session_dispatch::materialize_org_choice_plane_reference(
+                &mut decision,
+            );
+            decision
+        },
+    )?;
+    sections.push(MatcherSection {
         kind: MatcherSectionKind::ShellCommand,
         key: [0; 8],
-        bytes: compiled.durable_command_profile_decision_shard()?,
+        bytes: command_profile_table,
     });
     let bundle = encode_matcher_bundle(&sections)?;
     publish_active_artifact(
@@ -526,7 +585,7 @@ pub(crate) fn load_fresh_hook_config(
     project_root: &Path,
     direct_read_extension: Option<&str>,
     direct_read_path: Option<&str>,
-    shell_read_key: Option<&agent_semantic_hook::ShellReadSourceKey>,
+    shell_read_keys: &[agent_semantic_hook::ShellReadSourceKey],
     shell_command_key: Option<&agent_semantic_hook::ShellCommandKey>,
 ) -> Result<(LoadedHookConfig, &'static str), String> {
     match load_active_matcher(
@@ -534,19 +593,19 @@ pub(crate) fn load_fresh_hook_config(
         project_root,
         direct_read_extension,
         direct_read_path,
-        shell_read_key,
+        shell_read_keys,
         shell_command_key,
     ) {
         Ok(Some(loaded)) => return Ok((loaded, "mmap-hit")),
         Ok(None)
             if direct_read_extension.is_some()
-                || shell_read_key.is_some()
+                || !shell_read_keys.is_empty()
                 || shell_command_key.is_some() =>
         {
             // An unregistered extension intentionally has no decision shard.
             // Fall back to the immutable complete matcher instead of treating
             // a policy allow case as a cache miss that republishes generation.
-            match load_active_matcher(config_path, project_root, None, None, None, None) {
+            match load_active_matcher(config_path, project_root, None, None, &[], None) {
                 Ok(Some(loaded)) => return Ok((loaded, "mmap-hit")),
                 Ok(None) => {}
                 Err(error) => {

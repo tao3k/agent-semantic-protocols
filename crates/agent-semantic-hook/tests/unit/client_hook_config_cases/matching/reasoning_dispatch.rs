@@ -331,11 +331,48 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
                         "positive case omitted tag-selected agent role: {case_id}"
                     );
                     assert!(
+                        decision_json["fields"]["targetAgentKind"]
+                            .as_str()
+                            .is_some_and(|kind| !kind.is_empty()),
+                        "positive case omitted declarative agent kind: {case_id}"
+                    );
+                    assert!(
+                        decision_json["fields"]["targetAgentDisplayRole"]
+                            .as_str()
+                            .is_some_and(|role| !role.is_empty()),
+                        "positive case omitted declarative display role: {case_id}"
+                    );
+                    assert!(
                         decision_json["fields"]["targetAgentDescription"]
                             .as_str()
                             .is_some_and(|description| !description.is_empty()),
                         "positive case omitted agent description: {case_id}"
                     );
+                    if decision_json["reasonKind"].as_str()
+                        == Some("subagent-receipt-required")
+                    {
+                        let expected_message = format!(
+                            "Please use `asp session --agents choice-plane` to create or resume the {} `@{}` ({}; {}).",
+                            decision_json["fields"]["targetAgentKind"]
+                                .as_str()
+                                .expect("target agent kind"),
+                            decision_json["fields"]["targetAgentName"]
+                                .as_str()
+                                .expect("target agent name")
+                                .trim_start_matches('@'),
+                            decision_json["fields"]["targetAgentDisplayRole"]
+                                .as_str()
+                                .expect("target display role"),
+                            decision_json["fields"]["targetAgentDescription"]
+                                .as_str()
+                                .expect("target description"),
+                        );
+                        assert_eq!(
+                            decision_json["message"].as_str(),
+                            Some(expected_message.as_str()),
+                            "positive case bypassed the shared declarative dispatch renderer: {case_id}"
+                        );
+                    }
                     for forbidden in ["receiptKind", "residentName"] {
                         assert!(
                             decision_json["fields"].get(forbidden).is_none(),

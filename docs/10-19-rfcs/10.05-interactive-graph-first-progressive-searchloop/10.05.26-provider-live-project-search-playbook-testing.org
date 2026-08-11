@@ -1,0 +1,196 @@
+#+TITLE: Provider Live-Project Search Playbook Testing
+#+RFC_ID: 10.05.26
+#+STATUS: Draft
+
+* Problem
+
+Unit tests for a provider, matcher, or renderer do not prove that an Agent can
+search a real project.  The executable contract crosses provider registration,
+language activation, workspace admission, progressive search, exact query, and
+the next-action receipt.  A failure in any link currently leaves a registered
+ASP Explorer unable to work while the local components still appear healthy.
+
+* Registry-derived matrix
+
+The test matrix MUST be derived from the installed provider registry and the
+provider-owned capability schema.  No central list of Rust, Python, or filename
+extensions is authoritative.  Every provider declaring a searchable language
+MUST publish:
+
+- a stable provider and language identity;
+- one hermetic, owner-backed live-project fixture or a fixture generator;
+- the supported prime, pipe, owner, search, and exact-query capabilities;
+- typed success, empty-result, unavailable, and recovery expectations;
+- a bounded cold and warm latency budget.
+
+Rust and Python are priority fixtures, not special cases in the framework.
+Other registered languages enter the same matrix through their schemas.
+The Rust fixture root is discovered through Gix from the owner checkout and is
+materialized below that checkout's build output.  Tests MUST NOT shell out to
+=git init= or treat an operating-system temporary directory as a workspace.
+Every live Runtime fixture MUST own an isolated =ASP_STATE_HOME= alongside its
+isolated =HOME=.  Inheriting the Host's resident State Home is forbidden:
+fixture endpoint publication or cleanup could otherwise truncate a mapped Host
+artifact and cause SIGBUS under normal concurrent execution.
+
+* Playbook state machine
+
+For every declared capability, the black-box runner executes the public Agent
+surface and validates this sequence:
+
+#+begin_src text
+registry -> activation -> workspace admission -> scoped search
+         -> recommendedNext -> exact query -> terminal receipt
+#+end_src
+
+The runner MUST preserve provider identity and workspace identity across every
+edge.  It MUST validate cold, warm, changed-owner, stale-generation, concurrent,
+permission-denied, timeout, and recovery scenarios.  Inputs are generated from
+provider capabilities and fixture facts; the runner MUST NOT hard-code shell
+prefixes, language extensions, or provider names.
+
+* Failure and recovery boundary
+
+Host-local IPC permission denial, missing workspace generation, and a local
+search-I/O timeout are typed terminal observations for the current attempt.
+They MUST NOT recursively dispatch the same Agent, refresh a plugin, or require
+the failed search path to repair itself.  A registered Agent lifecycle remains
+usable while evidence search is degraded.  Recovery is an independent bounded
+transition, and the next attempt consumes its published generation atomically.
+
+Host-local IPC denial is an execution-authority transition, not a Runtime
+repair request and not an Agent lifecycle failure.  The CLI MUST return a
+schema-valid =agent.semantic-protocols.host-native-execution-required= receipt
+containing the exact argv vector, =executionAuthority=host-native=, and a
+=do-not-retry-in-current-sandbox= policy.  The receipt state is =deferred=:
+the current sandboxed attempt is terminal, while the Host can execute the same
+parser-owned command without recreating, resuming, or recursively dispatching
+an Agent.  Shell-rendered commands are not authoritative because quoting would
+lose argv structure.
+
+The Runtime remains the only workspace database owner.  An IPC capability
+failure MUST NOT authorize a CLI to open the Runtime database directly, move
+the socket, refresh the plugin, or rebuild a workspace generation.  The
+Host-native adapter changes only the execution authority of the exact request.
+
+A missing active generation is likewise a typed =deferred= result.  Its exact
+next action is to open =asp session --agents choice-plane=, execute the Host
+create/register or Call/resume action selected from the denied command tags,
+and require a nonzero generation bound to the same workspace before retrying
+the preserved argv.  The receipt MUST NOT hard-code an Agent name and MUST NOT
+tell the current generation to retry, because lifecycle publication is the
+only authority that can make the immutable query readable.
+
+* Query capability deletion
+
+The new data plane derives a stable workspace identity from the canonical Git
+worktree and sends that identity to the resident Runtime endpoint.  Query and
+search code and their tests MUST NOT directly open the workspace database,
+read the durable admission catalog, classify a workspace as a bootstrap
+candidate, start or reconcile a generation, or wait for a generation
+transition.  Those are Runtime and AgentSession lifecycle capabilities only.
+
+Consequently the former =query -> admission catalog -> bootstrap/reconcile ->
+query= control flow is removed rather than retained as a compatibility path.
+The only query capabilities are stable identity derivation and immutable
+published-generation reads.  If no published generation exists, the Runtime
+returns the typed generation-required receipt immediately.
+
+Lifecycle mutation submission, explicit lifecycle admission, and operator cache
+control are distinct.  A Hook or filesystem observer uses the submission
+receipt and returns immediately.  Explicit lifecycle admission and the =cache
+rebuild/refresh/invalidate= control plane await the Runtime-owned terminal
+receipt for the exact submitted attempt and return only =Ready= plus its commit
+digest, or a typed failure.  A terminal receipt from another attempt MUST NOT
+satisfy that wait.  Search/query MUST NOT poll a =Building= receipt to emulate
+this lifecycle wait.
+
+Mutation submission coalescing is a concurrent read-mostly authority.  Once a
+=mutationId= and its normalized changed paths are present, identical callers
+MUST resolve through a shared read path and return =Coalesced=; they MUST NOT
+serialize through the exclusive first-publisher entry lock.  Only the atomic
+absent-to-present transition may return =Queued=.  Normalization MUST reuse the
+owned path vector and avoid per-call tree allocation on the single-path hot
+case.  Multi-workspace tests MUST use independent Gix repositories and their
+resolved State Core identities; synthetic identities for subdirectories of one
+checkout are invalid evidence.  The default-concurrency gate covers hundreds
+of concurrent calls across several sessions and requires exactly one queued
+publisher per real workspace.
+
+Runtime restart has a response-before-drain linearization point.  The control
+connection MUST write and flush the typed =Draining= receipt, then half-close
+its response side, before it publishes the process-level restart signal that
+drains sibling connections.  Completing the write future without this
+peer-visible boundary is insufficient: the supervisor may otherwise close the
+connection while the requester is still reading the frame length.
+
+=Ready= is the canonical publication linearization point.  The workspace
+writer MUST publish and validate the immutable segment and atomic generation
+pointer before it exposes the new resident backend or completes a control-plane
+request with =Ready=.  A resident-only generation is not query authority.  If
+resident memory matches a requested materialization but its pointer is missing
+or recovery-required, the writer MUST NOT reuse the resident receipt.  It may
+republish through the same atomic writer lane or return a typed recovery
+failure, but it cannot return =Ready=.  The forbidden historical state
+is therefore =controlReady=true ∧ publishedPointer=missing=.  Tests MUST remove
+the pointer while resident memory remains warm and prove that the control plane
+cannot return =Ready= until an immutable read can open that exact generation.
+Lifecycle publication benchmarks therefore measure the complete durable
+=Ready= transaction, including segment and pointer publication, under a typed
+500ms boundary.  They MUST NOT retain the former 1ms resident-only receipt gate:
+that gate rewarded returning before durability and made the forbidden
+resident-first state appear to be a performance optimization.  Warm immutable
+search retains its own tighter data-plane budget independently.
+
+* Tokio-native search execution
+
+Every search, owner read, and exact-query operation is an async Tokio data-plane
+operation.  Runtime socket I/O uses Tokio, each I/O boundary owns its deadline
+and cancellation, concurrent identical lifecycle publications use a typed
+single-flight, and CPU-only parsing or mmap work may cross only a bounded
+=spawn_blocking= boundary.  Search code MUST NOT create =std::thread= workers,
+call a nested =block_on= bridge, poll with =thread::sleep=, or invoke Runtime
+repair while answering a query.
+
+The former cumulative 800/900ms query wrapper is not a search capability.  It
+mixed process startup, admission repair, immutable-generation open, and result
+rendering into one retry-shaped boundary.  The new path awaits the already
+published generation directly; transport deadlines remain local to async I/O,
+and a missing generation is returned immediately as the typed terminal receipt.
+Pure in-memory projection can execute synchronously inside the async owner, but
+it cannot acquire lifecycle authority or leave the Tokio task tree.
+
+Each immutable search IPC operation has a local 500ms Tokio deadline.  This is
+not the deleted cumulative command wall: it covers only one typed socket
+operation.  Cancellation MUST discard every pooled lane touched by the timed
+operation, because a partially written or partially read frame is not reusable.
+Successful but slow observations may be reported by diagnostics, but elapsed
+time alone MUST NOT turn a successful reply into a synthetic failure incident.
+Performance scenarios separate a tight typical percentile from a hard safety
+boundary.  They MUST NOT use a single wall-clock microgate as both throughput
+target and correctness boundary: default-concurrency scheduler preemption is
+observable but cannot authorize failure after a valid typed reply.  In-memory
+projection keeps a sub-250us p95 and sub-10ms p99 gate; resident source-index
+lookup keeps a sub-1ms p95 and sub-10ms p99 gate.  Runtime IPC keeps its
+operation-specific typical percentile plus the 500ms cancellation boundary.
+
+* Release gate
+
+A provider cannot be published as searchable unless every declared playbook
+route has at least one live-project success receipt and every mandatory failure
+scenario terminates without recursive dispatch.  Warm Hook policy evaluation
+remains local and is not part of Runtime Server admission.  Runtime endpoint
+publication MUST NOT construct, hydrate, or drain a Hook admission locator.
+Graph Turbo is an optional sidecar and likewise cannot be a prerequisite for
+publishing or accepting on the Runtime control and data sockets.
+
+The Hook plane MUST NOT probe the Runtime control socket.  In particular, the
+former synchronous =probe_runtime_server_for_hook= API, thread-per-connect
+worker, and global connect-worker limit are not compatibility surfaces; they
+are removed.  Hook evaluation reads only its local immutable policy/memory
+snapshot and returns its one-shot decision.  Runtime health and lifecycle use
+the ordinary Tokio control client outside Hook evaluation.
+One-time durable matcher hydration belongs to refresh/recovery, not the Hook
+decision critical path.  Its gate is p95 below 50ms and a 500ms hard boundary;
+the installed one-shot Hook decision retains its independent sub-1ms CPU and
+latency gates.

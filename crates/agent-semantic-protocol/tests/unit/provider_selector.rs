@@ -13,21 +13,7 @@ fn registered_language_facades_are_registry_owned() {
 }
 
 #[test]
-fn search_workspace_rejects_a_file_and_exact_query_is_provider_owned() {
-    let root = std::env::temp_dir().join(format!("asp-provider-selector-{}", std::process::id()));
-    std::fs::create_dir_all(&root).expect("create provider selector fixture");
-    let file = root.join("owner.rs");
-    std::fs::write(&file, b"fn owner() {}").expect("write provider selector fixture");
-    let error = implementation::reject_search_file_workspace(
-        &[
-            "search".to_owned(),
-            "--workspace".to_owned(),
-            file.to_string_lossy().into_owned(),
-        ],
-        &root,
-    )
-    .expect_err("file workspace must fail closed");
-    assert!(error.contains("--workspace requires a directory"));
+fn exact_query_is_provider_owned() {
     assert!(implementation::is_provider_owned_structural_selector_query(
         "rust",
         &[
@@ -36,7 +22,6 @@ fn search_workspace_rejects_a_file_and_exact_query_is_provider_owned() {
             "rust://src/lib.rs#item/function/run".to_owned(),
         ],
     ));
-    std::fs::remove_dir_all(root).expect("remove provider selector fixture");
 }
 
 #[test]

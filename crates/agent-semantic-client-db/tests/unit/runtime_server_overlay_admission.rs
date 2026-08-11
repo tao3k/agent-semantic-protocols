@@ -507,6 +507,32 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
             &root,
         )
         .expect("resolve active generation pointer");
+    tokio::fs::remove_file(&pointer_path)
+        .await
+        .expect("remove the published pointer while resident memory remains warm");
+    assert_eq!(
+        registry
+            .published_generation_state(workspace_identity, &root)
+            .await
+            .expect("observe missing immutable generation"),
+        agent_semantic_client_db::runtime_server_workspace::PublishedWorkspaceGenerationState::Missing,
+    );
+    let error = registry
+        .ensure_canonical_generation(
+            "reject-resident-only-ready",
+            workspace_identity,
+            materialization
+                .clone()
+                .into_validated(workspace_identity)
+                .expect("validate resident republish materialization"),
+        )
+        .await
+        .expect_err("resident memory without a pointer must not return Ready");
+    assert!(
+        error.contains("active-workspace-generation-required")
+            || error.contains("canonical generation"),
+        "missing pointer failure must remain typed: {error}"
+    );
     let legacy_payload = serde_json::to_vec(&serde_json::json!({
         "schemaId": "agent.semantic-protocols.runtime-server-workspace-generation.v1",
         "schemaVersion": "1",

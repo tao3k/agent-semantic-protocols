@@ -25,6 +25,7 @@ pub(super) fn match_source_operands(
                     optional_subcommand_any: &projection.optional_subcommand_any,
                     option_any: &projection.option_any,
                     option_value_arity: &projection.option_value_arity,
+                    max_slice_items: projection.max_slice_items,
                 },
             )
         }

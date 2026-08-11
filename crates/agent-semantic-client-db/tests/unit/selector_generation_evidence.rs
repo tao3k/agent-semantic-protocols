@@ -40,14 +40,8 @@ fn selector(selector_id: &str) -> ClientDbSourceIndexSelector {
 }
 
 fn selector_generation_hash(selectors: Vec<ClientDbSourceIndexSelector>) -> String {
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "asp-selector-generation-{}-{nonce}",
-        std::process::id()
-    ));
+    let fixture = crate::test_support::TestDir::new("selector-generation-evidence");
+    let root = fixture.path().join("project");
     std::fs::create_dir_all(root.join("src")).unwrap();
     let bytes = b"pub fn target() {}\n".to_vec();
     std::fs::write(root.join("src/lib.rs"), &bytes).unwrap();
@@ -71,7 +65,6 @@ fn selector_generation_hash(selectors: Vec<ClientDbSourceIndexSelector>) -> Stri
             .find(|entry| entry.path == "@scope/selector-generation/src/lib.rs")
             .expect("selector generation evidence hash")
             .sha256;
-    std::fs::remove_dir_all(root).unwrap();
     hash
 }
 

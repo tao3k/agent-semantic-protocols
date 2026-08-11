@@ -5,7 +5,6 @@ use agent_semantic_hook::{
 use std::{
     ffi::{OsStr, OsString},
     path::Path,
-    process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -391,10 +390,20 @@ json.dump(response, sys.stdout, separators=(",", ":"))
     make_executable(provider_bin);
 }
 
-pub(crate) fn isolate_home(root: &Path) -> EnvVarGuard {
+pub(crate) struct IsolatedHomeGuard {
+    _home: EnvVarGuard,
+    _state_home: EnvVarGuard,
+}
+
+pub(crate) fn isolate_home(root: &Path) -> IsolatedHomeGuard {
     let home = root.join("home");
     std::fs::create_dir_all(&home).expect("create isolated home");
-    EnvVarGuard::set("HOME", home.as_os_str())
+    let state_home = home.join(".agent-semantic-protocols");
+    std::fs::create_dir_all(&state_home).expect("create isolated ASP State Home");
+    IsolatedHomeGuard {
+        _home: EnvVarGuard::set("HOME", home.as_os_str()),
+        _state_home: EnvVarGuard::set("ASP_STATE_HOME", state_home.as_os_str()),
+    }
 }
 
 pub(super) fn home_local_provider_path(root: &Path, binary: &str) -> std::path::PathBuf {
@@ -430,20 +439,6 @@ impl Drop for EnvVarGuard {
     }
 }
 
-pub(super) fn run_git(project_root: &Path, args: impl IntoIterator<Item = &'static str>) {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(project_root)
-        .args(args)
-        .output()
-        .expect("run git for source-index fixture");
-    assert!(
-        output.status.success(),
-        "git source-index fixture command failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
-
 pub(crate) struct RuntimeServerFixture {
     shutdown: agent_semantic_client_db::runtime_server::RuntimeServerShutdownHandle,
     task: tokio::task::JoinHandle<
@@ -465,6 +460,7 @@ impl RuntimeServerFixture {
         let state_home = std::env::var_os("ASP_STATE_HOME")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| root.join("home/.agent-semantic-protocols"));
+        std::fs::create_dir_all(&state_home).expect("create fixture ASP State Home");
         let artifact_catalog =
             agent_semantic_runtime::runtime_artifact_catalog::load_runtime_artifact_catalog(
                 &state_home,
@@ -483,25 +479,73 @@ impl RuntimeServerFixture {
             )
             .await
             .expect("prepare fixture Runtime Server endpoint");
-        let endpoint_path = agent_semantic_client_db::runtime_server_endpoint_path(&state_home);
+        let workspace_store = agent_semantic_client_db::runtime_server_workspace::prepare_runtime_server_workspace_store_at_root(
+            endpoint.workspace_store_path.clone().into(),
+        )
+        .await
+        .expect("prepare fixture Runtime Server workspace store");
+        let endpoint_path = agent_semantic_client_db::runtime_server_endpoint_path(&state_home)
+            .expect("resolve fixture Runtime Server endpoint path");
+        let owner_projection_builder: agent_semantic_client_db::runtime_server_admission::WorkspaceOwnerProjectionBuilder =
+            std::sync::Arc::new(|workspace_identity, project_root, owner_path| {
+                Box::pin(async move {
+                    let registry = agent_semantic_client_core::ProviderRegistrySnapshot::load(
+                        &project_root,
+                    )?;
+                    crate::source_index::prepare_runtime_server_owner_projection_with_registry_async(
+                        project_root,
+                        workspace_identity,
+                        owner_path,
+                        registry,
+                    )
+                    .await
+                })
+            });
         let server = agent_semantic_client_db::runtime_server::RuntimeServer::bind_and_publish_with_artifact_catalog(
             endpoint,
             std::sync::Arc::new(agent_semantic_client_db::WorkspaceDbRegistry::default()),
             &endpoint_path,
+            workspace_store,
             std::sync::Arc::new(artifact_catalog),
         )
         .await
         .expect("bind fixture Runtime Server")
-        .with_workspace_generation_builder(std::sync::Arc::new(
-            |_workspace_identity, project_root| {
+        .with_workspace_generation_and_owner_builders(std::sync::Arc::new(
+            |_workspace_identity, project_root, changed_paths| {
                 Box::pin(async move {
-                    crate::source_index::prepare_runtime_server_workspace_generation_async(
+                    let collection_scope = if changed_paths.is_empty() {
+                        crate::source_index::SourceIndexCollectionScope::CompleteGeneration
+                    } else {
+                        let owner_paths = changed_paths
+                            .iter()
+                            .map(|path| {
+                                path.strip_prefix(&project_root)
+                                    .map(|relative| relative.to_string_lossy().into_owned())
+                                    .map_err(|_| {
+                                        format!(
+                                            "changed fixture owner is outside Runtime workspace: workspace={} owner={}",
+                                            project_root.display(),
+                                            path.display()
+                                        )
+                                    })
+                            })
+                            .collect::<Result<Vec<_>, String>>()?;
+                        crate::source_index::SourceIndexCollectionScope::ExplicitOwners {
+                            owner_paths,
+                        }
+                    };
+                    let registry = agent_semantic_client_core::ProviderRegistrySnapshot::load(
+                        &project_root,
+                    )?;
+                    crate::source_index::prepare_runtime_server_workspace_generation_with_registry_async(
                         project_root,
+                        registry,
+                        collection_scope,
                     )
                     .await
                 })
             },
-        ));
+        ), owner_projection_builder);
         let shutdown = server.shutdown_handle();
         let task = tokio::spawn(server.serve());
         Self {
@@ -511,34 +555,70 @@ impl RuntimeServerFixture {
         }
     }
 
-    pub(crate) async fn blocking<T: Send + 'static>(
-        &self,
-        operation: impl FnOnce() -> T + Send + 'static,
-    ) -> T {
-        tokio::task::spawn_blocking(operation)
+    pub(crate) async fn operation<T, F>(&self, operation: impl FnOnce() -> F + Send + 'static) -> T
+    where
+        T: Send + 'static,
+        F: std::future::Future<Output = T> + Send + 'static,
+    {
+        tokio::spawn(operation())
             .await
-            .expect("join Runtime Server fixture client")
+            .expect("join asynchronous Runtime Server fixture client")
     }
 
     pub(crate) async fn rebuild(&self, root: &Path) {
+        static MUTATION_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let session =
             agent_semantic_client_db::workspace_db_ipc::connect_runtime_server_workspace_session(
                 root,
             )
             .await
             .expect("connect Runtime Server generation session");
-        session
-            .admit_runtime_generation()
-            .await
-            .expect("admit Runtime Server generation");
+        let mutation_id = format!(
+            "source-index-fixture-rebuild-{}",
+            MUTATION_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
         let receipt = session
-            .ensure_runtime_generation()
+            .cache_control(
+                agent_semantic_client_db::workspace_db_ipc::RuntimeCacheControlRequest::RebuildSourceIndex {
+                    project_root: root.display().to_string(),
+                    mutation_id: mutation_id.clone(),
+                },
+            )
             .await
-            .expect("ensure Runtime Server generation");
-        assert_eq!(
-            receipt.state,
-            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready,
-            "fixture Runtime Server generation was not ready: {receipt:?}"
+            .expect("complete Runtime Server cache-control rebuild");
+        assert!(
+            matches!(
+                receipt.generation_state,
+                agent_semantic_client_db::workspace_db_ipc::RuntimeCacheGenerationState::Ready
+            ) && receipt.mutation_id.as_deref() == Some(mutation_id.as_str()),
+            "fixture lifecycle cache-control rebuild must be terminal Ready before any query: {receipt:?}"
+        );
+    }
+
+    pub(crate) async fn admit_changed_paths(&self, root: &Path, changed_paths: Vec<String>) {
+        static MUTATION_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let session =
+            agent_semantic_client_db::workspace_db_ipc::connect_runtime_server_workspace_session(
+                root,
+            )
+            .await
+            .expect("connect Runtime Server generation session");
+        let mutation_id = format!(
+            "source-index-fixture-mutation-{}",
+            MUTATION_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
+        let receipt = session
+            .admit_runtime_generation(mutation_id.clone(), changed_paths)
+            .await
+            .expect("complete Runtime Server changed-owner admission");
+        assert!(
+            receipt.mutation_id == mutation_id
+                && receipt.receipts.iter().all(|receipt| {
+                    receipt.state
+                        == agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
+                        && receipt.commit.is_some()
+                }),
+            "fixture lifecycle changed-owner admission must be terminal Ready before any query: {receipt:?}"
         );
     }
 
@@ -556,12 +636,5 @@ impl RuntimeServerFixture {
 }
 
 pub(super) fn temp_root(label: &str) -> std::path::PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("time")
-        .as_nanos();
-    let root = std::env::temp_dir().join(format!("agent-client-source-index-{label}-{nanos}"));
-    std::fs::create_dir_all(&root).expect("create temp project root");
-    run_git(&root, ["init", "-q"]);
-    root
+    crate::test_support::owner_backed_temp_root(label)
 }

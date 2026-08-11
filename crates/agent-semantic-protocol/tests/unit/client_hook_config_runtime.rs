@@ -408,7 +408,7 @@ fn copy_agent_registry_fixture(root: &std::path::Path) {
 }
 
 fn write_rust_activation(root: &std::path::Path) -> PathBuf {
-    let state_home = crate::state_home_fixture::default_state_home(root);
+    let state_home = crate::unit_state_home_fixture::default_state_home(root);
     crate::state_home_fixture::install_provider_script(&state_home, "rust", "#!/bin/sh\nexit 0\n");
     crate::state_home_fixture::write_activation(root, &state_home, &["rust"])
 }

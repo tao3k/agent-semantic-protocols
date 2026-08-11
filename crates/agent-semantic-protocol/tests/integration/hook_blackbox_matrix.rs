@@ -79,6 +79,7 @@ async fn missing_matcher_generation_terminates_without_recursive_publication() {
         ])
         .env("ASP_STATE_HOME", &state_home)
         .env("ASP_HOOK_BOOTSTRAP_TRACE", "1")
+        .env_remove("ASP_NO_AGENT")
         .env_remove("PRJ_CACHE_HOME")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -249,6 +250,37 @@ fn config_derived_combinatorial_black_and_white_matrix_is_runtime_independent() 
     std::fs::remove_dir_all(root).expect("remove Hook blackbox fixture");
 }
 
+#[test]
+fn dot_workspace_alias_reads_the_generation_published_for_canonical_root() {
+    let root = fixture_root();
+    let state_home = root.join(".agent-semantic-protocols");
+    write_fixture(&root, &state_home);
+    refresh_hook_matcher(&root, &state_home);
+    let activation = crate::state_home_fixture::canonical_activation_path(&root, &state_home);
+    let decision = run_hook(
+        &root,
+        &state_home,
+        &activation,
+        json!({
+            "cwd": root.display().to_string(),
+            "tool_name": "exec_command",
+            "tool_input": {
+                "command": "asp rust search owner src/lib.rs items --workspace . --view seeds",
+                "workdir": "."
+            }
+        }),
+    );
+    assert_eq!(
+        decision["fields"]["hookMatcherGeneration"], "mmap-hit",
+        "lexical workspace alias missed the canonical Binary v1 authority: {decision}"
+    );
+    assert_ne!(
+        decision["reasonKind"], "local-hook-policy-authority-unavailable",
+        "successful refresh emitted a false-ready receipt: {decision}"
+    );
+    std::fs::remove_dir_all(root).expect("remove workspace-alias Hook fixture");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_hook_processes_are_lock_free_and_each_stays_below_one_millisecond() {
     const CONCURRENCY: usize = 32;
@@ -269,7 +301,10 @@ async fn concurrent_hook_processes_are_lock_free_and_each_stays_below_one_millis
         &activation,
         json!({"tool_name":"Read", "tool_input":{"file_path":"Cargo.lock"}}),
     );
-    assert_eq!(warm["decision"], "allow");
+    assert_eq!(
+        warm["decision"], "allow",
+        "warm Hook decision is not an explicit allow: {warm}"
+    );
 
     let mut tasks = tokio::task::JoinSet::new();
     for index in 0..CONCURRENCY {
@@ -290,6 +325,7 @@ async fn concurrent_hook_processes_are_lock_free_and_each_stays_below_one_millis
                 ])
                 .arg(&activation)
                 .env("ASP_STATE_HOME", &state_home)
+                .env_remove("ASP_NO_AGENT")
                 .env_remove("PRJ_CACHE_HOME")
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
@@ -359,6 +395,83 @@ async fn concurrent_hook_processes_are_lock_free_and_each_stays_below_one_millis
     );
     assert_server_absent(&state_home, "after concurrent Hook pressure");
     std::fs::remove_dir_all(root).expect("remove concurrent Hook fixture");
+}
+
+#[test]
+fn configured_structured_projectors_use_the_bounded_decision_shard() {
+    let root = fixture_root();
+    let state_home = root.join(".agent-semantic-protocols");
+    write_fixture(&root, &state_home);
+    refresh_hook_matcher(&root, &state_home);
+    let activation = crate::state_home_fixture::canonical_activation_path(&root, &state_home);
+    let config = agent_semantic_config::default_hook_client_config_file()
+        .expect("load config-owned structured projector contracts");
+    let projectors = config
+        .rules
+        .into_iter()
+        .filter_map(|rule| rule.match_config.structured_projection)
+        .collect::<Vec<_>>();
+    assert!(
+        !projectors.is_empty(),
+        "configured projector coverage is empty"
+    );
+
+    for (index, projector) in projectors.iter().enumerate() {
+        let (extension, content) = match projector.document_format {
+            agent_semantic_config::HookClientStructuredFormat::Json => {
+                ("json", "{\"items\":[1,2,3]}\n")
+            }
+            agent_semantic_config::HookClientStructuredFormat::Toml => {
+                ("toml", "items = [1, 2, 3]\n")
+            }
+        };
+        let relative = format!("structured/projector-{index}.{extension}");
+        let path = root.join(&relative);
+        std::fs::create_dir_all(path.parent().expect("structured fixture parent"))
+            .expect("create structured fixture parent");
+        std::fs::write(&path, content).expect("write structured projector fixture");
+        let cases = [
+            (
+                format!(
+                    "{} '.items[0:{}]' {relative}",
+                    projector.binary,
+                    projector.max_slice_items.min(3)
+                ),
+                "allow",
+            ),
+            (
+                format!("{} '.items[0:]' {relative}", projector.binary),
+                "deny",
+            ),
+            (
+                format!(
+                    "{} '.items[0:{}]' {relative}",
+                    projector.binary,
+                    projector.max_slice_items + 1
+                ),
+                "deny",
+            ),
+        ];
+        for (command, expected) in cases {
+            let decision = run_hook(
+                &root,
+                &state_home,
+                &activation,
+                json!({"tool_name":"exec_command", "tool_input":{"cmd":command}}),
+            );
+            assert_eq!(decision["decision"], expected, "{decision}");
+            assert_eq!(
+                decision["fields"]["hookMatcherProjection"], "structured-projection-decision-shard",
+                "{decision}"
+            );
+            assert_eq!(
+                decision["fields"]["hookDecisionBudgetStatus"], "within-budget",
+                "{decision}"
+            );
+            assert_server_absent(&state_home, &format!("structured projector {index}"));
+        }
+    }
+    std::fs::remove_dir_all(root).expect("remove structured Hook fixture");
 }
 
 fn assert_config_derived_policy_combinations(
@@ -477,6 +590,55 @@ fn assert_config_derived_policy_combinations(
         ));
         assert_server_absent(state_home, &witness.id);
     }
+    let generated_positional_witnesses =
+        agent_semantic_hook::policy_testing::combinatorial_positional_shell_witnesses(
+            &config,
+            agent_semantic_hook::policy_testing::HookPolicyCombinatorialStrategy {
+                max_wrapper_depth,
+                include_negative_extension_mutation,
+            },
+        )
+        .expect("derive config-owned positional Hook coverage");
+    let mut positional_payloads = Vec::new();
+    let mut positional_witnesses = Vec::new();
+    let mut covered_positional_languages = std::collections::BTreeSet::new();
+    for witness in &generated_positional_witnesses {
+        if !covered_positional_languages.insert(witness.language_id.clone()) {
+            continue;
+        }
+        positional_payloads.push(json!({
+            "tool_name": witness.tool_name,
+            "tool_input": witness.tool_input,
+        }));
+        positional_witnesses.push(witness);
+    }
+    let positional_decisions =
+        run_hook_matrix_parallel(root, state_home, activation, &positional_payloads);
+    for (witness, decision) in positional_witnesses.iter().zip(&positional_decisions) {
+        assert_eq!(decision["decision"], "deny", "{}: {decision}", witness.id);
+        assert_eq!(
+            decision["fields"]["configRuleId"].as_str(),
+            witness.expected_rule_id.as_deref(),
+            "{}: {decision}",
+            witness.id
+        );
+        assert_eq!(
+            decision["fields"]["hookMatcherProjection"], "shell-read-decision-shard",
+            "registered candidate was lost between unrelated config-generated dotted arguments: {}: {decision}",
+            witness.id
+        );
+        assert_eq!(
+            decision["fields"]["hookPolicySynchronousDependencies"],
+            json!([]),
+            "{}",
+            witness.id
+        );
+    }
+    assert_eq!(
+        covered_positional_languages.len(),
+        config.language_providers.len(),
+        "positional black-box coverage must be generated for every configured language provider"
+    );
     let configured_extensions = config
         .language_providers
         .iter()
@@ -533,6 +695,8 @@ fn run_hook(root: &Path, state_home: &Path, activation: &Path, payload: Value) -
         ])
         .arg(activation)
         .env("ASP_STATE_HOME", state_home)
+        .env("PATH", hook_fixture_path(root))
+        .env_remove("ASP_NO_AGENT")
         .env_remove("PRJ_CACHE_HOME")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -597,6 +761,8 @@ fn refresh_hook_matcher(root: &Path, state_home: &Path) {
         .current_dir(root)
         .args(["hook", "refresh", "--client", "codex"])
         .env("ASP_STATE_HOME", state_home)
+        .env("PATH", hook_fixture_path(root))
+        .env_remove("ASP_NO_AGENT")
         .env_remove("PRJ_CACHE_HOME")
         .output()
         .expect("run Hook matcher control-plane refresh");
@@ -616,6 +782,7 @@ fn warm_executable_without_hook_state(root: &Path, state_home: &Path) {
         .current_dir(root)
         .arg("--help")
         .env("ASP_STATE_HOME", state_home)
+        .env_remove("ASP_NO_AGENT")
         .env_remove("PRJ_CACHE_HOME")
         .output()
         .expect("warm debug Hook executable pages");
@@ -632,13 +799,16 @@ fn warm_executable_without_hook_state(root: &Path, state_home: &Path) {
 }
 
 fn write_fixture(root: &Path, state_home: &Path) {
-    let git = Command::new("git")
-        .args(["init", "--quiet"])
-        .current_dir(root)
-        .status()
-        .expect("initialize Hook fixture Git workspace");
-    assert!(git.success(), "initialize Hook fixture Git workspace");
+    let repository = gix::discover(root).expect("discover durable Hook fixture workspace via Gix");
+    assert!(
+        repository.worktree().is_some(),
+        "Hook fixture must be mounted in a durable workspace worktree"
+    );
     for (path, content) in [
+        (
+            "Cargo.toml",
+            "[package]\nname = \"asp-hook-blackbox-fixture\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+        ),
         ("src/lib.rs", "pub fn blackbox() {}\n"),
         ("src/main.py", "def blackbox():\n    pass\n"),
         ("README.md", "# Hook blackbox\n"),
@@ -665,6 +835,23 @@ fn write_fixture(root: &Path, state_home: &Path) {
             "#!/bin/sh\nexit 0\n",
         );
     }
+    let projector_bin = root.join(".hook-projectors");
+    std::fs::create_dir_all(&projector_bin).expect("create projector capability fixture");
+    let config = agent_semantic_config::default_hook_client_config_file()
+        .expect("load projector capability contracts");
+    for binary in config.rules.into_iter().filter_map(|rule| {
+        rule.match_config
+            .structured_projection
+            .map(|projection| projection.binary)
+    }) {
+        let path = projector_bin.join(binary);
+        std::fs::write(&path, "#!/bin/sh\nexit 0\n").expect("write projector capability fixture");
+        let mut permissions = std::fs::metadata(&path)
+            .expect("read projector capability metadata")
+            .permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+        std::fs::set_permissions(path, permissions).expect("make projector capability executable");
+    }
     crate::state_home_fixture::write_activation(
         root,
         state_home,
@@ -687,6 +874,14 @@ fn write_fixture(root: &Path, state_home: &Path) {
     .expect("write Hook config");
 }
 
+fn hook_fixture_path(root: &Path) -> std::ffi::OsString {
+    let mut paths = vec![root.join(".hook-projectors")];
+    paths.extend(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    ));
+    std::env::join_paths(paths).expect("join Hook fixture PATH")
+}
+
 fn assert_server_absent(state_home: &Path, stage: &str) {
     let server = state_home.join("runtime/server");
     for artifact in ["endpoint.v1.json", "run-intent.v1", "owner-spawn.v1.json"] {
@@ -698,9 +893,15 @@ fn assert_server_absent(state_home: &Path, stage: &str) {
 }
 
 fn fixture_root() -> PathBuf {
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("protocol crate belongs to the Cargo workspace");
+    let fixture_parent = workspace_root.join("target/hook-blackbox-fixtures");
+    std::fs::create_dir_all(&fixture_parent).expect("create Hook blackbox fixture parent");
     tempfile::Builder::new()
         .prefix("asp-hook-blackbox-")
-        .tempdir()
+        .tempdir_in(fixture_parent)
         .expect("Hook blackbox tempdir")
         .keep()
 }

@@ -130,7 +130,7 @@ fn write_hook_fixture(root: &Path) {
     fs::create_dir_all(root.join("src")).expect("create src");
     fs::write(root.join("src/lib.rs"), "pub fn probe() {}\n").expect("write source");
 
-    let state_home = crate::state_home_fixture::default_state_home(root);
+    let state_home = crate::unit_state_home_fixture::default_state_home(root);
     crate::state_home_fixture::install_provider_script(&state_home, "rust", "#!/bin/sh\nexit 0\n");
     crate::state_home_fixture::write_activation(root, &state_home, &["rust"]);
 
@@ -230,7 +230,7 @@ fn spawn_hook_event(root: &Path, event: &str) -> std::process::Child {
         .arg("--activation")
         .arg(crate::state_home_fixture::canonical_activation_path(
             root,
-            &crate::state_home_fixture::default_state_home(root),
+            &crate::unit_state_home_fixture::default_state_home(root),
         ))
         .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
         .env_remove("PRJ_CACHE_HOME")

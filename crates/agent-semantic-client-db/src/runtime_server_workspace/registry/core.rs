@@ -1,12 +1,11 @@
 use crate::runtime_server_workspace::{
     RUNTIME_SERVER_SHUTDOWN_RECEIPT_SCHEMA_ID, ResidentOverlayStore, RuntimeDataPlaneCounters,
-    RuntimeServerShutdownReceipt, WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID,
-    WorkspaceCanonicalMaterialization, WorkspaceGenerationDataPlaneClient,
+    RuntimeServerShutdownReceipt, WorkspaceGenerationDataPlaneClient,
     WorkspaceGenerationDataPlaneOpen, WorkspaceGenerationLease, WorkspaceGenerationPublisher,
-    WorkspaceGenerationState, WorkspaceMemoryBackend, WorkspaceMemoryGeneration,
-    WorkspaceOwnerSnapshot, WorkspaceRecoveryReceipt, WorkspaceRecoverySource,
-    WorkspaceRuntimeContext, WorkspaceRuntimeSelectorOverlay,
-    WorkspaceRuntimeSelectorOverlayReceipt, workspace_generation_pointer_path,
+    WorkspaceMemoryBackend, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
+    WorkspaceRecoveryReceipt, WorkspaceRecoverySource, WorkspaceRuntimeContext,
+    WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorOverlayReceipt,
+    workspace_generation_pointer_path,
 };
 use parking_lot::RwLock;
 use std::{
@@ -19,11 +18,13 @@ use std::{
 };
 use tokio::sync::{mpsc, oneshot, watch};
 
-use super::writer_publication::{
+use super::writer_publication_owner::{
     active_epoch, current_generation, publish_generation, publish_staged_overlay_generation,
     restore_checkpoint,
 };
-use super::{canonical_durability, owner_identity};
+use super::{
+    canonical_publication_owner as canonical_publication, owner_identity_owner as owner_identity,
+};
 
 #[derive(Debug)]
 pub(super) struct WorkspaceEntry {
@@ -126,14 +127,7 @@ pub(super) enum WorkspaceWriteCommand {
         owner: WorkspaceOwnerSnapshot,
         reply: oneshot::Sender<Result<WorkspaceRecoveryReceipt, String>>,
     },
-    EnsureCanonicalGeneration {
-        target: WorkspaceWriteTarget,
-        request_id: String,
-        workspace_identity: String,
-        materialization: WorkspaceCanonicalMaterialization,
-        prepared_index: Arc<super::super::memory_backend::WorkspaceMemoryIndex>,
-        reply: oneshot::Sender<Result<WorkspaceRecoveryReceipt, String>>,
-    },
+    EnsureCanonicalGeneration(canonical_publication::EnsureCanonicalGenerationCommand),
     RestoreCheckpoint {
         target: WorkspaceWriteTarget,
         request_id: String,
@@ -762,207 +756,13 @@ async fn workspace_writer_lane(
                 }
                 let _ = reply.send(result);
             }
-            WorkspaceWriteCommand::EnsureCanonicalGeneration {
-                target,
-                request_id,
-                workspace_identity,
-                materialization,
-                prepared_index,
-                reply,
-            } => {
-                let resident_publication_started = tokio::time::Instant::now();
-                let WorkspaceWriteTarget {
-                    scope_key,
-                    current,
-                    durability,
-                    overlays,
-                    publisher,
-                } = target;
-                let active = current.borrow().clone();
-                let active_epoch = active
-                    .as_ref()
-                    .map_or(0, |backend| backend.generation().active_epoch);
-                let generation_build_started = tokio::time::Instant::now();
-                let generation = materialization.into_generation(active_epoch).map(Arc::new);
-                let generation_build_elapsed_micros = generation_build_started
-                    .elapsed()
-                    .as_micros()
-                    .min(u128::from(u64::MAX))
-                    as u64;
-                let generation_build_budget_micros = 800_000;
-                let mut generation_build_observation =
-                    crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
-                        "workspace-canonical-materialization",
-                        "generation-build",
-                        generation_build_elapsed_micros,
-                        generation_build_budget_micros,
-                        if generation_build_elapsed_micros < generation_build_budget_micros {
-                            "within-budget"
-                        } else {
-                            "budget-exceeded"
-                        },
-                    );
-                generation_build_observation.workspace_identity = Some(workspace_identity.clone());
-                let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(
-                    generation_build_observation,
-                );
-                let result = match generation {
-                    Ok(generation)
-                        if active.as_ref().is_some_and(|backend| {
-                            backend.generation().generation_digest == generation.generation_digest
-                                && backend.generation().selector_set_digest
-                                    == generation.selector_set_digest
-                        })
-                            && super::super::WorkspaceGenerationPointerReader::matches_generation(
-                                publisher.pointer_path(),
-                                &generation,
-                            )
-                            .await =>
-                    {
-                        let result = last_receipts.get(&scope_key).cloned().or_else(|| {
-                            let target_epoch = active_epoch;
-                            target_epoch.checked_sub(1).map(|previous_epoch| {
-                                WorkspaceRecoveryReceipt {
-                                    schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
-                                    schema_version: "1".to_owned(),
-                                    request_id,
-                                    workspace_identity,
-                                    source: WorkspaceRecoverySource::MmapCheckpoint,
-                                    state: WorkspaceGenerationState::Ready,
-                                    active_epoch: previous_epoch,
-                                    target_epoch,
-                                    generation_digest: generation.generation_digest.clone(),
-                                    source_root_digest: generation.source_snapshot.root_digest.clone(),
-                                    old_generation_readable: previous_epoch != 0,
-                                    resident_publication_elapsed_micros: u64::try_from(
-                                        resident_publication_started.elapsed().as_micros(),
-                                    )
-                                    .unwrap_or(u64::MAX),
-                                    counters: RuntimeDataPlaneCounters::default(),
-                                }
-                            })
-                        })
-                        .ok_or_else(|| {
-                            "runtime workspace canonical generation has no reusable recovery receipt"
-                                .to_owned()
-                        })
-                        .and_then(|receipt| {
-                            receipt.validate()?;
-                            Ok(receipt)
-                        });
-                        result
-                    }
-                    Ok(generation) => {
-                        let progress = WorkspaceRecoveryReceipt {
-                            schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
-                            schema_version: "1".to_owned(),
-                            request_id: request_id.clone(),
-                            workspace_identity: workspace_identity.clone(),
-                            source: WorkspaceRecoverySource::TursoGeneration,
-                            state: WorkspaceGenerationState::PublishingNext,
-                            active_epoch,
-                            target_epoch: generation.active_epoch,
-                            generation_digest: generation.generation_digest.clone(),
-                            source_root_digest: generation.source_snapshot.root_digest.clone(),
-                            old_generation_readable: active.is_some(),
-                            resident_publication_elapsed_micros: u64::try_from(
-                                resident_publication_started.elapsed().as_micros(),
-                            )
-                            .unwrap_or(u64::MAX),
-                            counters: RuntimeDataPlaneCounters::default(),
-                        };
-                        match progress.validate() {
-                            Ok(()) => {
-                                let target_epoch = generation.active_epoch;
-                                let generation_digest = generation.generation_digest.clone();
-                                let source_root_digest =
-                                    generation.source_snapshot.root_digest.clone();
-                                let backend = match crate::runtime_server_workspace::WorkspaceMemoryBackend::from_validated_generation_with_index(
-                                    Arc::clone(&generation),
-                                    prepared_index,
-                                ) {
-                                    Ok(backend) => Arc::new(backend),
-                                    Err(error) => {
-                                        let _ = reply.send(Err(error));
-                                        continue;
-                                    }
-                                };
-                                current.send_replace(Some(Arc::clone(&backend)));
-                                overlays.reset(backend.generation());
-                                let resident_receipt = WorkspaceRecoveryReceipt {
-                                    schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
-                                    schema_version: "1".to_owned(),
-                                    request_id: request_id.clone(),
-                                    workspace_identity: workspace_identity.clone(),
-                                    source: WorkspaceRecoverySource::TursoGeneration,
-                                    state: WorkspaceGenerationState::Ready,
-                                    active_epoch,
-                                    target_epoch,
-                                    generation_digest: generation_digest.clone(),
-                                    source_root_digest: source_root_digest.clone(),
-                                    old_generation_readable: active_epoch != 0,
-                                    resident_publication_elapsed_micros: u64::try_from(
-                                        resident_publication_started.elapsed().as_micros(),
-                                    )
-                                    .unwrap_or(u64::MAX),
-                                    counters: RuntimeDataPlaneCounters::default(),
-                                };
-                                if let Err(error) = resident_receipt.validate() {
-                                    let _ = reply.send(Err(error));
-                                    continue;
-                                }
-                                durability.send_replace(Some(
-                                    crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt::new(
-                                        workspace_identity.clone(),
-                                        generation_digest.clone(),
-                                        target_epoch,
-                                        crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::ResidentReady,
-                                        None,
-                                    )
-                                    .expect("validated resident-ready workspace generation receipt"),
-                                ));
-
-                                // The resident MemoryBackend is the query authority. Publish it
-                                // and complete admission before durable mmap/pointer I/O. The
-                                // per-workspace writer lane remains the sole durability writer,
-                                // so later mutations cannot overtake this commit while readers
-                                // avoid waiting for encode, fsync, pointer, or journal latency.
-                                let _ = reply.send(Ok(resident_receipt.clone()));
-                                last_receipts.insert(scope_key, resident_receipt);
-
-                                let _ = canonical_durability::commit_canonical_generation(
-                                    publisher.as_ref(),
-                                    generation,
-                                    active_epoch != 0,
-                                    &durability,
-                                    &workspace_identity,
-                                    &generation_digest,
-                                    target_epoch,
-                                    &counters,
-                                )
-                                .await;
-                                continue;
-                            }
-                            Err(error) => {
-                                Err(error)
-                            }
-                        }
-                    }
-                    Err(error) => {
-                        Err(error)
-                    }
-                }
-                .and_then(|receipt| {
-                    receipt.validate()?;
-                    Ok(receipt)
-                });
-                if let Ok(receipt) = &result {
-                    if let Some(backend) = current.borrow().clone() {
-                        overlays.reset(backend.generation());
-                    }
-                    last_receipts.insert(scope_key, receipt.clone());
-                }
-                let _ = reply.send(result);
+            WorkspaceWriteCommand::EnsureCanonicalGeneration(command) => {
+                canonical_publication::publish_canonical_generation(
+                    command,
+                    &counters,
+                    &mut last_receipts,
+                )
+                .await;
             }
             WorkspaceWriteCommand::RestoreCheckpoint {
                 target,

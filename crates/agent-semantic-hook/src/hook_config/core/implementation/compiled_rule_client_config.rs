@@ -741,20 +741,83 @@ impl ClientHookConfig {
             .collect()
     }
 
+    /// Compile configured structured-document grammars and both of their
+    /// complete-policy outcomes into a one-shot decision shard. Selection is
+    /// still grammar-driven at runtime; rule ordering and messages are fixed
+    /// here by the source-compiled policy graph.
+    pub fn durable_structured_projection_decision_shard(&self) -> Result<Vec<u8>, String> {
+        let runtime = HookRuntime {
+            project_root: ".".to_owned(),
+            rankers: Vec::new(),
+            providers: Vec::new(),
+            policy_providers: self.provider_projections.clone(),
+        };
+        let mut entries = Vec::new();
+        for rule in &self.rules {
+            let template_path = "__ASP_STRUCTURED_PROJECTION_PATH__.json";
+            let template_action = crate::tool_action::ToolAction::normalized_shell_policy_action(
+                format!("structured-projector '.field' {template_path}"),
+                template_path.to_owned(),
+            );
+            let Some((projection, mut bounded_decision)) = rule
+                .structured_projection_decision_template(&runtime, &template_action, template_path)
+            else {
+                continue;
+            };
+            let extension = match projection.document_format {
+                agent_semantic_config::HookClientStructuredFormat::Json => "json",
+                agent_semantic_config::HookClientStructuredFormat::Toml => "toml",
+            };
+            let placeholder = format!("__ASP_STRUCTURED_PROJECTION_PATH__.{extension}");
+            bounded_decision.replace_template_marker(template_path, &placeholder);
+            let rejected_action = crate::tool_action::ToolAction::normalized_shell_policy_action(
+                format!("{} '..' {placeholder}", projection.binary),
+                placeholder.clone(),
+            );
+            let mut rejected_decision = self
+                .rules
+                .iter()
+                .filter_map(|rule| {
+                    rule.structured_projection_rejection_template(
+                        &runtime,
+                        &rejected_action,
+                        &projection.binary,
+                        &placeholder,
+                    )
+                })
+                .max_by_key(|(priority, _)| *priority)
+                .map(|(_, decision)| decision)
+                .ok_or_else(|| {
+                    format!(
+                        "structured projector `{}` has no configured rejection policy",
+                        projection.binary
+                    )
+                })?;
+            for decision in [&mut bounded_decision, &mut rejected_decision] {
+                decision.fields.insert(
+                    "hookPolicySnapshotDigest".to_owned(),
+                    serde_json::Value::String(self.policy_generation_digest.clone()),
+                );
+                decision.fields.insert(
+                    "hookPolicyKernelVersion".to_owned(),
+                    serde_json::Value::String(
+                        crate::hook_policy_kernel::HOOK_POLICY_KERNEL_VERSION.to_owned(),
+                    ),
+                );
+                decision.fields.insert(
+                    "hookPolicySynchronousDependencies".to_owned(),
+                    serde_json::Value::Array(Vec::new()),
+                );
+            }
+            entries.push((projection, placeholder, bounded_decision, rejected_decision));
+        }
+        crate::StructuredProjectionDecisionShard::new(entries)?.to_binary_bytes()
+    }
+
     /// Compile the finite command-profile prefix space into winning decisions.
     /// The table is derived entirely from config and preserves wrapper matching.
     pub fn durable_command_profile_decision_shard(&self) -> Result<Vec<u8>, String> {
-        let source = self
-            .source_config
-            .as_ref()
-            .ok_or_else(|| "only a source-compiled Hook config may publish shards".to_owned())?;
-        let prefixes = source
-            .command_profiles
-            .iter()
-            .flat_map(|profile| profile.categories.values())
-            .flatten()
-            .cloned()
-            .collect::<std::collections::BTreeSet<_>>();
+        let prefixes = self.durable_command_decision_prefixes()?;
         let runtime = HookRuntime {
             project_root: ".".to_owned(),
             rankers: Vec::new(),
@@ -794,6 +857,53 @@ impl ClientHookConfig {
             })
             .collect();
         crate::CommandDecisionShard::new(entries)?.to_binary_bytes()
+    }
+
+    fn durable_command_decision_prefixes(
+        &self,
+    ) -> Result<std::collections::BTreeSet<Vec<String>>, String> {
+        let source = self
+            .source_config
+            .as_ref()
+            .ok_or_else(|| "only a source-compiled Hook config may publish shards".to_owned())?;
+        let mut prefixes = source
+            .command_profiles
+            .iter()
+            .flat_map(|profile| profile.categories.values())
+            .flatten()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>();
+        let registered_languages = source
+            .language_providers
+            .iter()
+            .map(|provider| provider.language_id.as_str().to_owned())
+            .collect::<Vec<_>>();
+        for pattern in source
+            .rules
+            .iter()
+            .filter(|rule| rule.enabled)
+            .flat_map(|rule| &rule.match_config.argv_pattern_any)
+        {
+            if pattern.iter().any(|token| token == "<registered-language>") {
+                for language in &registered_languages {
+                    prefixes.insert(
+                        pattern
+                            .iter()
+                            .map(|token| {
+                                if token == "<registered-language>" {
+                                    language.clone()
+                                } else {
+                                    token.clone()
+                                }
+                            })
+                            .collect(),
+                    );
+                }
+            } else {
+                prefixes.insert(pattern.clone());
+            }
+        }
+        Ok(prefixes)
     }
 
     /// Hydrate the compiled matcher without invoking any regex, glob, or Aho builder.

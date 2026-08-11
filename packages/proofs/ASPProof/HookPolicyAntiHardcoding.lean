@@ -170,6 +170,32 @@ theorem every_command_profile_uses_the_same_policy_constructor
       (wrappedProfileFacts profile) := by
   simp [denies, wrappedProfileRule, wrappedProfileFacts]
 
+structure StructuredProjectionBudget where
+  maxSliceItems : Nat
+
+def FiniteSlice (budget : StructuredProjectionBudget) (start finish : Nat) : Prop :=
+  start ≤ finish ∧ finish - start ≤ budget.maxSliceItems
+
+/-- Slice admission is parameterized by serialized policy capacity. The kernel
+does not enumerate jq expressions, document names, or language registries. -/
+theorem finite_structured_slice_is_config_bounded
+    (budget : StructuredProjectionBudget)
+    (start finish : Nat)
+    (ordered : start ≤ finish)
+    (withinBudget : finish - start ≤ budget.maxSliceItems) :
+    FiniteSlice budget start finish :=
+  ⟨ordered, withinBudget⟩
+
+/-- An open-ended slice cannot manufacture the missing finite endpoint from a
+policy budget; callers must supply the parsed endpoint before admission. -/
+theorem structured_slice_admission_requires_an_endpoint
+    (budget : StructuredProjectionBudget)
+    (start : Nat) :
+    (∃ finish, FiniteSlice budget start finish) → ∃ finish, start ≤ finish := by
+  intro bounded
+  rcases bounded with ⟨finish, ordered, _⟩
+  exact ⟨finish, ordered⟩
+
 /-- The abstract combination plan is config-owned. It carries policy axes but
 no Host JSON, tool spelling, or shell executable. -/
 structure ConfigCoveragePlan
@@ -318,6 +344,109 @@ theorem config_auto_white_mutation_is_unregistered
     (member : extension ∈ plan.extensions) :
     mutate extension ∉ plan.extensions :=
   outside extension member
+
+/-- A positional shell-source selector is not an admissible policy model: an
+unrelated dotted argument after the registered source changes its result. -/
+def lastOnlyCandidate : List Extension → Option Extension
+  | [] => none
+  | [candidate] => some candidate
+  | _ :: candidates => lastOnlyCandidate candidates
+
+theorem last_only_candidate_can_drop_a_registered_extension
+    (registered auxiliary : Extension) :
+    lastOnlyCandidate [registered, auxiliary] = some auxiliary ∧
+      registered ∈ [registered, auxiliary] := by
+  simp [lastOnlyCandidate]
+
+/-- Binary v1 candidate admission is membership-owned by the published provider
+extension index. Enumerating all normalized candidates therefore preserves a
+registered source regardless of unrelated prefix/suffix arguments. -/
+def publishedExtensionCandidates [DecidableEq Extension]
+    (published observed : List Extension) : List Extension :=
+  observed.filter fun extension => extension ∈ published
+
+theorem published_extension_membership_is_position_invariant
+    [DecidableEq Extension]
+    (published before after : List Extension)
+    (registered : Extension)
+    (registeredMember : registered ∈ published) :
+    registered ∈ publishedExtensionCandidates published
+      (before ++ registered :: after) := by
+  simp [publishedExtensionCandidates, registeredMember]
+
+/-- Candidate decisions compose with denial as the absorbing element. An
+unregistered white candidate may not mask a registered-source denial elsewhere
+in the same normalized action. -/
+inductive CandidateDecision where
+  | allow
+  | deny
+  deriving DecidableEq
+
+def combineCandidateDecisions : List CandidateDecision → CandidateDecision
+  | [] => .allow
+  | .deny :: _ => .deny
+  | .allow :: decisions => combineCandidateDecisions decisions
+
+theorem deny_candidate_is_position_invariant
+    (before after : List CandidateDecision) :
+    combineCandidateDecisions (before ++ .deny :: after) = .deny := by
+  induction before with
+  | nil => simp [combineCandidateDecisions]
+  | cons decision before inductionHypothesis =>
+      cases decision <;> simp [combineCandidateDecisions, inductionHypothesis]
+
+/-- Selecting only the first candidate admits the concrete counterexample that
+the generated positional black-box matrix found. -/
+def firstCandidateDecision : List CandidateDecision → CandidateDecision
+  | [] => .allow
+  | decision :: _ => decision
+
+theorem first_allow_can_mask_later_deny :
+    firstCandidateDecision [.allow, .deny] = .allow ∧
+      combineCandidateDecisions [.allow, .deny] = .deny := by
+  simp [firstCandidateDecision, combineCandidateDecisions]
+
+/-- The command shard is the union of profile prefixes and finite rule-owned
+argv patterns. Restricting it to named profiles makes a config rule such as a
+registered reasoning-search pattern fall back to the complete matcher. -/
+def commandShardPrefixes
+    (profilePrefixes rulePatterns : List CommandPrefix) : List CommandPrefix :=
+  profilePrefixes ++ rulePatterns
+
+theorem every_rule_pattern_is_in_command_shard
+    (profilePrefixes rulePatterns : List CommandPrefix)
+    (pattern : CommandPrefix)
+    (member : pattern ∈ rulePatterns) :
+    pattern ∈ commandShardPrefixes profilePrefixes rulePatterns := by
+  simp [commandShardPrefixes, member]
+
+theorem profile_only_shard_can_omit_rule_pattern
+    [DecidableEq CommandPrefix]
+    (profilePrefixes : List CommandPrefix)
+    (pattern : CommandPrefix)
+    (absent : pattern ∉ profilePrefixes) :
+    pattern ∉ commandShardPrefixes profilePrefixes [] := by
+  simpa [commandShardPrefixes] using absent
+
+/-- Config-independent runtime-binary authority is evaluated before the config
+command shard. A provider-internal executable cannot be reclassified as an
+ordinary testing command merely because its argv also matches a profile. -/
+inductive EntryPlaneDecision where
+  | runtimeBinaryDeny
+  | configDeny
+  | allow
+  deriving DecidableEq
+
+def evaluateEntryPlane
+    (runtimeBinaryProtected configWouldDeny : Bool) : EntryPlaneDecision :=
+  if runtimeBinaryProtected then .runtimeBinaryDeny
+  else if configWouldDeny then .configDeny
+  else .allow
+
+theorem runtime_binary_authority_preempts_config_shard
+    (configWouldDeny : Bool) :
+    evaluateEntryPlane true configWouldDeny = .runtimeBinaryDeny := by
+  rfl
 
 /-- Black-box execution is a refinement check: a Host materializer may change
 representation, but normalization must recover exactly the config-owned case. -/

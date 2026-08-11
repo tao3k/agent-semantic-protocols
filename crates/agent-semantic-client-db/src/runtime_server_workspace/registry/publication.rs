@@ -261,6 +261,11 @@ impl RuntimeServerWorkspaceRegistry {
                 == materialization
                     .as_materialization()
                     .workspace_source_scope_generation
+            && matches!(
+                self.published_generation_state(&workspace_identity, project_root)
+                    .await?,
+                crate::runtime_server_workspace::PublishedWorkspaceGenerationState::Ready
+            )
         {
             let target_epoch = active.generation().active_epoch;
             let receipt = crate::runtime_server_workspace::WorkspaceRecoveryReceipt {
@@ -288,14 +293,16 @@ impl RuntimeServerWorkspaceRegistry {
         let (reply, receive) = oneshot::channel();
         entry
             .writer
-            .send(WorkspaceWriteCommand::EnsureCanonicalGeneration {
-                target: entry.write_target(),
-                request_id,
-                workspace_identity,
-                materialization,
-                prepared_index,
-                reply,
-            })
+            .send(WorkspaceWriteCommand::EnsureCanonicalGeneration(
+                super::canonical_publication_owner::EnsureCanonicalGenerationCommand {
+                    target: entry.write_target(),
+                    request_id,
+                    workspace_identity,
+                    materialization,
+                    prepared_index,
+                    reply,
+                },
+            ))
             .await
             .map_err(|_| "runtime workspace writer lane is unavailable".to_owned())?;
         receive

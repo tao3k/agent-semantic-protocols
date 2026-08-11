@@ -16,8 +16,6 @@ mod hook_runtime_doctor;
 mod hook_runtime_host_lifecycle;
 #[path = "hook_runtime_install.rs"]
 mod hook_runtime_install;
-#[path = "hook_runtime_performance_failure.rs"]
-mod hook_runtime_performance_failure;
 #[path = "hook_runtime_skill.rs"]
 mod hook_runtime_skill;
 #[path = "hook_runtime_source_access_materialize.rs"]
@@ -333,6 +331,12 @@ async fn run_hook_with_input(
         return emit_decision(emit, &decision);
     }
     enrich_codex_subagent_context(client, &mut payload);
+    if let Some(mut decision) =
+        agent_semantic_hook::runtime_binary_policy_decision_v1(client, event, &payload)
+    {
+        annotate_hook_decision_budget(&mut decision, hook_started, hook_cpu_started_micros);
+        return emit_decision(emit, &decision);
+    }
     let payload_root = payload
         .get("cwd")
         .and_then(serde_json::Value::as_str)
@@ -363,8 +367,6 @@ async fn run_hook_with_input(
             return Ok(());
         }
     }
-    hook_runtime_performance_failure::relay_post_tool_wall_failure(event, &payload, &project_root)
-        .await?;
     let local_event_micros = hook_started.elapsed().as_micros();
     let mut runtime = agent_semantic_hook::HookRuntime {
         project_root: project_root.display().to_string(),
@@ -376,10 +378,10 @@ async fn run_hook_with_input(
         .map(PathBuf::from)
         .unwrap_or_else(|| default_client_config_path(&project_root.to_string_lossy()));
     let direct_read_key = agent_semantic_hook::direct_read_source_key(&payload);
-    let shell_read_key = direct_read_key
+    let shell_read_keys = direct_read_key
         .is_none()
-        .then(|| agent_semantic_hook::shell_read_source_key(&payload))
-        .flatten();
+        .then(|| agent_semantic_hook::shell_read_source_keys(&payload))
+        .unwrap_or_default();
     let shell_command_key = direct_read_key
         .is_none()
         .then(|| agent_semantic_hook::shell_command_key(&payload))
@@ -390,7 +392,7 @@ async fn run_hook_with_input(
             &project_root,
             direct_read_key.as_ref().map(|key| key.extension.as_str()),
             direct_read_key.as_ref().map(|key| key.path.as_str()),
-            shell_read_key.as_ref(),
+            &shell_read_keys,
             shell_command_key.as_ref(),
         )?;
     let config_micros = hook_started.elapsed().as_micros();
@@ -448,8 +450,10 @@ async fn run_hook_with_input(
         decision.event = event.to_owned();
     }
     annotate_payload_context(&mut decision, &payload);
-    materialize_source_access_deny_message(&mut decision);
-    hook_runtime_agent_session_dispatch::materialize_org_choice_plane_reference(&mut decision);
+    if projection.is_none() {
+        materialize_source_access_deny_message(&mut decision);
+        hook_runtime_agent_session_dispatch::materialize_org_choice_plane_reference(&mut decision);
+    }
     let materialized_micros = hook_started.elapsed().as_micros();
     if trace_enabled {
         decision.fields.insert(

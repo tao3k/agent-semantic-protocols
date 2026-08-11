@@ -26,7 +26,7 @@ fn candidate_json() -> serde_json::Value {
 }
 
 #[test]
-fn runtime_generation_admission_ensure_and_locator_repair_have_distinct_typed_wire_shapes() {
+fn runtime_generation_admission_wire_shape_requires_lifecycle_identity() {
     let admit = serde_json::to_value(WorkspaceDbIpcOperation::AdmitRuntimeGeneration {
         mutation_id: "session-root/tool-use-1".to_owned(),
         project_root: "/workspace".to_owned(),
@@ -43,19 +43,6 @@ fn runtime_generation_admission_ensure_and_locator_repair_have_distinct_typed_wi
         changed_paths: vec!["/workspace/src/lib.rs".to_owned()],
     })
     .expect("encode daemon-owned runtime generation submission");
-    let ensure = serde_json::to_value(WorkspaceDbIpcOperation::EnsureRuntimeGeneration {
-        project_root: "/workspace".to_owned(),
-    })
-    .expect("encode ensured runtime generation");
-    let ensure_ready =
-        serde_json::to_value(WorkspaceDbIpcOperation::EnsureRuntimeGenerationReady {
-            project_root: "/workspace".to_owned(),
-        })
-        .expect("encode terminal-ready runtime generation gate");
-    let repair = serde_json::to_value(WorkspaceDbIpcOperation::RepairRuntimeGenerationLocator {
-        project_root: "/workspace".to_owned(),
-    })
-    .expect("encode runtime generation locator repair");
     assert_eq!(
         admit,
         serde_json::json!({
@@ -78,27 +65,22 @@ fn runtime_generation_admission_ensure_and_locator_repair_have_distinct_typed_wi
             "changedPaths": ["/workspace/src/lib.rs"]
         })
     );
-    assert_eq!(
-        ensure,
-        serde_json::json!({
-            "kind": "ensure-runtime-generation",
+}
+
+#[test]
+fn query_driven_generation_control_is_absent_from_the_wire_contract() {
+    for kind in [
+        "ensure-runtime-generation",
+        "ensure-runtime-generation-ready",
+        "repair-runtime-generation-locator",
+    ] {
+        let error = serde_json::from_value::<WorkspaceDbIpcOperation>(serde_json::json!({
+            "kind": kind,
             "projectRoot": "/workspace"
-        })
-    );
-    assert_eq!(
-        ensure_ready,
-        serde_json::json!({
-            "kind": "ensure-runtime-generation-ready",
-            "projectRoot": "/workspace"
-        })
-    );
-    assert_eq!(
-        repair,
-        serde_json::json!({
-            "kind": "repair-runtime-generation-locator",
-            "projectRoot": "/workspace"
-        })
-    );
+        }))
+        .expect_err("legacy query-driven generation control must not deserialize");
+        assert!(error.to_string().contains("unknown variant"), "{error}");
+    }
 }
 
 fn mutation_json(mutation_id: Option<&str>, changed_paths: serde_json::Value) -> serde_json::Value {

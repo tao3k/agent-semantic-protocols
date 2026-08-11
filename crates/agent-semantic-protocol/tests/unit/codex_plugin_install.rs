@@ -645,7 +645,7 @@ fn run_claude_hook_install(root: &std::path::Path) -> std::process::Output {
 }
 
 fn materialize_plugin_install_state(root: &std::path::Path, state_home: &std::path::Path) {
-    crate::state_home_fixture::materialize_org_state_checkout(state_home);
+    crate::unit_state_home_fixture::materialize_org_state_checkout(state_home);
     crate::state_home_fixture::install_provider_script(state_home, "rust", "#!/bin/sh\nexit 0\n");
     crate::state_home_fixture::write_activation(root, state_home, &["rust"]);
     let project_agents = root.join("agents");

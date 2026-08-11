@@ -233,6 +233,11 @@ pub struct WorkspaceRuntimeSelectorOverlayReceipt {
 )]
 pub enum WorkspaceRuntimeSelectorRead {
     GenerationMissing,
+    ProviderProjection {
+        owner_content_digest: String,
+        resolved_selector: String,
+        bytes: Vec<u8>,
+    },
     Projection {
         generation_digest: String,
         root_digest: String,

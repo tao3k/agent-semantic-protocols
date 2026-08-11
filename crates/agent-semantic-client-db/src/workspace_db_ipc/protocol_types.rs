@@ -132,12 +132,27 @@ pub enum WorkspaceDbIpcOperation {
         project_root: String,
         owner_path: String,
     },
+    ProjectProviderOwner {
+        project_root: String,
+        language_id: LanguageId,
+        owner_path: String,
+    },
+    ProjectTreeSitterQuery {
+        project_root: String,
+        language_id: LanguageId,
+        args: Vec<String>,
+    },
     ReadRuntimeSearchGenerationAuthority {
         project_root: String,
     },
     PublishRuntimeSelectorOverlay {
         project_root: String,
         overlay: crate::runtime_server_workspace::WorkspaceRuntimeSelectorOverlay,
+    },
+    EnsureRuntimeGenerationReady {
+        #[serde(deserialize_with = "deserialize_mutation_id")]
+        request_id: String,
+        project_root: String,
     },
     AdmitRuntimeGeneration {
         #[serde(deserialize_with = "deserialize_mutation_id")]
@@ -153,15 +168,6 @@ pub enum WorkspaceDbIpcOperation {
         project_root: String,
         #[serde(deserialize_with = "deserialize_changed_paths")]
         changed_paths: Vec<String>,
-    },
-    EnsureRuntimeGeneration {
-        project_root: String,
-    },
-    EnsureRuntimeGenerationReady {
-        project_root: String,
-    },
-    RepairRuntimeGenerationLocator {
-        project_root: String,
     },
     ReadRuntimeGenerationDurability {
         project_root: String,
@@ -297,11 +303,8 @@ pub enum WorkspaceDbIpcResult {
     RuntimeGeneration {
         receipt: crate::runtime_server_workspace::WorkspaceRecoveryReceipt,
     },
-    RuntimeGenerationAdmission {
+    RuntimeGenerationReady {
         receipt: crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt,
-    },
-    RuntimeGenerationReadiness {
-        receipt: crate::runtime_server_admission::WorkspaceGenerationReadinessReceipt,
     },
     RuntimeGenerationDurability {
         receipt: Option<crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt>,
@@ -331,6 +334,12 @@ pub enum WorkspaceDbIpcResult {
     },
     RuntimeOwner {
         read: crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead,
+    },
+    ProviderOwnerProjection {
+        owner: crate::runtime_server_workspace::WorkspaceOwnerSnapshot,
+    },
+    TreeSitterQuery {
+        rendered: Option<String>,
     },
     RuntimeSearchGenerationAuthority {
         authority: Option<crate::runtime_server_workspace::WorkspaceSearchGenerationAuthority>,

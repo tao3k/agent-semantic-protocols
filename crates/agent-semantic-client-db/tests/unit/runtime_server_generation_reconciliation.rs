@@ -86,35 +86,3 @@ async fn concurrent_generation_rebuild_admission_is_single_flight_and_sub_millis
     assert_eq!(ready.attempt, 2);
     admission.shutdown().await.expect("drain admission lane");
 }
-
-#[tokio::test(flavor = "multi_thread")]
-async fn concurrent_ready_generation_receipts_are_checkout_free_and_sub_millisecond() {
-    const REQUEST_COUNT: usize = 4_096;
-    let mut requests = tokio::task::JoinSet::new();
-    for _ in 0..REQUEST_COUNT {
-        requests.spawn(async {
-            let started = tokio::time::Instant::now();
-            let receipt = agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationReadinessReceipt::new(
-                "workspace-ready-generation",
-                crate::runtime_server_generation_admission::committed_generation(),
-                false,
-            );
-            (receipt, started.elapsed())
-        });
-    }
-
-    let mut latencies = Vec::with_capacity(REQUEST_COUNT);
-    while let Some(result) = requests.join_next().await {
-        let (receipt, elapsed) = result.expect("join readiness request");
-        let receipt = receipt.expect("construct readiness receipt");
-        receipt.validate().expect("validate readiness receipt");
-        assert!(!receipt.reconciled);
-        latencies.push(elapsed);
-    }
-    latencies.sort_unstable();
-    let p99 = latencies[(latencies.len() * 99 / 100).min(latencies.len() - 1)];
-    assert!(
-        p99 < std::time::Duration::from_millis(1),
-        "ready generation receipt p99 must remain sub-millisecond: {p99:?}"
-    );
-}

@@ -12,6 +12,7 @@ fn configured_projection_rule(
                 document_format,
                 filter_grammar:
                     agent_semantic_config::HookClientStructuredFilterGrammar::BoundedPathV1,
+                max_slice_items: 64,
                 optional_subcommand_any,
                 option_any: Vec::new(),
                 option_value_arity: std::collections::BTreeMap::new(),

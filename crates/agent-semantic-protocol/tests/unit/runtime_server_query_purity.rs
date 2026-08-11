@@ -13,6 +13,10 @@ fn query_data_plane_never_invokes_generation_reconciliation() {
     );
     assert!(!data_plane.contains("ensure_runtime_generation_ready"));
     assert!(data_plane.contains("runtime_server_workspace_session_async"));
+    assert!(!query_adapter.contains("ensure_runtime_generation_ready"));
+    assert!(!query_adapter.contains("ensure_runtime_generation()"));
+    assert!(!query_adapter.contains("RuntimeWorkspaceAdmissionCatalog::resolve_mapped"));
+    assert!(!query_adapter.contains("RuntimeWorkspaceScopeResolution"));
     assert!(!data_plane.contains("connect_hook_workspace_session"));
     assert!(!data_plane.contains("runtime_generation_pointer_path"));
     assert!(!data_plane.contains("connect_runtime_server_workspace_session"));
@@ -36,6 +40,9 @@ fn exact_projection_is_a_read_only_generation_consumer() {
         "publish_owner_overlay",
         "tombstone_owner_overlay",
         "ensure_runtime_generation_ready",
+        "await_agent_facing_runtime_server_client",
+        "block_on(",
+        "std::thread",
     ] {
         assert!(
             !source.contains(forbidden),
@@ -75,24 +82,27 @@ fn owner_items_is_a_pre_activation_resident_read() {
 fn search_adapter_never_decodes_the_complete_resident_generation() {
     let dispatch = include_str!("../../src/command/provider_dispatch.rs");
     let data_plane = include_str!("../../src/server/runtime_server_generation_data_plane.rs");
-    let source = include_str!("../../src/command/search_pipe_source.rs");
-    let facts = include_str!("../../src/command/search_pipe_provider_facts.rs");
 
     assert!(!dispatch.contains("runtime_server_workspace_generation_client_async"));
     assert!(!dispatch.contains("WorkspaceGenerationDataPlaneClient"));
-    assert!(dispatch.contains("runtime_server_search_data_plane_async"));
-    assert!(data_plane.contains("runtime_search_generation_authority"));
-    assert!(source.contains("read_source_index"));
-    let projection = include_str!(
-        "../../../agent-semantic-client-db/src/runtime_server_workspace/search_index_projection.rs"
-    );
-    assert!(projection.contains("read_graph_facts"));
-    assert!(
-        !source.contains(".lease().read_source_index"),
-        "short-lived search reintroduced a complete process-local generation lease"
-    );
-    assert!(
-        !facts.contains(".relations_from("),
-        "short-lived search reintroduced process-local relation graph decoding"
-    );
+    assert!(dispatch.contains("run_client_backend_command("));
+    assert!(!dispatch.contains("runtime_server_search_data_plane_async"));
+    assert!(!dispatch.contains("run_asp_fast_search_command"));
+    assert!(!dispatch.contains("await_agent_facing_runtime_server_client"));
+    assert!(data_plane.contains("project_provider_owner"));
+    assert!(data_plane.contains("ProviderProjection"));
+    assert!(!data_plane.contains("runtime_search_generation_authority"));
+}
+
+#[test]
+fn search_db_facade_is_tokio_native_without_a_sync_bridge() {
+    let facade = include_str!("../../../agent-semantic-client-db/src/engine/search_facade.rs");
+    assert!(facade.contains("pub async fn search_source_index_documents_from_client_dir"));
+    assert!(facade.contains("pub async fn search_structural_index_documents_from_client_dir"));
+    for forbidden in ["block_on_db_engine", "std::thread", "thread::sleep"] {
+        assert!(
+            !facade.contains(forbidden),
+            "search DB facade reintroduced a synchronous compatibility bridge: {forbidden}"
+        );
+    }
 }

@@ -340,6 +340,58 @@ impl WorkspaceGenerationAdmission {
         Ok(receipt)
     }
 
+    /// Admit one observed mutation and return only after every affected workspace reaches the
+    /// terminal state for the exact attempt scheduled by this mutation.
+    pub async fn admit_observed_mutation_terminal(
+        &self,
+        mutation_id: impl Into<String>,
+        workspace_identity: impl Into<String>,
+        project_root: PathBuf,
+        changed_paths: Vec<PathBuf>,
+        candidate: super::WorkspaceGenerationCandidateIdentity,
+    ) -> Result<WorkspaceGenerationMutationAdmissionReceipt, String> {
+        let workspace_identity = workspace_identity.into();
+        let mut receipt = self
+            .admit_observed_mutation(
+                mutation_id,
+                workspace_identity.clone(),
+                project_root.clone(),
+                changed_paths,
+                candidate,
+            )
+            .await?;
+        for admitted in &mut receipt.receipts {
+            let affected_root = if admitted.workspace_identity == workspace_identity {
+                project_root.clone()
+            } else {
+                self.catalog
+                    .as_ref()
+                    .and_then(|catalog| {
+                        catalog
+                            .snapshot()
+                            .iter()
+                            .find(|entry| entry.workspace_identity == admitted.workspace_identity)
+                            .map(|entry| entry.project_root.clone())
+                    })
+                    .ok_or_else(|| {
+                        format!(
+                            "terminal mutation admission cannot resolve affected workspace root: workspaceIdentity={}",
+                            admitted.workspace_identity
+                        )
+                    })?
+            };
+            *admitted = self
+                .wait_terminal_attempt(
+                    &admitted.workspace_identity,
+                    &affected_root,
+                    admitted.attempt,
+                )
+                .await?;
+        }
+        receipt.validate()?;
+        Ok(receipt)
+    }
+
     /// Rebuild the canonical server-owned cache generation under an exact-once mutation ID.
     pub async fn admit_cache_rebuild(
         &self,

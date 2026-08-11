@@ -4,7 +4,7 @@ use crate::protocol_activation::protocol_activation_manifest::{HookActivation, H
 use crate::protocol_activation::protocol_activation_runtime::parse_activation;
 use crate::provider_manifest::{
     DefaultActivationSelections, ProviderCommandSelection, ProviderCommandSelectionScopeV1,
-    build_default_activation_from_selections, default_activation_selections_for_scope,
+    default_activation_selections_for_scope,
     default_activation_selections_for_scope_with_state_home,
     default_activation_selections_with_state_home_and_binary, provider_manifests,
 };
@@ -61,13 +61,10 @@ pub fn load_or_sync_activation_with_state_home(
 pub fn registered_language_runtime(
     project_root: &Path,
     language_id: &str,
-    activation_path: &Path,
+    _activation_path: &Path,
 ) -> Result<HookRuntime, String> {
     let scope = ProviderCommandSelectionScopeV1::TargetLanguage(language_id.into());
-    let selections =
-        default_activation_selections_for_scope(project_root, &scope, Some(activation_path))?;
-    let activation = build_default_activation_from_selections(project_root, &selections)?;
-    activation_to_runtime(&activation)
+    crate::provider_runtime::build_provider_runtime_for_scope(project_root, &scope)
 }
 
 /// Result of syncing the generated default activation during install.
@@ -226,62 +223,12 @@ fn load_or_refresh_default_activation_inner(
     emit_activation_timing("build-activation", build_started);
     let write_started = std::time::Instant::now();
     write_activation(activation_path, &activation)?;
-    materialize_activation_receipt(
-        activation_path,
-        project_root,
-        state_home,
-        &current_selections,
-    )?;
     emit_activation_timing("write-activation", write_started);
     Ok(DefaultActivationSync {
         activation,
         status: if existed { "refreshed" } else { "created" },
         admission: assessment.receipt,
     })
-}
-
-fn materialize_activation_receipt(
-    activation_path: &Path,
-    project_root: &Path,
-    state_home: Option<&Path>,
-    selections: &DefaultActivationSelections,
-) -> Result<(), String> {
-    let provider_artifacts = selections
-        .providers()
-        .iter()
-        .map(|selection| {
-            let executable = selection.provider_command_prefix().first().ok_or_else(|| {
-                format!(
-                    "provider selection has no executable command: language={} provider={}",
-                    selection.language_id(),
-                    selection.provider_id()
-                )
-            })?;
-            match state_home {
-                Some(state_home) => crate::active_provider_artifact_input_with_state_home(
-                    project_root,
-                    state_home,
-                    selection.language_id(),
-                    selection.provider_id(),
-                    PathBuf::from(executable),
-                ),
-                None => crate::active_provider_artifact_input(
-                    project_root,
-                    selection.language_id(),
-                    selection.provider_id(),
-                    PathBuf::from(executable),
-                ),
-            }
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-    let graph_turbo = selections.graph_turbo();
-    crate::materialize_active_asp_artifact_receipt(
-        Path::new(graph_turbo.binary()),
-        graph_turbo.content_digest(),
-        activation_path,
-        &provider_artifacts,
-    )?;
-    Ok(())
 }
 
 fn emit_activation_timing(step: &str, started: std::time::Instant) {
@@ -320,18 +267,9 @@ fn assess_activation(
             ));
         }
     };
-    let current_runtime_binary = Path::new(current_selections.graph_turbo().binary());
-    if crate::verify_active_asp_artifact_receipt(activation_path, &[current_runtime_binary])
-        .is_err()
-    {
-        return Ok(ActivationAssessment {
-            activation: None,
-            receipt: ActivationAdmissionReceipt::rebuild(
-                ActivationAdmissionReason::ArtifactReceiptInvalid,
-                gates,
-            ),
-        });
-    }
+    // Workspace-local artifact receipts are retired derived caches, not
+    // admission authority. Current Runtime-owned selections are validated
+    // below against the activation itself.
     gates.artifact_receipt_valid = true;
     if parse_activation(&contents, &provider_manifests()).is_err() {
         return Ok(ActivationAssessment {
@@ -365,6 +303,30 @@ fn assess_activation(
     if !activation_matches_provider_command_selections(&activation, current_selections.providers())
         || !activation_matches_graph_turbo_selection(&activation, current_selections.graph_turbo())
     {
+        return Ok(ActivationAssessment {
+            activation: None,
+            receipt: ActivationAdmissionReceipt::rebuild(
+                ActivationAdmissionReason::ProviderSelectionDrift,
+                gates,
+            ),
+        });
+    }
+    let manifests = provider_manifests();
+    let manifest_coverage_matches = activation.providers.iter().all(|provider| {
+        let Some(manifest) = manifests
+            .iter()
+            .find(|manifest| manifest.manifest_id == provider.manifest_id)
+        else {
+            return false;
+        };
+        let Ok(current) = crate::provider_manifest::activation_capability_coverage(manifest) else {
+            return false;
+        };
+        provider.coverage.package_roots == current.package_roots
+            && provider.coverage.config_files == current.config_files
+            && provider.coverage.source_extensions == current.source_extensions
+    });
+    if !manifest_coverage_matches {
         return Ok(ActivationAssessment {
             activation: None,
             receipt: ActivationAdmissionReceipt::rebuild(
@@ -440,7 +402,7 @@ fn sync_activation(project_root: &Path, activation_path: &Path) -> Result<HookRu
     activation_to_runtime(&sync.activation)
 }
 
-fn activation_to_runtime(activation: &HookActivation) -> Result<HookRuntime, String> {
+pub(crate) fn activation_to_runtime(activation: &HookActivation) -> Result<HookRuntime, String> {
     let contents = serde_json::to_string(activation)
         .map_err(|error| format!("failed to serialize generated activation: {error}"))?;
     parse_activation(&contents, &provider_manifests()).map_err(|error| format!("{error:?}"))

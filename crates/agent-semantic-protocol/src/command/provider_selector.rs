@@ -81,33 +81,6 @@ fn suggested_language_facade_for_request(
     }
     None
 }
-pub(super) fn reject_search_file_workspace(
-    args: &[String],
-    invocation_root: &Path,
-) -> Result<(), String> {
-    if !matches!(args.first().map(String::as_str), Some("search")) {
-        return Ok(());
-    }
-    let Some(workspace) = option_value(args, "--workspace") else {
-        return Ok(());
-    };
-    if workspace.starts_with('-') {
-        return Ok(());
-    }
-    let workspace_path = PathBuf::from(workspace);
-    let workspace_path = if workspace_path.is_absolute() {
-        workspace_path
-    } else {
-        invocation_root.join(workspace_path)
-    };
-    if workspace_path.is_file() {
-        return Err(
-            "--workspace requires a directory project root; Keep the file path as the owner/selector"
-                .to_string(),
-        );
-    }
-    Ok(())
-}
 
 pub(super) fn is_provider_owned_structural_selector_query(
     language_id: &str,
@@ -127,7 +100,6 @@ pub(super) fn is_provider_owned_structural_selector_query(
         .is_ok_and(|selector| selector.language_id.as_str() == language_id)
 }
 
-use std::path::{Path, PathBuf};
 pub(super) fn option_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     let prefix = format!("{flag}=");
     args.iter()

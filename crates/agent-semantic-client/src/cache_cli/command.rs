@@ -84,11 +84,11 @@ fn runtime_cache_mutation_id(action: &str) -> Result<String, String> {
     ))
 }
 
-fn run_runtime_cache_control(
+async fn run_runtime_cache_control(
     request: RuntimeCacheControlRequest,
     receipt_json: bool,
 ) -> Result<(), String> {
-    let receipt = cache_control_via_runtime_server(request)?;
+    let receipt = cache_control_via_runtime_server(request).await?;
     println!(
         "[asp-cache] status={:?} route=runtime-server action={} authority={} generation={} databaseOpensByClient={} writerQueueOwner={}",
         receipt.generation_state,
@@ -112,7 +112,7 @@ fn run_runtime_cache_control(
     Ok(())
 }
 
-fn run_source_index_lookup(
+async fn run_source_index_lookup(
     project_root: &Path,
     facade_language_id: Option<&LanguageId>,
     args: &[String],
@@ -130,7 +130,8 @@ fn run_source_index_lookup(
         query: spec.query.clone(),
         language_id: facade_language_id.cloned(),
         limit: spec.limit,
-    })?;
+    })
+    .await?;
     if result.candidates.is_empty() {
         println!(
             "noOutput reason=source-index-{} query={} indexRoot={} route=runtime-server",
@@ -209,7 +210,7 @@ fn run_source_index_lookup(
     Ok(())
 }
 
-pub(crate) fn run_cache(
+pub(crate) async fn run_cache(
     project_root: &Path,
     facade_language_id: Option<&LanguageId>,
     forwarded_args: &[String],
@@ -239,14 +240,16 @@ pub(crate) fn run_cache(
                 project_root: project_root_text,
             },
             receipt_json,
-        ),
+        )
+        .await,
         [subcommand] if subcommand == "import" => run_runtime_cache_control(
             RuntimeCacheControlRequest::RebuildSourceIndex {
                 project_root: project_root_text,
                 mutation_id: runtime_cache_mutation_id("rebuild-source-index")?,
             },
             receipt_json,
-        ),
+        )
+        .await,
         [subcommand, action] if subcommand == "source-index" && action == "refresh" => {
             run_runtime_cache_control(
                 RuntimeCacheControlRequest::RefreshSourceIndex {
@@ -255,11 +258,12 @@ pub(crate) fn run_cache(
                 },
                 receipt_json,
             )
+            .await
         }
         [subcommand, action, rest @ ..]
             if subcommand == "source-index" && action == "lookup" =>
         {
-            run_source_index_lookup(project_root, facade_language_id, rest, receipt_json)
+            run_source_index_lookup(project_root, facade_language_id, rest, receipt_json).await
         }
         [subcommand, scope] if subcommand == "flush" && scope == "syntax-rows" => {
             run_runtime_cache_control(
@@ -270,6 +274,7 @@ pub(crate) fn run_cache(
                 },
                 receipt_json,
             )
+            .await
         }
         [subcommand] if subcommand == "invalidate" || subcommand == "flush" => {
             run_runtime_cache_control(
@@ -280,6 +285,7 @@ pub(crate) fn run_cache(
                 },
                 receipt_json,
             )
+            .await
         }
         _ => Err(
             "usage: asp cache <status|gc [--grace-days <n>] [--apply]|clean --day[=<days>]|import|source-index refresh|source-index lookup --query <term> [--index-root <path>] [--limit <n>]|invalidate|flush [syntax-rows]>; use asp <language> cache source-index lookup ... for language-scoped lookup"

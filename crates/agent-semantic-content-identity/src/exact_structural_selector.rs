@@ -34,6 +34,56 @@ pub struct ExactStructuralSelectorSegmentV1 {
     pub label: Option<String>,
 }
 
+/// Lossless V1 identity parsed from an exact structural-selector request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExactStructuralSelectorPathV1 {
+    pub selector: String,
+    pub root_selector: String,
+    pub segments: Vec<ExactStructuralSelectorPathSegmentV1>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExactStructuralSelectorPathSegmentV1 {
+    pub kind: String,
+    pub identity: String,
+}
+
+impl ExactStructuralSelectorPathV1 {
+    pub fn parse(structural_selector: impl Into<String>) -> Result<Self, String> {
+        let selector = structural_selector.into();
+        let mut parts = selector.split("/segment/");
+        let root = parts.next().unwrap_or_default().to_owned();
+        if root.is_empty() || !root.contains("://") || !root.contains('#') {
+            return Err(
+                "exact descendant structuralSelector must include a canonical root item"
+                    .to_string(),
+            );
+        }
+        let mut segments = Vec::new();
+        for descendant in parts {
+            let (kind, identity) = descendant.split_once('/').ok_or_else(|| {
+                "exact descendant structuralSelector segment must include <kind>/<identity>"
+                    .to_string()
+            })?;
+            if kind.is_empty() || identity.is_empty() || identity.contains('/') {
+                return Err(
+                    "exact descendant structuralSelector segment must be a canonical <kind>/<identity> pair"
+                        .to_string(),
+                );
+            }
+            segments.push(ExactStructuralSelectorPathSegmentV1 {
+                kind: kind.to_owned(),
+                identity: identity.to_owned(),
+            });
+        }
+        Ok(Self {
+            selector,
+            root_selector: root,
+            segments,
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ExactStructuralSelectorV1 {

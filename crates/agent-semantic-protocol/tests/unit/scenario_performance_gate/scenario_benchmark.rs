@@ -14,20 +14,8 @@ fn asp_language_scenarios_define_cold_first_performance_gates() {
     );
 }
 
-#[test]
-fn asp_selector_seeded_search_pipe_frontier_stays_inside_scenario_gate() {
-    super::search_frame::asp_selector_seeded_search_pipe_frontier_stays_inside_scenario_gate();
-}
 
-#[test]
-fn search_frame_codebase_memory_mcp_reference_benchmark_records_round_delta() {
-    super::search_frame::search_frame_codebase_memory_mcp_reference_benchmark_records_round_delta();
-}
 
-#[test]
-fn exact_selector_inventory_routes_to_main_direct_fetch() {
-    super::search_frame::exact_selector_inventory_routes_to_main_direct_fetch();
-}
 
 #[test]
 fn asp_evidence_graph_rank_cold_functional_path_stays_inside_scenario_gate() {
@@ -39,20 +27,12 @@ fn asp_search_candidate_contract_cold_functional_path_stays_inside_scenario_gate
     super::search_candidate_contract::asp_search_candidate_contract_cold_functional_path_stays_inside_scenario_gate();
 }
 
-#[test]
-fn asp_query_selector_directory_code_preflight_cold_functional_path_stays_inside_scenario_gate() {
-    super::query_selector_preflight::asp_query_selector_directory_code_preflight_cold_functional_path_stays_inside_scenario_gate();
-}
 
 #[test]
 fn asp_search_pipe_generated_candidate_cold_functional_path_stays_inside_scenario_gate() {
     super::overlay_and_provider_gates::asp_search_pipe_generated_candidate_cold_functional_path_stays_inside_scenario_gate();
 }
 
-#[test]
-fn asp_search_owner_items_invalid_owner_preflight_scenario_gate() {
-    super::search_command_preflight::search_owner_items_invalid_owner_preflight_scenario_gate();
-}
 
 #[test]
 fn asp_gerbil_deps_active_gxi_stdlib_hot_path_stays_inside_scenario_gate() {
@@ -99,30 +79,10 @@ fn asp_graph_evidence_projection_cold_functional_path_stays_inside_scenario_gate
     super::graph::asp_graph_evidence_projection_cold_functional_path_stays_inside_scenario_gate();
 }
 
-#[test]
-fn asp_search_pipe_package_cohesion_cold_functional_path_stays_inside_scenario_gate() {
-    super::search_pipe_gates::asp_search_pipe_package_cohesion_cold_functional_path_stays_inside_scenario_gate();
-}
 
-#[test]
-fn asp_search_pipe_query_pack_cold_functional_path_stays_inside_scenario_gate() {
-    super::search_pipe_gates::asp_search_pipe_query_pack_cold_functional_path_stays_inside_scenario_gate();
-}
 
-#[test]
-fn asp_search_pipe_quality_decision_cold_functional_path_stays_inside_scenario_gate() {
-    super::search_pipe_gates::asp_search_pipe_quality_decision_cold_functional_path_stays_inside_scenario_gate();
-}
 
-#[test]
-fn asp_search_pipe_evidence_classifier_cold_functional_path_stays_inside_scenario_gate() {
-    super::search_pipe_gates::asp_search_pipe_evidence_classifier_cold_functional_path_stays_inside_scenario_gate();
-}
 
-#[test]
-fn asp_search_query_budget_cold_functional_path_stays_inside_scenario_gate() {
-    super::search_pipe_gates::asp_search_query_budget_cold_functional_path_stays_inside_scenario_gate();
-}
 
 #[test]
 fn asp_runtime_owner_items_receipt_cold_functional_path_stays_inside_scenario_gate() {

@@ -36,10 +36,6 @@ mod command_gerbil_check_cache;
 mod command_global_provider_catalog;
 #[path = "unit/command/graph_turbo_resident_runtime.rs"]
 mod command_graph_turbo_resident_runtime;
-#[path = "unit/command/search_pipe_evidence_projection.rs"]
-mod command_search_pipe_evidence_projection;
-#[path = "unit/command/search_pipe_projection.rs"]
-mod command_search_pipe_projection;
 #[path = "unit/command/search_router_graph_state.rs"]
 mod command_search_router_graph_state;
 #[path = "unit/context_product_state.rs"]
@@ -104,5 +100,7 @@ mod source_access_command;
 mod state_home_fixture;
 #[path = "unit/tree_sitter_query_diagnostics.rs"]
 mod tree_sitter_query_diagnostics;
+#[path = "unit/unit_state_home_fixture.rs"]
+mod unit_state_home_fixture;
 #[path = "unit/workspace_tree_sitter_query_diagnostics.rs"]
 mod workspace_tree_sitter_query_diagnostics;

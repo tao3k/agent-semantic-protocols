@@ -34,6 +34,20 @@ fn public_server_lifecycle_rejects_workspace_identity() {
 }
 
 #[test]
+fn query_scope_derives_identity_without_catalog_or_bootstrap() {
+    let project_root = std::env::current_dir()
+        .expect("current project root")
+        .canonicalize()
+        .expect("canonical project root");
+    let expected = agent_semantic_client_db::AgentSessionRegistry::workspace_id(&project_root)
+        .expect("derive workspace identity");
+    let (actual, canonical_root) =
+        super::runtime_server_query_workspace_scope(&project_root).expect("derive query scope");
+    assert_eq!(actual, expected);
+    assert_eq!(canonical_root, project_root);
+}
+
+#[test]
 fn operator_cold_start_budget_is_distinct_from_non_blocking_runtime_ensure() {
     assert_eq!(
         super::OPERATOR_RUNTIME_SERVER_STARTUP_BUDGET,

@@ -42,26 +42,37 @@ fn resident_exact_adapter_does_not_own_diagnostic_policy() {
 }
 
 #[test]
-fn resident_owner_search_cold_miss_is_a_read_only_failure_without_source_read() {
-    let adapter_source = include_str!("../../src/command/search_pipe_owner_items.rs");
-    assert!(adapter_source.contains("runtime_server_workspace_exact_projection_client_async"));
+fn provider_native_owner_search_is_independent_from_pipe_and_workspace_generation() {
+    let adapter_source = include_str!("../../src/command/search_owner_items.rs");
+    assert!(adapter_source.contains("project_provider_owner"));
+    assert!(adapter_source.contains("runtime_server_stateless_search_session_async"));
     for forbidden in [
         "runtime_server_workspace_session_async",
         "runtime_server_workspace_session_for_admission_async",
         "ensure_runtime_owner(",
-        "std::fs::read",
-        "tokio::fs::read",
         "UnixStream",
-        "run_provider_owner_native",
         "ensure_runtime_generation_ready",
+        "search_pipe",
     ] {
         assert!(
             !adapter_source.contains(forbidden),
             "owner search hot path contains forbidden I/O token: {forbidden}"
         );
     }
-    assert!(adapter_source.contains("let provider_invocations = 0;"));
-    assert!(adapter_source.contains("controlRoundtrips={}"));
+    assert!(adapter_source.contains("providerInvocations=1"));
+    assert!(adapter_source.contains("controlRoundtrips=0"));
+}
+
+#[test]
+fn owner_command_dispatch_is_not_part_of_the_search_pipe_engine() {
+    let dispatch = include_str!("../../src/command/provider_dispatch.rs");
+    let modules = include_str!("../../src/command/mod.rs");
+
+    assert!(dispatch.contains("is_search_owner_items_query(&command_args)"));
+    assert!(dispatch.contains("run_search_owner_items_query_command("));
+    assert!(modules.contains("mod search_owner_items;"));
+    assert!(!modules.contains("mod search_pipe;"));
+    assert!(!dispatch.contains("run_asp_fast_search_command"));
 }
 
 #[test]

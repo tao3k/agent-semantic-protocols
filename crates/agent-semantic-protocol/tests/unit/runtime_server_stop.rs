@@ -22,11 +22,13 @@ fn fixture_endpoint(state_home: &std::path::Path, owner_epoch: u64) -> RuntimeSe
 }
 
 async fn publish_fixture(state_home: &std::path::Path, endpoint: &RuntimeServerEndpoint) {
-    tokio::fs::create_dir_all(state_home.join("runtime").join("server"))
+    let endpoint_path =
+        runtime_server_endpoint_path(state_home).expect("resolve host-local endpoint authority");
+    tokio::fs::create_dir_all(endpoint_path.parent().expect("endpoint authority parent"))
         .await
         .expect("create runtime root");
     tokio::fs::write(
-        runtime_server_endpoint_path(state_home),
+        &endpoint_path,
         serde_json::to_vec(endpoint).expect("encode endpoint"),
     )
     .await
@@ -36,6 +38,13 @@ async fn publish_fixture(state_home: &std::path::Path, endpoint: &RuntimeServerE
         &endpoint.data_plane_socket_path,
         &endpoint.status_memory_path,
     ] {
+        tokio::fs::create_dir_all(
+            std::path::Path::new(path)
+                .parent()
+                .expect("owned runtime artifact parent"),
+        )
+        .await
+        .expect("create owned runtime artifact parent");
         tokio::fs::write(path, b"fixture")
             .await
             .expect("publish owned artifact");
@@ -87,8 +96,11 @@ async fn replacement_epoch_is_never_removed_by_a_stale_stop_owner() {
             .expect_err("stale stop owner must not retire replacement epoch");
     assert!(error.contains("terminal artifacts remain"));
     assert!(
-        tokio::fs::try_exists(runtime_server_endpoint_path(state_home.path()))
-            .await
-            .expect("inspect replacement endpoint")
+        tokio::fs::try_exists(
+            runtime_server_endpoint_path(state_home.path())
+                .expect("resolve replacement endpoint authority"),
+        )
+        .await
+        .expect("inspect replacement endpoint")
     );
 }

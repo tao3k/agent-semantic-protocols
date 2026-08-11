@@ -1,0 +1,276 @@
+//! Atomic canonical-generation publication owned by the workspace writer lane.
+
+use std::{collections::HashMap, sync::Arc};
+
+use tokio::sync::oneshot;
+
+use super::core::{RuntimeDataPlaneCounterState, WorkspaceWriteTarget};
+use crate::runtime_server_workspace::{
+    RuntimeDataPlaneCounters, WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID,
+    WorkspaceCanonicalMaterialization, WorkspaceGenerationState, WorkspaceMemoryBackend,
+    WorkspaceRecoveryReceipt, WorkspaceRecoverySource,
+};
+
+/// One canonical materialization command admitted by the workspace writer.
+#[derive(Debug)]
+pub(super) struct EnsureCanonicalGenerationCommand {
+    pub(super) target: WorkspaceWriteTarget,
+    pub(super) request_id: String,
+    pub(super) workspace_identity: String,
+    pub(super) materialization: WorkspaceCanonicalMaterialization,
+    pub(super) prepared_index: Arc<super::super::memory_backend::WorkspaceMemoryIndex>,
+    pub(super) reply: oneshot::Sender<Result<WorkspaceRecoveryReceipt, String>>,
+}
+
+/// Publish the immutable generation before exposing resident state or replying `Ready`.
+pub(super) async fn publish_canonical_generation(
+    command: EnsureCanonicalGenerationCommand,
+    counters: &RuntimeDataPlaneCounterState,
+    last_receipts: &mut HashMap<String, WorkspaceRecoveryReceipt>,
+) {
+    let resident_publication_started = tokio::time::Instant::now();
+    let EnsureCanonicalGenerationCommand {
+        target,
+        request_id,
+        workspace_identity,
+        materialization,
+        prepared_index,
+        reply,
+    } = command;
+    let WorkspaceWriteTarget {
+        scope_key,
+        current,
+        durability,
+        overlays,
+        publisher,
+    } = target;
+    let active = current.borrow().clone();
+    let active_epoch = active
+        .as_ref()
+        .map_or(0, |backend| backend.generation().active_epoch);
+    let generation_build_started = tokio::time::Instant::now();
+    let generation = materialization.into_generation(active_epoch).map(Arc::new);
+    record_generation_build(&workspace_identity, generation_build_started.elapsed());
+
+    let result = match generation {
+        Ok(generation)
+            if active.as_ref().is_some_and(|backend| {
+                backend.generation().generation_digest == generation.generation_digest
+                    && backend.generation().selector_set_digest == generation.selector_set_digest
+            }) && super::super::WorkspaceGenerationPointerReader::matches_generation(
+                publisher.pointer_path(),
+                &generation,
+            )
+            .await =>
+        {
+            reusable_receipt(
+                last_receipts,
+                &scope_key,
+                request_id,
+                workspace_identity,
+                &generation,
+                active_epoch,
+                resident_publication_started,
+            )
+        }
+        Ok(generation) => {
+            let progress = publishing_receipt(
+                &request_id,
+                &workspace_identity,
+                &generation,
+                active_epoch,
+                active.is_some(),
+                resident_publication_started,
+            );
+            match progress.and_then(|receipt| {
+                receipt.validate()?;
+                Ok(receipt)
+            }) {
+                Ok(_) => {
+                    let result = publish_new_generation(
+                        &current,
+                        &durability,
+                        &overlays,
+                        publisher.as_ref(),
+                        request_id,
+                        workspace_identity,
+                        generation,
+                        prepared_index,
+                        active_epoch,
+                        resident_publication_started,
+                        counters,
+                    )
+                    .await;
+                    if let Ok(receipt) = &result {
+                        last_receipts.insert(scope_key, receipt.clone());
+                    }
+                    let _ = reply.send(result);
+                    return;
+                }
+                Err(error) => Err(error),
+            }
+        }
+        Err(error) => Err(error),
+    }
+    .and_then(|receipt| {
+        receipt.validate()?;
+        Ok(receipt)
+    });
+
+    if let Ok(receipt) = &result {
+        if let Some(backend) = current.borrow().clone() {
+            overlays.reset(backend.generation());
+        }
+        last_receipts.insert(scope_key, receipt.clone());
+    }
+    let _ = reply.send(result);
+}
+
+fn record_generation_build(workspace_identity: &str, elapsed: std::time::Duration) {
+    let elapsed_micros = elapsed.as_micros().min(u128::from(u64::MAX)) as u64;
+    let budget_micros = 800_000;
+    let mut observation = crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
+        "workspace-canonical-materialization",
+        "generation-build",
+        elapsed_micros,
+        budget_micros,
+        if elapsed_micros < budget_micros {
+            "within-budget"
+        } else {
+            "budget-exceeded"
+        },
+    );
+    observation.workspace_identity = Some(workspace_identity.to_owned());
+    let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
+}
+
+fn reusable_receipt(
+    last_receipts: &HashMap<String, WorkspaceRecoveryReceipt>,
+    scope_key: &str,
+    request_id: String,
+    workspace_identity: String,
+    generation: &crate::runtime_server_workspace::WorkspaceMemoryGeneration,
+    active_epoch: u64,
+    started: tokio::time::Instant,
+) -> Result<WorkspaceRecoveryReceipt, String> {
+    last_receipts
+        .get(scope_key)
+        .cloned()
+        .or_else(|| {
+            active_epoch
+                .checked_sub(1)
+                .map(|previous_epoch| WorkspaceRecoveryReceipt {
+                    schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
+                    schema_version: "1".to_owned(),
+                    request_id,
+                    workspace_identity,
+                    source: WorkspaceRecoverySource::MmapCheckpoint,
+                    state: WorkspaceGenerationState::Ready,
+                    active_epoch: previous_epoch,
+                    target_epoch: active_epoch,
+                    generation_digest: generation.generation_digest.clone(),
+                    source_root_digest: generation.source_snapshot.root_digest.clone(),
+                    old_generation_readable: previous_epoch != 0,
+                    resident_publication_elapsed_micros: elapsed_micros(started),
+                    counters: RuntimeDataPlaneCounters::default(),
+                })
+        })
+        .ok_or_else(|| {
+            "runtime workspace canonical generation has no reusable recovery receipt".to_owned()
+        })
+}
+
+fn publishing_receipt(
+    request_id: &str,
+    workspace_identity: &str,
+    generation: &crate::runtime_server_workspace::WorkspaceMemoryGeneration,
+    active_epoch: u64,
+    old_generation_readable: bool,
+    started: tokio::time::Instant,
+) -> Result<WorkspaceRecoveryReceipt, String> {
+    Ok(WorkspaceRecoveryReceipt {
+        schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
+        schema_version: "1".to_owned(),
+        request_id: request_id.to_owned(),
+        workspace_identity: workspace_identity.to_owned(),
+        source: WorkspaceRecoverySource::TursoGeneration,
+        state: WorkspaceGenerationState::PublishingNext,
+        active_epoch,
+        target_epoch: generation.active_epoch,
+        generation_digest: generation.generation_digest.clone(),
+        source_root_digest: generation.source_snapshot.root_digest.clone(),
+        old_generation_readable,
+        resident_publication_elapsed_micros: elapsed_micros(started),
+        counters: RuntimeDataPlaneCounters::default(),
+    })
+}
+
+async fn publish_new_generation(
+    current: &tokio::sync::watch::Sender<Option<Arc<WorkspaceMemoryBackend>>>,
+    durability: &tokio::sync::watch::Sender<
+        Option<crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt>,
+    >,
+    overlays: &crate::runtime_server_workspace::ResidentOverlayStore,
+    publisher: &crate::runtime_server_workspace::WorkspaceGenerationPublisher,
+    request_id: String,
+    workspace_identity: String,
+    generation: Arc<crate::runtime_server_workspace::WorkspaceMemoryGeneration>,
+    prepared_index: Arc<super::super::memory_backend::WorkspaceMemoryIndex>,
+    active_epoch: u64,
+    started: tokio::time::Instant,
+    counters: &RuntimeDataPlaneCounterState,
+) -> Result<WorkspaceRecoveryReceipt, String> {
+    let target_epoch = generation.active_epoch;
+    let generation_digest = generation.generation_digest.clone();
+    let source_root_digest = generation.source_snapshot.root_digest.clone();
+    let backend = Arc::new(
+        WorkspaceMemoryBackend::from_validated_generation_with_index(
+            Arc::clone(&generation),
+            prepared_index,
+        )?,
+    );
+    let receipt = WorkspaceRecoveryReceipt {
+        schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
+        schema_version: "1".to_owned(),
+        request_id,
+        workspace_identity: workspace_identity.clone(),
+        source: WorkspaceRecoverySource::TursoGeneration,
+        state: WorkspaceGenerationState::Ready,
+        active_epoch,
+        target_epoch,
+        generation_digest: generation_digest.clone(),
+        source_root_digest,
+        old_generation_readable: active_epoch != 0,
+        resident_publication_elapsed_micros: elapsed_micros(started),
+        counters: RuntimeDataPlaneCounters::default(),
+    };
+    receipt.validate()?;
+    durability.send_replace(Some(
+        crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt::new(
+            workspace_identity.clone(),
+            generation_digest.clone(),
+            target_epoch,
+            crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::ResidentReady,
+            None,
+        )?,
+    ));
+
+    super::canonical_durability::commit_canonical_generation(
+        publisher,
+        generation,
+        active_epoch != 0,
+        durability,
+        &workspace_identity,
+        &generation_digest,
+        target_epoch,
+        counters,
+    )
+    .await?;
+    current.send_replace(Some(Arc::clone(&backend)));
+    overlays.reset(backend.generation());
+    Ok(receipt)
+}
+
+fn elapsed_micros(started: tokio::time::Instant) -> u64 {
+    u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX)
+}

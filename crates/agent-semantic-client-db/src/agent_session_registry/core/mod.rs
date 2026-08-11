@@ -12,4 +12,7 @@ pub(super) use storage::{
     turso_session_by_name,
 };
 
-pub(super) use crate::agent_session_registry::{bootstrap, dispatch, permissions, record, types};
+pub(super) use crate::agent_session_registry::{
+    bootstrap_owner as bootstrap, dispatch_owner as dispatch, permissions_owner as permissions,
+    record_owner as record, types_owner as types,
+};

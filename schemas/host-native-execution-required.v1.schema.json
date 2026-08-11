@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/host-native-execution-required.v1.schema.json",
+  "title": "Host Native Execution Required v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "reasonKind",
+    "executionAuthority",
+    "retryPolicy",
+    "argv",
+    "message",
+    "cause"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.host-native-execution-required"
+    },
+    "schemaVersion": { "const": "1" },
+    "state": { "const": "deferred" },
+    "reasonKind": { "const": "host-local-ipc-permission-denied" },
+    "executionAuthority": { "const": "host-native" },
+    "retryPolicy": { "const": "do-not-retry-in-current-sandbox" },
+    "argv": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "type": "string" }
+    },
+    "message": { "type": "string", "minLength": 1 },
+    "cause": { "type": "string", "minLength": 1 }
+  }
+}

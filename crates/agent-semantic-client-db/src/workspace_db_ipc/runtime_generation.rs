@@ -111,6 +111,20 @@ impl MutationWorkspaceLane {
         mutation_id: &str,
         changed_paths: &[String],
     ) -> Result<bool, String> {
+        // Duplicate submissions are the steady-state hot path.  Resolve them
+        // under the shard's shared read lock so a burst of identical Runtime
+        // mutation notifications does not serialize every caller through the
+        // DashMap entry writer.  The entry path below remains the atomic
+        // first-publisher authority and closes the read-to-insert race.
+        if let Some(existing) = self.submitted.get(mutation_id) {
+            return if existing.as_slice() == changed_paths {
+                Ok(false)
+            } else {
+                Err(format!(
+                    "runtime generation mutation identity was reused with different changed paths: mutationId={mutation_id}"
+                ))
+            };
+        }
         match self.submitted.entry(mutation_id.to_owned()) {
             dashmap::mapref::entry::Entry::Occupied(existing) => {
                 if existing.get().as_slice() == changed_paths {
@@ -191,15 +205,17 @@ async fn wait_for_mutation_flight(
     }
 }
 
-fn normalize_changed_paths(changed_paths: Vec<String>) -> Result<Vec<String>, String> {
-    let changed_paths = changed_paths
-        .into_iter()
-        .filter(|path| !path.trim().is_empty())
-        .collect::<std::collections::BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
+fn normalize_changed_paths(mut changed_paths: Vec<String>) -> Result<Vec<String>, String> {
+    changed_paths.retain(|path| !path.trim().is_empty());
     if changed_paths.is_empty() {
         return Err("runtime generation admission requires changed paths".to_owned());
+    }
+    // Normalize in place.  Mutation notifications overwhelmingly contain one
+    // path, so constructing a BTreeSet here made every coalesced notification
+    // pay an avoidable tree allocation on the Runtime IPC hot path.
+    if changed_paths.len() > 1 {
+        changed_paths.sort_unstable();
+        changed_paths.dedup();
     }
     Ok(changed_paths)
 }
@@ -292,6 +308,26 @@ impl WorkspaceDbIpcSession {
         {
             WorkspaceDbIpcResult::RuntimeOwner { read } => Ok(read),
             _ => Err("Runtime Server returned an unexpected runtime owner result".to_owned()),
+        }
+    }
+
+    pub async fn project_provider_owner(
+        &self,
+        language_id: agent_semantic_client_core::LanguageId,
+        owner_path: impl Into<String>,
+    ) -> Result<crate::runtime_server_workspace::WorkspaceOwnerSnapshot, String> {
+        match self
+            .call_operation(WorkspaceDbIpcOperation::ProjectProviderOwner {
+                project_root: self.runtime_project_root()?.display().to_string(),
+                language_id,
+                owner_path: owner_path.into(),
+            })
+            .await?
+        {
+            WorkspaceDbIpcResult::ProviderOwnerProjection { owner } => Ok(owner),
+            _ => Err(
+                "Runtime Server returned an unexpected provider owner projection result".to_owned(),
+            ),
         }
     }
 
@@ -428,6 +464,16 @@ impl WorkspaceDbIpcSession {
             return Err("runtime generation submission requires a mutation id".to_owned());
         }
         let changed_paths = normalize_changed_paths(changed_paths)?;
+        self.submit_runtime_generation_request(mutation_id, changed_paths)
+            .await
+    }
+
+    async fn submit_runtime_generation_request(
+        &self,
+        mutation_id: String,
+        changed_paths: Vec<String>,
+    ) -> Result<crate::runtime_server_admission::WorkspaceGenerationMutationSubmissionReceipt, String>
+    {
         let changed_path_count = changed_paths.len();
         let lane = self.shared.runtime_generation_mutations.get_or_init(|| {
             super::runtime_generation::runtime_generation_mutation_lane(
@@ -466,6 +512,31 @@ impl WorkspaceDbIpcSession {
         submitted
     }
 
+    pub async fn ensure_runtime_generation_ready(
+        &self,
+        request_id: impl Into<String>,
+    ) -> Result<crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt, String> {
+        let request_id = request_id.into();
+        if request_id.trim().is_empty() {
+            return Err("runtime generation readiness requires a request id".to_owned());
+        }
+        match self
+            .call_operation(WorkspaceDbIpcOperation::EnsureRuntimeGenerationReady {
+                request_id,
+                project_root: self.runtime_project_root()?.display().to_string(),
+            })
+            .await?
+        {
+            WorkspaceDbIpcResult::RuntimeGenerationReady { receipt } => {
+                receipt.validate()?;
+                Ok(receipt)
+            }
+            other => Err(format!(
+                "Runtime Server returned unexpected generation readiness result: {other:?}"
+            )),
+        }
+    }
+
     /// Route one cache-control request through the Runtime Server data plane.
     pub async fn cache_control(
         &self,
@@ -486,59 +557,6 @@ impl WorkspaceDbIpcSession {
         {
             WorkspaceDbIpcResult::CacheControl { receipt } => Ok(receipt),
             _ => Err("Runtime Server returned an unexpected cache-control result".to_owned()),
-        }
-    }
-
-    pub async fn ensure_runtime_generation(
-        &self,
-    ) -> Result<crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt, String> {
-        let project_root = self.runtime_project_root()?.to_path_buf();
-        match self
-            .call_operation(WorkspaceDbIpcOperation::EnsureRuntimeGeneration {
-                project_root: project_root.display().to_string(),
-            })
-            .await?
-        {
-            WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt } => Ok(receipt),
-            _ => Err("Runtime Server returned an unexpected ensured generation result".to_owned()),
-        }
-    }
-
-    /// Hold an explicit search/query lifecycle gate until the resident
-    /// generation attempt reaches terminal Ready. The Runtime Server owns the
-    /// wait and its notification; clients neither poll nor start a second
-    /// generation attempt.
-    pub async fn ensure_runtime_generation_ready(
-        &self,
-    ) -> Result<crate::runtime_server_admission::WorkspaceGenerationReadinessReceipt, String> {
-        let project_root = self.runtime_project_root()?.to_path_buf();
-        match self
-            .call_operation(WorkspaceDbIpcOperation::EnsureRuntimeGenerationReady {
-                project_root: project_root.display().to_string(),
-            })
-            .await?
-        {
-            WorkspaceDbIpcResult::RuntimeGenerationReadiness { receipt } => {
-                receipt.validate()?;
-                Ok(receipt)
-            }
-            _ => Err("Runtime Server returned an unexpected ready generation result".to_owned()),
-        }
-    }
-
-    pub async fn repair_runtime_generation_locator(
-        &self,
-    ) -> Result<crate::runtime_server_admission::WorkspaceGenerationReadinessReceipt, String> {
-        match self
-            .call_operation(WorkspaceDbIpcOperation::RepairRuntimeGenerationLocator {
-                project_root: self.runtime_project_root()?.display().to_string(),
-            })
-            .await?
-        {
-            WorkspaceDbIpcResult::RuntimeGenerationReadiness { receipt } => Ok(receipt),
-            _ => Err(
-                "Runtime Server returned an unexpected generation locator repair result".to_owned(),
-            ),
         }
     }
 

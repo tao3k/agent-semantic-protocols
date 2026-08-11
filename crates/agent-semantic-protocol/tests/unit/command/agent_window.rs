@@ -1,7 +1,8 @@
 use super::{AgentWindowRequest, session_control_plane_usage, session_platform_from_ids};
 use crate::command::org_capture_interactive::AgentInteractiveChoice;
 use crate::multi_agent_session::{
-    CONTROL_PLANE_CONTRACT_FILE, CONTROL_PLANE_CONTRACT_SOURCE, typed_runtime_failure_reason,
+    CONTROL_PLANE_CONTRACT_FILE, CONTROL_PLANE_CONTRACT_SOURCE, hook_inbox_reconciliation_receipt,
+    typed_runtime_failure_reason,
 };
 
 #[test]
@@ -123,5 +124,20 @@ fn runtime_failure_preserves_a_typed_server_code_without_guessing_from_message()
             "runtime-server-session-control-plane-unavailable",
         ),
         "runtime-server-session-control-plane-unavailable"
+    );
+}
+
+#[test]
+fn hook_inbox_permission_failure_is_typed_degradation_not_choice_plane_blocker() {
+    let receipt = hook_inbox_reconciliation_receipt(Some(
+        r#"{"schemaId":"agent.semantic-protocols.hook.memory-inbox-failure","reasonKind":"lock-open","detail":"Operation not permitted"}"#,
+    ));
+    assert_eq!(receipt["authority"], "recovery-log-only");
+    assert_eq!(receipt["state"], "degraded");
+    assert_eq!(receipt["blocksChoicePlane"], false);
+    assert!(
+        receipt["failure"]
+            .as_str()
+            .is_some_and(|failure| failure.contains("Operation not permitted"))
     );
 }

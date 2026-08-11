@@ -11,6 +11,10 @@ use crate::{
 use super::decision::deny_for_action;
 use super::recovery::source_access_recovery_message;
 
+pub(crate) fn policy_direct_read_routes(matches: &[DirectReadMatch]) -> Vec<DecisionRoute> {
+    direct_read_routes(matches)
+}
+
 pub(super) fn classify_direct_read_action(
     registry: &HookRuntime,
     platform: &str,
@@ -206,6 +210,26 @@ pub(super) fn classify_direct_read_action(
     }
 }
 
+pub(crate) fn materialize_source_access_decision(
+    registry: &HookRuntime,
+    platform: &str,
+    event: &str,
+    action: &ToolAction,
+    agent_action: Option<&crate::tool_action::AgentAction>,
+    semantic_ast_patch_enabled: bool,
+    recovery_prompt: &CompiledRecoveryPromptConfig,
+) -> Option<HookDecision> {
+    classify_direct_read_action(
+        registry,
+        platform,
+        event,
+        action,
+        agent_action,
+        semantic_ast_patch_enabled,
+        recovery_prompt,
+    )
+}
+
 type DirectReadMatch = SourceSelectorMatch;
 
 fn direct_source_read_decision(
@@ -292,7 +316,7 @@ pub(super) fn direct_read_routes(matches: &[DirectReadMatch]) -> Vec<DecisionRou
         .collect()
 }
 
-pub(super) fn direct_read_language_ids(
+pub(crate) fn direct_read_language_ids(
     matches: &[DirectReadMatch],
 ) -> Vec<agent_semantic_config::LanguageId> {
     matches

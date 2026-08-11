@@ -7,6 +7,7 @@ mod policy_candidate;
 
 #[doc = "Compiles config match primitives for this owner."]
 mod compile;
+pub(in crate::hook_config::core) use compile::{compile_command_contains, compile_globs};
 #[doc = "Resolves configured resident targets from compiled rules."]
 mod configured_resident;
 #[doc = "Owns compiled matcher value types for this owner."]

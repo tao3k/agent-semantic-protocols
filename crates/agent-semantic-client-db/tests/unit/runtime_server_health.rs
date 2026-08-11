@@ -4,6 +4,7 @@ use std::time::Duration;
 use agent_semantic_client_db::WorkspaceDbRegistry;
 use agent_semantic_client_db::runtime_server::RuntimeServer;
 use agent_semantic_client_db::runtime_server_control::{
+    RuntimeServerOperation, RuntimeServerState, call_runtime_server,
     prepare_runtime_server_endpoint_in, runtime_server_endpoint_path,
 };
 use agent_semantic_client_db::runtime_server_health::cached_runtime_server_health_at;
@@ -12,6 +13,7 @@ use agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_cached_health_is_sub_millisecond_at_p99() {
+    let _performance = crate::test_support::performance_lock();
     let state_home = tempfile::tempdir().expect("create isolated state home");
     let catalog = Arc::new(RuntimeArtifactCatalog::new(RuntimeArtifactMode::Release));
     let endpoint = prepare_runtime_server_endpoint_in(
@@ -25,10 +27,12 @@ async fn concurrent_cached_health_is_sub_millisecond_at_p99() {
     )
     .await
     .expect("prepare Runtime Server endpoint");
+    let health_endpoint = endpoint.clone();
     let server = RuntimeServer::bind_and_publish_with_catalog(
         endpoint,
         Arc::new(WorkspaceDbRegistry::default()),
-        &runtime_server_endpoint_path(state_home.path()),
+        &runtime_server_endpoint_path(state_home.path())
+            .expect("derive Runtime Server endpoint path"),
         catalog,
     )
     .await
@@ -36,7 +40,18 @@ async fn concurrent_cached_health_is_sub_millisecond_at_p99() {
     let shutdown = server.shutdown_handle();
     let server = tokio::spawn(server.serve());
 
-    let health = cached_runtime_server_health_at(state_home.path())
+    let serving = call_runtime_server(
+        &health_endpoint,
+        RuntimeServerOperation::Status,
+        health_endpoint.runtime_artifact_digest.clone(),
+        "cached-health-serving-barrier".to_owned(),
+    )
+    .await
+    .expect("synchronize with serving Runtime Server");
+    assert_eq!(serving.state, RuntimeServerState::Healthy);
+
+    let runtime_base = state_home.path().to_path_buf();
+    let health = cached_runtime_server_health_at(&runtime_base)
         .await
         .expect("admit cached health endpoint");
     assert!(health.is_healthy());
@@ -48,10 +63,10 @@ async fn concurrent_cached_health_is_sub_millisecond_at_p99() {
         .clamp(32, 512);
     let mut requests = tokio::task::JoinSet::new();
     for _ in 0..request_count {
-        let state_home = state_home.path().to_path_buf();
+        let runtime_base = runtime_base.clone();
         requests.spawn(async move {
             let started = tokio::time::Instant::now();
-            let health = cached_runtime_server_health_at(&state_home)
+            let health = cached_runtime_server_health_at(&runtime_base)
                 .await
                 .expect("read cached health");
             assert!(health.is_healthy());

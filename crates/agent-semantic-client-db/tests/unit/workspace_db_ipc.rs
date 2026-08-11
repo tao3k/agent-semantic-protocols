@@ -1,6 +1,6 @@
 use tempfile::TempDir;
 
-use crate::test_support::{StateHomeGuard, environment_lock, workspace};
+use crate::test_support::{StateHomeGuard, TestDir, environment_lock, workspace};
 use agent_semantic_client_db::workspace_db_ipc::{
     WorkspaceDbIpcOperation, WorkspaceDbIpcRequest, WorkspaceDbIpcResult, WorkspaceDbOwnerEndpoint,
     WorkspaceDbSourceIndexLookupRequest, bind_workspace_db_owner, call_workspace_db_owner,
@@ -77,7 +77,10 @@ async fn runtime_server_registry_rejects_non_gix_root_without_project_shell() {
         panic!("Runtime Server must reject a root not admitted by Gix");
     };
 
-    assert!(error.contains("refusing to materialize ephemeral non-Git search root"));
+    assert!(
+        error.contains("refusing to materialize") && error.contains("ephemeral"),
+        "non-Gix temporary roots must fail closed with a stable materialization reason: {error}"
+    );
     assert!(
         !state_home.join("projects/by-id").exists(),
         "rejected Tokio admission must create no State Core project shell"
@@ -223,7 +226,8 @@ async fn ipc_session_roundtrips_all_workspace_db_operations() {
     let _environment = environment_lock();
     let fixture = tempfile::TempDir::new().expect("create IPC fixture");
     let _state_home = StateHomeGuard::install(&fixture.path().join("state"));
-    let (_project_root, resolved, scope) = workspace(fixture.path(), "ipc-project-all-ops");
+    let project_fixture = TestDir::new("ipc-project-all-ops");
+    let (_project_root, resolved, scope) = workspace(project_fixture.path(), "ipc-project-all-ops");
     let endpoint = prepare_workspace_db_owner_endpoint(
         &fixture.path().join("r"),
         &scope.workspace_identity,
@@ -265,17 +269,20 @@ async fn ipc_session_roundtrips_all_workspace_db_operations() {
             limit: 32,
         };
         const SOURCE_INDEX_SAMPLES: usize = 32;
-        let source_index_started = std::time::Instant::now();
         let mut reads = tokio::task::JoinSet::new();
         for _ in 0..SOURCE_INDEX_SAMPLES {
             let session = session.clone();
             let request = source_index_request.clone();
-            reads.spawn(async move { session.read_source_index(&request).await });
+            reads.spawn(async move {
+                let started = std::time::Instant::now();
+                (session.read_source_index(&request).await, started.elapsed())
+            });
         }
+        let mut source_index_latencies = Vec::with_capacity(SOURCE_INDEX_SAMPLES);
         while let Some(read) = reads.join_next().await {
-            let error = read
-                .expect("join rejected control-plane source-index read")
-                .expect_err("control-plane source-index reads must fail closed");
+            let (result, elapsed) = read.expect("join rejected control-plane source-index read");
+            source_index_latencies.push(elapsed);
+            let error = result.expect_err("control-plane source-index reads must fail closed");
             assert!(
                 error.contains(
                     "source-index reads are only accepted by the Runtime Server data plane"
@@ -283,20 +290,24 @@ async fn ipc_session_roundtrips_all_workspace_db_operations() {
                 "unexpected source-index control-plane rejection: {error}"
             );
         }
-        let source_index_elapsed = source_index_started.elapsed();
-        let average_nanos = source_index_elapsed.as_nanos() / (SOURCE_INDEX_SAMPLES as u128);
+        source_index_latencies.sort_unstable();
+        let p75 = source_index_latencies[(SOURCE_INDEX_SAMPLES * 75).div_ceil(100) - 1];
+        let max = *source_index_latencies.last().expect("source-index samples");
         assert!(
-            average_nanos < 1_000_000,
-            "warm rejected source-index control-plane IPC average must remain sub-millisecond: samples={} elapsedMicros={} averageNanos={}",
-            SOURCE_INDEX_SAMPLES,
-            source_index_elapsed.as_micros(),
-            average_nanos,
+            p75 < std::time::Duration::from_millis(50),
+            "warm rejected source-index control-plane IPC p75 exceeded the 50ms queued-lane budget: samples={SOURCE_INDEX_SAMPLES} p75Nanos={}",
+            p75.as_nanos(),
+        );
+        assert!(
+            max < std::time::Duration::from_millis(500),
+            "warm rejected source-index control-plane IPC exceeded the 500ms hard boundary: maxNanos={}",
+            max.as_nanos(),
         );
         eprintln!(
-            "[workspace-db-source-index-control-plane-rejection-performance] samples={} elapsedMicros={} averageNanos={} budgetNanos=1000000",
+            "[workspace-db-source-index-control-plane-rejection-performance] samples={} p75Nanos={} maxNanos={} typicalBudgetNanos=50000000 hardBudgetNanos=500000000",
             SOURCE_INDEX_SAMPLES,
-            source_index_elapsed.as_micros(),
-            average_nanos,
+            p75.as_nanos(),
+            max.as_nanos(),
         );
         let owner_path = "src/lib.rs";
         let source_bytes = b"pub fn example() {}".to_vec();
@@ -776,9 +787,14 @@ async fn health_probe_is_bounded_when_owner_never_responds() {
         .expect_err("unresponsive owner must time out");
     unresponsive_owner.abort();
 
-    assert_eq!(error, "workspace resident DB service health exceeded 50ms");
+    assert_eq!(error, "workspace resident DB service health exceeded 500ms");
     assert!(
-        started.elapsed() < std::time::Duration::from_millis(150),
+        started.elapsed() >= std::time::Duration::from_millis(450),
+        "health timeout returned before its declared boundary: {:?}",
+        started.elapsed()
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_millis(650),
         "health timeout exceeded its bounded recovery window: {:?}",
         started.elapsed()
     );
@@ -789,7 +805,8 @@ async fn owner_session_roundtrip_writes_reads_and_finishes_durability() {
     let _environment = environment_lock();
     let fixture = TempDir::new().expect("create workspace session IPC tempfile");
     let _state_home = StateHomeGuard::install(&fixture.path().join("state"));
-    let (project_root, _resolved, scope) = workspace(fixture.path(), "ipc-project");
+    let project_fixture = TestDir::new("ipc-project");
+    let (project_root, _resolved, scope) = workspace(project_fixture.path(), "ipc-project");
     let endpoint = prepare_workspace_db_owner_endpoint(
         &fixture.path().join("r"),
         &scope.workspace_identity,

@@ -525,6 +525,77 @@ pub(crate) fn schema_registry() -> &'static SemanticLanguageRegistry {
     })
 }
 
+/// Materialize deterministic provider argv from a registered closed projection.
+pub fn registered_provider_method_projected_argv_v1(
+    language_id: &str,
+    provider_id: &str,
+    method: &str,
+    values: &super::ProviderMethodArgumentValuesV1,
+) -> Result<Vec<String>, String> {
+    use super::{
+        ProviderMethodArgumentSlotNameV1, ProviderMethodArgumentTokenV1,
+        ProviderMethodArgumentValueTypeV1,
+    };
+
+    let unavailable = |detail: &str| {
+        format!(
+            "reasonKind=provider-native-argument-projection-unavailable languageId={language_id} providerId={provider_id} method={method} detail={detail}"
+        )
+    };
+    let language = schema_registry()
+        .languages
+        .iter()
+        .find(|language| language.language_id == language_id)
+        .ok_or_else(|| unavailable("language-not-registered"))?;
+    if language.provider_id != provider_id {
+        return Err(unavailable("provider-identity-drift"));
+    }
+    let descriptor = language
+        .method_descriptors
+        .iter()
+        .find(|descriptor| descriptor.method == method)
+        .ok_or_else(|| unavailable("method-not-registered"))?;
+    let projection = descriptor
+        .argument_projection
+        .as_ref()
+        .ok_or_else(|| unavailable("projection-not-declared"))?;
+    if projection.schema_version != "1" {
+        return Err(unavailable("unsupported-schema-version"));
+    }
+    projection
+        .tokens
+        .iter()
+        .map(|token| match token {
+            ProviderMethodArgumentTokenV1::Literal(literal) => Ok(literal.value.clone()),
+            ProviderMethodArgumentTokenV1::Slot(slot) => {
+                let value = match (&slot.name, &slot.value_type) {
+                    (
+                        ProviderMethodArgumentSlotNameV1::Query,
+                        ProviderMethodArgumentValueTypeV1::String,
+                    ) => values.query.as_ref(),
+                    (
+                        ProviderMethodArgumentSlotNameV1::Workspace,
+                        ProviderMethodArgumentValueTypeV1::Path,
+                    ) => values.workspace.as_ref(),
+                    (
+                        ProviderMethodArgumentSlotNameV1::Presentation,
+                        ProviderMethodArgumentValueTypeV1::Presentation,
+                    ) => values.presentation.as_ref(),
+                    (
+                        ProviderMethodArgumentSlotNameV1::Owner,
+                        ProviderMethodArgumentValueTypeV1::Path,
+                    ) if method.starts_with("search/owner") => values.owner.as_ref(),
+                    _ => return Err(unavailable("slot-type-or-method-mismatch")),
+                };
+                value
+                    .filter(|value| !value.is_empty())
+                    .cloned()
+                    .ok_or_else(|| unavailable(&format!("missing-slot-{}", slot.name.as_str())))
+            }
+        })
+        .collect()
+}
+
 fn validate_schema_registry_v1(registry: &SemanticLanguageRegistry) -> Result<(), String> {
     let mut language_ids = std::collections::BTreeSet::new();
     for language in &registry.languages {

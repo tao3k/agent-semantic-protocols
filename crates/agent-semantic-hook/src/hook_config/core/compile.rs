@@ -8,7 +8,7 @@ use super::match_types::{
     CompiledCommandContains, CompiledPathGlobs, DurableCommandContainsMatcher, DurableDfaMatcher,
 };
 
-pub(super) fn compile_globs(
+pub(crate) fn compile_globs(
     label: &str,
     patterns: Vec<String>,
 ) -> Result<CompiledPathGlobs, String> {
@@ -111,7 +111,7 @@ fn simple_extension_suffix(suffix: &str) -> bool {
         .is_some_and(|extension| !extension.is_empty() && !extension.contains('.'))
 }
 
-pub(super) fn compile_command_contains(
+pub(in crate::hook_config::core) fn compile_command_contains(
     patterns: Vec<String>,
 ) -> Result<CompiledCommandContains, String> {
     if patterns.is_empty() {

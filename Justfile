@@ -135,7 +135,7 @@ build-asp-release-bundle output_dir="package":
       output_dir="{{output_dir}}"; \
       rm -rf build/graph-turbo-resident "$output_dir"; \
       cargo build --release --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp; \
-      uv run --project packages/python --frozen pyinstaller --noconfirm --clean --onedir --name asp-graph-turbo-resident --specpath build/graph-turbo-resident --workpath build/graph-turbo-resident --distpath dist/graph-turbo-resident packages/python/asp_graph_turbo/src/asp_graph_turbo/resident_bundle.py; \
+      uv run --project packages/python --frozen pyinstaller --noconfirm --clean --exclude-module pycparser.lextab --exclude-module pycparser.yacctab --exclude-module scipy.special._cdflib --onedir --name asp-graph-turbo-resident --specpath build/graph-turbo-resident --workpath build/graph-turbo-resident --distpath dist/graph-turbo-resident packages/python/asp_graph_turbo/src/asp_graph_turbo/resident_bundle.py; \
       mkdir -p "$output_dir"; \
       cp target/release/asp "$output_dir/asp"; \
       cp -RL dist/graph-turbo-resident/asp-graph-turbo-resident "$output_dir/asp-graph-turbo-resident.bundle"; \

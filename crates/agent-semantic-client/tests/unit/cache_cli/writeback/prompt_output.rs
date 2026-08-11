@@ -20,8 +20,8 @@ fn prompt_output_artifact_dir_is_empty(root: &std::path::Path) -> bool {
     }
 }
 
-#[test]
-fn owner_items_search_writeback_replays_prompt_output_artifact() {
+#[tokio::test]
+async fn owner_items_search_writeback_replays_prompt_output_artifact() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
@@ -54,6 +54,7 @@ fn owner_items_search_writeback_replays_prompt_output_artifact() {
         stdout.as_bytes(),
         &[],
     )
+    .await
     .expect("writeback probe");
     let replay = probe.replay.expect("owner output replay");
 
@@ -62,8 +63,8 @@ fn owner_items_search_writeback_replays_prompt_output_artifact() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn query_selector_source_projection_is_not_written_to_prompt_cache() {
+#[tokio::test]
+async fn query_selector_source_projection_is_not_written_to_prompt_cache() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
@@ -98,15 +99,16 @@ fn query_selector_source_projection_is_not_written_to_prompt_cache() {
         &request,
         stdout.as_bytes(),
         &[],
-    );
+    )
+    .await;
 
     assert!(probe.is_none());
     assert!(prompt_output_artifact_dir_is_empty(&root));
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn query_selector_content_writeback_does_not_export_provider_packet() {
+#[tokio::test]
+async fn query_selector_content_writeback_does_not_export_provider_packet() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
@@ -134,6 +136,7 @@ fn query_selector_content_writeback_does_not_export_provider_packet() {
         stdout.as_bytes(),
         &[],
     )
+    .await
     .expect("selector prompt-output writeback");
     let replay = probe.replay.expect("selector output replay");
 
@@ -142,8 +145,8 @@ fn query_selector_content_writeback_does_not_export_provider_packet() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn exact_source_projection_is_not_written_to_prompt_cache() {
+#[tokio::test]
+async fn exact_source_projection_is_not_written_to_prompt_cache() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
@@ -172,15 +175,16 @@ fn exact_source_projection_is_not_written_to_prompt_cache() {
         &request,
         stdout.as_bytes(),
         &[],
-    );
+    )
+    .await;
 
     assert!(probe.is_none());
     assert!(prompt_output_artifact_dir_is_empty(&root));
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn prime_seed_prompt_output_writeback_adds_search_output_replay_artifact() {
+#[tokio::test]
+async fn prime_seed_prompt_output_writeback_adds_search_output_replay_artifact() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
@@ -214,6 +218,7 @@ rank=O frontier=O.owner\n";
         stdout.as_bytes(),
         &[],
     )
+    .await
     .expect("writeback probe");
     let replay = probe.replay.expect("search output replay");
 
@@ -222,8 +227,8 @@ rank=O frontier=O.owner\n";
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn prime_seed_prompt_output_without_decision_primer_does_not_replay() {
+#[tokio::test]
+async fn prime_seed_prompt_output_without_decision_primer_does_not_replay() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
@@ -257,6 +262,7 @@ rank=O frontier=O.owner\n";
         stdout.as_bytes(),
         &[],
     )
+    .await
     .expect("writeback probe");
 
     assert!(probe.replay.is_none());

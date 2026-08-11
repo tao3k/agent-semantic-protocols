@@ -8,10 +8,69 @@ use agent_semantic_client_db::{
 use std::path::PathBuf;
 
 use super::{
-    cleanup_endpoint, daemon_identity, graph_turbo_daemon, remove_stale_socket,
+    cleanup_endpoint, daemon_identity, remove_stale_socket,
     runtime_server_telemetry_query_socket_path, runtime_server_telemetry_socket_path,
     singleton_socket, state_home,
 };
+
+async fn serve_runtime_search_requests(
+    mut requests: tokio::sync::mpsc::Receiver<
+        agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceRequest,
+    >,
+) {
+    use agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceRequest;
+
+    while let Some(request) = requests.recv().await {
+        match request {
+            RuntimeSearchServiceRequest::ProviderOwner {
+                workspace_identity,
+                project_root,
+                language_id,
+                owner_path,
+                response,
+            } => {
+                let result = async {
+                    let (registry, _) = crate::command::global_provider_catalog::
+                        runtime_provider_registry_snapshot(&project_root)?;
+                    if !registry
+                        .providers
+                        .iter()
+                        .any(|provider| provider.language_id == language_id.as_str())
+                    {
+                        return Err(format!(
+                            "Runtime search provider is not registered: languageId={language_id}"
+                        ));
+                    }
+                    agent_semantic_client::source_index::
+                        prepare_runtime_server_owner_projection_with_registry_async(
+                            project_root,
+                            workspace_identity,
+                            owner_path,
+                            registry,
+                        )
+                        .await
+                }
+                .await;
+                let _ = response.send(result);
+            }
+            RuntimeSearchServiceRequest::TreeSitterQuery {
+                workspace_identity: _,
+                project_root,
+                language_id,
+                args,
+                response,
+            } => {
+                let result = crate::command::run_runtime_server_tree_sitter_query(
+                    &language_id,
+                    &args,
+                    &project_root,
+                )
+                .await;
+                let _ = response.send(result);
+            }
+        }
+    }
+}
 
 pub(super) async fn run_daemon() -> Result<(), String> {
     agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
@@ -179,11 +238,44 @@ pub(super) async fn run_daemon() -> Result<(), String> {
                     .await
             })
         });
-    let locator_catalog = admission_catalog.clone();
+    let (runtime_search_service, runtime_search_requests) =
+        agent_semantic_client_db::runtime_search_service::runtime_search_service_channel();
+    let mut runtime_search_tasks = tokio::task::JoinSet::new();
+    runtime_search_tasks.spawn(serve_runtime_search_requests(runtime_search_requests));
+    /* Removed callback-based provider-owner service:
+        std::sync::Arc::new(move |workspace_identity, project_root, language_id, owner_path| {
+            Box::pin(async move {
+                let registry = agent_semantic_client_core::ProviderRegistrySnapshot::load(
+                    &project_root,
+                )?;
+                let provider_matches_language = registry.providers.iter().any(|provider| {
+                    provider.language_id == language_id
+                        && provider
+                            .source_extensions
+                            .iter()
+                            .any(|extension| owner_path.ends_with(extension.as_str()))
+                });
+                if !provider_matches_language {
+                    return Err(format!(
+                        "provider-native owner query language does not own path: languageId={} ownerPath={owner_path}",
+                        language_id.as_str()
+                    ));
+                }
+                agent_semantic_client::source_index::
+                    prepare_runtime_server_owner_projection_with_registry_async(
+                        project_root,
+                        workspace_identity,
+                        owner_path,
+                        registry,
+                    )
+                    .await
+            })
+        });
+    */
     let server = RuntimeServer::bind_and_publish_with_artifact_catalog(
         endpoint.clone(),
         std::sync::Arc::new(WorkspaceDbRegistry::default()),
-        &runtime_server_endpoint_path(&state_home),
+        &runtime_server_endpoint_path(&state_home)?,
         workspace_store,
         std::sync::Arc::new(artifact_catalog),
     )
@@ -197,6 +289,7 @@ pub(super) async fn run_daemon() -> Result<(), String> {
         admission_catalog,
         provider_catalog_generation,
     )
+    .with_runtime_search_service(runtime_search_service)
     .with_agent_session_registry_owner(agent_session_registry_owner);
     crate::server::runtime_server_startup_receipt::publish(
         &state_home,
@@ -231,34 +324,12 @@ pub(super) async fn run_daemon() -> Result<(), String> {
         None,
     )
     .await?;
-    let hook_admission_locator =
-        agent_semantic_client_db::runtime_server_hook_admission_locator::spawn_runtime_hook_admission_locator(
-            state_home.clone(),
-            endpoint.clone(),
-            locator_catalog,
-        )
-        .await?;
-    let mut graph_turbo =
-        graph_turbo_daemon::GraphTurboDaemon::start_from_managed_config(&state_home).await;
-    let server = server.with_graph_turbo_resident_status(graph_turbo.status());
-    let server = match graph_turbo.evaluation_builder() {
-        Some(builder) => server.with_graph_turbo_evaluation_builder(builder),
-        None => server,
-    };
     let server_result = server.serve().await.map(|_| ());
     // Once the accept loop has stopped, all independent resident services are
     // drained concurrently. Serial draining made stop latency additive and
     // allowed one stuck read-only lane to postpone every other task owner.
     let drain_started = tokio::time::Instant::now();
     let telemetry_handle = opentelemetry.handle();
-    let hook_drain = async {
-        let started = tokio::time::Instant::now();
-        (hook_admission_locator.shutdown().await, started.elapsed())
-    };
-    let graph_drain = async {
-        let started = tokio::time::Instant::now();
-        (graph_turbo.shutdown().await, started.elapsed())
-    };
     let telemetry_drain = async {
         let started = tokio::time::Instant::now();
         (opentelemetry.shutdown().await, started.elapsed())
@@ -267,16 +338,10 @@ pub(super) async fn run_daemon() -> Result<(), String> {
         let started = tokio::time::Instant::now();
         (diagnostics.join().await, started.elapsed())
     };
-    let (
-        (hook_result, hook_elapsed),
-        (graph_result, graph_elapsed),
-        (telemetry_result, telemetry_elapsed),
-        (diagnostic_result, diagnostic_elapsed),
-    ) = tokio::join!(hook_drain, graph_drain, telemetry_drain, diagnostic_drain);
+    let ((telemetry_result, telemetry_elapsed), (diagnostic_result, diagnostic_elapsed)) =
+        tokio::join!(telemetry_drain, diagnostic_drain);
     let total_drain_elapsed = drain_started.elapsed();
     for (service, elapsed, state) in [
-        ("hookAdmissionLocator", hook_elapsed, hook_result.is_ok()),
-        ("graphTurbo", graph_elapsed, graph_result.is_ok()),
         ("openTelemetry", telemetry_elapsed, telemetry_result.is_ok()),
         ("diagnostics", diagnostic_elapsed, diagnostic_result.is_ok()),
     ] {
@@ -295,23 +360,13 @@ pub(super) async fn run_daemon() -> Result<(), String> {
             },
         );
     }
-    let hook_clean = hook_result.is_ok();
-    let graph_clean = graph_result.is_ok();
     let telemetry_clean = telemetry_result.is_ok();
     let diagnostic_clean = diagnostic_result.is_ok();
-    let hook_error = hook_result.as_ref().err().map(ToString::to_string);
-    let graph_error = graph_result.as_ref().err().map(ToString::to_string);
     let telemetry_error = telemetry_result.as_ref().err().map(ToString::to_string);
     let diagnostic_error = diagnostic_result.as_ref().err().map(ToString::to_string);
     let mut shutdown_errors = Vec::new();
     if let Err(error) = server_result {
         shutdown_errors.push(format!("server={error}"));
-    }
-    if let Err(error) = hook_result {
-        shutdown_errors.push(format!("hookAdmissionLocator={error}"));
-    }
-    if let Err(error) = graph_result {
-        shutdown_errors.push(format!("graphTurbo={error}"));
     }
     match telemetry_result {
         Ok(receipt) => eprintln!(
@@ -332,8 +387,6 @@ pub(super) async fn run_daemon() -> Result<(), String> {
             "schemaVersion": "1",
             "state": if shutdown_errors.is_empty() { "drained" } else { "failed" },
             "totalMicros": total_drain_elapsed.as_micros(),
-            "hookAdmissionLocatorMicros": hook_elapsed.as_micros(),
-            "graphTurboMicros": graph_elapsed.as_micros(),
             "openTelemetryMicros": telemetry_elapsed.as_micros(),
             "diagnosticsMicros": diagnostic_elapsed.as_micros(),
             "errors": &shutdown_errors,
@@ -345,8 +398,6 @@ pub(super) async fn run_daemon() -> Result<(), String> {
             owner_epoch,
             services: serde_json::json!({
                 "server": {"state": if shutdown_errors.is_empty() { "drained" } else { "failed" }},
-                "hookAdmissionLocator": {"drainMicros": hook_elapsed.as_micros(), "state": if hook_clean { "drained" } else { "failed" }, "error": hook_error},
-                "graphTurbo": {"drainMicros": graph_elapsed.as_micros(), "state": if graph_clean { "drained" } else { "failed" }, "error": graph_error},
                 "openTelemetry": {"drainMicros": telemetry_elapsed.as_micros(), "state": if telemetry_clean { "drained" } else { "failed" }, "error": telemetry_error},
                 "diagnostics": {"drainMicros": diagnostic_elapsed.as_micros(), "state": if diagnostic_clean { "drained" } else { "failed" }, "error": diagnostic_error},
             }),
@@ -378,7 +429,7 @@ pub(super) async fn run_daemon() -> Result<(), String> {
     // Publish the owner terminal receipt immediately after every Tokio-owned
     // service has joined. Supervisor stop can now observe the authoritative
     // terminal state without waiting on filesystem/socket cleanup.
-    cleanup_endpoint(&state_home, &endpoint).await;
+    cleanup_endpoint(&state_home, &endpoint).await?;
     let singleton_result = singleton_socket_guard.release().await;
     if let Err(error) = singleton_result {
         eprintln!(

@@ -8,7 +8,7 @@ use agent_semantic_client_core::{
 use agent_semantic_client_db::{ClientDbEngine, ClientDbGenerationHit};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, UNIX_EPOCH};
 
 #[test]
 fn generation_file_hashes_detect_changed_source() {
@@ -70,8 +70,8 @@ fn retired_file_hashes_without_metadata_fail_to_parse() {
     assert!(serde_json::from_str::<Vec<ClientCacheFileHash>>(json).is_err());
 }
 
-#[test]
-fn document_verbatim_bypasses_cache_probe() {
+#[tokio::test]
+async fn document_source_projection_bypasses_cache_probe() {
     let root = temp_root("document-verbatim-no-probe");
     let snapshot = ProviderRegistrySnapshot {
         activation_path: root.join(".cache/agent-semantic-protocol/hooks/activation.json"),
@@ -82,16 +82,21 @@ fn document_verbatim_bypasses_cache_probe() {
         .with_forwarded_args(vec![
             "--selector".to_string(),
             "org://plan.org#paragraph/paragraph/document[1]/paragraph[1]".to_string(),
-            "--verbatim".to_string(),
+            "--projection".to_string(),
+            "source".to_string(),
             ".".to_string(),
         ]);
 
-    assert!(provider_cache_probe(&root, &snapshot, &request).is_none());
+    assert!(
+        provider_cache_probe(&root, &snapshot, &request)
+            .await
+            .is_none()
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn prime_seed_probe_rejects_latest_fresh_prime_generation_after_fingerprint_miss() {
+#[tokio::test]
+async fn prime_seed_probe_rejects_latest_fresh_prime_generation_after_fingerprint_miss() {
     let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
     let root = temp_root("fresh-prime-reuse");
     let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
@@ -131,7 +136,9 @@ rank=O frontier=O.owner\n";
         ".".to_string(),
     ]);
 
-    let probe = provider_cache_probe(&root, &snapshot, &request).expect("probe");
+    let probe = provider_cache_probe(&root, &snapshot, &request)
+        .await
+        .expect("probe");
 
     assert_eq!(probe.cache_status, CacheStatus::Miss);
     assert!(probe.replay.is_none());
@@ -139,8 +146,8 @@ rank=O frontier=O.owner\n";
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn lexical_seed_probe_reuses_latest_fresh_matching_query_after_fingerprint_miss() {
+#[tokio::test]
+async fn lexical_seed_probe_reuses_latest_fresh_matching_query_after_fingerprint_miss() {
     let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
     let root = temp_root("fresh-lexical-reuse");
     let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
@@ -200,7 +207,9 @@ rank=Q frontier=Q.lexical\n";
         ".".to_string(),
     ]);
 
-    let probe = provider_cache_probe(&root, &snapshot, &request).expect("probe");
+    let probe = provider_cache_probe(&root, &snapshot, &request)
+        .await
+        .expect("probe");
     let replay = probe.replay.as_ref().expect("fresh lexical replay");
 
     assert_eq!(probe.cache_status, CacheStatus::Hit);
@@ -233,11 +242,7 @@ fn generation_hit(
 }
 
 fn temp_root(label: &str) -> std::path::PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("time")
-        .as_nanos();
-    std::env::temp_dir().join(format!("agent-client-probe-{label}-{nanos}"))
+    crate::test_support::owner_backed_temp_root(label)
 }
 
 fn search_prime_generation(

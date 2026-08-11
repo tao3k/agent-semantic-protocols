@@ -23,6 +23,7 @@ pub mod graph_turbo_cache;
 pub mod parser_read_authority;
 mod runtime_concurrency;
 pub mod runtime_generation_cancellation;
+pub mod runtime_search_service;
 pub mod runtime_server;
 pub mod runtime_server_admission;
 mod runtime_server_admission_builder_supervisor;
@@ -73,11 +74,20 @@ pub mod turso_sync_storage;
 mod types;
 mod workspace_db_endpoint;
 pub use workspace_db_endpoint::WorkspaceDbOwnerEndpoint;
+pub use workspace_db_endpoint::{
+    bind_workspace_db_owner, prepare_workspace_db_owner_endpoint, workspace_db_owner_runtime_base,
+    workspace_db_owner_transport_contract_digest,
+};
+pub use workspace_db_owner_election::{
+    WorkspaceDbOwnerRetirement, remove_stale_workspace_db_owner_socket,
+    try_acquire_workspace_db_owner_election, try_retire_workspace_db_owner_endpoint,
+};
 pub mod workspace_db_ipc;
+pub use workspace_db_ipc_server::serve_workspace_db_session_until_shutdown;
 mod workspace_db_ipc_server;
 pub mod workspace_db_owner_election;
 pub use types::ClientDbProviderCommandSelectionInput;
-pub use workspace_db_ipc::{WorkspaceDbIpcSession, serve_workspace_db_session_until_shutdown};
+pub use workspace_db_ipc::WorkspaceDbIpcSession;
 
 pub use agent_semantic_client_core::ClientDbStatus;
 pub use agent_session_registry::{

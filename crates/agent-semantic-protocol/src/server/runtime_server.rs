@@ -44,143 +44,18 @@ pub(crate) fn runtime_server_command() -> Command {
     ServerArgs::command()
 }
 
-async fn emit_agent_facing_wall_budget_observation(
-    surface: &'static str,
-    stage: &'static str,
-    elapsed: std::time::Duration,
-    project_root: &Path,
-) {
-    let Ok(state_home) = state_home() else {
-        return;
-    };
-    let budget_micros =
-        u64::try_from(AGENT_FACING_EXECUTION_BUDGET.as_micros()).unwrap_or(u64::MAX);
-    let mut observation =
-        agent_semantic_client_db::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
-            surface,
-            stage,
-            u64::try_from(elapsed.as_micros()).unwrap_or(u64::MAX),
-            budget_micros,
-            "budget-exceeded",
-        );
-    observation.failure_reason = Some("agent-facing-search-wall-budget-exceeded".to_owned());
-    observation.retry_after_ms = Some(250);
-    let admission_catalog_path = state_home
-        .join("runtime")
-        .join("server")
-        .join("workspace-admissions.v1.json");
-    if let Ok(admission) = agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog::resolve_mapped(
-        &admission_catalog_path,
-        project_root,
-    ) {
-        observation.workspace_identity = Some(admission.workspace_identity);
-    }
-    observation.seal_budget_failure_identity();
-    let ingress_socket_path = runtime_server_telemetry_socket_path(&state_home);
-    let _ = tokio::time::timeout(
-        std::time::Duration::from_millis(5),
-        agent_semantic_client_db::runtime_server_opentelemetry::admit_to_runtime(
-            &ingress_socket_path,
-            &observation,
-        ),
-    )
-    .await;
-}
-
-pub(crate) async fn await_agent_facing_runtime_server_client<F, T>(
-    started: tokio::time::Instant,
-    surface: &'static str,
-    stage: &'static str,
-    project_root: &Path,
-    future: F,
-) -> Result<T, String>
-where
-    F: std::future::Future<Output = Result<T, String>>,
-{
-    agent_facing_runtime_wait_remaining(started.elapsed(), surface, stage, project_root).await?;
-    let deadline = started + AGENT_FACING_EXECUTION_BUDGET;
-    match tokio::time::timeout_at(deadline, future).await {
-        Ok(result) => result,
-        Err(_) => {
-            Err(
-                agent_facing_wall_budget_error(surface, stage, started.elapsed(), project_root)
-                    .await,
-            )
-        }
-    }
-}
-
-const AGENT_FACING_EXECUTION_BUDGET: std::time::Duration = std::time::Duration::from_micros(
-    agent_semantic_client_db::search_incident::AGENT_FACING_SEARCH_BUDGET_MICROS,
-);
 pub(crate) const RUNTIME_SERVER_SUPERVISOR_EXECUTION_BUDGET: std::time::Duration =
     std::time::Duration::from_millis(800);
 pub(crate) const OPERATOR_RUNTIME_SERVER_STARTUP_BUDGET: std::time::Duration =
     std::time::Duration::from_secs(5);
-#[cfg(test)]
-pub(crate) async fn linearize_reconcile_result_with_postcondition<F, Fut>(
-    reconcile: Result<(), String>,
-    postcondition: F,
-) -> Result<(), String>
-where
-    F: FnOnce() -> Fut,
-    Fut: std::future::Future<Output = Result<(), String>>,
-{
-    match reconcile {
-        Ok(()) => Ok(()),
-        Err(original) => match postcondition().await {
-            Ok(()) => Ok(()),
-            Err(_) => Err(original),
-        },
-    }
-}
-
-pub(crate) async fn agent_facing_runtime_wait_remaining(
-    elapsed: std::time::Duration,
-    surface: &'static str,
-    stage: &'static str,
-    project_root: &Path,
-) -> Result<std::time::Duration, String> {
-    if let Some(remaining) = AGENT_FACING_EXECUTION_BUDGET
-        .checked_sub(elapsed)
-        .filter(|remaining| !remaining.is_zero())
-    {
-        Ok(remaining)
-    } else {
-        Err(agent_facing_wall_budget_error(surface, stage, elapsed, project_root).await)
-    }
-}
-
-async fn agent_facing_wall_budget_error(
-    surface: &'static str,
-    stage: &'static str,
-    elapsed: std::time::Duration,
-    project_root: &Path,
-) -> String {
-    let budget_micros =
-        u64::try_from(AGENT_FACING_EXECUTION_BUDGET.as_micros()).unwrap_or(u64::MAX);
-    emit_agent_facing_wall_budget_observation(surface, stage, elapsed, project_root).await;
-    serde_json::json!({
-        "schemaId": "agent.semantic-protocols.agent-facing-search-wall-failure",
-        "schemaVersion": "1",
-        "surface": surface,
-        "state": "unavailable",
-        "reasonKind": "agent-facing-search-wall-budget-exceeded",
-        "stage": stage,
-        "budgetMicros": budget_micros,
-        "elapsedMicros": elapsed.as_micros(),
-        "retryAfterMs": 250
-    })
-    .to_string()
-}
 
 pub(crate) async fn runtime_server_workspace_session_async(
     project_root: &Path,
 ) -> Result<agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession, String> {
     let (workspace_identity, canonical_project_root) =
-        runtime_server_admitted_workspace_scope(project_root).await?;
+        runtime_server_query_workspace_scope(project_root)?;
     let state_home = state_home()?;
-    let endpoint = read_endpoint(&runtime_server_endpoint_path(&state_home)).await?;
+    let endpoint = read_endpoint(&runtime_server_endpoint_path(&state_home)?).await?;
     Ok(
         agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::for_runtime_server_read_only(
             &endpoint,
@@ -193,15 +68,27 @@ pub(crate) async fn runtime_server_workspace_session_async(
 pub(crate) async fn runtime_server_workspace_session_for_admission_async(
     project_root: &Path,
 ) -> Result<agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession, String> {
-    let state_home = state_home()?;
-    agent_semantic_client_db::runtime_server_hook_admission_locator::connect_hook_workspace_session(
-        &state_home,
+    // AgentSession/ChoicePlane registration is a global Runtime control-plane
+    // operation. It requires a stable workspace identity, but it must not
+    // depend on a source-generation locator, Hook mmap inbox, or admission
+    // catalog. Binding through the global endpoint removes the registration ->
+    // generation -> typed-agent recursion.
+    agent_semantic_client_db::workspace_db_ipc::connect_runtime_server_workspace_session(
         project_root,
     )
     .await
 }
 
-pub(super) async fn runtime_server_admitted_workspace_scope(
+pub(crate) async fn runtime_server_stateless_search_session_async(
+    project_root: &Path,
+) -> Result<agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession, String> {
+    agent_semantic_client_db::workspace_db_ipc::connect_runtime_server_workspace_session(
+        project_root,
+    )
+    .await
+}
+
+pub(super) fn runtime_server_query_workspace_scope(
     project_root: &Path,
 ) -> Result<(String, PathBuf), String> {
     if !project_root.is_absolute() {
@@ -210,22 +97,14 @@ pub(super) async fn runtime_server_admitted_workspace_scope(
             project_root.display()
         ));
     }
-    let catalog_path = state_home()?
-        .join("runtime")
-        .join("server")
-        .join("workspace-admissions.v1.json");
-    use agent_semantic_client_db::runtime_server_admission_catalog::{
-        RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogResolveError,
-    };
-    let entry = RuntimeWorkspaceAdmissionCatalog::resolve_mapped(&catalog_path, project_root)
-        .map_err(|error: RuntimeWorkspaceAdmissionCatalogResolveError| error.to_string())?;
-    Ok((entry.workspace_identity, entry.project_root))
+    let workspace_identity =
+        agent_semantic_client_db::AgentSessionRegistry::workspace_id(project_root)?;
+    // Query derives only the stable workspace key. The Runtime data plane is
+    // the sole authority for whether an immutable generation exists; catalog
+    // admission, bootstrap, repair, and retry remain lifecycle-only actions.
+    Ok((workspace_identity, project_root.to_path_buf()))
 }
 
-pub(crate) use super::runtime_server_generation_data_plane::{
-    RuntimeServerSearchDataPlane, RuntimeServerSearchSnapshot,
-    runtime_server_search_data_plane_async,
-};
 
 pub(crate) async fn run_runtime_server_command(args: &[String]) -> Result<(), String> {
     let parsed = ServerArgs::try_parse_from(
@@ -267,7 +146,7 @@ pub(crate) async fn runtime_server_workspace_exact_projection_async(
 
 async fn run_control_status() -> Result<(), String> {
     let state_home = state_home()?;
-    let endpoint_path = runtime_server_endpoint_path(&state_home);
+    let endpoint_path = runtime_server_endpoint_path(&state_home)?;
     let endpoint = read_endpoint(&endpoint_path).await?;
     let request_id = request_identity("control").await?;
     prewarm_runtime_server_status_memory(&endpoint).await?;
@@ -321,7 +200,7 @@ async fn run_status() -> Result<(), String> {
 async fn run_restart() -> Result<(), String> {
     let state_home = state_home()?;
     prepare_runtime_server_start(&state_home).await?;
-    let endpoint_path = runtime_server_endpoint_path(&state_home);
+    let endpoint_path = runtime_server_endpoint_path(&state_home)?;
     if let Ok(endpoint) = read_supervisor_endpoint(&endpoint_path).await {
         crate::server::runtime_server_exit_receipt::remove_stale(&state_home).await?;
         super::runtime_server_supervisor::request_runtime_server_drain(&state_home).await?;
@@ -333,7 +212,7 @@ async fn run_restart() -> Result<(), String> {
         if !exit.clean_drain {
             return Err("Runtime Server restart stopped after a failed service drain".to_owned());
         }
-        cleanup_endpoint(&state_home, &endpoint).await;
+        cleanup_endpoint(&state_home, &endpoint).await?;
     }
     super::runtime_server_supervisor::ensure_runtime_server(&state_home, true).await?;
     let receipt = await_operator_runtime_server(&state_home).await?;
@@ -370,7 +249,7 @@ pub(crate) async fn await_healthy_runtime_server(
 pub(crate) async fn observe_agent_facing_runtime_server(
     state_home: &Path,
 ) -> Result<RuntimeServerControlReceipt, String> {
-    let endpoint = read_endpoint(&runtime_server_endpoint_path(state_home)).await?;
+    let endpoint = read_endpoint(&runtime_server_endpoint_path(state_home)?).await?;
     let request_id = request_identity("session-choice-plane").await?;
     prewarm_runtime_server_status_memory(&endpoint).await?;
     call_runtime_server(
@@ -443,7 +322,7 @@ async fn await_healthy_runtime_server_with_budget(
 pub(crate) async fn healthcheck_runtime_server_at(
     state_home: &Path,
 ) -> Result<RuntimeServerControlReceipt, String> {
-    let endpoint = read_supervisor_endpoint(&runtime_server_endpoint_path(state_home)).await?;
+    let endpoint = read_supervisor_endpoint(&runtime_server_endpoint_path(state_home)?).await?;
     let canonical_runtime = state_home.join("runtime").join("bin").join("asp");
     let canonical_artifact =
         tokio::fs::canonicalize(&canonical_runtime)
@@ -547,9 +426,6 @@ async fn print_receipt(receipt: &RuntimeServerControlReceipt) -> Result<(), Stri
         .map_err(|error| format!("failed to flush Runtime Server receipt: {error}"))?;
     Ok(())
 }
-
-#[path = "graph_turbo_daemon.rs"]
-mod graph_turbo_daemon;
 
 #[path = "runtime_server_singleton_socket.rs"]
 mod singleton_socket;

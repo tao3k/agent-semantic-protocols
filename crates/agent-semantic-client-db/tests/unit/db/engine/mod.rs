@@ -1,7 +1,6 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::Command,
     sync::{Arc, Barrier},
     thread,
 };
@@ -41,7 +40,13 @@ mod turso_mvcc_keyset_tests {
 include!("write_session.rs");
 
 fn temp_root(label: &str) -> PathBuf {
-    let mut root = std::env::temp_dir();
+    let repository = gix::discover(env!("CARGO_MANIFEST_DIR"))
+        .expect("discover owner-backed database test repository with Gix");
+    let mut root = repository
+        .worktree()
+        .expect("database tests require a non-bare owner checkout")
+        .base()
+        .join("target/asp-live-project-fixtures");
     let unique = format!(
         "asp-client-db-{label}-{}-{}",
         std::process::id(),
@@ -56,14 +61,9 @@ fn temp_root(label: &str) -> PathBuf {
 }
 
 fn init_git_repository(root: &Path) {
-    let output = Command::new("git")
-        .args(["init", "--quiet"])
-        .current_dir(root)
-        .output()
-        .expect("run git init for Gix-owned test identity");
+    let repository = gix::discover(root).expect("resolve owner repository with Gix");
     assert!(
-        output.status.success(),
-        "git init failed: {}",
-        String::from_utf8_lossy(&output.stderr)
+        repository.worktree().is_some(),
+        "database fixture must remain inside an owner-backed worktree"
     );
 }

@@ -64,7 +64,16 @@ async fn shared_runtime_admission_plane_is_workspace_keyed_and_drains() {
         samples.push(sample.expect("join warm workspace health"));
     }
     samples.sort_unstable();
-    let p99 = samples[(samples.len() - 1) * 99 / 100];
+    let p75 = samples[(samples.len() * 75).div_ceil(100) - 1];
+    let max = *samples.last().expect("workspace health samples");
+    assert!(
+        p75 < 50_000,
+        "shared Runtime workspace health p75 exceeded 50ms: p75Micros={p75}"
+    );
+    assert!(
+        max < 500_000,
+        "shared Runtime workspace health exceeded the 500ms hard boundary: maxMicros={max}"
+    );
     let shutdown_error = first
         .shutdown()
         .await
@@ -85,6 +94,6 @@ async fn shared_runtime_admission_plane_is_workspace_keyed_and_drains() {
         RuntimeServerExit::RestartRequested
     );
     eprintln!(
-        "runtime-server-admission-concurrency requestCount={request_count} p99Micros={p99} workspaceCount=2"
+        "runtime-server-admission-concurrency requestCount={request_count} p75Micros={p75} maxMicros={max} workspaceCount=2"
     );
 }

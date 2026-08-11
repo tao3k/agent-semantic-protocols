@@ -235,7 +235,7 @@ async fn duplicate_budget_failure_identity_is_recorded_once() {
         "budget-exceeded",
     );
     observation.workspace_identity = Some("workspace-failure-dedupe".to_owned());
-    observation.failure_reason = Some("agent-facing-search-wall-budget-exceeded".to_owned());
+    observation.failure_reason = Some("runtime-search-io-timeout".to_owned());
     observation.seal_budget_failure_identity();
     assert!(handle.try_record(observation.clone()));
     assert!(handle.try_record(observation));

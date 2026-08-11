@@ -84,6 +84,7 @@ required-features = ["turso-sync-server-e2e"]
 [dev-dependencies]
 agent-semantic-config = { path = "../agent-semantic-config" }
 criterion = { workspace = true }
+gix = { workspace = true }
 asp-rust-project-harness-policy.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true }

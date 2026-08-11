@@ -2,11 +2,11 @@
 
 use std::path::PathBuf;
 
-pub use crate::workspace_db_endpoint::{
+pub use crate::{
     WorkspaceDbOwnerEndpoint, bind_workspace_db_owner, prepare_workspace_db_owner_endpoint,
     workspace_db_owner_runtime_base, workspace_db_owner_transport_contract_digest,
 };
-pub use crate::workspace_db_owner_election::{
+pub use crate::{
     WorkspaceDbOwnerRetirement, remove_stale_workspace_db_owner_socket,
     try_retire_workspace_db_owner_endpoint,
 };

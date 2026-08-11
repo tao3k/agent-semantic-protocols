@@ -35,6 +35,8 @@ mod provider_manifest;
 #[path = "unit/protocol_roundtrip.rs"]
 mod protocol_roundtrip;
 
+#[path = "unit/agent_dispatch_message.rs"]
+mod agent_dispatch_message;
 #[path = "unit/hook_scenario_contract.rs"]
 mod hook_scenario_contract;
 #[path = "unit/match_policy_contract.rs"]

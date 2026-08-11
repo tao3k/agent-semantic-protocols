@@ -6,17 +6,17 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-use crate::executable::resolve_executable_with_status;
 use crate::protocol::{
     HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
     HOOK_PROTOCOL_VERSION,
 };
-use crate::protocol_activation::digest::provider_manifest_digest;
-use crate::protocol_activation::protocol_activation_manifest::{
+use crate::protocol_activation::provider_manifest_digest;
+use crate::protocol_activation::{
     ActivatedProviderConfig, ActivatedRankerConfig, ActivationCoverage, ActivationGeneratedBy,
     HookActivation, ProviderExecution, ProviderManifest,
 };
 use crate::provider_registry::schema_registry_provider_manifests;
+use crate::resolve_executable_with_status;
 
 /// Returns the built-in language provider manifests known to this hook runtime.
 pub fn builtin_provider_manifests() -> Vec<ProviderManifest> {
@@ -127,7 +127,7 @@ pub fn build_default_activation_from_selections(
     })
 }
 
-fn activation_capability_coverage(
+pub(crate) fn activation_capability_coverage(
     manifest: &ProviderManifest,
 ) -> Result<ActivationCoverage, String> {
     if let Some(descriptor) = manifest.project_resolution() {
@@ -505,7 +505,7 @@ pub fn provider_command_selections_for_scope_with_state_home(
     provider_command_selections_for_scope_with_paths(project_root, &state_paths, scope)
 }
 
-fn provider_command_selections_for_scope_with_paths(
+pub(crate) fn provider_command_selections_for_scope_with_paths(
     project_root: &Path,
     state_paths: &agent_semantic_runtime::state::ProjectStatePaths,
     scope: &ProviderCommandSelectionScopeV1,
@@ -600,7 +600,7 @@ mod manifest_contract;
 pub use manifest_contract::validate_provider_manifest_contract;
 use manifest_contract::validate_source_snapshot_capability;
 
-fn activate_provider(
+pub(crate) fn activate_provider(
     manifest: &ProviderManifest,
     manifest_digest: String,
     execution_command_digest: String,

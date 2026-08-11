@@ -49,7 +49,7 @@ async fn cache_source_index_refresh_updates_dirty_tracked_worktree() {
     let server = RuntimeServerFixture::start(&root).await;
     let operation_root = root.clone();
     server
-        .blocking(move || {
+        .operation(move || async move {
             let root = operation_root;
             run_cache(
                 &root,
@@ -84,6 +84,7 @@ async fn cache_source_index_refresh_updates_dirty_tracked_worktree() {
                 "dirty",
                 8,
             )
+            .await
             .expect("lookup refreshed dirty source index");
             assert_eq!(result.state.as_str(), "hit");
             assert_eq!(result.candidates.len(), 1);
@@ -138,7 +139,7 @@ async fn cache_source_index_refresh_detects_clean_committed_source_change() {
     let server = RuntimeServerFixture::start(&root).await;
     let operation_root = root.clone();
     server
-        .blocking(move || {
+        .operation(move || async move {
             let root = operation_root;
             run_cache(
                 &root,
@@ -180,6 +181,7 @@ async fn cache_source_index_refresh_detects_clean_committed_source_change() {
                 "new-committed-symbol",
                 8,
             )
+            .await
             .expect("lookup refreshed clean committed source index");
             assert_eq!(result.state.as_str(), "hit");
             assert_eq!(result.candidates.len(), 1);
@@ -248,7 +250,7 @@ async fn cache_source_index_refresh_tracks_rename_then_delete_without_stale_owne
     let server = RuntimeServerFixture::start(&root).await;
     let operation_root = root.clone();
     server
-        .blocking(move || {
+        .operation(move || async move {
             let root = operation_root;
             run_cache(
                 &root,
@@ -290,6 +292,7 @@ async fn cache_source_index_refresh_tracks_rename_then_delete_without_stale_owne
                 "rename-delete-symbol",
                 8,
             )
+            .await
             .expect("lookup renamed source");
             assert_eq!(renamed_lookup.state.as_str(), "hit");
             assert_eq!(renamed_lookup.candidates.len(), 1);
@@ -322,6 +325,7 @@ async fn cache_source_index_refresh_tracks_rename_then_delete_without_stale_owne
                 "rename-delete-symbol",
                 8,
             )
+            .await
             .expect("lookup deleted source");
             assert_eq!(deleted_lookup.state.as_str(), "miss");
             assert!(deleted_lookup.candidates.is_empty());
@@ -331,6 +335,7 @@ async fn cache_source_index_refresh_tracks_rename_then_delete_without_stale_owne
                 "keeper-symbol",
                 8,
             )
+            .await
             .expect("lookup retained source");
             assert_eq!(keeper_lookup.state.as_str(), "hit");
             assert_eq!(keeper_lookup.candidates[0].path, "src/keeper.ss");
@@ -388,7 +393,7 @@ async fn cache_source_index_refresh_detects_content_edit_without_stale_artifact(
     let server = RuntimeServerFixture::start(&root).await;
     let operation_root = root.clone();
     server
-        .blocking(move || {
+        .operation(move || async move {
             let root = operation_root;
             run_cache(
                 &root,
@@ -407,6 +412,7 @@ async fn cache_source_index_refresh_detects_content_edit_without_stale_artifact(
                 "content-before-symbol",
                 8,
             )
+            .await
             .expect("lookup initial source content");
             assert_eq!(initial_lookup.state.as_str(), "hit");
             assert_eq!(initial_lookup.candidates[0].path, "src/usage.ss");
@@ -446,6 +452,7 @@ async fn cache_source_index_refresh_detects_content_edit_without_stale_artifact(
                 "content-before-symbol",
                 8,
             )
+            .await
             .expect("lookup stale source content");
             assert_eq!(stale_lookup.state.as_str(), "miss");
             assert!(stale_lookup.candidates.is_empty());
@@ -455,6 +462,7 @@ async fn cache_source_index_refresh_detects_content_edit_without_stale_artifact(
                 "content-after-symbol",
                 8,
             )
+            .await
             .expect("lookup edited source content");
             assert_eq!(edited_lookup.state.as_str(), "hit");
             assert_eq!(edited_lookup.candidates.len(), 1);
@@ -517,7 +525,7 @@ async fn cache_source_index_refresh_switches_roots_and_provider_digest_without_l
     let server = RuntimeServerFixture::start(&root).await;
     let operation_root = root.clone();
     server
-        .blocking(move || {
+        .operation(move || async move {
             let root = operation_root;
             run_cache(
                 &root,
@@ -536,6 +544,7 @@ async fn cache_source_index_refresh_switches_roots_and_provider_digest_without_l
                 "source-a-symbol",
                 8,
             )
+            .await
             .expect("lookup source-a symbol");
             assert_eq!(source_a_lookup.state.as_str(), "hit");
             assert_eq!(source_a_lookup.candidates[0].path, "source-a/only-a.ss");
@@ -564,6 +573,7 @@ async fn cache_source_index_refresh_switches_roots_and_provider_digest_without_l
                 "source-a-symbol",
                 8,
             )
+            .await
             .expect("lookup source-a symbol after root switch");
             assert_eq!(stale_lookup.state.as_str(), "miss");
             assert!(stale_lookup.candidates.is_empty());
@@ -573,6 +583,7 @@ async fn cache_source_index_refresh_switches_roots_and_provider_digest_without_l
                 "source-b-symbol",
                 8,
             )
+            .await
             .expect("lookup source-b symbol after root switch");
             assert_eq!(current_lookup.state.as_str(), "hit");
             assert_eq!(current_lookup.candidates[0].path, "source-b/only-b.ss");

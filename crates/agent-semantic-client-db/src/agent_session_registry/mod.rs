@@ -1,13 +1,18 @@
 //! Public interface for the DB-owned agent session registry.
 
-mod bootstrap;
+pub(crate) mod bootstrap;
+pub(crate) use bootstrap as bootstrap_owner;
 mod core;
-mod dispatch;
+pub(crate) mod dispatch;
+pub(crate) use dispatch as dispatch_owner;
 mod lifecycle;
-mod permissions;
-mod record;
+pub(crate) mod permissions;
+pub(crate) use permissions as permissions_owner;
+pub(crate) mod record;
+pub(crate) use record as record_owner;
 mod replacement;
-mod types;
+pub(crate) mod types;
+pub(crate) use types as types_owner;
 
 pub use types::{AgentSessionModelObservationRef, AgentSessionModelObservationSource};
 

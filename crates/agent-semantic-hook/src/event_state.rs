@@ -647,22 +647,3 @@ fn event_matches_prompt_scope(
 fn is_prompt_scope_boundary(event: &Value) -> bool {
     event.get("event").and_then(Value::as_str) == Some("user-prompt")
 }
-
-pub(crate) fn asp_command_tokens(tokens: &[String]) -> bool {
-    asp_token_index(tokens).is_some()
-}
-
-fn asp_token_index(tokens: &[String]) -> Option<usize> {
-    tokens.iter().position(|token| {
-        if token == "asp" {
-            return true;
-        }
-        let path = Path::new(token);
-        path.file_name().and_then(|value| value.to_str()) == Some("asp")
-            && path
-                .parent()
-                .and_then(Path::file_name)
-                .and_then(|value| value.to_str())
-                != Some(".bin")
-    })
-}

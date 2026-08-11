@@ -1,12 +1,9 @@
 use bytes::Bytes;
 use serde_json::json;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::cache_replay::{output_with_delegation_hint_lines, render_search_packet_bytes};
-
-static GRAPH_RENDER_ENV_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn search_packet_replay_appends_advisory_delegation_hint_line() {
@@ -127,9 +124,11 @@ fn search_packet_replay_rejects_invalid_hint_limits() {
     assert!(!rendered.contains("subagentHint="));
 }
 
-#[test]
-fn search_packet_replay_appends_delegation_hint_after_graph_render() {
-    let _guard = GRAPH_RENDER_ENV_LOCK.lock().expect("graph render env lock");
+#[tokio::test]
+async fn search_packet_replay_appends_delegation_hint_after_graph_render() {
+    let _guard = crate::test_support::CACHE_TEST_LOCK
+        .lock()
+        .expect("process environment test lock");
     let root = temp_root("graph-render-delegation-hint");
     let renderer = write_fake_graph_renderer(&root);
     let _env = GraphRendererEnvGuard::set(&renderer);
@@ -153,8 +152,9 @@ fn search_packet_replay_appends_delegation_hint_after_graph_render() {
         }]
     });
 
-    let rendered =
-        render_search_packet_bytes(Bytes::from(packet.to_string())).expect("rendered packet");
+    let rendered = render_search_packet_bytes(Bytes::from(packet.to_string()))
+        .await
+        .expect("rendered packet");
     let _ = std::fs::remove_dir_all(root);
     let rendered = std::str::from_utf8(&rendered).expect("utf8 output");
 
@@ -164,17 +164,20 @@ fn search_packet_replay_appends_delegation_hint_after_graph_render() {
     assert!(rendered.contains("maxCommands=4"));
 }
 
-#[test]
-fn search_packet_replay_accepts_colon_alias_graph_lines() {
-    let _guard = GRAPH_RENDER_ENV_LOCK.lock().expect("graph render env lock");
+#[tokio::test]
+async fn search_packet_replay_accepts_colon_alias_graph_lines() {
+    let _guard = crate::test_support::CACHE_TEST_LOCK
+        .lock()
+        .expect("process environment test lock");
     let root = temp_root("graph-render-colon-alias");
     let renderer = write_fake_colon_alias_graph_renderer(&root);
     let _env = GraphRendererEnvGuard::set(&renderer);
 
     let packet = json!({"view": "dependency"});
 
-    let rendered =
-        render_search_packet_bytes(Bytes::from(packet.to_string())).expect("rendered packet");
+    let rendered = render_search_packet_bytes(Bytes::from(packet.to_string()))
+        .await
+        .expect("rendered packet");
     let _ = std::fs::remove_dir_all(root);
     let rendered = std::str::from_utf8(&rendered).expect("utf8 output");
 

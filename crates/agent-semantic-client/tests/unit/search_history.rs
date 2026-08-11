@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_core::state_core::ResolvedState;
 use agent_semantic_client_db::ClientDbEngine;
@@ -7,9 +6,10 @@ use agent_semantic_client_db::ClientDbEngine;
 use crate::search_history::run_search_history;
 use crate::test_support::{CACHE_TEST_LOCK, EnvVarGuard};
 
-#[test]
-fn search_history_rejects_unknown_subcommand() {
+#[tokio::test]
+async fn search_history_rejects_unknown_subcommand() {
     let error = run_search_history(Path::new("."), &["owner".to_string()])
+        .await
         .expect_err("unknown search history subcommand should fail");
 
     assert_eq!(
@@ -18,11 +18,10 @@ fn search_history_rejects_unknown_subcommand() {
     );
 }
 
-#[test]
-fn search_history_backfills_artifacts_and_passes_db_engine_events() {
+#[tokio::test]
+async fn search_history_backfills_artifacts_and_passes_db_engine_events() {
     let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
     let root = temp_root("history-backfill");
-    git(&root, &["init"]);
     let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
     let artifact_dir = ResolvedState::resolve(&root)
         .expect("state core")
@@ -102,7 +101,8 @@ fn search_history_backfills_artifacts_and_passes_db_engine_events() {
             "--recent-sessions".to_string(),
             "1".to_string(),
         ],
-    );
+    )
+    .await;
 
     result.expect("run search history");
     let args = std::fs::read_to_string(&args_path).expect("read asp-graph-turbo args");
@@ -153,23 +153,7 @@ fn search_history_backfills_artifacts_and_passes_db_engine_events() {
 }
 
 fn temp_root(name: &str) -> std::path::PathBuf {
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock")
-        .as_nanos();
-    let root = std::env::temp_dir().join(format!("agent-semantic-client-{name}-{unique}"));
-    std::fs::create_dir_all(&root).expect("create temp root");
-    std::fs::create_dir(root.join(".git")).expect("create git marker");
-    root
-}
-
-fn git(root: &Path, args: &[&str]) {
-    let status = std::process::Command::new("git")
-        .args(args)
-        .current_dir(root)
-        .status()
-        .expect("run git");
-    assert!(status.success(), "git {args:?}");
+    crate::test_support::owner_backed_temp_root(name)
 }
 
 fn prepend_path(bin_dir: &Path) -> std::ffi::OsString {

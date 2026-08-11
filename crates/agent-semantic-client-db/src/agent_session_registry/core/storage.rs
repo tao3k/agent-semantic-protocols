@@ -131,7 +131,7 @@ impl AgentSessionRegistry {
         if let Some(proxy) = Self::runtime_proxy(&state, project_root)? {
             return Ok(proxy);
         }
-        let endpoint_path = crate::runtime_server_endpoint_path(&state.state_home);
+        let endpoint_path = crate::runtime_server_endpoint_path(&state.state_home)?;
         Err(format!(
             "project registry create/open requires Runtime Server typed IPC; direct-open is forbidden: endpoint={} endpointPublished={} runtimeOwnerProcess={}",
             endpoint_path.display(),
@@ -148,7 +148,7 @@ impl AgentSessionRegistry {
         if let Some(proxy) = Self::runtime_proxy(&state, project_root)? {
             return Ok(Some(proxy));
         }
-        let endpoint_path = crate::runtime_server_endpoint_path(&state.state_home);
+        let endpoint_path = crate::runtime_server_endpoint_path(&state.state_home)?;
         if runtime_server_endpoint_is_published(&state.state_home)? {
             return Err(format!(
                 "read-only project registry direct-open is forbidden while Runtime Server endpoint is published: endpoint={} runtimeOwnerProcess={}",
@@ -165,7 +165,7 @@ impl AgentSessionRegistry {
         if let Some(proxy) = Self::runtime_proxy(&state, project_root)? {
             return Ok(Some(proxy));
         }
-        let endpoint_path = crate::runtime_server_endpoint_path(&state.state_home);
+        let endpoint_path = crate::runtime_server_endpoint_path(&state.state_home)?;
         Err(format!(
             "project registry read requires Runtime Server typed IPC; direct-open is forbidden: endpoint={} endpointPublished={} runtimeOwnerProcess={}",
             endpoint_path.display(),

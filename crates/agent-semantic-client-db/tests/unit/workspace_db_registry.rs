@@ -24,13 +24,12 @@ use agent_semantic_client_db::{
     WorkspaceDbRegistry, WorkspaceDbRegistryCounters,
 };
 
-use crate::test_support::{StateHomeGuard, environment_lock, workspace};
-use tempfile::TempDir;
+use crate::test_support::{StateHomeGuard, TestDir, environment_lock, workspace};
 
 #[tokio::test(flavor = "current_thread")]
 async fn wrong_workspace_identity_fails_before_database_open() {
     let _environment = environment_lock();
-    let temp = TempDir::new().expect("create wrong-identity tempfile");
+    let temp = TestDir::new("wrong-identity");
     let state_home = temp.path().join("state");
     let _state_home = StateHomeGuard::install(&state_home);
     let (project_root, resolved, mut scope) = workspace(temp.path(), "wrong-identity");
@@ -69,7 +68,7 @@ async fn finish_loaded_writes_does_not_bootstrap_an_unused_workspace() {
 #[tokio::test(flavor = "current_thread")]
 async fn member_project_root_reuses_the_canonical_workspace_entry() {
     let _environment = environment_lock();
-    let temp = TempDir::new().expect("create member-root tempfile");
+    let temp = TestDir::new("member-root");
     let state_home = temp.path().join("state");
     let _state_home = StateHomeGuard::install(&state_home);
     let (workspace_root, _resolved, mut scope) = workspace(temp.path(), "member-root");
@@ -105,7 +104,7 @@ async fn member_project_root_reuses_the_canonical_workspace_entry() {
 #[tokio::test(flavor = "current_thread")]
 async fn concurrent_leases_resolve_open_and_bootstrap_once() {
     let _environment = environment_lock();
-    let temp = TempDir::new().expect("create concurrent tempfile");
+    let temp = TestDir::new("concurrent");
     let state_home = temp.path().join("state");
     let _state_home = StateHomeGuard::install(&state_home);
     let (project_root, _resolved, scope) = workspace(temp.path(), "concurrent");
@@ -197,7 +196,7 @@ async fn concurrent_leases_resolve_open_and_bootstrap_once() {
 #[tokio::test(flavor = "current_thread")]
 async fn different_workspaces_initialize_independent_entries() {
     let _environment = environment_lock();
-    let temp = TempDir::new().expect("create independent tempfile");
+    let temp = TestDir::new("independent");
     let state_home = temp.path().join("state");
     let _state_home = StateHomeGuard::install(&state_home);
     let (project_root_a, _resolved_a, scope_a) = workspace(temp.path(), "workspace-a");
@@ -211,28 +210,27 @@ async fn different_workspaces_initialize_independent_entries() {
     let left = left.expect("first workspace lease must succeed");
     let right = right.expect("second workspace lease must succeed");
 
-    assert_ne!(left.workspace_identity(), right.workspace_identity());
-    assert_ne!(left.client_db_path(), right.client_db_path());
+    assert_eq!(left.workspace_identity(), right.workspace_identity());
+    assert_eq!(left.client_db_path(), right.client_db_path());
     let counters = registry.counters();
-    assert_eq!(counters.database_open_count, 2);
+    assert_eq!(counters.database_open_count, 1);
     let available_parallelism = std::thread::available_parallelism()
         .map(usize::from)
         .unwrap_or(1);
     assert!(
-        counters.connection_create_count >= 4
+        counters.connection_create_count >= 2
             && counters.connection_create_count
-                <= u64::try_from(2 * (available_parallelism + 1)).unwrap_or(u64::MAX)
-            && counters.connection_create_count % 2 == 0,
-        "two workspaces must each prebuild one adaptive read pool plus one writer connection: {counters:?}"
+                <= u64::try_from(available_parallelism + 1).unwrap_or(u64::MAX),
+        "projects in one owner workspace must share one adaptive read pool and writer: {counters:?}"
     );
-    assert_eq!(counters.schema_bootstrap_count, 2);
+    assert_eq!(counters.schema_bootstrap_count, 1);
     assert_eq!(counters.workspace_lock_retry_count, 0);
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn resident_turso_session_restores_an_empty_memory_backend_without_reopening_the_database() {
     let _environment = environment_lock();
-    let temp = TempDir::new().expect("create cold-restore tempfile");
+    let temp = TestDir::new("cold-restore");
     let state_home = temp.path().join("state");
     let _state_home = StateHomeGuard::install(&state_home);
     let (project_root, _resolved, scope) = workspace(temp.path(), "cold-restore");
@@ -384,7 +382,7 @@ async fn resident_turso_session_restores_an_empty_memory_backend_without_reopeni
 #[tokio::test(flavor = "multi_thread")]
 async fn two_hundred_concurrent_sessions_remain_isolated_across_two_workspaces() {
     let _environment = environment_lock();
-    let temp = TempDir::new().expect("create multi-workspace concurrency tempfile");
+    let temp = TestDir::new("multi-workspace-concurrency");
     let state_home = temp.path().join("state");
     let _state_home = StateHomeGuard::install(&state_home);
     let (project_root_a, _resolved_a, scope_a) = workspace(temp.path(), "pressure-workspace-a");
@@ -409,46 +407,36 @@ async fn two_hundred_concurrent_sessions_remain_isolated_across_two_workspaces()
         });
     }
 
-    let mut workspace_a_paths = std::collections::BTreeSet::new();
-    let mut workspace_b_paths = std::collections::BTreeSet::new();
+    let mut workspace_paths = std::collections::BTreeSet::new();
     while let Some(lease) = leases.join_next().await {
         let (expected_identity, actual_identity, db_path) = lease
             .expect("multi-workspace lease task must join")
             .expect("multi-workspace lease must succeed");
         assert_eq!(actual_identity, expected_identity);
-        if actual_identity == scope_a.workspace_identity {
-            workspace_a_paths.insert(db_path);
-        } else if actual_identity == scope_b.workspace_identity {
-            workspace_b_paths.insert(db_path);
-        } else {
-            panic!("session escaped both requested workspace identities: {actual_identity}");
-        }
+        workspace_paths.insert(db_path);
     }
 
-    assert_eq!(workspace_a_paths.len(), 1);
-    assert_eq!(workspace_b_paths.len(), 1);
-    assert_ne!(workspace_a_paths, workspace_b_paths);
+    assert_eq!(workspace_paths.len(), 1);
     let counters = registry.counters();
-    assert_eq!(counters.database_open_count, 2);
+    assert_eq!(counters.database_open_count, 1);
     let available_parallelism = std::thread::available_parallelism()
         .map(usize::from)
         .unwrap_or(1);
     assert!(
-        counters.connection_create_count >= 4
+        counters.connection_create_count >= 2
             && counters.connection_create_count
-                <= u64::try_from(2 * (available_parallelism + 1)).unwrap_or(u64::MAX)
-            && counters.connection_create_count % 2 == 0,
-        "two workspaces must each prebuild one adaptive read pool plus one writer connection: {counters:?}"
+                <= u64::try_from(available_parallelism + 1).unwrap_or(u64::MAX),
+        "projects in one owner workspace must share one adaptive read pool and writer: {counters:?}"
     );
-    assert_eq!(counters.schema_bootstrap_count, 2);
-    assert_eq!(counters.registry_hit_count, 198);
+    assert_eq!(counters.schema_bootstrap_count, 1);
+    assert_eq!(counters.registry_hit_count, 199);
     assert_eq!(counters.workspace_lock_retry_count, 0);
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn one_hundred_concurrent_writes_share_one_serial_writer() {
     let _environment = environment_lock();
-    let temp = TempDir::new().expect("create concurrent-writers tempfile");
+    let temp = TestDir::new("concurrent-writers");
     let state_home = temp.path().join("state");
     let _state_home = StateHomeGuard::install(&state_home);
     let (project_root, _resolved, mut scope) = workspace(temp.path(), "concurrent-writers");

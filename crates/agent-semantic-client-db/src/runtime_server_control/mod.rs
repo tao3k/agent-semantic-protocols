@@ -5,10 +5,7 @@ mod frame;
 mod model;
 pub(crate) mod status_memory;
 
-pub use client::{
-    RUNTIME_SERVER_HOOK_CONTROL_PROBE_BUDGET, RuntimeServerHookProbeError, call_runtime_server,
-    probe_runtime_server_for_hook, reconcile_runtime_server,
-};
+pub use client::{call_runtime_server, ensure_runtime_server_workspace, reconcile_runtime_server};
 pub use endpoint::{
     RuntimeServerElection, acquire_runtime_server_election, bind_runtime_server_listener,
     prepare_runtime_server_endpoint, prepare_runtime_server_endpoint_in,

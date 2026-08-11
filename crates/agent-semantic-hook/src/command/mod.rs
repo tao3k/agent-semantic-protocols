@@ -8,5 +8,7 @@ mod shell;
 
 pub(crate) use apply_patch::apply_patch_source_paths;
 pub(crate) use query::infer_query_from_path;
-pub(crate) use search_json::{is_asp_facade_command, search_json_route};
+pub(crate) use search_json::{
+    asp_command_tokens, command_line, is_asp_facade_command, search_json_route,
+};
 pub use shell::semantic_shell_tokens;

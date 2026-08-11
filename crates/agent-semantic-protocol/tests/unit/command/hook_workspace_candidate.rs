@@ -34,6 +34,36 @@ fn explicit_asp_workspace_overrides_the_tool_workdir() {
 }
 
 #[test]
+fn dot_workspace_alias_uses_the_same_authority_identity_as_task_cwd() {
+    let payload = serde_json::json!({
+        "cwd": "/workspace/root",
+        "tool_input": {
+            "command": "asp rust search owner src/lib.rs items --workspace . --view seeds"
+        }
+    });
+
+    assert_eq!(
+        hook_workspace_candidate(&payload, Path::new("/fallback")),
+        Path::new("/workspace/root")
+    );
+}
+
+#[test]
+fn parent_workspace_alias_is_normalized_without_filesystem_io() {
+    let payload = serde_json::json!({
+        "cwd": "/workspace/root/crates/protocol",
+        "tool_input": {
+            "command": "asp rust query --workspace ../.. --selector rust://src/lib.rs#item/module/root --projection source"
+        }
+    });
+
+    assert_eq!(
+        hook_workspace_candidate(&payload, Path::new("/fallback")),
+        Path::new("/workspace/root")
+    );
+}
+
+#[test]
 fn explicit_absolute_asp_workspace_is_preserved() {
     let payload = serde_json::json!({
         "cwd": "/workspace/root",

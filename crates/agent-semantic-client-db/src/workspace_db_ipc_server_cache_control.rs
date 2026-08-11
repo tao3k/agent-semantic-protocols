@@ -52,37 +52,65 @@ fn status_receipt(
 }
 
 async fn admit_generation(
+    memory_registry: &RuntimeServerWorkspaceRegistry,
     admission: &WorkspaceGenerationAdmission,
     workspace_identity: &str,
     project_root: &Path,
 ) -> Result<(RuntimeCacheGenerationState, Option<String>), String> {
+    if admission
+        .status(workspace_identity, project_root)
+        .await
+        .is_some_and(|receipt| receipt.state == WorkspaceGenerationAdmissionState::Building)
+    {
+        let _ = admission
+            .wait_terminal(workspace_identity, project_root)
+            .await?;
+    }
     let candidate = discover_workspace_generation_candidate(project_root).await?;
-    let admitted = admission
+    let mut admitted = admission
         .admit(
             workspace_identity.to_owned(),
             project_root.to_path_buf(),
             candidate,
         )
         .await?;
-    let state = if admitted.state == WorkspaceGenerationAdmissionState::Ready {
-        RuntimeCacheGenerationState::Ready
-    } else {
-        RuntimeCacheGenerationState::Rebuilding
-    };
+    if admitted.state == WorkspaceGenerationAdmissionState::Building {
+        admitted = admission
+            .wait_terminal_attempt(workspace_identity, project_root, admitted.attempt)
+            .await?;
+    }
+    if admitted.state != WorkspaceGenerationAdmissionState::Ready {
+        return Err(format!(
+            "Runtime cache refresh generation did not become Ready: state={:?} error={}",
+            admitted.state,
+            admitted.error.as_deref().unwrap_or("none")
+        ));
+    }
+    require_published_generation(memory_registry, workspace_identity, project_root).await?;
     Ok((
-        state,
+        RuntimeCacheGenerationState::Ready,
         admitted.commit.map(|commit| commit.generation_digest),
     ))
 }
 
 async fn rebuild_generation(
+    memory_registry: &RuntimeServerWorkspaceRegistry,
     admission: &WorkspaceGenerationAdmission,
     workspace_identity: &str,
     project_root: &Path,
     mutation_id: &str,
 ) -> Result<(RuntimeCacheGenerationState, Option<String>), String> {
+    if admission
+        .status(workspace_identity, project_root)
+        .await
+        .is_some_and(|receipt| receipt.state == WorkspaceGenerationAdmissionState::Building)
+    {
+        let _ = admission
+            .wait_terminal(workspace_identity, project_root)
+            .await?;
+    }
     let candidate = discover_workspace_generation_candidate(project_root).await?;
-    let admitted = admission
+    let mut admitted = admission
         .admit_cache_rebuild(
             mutation_id.to_owned(),
             workspace_identity.to_owned(),
@@ -90,15 +118,40 @@ async fn rebuild_generation(
             candidate,
         )
         .await?;
-    let state = if admitted.state == WorkspaceGenerationAdmissionState::Ready {
-        RuntimeCacheGenerationState::Ready
-    } else {
-        RuntimeCacheGenerationState::Rebuilding
-    };
+    if admitted.state == WorkspaceGenerationAdmissionState::Building {
+        admitted = admission
+            .wait_terminal_attempt(workspace_identity, project_root, admitted.attempt)
+            .await?;
+    }
+    if admitted.state != WorkspaceGenerationAdmissionState::Ready {
+        return Err(format!(
+            "Runtime cache rebuild generation did not become Ready: state={:?} error={}",
+            admitted.state,
+            admitted.error.as_deref().unwrap_or("none")
+        ));
+    }
+    require_published_generation(memory_registry, workspace_identity, project_root).await?;
     Ok((
-        state,
+        RuntimeCacheGenerationState::Ready,
         admitted.commit.map(|commit| commit.generation_digest),
     ))
+}
+
+async fn require_published_generation(
+    memory_registry: &RuntimeServerWorkspaceRegistry,
+    workspace_identity: &str,
+    project_root: &Path,
+) -> Result<(), String> {
+    match memory_registry
+        .published_generation_state(workspace_identity, project_root)
+        .await?
+    {
+        crate::runtime_server_workspace::PublishedWorkspaceGenerationState::Ready => Ok(()),
+        state => Err(format!(
+            "Runtime cache admission reached Ready before immutable generation publication: workspaceIdentity={workspace_identity} projectRoot={} publishedState={state:?}",
+            project_root.display()
+        )),
+    }
 }
 
 fn admission_unavailable() -> WorkspaceDbIpcResult {
@@ -174,7 +227,14 @@ pub(super) async fn evaluate(
             let Some(admission) = generation_admission else {
                 return admission_unavailable();
             };
-            match admit_generation(admission, workspace_identity, Path::new(&project_root)).await {
+            match admit_generation(
+                memory_registry,
+                admission,
+                workspace_identity,
+                Path::new(&project_root),
+            )
+            .await
+            {
                 Ok((state, digest)) => receipt("refresh-source-index", state, digest, None),
                 Err(message) => WorkspaceDbIpcResult::Failed {
                     code: "runtime-server-cache-refresh-failed".to_owned(),
@@ -190,6 +250,7 @@ pub(super) async fn evaluate(
                 return admission_unavailable();
             };
             match rebuild_generation(
+                memory_registry,
                 admission,
                 workspace_identity,
                 Path::new(&project_root),
@@ -215,6 +276,7 @@ pub(super) async fn evaluate(
                 return admission_unavailable();
             };
             match rebuild_generation(
+                memory_registry,
                 admission,
                 workspace_identity,
                 Path::new(&project_root),

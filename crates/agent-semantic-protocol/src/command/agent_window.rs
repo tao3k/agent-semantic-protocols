@@ -104,3 +104,7 @@ fn session_platform_from_ids(
         ),
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/command/agent_window.rs"]
+mod tests;

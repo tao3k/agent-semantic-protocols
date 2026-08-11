@@ -24,7 +24,7 @@ impl AgentSessionRegistry {
         &self,
         observation: &crate::workspace_db_ipc::AgentHostExecutionObservationIpc,
     ) -> Result<bool, String> {
-        let current = self
+        let Some(current) = self
             .query_sessions_local(
                 observation.project_id.clone(),
                 Some(observation.root_session_id.clone().into()),
@@ -33,7 +33,12 @@ impl AgentSessionRegistry {
             .await?
             .into_iter()
             .next()
-            .ok_or_else(|| "host-execution-observation-requires-existing-namespace".to_owned())?;
+        else {
+            // Host execution is refinement evidence, not registration authority.
+            // The matching HostLifecycleEvent::Started carries the complete
+            // role/model/sandbox/binding identity needed to create generation 1.
+            return Ok(false);
+        };
         if current.session_id() != observation.child_session_id {
             return Err(format!(
                 "host-execution-observation-identity-mismatch: currentChild={} observedChild={}",

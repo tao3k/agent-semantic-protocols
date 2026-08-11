@@ -157,7 +157,7 @@ impl ActiveArtifactLeafV1 {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ActiveAspArtifactReceiptV1 {
     schema_id: String,
@@ -167,6 +167,44 @@ pub struct ActiveAspArtifactReceiptV1 {
     artifact_root_digest: ContentDigestV1,
     materialization_root_digest: ContentDigestV1,
     leaves: Vec<ActiveArtifactLeafV1>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ActiveAspArtifactReceiptWireV1 {
+    schema_id: String,
+    schema_version: String,
+    digest_algorithm: String,
+    artifact_set_id: ActiveArtifactSetIdV1,
+    artifact_root_digest: ContentDigestV1,
+    #[serde(default)]
+    materialization_root_digest: Option<ContentDigestV1>,
+    leaves: Vec<ActiveArtifactLeafV1>,
+}
+
+impl<'de> Deserialize<'de> for ActiveAspArtifactReceiptV1 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = ActiveAspArtifactReceiptWireV1::deserialize(deserializer)?;
+        let materialization_root_digest = match wire.materialization_root_digest {
+            Some(digest) => digest,
+            None => {
+                active_artifact_materialization_root_digest_v1(&wire.artifact_set_id, &wire.leaves)
+                    .map_err(|error| serde::de::Error::custom(format!("{error:?}")))?
+            }
+        };
+        Ok(Self {
+            schema_id: wire.schema_id,
+            schema_version: wire.schema_version,
+            digest_algorithm: wire.digest_algorithm,
+            artifact_set_id: wire.artifact_set_id,
+            artifact_root_digest: wire.artifact_root_digest,
+            materialization_root_digest,
+            leaves: wire.leaves,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

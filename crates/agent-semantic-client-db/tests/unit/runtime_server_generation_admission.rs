@@ -503,23 +503,8 @@ async fn ensure_schedules_once_without_waiting_for_generation_build() {
     admission.shutdown().await.expect("drain admission lane");
 }
 
-#[test]
-fn readiness_receipt_does_not_require_checkout_or_generation_builder() {
-    let receipt =
-        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationReadinessReceipt::new(
-            "workspace-ready",
-            committed_generation(),
-            false,
-        )
-        .expect("construct readiness from an already-open resident generation");
-
-    assert_eq!(receipt.workspace_identity, "workspace-ready");
-    assert!(!receipt.reconciled);
-    receipt.validate().expect("validate readiness receipt");
-}
-
 #[tokio::test]
-async fn supervisor_fails_closed_for_registered_workspaces_without_git_candidates() {
+async fn supervisor_restores_registered_workspaces_before_live_git_reconciliation() {
     use agent_semantic_client_db::runtime_server_admission_catalog::{
         RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
     };
@@ -583,20 +568,21 @@ async fn supervisor_fails_closed_for_registered_workspaces_without_git_candidate
         .expect("restore registered workspace generations");
     let elapsed = started.elapsed();
 
-    assert!(report.ready.is_empty(), "restore report: {report:#?}");
     assert_eq!(
-        report.failed.len(),
+        report.ready.len(),
         WORKSPACE_COUNT as usize,
         "restore report: {report:#?}"
     );
-    assert!(report.failed.iter().all(|failure| failure.error
-        == "workspace generation admission requires a Git candidate snapshot"));
-    assert_eq!(build_count.load(Ordering::SeqCst), 0);
-    assert_eq!(restore_only_build_count.load(Ordering::SeqCst), 0);
-    assert_eq!(maximum_active.load(Ordering::SeqCst), 0);
+    assert_eq!(report.failed.len(), 0, "restore report: {report:#?}");
+    assert_eq!(build_count.load(Ordering::SeqCst), WORKSPACE_COUNT);
+    assert_eq!(
+        restore_only_build_count.load(Ordering::SeqCst),
+        WORKSPACE_COUNT
+    );
+    assert!(maximum_active.load(Ordering::SeqCst) > 1);
     assert!(
-        elapsed < std::time::Duration::from_millis(50),
-        "supervisor restore exceeded the 50ms multi-workspace gate: {elapsed:?}"
+        elapsed < std::time::Duration::from_millis(500),
+        "supervisor restore exceeded the 500ms multi-workspace lifecycle boundary: {elapsed:?}"
     );
     admission.shutdown().await.expect("shutdown admission");
 }

@@ -19,7 +19,7 @@ pub async fn connect_runtime_server_workspace_session(
                 .ok_or_else(|| "ASP_STATE_HOME and HOME are both unset".to_owned())?;
             PathBuf::from(home).join(".agent-semantic-protocols")
         };
-    let endpoint_path = crate::runtime_server_endpoint_path(&state_home);
+    let endpoint_path = crate::runtime_server_endpoint_path(&state_home)?;
     let endpoint_bytes = tokio::fs::read(&endpoint_path).await.map_err(|error| {
         format!(
             "Runtime Server endpoint is unavailable at {}: {error}",
@@ -43,22 +43,18 @@ pub async fn connect_runtime_server_workspace_session(
     ))
 }
 
-pub fn read_source_index_via_runtime_server(
+pub async fn read_source_index_via_runtime_server(
     request: WorkspaceDbSourceIndexLookupRequest,
 ) -> Result<ClientDbSourceIndexLookupResult, String> {
-    crate::engine::facade::block_on_db_engine_async(async move {
-        let session = connect_runtime_server_workspace_session(&request.project_root).await?;
-        session.read_source_index(&request).await
-    })
+    let session = connect_runtime_server_workspace_session(&request.project_root).await?;
+    session.read_source_index(&request).await
 }
 
 /// Execute one cache-control request through the resident Runtime Server.
-pub fn cache_control_via_runtime_server(
+pub async fn cache_control_via_runtime_server(
     request: super::RuntimeCacheControlRequest,
 ) -> Result<super::RuntimeCacheControlReceipt, String> {
     let project_root = PathBuf::from(request.project_root());
-    crate::engine::facade::block_on_db_engine_async(async move {
-        let session = connect_runtime_server_workspace_session(&project_root).await?;
-        session.cache_control(request).await
-    })
+    let session = connect_runtime_server_workspace_session(&project_root).await?;
+    session.cache_control(request).await
 }

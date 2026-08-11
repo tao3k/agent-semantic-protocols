@@ -22,8 +22,6 @@ mod owner_items;
 mod owner_items_cold;
 #[path = "scenario_performance_gate/policy_ids.rs"]
 mod policy_ids;
-#[path = "scenario_performance_gate/query_selector_preflight.rs"]
-mod query_selector_preflight;
 #[path = "scenario_performance_gate/runtime_gates.rs"]
 mod runtime_gates;
 #[path = "scenario_performance_gate/sandtable.rs"]
@@ -40,12 +38,6 @@ mod scenario_performance_gate_impl;
 mod scenario_policy_scan;
 #[path = "scenario_performance_gate/search_candidate_contract.rs"]
 mod search_candidate_contract;
-#[path = "scenario_performance_gate/search_command_preflight.rs"]
-mod search_command_preflight;
-#[path = "scenario_performance_gate/search_frame.rs"]
-mod search_frame;
-#[path = "scenario_performance_gate/search_pipe_gates.rs"]
-mod search_pipe_gates;
 #[path = "scenario_performance_gate/shared.rs"]
 mod shared;
 #[path = "scenario_performance_gate/turso_pressure.rs"]

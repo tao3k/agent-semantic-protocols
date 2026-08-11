@@ -219,8 +219,11 @@ async fn host_execution_observation_never_creates_or_rebinds_a_namespace() {
     let absent = registry
         .record_host_execution_observation_local(&observation)
         .await
-        .expect_err("an execution observation must not create a namespace");
-    assert!(absent.contains("namespace"), "{absent}");
+        .expect("pre-lifecycle execution evidence must be deferred");
+    assert!(
+        !absent,
+        "an execution observation must not create a namespace"
+    );
     assert!(
         registry
             .query_sessions_local("workspace-1".to_owned(), None, None)

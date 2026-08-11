@@ -27,11 +27,11 @@ mod candidate;
 mod dispatcher;
 #[path = "runtime_server_admission_mutation.rs"]
 mod mutation;
+#[path = "runtime_server_admission_restore.rs"]
+mod restore;
 
 pub const WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-workspace-generation-admission.v1";
-pub const WORKSPACE_GENERATION_READINESS_RECEIPT_SCHEMA_ID: &str =
-    "agent.semantic-protocols.runtime-server-workspace-generation-readiness.v1";
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct WorkspaceGenerationAdmissionKey {
@@ -72,52 +72,6 @@ pub struct WorkspaceGenerationCommitReceipt {
     pub source_root_digest: String,
 }
 
-/// Read-side proof that the Runtime Server has opened and validated the
-/// immutable generation selected by the workspace locator.
-///
-/// Unlike an admission receipt, this contract deliberately carries no Git
-/// candidate or build attempt. Constructing it must remain an in-memory
-/// operation on an existing resident generation lease.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WorkspaceGenerationReadinessReceipt {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub workspace_identity: String,
-    pub commit: WorkspaceGenerationCommitReceipt,
-    pub reconciled: bool,
-}
-
-impl WorkspaceGenerationReadinessReceipt {
-    pub fn new(
-        workspace_identity: impl Into<String>,
-        commit: WorkspaceGenerationCommitReceipt,
-        reconciled: bool,
-    ) -> Result<Self, String> {
-        let receipt = Self {
-            schema_id: WORKSPACE_GENERATION_READINESS_RECEIPT_SCHEMA_ID.to_owned(),
-            schema_version: "1".to_owned(),
-            workspace_identity: workspace_identity.into(),
-            commit,
-            reconciled,
-        };
-        receipt.validate()?;
-        Ok(receipt)
-    }
-
-    pub fn validate(&self) -> Result<(), String> {
-        if self.schema_id != WORKSPACE_GENERATION_READINESS_RECEIPT_SCHEMA_ID
-            || self.schema_version != "1"
-        {
-            return Err("workspace generation readiness receipt schema mismatch".to_owned());
-        }
-        if self.workspace_identity.trim().is_empty() {
-            return Err("workspace generation readiness identity must be non-empty".to_owned());
-        }
-        self.commit.validate()
-    }
-}
-
 impl WorkspaceGenerationCommitReceipt {
     pub fn from_recovery(
         recovery: &crate::runtime_server_workspace::WorkspaceRecoveryReceipt,
@@ -149,7 +103,12 @@ pub struct WorkspaceGenerationRestoreReport {
     pub failed: Vec<WorkspaceGenerationRestoreFailure>,
 }
 
-const REGISTERED_WORKSPACE_RESTORE_CONCURRENCY: usize = 1;
+fn registered_workspace_restore_concurrency() -> usize {
+    std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(2)
+        .max(2)
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorkspaceGenerationRestoreFailure {
@@ -202,7 +161,6 @@ fn observed_mutation_build_mode(
 #[derive(Clone)]
 pub struct WorkspaceGenerationAdmission {
     builder: WorkspaceGenerationBuilder,
-    owner_projection_builder: Option<WorkspaceOwnerProjectionBuilder>,
     catalog: Option<crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog>,
     entries: Arc<dashmap::DashMap<WorkspaceGenerationAdmissionKey, Arc<AdmissionEntry>>>,
     changes: Arc<tokio::sync::Notify>,
@@ -345,7 +303,6 @@ impl WorkspaceGenerationAdmission {
     ) -> Self {
         Self {
             builder,
-            owner_projection_builder: None,
             catalog: None,
             entries: Arc::new(dashmap::DashMap::with_capacity(
                 Self::initial_control_plane_capacity(),
@@ -357,28 +314,6 @@ impl WorkspaceGenerationAdmission {
             build_dispatcher: dispatcher::RuntimeServerAdmissionDispatcher::new(),
             telemetry_sender,
         }
-    }
-
-    #[must_use]
-    pub fn with_owner_projection_builder(
-        mut self,
-        builder: WorkspaceOwnerProjectionBuilder,
-    ) -> Self {
-        self.owner_projection_builder = Some(builder);
-        self
-    }
-
-    pub async fn project_owner(
-        &self,
-        workspace_identity: String,
-        project_root: PathBuf,
-        owner_path: String,
-    ) -> Result<crate::runtime_server_workspace::WorkspaceOwnerSnapshot, String> {
-        let builder = self.owner_projection_builder.as_ref().ok_or_else(|| {
-            "runtime owner projection builder is unavailable in the admitted ServerProcess"
-                .to_owned()
-        })?;
-        builder(workspace_identity, project_root, owner_path).await
     }
 
     pub fn with_catalog(
@@ -750,90 +685,6 @@ impl WorkspaceGenerationAdmission {
         }
     }
 
-    pub async fn restore_registered(&self) -> Result<WorkspaceGenerationRestoreReport, String> {
-        let Some(catalog) = &self.catalog else {
-            return Ok(WorkspaceGenerationRestoreReport::default());
-        };
-        let entries = catalog.snapshot();
-        let mut tasks = tokio::task::JoinSet::new();
-        let restore_permits = std::sync::Arc::new(tokio::sync::Semaphore::new(
-            REGISTERED_WORKSPACE_RESTORE_CONCURRENCY,
-        ));
-        for entry in entries.iter().cloned() {
-            let admission = self.clone();
-            let restore_permits = std::sync::Arc::clone(&restore_permits);
-            tasks.spawn(async move {
-                let workspace_identity = entry.workspace_identity.clone();
-                let restored = async {
-                    let _restore_permit = restore_permits
-                        .acquire_owned()
-                        .await
-                        .map_err(|_| "registered workspace restore lane closed".to_owned())?;
-                    let candidate =
-                        discover_workspace_generation_candidate(&entry.project_root).await?;
-                    let receipt = admission
-                        .admit_with_mode(
-                            entry.workspace_identity.clone(),
-                            entry.project_root.clone(),
-                            candidate,
-                            WorkspaceGenerationBuildMode::RestoreOnly,
-                        )
-                        .await?;
-                    if receipt.state == WorkspaceGenerationAdmissionState::Building {
-                        admission
-                            .wait_terminal(&entry.workspace_identity, &entry.project_root)
-                            .await
-                    } else {
-                        Ok(receipt)
-                    }
-                }
-                .await;
-                (workspace_identity, restored)
-            });
-        }
-        let mut report = WorkspaceGenerationRestoreReport::default();
-        while let Some(result) = tasks.join_next().await {
-            let (workspace_identity, restored) = result
-                .map_err(|error| format!("workspace admission restore task failed: {error}"))?;
-            let receipt = match restored {
-                Ok(receipt) => receipt,
-                Err(error) => {
-                    report.failed.push(WorkspaceGenerationRestoreFailure {
-                        workspace_identity,
-                        error,
-                    });
-                    continue;
-                }
-            };
-            match receipt.state {
-                WorkspaceGenerationAdmissionState::Ready => report.ready.push(receipt),
-                WorkspaceGenerationAdmissionState::Failed
-                | WorkspaceGenerationAdmissionState::Cancelled => {
-                    report.failed.push(WorkspaceGenerationRestoreFailure {
-                        workspace_identity: receipt.workspace_identity,
-                        error: receipt
-                            .error
-                            .unwrap_or_else(|| "workspace generation restore failed".to_owned()),
-                    });
-                }
-                WorkspaceGenerationAdmissionState::Building => {
-                    report.failed.push(WorkspaceGenerationRestoreFailure {
-                        workspace_identity,
-                        error: "workspace admission restore returned a non-terminal receipt"
-                            .to_owned(),
-                    });
-                }
-            }
-        }
-        report
-            .ready
-            .sort_by(|left, right| left.workspace_identity.cmp(&right.workspace_identity));
-        report
-            .failed
-            .sort_by(|left, right| left.workspace_identity.cmp(&right.workspace_identity));
-        Ok(report)
-    }
-
     pub async fn status(
         &self,
         workspace_identity: &str,
@@ -915,6 +766,43 @@ impl WorkspaceGenerationAdmission {
                     )
                 })?;
             if receipt.state != WorkspaceGenerationAdmissionState::Building {
+                if let Some(catalog) = &self.catalog {
+                    catalog.wait_durable().await?;
+                }
+                return Ok(receipt);
+            }
+            changed.as_mut().await;
+        }
+    }
+
+    pub async fn wait_terminal_attempt(
+        &self,
+        workspace_identity: &str,
+        project_root: &std::path::Path,
+        expected_attempt: u64,
+    ) -> Result<WorkspaceGenerationAdmissionReceipt, String> {
+        loop {
+            let changed = self.changes.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            let receipt = self
+                .status(workspace_identity, project_root)
+                .await
+                .ok_or_else(|| {
+                    format!(
+                        "workspace generation admission is unknown: workspaceIdentity={workspace_identity} projectRoot={}",
+                        project_root.display()
+                    )
+                })?;
+            if receipt.attempt > expected_attempt {
+                return Err(format!(
+                    "workspace generation admission advanced past the requested attempt: workspaceIdentity={workspace_identity} expectedAttempt={expected_attempt} actualAttempt={}",
+                    receipt.attempt
+                ));
+            }
+            if receipt.attempt == expected_attempt
+                && receipt.state != WorkspaceGenerationAdmissionState::Building
+            {
                 if let Some(catalog) = &self.catalog {
                     catalog.wait_durable().await?;
                 }

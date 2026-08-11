@@ -100,44 +100,6 @@ impl RuntimeLifecycleEvent {
 }
 
 impl RuntimePerformanceObservation {
-    /// Converts the canonical agent-facing wall failure into the durable
-    /// performance observation admitted by the Runtime Server writer lane.
-    pub fn from_agent_facing_wall_failure(
-        value: &serde_json::Value,
-    ) -> Result<Option<Self>, String> {
-        if value.get("schemaId").and_then(serde_json::Value::as_str)
-            != Some("agent.semantic-protocols.agent-facing-search-wall-failure")
-        {
-            return Ok(None);
-        }
-        let text = |field: &str| {
-            value
-                .get(field)
-                .and_then(serde_json::Value::as_str)
-                .filter(|value| !value.trim().is_empty())
-                .ok_or_else(|| format!("agent-facing wall failure requires `{field}`"))
-        };
-        let integer = |field: &str| {
-            value
-                .get(field)
-                .and_then(serde_json::Value::as_u64)
-                .ok_or_else(|| format!("agent-facing wall failure requires `{field}`"))
-        };
-        let mut observation = Self::new(
-            text("surface")?,
-            text("stage")?,
-            integer("elapsedMicros")?,
-            integer("budgetMicros")?,
-            "budget-exceeded",
-        );
-        observation.failure_reason = Some(text("reasonKind")?.to_owned());
-        observation.retry_after_ms = value
-            .get("retryAfterMs")
-            .and_then(serde_json::Value::as_u64);
-        observation.seal_budget_failure_identity();
-        Ok(Some(observation))
-    }
-
     pub fn new(
         surface: impl Into<String>,
         stage: impl Into<String>,

@@ -931,7 +931,13 @@ async fn db_engine_source_index_refresh_lookup_pressure_never_exposes_busy_or_lo
 }
 
 fn temp_root(label: &str) -> PathBuf {
-    let mut root = std::env::temp_dir();
+    let repository = gix::discover(env!("CARGO_MANIFEST_DIR"))
+        .expect("discover owner-backed source-index test repository with Gix");
+    let mut root = repository
+        .worktree()
+        .expect("source-index tests require a non-bare owner checkout")
+        .base()
+        .join("target/asp-live-project-fixtures");
     let unique = format!(
         "asp-client-db-{label}-{}-{}",
         std::process::id(),

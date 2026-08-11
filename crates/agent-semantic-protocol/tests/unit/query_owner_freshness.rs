@@ -341,7 +341,8 @@ impl ExactQueryRuntime {
             .await
             .expect("prepare exact-query Runtime Server endpoint");
         agent_semantic_client_db::runtime_server_control::publish_runtime_server_endpoint(
-            &agent_semantic_client_db::runtime_server_endpoint_path(&state_home),
+            &agent_semantic_client_db::runtime_server_endpoint_path(&state_home)
+                .expect("resolve host-local Runtime endpoint authority"),
             &endpoint,
         )
         .await
@@ -442,34 +443,17 @@ impl ExactQueryRuntime {
             admitted.receipts.len(),
             "{admitted:?}"
         );
-        let expected_attempt = admitted
-            .receipts
-            .iter()
-            .find(|receipt| receipt.workspace_identity == self.workspace_identity)
-            .expect("mutation receipt includes exact-query workspace")
-            .attempt;
-        let receipt = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        let authority = tokio::time::timeout(std::time::Duration::from_secs(5), async {
             loop {
-                let receipt = session
-                    .ensure_runtime_generation()
-                    .await
-                    .expect("finish exact-query fixture generation");
-                if receipt.state
-                    != agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Building
-                {
-                    break receipt;
+                if let Ok(authority) = session.runtime_search_generation_authority().await {
+                    break authority;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(1)).await;
             }
         })
         .await
         .expect("exact-query fixture generation reached terminal state");
-        assert_eq!(
-            receipt.state,
-            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready,
-            "{receipt:?}"
-        );
-        assert_eq!(receipt.attempt, expected_attempt, "{receipt:?}");
+        assert_eq!(authority.workspace_identity, self.workspace_identity);
     }
 
     async fn shutdown(self) {

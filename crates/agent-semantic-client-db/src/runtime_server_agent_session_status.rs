@@ -32,9 +32,7 @@ impl AgentSessionStatusHandle {
             .await?
             .into_iter()
             .map(|record| {
-                let workspace_identity = crate::AgentSessionRegistry::workspace_id(
-                    std::path::Path::new(record.project_id()),
-                )?;
+                let workspace_identity = record.project_id().to_owned();
                 let lifecycle_state = if record.expires_at().is_some_and(|expires| expires <= now) {
                     crate::runtime_server_control::RuntimeServerAgentSessionLifecycleState::Stopped
                 } else {

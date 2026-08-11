@@ -50,6 +50,27 @@ fn existing_item_without_requested_projection_is_not_a_kind_mismatch() {
 }
 
 #[test]
+fn descendant_projection_missing_from_generation_is_not_a_root_kind_mismatch() {
+    let descendant_selector = format!("{SELECTOR}/segment/binding/ordinal-1");
+    let resolution = resolve(
+        WorkspaceRuntimeSelectorRead::OwnerForRepair {
+            generation_digest: "generation".to_owned(),
+            root_digest: "root".to_owned(),
+            owner: owner_with(SELECTOR),
+        },
+        &descendant_selector,
+    )
+    .expect("resolve resident descendant projection");
+    let ResidentExactProjection::Miss(miss) = resolution else {
+        panic!("expected projection-mode miss");
+    };
+    assert_eq!(miss.structural_selector, descendant_selector);
+    assert_eq!(miss.state, "source-unavailable");
+    assert_eq!(miss.reason_kind, "projection-mode-not-in-active-generation");
+    assert_eq!(miss.actual_kinds, ["function"]);
+}
+
+#[test]
 fn uniquely_relocated_projection_is_an_exact_selector_hit() {
     let requested = "rust://src/lib.rs#item/function/target";
     let resolved = "rust://src/moved.rs#item/function/target";
@@ -107,4 +128,21 @@ fn same_symbol_with_another_item_kind_remains_a_real_kind_mismatch() {
     assert_eq!(miss.state, "kind-mismatch");
     assert_eq!(miss.reason_kind, "snapshot-item-kind-mismatch");
     assert_eq!(miss.actual_kinds, ["struct"]);
+}
+
+#[test]
+fn provider_projection_does_not_require_a_workspace_generation() {
+    let projection = resolve(
+        WorkspaceRuntimeSelectorRead::ProviderProjection {
+            owner_content_digest: format!("blake3-256:{}", "a".repeat(64)),
+            resolved_selector: SELECTOR.to_owned(),
+            bytes: b"fn target() {}".to_vec(),
+        },
+        SELECTOR,
+    )
+    .expect("provider projection should resolve independently of generation identity");
+    let ResidentExactProjection::Hit(bytes) = projection else {
+        panic!("provider projection must not degrade into a generation miss");
+    };
+    assert_eq!(bytes, b"fn target() {}");
 }

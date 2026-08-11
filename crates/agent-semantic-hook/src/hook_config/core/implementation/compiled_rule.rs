@@ -1,4 +1,6 @@
-use super::action_match;
+//! Coordinates compiled Hook rule owners through crate-level facades.
+
+use super::action_match_facade as action_match;
 
 use agent_semantic_config::{
     HookClientConfigDecision, HookClientConfigFile, HookClientConfigReasonKind,
@@ -7,20 +9,21 @@ use agent_semantic_config::{
 };
 
 use crate::hook_config::AspSessionPolicy;
-use crate::hook_config::agent_org_config::compile_agent_org_artifacts_config;
-use crate::hook_config_agent_org::{
-    AgentOrgArtifactsArchiveWarning, AgentOrgArtifactsRecovery, CompiledAgentOrgArtifactsConfig,
-};
-use crate::hook_recovery_prompt::CompiledRecoveryPromptConfig;
+use crate::hook_config::compile_agent_org_artifacts_config;
 use crate::protocol::{
     DecisionKind, DecisionRoute, DecisionRouteKind, HOOK_DECISION_SCHEMA_ID,
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
     ReasonKind, StdinMode,
 };
+use crate::{
+    AgentOrgArtifactsArchiveWarning, AgentOrgArtifactsRecovery, CompiledAgentOrgArtifactsConfig,
+    CompiledRecoveryPromptConfig, HookRuntime, collect_source_selector_matches,
+};
 
-use crate::protocol_activation::protocol_activation_manifest::HookRuntime;
-use crate::source_selector::collect_source_selector_matches;
 use crate::tool_action::{ToolAction, subject_for_action};
+
+#[path = "compiled_rule_structured_projection_template.rs"]
+mod structured_projection_template;
 
 #[derive(Debug)]
 /// Compiled hook rules loaded from the global ASP state root.
@@ -74,6 +77,8 @@ pub(in crate::hook_config) struct CompiledRuleDispatch {
     pub(in crate::hook_config) resident_name: String,
     pub(in crate::hook_config) resident_codex_agent_name: String,
     pub(in crate::hook_config) resident_role: String,
+    pub(in crate::hook_config) resident_agent_kind: String,
+    pub(in crate::hook_config) resident_display_role: String,
     pub(in crate::hook_config) resident_description: String,
     pub(super) receipt_kind: String,
     lazy_provider: Option<agent_semantic_config::HookClientLazyProviderPolicy>,
@@ -138,18 +143,7 @@ impl CompiledHookRule {
     }
 
     fn rendered_message(&self) -> String {
-        let fallback = format!(
-            "client hook config rule `{}` matched this tool use",
-            self.id
-        );
-        let Some(template) = self.message.as_deref() else {
-            return fallback;
-        };
-        let execution_lane = self.fields.get("executionLane").map_or("", String::as_str);
-        agent_semantic_config::render_hook_client_message_template(
-            template,
-            &[("executionLane", execution_lane)],
-        )
+        compiled_rule_message::render(self)
     }
 
     fn needs_decision_paths(&self) -> bool {
@@ -754,6 +748,12 @@ impl CompiledHookRule {
                     resident_name: resident_name.clone(),
                     resident_codex_agent_name: resident.codex_agent_name.clone(),
                     resident_role: resident.role.clone(),
+                    resident_agent_kind: resident.agent_kind.clone(),
+                    resident_display_role: if resident.display_role.is_empty() {
+                        resident.role.clone()
+                    } else {
+                        resident.display_role.clone()
+                    },
                     resident_description: resident.description.clone(),
                     receipt_kind: dispatch.receipt_kind.as_str().to_owned(),
                     lazy_provider: dispatch.lazy_provider,
@@ -975,9 +975,11 @@ use durable_artifact::{
     DURABLE_HOOK_MATCHER_SCHEMA_ID, DURABLE_HOOK_MATCHER_SCHEMA_VERSION, DurableRuleMatcherArtifact,
 };
 
-use crate::hook_config::core::compile::{compile_command_contains, compile_globs};
 use crate::hook_config::core::match_types::{CompiledCommandContains, CompiledPathGlobs};
+use crate::hook_config::core::{compile_command_contains, compile_globs};
 
 fn canonical_event(value: &str) -> String {
     value.to_ascii_lowercase().replace('_', "-")
 }
+#[path = "compiled_rule_message.rs"]
+mod compiled_rule_message;

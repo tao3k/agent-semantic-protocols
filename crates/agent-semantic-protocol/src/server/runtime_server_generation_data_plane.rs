@@ -2,64 +2,8 @@
 
 use std::path::Path;
 
-#[derive(Clone, Debug)]
-pub(crate) struct RuntimeServerSearchDataPlane {
-    session: agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession,
-    authority:
-        agent_semantic_client_db::runtime_server_workspace::WorkspaceSearchGenerationAuthority,
-}
 
-#[derive(Clone, Debug)]
-pub(crate) struct RuntimeServerSearchSnapshot {
-    pub(crate) source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
-    pub(crate) workspace_generation:
-        agent_semantic_content_identity::workspace_generation_evidence::ValidatedWorkspaceGenerationV1,
-}
 
-impl RuntimeServerSearchDataPlane {
-    pub(crate) fn current_snapshot(&self) -> Result<RuntimeServerSearchSnapshot, String> {
-        let authority = &self.authority;
-        let workspace_generation =
-            agent_semantic_content_identity::workspace_generation_evidence::ValidatedWorkspaceGenerationV1::new(
-                authority.workspace_generation.clone(),
-            )
-            .map_err(|error| format!("resident search generation evidence is incomplete: {error}"))?;
-        Ok(RuntimeServerSearchSnapshot {
-            source_snapshot: authority.source_snapshot.clone(),
-            workspace_generation,
-        })
-    }
-
-    pub(crate) fn project_resolutions(
-        &self,
-    ) -> &[agent_semantic_runtime::AdmittedProjectResolution] {
-        &self.authority.project_resolutions
-    }
-
-    pub(crate) async fn read_source_index(
-        &self,
-        request: agent_semantic_client_db::workspace_db_ipc::WorkspaceDbSourceIndexLookupRequest,
-    ) -> Result<agent_semantic_client_db::ClientDbSourceIndexLookupResult, String> {
-        self.session.read_source_index(&request).await
-    }
-
-    pub(crate) async fn read_owner(
-        &self,
-        owner_path: &str,
-    ) -> Result<agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead, String>
-    {
-        self.session.read_runtime_owner(owner_path).await
-    }
-}
-
-pub(crate) async fn runtime_server_search_data_plane_async(
-    project_root: &Path,
-) -> Result<RuntimeServerSearchDataPlane, String> {
-    let session =
-        crate::server::runtime_server::runtime_server_workspace_session_async(project_root).await?;
-    let authority = session.runtime_search_generation_authority().await?;
-    Ok(RuntimeServerSearchDataPlane { session, authority })
-}
 
 /// Reads one exact projection through the resident Runtime Server authority.
 ///
@@ -75,9 +19,109 @@ pub(crate) async fn runtime_server_workspace_exact_projection_async(
 {
     let session =
         crate::server::runtime_server::runtime_server_workspace_session_async(project_root).await?;
-    session
-        .read_runtime_selector(language_id, projection_kind, structural_selector)
+    let read_result = session
+        .read_runtime_selector(language_id.clone(), projection_kind, structural_selector)
+        .await;
+    let read_error = read_result.as_ref().err().cloned();
+    let read = read_result.ok();
+    if read.as_ref().is_some_and(|read| {
+        matches!(
+            read,
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::ProviderProjection { .. }
+                | agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::Projection { .. }
+                | agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::RelocationAmbiguous { .. }
+        )
+    }) {
+        return Ok(read.expect("terminal selector read checked above"));
+    }
+
+    let owner_path = structural_selector
+        .split_once("://")
+        .and_then(|(_, selector)| selector.split_once('#'))
+        .map(|(owner_path, _)| owner_path)
+        .ok_or_else(|| "exact structural selector is missing its owner path".to_owned())?;
+    let live_owner = match session
+        .project_provider_owner(language_id.clone(), owner_path)
         .await
+    {
+        Ok(owner) => owner,
+        Err(error) => {
+            return match read {
+                Some(read) => Ok(read),
+                None => Err(read_error.unwrap_or(error)),
+            };
+        }
+    };
+    let requested_selector = match read.as_ref() {
+        Some(agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::ProjectionMissing {
+            resolved_selector,
+            ..
+        }) => resolved_selector.clone(),
+        _ => structural_selector.to_owned(),
+    };
+    let Some(selector) = live_owner
+        .selectors
+        .iter()
+        .find(|selector| selector.selector == requested_selector)
+    else {
+        return read.ok_or_else(|| {
+            format!(
+                "provider live owner omitted exact selector: languageId={} ownerPath={} selector={}",
+                language_id, owner_path, requested_selector
+            )
+        });
+    };
+    let owner_content_digest = live_owner.content_digest.clone();
+    let projection_bytes = match projection_kind {
+        agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::Source =>
+            live_owner
+                .bytes
+                .get(selector.byte_start..selector.byte_end)
+                .ok_or_else(|| {
+                    format!(
+                        "provider live owner selector range is invalid: languageId={} ownerPath={} selector={} byteStart={} byteEnd={} ownerBytes={}",
+                        language_id,
+                        owner_path,
+                        requested_selector,
+                        selector.byte_start,
+                        selector.byte_end,
+                        live_owner.bytes.len()
+                    )
+                })?
+                .to_vec(),
+        agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::CallableSkeleton =>
+            selector
+                .derived_projections
+                .iter()
+                .find(|projection| projection.projection_kind == projection_kind)
+                .map(|projection| projection.bytes.clone())
+                .ok_or_else(|| {
+                    format!(
+                        "provider live owner omitted projection mode: languageId={} ownerPath={} selector={} projection={:?}",
+                        language_id, owner_path, requested_selector, projection_kind
+                    )
+                })?,
+    };
+    session
+        .publish_runtime_selector_overlay(
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorOverlay {
+                projection_kind,
+                structural_selector: requested_selector.clone(),
+                owner_path: live_owner.owner_path.clone(),
+                owner_content_digest: live_owner.content_digest.clone(),
+                byte_start: selector.byte_start,
+                byte_end: selector.byte_end,
+                projection_bytes: projection_bytes.clone(),
+            },
+        )
+        .await?;
+    Ok(
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::ProviderProjection {
+            owner_content_digest,
+            resolved_selector: requested_selector,
+            bytes: projection_bytes,
+        },
+    )
 }
 
 #[cfg(test)]

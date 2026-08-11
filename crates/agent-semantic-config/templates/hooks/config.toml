@@ -117,7 +117,7 @@ priority = 100000
 intent = "reasoning-search"
 decision = "deny"
 reasonKind = "subagent-receipt-required"
-message = "Registered ASP reasoning search requires the Org-owned interactive ChoicePlane; open it with `asp session --agents choice-plane`."
+message = "{{agentSessionInstruction}}"
 event = "pre-tool"
 
 [rules.match]
@@ -138,7 +138,7 @@ priority = 90000
 intent = "test-build-command"
 decision = "deny"
 reasonKind = "subagent-receipt-required"
-message = "ASP denied this command in the main Agent. Open the Org-owned interactive ChoicePlane with `asp session --agents choice-plane`; Hook does not select or schedule a host Agent."
+message = "{{agentSessionInstruction}}"
 event = "pre-tool"
 
 [rules.match]
@@ -167,7 +167,7 @@ event = "pre-tool"
 priority = 20000
 decision = "deny"
 reasonKind = "raw-broad-search"
-message = "Raw host search actions over registered source belong in `asp <language> search`."
+message = "{{agentSessionInstruction}}"
 
 [rules.match]
 actionPolicyAll = ["raw-host-search", "registered-language-source"]
@@ -342,6 +342,7 @@ argvWorkspaceRegularFile = true
 binary = "jq"
 documentFormat = "json"
 filterGrammar = "bounded-path-v1"
+maxSliceItems = 64
 optionAny = ["-c", "--compact-output", "-r", "--raw-output", "-e", "--exit-status"]
 optionValueArity = { "--arg" = 2, "--argjson" = 2, "--slurpfile" = 2, "--rawfile" = 2, "--argfile" = 2, "--indent" = 1, "-L" = 1 }
 
@@ -358,6 +359,7 @@ argvWorkspaceRegularFile = true
 binary = "yq"
 documentFormat = "toml"
 filterGrammar = "bounded-path-v1"
+maxSliceItems = 64
 optionalSubcommandAny = ["eval", "e"]
 optionAny = ["-p=toml"]
 

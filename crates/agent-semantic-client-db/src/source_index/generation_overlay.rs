@@ -21,8 +21,8 @@ fn validate_overlay_membership(
     for owner in &partial.owners {
         if !changed_owner_paths.contains(owner.owner_path.as_str()) {
             return Err(format!(
-                "incremental source-index import escaped changed membership: ownerPath={}",
-                owner.owner_path.as_str()
+                "incremental source-index import escaped changed membership: ownerPath={} changedOwnerPaths={changed_owner_paths:?}",
+                owner.owner_path.as_str(),
             ));
         }
         if removed_owner_paths.contains(owner.owner_path.as_str()) {

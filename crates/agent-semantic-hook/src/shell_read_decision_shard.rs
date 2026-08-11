@@ -60,6 +60,22 @@ impl CommandDecisionShard {
             .map(|entry| HookDecision::from_compact_binary(&entry.decision))
             .transpose()
     }
+
+    /// Rewrite every precompiled decision while preserving the config-derived
+    /// argv table. Control-plane publication uses this to materialize static
+    /// agent guidance once instead of on every Hook process.
+    pub fn map_binary_decisions(
+        bytes: &[u8],
+        mut map: impl FnMut(HookDecision) -> HookDecision,
+    ) -> Result<Vec<u8>, String> {
+        let mut shard = postcard::from_bytes::<Self>(bytes)
+            .map_err(|error| format!("decode command decision shard: {error}"))?;
+        for entry in &mut shard.entries {
+            let decision = HookDecision::from_compact_binary(&entry.decision)?;
+            entry.decision = map(decision).to_compact_binary()?;
+        }
+        shard.to_binary_bytes()
+    }
 }
 
 #[cfg(test)]

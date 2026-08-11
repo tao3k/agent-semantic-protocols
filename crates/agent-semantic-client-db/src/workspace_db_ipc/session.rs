@@ -21,6 +21,13 @@ use crate::{
 use std::path::{Path, PathBuf};
 use tokio::{io::BufStream, net::UnixStream};
 
+/// Per-operation deadline for immutable search/query reads.
+///
+/// This is deliberately local to IPC. It is not a process-startup or
+/// generation-admission budget, and a timeout never authorizes repair.
+const SEARCH_DATA_PLANE_IO_BUDGET: std::time::Duration = std::time::Duration::from_millis(500);
+const RUNTIME_HEALTH_IO_BUDGET: std::time::Duration = std::time::Duration::from_millis(500);
+
 #[derive(Debug)]
 pub struct WorkspaceDbIpcSession {
     pub(in crate::workspace_db_ipc) endpoint: WorkspaceDbSessionBinding,
@@ -229,6 +236,30 @@ impl WorkspaceDbIpcSession {
         &self,
         operation: WorkspaceDbIpcOperation,
     ) -> Result<WorkspaceDbIpcResult, String> {
+        if is_search_data_plane_read(&operation) {
+            return match tokio::time::timeout(
+                SEARCH_DATA_PLANE_IO_BUDGET,
+                self.call_operation_inner(operation),
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(_) => {
+                    self.discard_idle_connection_lanes();
+                    Err(format!(
+                        "runtime-search-io-timeout: immutable data-plane read exceeded {}ms",
+                        SEARCH_DATA_PLANE_IO_BUDGET.as_millis()
+                    ))
+                }
+            };
+        }
+        self.call_operation_inner(operation).await
+    }
+
+    async fn call_operation_inner(
+        &self,
+        operation: WorkspaceDbIpcOperation,
+    ) -> Result<WorkspaceDbIpcResult, String> {
         let sequence = self
             .shared
             .next_request_id
@@ -327,6 +358,29 @@ impl WorkspaceDbIpcSession {
             result => Ok(result),
         }
     }
+
+    fn discard_idle_connection_lanes(&self) {
+        for lane in &self.shared.lanes {
+            if let Ok(mut lane) = lane.try_lock() {
+                *lane = None;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/workspace_db_ipc_search_deadline.rs"]
+mod search_deadline_tests;
+
+fn is_search_data_plane_read(operation: &WorkspaceDbIpcOperation) -> bool {
+    matches!(
+        operation,
+        WorkspaceDbIpcOperation::ReadRuntimeSelector { .. }
+            | WorkspaceDbIpcOperation::ReadSourceIndex { .. }
+            | WorkspaceDbIpcOperation::ReadRuntimeSearchGenerationAuthority { .. }
+            | WorkspaceDbIpcOperation::ReadRuntimeOwner { .. }
+            | WorkspaceDbIpcOperation::ReadRuntimeGraphFacts { .. }
+    )
 }
 
 impl WorkspaceDbIpcSession {
@@ -356,11 +410,16 @@ impl WorkspaceDbIpcSession {
 
     pub async fn health(&self) -> Result<(), String> {
         let result = tokio::time::timeout(
-            std::time::Duration::from_millis(50),
+            RUNTIME_HEALTH_IO_BUDGET,
             self.call_operation(WorkspaceDbIpcOperation::Health),
         )
         .await
-        .map_err(|_| "workspace resident DB service health exceeded 50ms".to_owned())??;
+        .map_err(|_| {
+            format!(
+                "workspace resident DB service health exceeded {}ms",
+                RUNTIME_HEALTH_IO_BUDGET.as_millis()
+            )
+        })??;
         match result {
             WorkspaceDbIpcResult::Healthy => Ok(()),
             result => Err(format!(
@@ -395,6 +454,27 @@ impl WorkspaceDbIpcSession {
         {
             WorkspaceDbIpcResult::SourceIndex { lookup } => Ok(lookup),
             _ => Err("workspace owner IPC returned an unexpected source-index result".to_owned()),
+        }
+    }
+
+    pub async fn project_tree_sitter_query(
+        &self,
+        project_root: &std::path::Path,
+        language_id: &str,
+        args: &[String],
+    ) -> Result<Option<String>, String> {
+        match self
+            .call_operation(WorkspaceDbIpcOperation::ProjectTreeSitterQuery {
+                project_root: project_root.to_string_lossy().into_owned(),
+                language_id: language_id.into(),
+                args: args.to_vec(),
+            })
+            .await?
+        {
+            WorkspaceDbIpcResult::TreeSitterQuery { rendered } => Ok(rendered),
+            _ => {
+                Err("Runtime Server IPC returned an unexpected Tree-sitter query result".to_owned())
+            }
         }
     }
 

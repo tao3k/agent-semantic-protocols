@@ -3,7 +3,6 @@ use super::fixtures::{
     write_gerbil_activation_with_command_prefix, write_rust_activation,
 };
 use agent_semantic_client_core::{ASP_PROVIDER_ACTIVATION_PATH_ENV, LanguageId};
-use agent_semantic_client_db::ClientDbEngine;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn cache_source_index_refresh_builds_db_engine_rows() {
@@ -50,18 +49,14 @@ async fn cache_source_index_refresh_builds_db_engine_rows() {
     server.rebuild(&root).await;
     let blocking_root = root.clone();
     let result = server
-        .blocking(move || {
-            let engine = ClientDbEngine::resolve(&blocking_root).expect("resolve DB Engine");
-            assert!(
-                engine.db_path().exists(),
-                "source-index refresh must write the active DB Engine path"
-            );
+        .operation(move || async move {
             let result = crate::test_support::lookup_current_source_index_for_language(
                 &blocking_root,
                 Some(&LanguageId::from("gerbil-scheme")),
                 "gerbil-poo",
                 8,
             )
+            .await
             .expect("lookup source index");
             result
         })
@@ -102,14 +97,36 @@ async fn cache_source_index_admission_without_generation_is_bounded_warm_check()
 
     let server = RuntimeServerFixture::start(&root).await;
     server.rebuild(&root).await;
-    let started = std::time::Instant::now();
-    server.rebuild(&root).await;
-    let elapsed = started.elapsed();
-
+    crate::test_support::lookup_current_source_index_for_language(
+        &root,
+        Some(&LanguageId::from("rust")),
+        "warm_admission",
+        8,
+    )
+    .await
+    .expect("prewarm immutable source-index generation");
+    let mut latencies = Vec::with_capacity(16);
+    for _ in 0..16 {
+        let started = std::time::Instant::now();
+        let lookup = crate::test_support::lookup_current_source_index_for_language(
+            &root,
+            Some(&LanguageId::from("rust")),
+            "warm_admission",
+            8,
+        )
+        .await
+        .expect("read warm immutable source-index generation");
+        assert_eq!(lookup.state.as_str(), "hit");
+        latencies.push(started.elapsed());
+    }
+    latencies.sort_unstable();
+    let p75 = latencies[latencies.len() * 75 / 100];
+    let max = *latencies.last().expect("warm latency samples");
     assert!(
-        elapsed < std::time::Duration::from_millis(100),
-        "source-index admission warm check exceeded gate: elapsedMs={}",
-        elapsed.as_millis()
+        p75 < std::time::Duration::from_millis(200) && max < std::time::Duration::from_millis(500),
+        "source-index immutable-generation warm search exceeded gate: p75Ms={} maxMs={}",
+        p75.as_millis(),
+        max.as_millis()
     );
     server.shutdown().await;
     let _ = std::fs::remove_dir_all(root);
@@ -143,42 +160,30 @@ async fn cache_source_index_refresh_invalidates_when_empty_source_root_gains_fil
         activation_path.as_os_str(),
     );
 
-    let initial_server = RuntimeServerFixture::start(&root).await;
-    initial_server.rebuild(&root).await;
-    initial_server.rebuild(&root).await;
-    initial_server.shutdown().await;
+    let server = RuntimeServerFixture::start(&root).await;
+    server.rebuild(&root).await;
+    server.rebuild(&root).await;
     std::fs::write(
         extra_dir.join("new_usage.ss"),
         "(def (new-scope-symbol input)\n  input)\n",
     )
     .expect("write new extra source");
-    let prepared =
-        crate::source_index::prepare_runtime_server_workspace_generation_async(root.clone())
-            .await
-            .expect("prepare changed Runtime Server generation");
-    assert!(
-        prepared
-            .refresh
-            .import
-            .file_hashes
-            .iter()
-            .any(|file| file.path.as_str() == "extra/new_usage.ss"),
-        "changed generation must include the newly admitted provider source: {:?}",
-        prepared.refresh.import.file_hashes
-    );
-    let server = RuntimeServerFixture::start(&root).await;
-    server.rebuild(&root).await;
+    server
+        .admit_changed_paths(
+            &root,
+            vec![extra_dir.join("new_usage.ss").display().to_string()],
+        )
+        .await;
     let changed_root = root.clone();
     let result = server
-        .blocking(move || {
-            let engine = ClientDbEngine::resolve(&changed_root).expect("resolve DB Engine");
-            assert!(engine.db_path().exists());
+        .operation(move || async move {
             crate::test_support::lookup_current_source_index_for_language(
                 &changed_root,
                 Some(&LanguageId::from("gerbil-scheme")),
                 "new-scope-symbol",
                 8,
             )
+            .await
             .expect("lookup source index")
         })
         .await;

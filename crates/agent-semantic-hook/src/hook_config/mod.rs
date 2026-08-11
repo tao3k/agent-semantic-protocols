@@ -1,6 +1,7 @@
 //! Optional client-side hook rules loaded on each hook invocation.
 
 mod agent_org_config;
+pub(crate) use agent_org_config::compile_agent_org_artifacts_config;
 mod asp_session_policy;
 mod core;
 mod core_load;

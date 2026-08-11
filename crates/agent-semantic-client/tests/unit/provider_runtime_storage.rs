@@ -14,23 +14,7 @@ struct TestProject(std::path::PathBuf);
 
 impl TestProject {
     fn new(label: &str) -> Self {
-        let nonce = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock after Unix epoch")
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "asp-provider-runtime-storage-{label}-{}-{nonce}",
-            std::process::id()
-        ));
-        std::fs::create_dir(&path).expect("create temporary project");
-        let status = std::process::Command::new("git")
-            .arg("init")
-            .arg("--quiet")
-            .arg(&path)
-            .status()
-            .expect("run git init");
-        assert!(status.success());
-        Self(path)
+        Self(crate::test_support::owner_backed_temp_root(label))
     }
 }
 

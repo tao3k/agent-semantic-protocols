@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::engine::facade::{ClientDbEngine, block_on_db_engine_async};
+use crate::engine::facade::ClientDbEngine;
 use crate::engine::turso_bootstrap::bootstrap_turso_client_db;
 use crate::engine::turso_search::{
     TursoClientDbSearchDocument, TursoClientDbSearchResult, TursoClientDbSearchState,
@@ -43,7 +43,12 @@ impl ClientDbEngine {
                 TURSO_BACKEND
             ));
         }
-        if !self.db_path().exists() || query.trim().is_empty() || limit == 0 {
+        if !tokio::fs::try_exists(self.db_path())
+            .await
+            .map_err(|error| format!("inspect search database path: {error}"))?
+            || query.trim().is_empty()
+            || limit == 0
+        {
             return Ok(TursoClientDbSearchResult {
                 state: TursoClientDbSearchState::EmptyIndex,
                 hits: Vec::new(),
@@ -64,14 +69,17 @@ impl ClientDbEngine {
     }
 
     /// Search the source-index generation from an already resolved client directory.
-    pub fn search_source_index_documents_from_client_dir(
+    pub async fn search_source_index_documents_from_client_dir(
         client_dir: impl AsRef<Path>,
         source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
         query: &str,
         limit: u32,
     ) -> Result<TursoClientDbSearchResult, String> {
         let db_path = Self::turso_path_for_client_dir(client_dir.as_ref());
-        if !db_path.exists() {
+        if !tokio::fs::try_exists(&db_path)
+            .await
+            .map_err(|error| format!("inspect source-index search database path: {error}"))?
+        {
             return Ok(TursoClientDbSearchResult {
                 state: TursoClientDbSearchState::EmptyIndex,
                 hits: Vec::new(),
@@ -79,9 +87,7 @@ impl ClientDbEngine {
         }
         let source_snapshot = source_snapshot.clone();
         let query = query.to_string();
-        block_on_db_engine_async(async move {
-            search_turso_documents(&db_path, "source-index", &source_snapshot, &query, limit).await
-        })
+        search_turso_documents(&db_path, "source-index", &source_snapshot, &query, limit).await
     }
 
     /// Search the active structural-index generation for one expected Merkle root.
@@ -96,14 +102,17 @@ impl ClientDbEngine {
     }
 
     /// Search the structural-index generation from an already resolved client directory.
-    pub fn search_structural_index_documents_from_client_dir(
+    pub async fn search_structural_index_documents_from_client_dir(
         client_dir: impl AsRef<Path>,
         source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
         query: &str,
         limit: u32,
     ) -> Result<TursoClientDbSearchResult, String> {
         let db_path = Self::turso_path_for_client_dir(client_dir.as_ref());
-        if !db_path.exists() {
+        if !tokio::fs::try_exists(&db_path)
+            .await
+            .map_err(|error| format!("inspect structural-index search database path: {error}"))?
+        {
             return Ok(TursoClientDbSearchResult {
                 state: TursoClientDbSearchState::EmptyIndex,
                 hits: Vec::new(),
@@ -111,16 +120,14 @@ impl ClientDbEngine {
         }
         let source_snapshot = source_snapshot.clone();
         let query = query.to_string();
-        block_on_db_engine_async(async move {
-            bootstrap_turso_client_db(&db_path).await?;
-            search_turso_documents(
-                &db_path,
-                "structural-index",
-                &source_snapshot,
-                &query,
-                limit,
-            )
-            .await
-        })
+        bootstrap_turso_client_db(&db_path).await?;
+        search_turso_documents(
+            &db_path,
+            "structural-index",
+            &source_snapshot,
+            &query,
+            limit,
+        )
+        .await
     }
 }

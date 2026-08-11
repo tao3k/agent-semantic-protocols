@@ -25,6 +25,7 @@ async fn async_snapshot_reads_each_owner_once_and_preserves_canonical_order() {
                 projection_coverage:
                     agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
                 selector_receipts: Vec::new(),
+                relations: Vec::new(),
             },
         )
         .collect::<Vec<_>>();

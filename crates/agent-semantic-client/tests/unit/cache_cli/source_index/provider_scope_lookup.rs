@@ -4,7 +4,6 @@ use super::fixtures::{
     write_rust_activation,
 };
 use agent_semantic_client_core::{ASP_PROVIDER_ACTIVATION_PATH_ENV, LanguageId};
-use agent_semantic_client_db::ClientDbEngine;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn cache_source_index_refresh_respects_cargo_workspace_exclude() {
@@ -45,15 +44,14 @@ async fn cache_source_index_refresh_respects_cargo_workspace_exclude() {
     server.rebuild(&root).await;
     let blocking_root = root.clone();
     let result = server
-        .blocking(move || {
-            let engine = ClientDbEngine::resolve(&blocking_root).expect("resolve DB Engine");
-            assert!(engine.db_path().exists());
+        .operation(move || async move {
             crate::test_support::lookup_current_source_index_for_language(
                 &blocking_root,
                 Some(&LanguageId::from("rust")),
                 "project_resolution_symbol",
                 8,
             )
+            .await
             .expect("lookup source index")
         })
         .await;
@@ -120,13 +118,14 @@ async fn source_index_lookup_ranks_query_dense_owner_before_low_coverage_path() 
     server.rebuild(&root).await;
     let blocking_root = root.clone();
     let (result, versioned_alias) = server
-        .blocking(move || {
+        .operation(move || async move {
             let result = crate::test_support::lookup_current_source_index_for_language(
                 &blocking_root,
                 Some(&LanguageId::from("rust")),
                 "ablation sandtable topology membership report chain request policy",
                 8,
             )
+            .await
             .expect("lookup source index");
             let versioned_alias = crate::test_support::lookup_current_source_index_for_language(
                 &blocking_root,
@@ -134,6 +133,7 @@ async fn source_index_lookup_ranks_query_dense_owner_before_low_coverage_path() 
                 "10.15.02-codex-resident-agent-lifecycle-v2.org",
                 8,
             )
+            .await
             .expect("lookup lifecycle v2 alias source index");
             (result, versioned_alias)
         })
@@ -210,11 +210,10 @@ async fn cache_source_index_refresh_uses_provider_project_resolution() {
     server.rebuild(&root).await;
     let blocking_root = root.clone();
     let result = server
-        .blocking(move || {
-            let engine = ClientDbEngine::resolve(&blocking_root).expect("resolve DB Engine");
-            assert!(engine.db_path().exists());
+        .operation(move || async move {
             let current_snapshot =
                 crate::source_index::current_source_index_snapshot(&blocking_root)
+                    .await
                     .expect("capture current source-index snapshot");
             assert_eq!(
                 current_snapshot.source_snapshot.leaf_count,
@@ -245,6 +244,7 @@ async fn cache_source_index_refresh_uses_provider_project_resolution() {
                 "provider-scope-symbol",
                 8,
             )
+            .await
             .expect("lookup source index")
         })
         .await;

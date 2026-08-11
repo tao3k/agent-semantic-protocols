@@ -35,17 +35,17 @@ pub struct SourceIndexPlannerLookupRequest<'a> {
 }
 
 /// Lookup source-index owners from the client DB for one project root.
-pub fn lookup_source_index(
+pub async fn lookup_source_index(
     project_root: &Path,
     source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     query: &str,
     limit: u32,
 ) -> Result<ClientDbSourceIndexLookupResult, String> {
-    lookup_source_index_for_language(project_root, source_snapshot, None, query, limit)
+    lookup_source_index_for_language(project_root, source_snapshot, None, query, limit).await
 }
 
 /// Lookup source-index owners from the client DB for one language scope.
-pub fn lookup_source_index_for_language(
+pub async fn lookup_source_index_for_language(
     project_root: &Path,
     source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     language_id: Option<&LanguageId>,
@@ -60,11 +60,12 @@ pub fn lookup_source_index_for_language(
         limit,
         source_snapshot,
     })
+    .await
 }
 
 /// Lookup source-index owners from one project's client DB for an explicit
 /// indexed project root.
-pub fn lookup_source_index_in_cache(
+pub async fn lookup_source_index_in_cache(
     request: SourceIndexLookupRequest<'_>,
 ) -> Result<ClientDbSourceIndexLookupResult, String> {
     let lookup = agent_semantic_client_db::workspace_db_ipc::read_source_index_via_runtime_server(
@@ -75,7 +76,8 @@ pub fn lookup_source_index_in_cache(
             language_id: request.language_id.cloned(),
             limit: request.limit,
         },
-    )?;
+    )
+    .await?;
     let lookup = rank_source_index_lookup_result(lookup, request.query);
     if !lookup.candidates.is_empty() {
         return Ok(lookup);
@@ -87,7 +89,7 @@ pub fn lookup_source_index_in_cache(
 }
 
 /// Use a warm file locator first, then query the resident workspace owner.
-pub fn lookup_source_index_with_planner(
+pub async fn lookup_source_index_with_planner(
     request: SourceIndexPlannerLookupRequest<'_>,
 ) -> Result<ClientDbSourceIndexLookupResult, String> {
     if let Some(file_locator) = request.file_locator
@@ -96,7 +98,7 @@ pub fn lookup_source_index_with_planner(
     {
         return Ok(file_lookup);
     }
-    lookup_source_index_in_cache(request.source_index)
+    lookup_source_index_in_cache(request.source_index).await
 }
 
 fn source_index_file_locator_lookup(

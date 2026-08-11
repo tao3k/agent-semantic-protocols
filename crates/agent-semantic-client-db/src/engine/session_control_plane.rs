@@ -14,7 +14,7 @@ use agent_semantic_context_product::agent_session_delegation_admission::{
 use serde::{Deserialize, Serialize};
 use turso::transaction::TransactionBehavior;
 
-use super::turso::connect_turso_client_db;
+use super::connect_turso_client_db;
 
 const CONTROL_PLANE_TABLE: &str = "asp_session_control_plane";
 const AGENT_TABLE: &str = "asp_session_control_plane_agent";

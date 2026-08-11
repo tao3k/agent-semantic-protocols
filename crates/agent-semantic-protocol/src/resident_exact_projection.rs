@@ -23,13 +23,28 @@ pub(crate) fn resolve(
     read: WorkspaceRuntimeSelectorRead,
     structural_selector: &str,
 ) -> Result<ResidentExactProjection, String> {
+    let requested_path = agent_semantic_content_identity::exact_structural_selector::ExactStructuralSelectorPathV1::parse(
+        structural_selector,
+    )?;
     let requested = CanonicalItemSelector::parse_root_or_exact_descendant(structural_selector)?;
+    if requested_path.root_selector != requested.structural_selector {
+        return Err(
+            "exact structural selector root identity does not match canonical item identity"
+                .to_owned(),
+        );
+    }
+    let requested_is_descendant = !requested_path.segments.is_empty();
     let owner_path = structural_selector
         .split_once("://")
         .and_then(|(_, selector)| selector.split_once('#'))
         .map(|(owner_path, _)| owner_path)
         .ok_or_else(|| "exact structural selector is missing its owner path".to_owned())?;
     let (active_generation_digest, root_digest, owner) = match read {
+        WorkspaceRuntimeSelectorRead::ProviderProjection {
+            owner_content_digest: _,
+            resolved_selector: _,
+            bytes,
+        } => return Ok(ResidentExactProjection::Hit(bytes)),
         WorkspaceRuntimeSelectorRead::Projection {
             resolved_selector,
             bytes,
@@ -123,7 +138,10 @@ pub(crate) fn resolve(
     let selector_exists = candidates
         .iter()
         .any(|candidate| candidate == structural_selector);
-    let (state, reason_kind) = if selector_exists {
+    let root_kind_exists = actual_kinds
+        .iter()
+        .any(|actual_kind| actual_kind == requested.kind.as_str());
+    let (state, reason_kind) = if selector_exists || (requested_is_descendant && root_kind_exists) {
         (
             "source-unavailable",
             "projection-mode-not-in-active-generation",

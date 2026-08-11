@@ -23,7 +23,7 @@ struct RuntimeServerStopReceipt {
 
 pub(super) async fn run_stop() -> Result<(), String> {
     let state_home = super::state_home()?;
-    let endpoint_path = runtime_server_endpoint_path(&state_home);
+    let endpoint_path = runtime_server_endpoint_path(&state_home)?;
     let endpoint =
         crate::server::runtime_server_endpoint_io::read_supervisor_endpoint(&endpoint_path)
             .await
@@ -74,9 +74,9 @@ async fn finalize_stopped_runtime_server(
     request_id: String,
 ) -> Result<RuntimeServerStopReceipt, String> {
     if let Some(endpoint) = endpoint {
-        crate::server::runtime_server_endpoint_io::cleanup_endpoint(state_home, endpoint).await;
+        crate::server::runtime_server_endpoint_io::cleanup_endpoint(state_home, endpoint).await?;
     }
-    let endpoint_path = runtime_server_endpoint_path(state_home);
+    let endpoint_path = runtime_server_endpoint_path(state_home)?;
     let endpoint_removed = path_is_removed(&endpoint_path).await?;
     let (control_socket_removed, data_plane_socket_removed, status_memory_removed) = match endpoint
     {

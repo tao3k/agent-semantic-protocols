@@ -31,6 +31,7 @@ tokio.workspace = true
 jsonschema = { workspace = true }
 criterion = { workspace = true }
 asp-rust-project-harness-policy.workspace = true
+gix.workspace = true
 
 [[test]]
 name = "source_index_generation"

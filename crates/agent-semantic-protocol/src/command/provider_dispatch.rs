@@ -14,29 +14,27 @@ use super::gerbil_check_cache::try_replay_gerbil_check_cache;
 use super::gerbil_deps::try_run_gerbil_deps_index_command;
 use super::protocol_version_line;
 use super::provider_fast_path::{
-    run_activated_owner_language_preflight, run_pre_activation_search_command_preflight,
+    run_activated_owner_language_preflight,
 };
-use super::provider_fast_search::fast_search_needs_provider_context;
 use super::provider_process::{
     provider_invocation_with_profile, provider_invocations, run_guide_command, run_provider_command,
 };
 use super::provider_roots::{
-    activation_project_root, client_backend_state_dir, effective_project_root_and_args,
-    validate_explicit_workspace_project_root,
+    activation_project_root, effective_project_root_and_args,
 };
 pub(crate) use super::provider_selector::{
     is_language_facade, unsupported_language_facade_message,
 };
 use super::search_config::AspConfig;
-use super::search_dependency_seed::{
-    is_search_dependency_seed, run_search_dependency_seed_command,
+use super::search_owner_items::{
+    SearchOwnerItemsContext, is_search_owner_items_query, run_search_owner_items_query_command,
 };
-use super::search_pipe::{FastSearchContext, is_asp_fast_search, run_asp_fast_search_command};
-use super::search_pipe_meta::run_asp_fast_search_meta_command;
-use super::search_pipe_provider_facts::ProviderGraphFactsContext;
 use provider_usage::{
     guide_usage, is_guide, provider_guide_args, provider_usage, validate_provider_command,
 };
+
+/// Observational target only; it never controls or cancels search execution.
+const SEARCH_DIAGNOSTIC_SLOW_TARGET_MICROS: u64 = 500_000;
 
 macro_rules! restore_env_var {
     ($name:expr, $previous:expr) => {
@@ -60,6 +58,13 @@ fn exact_query_trace(stage: &str, started: tokio::time::Instant) {
     }
 }
 
+pub(super) fn tree_sitter_runtime_profiles(
+    project_root: &Path,
+    runtime: &agent_semantic_hook::HookRuntime,
+) -> agent_semantic_hook::RuntimeProfiles {
+    runtime_profiles_for_runtime(project_root, runtime)
+}
+
 pub(crate) async fn run_language_command(
     language_id: &str,
     args: &[String],
@@ -77,7 +82,6 @@ pub(crate) async fn run_language_command(
         language_id: &str,
         args: &[String],
         project_root: &Path,
-        activation_path: &Path,
         frontier_receipt: Option<&GraphTurboReceiptRequest>,
     ) -> Result<(), String> {
         let mut client_args = args.to_vec();
@@ -93,8 +97,6 @@ pub(crate) async fn run_language_command(
                 receipt.out_path.display().to_string(),
             ]);
         }
-        let previous_activation_path = env::var_os("ASP_PROVIDER_ACTIVATION_PATH");
-        let previous_activation_refresh = env::var_os("ASP_PROVIDER_ACTIVATION_REFRESH");
         let previous_runtime_bin = env::var_os("ASP_RUNTIME_BIN_DIR");
         let previous_protocol_bin = env::var_os("SEMANTIC_AGENT_PROTOCOL_BIN");
         let previous_path = env::var_os("PATH");
@@ -107,8 +109,6 @@ pub(crate) async fn run_language_command(
         }
         let runtime_path = env::join_paths(path_entries).ok();
         unsafe {
-            env::set_var("ASP_PROVIDER_ACTIVATION_PATH", activation_path);
-            env::set_var("ASP_PROVIDER_ACTIVATION_REFRESH", "0");
             env::set_var("ASP_RUNTIME_BIN_DIR", &runtime_bin);
             env::set_var("SEMANTIC_AGENT_PROTOCOL_BIN", &protocol_bin);
             if let Some(path) = runtime_path.as_deref() {
@@ -118,11 +118,6 @@ pub(crate) async fn run_language_command(
         let result =
             run_client_backend_on_worker(language_id, client_args, project_root.to_path_buf())
                 .await;
-        restore_env_var!("ASP_PROVIDER_ACTIVATION_PATH", previous_activation_path);
-        restore_env_var!(
-            "ASP_PROVIDER_ACTIVATION_REFRESH",
-            previous_activation_refresh
-        );
         restore_env_var!("ASP_RUNTIME_BIN_DIR", previous_runtime_bin);
         restore_env_var!("SEMANTIC_AGENT_PROTOCOL_BIN", previous_protocol_bin);
         restore_env_var!("PATH", previous_path);
@@ -181,12 +176,6 @@ pub(crate) async fn run_language_command(
     if try_run_gerbil_deps_index_command(language_id, &command_args)? {
         return Ok(());
     }
-    if run_asp_fast_search_meta_command(language_id, &command_args) {
-        return Ok(());
-    }
-    run_pre_activation_search_command_preflight(language_id, &command_args, &invocation_root)?;
-    reject_search_file_workspace(&command_args, &invocation_root)?;
-    validate_explicit_workspace_project_root(language_id, &command_args, &invocation_root)?;
     if is_provider_owned_structural_selector_query(language_id, &command_args)
         && agent_semantic_hook::registered_provider_kind(language_id)?
             == agent_semantic_hook::RegisteredProviderKind::ProgrammingLanguage
@@ -211,21 +200,47 @@ pub(crate) async fn run_language_command(
         )
         .await;
     }
-    if super::search_pipe::is_search_owner_items_query(&command_args) {
-        exact_query_trace("owner-resident-read-admitted", exact_query_started);
-        if let Some(diagnostics) = command_diagnostics.as_mut() {
-            diagnostics.mark_stage("owner-resident-read-admitted");
-        }
-        return super::search_pipe::run_asp_incremental_owner_search_command(
-            &command_args,
-            super::search_pipe::IncrementalOwnerSearchContext {
-                started: exact_query_started,
+    if is_search_owner_items_query(&command_args) {
+        let (owner_project_root, owner_args) =
+            super::provider_roots::explicit_workspace_project_root(
                 language_id,
-                project_root: &invocation_root,
+                &command_args,
+                &invocation_root,
+            )?
+            .unwrap_or_else(|| (invocation_root.clone(), command_args.clone()));
+        return run_search_owner_items_query_command(
+            &owner_args,
+            SearchOwnerItemsContext {
+                language_id,
+                project_root: &owner_project_root,
                 locator_root: &invocation_root,
-                provider_context: None,
                 frontier_receipt: frontier_receipt.as_ref(),
             },
+        )
+        .await;
+    }
+    if uses_client_backend(&command_args) {
+        let (project_root, provider_args) =
+            super::provider_roots::explicit_workspace_project_root(
+                language_id,
+                &command_args,
+                &invocation_root,
+            )?
+            .unwrap_or_else(|| (invocation_root.clone(), command_args.clone()));
+        if super::workspace_tree_sitter_query::try_run_workspace_tree_sitter_query(
+            language_id,
+            &provider_args,
+            &project_root,
+        )
+        .await?
+        {
+            return Ok(());
+        }
+        return run_client_backend_command(
+            language_id,
+            &provider_args,
+            &project_root,
+            frontier_receipt.as_ref(),
         )
         .await;
     }
@@ -242,10 +257,7 @@ pub(crate) async fn run_language_command(
     }
     let activation_path = canonical_activation_path;
     let activation_root = activation_project_root(&activation_path, &runtime.project_root);
-    let config = AspConfig::load(&invocation_root, &activation_root);
-    let has_explicit_workspace = command_args
-        .iter()
-        .any(|argument| argument == "--workspace" || argument.starts_with("--workspace="));
+    let config = AspConfig::load(&invocation_root, &activation_root).await;
     let (project_root, provider_args) = effective_project_root_and_args(
         language_id,
         &command_args,
@@ -256,12 +268,6 @@ pub(crate) async fn run_language_command(
     if let Some(diagnostics) = command_diagnostics.as_mut() {
         diagnostics.mark_stage("workspace-resolved");
     }
-    let search_locator_root = if has_explicit_workspace {
-        project_root.as_path()
-    } else {
-        invocation_root.as_path()
-    };
-
     if !config.language_enabled(language_id) {
         return Err(format!("language `{language_id}` is disabled by asp.toml"));
     }
@@ -298,182 +304,6 @@ pub(crate) async fn run_language_command(
     if let Some(diagnostics) = command_diagnostics.as_mut() {
         diagnostics.mark_stage("owner-preflight-complete");
     }
-    let tree_sitter_runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
-    if !is_provider_owned_structural_selector_query(language_id, &provider_args)
-        && super::workspace_tree_sitter_query::try_run_workspace_tree_sitter_query(
-            language_id,
-            &provider_args,
-            &project_root,
-            provider,
-            &tree_sitter_runtime_profiles,
-        )
-        .await?
-    {
-        return Ok(());
-    }
-
-    let cache_home = client_backend_state_dir(&project_root)?;
-    if is_search_dependency_seed(&provider_args) {
-        if !provider.search_capabilities.dependency_topology {
-            return run_search_dependency_seed_command(
-                language_id,
-                &provider_args,
-                &project_root,
-                &cache_home,
-                None,
-            )
-            .await;
-        }
-        let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
-        let provider_context = ProviderGraphFactsContext {
-            provider,
-            profiles: &runtime_profiles,
-        };
-        return run_search_dependency_seed_command(
-            language_id,
-            &provider_args,
-            &project_root,
-            &cache_home,
-            Some(&provider_context),
-        )
-        .await;
-    }
-    if is_asp_fast_search(&provider_args) {
-        let ranker = runtime
-            .rankers
-            .iter()
-            .find(|ranker| {
-                ranker.ranker_id == "asp-graph-turbo" && ranker.capability_id == "graph-turbo"
-            })
-            .ok_or_else(|| {
-                "ranker-unavailable reasonKind=typed-ranker-not-activated rankerId=asp-graph-turbo"
-                    .to_string()
-            })?;
-        if ranker.schema_id != "asp.activated-ranker.v1"
-            || ranker.protocol_version != "1"
-            || ranker.argv_prefix.len() != 2
-            || ranker.argv_prefix[0] != "graph"
-            || ranker.argv_prefix[1] != "render"
-        {
-            return Err(
-                "ranker-unavailable reasonKind=typed-ranker-contract-mismatch rankerId=asp-graph-turbo"
-                    .to_string(),
-            );
-        }
-        let current_binary = env::current_exe()
-            .and_then(|path| path.canonicalize())
-            .map_err(|error| {
-                format!(
-                    "ranker-unavailable reasonKind=current-asp-unresolved rankerId=asp-graph-turbo error={error}"
-                )
-            })?;
-        let ranker_binary = Path::new(&ranker.binary).canonicalize().map_err(|error| {
-            format!(
-                "ranker-unavailable reasonKind=ranker-artifact-missing rankerId=asp-graph-turbo path={} error={error}",
-                ranker.binary
-            )
-        })?;
-        if ranker_binary != current_binary {
-            return Err(format!(
-                "ranker-unavailable reasonKind=ranker-artifact-not-active-asp rankerId=asp-graph-turbo expected={} actual={}",
-                current_binary.display(),
-                ranker_binary.display()
-            ));
-        }
-        // `registered_language_runtime` already admitted this selection from
-        // the immutable Active ASP Artifact Receipt. Search must not re-hash
-        // the executable; canonical identity equality binds the built-in
-        // ranker to the currently running ASP artifact.
-        exact_query_trace("ranker-admitted", exact_query_started);
-        if let Some(diagnostics) = command_diagnostics.as_mut() {
-            diagnostics.mark_stage("ranker-admitted");
-        }
-        let current_search_data_plane =
-            if super::search_pipe::fast_search_requires_source_index_snapshot(&provider_args) {
-                let result =
-                    crate::server::runtime_server::await_agent_facing_runtime_server_client(
-                        exact_query_started,
-                        "search",
-                        "graph-turbo-generation-open",
-                        &project_root,
-                        crate::server::runtime_server::runtime_server_search_data_plane_async(
-                            &project_root,
-                        ),
-                    )
-                    .await;
-                if let Err(error) = result {
-                    return Err(error);
-                }
-                Some(result.expect("runtime server data plane result checked above"))
-            } else {
-                None
-            };
-        let current_snapshot = current_search_data_plane
-            .as_ref()
-            .map(crate::server::runtime_server::RuntimeServerSearchDataPlane::current_snapshot)
-            .transpose()?;
-        let provider_context_required =
-            fast_search_needs_provider_context(&provider_args, provider)?;
-        exact_query_trace("provider-context-classified", exact_query_started);
-        if let Some(diagnostics) = command_diagnostics.as_mut() {
-            diagnostics.mark_stage("provider-context-classified");
-        }
-        if provider_context_required {
-            exact_query_trace("provider-context-required", exact_query_started);
-            let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
-            let provider_context = ProviderGraphFactsContext {
-                provider,
-                profiles: &runtime_profiles,
-            };
-            return crate::server::runtime_server::await_agent_facing_runtime_server_client(
-                exact_query_started,
-                "search",
-                "resident-search-evaluation",
-                &project_root,
-                run_asp_fast_search_command(
-                    &provider_args,
-                    FastSearchContext {
-                        started: exact_query_started,
-                        language_id,
-                        project_root: &project_root,
-                        locator_root: search_locator_root,
-                        cache_home: &cache_home,
-                        config: &config,
-                        provider_context: Some(&provider_context),
-                        frontier_receipt: frontier_receipt.as_ref(),
-                        source_index_snapshot: current_snapshot.as_ref(),
-                        search_data_plane: current_search_data_plane.as_ref(),
-                        diagnostics: command_diagnostics.as_mut(),
-                    },
-                ),
-            )
-            .await;
-        }
-        exact_query_trace("provider-context-not-required", exact_query_started);
-        return crate::server::runtime_server::await_agent_facing_runtime_server_client(
-            exact_query_started,
-            "search",
-            "resident-search-evaluation",
-            &project_root,
-            run_asp_fast_search_command(
-                &provider_args,
-                FastSearchContext {
-                    started: exact_query_started,
-                    language_id,
-                    project_root: &project_root,
-                    locator_root: search_locator_root,
-                    cache_home: &cache_home,
-                    config: &config,
-                    provider_context: None,
-                    frontier_receipt: frontier_receipt.as_ref(),
-                    source_index_snapshot: current_snapshot.as_ref(),
-                    search_data_plane: current_search_data_plane.as_ref(),
-                    diagnostics: command_diagnostics.as_mut(),
-                },
-            ),
-        )
-        .await;
-    }
     if frontier_receipt
         .as_ref()
         .is_some_and(GraphTurboReceiptRequest::has_extra_args)
@@ -485,17 +315,6 @@ pub(crate) async fn run_language_command(
     if try_replay_gerbil_check_cache(language_id, &provider_args, &project_root)? {
         return Ok(());
     }
-    if uses_client_backend(&command_args) {
-        return run_client_backend_command(
-            language_id,
-            &provider_args,
-            &project_root,
-            &activation_path,
-            frontier_receipt.as_ref(),
-        )
-        .await;
-    }
-
     let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
     if is_guide(&command_args) {
         let guide_args = provider_guide_args(language_id, &provider_args);
@@ -514,7 +333,7 @@ pub(crate) async fn run_language_command(
     .await;
     if let Some(diagnostics) = command_diagnostics.take() {
         let receipt = diagnostics.finish(
-            agent_semantic_client_db::search_incident::AGENT_FACING_SEARCH_BUDGET_MICROS,
+            SEARCH_DIAGNOSTIC_SLOW_TARGET_MICROS,
             result.as_ref().err().map(String::as_str),
         );
         eprintln!(
@@ -550,5 +369,5 @@ fn is_guide_help(args: &[String]) -> bool {
 use super::provider_activation::{load_activation_for_language_message, provider_activation_path};
 use super::provider_execution::provider_process_args;
 use super::provider_selector::{
-    is_provider_owned_structural_selector_query, reject_search_file_workspace,
+        is_provider_owned_structural_selector_query,
 };

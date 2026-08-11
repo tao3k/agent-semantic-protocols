@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tokio::{net::UnixStream, sync::watch};
+use tokio::{io::AsyncWriteExt, net::UnixStream, sync::watch};
 
 use crate::{
     WorkspaceDbRegistry,
@@ -61,17 +61,40 @@ pub(super) async fn serve_connection(
                 return Ok(false);
             }
         };
-        let entry_counts = registry.workspace_entry_counts();
-        let slot_count = entry_counts.slot_count;
-        let loaded_entry_count = entry_counts.loaded_entry_count;
-        let workspace_entry_count = slot_count.max(loaded_entry_count);
         let mut restart = false;
         let mut receipts = Vec::with_capacity(requests.len());
         for request in requests {
             replay_guard.lock().await.admit(&request.request_id)?;
             let request_restart = request.requires_restart(&endpoint)?;
             restart |= request_restart;
-            let mut receipt = if request_restart {
+            let ensure_failure = if request.operation
+                == crate::runtime_server_control::RuntimeServerOperation::EnsureWorkspace
+            {
+                match request.project_root.as_deref() {
+                    Some(project_root) => registry
+                        .bootstrap_workspace(std::path::Path::new(project_root))
+                        .await
+                        .err(),
+                    None => Some(
+                        "Runtime Server ensure-workspace request omitted project root".to_owned(),
+                    ),
+                }
+            } else {
+                None
+            };
+            let entry_counts = registry.workspace_entry_counts();
+            let workspace_entry_count =
+                entry_counts.slot_count.max(entry_counts.loaded_entry_count);
+            let mut receipt = if let Some(reason) = ensure_failure {
+                let mut receipt = RuntimeServerControlReceipt::healthy(
+                    request.request_id,
+                    &endpoint,
+                    workspace_entry_count,
+                );
+                receipt.state = RuntimeServerState::Degraded;
+                receipt.reason = Some(reason);
+                receipt
+            } else if request_restart {
                 RuntimeServerControlReceipt::draining(
                     request.request_id,
                     &endpoint,
@@ -106,6 +129,17 @@ pub(super) async fn serve_connection(
         .await?;
         authenticated_first_frame = true;
         if restart {
+            // Linearize the draining receipt before this connection publishes
+            // the process-level restart signal.  A write-complete task alone
+            // is not a peer-visible boundary: explicitly flush and half-close
+            // the response side so the client observes the typed receipt
+            // before the supervisor drains sibling connections.
+            stream.flush().await.map_err(|error| {
+                format!("failed to flush Runtime Server restart receipt: {error}")
+            })?;
+            stream.shutdown().await.map_err(|error| {
+                format!("failed to finalize Runtime Server restart receipt: {error}")
+            })?;
             return Ok(true);
         }
     }

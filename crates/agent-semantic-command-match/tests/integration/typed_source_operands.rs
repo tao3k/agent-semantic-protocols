@@ -19,6 +19,7 @@ fn configured_projection_retains_only_the_typed_source_operand() {
             optional_subcommand_any: &optional_subcommands,
             option_any: &options,
             option_value_arity: &option_value_arity,
+            max_slice_items: 64,
         },
     );
 

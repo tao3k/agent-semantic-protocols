@@ -48,3 +48,32 @@ fn unknown_or_corrupt_tables_fail_closed_without_inventing_a_winner() {
     );
     assert!(CommandDecisionShard::select(&shard[..shard.len() - 1], &[]).is_err());
 }
+
+#[test]
+fn wrapped_shell_source_candidates_do_not_depend_on_first_or_last_dotted_argument() {
+    let payload = json!({
+        "tool_name": "Bash",
+        "tool_input": {
+            "command": "wrapper --activation state.json read src/owner.rs --projection .fields.value"
+        }
+    });
+
+    let keys = crate::shell_read_source_keys(&payload);
+    let candidates = keys
+        .iter()
+        .map(|key| (key.extension.as_str(), key.path.as_str()))
+        .collect::<Vec<_>>();
+
+    assert!(
+        candidates.contains(&(".json", "state.json")),
+        "{candidates:?}"
+    );
+    assert!(
+        candidates.contains(&(".rs", "src/owner.rs")),
+        "{candidates:?}"
+    );
+    assert!(
+        candidates.contains(&(".value", ".fields.value")),
+        "{candidates:?}"
+    );
+}

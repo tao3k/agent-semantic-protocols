@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 pub enum BoundedPathSegmentV1 {
     Field(String),
     Index(usize),
+    Slice { start: usize, end: usize },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -25,6 +26,7 @@ pub enum StructuredFilterClassificationV1 {
     ArrayIteration,
     Compound,
     Invalid,
+    NotApplicable,
 }
 
 /// Configured command grammar for one bounded structured-filter input.
@@ -33,6 +35,7 @@ pub struct BoundedPathCommandSpecV1<'a> {
     pub optional_subcommand_any: &'a [String],
     pub option_any: &'a [String],
     pub option_value_arity: &'a BTreeMap<String, u8>,
+    pub max_slice_items: usize,
 }
 
 /// Classify one bounded-path command without accepting compound shell stages.
@@ -41,6 +44,32 @@ pub fn classify_single_bounded_path_command(
     spec: BoundedPathCommandSpecV1<'_>,
 ) -> StructuredFilterClassificationV1 {
     classify_single_bounded_path_command_impl(command, spec)
+}
+
+/// Classify a command from the shared Bash parser's normalized argv.
+///
+/// Hook decision shards already own this projection and must not parse the
+/// original shell source a second time on the one-shot path.
+pub fn classify_single_bounded_path_tokens(
+    tokens: &[String],
+    spec: BoundedPathCommandSpecV1<'_>,
+) -> StructuredFilterClassificationV1 {
+    if tokens
+        .iter()
+        .any(|token| crate::bash_parser::is_separator(token))
+    {
+        return StructuredFilterClassificationV1::Compound;
+    }
+    let mut matching = tokens.iter().enumerate().filter_map(|(index, token)| {
+        (token.rsplit('/').next() == Some(spec.binary)).then_some(index)
+    });
+    let Some(index) = matching.next() else {
+        return StructuredFilterClassificationV1::NotApplicable;
+    };
+    if matching.next().is_some() {
+        return StructuredFilterClassificationV1::Compound;
+    }
+    classify_bounded_path_words(&tokens[index..], &spec)
 }
 
 fn classify_single_bounded_path_command_impl(
@@ -70,7 +99,7 @@ fn classify_single_bounded_path_command_impl(
         .collect::<Vec<_>>();
     match matching.as_slice() {
         [words] => classify_bounded_path_words(words, &spec),
-        [] => StructuredFilterClassificationV1::Invalid,
+        [] => StructuredFilterClassificationV1::NotApplicable,
         _ => StructuredFilterClassificationV1::Compound,
     }
 }
@@ -129,7 +158,7 @@ fn classify_bounded_path_words(
     if source_operands.len() != 1 {
         return StructuredFilterClassificationV1::Compound;
     }
-    match classify_bounded_path_filter(filter) {
+    match classify_bounded_path_filter_with_limit(filter, spec.max_slice_items) {
         StructuredFilterClassificationV1::BoundedPath { segments, .. } => {
             StructuredFilterClassificationV1::BoundedPath {
                 segments,
@@ -148,6 +177,13 @@ fn classify_bounded_path_words(
 
 /// Classify a structured-filter expression without executing it.
 pub fn classify_bounded_path_filter(filter: &str) -> StructuredFilterClassificationV1 {
+    classify_bounded_path_filter_with_limit(filter, 0)
+}
+
+fn classify_bounded_path_filter_with_limit(
+    filter: &str,
+    max_slice_items: usize,
+) -> StructuredFilterClassificationV1 {
     let filter = filter.trim();
     if filter == "." {
         return StructuredFilterClassificationV1::Identity;
@@ -215,13 +251,41 @@ pub fn classify_bounded_path_filter(filter: &str) -> StructuredFilterClassificat
                     while cursor < bytes.len() && bytes[cursor].is_ascii_digit() {
                         cursor += 1;
                     }
-                    if start == cursor {
+                    if bytes.get(cursor) == Some(&b':') {
+                        let slice_start = if start == cursor {
+                            0
+                        } else {
+                            let Ok(value) = filter[start..cursor].parse() else {
+                                return StructuredFilterClassificationV1::Invalid;
+                            };
+                            value
+                        };
+                        cursor += 1;
+                        let end_start = cursor;
+                        while cursor < bytes.len() && bytes[cursor].is_ascii_digit() {
+                            cursor += 1;
+                        }
+                        if end_start == cursor {
+                            return StructuredFilterClassificationV1::Compound;
+                        }
+                        let Ok(slice_end) = filter[end_start..cursor].parse::<usize>() else {
+                            return StructuredFilterClassificationV1::Invalid;
+                        };
+                        if slice_end.saturating_sub(slice_start) > max_slice_items {
+                            return StructuredFilterClassificationV1::Compound;
+                        }
+                        segments.push(BoundedPathSegmentV1::Slice {
+                            start: slice_start,
+                            end: slice_end,
+                        });
+                    } else if start == cursor {
                         return StructuredFilterClassificationV1::Compound;
+                    } else {
+                        let Ok(index) = filter[start..cursor].parse() else {
+                            return StructuredFilterClassificationV1::Invalid;
+                        };
+                        segments.push(BoundedPathSegmentV1::Index(index));
                     }
-                    let Ok(index) = filter[start..cursor].parse() else {
-                        return StructuredFilterClassificationV1::Invalid;
-                    };
-                    segments.push(BoundedPathSegmentV1::Index(index));
                 }
                 if bytes.get(cursor) != Some(&b']') {
                     return StructuredFilterClassificationV1::Compound;

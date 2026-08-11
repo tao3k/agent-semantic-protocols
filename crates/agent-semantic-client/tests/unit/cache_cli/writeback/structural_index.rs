@@ -11,8 +11,8 @@ use crate::cache_cli_source_index_tests::fixtures::{
 };
 use crate::test_support::artifacts_root_from_cache_root;
 
-#[test]
-fn structural_index_packet_writeback_applies_refresh_rows() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn structural_index_packet_writeback_applies_refresh_rows() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
@@ -36,6 +36,7 @@ fn structural_index_packet_writeback_applies_refresh_rows() {
         ProviderRegistrySnapshot::load_from_path(&activation_path).expect("load Rust activation");
     let current_snapshot =
         crate::source_index::current_source_index_snapshot_with_registry(&root, &snapshot)
+            .await
             .expect("capture current Rust source snapshot");
     let request = ClientRequest::new(ClientMethod::Search, &root)
         .with_language(LanguageId::from("rust"))
@@ -52,6 +53,7 @@ fn structural_index_packet_writeback_applies_refresh_rows() {
         &first_packet_bytes,
         &[],
     )
+    .await
     .expect("first structural writeback");
     let second_probe = write_prompt_output_cache_after_provider_success(
         &root,
@@ -60,6 +62,7 @@ fn structural_index_packet_writeback_applies_refresh_rows() {
         &second_packet_bytes,
         &[],
     )
+    .await
     .expect("second structural writeback");
     let cache_report = agent_semantic_client_core::ClientCacheManifest::inspect_project(&root);
     let cache_root = cache_report.cache_root.expect("cache root");
@@ -69,6 +72,7 @@ fn structural_index_packet_writeback_applies_refresh_rows() {
         "parse_config",
         8,
     )
+    .await
     .expect("lookup copied symbol through DB Engine");
 
     assert_eq!(first_probe.db_write_count, 3);
@@ -90,8 +94,8 @@ fn structural_index_packet_writeback_applies_refresh_rows() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn gerbil_scheme_structural_index_packet_writeback_is_queryable() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn gerbil_scheme_structural_index_packet_writeback_is_queryable() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
@@ -110,6 +114,7 @@ fn gerbil_scheme_structural_index_packet_writeback_is_queryable() {
         ProviderRegistrySnapshot::load_from_path(&activation_path).expect("load Gerbil activation");
     let current_snapshot =
         crate::source_index::current_source_index_snapshot_with_registry(&root, &snapshot)
+            .await
             .expect("capture current Gerbil source snapshot");
     assert!(current_snapshot.source_snapshot.leaf_count > 0);
     let request = ClientRequest::new(ClientMethod::Search, &root)
@@ -125,6 +130,7 @@ fn gerbil_scheme_structural_index_packet_writeback_is_queryable() {
         &packet_bytes,
         &[],
     )
+    .await
     .expect("gerbil structural writeback");
     let cache_report = agent_semantic_client_core::ClientCacheManifest::inspect_project(&root);
     let cache_root = cache_report.cache_root.expect("cache root");
@@ -134,6 +140,7 @@ fn gerbil_scheme_structural_index_packet_writeback_is_queryable() {
         "search-main",
         8,
     )
+    .await
     .expect("lookup gerbil structural symbol through DB Engine");
 
     assert_eq!(probe.db_write_count, 3);

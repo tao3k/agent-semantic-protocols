@@ -127,7 +127,7 @@ pub(crate) async fn ensure_runtime_server(
         require_runtime_server_not_operator_stopped(protocol_home).await?;
     }
     create_runtime_server_run_intent(protocol_home).await?;
-    let endpoint_path = agent_semantic_client_db::runtime_server_endpoint_path(protocol_home);
+    let endpoint_path = agent_semantic_client_db::runtime_server_endpoint_path(protocol_home)?;
     if let Ok(endpoint) =
         super::runtime_server_endpoint_io::read_supervisor_endpoint(&endpoint_path).await
     {
@@ -229,7 +229,7 @@ pub(crate) async fn read_runtime_server_spawn_receipt(
 }
 
 pub(crate) async fn request_runtime_server_drain(protocol_home: &Path) -> Result<(), String> {
-    let endpoint_path = agent_semantic_client_db::runtime_server_endpoint_path(protocol_home);
+    let endpoint_path = agent_semantic_client_db::runtime_server_endpoint_path(protocol_home)?;
     let endpoint =
         super::runtime_server_endpoint_io::read_supervisor_endpoint(&endpoint_path).await?;
     let receipt = agent_semantic_client_db::call_runtime_server(
@@ -258,69 +258,49 @@ pub(crate) async fn reconcile_healthy_runtime_server(
     super::runtime_server::await_healthy_runtime_server(protocol_home).await
 }
 
-pub(super) async fn configured_graph_turbo_artifact_at_state_home(
-    state_home: &Path,
-) -> Result<Option<ConfiguredGraphTurboArtifact>, String> {
-    let Some(authority) =
-        crate::runtime_artifact::validated_graph_turbo_resident_config(state_home).await?
-    else {
-        return Ok(None);
+pub(crate) async fn prepare_runtime_server_binary_switch(
+    protocol_home: &Path,
+) -> Result<bool, String> {
+    let endpoint_path = agent_semantic_client_db::runtime_server_endpoint_path(protocol_home)?;
+    let endpoint =
+        match super::runtime_server_endpoint_io::read_supervisor_endpoint(&endpoint_path).await {
+            Ok(endpoint) => Some(endpoint),
+            Err(_) => {
+                let spawn_in_flight = read_runtime_server_spawn_receipt(protocol_home)
+                    .await?
+                    .is_some()
+                    && crate::server::runtime_server_exit_receipt::read_latest_owner_exit(
+                        protocol_home,
+                    )
+                    .await?
+                    .is_none();
+                if spawn_in_flight {
+                    super::runtime_server::await_healthy_runtime_server(protocol_home).await?;
+                    Some(
+                        super::runtime_server_endpoint_io::read_supervisor_endpoint(&endpoint_path)
+                            .await?,
+                    )
+                } else {
+                    None
+                }
+            }
+        };
+    let Some(endpoint) = endpoint else {
+        return Ok(false);
     };
-    let mut configured = validate_graph_turbo_artifact(
-        state_home,
-        authority.locator,
-        authority.execution_artifact_digest,
+
+    crate::server::runtime_server_exit_receipt::remove_stale(protocol_home).await?;
+    request_runtime_server_drain(protocol_home).await?;
+    let exit = crate::server::runtime_server_exit_receipt::await_owner_exit(
+        protocol_home,
+        endpoint.owner_epoch,
     )
     .await?;
-    configured.runtime_artifact_digest = authority.runtime_artifact_digest;
-    Ok(Some(configured))
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct ConfiguredGraphTurboArtifact {
-    pub(super) locator: PathBuf,
-    pub(super) runtime_artifact_digest: String,
-}
-
-async fn validate_graph_turbo_artifact(
-    state_home: &Path,
-    locator: PathBuf,
-    runtime_artifact_digest: String,
-) -> Result<ConfiguredGraphTurboArtifact, String> {
-    if !locator.is_absolute() {
-        return Err("Graph Turbo executionArtifactLocator must be an absolute path".to_owned());
+    if !exit.clean_drain {
+        return Err("ASP binary refresh stopped after a failed Runtime service drain".to_owned());
     }
-    if !runtime_artifact_digest.starts_with("blake3-256:") {
-        return Err("Graph Turbo runtimeArtifactDigest must use blake3-256".to_owned());
-    }
-    let canonical = tokio::fs::canonicalize(&locator)
-        .await
-        .map_err(|error| format!("resolve Graph Turbo execution artifact: {error}"))?;
-    let managed_root = tokio::fs::canonicalize(state_home.join("runtime"))
-        .await
-        .map_err(|error| format!("resolve managed Runtime root: {error}"))?;
-    if !canonical.starts_with(&managed_root) {
-        return Err(format!(
-            "Graph Turbo runtime artifact is outside the managed Runtime root: artifact={} managedRoot={}",
-            canonical.display(),
-            managed_root.display()
-        ));
-    }
-    let actual_digest = format!(
-        "blake3-256:{}",
-        crate::command::protocol_binary::canonical_protocol_binary_artifact_digest(&canonical)
-            .await?
-    );
-    if actual_digest != runtime_artifact_digest {
-        return Err(format!(
-            "Graph Turbo runtime artifact digest drift: expected={runtime_artifact_digest} actual={actual_digest} artifact={}",
-            canonical.display()
-        ));
-    }
-    Ok(ConfiguredGraphTurboArtifact {
-        locator: canonical,
-        runtime_artifact_digest,
-    })
+    crate::server::runtime_server_endpoint_io::cleanup_endpoint(protocol_home, &endpoint).await?;
+    Ok(true)
 }
 
 fn canonical_supervisor_runtime_artifact_sync(protocol_home: &Path) -> Result<PathBuf, String> {

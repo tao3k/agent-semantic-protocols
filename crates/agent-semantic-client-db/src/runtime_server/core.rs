@@ -41,6 +41,8 @@ pub struct RuntimeServer {
         Arc<agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog>,
     pub(super) workspace_registry:
         std::sync::Arc<crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry>,
+    pub(super) runtime_search_service:
+        Option<crate::runtime_search_service::RuntimeSearchServiceHandle>,
     pub(super) endpoint: RuntimeServerEndpoint,
     pub(super) listener: UnixListener,
     pub(super) data_listener: UnixListener,
@@ -118,6 +120,14 @@ impl RuntimeServer {
         sender: crate::runtime_telemetry_bus::RuntimeTelemetryBusSender,
     ) -> Self {
         self.telemetry_sender = Some(sender);
+        self
+    }
+
+    pub fn with_runtime_search_service(
+        mut self,
+        service: crate::runtime_search_service::RuntimeSearchServiceHandle,
+    ) -> Self {
+        self.runtime_search_service = Some(service);
         self
     }
 
@@ -312,11 +322,14 @@ impl RuntimeServer {
                                     error,
                                 )
                             })?;
-                            if canonical_materialization_matches_admitted_generation(
-                                materialization.as_materialization(),
-                                provider_catalog_generation.as_deref(),
-                                &candidate,
-                            ) {
+                            if build_mode
+                                == crate::runtime_server_admission::WorkspaceGenerationBuildMode::RestoreOnly
+                                || canonical_materialization_matches_admitted_generation(
+                                    materialization.as_materialization(),
+                                    provider_catalog_generation.as_deref(),
+                                    &candidate,
+                                )
+                            {
                                 let published = await_stage(
                         &workspace_identity,
                         &operation_id,
@@ -577,10 +590,6 @@ impl RuntimeServer {
             Some(sender) => crate::runtime_server_admission::WorkspaceGenerationAdmission::new_with_telemetry_sender(builder, sender),
             None => crate::runtime_server_admission::WorkspaceGenerationAdmission::new(builder),
         };
-        let admission = match owner_projection_builder {
-            Some(builder) => admission.with_owner_projection_builder(builder),
-            None => admission,
-        };
         self.generation_admission = Some(Arc::new(match catalog {
             Some(catalog) => admission.with_catalog(catalog),
             None => admission,
@@ -592,6 +601,7 @@ impl RuntimeServer {
         let Self {
             artifact_catalog: _artifact_catalog,
             workspace_registry,
+            runtime_search_service,
             endpoint,
             listener,
             data_listener,
@@ -650,6 +660,7 @@ impl RuntimeServer {
             status.refresh(owner).await?;
         }
         let exit = loop {
+            let runtime_search_service_for_connection = runtime_search_service.clone();
             tokio::select! {
                             connection = listener.accept(), if connection_supervisor.has_capacity() => {
                                 let (stream, _) = connection.map_err(|error| {
@@ -712,7 +723,8 @@ impl RuntimeServer {
                                         &memory_registry,
                                         generation_admission.as_ref(),
                                         graph_turbo_evaluation_builder.as_ref(),
-            agent_session_registry_owner.as_ref(),
+                                        runtime_search_service_for_connection.as_ref(),
+                                        agent_session_registry_owner.as_ref(),
             &session_control_plane_runtime_registry,
             agent_session_status.as_ref(),
                                         &codex_multi_agent_control_plane_owner,

@@ -64,6 +64,7 @@ async fn stalled_control_exchange_is_bounded_and_discards_the_lane() {
         transport_contract_digest: endpoint.transport_contract_digest.clone(),
         owner_epoch: endpoint.owner_epoch,
         binding_token: endpoint.binding_token.clone(),
+        project_root: None,
     };
     let mut stream = None;
     let error = exchange_runtime_server_request_with_budget(

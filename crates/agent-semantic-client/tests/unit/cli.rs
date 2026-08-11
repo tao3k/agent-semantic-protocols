@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 const DOCTOR_USAGE: &str = "usage: asp doctor\nrooted health: asp tools doctor [PROJECT_ROOT]";
 
-#[test]
-fn doctor_rejects_workspace_before_running_diagnostics() {
+#[tokio::test]
+async fn doctor_rejects_workspace_before_running_diagnostics() {
     let cwd = PathBuf::from("/tmp/asp-doctor-invocation");
     let error = run_cli_args(
         None,
@@ -15,13 +15,14 @@ fn doctor_rejects_workspace_before_running_diagnostics() {
         ],
         cwd,
     )
+    .await
     .expect_err("doctor must not reinterpret a project root");
 
     assert_eq!(error, DOCTOR_USAGE);
 }
 
-#[test]
-fn doctor_rejects_global_receipt_flags() {
+#[tokio::test]
+async fn doctor_rejects_global_receipt_flags() {
     let cwd = PathBuf::from("/tmp/asp-doctor-invocation");
     for args in [
         vec!["doctor".to_string(), "--receipt-json".to_string()],
@@ -32,6 +33,7 @@ fn doctor_rejects_global_receipt_flags() {
         ],
     ] {
         let error = run_cli_args(None, args, cwd.clone())
+            .await
             .expect_err("doctor must reject unsupported receipt flags");
         assert_eq!(error, DOCTOR_USAGE);
     }

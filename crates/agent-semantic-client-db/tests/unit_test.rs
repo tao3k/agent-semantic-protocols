@@ -56,8 +56,6 @@ mod runtime_server_generation_restore;
 mod runtime_server_graph_turbo;
 #[path = "unit/runtime_server_health.rs"]
 mod runtime_server_health;
-#[path = "unit/runtime_server_opentelemetry_test.rs"]
-mod runtime_server_opentelemetry_test;
 #[path = "unit/runtime_server_overlay_admission.rs"]
 mod runtime_server_overlay_admission;
 #[path = "unit/runtime_server_runtime.rs"]
@@ -106,3 +104,5 @@ mod workspace_db_owner_election;
 mod workspace_db_registry;
 #[path = "unit/workspace_project_resolution.rs"]
 mod workspace_project_resolution;
+#[path = "unit/workspace_runtime_selector_wire.rs"]
+mod workspace_runtime_selector_wire;

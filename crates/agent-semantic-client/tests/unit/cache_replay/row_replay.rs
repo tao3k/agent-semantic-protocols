@@ -8,8 +8,8 @@ use agent_semantic_client_db::ClientDbGenerationHit;
 use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[test]
-fn prompt_output_replay_rejects_obsolete_compact_graph_grammar() {
+#[tokio::test]
+async fn prompt_output_replay_rejects_obsolete_compact_graph_grammar() {
     let root = temp_root("prompt-output-obsolete-graph");
     let cache_root = v2_cache_root(&root);
     write_syntax_replay_sources(&root);
@@ -31,12 +31,16 @@ rank=Q frontier=Q.obsolete\n",
     );
     let hit = prompt_generation_hit(&root, &request, "search/lexical");
 
-    assert!(load_replay_artifact(&cache_root, &hit, &request).is_none());
+    assert!(
+        load_replay_artifact(&cache_root, &hit, &request)
+            .await
+            .is_none()
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn prompt_output_replay_rejects_stale_generation_file_hashes() {
+#[tokio::test]
+async fn prompt_output_replay_rejects_stale_generation_file_hashes() {
     let root = temp_root("prompt-output-stale-generation-hash");
     let cache_root = v2_cache_root(&root);
     write_syntax_replay_sources(&root);
@@ -52,12 +56,16 @@ fn prompt_output_replay_rejects_stale_generation_file_hashes() {
 
     std::fs::write(root.join("src/lib.rs"), "pub fn changed() {}\n").expect("mutate source");
 
-    assert!(load_replay_artifact(&cache_root, &hit, &request).is_none());
+    assert!(
+        load_replay_artifact(&cache_root, &hit, &request)
+            .await
+            .is_none()
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn search_packet_replay_prefers_cached_search_stdout_artifact() {
+#[tokio::test]
+async fn search_packet_replay_prefers_cached_search_stdout_artifact() {
     let root = temp_root("search-output-replay");
     let cache_root = v2_cache_root(&root);
     write_syntax_replay_sources(&root);
@@ -105,7 +113,9 @@ rank=Q frontier=Q.lexical\n";
         ],
     };
 
-    let replay = load_replay_artifact(&cache_root, &hit, &request).expect("search stdout replay");
+    let replay = load_replay_artifact(&cache_root, &hit, &request)
+        .await
+        .expect("search stdout replay");
 
     assert_eq!(
         std::str::from_utf8(replay.stdout.as_ref()).expect("utf8"),

@@ -36,7 +36,9 @@ pub struct HookPolicyWitness {
     pub expected_language_ids: Vec<String>,
     pub expected_routes: Vec<(String, String)>,
     pub envelope_axis: String,
+    pub envelope_slot: usize,
     pub command_axis: Option<String>,
+    pub command_prefix: Option<Vec<String>>,
     pub wrapper_depth: usize,
 }
 
@@ -170,19 +172,79 @@ pub fn combinatorial_policy_witnesses(
             expected_language_ids,
             expected_routes,
             envelope_axis,
+            envelope_slot: case.envelope_slot,
             command_axis,
+            command_prefix: case.command_prefix,
             wrapper_depth: case.wrapper_depth,
         })
     })
     .collect()
 }
 
+/// Generate config-owned black witnesses whose registered source is surrounded
+/// by unrelated unregistered argv siblings. The command is assembled as words
+/// before Host-envelope serialization, so quoting and wrapper structure remain
+/// identical to the ordinary combinatorial witness.
+pub fn combinatorial_positional_shell_witnesses(
+    config: &HookClientConfigFile,
+    strategy: HookPolicyCombinatorialStrategy,
+) -> Result<Vec<HookPolicyWitness>, String> {
+    let extensions = config
+        .language_providers
+        .iter()
+        .flat_map(|provider| provider.source_extensions.iter().cloned())
+        .collect::<std::collections::BTreeSet<_>>();
+    combinatorial_policy_witnesses(config, strategy)?
+        .into_iter()
+        .filter(|witness| {
+            witness.polarity == HookPolicyWitnessPolarity::Black && witness.command_prefix.is_some()
+        })
+        .map(|mut witness| {
+            let auxiliary = agent_semantic_config::mutate_path_outside_registered_extensions(
+                &witness.path,
+                &extensions,
+            );
+            let command = wrapped_command_with_path_siblings(
+                witness
+                    .command_prefix
+                    .as_deref()
+                    .expect("filtered shell witness has command prefix"),
+                &witness.path,
+                witness.wrapper_depth,
+                std::slice::from_ref(&auxiliary),
+                std::slice::from_ref(&auxiliary),
+            );
+            let envelopes = shell_host_envelopes(&command);
+            let (tool_name, tool_input) = envelopes
+                .get(witness.envelope_slot)
+                .cloned()
+                .ok_or_else(|| "config coverage selected an invalid shell envelope".to_owned())?;
+            witness.id.push_str(":positional");
+            witness.tool_name = tool_name;
+            witness.tool_input = tool_input;
+            Ok(witness)
+        })
+        .collect()
+}
+
 fn wrapped_command(prefix: &[String], path: &str, wrapper_depth: usize) -> String {
+    wrapped_command_with_path_siblings(prefix, path, wrapper_depth, &[], &[])
+}
+
+fn wrapped_command_with_path_siblings(
+    prefix: &[String],
+    path: &str,
+    wrapper_depth: usize,
+    before: &[String],
+    after: &[String],
+) -> String {
     let mut words = (0..wrapper_depth)
         .map(|depth| format!("generated-wrapper-{depth}"))
         .collect::<Vec<_>>();
     words.extend(prefix.iter().cloned());
+    words.extend(before.iter().cloned());
     words.push(path.to_owned());
+    words.extend(after.iter().cloned());
     words.join(" ")
 }
 

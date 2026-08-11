@@ -9,8 +9,6 @@ use super::{
     IncidentSurface, RequestedProjection, ResourceObservation, SearchIncidentTerminalContext,
 };
 
-pub const AGENT_FACING_SEARCH_BUDGET_MICROS: u64 = 800_000;
-
 pub(crate) fn workspace_ipc_terminal_context(
     request: &WorkspaceDbIpcRequest,
 ) -> Option<SearchIncidentTerminalContext> {
@@ -68,7 +66,7 @@ pub(crate) fn workspace_ipc_terminal_context(
         runtime_artifact_digest: None,
         provider_contract_digest: None,
         generation_digest: None,
-        budget_micros: Some(AGENT_FACING_SEARCH_BUDGET_MICROS),
+        budget_micros: None,
         elapsed_micros: None,
         observed_at_unix_micros: SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -93,12 +91,6 @@ pub(crate) fn record_workspace_ipc_terminal(
     context.elapsed_micros = Some(elapsed.as_micros() as u64);
     let reason_kind = match result {
         WorkspaceDbIpcResult::Failed { code, .. } => code.clone(),
-        _ if context
-            .budget_micros
-            .is_some_and(|budget| context.elapsed_micros.is_some_and(|value| value > budget)) =>
-        {
-            "agent-facing-search-wall-budget-exceeded".to_owned()
-        }
         _ => return Ok(None),
     };
     sender.try_record_search_terminal(

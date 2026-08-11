@@ -33,8 +33,11 @@ pub(super) async fn remove_stale_socket(path: &Path) -> Result<(), String> {
     }
 }
 
-pub(super) async fn cleanup_endpoint(state_home: &Path, endpoint: &RuntimeServerEndpoint) {
-    let endpoint_path = runtime_server_endpoint_path(state_home);
+pub(super) async fn cleanup_endpoint(
+    state_home: &Path,
+    endpoint: &RuntimeServerEndpoint,
+) -> Result<(), String> {
+    let endpoint_path = runtime_server_endpoint_path(state_home)?;
     let socket_path = PathBuf::from(&endpoint.socket_path);
     let data_plane_socket_path = PathBuf::from(&endpoint.data_plane_socket_path);
     let status_memory_path = PathBuf::from(&endpoint.status_memory_path);
@@ -47,4 +50,5 @@ pub(super) async fn cleanup_endpoint(state_home: &Path, endpoint: &RuntimeServer
         let _ = tokio::fs::remove_file(data_plane_socket_path).await;
         let _ = tokio::fs::remove_file(status_memory_path).await;
     }
+    Ok(())
 }

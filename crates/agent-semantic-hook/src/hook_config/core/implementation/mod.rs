@@ -1,6 +1,7 @@
 //! Compiles hook configuration into runtime matching rules.
 
 pub(super) mod action_match;
+pub(super) use action_match as action_match_facade;
 pub(super) mod argv_source;
 pub(in crate::hook_config) mod compiled_rule;
 mod dispatch_fields;

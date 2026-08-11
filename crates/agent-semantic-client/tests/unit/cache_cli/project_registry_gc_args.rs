@@ -47,5 +47,6 @@ fn clean_requires_a_positive_day_retention() {
 
     let zero = parse_project_registry_clean_args(&["--day=0".to_string()])
         .expect_err("zero-day cleanup should be rejected");
-    assert!(zero.contains("1 or greater"), "{zero}");
+    assert!(zero.contains("invalid value '0'"), "{zero}");
+    assert!(zero.contains("--day"), "{zero}");
 }

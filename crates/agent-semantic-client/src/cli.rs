@@ -39,12 +39,15 @@ pub async fn run_cli_args(
         Some("wrap") => crate::tools_cli::run_wrap(&parsed.forwarded_args),
         Some("providers") => run_providers(parsed),
         Some("doctor") => run_doctor(parsed),
-        Some("cache") => crate::cache_cli::run_cache(
-            &parsed.project_root,
-            language_id.as_ref(),
-            &parsed.forwarded_args,
-            parsed.receipt_json,
-        ),
+        Some("cache") => {
+            crate::cache_cli::run_cache(
+                &parsed.project_root,
+                language_id.as_ref(),
+                &parsed.forwarded_args,
+                parsed.receipt_json,
+            )
+            .await
+        }
         Some("cloud") => run_cloud(parsed),
         Some("search") => {
             if language_id.is_none()

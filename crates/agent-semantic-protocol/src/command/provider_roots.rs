@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use agent_semantic_client_core::{
-    AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE, state_core::ResolvedState,
+    AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE,
 };
 use agent_semantic_runtime::{
     project_activation_path, project_root_for_activation_path, project_state_paths,
@@ -21,9 +21,6 @@ pub(super) fn activation_project_root(activation_path: &Path, project_root: &str
     fs::canonicalize(&root).unwrap_or(root)
 }
 
-pub(super) fn client_backend_state_dir(project_root: &Path) -> Result<PathBuf, String> {
-    ResolvedState::resolve(project_root).map(|state| state.paths.client_dir)
-}
 
 pub(super) fn effective_project_root_and_args(
     language_id: &str,
@@ -221,13 +218,6 @@ fn validate_facade_view_args(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-pub(super) fn validate_explicit_workspace_project_root(
-    language_id: &str,
-    args: &[String],
-    invocation_root: &Path,
-) -> Result<(), String> {
-    explicit_workspace_project_root(language_id, args, invocation_root).map(|_| ())
-}
 
 pub(super) fn explicit_workspace_project_root(
     language_id: &str,

@@ -5,8 +5,7 @@ use crate::engine::{
     ProviderOwnerDecision, ProviderOwnerFingerprint, ProviderOwnerMetadata, ProviderOwnerProbe,
     ProviderSearchWorkspaceSession, ProviderSelectorProjection, WorkspaceDbRegistry,
 };
-use crate::test_support::{StateHomeGuard, environment_lock, workspace};
-use tempfile::TempDir;
+use crate::test_support::{StateHomeGuard, TestDir, environment_lock, workspace};
 
 #[tokio::test(flavor = "current_thread")]
 async fn unchanged_owner_is_metadata_only() {
@@ -122,7 +121,7 @@ async fn resident_provider_owner_reads_are_parallel_and_sub_millisecond_at_p99()
 
 struct ProviderIncrementalFixture {
     _state_home: StateHomeGuard,
-    _temp: TempDir,
+    _temp: TestDir,
     _environment: MutexGuard<'static, ()>,
     scope: ProviderIncrementalScoped,
     session: ProviderSearchWorkspaceSession,
@@ -131,7 +130,7 @@ struct ProviderIncrementalFixture {
 impl ProviderIncrementalFixture {
     async fn new(label: &str) -> Self {
         let environment = environment_lock();
-        let temp = TempDir::new().expect("create provider incremental tempfile");
+        let temp = TestDir::new(label);
         let state_home = StateHomeGuard::install(&temp.path().join("state"));
         let (project_root, _resolved, mut scope) = workspace(temp.path(), label);
         scope.provider_id = "rust-harness".to_owned();

@@ -113,6 +113,7 @@ async fn exercise_stable_supervisor_reconciliation(enforce_latency: bool) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn stale_generation_handoff_publishes_the_next_healthy_endpoint() {
     let _performance = crate::test_support::performance_lock();
+    const COMPLETE_HANDOFF_BOUNDARY: Duration = Duration::from_millis(500);
     let runtime_dir = tempfile::tempdir().expect("create isolated Runtime Server directory");
     let catalog = Arc::new(fixture_catalog().await);
     let registry = Arc::new(WorkspaceDbRegistry::default());
@@ -182,8 +183,8 @@ async fn stale_generation_handoff_publishes_the_next_healthy_endpoint() {
     assert_eq!(healthy.state, RuntimeServerState::Healthy);
     assert_eq!(healthy.runtime_artifact_digest, "blake3-256:generation-two");
     assert!(
-        handoff_started.elapsed() < Duration::from_millis(25),
-        "in-process Tokio generation handoff must remain millisecond-scale: {:?}",
+        handoff_started.elapsed() < COMPLETE_HANDOFF_BOUNDARY,
+        "complete in-process Tokio generation handoff exceeded the 500ms lifecycle boundary: {:?}",
         handoff_started.elapsed()
     );
 

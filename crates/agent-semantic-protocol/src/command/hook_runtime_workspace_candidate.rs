@@ -1,6 +1,6 @@
 //! Resolves the source scope admitted by a hook lifecycle event.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 pub(in crate::command::hook_runtime) fn hook_workspace_candidate(
     payload: &serde_json::Value,
@@ -23,7 +23,28 @@ pub(in crate::command::hook_runtime) fn hook_workspace_candidate(
             .join(workdir),
         None => payload_cwd.unwrap_or_else(|| project_root.to_path_buf()),
     };
-    explicit_asp_workspace(payload, &command_root).unwrap_or(command_root)
+    normalize_workspace_path(
+        &explicit_asp_workspace(payload, &command_root).unwrap_or(command_root),
+    )
+}
+
+/// Normalize workspace identity without filesystem I/O. Hook execution cannot
+/// pay `canonicalize(2)` on every Host action, but lexical aliases such as `.`
+/// and `..` must resolve to the same Binary v1 authority key as control-plane
+/// refresh.
+pub(super) fn normalize_workspace_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Normal(value) => normalized.push(value),
+            Component::RootDir | Component::Prefix(_) => normalized.push(component.as_os_str()),
+        }
+    }
+    normalized
 }
 
 fn explicit_asp_workspace(payload: &serde_json::Value, command_root: &Path) -> Option<PathBuf> {
