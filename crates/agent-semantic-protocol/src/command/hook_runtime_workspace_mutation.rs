@@ -45,13 +45,15 @@ pub(super) async fn relay_post_tool_workspace_mutation(
     let Some(mutation) = post_tool_workspace_mutation(event, payload)? else {
         return Ok(());
     };
-    crate::server::runtime_server_hook_mutation::submit(
-        project_root,
-        mutation.mutation_id,
-        mutation.changed_paths,
-    )
-    .await?
-    .validate()?;
+    let session =
+        agent_semantic_client_db::workspace_db_ipc::connect_runtime_server_workspace_session(
+            project_root,
+        )
+        .await?;
+    session
+        .submit_runtime_generation_mutation(mutation.mutation_id, mutation.changed_paths)
+        .await?
+        .validate()?;
     if std::env::var_os("ASP_HOOK_BOOTSTRAP_TRACE").is_some() {
         eprintln!("[asp-hook] route=runtime-server entryKind=workspace-mutation state=recorded");
     }

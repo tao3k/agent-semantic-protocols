@@ -75,6 +75,7 @@ fn query_driven_generation_control_is_absent_from_the_wire_contract() {
         "repair-runtime-generation-locator",
     ] {
         let error = serde_json::from_value::<WorkspaceDbIpcOperation>(serde_json::json!({
+            "requestId": "legacy-query-generation-control",
             "kind": kind,
             "projectRoot": "/workspace"
         }))

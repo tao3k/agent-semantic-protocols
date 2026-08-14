@@ -207,9 +207,6 @@ async fn wait_for_mutation_flight(
 
 fn normalize_changed_paths(mut changed_paths: Vec<String>) -> Result<Vec<String>, String> {
     changed_paths.retain(|path| !path.trim().is_empty());
-    if changed_paths.is_empty() {
-        return Err("runtime generation admission requires changed paths".to_owned());
-    }
     // Normalize in place.  Mutation notifications overwhelmingly contain one
     // path, so constructing a BTreeSet here made every coalesced notification
     // pay an avoidable tree allocation on the Runtime IPC hot path.
@@ -221,6 +218,21 @@ fn normalize_changed_paths(mut changed_paths: Vec<String>) -> Result<Vec<String>
 }
 
 impl WorkspaceDbIpcSession {
+    pub async fn resolve_provider_runtime(
+        &self,
+        language_id: agent_semantic_client_core::LanguageId,
+    ) -> Result<serde_json::Value, String> {
+        match self
+            .call_operation(WorkspaceDbIpcOperation::ResolveProviderRuntime {
+                project_root: self.runtime_project_root()?.display().to_string(),
+                language_id,
+            })
+            .await?
+        {
+            WorkspaceDbIpcResult::ProviderRuntime { runtime } => Ok(runtime),
+            _ => Err("Runtime Server returned an unexpected provider runtime result".to_owned()),
+        }
+    }
     pub async fn runtime_graph_facts(
         &self,
         sources: Vec<super::RuntimeGraphFactSource>,
@@ -350,6 +362,25 @@ impl WorkspaceDbIpcSession {
         }
     }
 
+    pub async fn rebind_runtime_selector_overlay(
+        &self,
+        rebind: crate::runtime_server_workspace::WorkspaceRuntimeSelectorRebind,
+    ) -> Result<crate::runtime_server_workspace::WorkspaceRuntimeSelectorOverlayReceipt, String>
+    {
+        match self
+            .call_operation(WorkspaceDbIpcOperation::RebindRuntimeSelectorOverlay {
+                project_root: self.runtime_project_root()?.display().to_string(),
+                rebind,
+            })
+            .await?
+        {
+            WorkspaceDbIpcResult::RuntimeSelectorOverlay { receipt } => Ok(receipt),
+            _ => Err(
+                "Runtime Server returned an unexpected runtime selector rebind result".to_owned(),
+            ),
+        }
+    }
+
     pub async fn admit_runtime_generation(
         &self,
         mutation_id: impl Into<String>,
@@ -360,13 +391,21 @@ impl WorkspaceDbIpcSession {
         if mutation_id.trim().is_empty() {
             return Err("runtime generation admission requires a mutation id".to_owned());
         }
-        let changed_paths = normalize_changed_paths(changed_paths)?;
+        let changed_paths = if changed_paths.is_empty() {
+            Vec::new()
+        } else {
+            normalize_changed_paths(changed_paths)?
+        };
         self.admit_runtime_generation_with_role(mutation_id, changed_paths, false)
             .await?
             .0
             .ok_or_else(|| "runtime generation follower receipt was omitted".to_owned())
     }
 
+    /// Discovers and commits the initial canonical source-index generation.
+    ///
+    /// Mutation admission is intentionally incremental and requires this
+    /// lifecycle generation to exist first.
     async fn admit_runtime_generation_with_role(
         &self,
         mutation_id: String,
@@ -463,7 +502,14 @@ impl WorkspaceDbIpcSession {
         if mutation_id.trim().is_empty() {
             return Err("runtime generation submission requires a mutation id".to_owned());
         }
-        let changed_paths = normalize_changed_paths(changed_paths)?;
+        if changed_paths.is_empty() {
+            return Err("runtime generation submission requires changed paths".to_owned());
+        }
+        let changed_paths = if changed_paths.is_empty() {
+            Vec::new()
+        } else {
+            normalize_changed_paths(changed_paths)?
+        };
         self.submit_runtime_generation_request(mutation_id, changed_paths)
             .await
     }
@@ -510,31 +556,6 @@ impl WorkspaceDbIpcSession {
             lane.release_submission(&submission_id);
         }
         submitted
-    }
-
-    pub async fn ensure_runtime_generation_ready(
-        &self,
-        request_id: impl Into<String>,
-    ) -> Result<crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt, String> {
-        let request_id = request_id.into();
-        if request_id.trim().is_empty() {
-            return Err("runtime generation readiness requires a request id".to_owned());
-        }
-        match self
-            .call_operation(WorkspaceDbIpcOperation::EnsureRuntimeGenerationReady {
-                request_id,
-                project_root: self.runtime_project_root()?.display().to_string(),
-            })
-            .await?
-        {
-            WorkspaceDbIpcResult::RuntimeGenerationReady { receipt } => {
-                receipt.validate()?;
-                Ok(receipt)
-            }
-            other => Err(format!(
-                "Runtime Server returned unexpected generation readiness result: {other:?}"
-            )),
-        }
     }
 
     /// Route one cache-control request through the Runtime Server data plane.

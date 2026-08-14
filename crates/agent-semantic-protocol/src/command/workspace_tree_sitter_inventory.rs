@@ -16,29 +16,34 @@ pub(super) fn provider_path_is_ignored(owner_path: &str, ignored_path_prefixes: 
     })
 }
 
-pub(super) fn collect_provider_inventory(
+pub(super) async fn collect_runtime_inventory(
+    session: &agent_semantic_client_db::WorkspaceDbIpcSession,
     provider_workspace_root: &Path,
     provider: &ActivatedProvider,
 ) -> Result<Vec<InventoryOwner>, String> {
+    let lookup = session
+        .read_source_index(
+            &agent_semantic_client_db::workspace_db_ipc::WorkspaceDbSourceIndexLookupRequest {
+                project_root: provider_workspace_root.to_path_buf(),
+                indexed_project_root: provider_workspace_root.to_path_buf(),
+                query: provider.source_extensions.join(" "),
+                language_id: Some(provider.language_id.clone().into()),
+                limit: u32::MAX,
+            },
+        )
+        .await?;
     let mut owners = Vec::new();
-    for package_root in &provider.package_roots {
-        let relative_path = PathBuf::from(package_root);
-        if relative_path.is_absolute()
-            || relative_path
-                .components()
-                .any(|component| matches!(component, std::path::Component::ParentDir))
-        {
-            return Err(format!(
-                "activated provider contains a non-relative package root: languageId={} providerId={} path={}",
-                provider.language_id,
-                provider.provider_id,
-                relative_path.display()
-            ));
-        }
-        let absolute_path = provider_workspace_root.join(&relative_path);
-        push_provider_owner(absolute_path, relative_path, provider, &mut owners)?;
+    for candidate in lookup.candidates {
+        let relative_path = PathBuf::from(candidate.path.to_string());
+        push_provider_owner(
+            provider_workspace_root.join(&relative_path),
+            relative_path,
+            provider,
+            &mut owners,
+        )?;
     }
     owners.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
+    owners.dedup_by(|left, right| left.owner_path == right.owner_path);
     Ok(owners)
 }
 

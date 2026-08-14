@@ -129,19 +129,9 @@ agent-tools-install-languages:
 agent-tools-install-asp bin_dir="":
 	@just agent-tools-install-protocol "{{bin_dir}}"
 
-# Produce the indivisible release pair consumed by `asp install binary`.
-build-asp-release-bundle output_dir="package":
-    @set -eu; \
-      output_dir="{{output_dir}}"; \
-      rm -rf build/graph-turbo-resident "$output_dir"; \
-      cargo build --release --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp; \
-      uv run --project packages/python --frozen pyinstaller --noconfirm --clean --exclude-module pycparser.lextab --exclude-module pycparser.yacctab --exclude-module scipy.special._cdflib --onedir --name asp-graph-turbo-resident --specpath build/graph-turbo-resident --workpath build/graph-turbo-resident --distpath dist/graph-turbo-resident packages/python/asp_graph_turbo/src/asp_graph_turbo/resident_bundle.py; \
-      mkdir -p "$output_dir"; \
-      cp target/release/asp "$output_dir/asp"; \
-      cp -RL dist/graph-turbo-resident/asp-graph-turbo-resident "$output_dir/asp-graph-turbo-resident.bundle"; \
-      test -x "$output_dir/asp"; \
-      test -x "$output_dir/asp-graph-turbo-resident.bundle/asp-graph-turbo-resident"; \
-      if find "$output_dir/asp-graph-turbo-resident.bundle" -type l -print -quit | grep -q .; then exit 1; fi
+# Build the ASP release binary without coupling it to provider runtime artifacts.
+build-asp-release:
+    cargo build --release --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp
 
 agent-tools-install-protocol bin_dir="":
     @requested_bin_dir="{{bin_dir}}"; \

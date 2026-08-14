@@ -67,7 +67,7 @@ pub(crate) async fn run_protocol_command_started(
         Some("paths") => run_paths_command(&args[1..]),
         Some("healthcheck") => run_healthcheck_command(&args[1..]).await,
         Some("server") => run_runtime_server_command(&args[1..]).await,
-        Some("live-corpus") => run_live_corpus_command(&args[1..]),
+        Some("live-corpus") => run_live_corpus_command(&args[1..]).await,
         Some("source-access") => run_source_access_command(&args[1..]),
         Some("ast-patch") => run_ast_patch_command(&args[1..]),
         Some("graph") => run_graph_command(&args[1..]).await,

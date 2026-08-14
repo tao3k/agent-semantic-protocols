@@ -3,6 +3,12 @@ use agent_semantic_hook::HookRuntime;
 fn registered_language_facades() -> Vec<String> {
     agent_semantic_hook::registered_language_ids()
         .into_iter()
+        .filter(|language_id| {
+            matches!(
+                agent_semantic_hook::registered_provider_kind(language_id.as_str()),
+                Ok(agent_semantic_hook::RegisteredProviderKind::ProgrammingLanguage)
+            )
+        })
         .map(|language_id| language_id.to_string())
         .collect()
 }

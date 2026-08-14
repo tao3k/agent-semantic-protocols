@@ -1,9 +1,5 @@
 use super::{AgentWindowRequest, session_control_plane_usage, session_platform_from_ids};
-use crate::command::org_capture_interactive::AgentInteractiveChoice;
-use crate::multi_agent_session::{
-    CONTROL_PLANE_CONTRACT_FILE, CONTROL_PLANE_CONTRACT_SOURCE, hook_inbox_reconciliation_receipt,
-    typed_runtime_failure_reason,
-};
+use crate::multi_agent_session::{hook_inbox_reconciliation_receipt, typed_runtime_failure_reason};
 
 #[test]
 fn session_command_forms_one_choice_plane_request() {
@@ -22,7 +18,7 @@ fn client_selection_is_not_part_of_the_public_choice_plane() {
     ])
     .expect_err("client selection must come from the host session environment");
 
-    assert!(error.contains("unknown Agent window option `--client=claude`"));
+    assert!(error.contains("unknown Agent window option --client=claude"));
 }
 
 #[test]
@@ -43,45 +39,6 @@ fn simultaneous_host_identities_fail_closed() {
         .expect_err("simultaneous host identities must be ambiguous");
 
     assert!(error.starts_with("agent-session-host-ambiguous:"));
-}
-
-#[test]
-fn org_contract_owns_archive_and_post_archive_host_actions() {
-    let contract = AgentInteractiveChoice::from_source(
-        CONTROL_PLANE_CONTRACT_SOURCE,
-        CONTROL_PLANE_CONTRACT_FILE,
-        "presentation",
-    )
-    .expect("embedded multi-Agent ChoicePlane contract");
-    let bindings = |state| {
-        [
-            ("SESSION_STATE", state),
-            ("REGISTERED_AGENT_NAME", "asp_explorer"),
-            ("ROLE_DESCRIPTION", "Search and query project evidence"),
-        ]
-    };
-
-    let archive = contract
-        .admit_matching(&bindings("archive-required"))
-        .expect("archive-required action");
-    assert_eq!(archive.len(), 1);
-    assert_eq!(archive[0].id, "ARCHIVE_STALE");
-    assert_eq!(archive[0].presentation, "action");
-    assert!(archive[0].instruction.contains("Archive @asp_explorer"));
-    assert!(!archive[0].instruction.contains("asp agent session close"));
-
-    let recreate = contract
-        .admit_matching(&bindings("archived"))
-        .expect("post-archive action");
-    assert_eq!(recreate.len(), 1);
-    assert_eq!(recreate[0].id, "CREATE_AFTER_ARCHIVE");
-    assert!(recreate[0].instruction.contains("@asp_explorer"));
-    assert!(recreate[0].instruction.contains("distinct generation"));
-    assert!(
-        !recreate[0]
-            .instruction
-            .contains("asp agent session register")
-    );
 }
 
 #[test]

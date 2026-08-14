@@ -59,10 +59,12 @@ fn is_synchronous_hook_dispatch_with_override(args: &[OsString], override_presen
         return false;
     }
     override_present
-        || args
-            .iter()
-            .filter_map(|arg| arg.to_str())
-            .any(|arg| matches!(arg, "pre-tool" | "permission-request"))
+        || args.iter().filter_map(|arg| arg.to_str()).any(|arg| {
+            matches!(
+                arg,
+                "pre-tool" | "permission-request" | "subagent-start" | "subagent-stop"
+            )
+        })
 }
 
 /// Poll the synchronous policy data plane without a Tokio runtime. Reaching

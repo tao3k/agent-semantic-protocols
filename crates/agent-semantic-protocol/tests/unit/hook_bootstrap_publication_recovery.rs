@@ -52,7 +52,7 @@ fn shell_environment_assignment_bypasses_before_policy_kernel() {
 }
 
 #[test]
-fn enforcing_actions_are_synchronous_before_runtime_construction() {
+fn enforcing_and_host_publication_actions_are_synchronous_before_runtime_construction() {
     assert!(is_synchronous_hook_dispatch([
         "hook", "pre-tool", "--client", "codex",
     ]));
@@ -62,9 +62,15 @@ fn enforcing_actions_are_synchronous_before_runtime_construction() {
         "--client",
         "codex",
     ]));
-    assert!(!is_synchronous_hook_dispatch([
+    assert!(is_synchronous_hook_dispatch([
         "hook",
         "subagent-start",
+        "--client",
+        "codex",
+    ]));
+    assert!(is_synchronous_hook_dispatch([
+        "hook",
+        "subagent-stop",
         "--client",
         "codex",
     ]));

@@ -82,8 +82,6 @@ mod query_owner_freshness;
 mod rfc_search_frame;
 #[path = "unit/rs_harness_attribute.rs"]
 mod rs_harness_attribute;
-#[path = "unit/runtime_server_artifact.rs"]
-mod runtime_server_artifact;
 #[path = "unit/runtime_server_query_purity.rs"]
 mod runtime_server_query_purity;
 #[path = "unit/runtime_server_singleton_socket.rs"]

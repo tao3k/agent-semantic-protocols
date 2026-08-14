@@ -95,9 +95,14 @@ pub(crate) fn reconcile_global_provider_catalog_for_runtime(
         return super::global_provider_catalog::empty_global_provider_catalog_readiness();
     }
     super::global_provider_catalog::publish_global_provider_catalog(
+        state_home,
         &reconciliation.provider_receipts,
     )?;
-    super::global_provider_catalog::read_global_provider_catalog_readiness()
+    super::global_provider_catalog::read_global_provider_catalog_readiness(state_home)
+}
+
+pub fn prepare_runtime_server_provider_catalog(state_home: &Path) -> Result<(), String> {
+    reconcile_global_provider_catalog_for_runtime(state_home).map(|_| ())
 }
 
 fn reconcile_registered_provider_runtime_binaries_from(

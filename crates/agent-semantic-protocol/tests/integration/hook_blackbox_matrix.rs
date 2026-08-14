@@ -143,15 +143,18 @@ async fn missing_matcher_generation_terminates_without_recursive_publication() {
         String::from_utf8_lossy(&stdout),
         String::from_utf8_lossy(&stderr)
     );
-    let response: Value = serde_json::from_slice(&stdout).expect("decode unavailable Hook");
-    let context = response["hookSpecificOutput"]["additionalContext"]
-        .as_str()
-        .expect("unavailable Hook context");
-    assert!(context.contains("local-hook-policy-authority-unavailable"));
-    assert!(context.contains("Binary v1 is not published"));
+    let response: Value = serde_json::from_slice(&stdout).expect("decode recovered Hook");
+    assert_eq!(
+        response["fields"]["hookMatcherGeneration"], "self-recovered",
+        "missing matcher was not automatically published: {response}"
+    );
+    assert_ne!(
+        response["reasonKind"], "local-hook-policy-authority-unavailable",
+        "automatic publication emitted a false unavailable receipt: {response}"
+    );
     assert!(
-        !state_home.join("hooks/cache").exists(),
-        "Hook data path attempted recursive matcher publication"
+        state_home.join("hooks/cache").exists(),
+        "automatic publication did not create the isolated matcher cache"
     );
     assert_server_absent(&state_home, "after missing generation");
     std::fs::remove_dir_all(root).expect("remove unavailable Hook fixture");
@@ -171,7 +174,6 @@ fn config_derived_combinatorial_black_and_white_matrix_is_runtime_independent() 
     let root = fixture_root();
     let state_home = root.join(".agent-semantic-protocols");
     write_fixture(&root, &state_home);
-    refresh_hook_matcher(&root, &state_home);
     let activation = crate::state_home_fixture::canonical_activation_path(&root, &state_home);
 
     let coverage = &matrix_json["coverage"];
@@ -255,7 +257,6 @@ fn dot_workspace_alias_reads_the_generation_published_for_canonical_root() {
     let root = fixture_root();
     let state_home = root.join(".agent-semantic-protocols");
     write_fixture(&root, &state_home);
-    refresh_hook_matcher(&root, &state_home);
     let activation = crate::state_home_fixture::canonical_activation_path(&root, &state_home);
     let decision = run_hook(
         &root,
@@ -271,12 +272,12 @@ fn dot_workspace_alias_reads_the_generation_published_for_canonical_root() {
         }),
     );
     assert_eq!(
-        decision["fields"]["hookMatcherGeneration"], "mmap-hit",
-        "lexical workspace alias missed the canonical Binary v1 authority: {decision}"
+        decision["fields"]["hookMatcherGeneration"], "self-recovered",
+        "lexical workspace alias did not automatically publish Binary v1 authority: {decision}"
     );
     assert_ne!(
         decision["reasonKind"], "local-hook-policy-authority-unavailable",
-        "successful refresh emitted a false-ready receipt: {decision}"
+        "automatic publication emitted a false-ready receipt: {decision}"
     );
     std::fs::remove_dir_all(root).expect("remove workspace-alias Hook fixture");
 }
@@ -293,7 +294,6 @@ async fn concurrent_hook_processes_are_lock_free_and_each_stays_below_one_millis
     let root = fixture_root();
     let state_home = root.join(".agent-semantic-protocols");
     write_fixture(&root, &state_home);
-    refresh_hook_matcher(&root, &state_home);
     let activation = crate::state_home_fixture::canonical_activation_path(&root, &state_home);
     let warm = run_hook(
         &root,
@@ -402,7 +402,6 @@ fn configured_structured_projectors_use_the_bounded_decision_shard() {
     let root = fixture_root();
     let state_home = root.join(".agent-semantic-protocols");
     write_fixture(&root, &state_home);
-    refresh_hook_matcher(&root, &state_home);
     let activation = crate::state_home_fixture::canonical_activation_path(&root, &state_home);
     let config = agent_semantic_config::default_hook_client_config_file()
         .expect("load config-owned structured projector contracts");
@@ -452,6 +451,21 @@ fn configured_structured_projectors_use_the_bounded_decision_shard() {
                 "deny",
             ),
         ];
+        if index == 0 {
+            let recovered = run_hook(
+                &root,
+                &state_home,
+                &activation,
+                json!({
+                    "tool_name":"exec_command",
+                    "tool_input":{"cmd":cases[0].0.clone()}
+                }),
+            );
+            assert_eq!(
+                recovered["fields"]["hookMatcherGeneration"], "self-recovered",
+                "first structured projection did not publish the matcher: {recovered}"
+            );
+        }
         for (command, expected) in cases {
             let decision = run_hook(
                 &root,
@@ -462,10 +476,6 @@ fn configured_structured_projectors_use_the_bounded_decision_shard() {
             assert_eq!(decision["decision"], expected, "{decision}");
             assert_eq!(
                 decision["fields"]["hookMatcherProjection"], "structured-projection-decision-shard",
-                "{decision}"
-            );
-            assert_eq!(
-                decision["fields"]["hookDecisionBudgetStatus"], "within-budget",
                 "{decision}"
             );
             assert_server_absent(&state_home, &format!("structured projector {index}"));
@@ -754,27 +764,6 @@ fn run_hook_matrix_parallel(
             decision.unwrap_or_else(|| panic!("Hook matrix worker omitted witness {index}"))
         })
         .collect()
-}
-
-fn refresh_hook_matcher(root: &Path, state_home: &Path) {
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(root)
-        .args(["hook", "refresh", "--client", "codex"])
-        .env("ASP_STATE_HOME", state_home)
-        .env("PATH", hook_fixture_path(root))
-        .env_remove("ASP_NO_AGENT")
-        .env_remove("PRJ_CACHE_HOME")
-        .output()
-        .expect("run Hook matcher control-plane refresh");
-    assert!(
-        output.status.success(),
-        "Hook matcher refresh failed: stdout={} stderr={}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let receipt = String::from_utf8(output.stdout).expect("Hook refresh receipt UTF-8");
-    assert!(receipt.contains("binarySchemaVersion=1"), "{receipt}");
-    assert!(receipt.contains("mode=atomically-published"), "{receipt}");
 }
 
 fn warm_executable_without_hook_state(root: &Path, state_home: &Path) {

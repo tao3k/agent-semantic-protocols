@@ -36,6 +36,30 @@ impl RuntimeServerWorkspaceRegistry {
         })?
     }
 
+    pub async fn rebind_selector_overlay(
+        &self,
+        workspace_identity: impl Into<String>,
+        project_root: &std::path::Path,
+        rebind: WorkspaceRuntimeSelectorRebind,
+    ) -> Result<WorkspaceRuntimeSelectorOverlayReceipt, String> {
+        let workspace_identity = workspace_identity.into();
+        let entry = self.entry(&workspace_identity, project_root).await?;
+        let (reply, receive) = oneshot::channel();
+        entry
+            .writer
+            .send(WorkspaceWriteCommand::RebindSelectorOverlay {
+                target: entry.write_target(),
+                workspace_identity,
+                rebind,
+                reply,
+            })
+            .await
+            .map_err(|_| "runtime workspace writer lane is unavailable".to_owned())?;
+        receive.await.map_err(|_| {
+            "runtime workspace writer lane dropped selector rebind receipt".to_owned()
+        })?
+    }
+
     pub async fn publish_owner_identity_delta(
         &self,
         source_mutation_id: impl Into<String>,
@@ -416,3 +440,4 @@ impl RuntimeServerWorkspaceRegistry {
 #[cfg(test)]
 #[path = "../../../tests/unit/runtime_server_workspace_registry_publication.rs"]
 mod acceptance_tests;
+use crate::runtime_server_workspace::WorkspaceRuntimeSelectorRebind;

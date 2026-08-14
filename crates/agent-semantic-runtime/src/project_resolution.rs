@@ -191,7 +191,10 @@ impl ProjectResolutionReceipt {
             || self.provider_id != expected_provider_id
             || self.candidate_generation_digest != expected_candidate_generation
         {
-            return Err("provider ProjectResolution authority identity drift".to_owned());
+            return Err(format!(
+                "provider ProjectResolution authority identity drift: languageId expected={expected_language_id} actual={}; providerId expected={expected_provider_id} actual={}; candidateGenerationDigest expected={expected_candidate_generation} actual={}",
+                self.language_id, self.provider_id, self.candidate_generation_digest
+            ));
         }
         if self.parser_id.trim().is_empty() || !is_relative_logical_path(&self.project_entry) {
             return Err("provider ProjectResolution parser/project entry is invalid".to_owned());

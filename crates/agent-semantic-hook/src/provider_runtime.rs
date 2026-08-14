@@ -63,7 +63,7 @@ pub(crate) fn build_provider_runtime_for_scope(
         rankers: Vec::new(),
         providers,
         generated_by: ActivationGeneratedBy {
-            runtime: "asp-runtime-server".to_string(),
+            runtime: "agent-semantic-hook".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
         },
         generated_at: None,

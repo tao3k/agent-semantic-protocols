@@ -1,6 +1,5 @@
 use super::support;
 
-
 #[test]
 fn query_owner_phrase_hit_attributes_to_parser_item() {
     let root = support::temp_project_root("query-owner-phrase-attribution");

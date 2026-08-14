@@ -86,6 +86,29 @@ pub(crate) fn resolve(
             root_digest,
             candidates,
         } => {
+            let owner_candidates = candidates
+                .into_iter()
+                .filter(|candidate| {
+                    candidate
+                        .split_once("://")
+                        .and_then(|(_, selector)| selector.split_once('#'))
+                        .is_some_and(|(candidate_owner, _)| candidate_owner == owner_path)
+                })
+                .collect::<Vec<_>>();
+            if owner_candidates.is_empty() {
+                return Ok(ResidentExactProjection::Miss(ResidentExactProjectionMiss {
+                    owner_path: owner_path.to_owned(),
+                    structural_selector: structural_selector.to_owned(),
+                    active_generation_digest: generation_digest,
+                    root_digest,
+                    item_kind: requested.kind.as_str().to_owned(),
+                    item_name: requested.symbol.as_str().to_owned(),
+                    candidates: Vec::new(),
+                    actual_kinds: Vec::new(),
+                    state: "owner-missing",
+                    reason_kind: "owner-not-in-workspace",
+                }));
+            }
             return Ok(ResidentExactProjection::Miss(ResidentExactProjectionMiss {
                 owner_path: owner_path.to_owned(),
                 structural_selector: structural_selector.to_owned(),
@@ -93,7 +116,7 @@ pub(crate) fn resolve(
                 root_digest,
                 item_kind: requested.kind.as_str().to_owned(),
                 item_name: requested.symbol.as_str().to_owned(),
-                candidates,
+                candidates: owner_candidates,
                 actual_kinds: vec![requested.kind.as_str().to_owned()],
                 state: "ambiguous",
                 reason_kind: "canonical-item-identity-ambiguous",

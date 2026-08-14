@@ -1,8 +1,8 @@
 use super::{
     ProtocolBinaryInstallPlan, SEMANTIC_AGENT_PROTOCOL_BIN,
     canonical_protocol_binary_artifact_digest, ensure_protocol_binary_installed,
-    install_protocol_binary_target, managed_protocol_binary_path_aliases,
-    next_protocol_binary_publish_sequence, prune_runtime_binary_artifacts,
+    install_protocol_binary_target, next_protocol_binary_publish_sequence,
+    prune_runtime_binary_artifacts,
 };
 use std::{
     env, fs,
@@ -61,32 +61,6 @@ fn fixture_source(root: &Path, name: &str, bytes: &[u8]) -> PathBuf {
     let source = root.join(name);
     fs::write(&source, bytes).expect("write protocol binary fixture");
     source
-}
-
-#[test]
-fn install_plan_always_publishes_the_state_home_bin_alias() {
-    let root = fixture_root("state-home-bin-alias");
-    let artifact_root = root.join("runtime/artifacts");
-    let stable_entry = root.join("runtime/bin/asp");
-    let state_home_alias = root.join(".bin/asp");
-    let aliases = managed_protocol_binary_path_aliases(&artifact_root, &stable_entry, &[])
-        .expect("derive managed aliases");
-    assert_eq!(aliases, vec![state_home_alias.clone()]);
-
-    let source = fixture_source(&root, "source-asp", b"protocol-binary");
-    let plan = ProtocolBinaryInstallPlan {
-        current_exe: source,
-        target: stable_entry.clone(),
-        artifact_root,
-        managed_path_aliases: aliases,
-        binary_identity: RuntimeBinaryIdentityV1::asp_bootstrap(),
-    };
-    ensure_protocol_binary_installed(&plan).expect("publish canonical binary and State Home alias");
-    assert_eq!(
-        fs::read_link(&state_home_alias).expect("State Home alias"),
-        stable_entry
-    );
-    fs::remove_dir_all(root).expect("remove protocol binary fixture");
 }
 
 use super::RuntimeBinaryIdentityV1;

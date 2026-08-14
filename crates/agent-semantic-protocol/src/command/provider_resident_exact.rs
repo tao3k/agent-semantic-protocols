@@ -24,11 +24,6 @@ pub(super) async fn run_resident_exact_query(
             crate::resident_exact_projection::ResidentExactProjection::Miss(miss) => {
                 crate::exact_projection_trace::stage("mmap-resident-miss", started);
                 let provider_id = registered_provider_id(language_id)?;
-                let format = if exact.json {
-                    crate::exact_projection_diagnostic::ProviderExactResolutionFormat::Json
-                } else {
-                    crate::exact_projection_diagnostic::ProviderExactResolutionFormat::Human
-                };
                 let resolution = crate::exact_projection_diagnostic::resolution_from_facts(
                     crate::exact_projection_diagnostic::ProviderExactResolutionFacts {
                         language_id: language_id.to_owned(),
@@ -43,17 +38,14 @@ pub(super) async fn run_resident_exact_query(
                         item_name: miss.item_name,
                         candidates: miss.candidates,
                         actual_kinds: miss.actual_kinds,
-                        workspace: project_root.display().to_string(),
                     },
                 );
                 crate::exact_projection_diagnostic_io::emit_resolution(
                     &resolution,
                     language_id,
                     provider_id.as_str(),
-                    format,
                     miss.owner_path.as_str(),
                     miss.structural_selector.as_str(),
-                    None,
                 )
                 .await
             }
@@ -71,7 +63,7 @@ async fn resident_exact_projection(
     crate::server::runtime_server::runtime_server_workspace_exact_projection_async(
         project_root,
         language_id,
-        &exact.projection,
+        "source",
         &exact.structural_selector,
     )
     .await

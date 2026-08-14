@@ -144,10 +144,6 @@ pub(super) fn assert_graph_evidence_projection_benchmark_contract(benchmark: &Sh
     assert_eq!(benchmark.fallback_reason.as_deref(), Some("none"));
 }
 
-
-
-
-
 pub(super) fn assert_runtime_owner_items_receipt_benchmark_contract(
     benchmark: &SharedBenchmarkToml,
 ) {

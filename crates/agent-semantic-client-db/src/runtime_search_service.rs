@@ -7,6 +7,11 @@ use crate::runtime_server_workspace::WorkspaceOwnerSnapshot;
 const DEFAULT_QUEUE_CAPACITY: usize = 64;
 
 pub enum RuntimeSearchServiceRequest {
+    ProviderRuntime {
+        project_root: PathBuf,
+        language_id: String,
+        response: oneshot::Sender<Result<serde_json::Value, String>>,
+    },
     ProviderOwner {
         workspace_identity: String,
         project_root: PathBuf,
@@ -37,6 +42,26 @@ pub fn runtime_search_service_channel() -> (
 }
 
 impl RuntimeSearchServiceHandle {
+    pub async fn provider_runtime(
+        &self,
+        project_root: PathBuf,
+        language_id: String,
+    ) -> Result<serde_json::Value, String> {
+        let (response, receipt) = oneshot::channel();
+        self.sender
+            .send(RuntimeSearchServiceRequest::ProviderRuntime {
+                project_root,
+                language_id,
+                response,
+            })
+            .await
+            .map_err(|_| {
+                "Runtime search service is not accepting provider runtime requests".to_owned()
+            })?;
+        receipt.await.map_err(|_| {
+            "Runtime search service dropped the provider runtime response".to_owned()
+        })?
+    }
     pub async fn provider_owner(
         &self,
         workspace_identity: String,

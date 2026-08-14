@@ -11,7 +11,7 @@ pub(crate) const CHOICE_PLANE_COMMAND: &str = "asp session --agents choice-plane
 pub(crate) fn render_choice_plane_instruction(fields: AgentDispatchMessageFields<'_>) -> String {
     let call_target = format!("@{}", fields.call_target.trim_start_matches('@'));
     format!(
-        "Please use `{CHOICE_PLANE_COMMAND}` to create or resume the {} `{}` ({}; {}).",
+        "This operation is denied only in the current Agent; ASP remains available. Please use `{CHOICE_PLANE_COMMAND}` to create or resume the {} `{}` ({}; {}).",
         fields.agent_kind, call_target, fields.role, fields.description
     )
 }

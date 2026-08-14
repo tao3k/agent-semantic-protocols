@@ -14,7 +14,7 @@ use crate::LocalNativeCliBackend;
 
 const PROVIDER_PROJECT_RESOLUTION_RESPONSE_SCHEMA_ID: &str =
     "agent.semantic-protocols.provider-project-resolution-response";
-const PROJECT_RESOLUTION_PROVIDER_TIMEOUT_MS: u64 = 750;
+const PROJECT_RESOLUTION_PROVIDER_TIMEOUT_MS: u64 = 5_000;
 const PROJECT_RESOLUTION_MAX_STDOUT_BYTES: usize = 1024 * 1024;
 const PROJECT_RESOLUTION_MAX_STDERR_BYTES: usize = 128 * 1024;
 

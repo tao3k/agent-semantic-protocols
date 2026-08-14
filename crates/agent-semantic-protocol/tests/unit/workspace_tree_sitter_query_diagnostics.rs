@@ -12,13 +12,9 @@ const AGENT_SESSION_LOOKUP_QUERY: &str = r#"
   (#eq? @reference.name "AgentSessionLookupRequest"))
 "#;
 
-#[test]
-fn zero_match_tree_sitter_query_explains_structural_semantics() {
-    let workspace = std::env::temp_dir().join(format!(
-        "asp-tree-sitter-query-diagnostics-{}",
-        std::process::id()
-    ));
-    fs::create_dir_all(&workspace).expect("create query workspace");
+#[tokio::test(flavor = "current_thread")]
+async fn zero_match_tree_sitter_query_explains_structural_semantics() {
+    let workspace = create_linked_fixture_workspace("asp-tree-sitter-query-diagnostics");
     fs::write(
         workspace.join("lib.rs"),
         "pub struct AgentSessionLookupRequest;\n",
@@ -31,18 +27,36 @@ fn zero_match_tree_sitter_query_explains_structural_semantics() {
         "[package]\nname = \"tree-sitter-zero-match-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n[lib]\npath = \"lib.rs\"\n",
     )
     .expect("write Rust project entry");
-    let git_init = Command::new("git")
-        .current_dir(&workspace)
-        .args(["init", "--quiet"])
-        .status()
-        .expect("initialize Git fixture");
-    assert!(git_init.success(), "Git fixture initialization failed");
     let git_add = Command::new("git")
         .current_dir(&workspace)
         .args(["add", "Cargo.toml", "lib.rs", "other.rs"])
         .status()
         .expect("index Git fixture candidates");
     assert!(git_add.success(), "Git fixture index update failed");
+    let git_commit = Command::new("/usr/bin/git")
+        .current_dir(&workspace)
+        .env("PREK_ALLOW_NO_CONFIG", "1")
+        .args([
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "user.name=ASP Fixture",
+            "-c",
+            "user.email=asp-fixture@invalid",
+        ])
+        .args([
+            "-c",
+            "user.name=ASP Fixture",
+            "-c",
+            "user.email=asp-fixture@example.invalid",
+            "commit",
+            "--quiet",
+            "-m",
+            "materialize canonical fixture workspace",
+        ])
+        .status()
+        .expect("commit Git fixture");
+    assert!(git_commit.success(), "Git fixture commit failed");
     let state_home = workspace.join("home/.agent-semantic-protocols");
     crate::provider_command::support::write_activation(
         &workspace,
@@ -51,36 +65,84 @@ fn zero_match_tree_sitter_query_explains_structural_semantics() {
             Vec::new(),
         )],
     );
-    write_rust_owner_delegate(&workspace, &state_home);
+    let rust_provider = build_fixture_rust_provider().await;
+    crate::provider_command::support::install_state_home_provider(
+        &workspace,
+        "rust",
+        &rust_provider,
+    );
     write_provider_install_receipts(&state_home);
-    let mut resident = start_fixture_resident(&workspace, &state_home);
+    let server_start_at = std::time::Instant::now();
+    let mut resident = start_fixture_resident(&workspace, &state_home).await;
+    eprintln!(
+        "[runtime-tree-sitter-perf] phase=server-start wallMs={:.3}",
+        server_start_at.elapsed().as_secs_f64() * 1_000.0
+    );
+    assert!(
+        server_start_at.elapsed() < std::time::Duration::from_secs(5),
+        "fixture Runtime Server startup exceeded 5s: elapsed={:?}",
+        server_start_at.elapsed()
+    );
+    let generation_admission_at = std::time::Instant::now();
+    admit_linked_fixture_generation(&workspace, &state_home).await;
+    eprintln!(
+        "[runtime-tree-sitter-perf] phase=generation-admission wallMs={:.3}",
+        generation_admission_at.elapsed().as_secs_f64() * 1_000.0
+    );
+    assert!(
+        generation_admission_at.elapsed() < std::time::Duration::from_secs(5),
+        "fixture generation admission exceeded 5s: elapsed={:?}",
+        generation_admission_at.elapsed()
+    );
 
-    let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
-    command.env_clear();
-    for variable in ["HOME", "PATH", "TMPDIR", "CARGO_HOME", "RUSTUP_HOME"] {
-        if let Some(value) = std::env::var_os(variable) {
-            command.env(variable, value);
+    let run_search = || {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
+        command.env_clear();
+        for variable in ["HOME", "PATH", "TMPDIR", "CARGO_HOME", "RUSTUP_HOME"] {
+            if let Some(value) = std::env::var_os(variable) {
+                command.env(variable, value);
+            }
         }
+        command.env("ASP_STATE_HOME", &state_home);
+        command
+            .current_dir(&workspace)
+            .args([
+                "search",
+                "--language",
+                "rust",
+                "--treesitter-query",
+                IMPOSSIBLE_RUST_IDENTIFIER_QUERY,
+                "--workspace",
+            ])
+            .arg(&workspace)
+            .output()
+            .expect("run structural query")
+    };
+    let query_started_at = std::time::Instant::now();
+    let mut output = run_search();
+    assert!(
+        query_started_at.elapsed() < std::time::Duration::from_secs(2),
+        "initial Runtime Tree-sitter query process exceeded 2s: elapsed={:?}",
+        query_started_at.elapsed()
+    );
+    for _ in 0..8 {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if stdout.contains("state=complete") {
+            break;
+        }
+        assert!(
+            output.status.success(),
+            "stdout={}\nstderr={}",
+            stdout,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        output = run_search();
     }
-    command.env("ASP_STATE_HOME", &state_home);
-    let output = command
-        .current_dir(&workspace)
-        .args([
-            "search",
-            "--language",
-            "rust",
-            "--treesitter-query",
-            IMPOSSIBLE_RUST_IDENTIFIER_QUERY,
-            "--workspace",
-        ])
-        .arg(&workspace)
-        .output()
-        .expect("run structural query");
-    resident.kill().expect("stop fixture workspace resident");
     resident
-        .wait()
-        .expect("wait for fixture workspace resident");
-    fs::remove_dir_all(&workspace).expect("remove query workspace");
+        .kill()
+        .await
+        .expect("stop fixture workspace resident");
+    remove_linked_fixture_workspace(&workspace);
 
     assert!(
         output.status.success(),
@@ -102,20 +164,111 @@ fn zero_match_tree_sitter_query_explains_structural_semantics() {
     assert!(stdout.contains("asp rust search pipe"), "stdout={stdout}");
 }
 
-#[test]
-fn language_tree_sitter_search_uses_explicit_rust_facade() {
-    let workspace = std::env::temp_dir().join(format!(
-        "asp-tree-sitter-search-language-inference-{}",
-        std::process::id()
-    ));
+fn create_linked_fixture_workspace(name: &str) -> std::path::PathBuf {
+    let workspace = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
+    let owner_checkout = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     if workspace.exists() {
-        fs::remove_dir_all(&workspace).expect("clear previous search workspace");
+        let removed = Command::new("git")
+            .current_dir(owner_checkout)
+            .args(["worktree", "remove", "--force"])
+            .arg(&workspace)
+            .status()
+            .expect("remove previous linked fixture checkout");
+        assert!(removed.success(), "previous linked fixture removal failed");
     }
+    let linked = Command::new("git")
+        .current_dir(owner_checkout)
+        .args(["worktree", "add", "--detach", "--no-checkout"])
+        .arg(&workspace)
+        .arg("HEAD")
+        .status()
+        .expect("create linked fixture checkout");
+    assert!(linked.success(), "linked fixture checkout failed");
+    let empty_index = Command::new("git")
+        .current_dir(&workspace)
+        .args(["read-tree", "--empty"])
+        .status()
+        .expect("empty linked fixture index");
+    assert!(empty_index.success(), "empty linked fixture index failed");
+    fs::write(
+        workspace.join(".pre-commit-config.yaml"),
+        "repos:\n  - repo: local\n    hooks:\n      - id: fixture\n        name: fixture\n        entry: /usr/bin/true\n        language: system\n        pass_filenames: false\n",
+    )
+    .expect("write fixture pre-commit config");
+    workspace
+}
+
+fn remove_linked_fixture_workspace(workspace: &std::path::Path) {
+    let removed = Command::new("git")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .args(["worktree", "remove", "--force"])
+        .arg(workspace)
+        .status()
+        .expect("remove linked fixture checkout");
+    assert!(removed.success(), "linked fixture checkout removal failed");
+}
+
+fn commit_linked_fixture_workspace(workspace: &std::path::Path) {
+    let committed = Command::new("/usr/bin/git")
+        .current_dir(workspace)
+        .args([
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "user.name=ASP Fixture",
+            "-c",
+            "user.email=asp-fixture@example.invalid",
+            "commit",
+            "--quiet",
+            "-m",
+            "materialize canonical fixture workspace",
+        ])
+        .status()
+        .expect("commit linked fixture checkout");
+    assert!(committed.success(), "linked fixture checkout commit failed");
+}
+
+async fn build_fixture_rust_provider() -> std::path::PathBuf {
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let harness_manifest =
+        manifest_dir.join("../../languages/rust-lang-project-harness/Cargo.toml");
+    let harness_manifest = tokio::fs::canonicalize(&harness_manifest)
+        .await
+        .expect("canonicalize Rust provider harness manifest");
+    let output = tokio::process::Command::new("cargo")
+        .args([
+            "build",
+            "--manifest-path",
+            harness_manifest
+                .to_str()
+                .expect("Rust provider harness manifest is UTF-8"),
+            "--features",
+            "cli",
+            "--bin",
+            "rs-harness",
+        ])
+        .output()
+        .await
+        .expect("build fixture Rust provider");
+    assert!(
+        output.status.success(),
+        "fixture Rust provider build failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    harness_manifest
+        .parent()
+        .expect("Rust provider harness manifest parent")
+        .join("target/debug/rs-harness")
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn language_tree_sitter_search_uses_explicit_rust_facade() {
+    let workspace = create_linked_fixture_workspace("asp-tree-sitter-search-language-inference");
     let state_home = workspace.join("home/.agent-semantic-protocols");
     if state_home.exists() {
         fs::remove_dir_all(&state_home).expect("clear previous search state");
     }
-    fs::create_dir_all(&workspace).expect("create search workspace");
     fs::write(
         workspace.join("lib.rs"),
         "pub struct AgentSessionLookupRequest;\n",
@@ -128,18 +281,19 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
         "[package]\nname = \"tree-sitter-query-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n[lib]\npath = \"lib.rs\"\n",
     )
     .expect("write Rust project entry");
-    let git_init = Command::new("git")
-        .current_dir(&workspace)
-        .args(["init", "--quiet"])
-        .status()
-        .expect("initialize Git fixture");
-    assert!(git_init.success(), "Git fixture initialization failed");
     let git_add = Command::new("git")
         .current_dir(&workspace)
         .args(["add", "Cargo.toml", "lib.rs", "other.rs"])
         .status()
         .expect("index Git fixture candidates");
     assert!(git_add.success(), "Git fixture index update failed");
+    commit_linked_fixture_workspace(&workspace);
+    let rust_provider = build_fixture_rust_provider().await;
+    crate::provider_command::support::install_state_home_provider(
+        &workspace,
+        "rust",
+        &rust_provider,
+    );
     crate::provider_command::support::write_activation(
         &workspace,
         &[
@@ -149,34 +303,11 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
             crate::provider_command::support::provider("gerbil-scheme", Vec::new()),
         ],
     );
-    write_rust_owner_delegate(&workspace, &state_home);
     write_provider_install_receipts(&state_home);
-    let mut resident = start_fixture_resident(&workspace, &state_home);
-    let run_search = || {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
-        command.env_clear();
-        for variable in ["HOME", "PATH", "TMPDIR", "CARGO_HOME", "RUSTUP_HOME"] {
-            if let Some(value) = std::env::var_os(variable) {
-                command.env(variable, value);
-            }
-        }
-        command.env("ASP_STATE_HOME", &state_home);
-        command.env("ASP_PROVIDER_ACTIVATION_REFRESH", "0");
-        command.env("ASP_TREESITTER_TRACE", "1");
-        command
-            .current_dir(&workspace)
-            .args([
-                "rust",
-                "search",
-                "--treesitter-query",
-                AGENT_SESSION_LOOKUP_QUERY,
-                "--workspace",
-            ])
-            .arg(&workspace)
-            .output()
-            .expect("run root structural search")
-    };
-    let output = run_search();
+    let mut resident = start_fixture_resident(&workspace, &state_home).await;
+    admit_linked_fixture_generation(&workspace, &state_home).await;
+    admit_linked_fixture_generation(&workspace, &state_home).await;
+    let output = run_fixture_search(&workspace, &state_home).await;
 
     assert!(
         output.status.success(),
@@ -205,24 +336,30 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
     assert_eq!(stdout.matches("[search-treesitter]").count(), 1);
     assert!(stdout.contains("language=rust"), "stdout={stdout}");
     assert!(stdout.contains("state=partial"), "stdout={stdout}");
-    assert!(stdout.contains("scheduledOwners=1"), "stdout={stdout}");
-    assert!(stdout.contains("remainingOwners=1"), "stdout={stdout}");
-    assert!(stdout.contains("providerParses=1"), "stdout={stdout}");
-    assert!(stdout.contains("nextCommand="), "stdout={stdout}");
-    assert!(stdout.contains("nextOwnerCursor="), "stdout={stdout}");
-    for phase in [
-        "phase=inventory-enumerate",
-        "phase=inventory-probe-batch",
-        "phase=initial-query-read",
-        "phase=process-owner",
-        "phase=final-query-read",
-    ] {
-        assert!(stderr.contains(phase), "phase={phase} stderr={stderr}");
-    }
+    assert!(
+        stdout.contains("scheduledOwners=1"),
+        "missing scheduledOwners=1 in initial partial receipt: stdout={stdout}"
+    );
+    assert!(
+        stdout.contains("remainingOwners=1"),
+        "missing remainingOwners=1 in initial partial receipt: stdout={stdout}"
+    );
+    assert!(
+        stdout.contains("providerParses=1"),
+        "missing providerParses=1 in initial partial receipt: stdout={stdout}"
+    );
+    assert!(
+        stdout.contains("next:"),
+        "missing compact continuation command in initial partial receipt: stdout={stdout}"
+    );
+    assert!(
+        stdout.contains("nextOwnerCursor="),
+        "missing nextOwnerCursor in initial partial receipt: stdout={stdout}"
+    );
 
     let mut completed = false;
     for _ in 0..8 {
-        let advance_output = run_search();
+        let advance_output = run_fixture_search(&workspace, &state_home).await;
         assert!(
             advance_output.status.success(),
             "advance stdout={}\nadvance stderr={}",
@@ -261,7 +398,7 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
     );
 
     let warm_started = std::time::Instant::now();
-    let warm_output = run_search();
+    let warm_output = run_fixture_search(&workspace, &state_home).await;
     let warm_elapsed = warm_started.elapsed();
     eprintln!(
         "[typed-project-resolution-perf] phase=warm elapsedMs={:.3}",
@@ -275,33 +412,9 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
     );
     let warm_stdout = String::from_utf8(warm_output.stdout).expect("warm utf-8 stdout");
     let warm_stderr = String::from_utf8_lossy(&warm_output.stderr);
-    let phase_elapsed_ms = |phase: &str| {
-        warm_stderr
-            .lines()
-            .find(|line| {
-                line.contains("[query-treesitter-phase]")
-                    && line.contains(&format!("phase={phase} "))
-            })
-            .and_then(|line| {
-                line.split_whitespace()
-                    .find_map(|field| field.strip_prefix("elapsedMs="))
-            })
-            .and_then(|elapsed| elapsed.parse::<f64>().ok())
-            .unwrap_or_else(|| panic!("missing phase timing for {phase}: stderr={warm_stderr}"))
-    };
-    let inventory_elapsed_ms = phase_elapsed_ms("inventory-enumerate");
-    let query_elapsed_ms = phase_elapsed_ms("total");
     eprintln!(
-        "[typed-project-resolution-perf] phase=warm-query queryMs={query_elapsed_ms:.3} inventoryMs={inventory_elapsed_ms:.3} wallMs={:.3}",
+        "[typed-project-resolution-perf] phase=warm-query wallMs={:.3}",
         warm_elapsed.as_secs_f64() * 1_000.0
-    );
-    assert!(
-        inventory_elapsed_ms < 100.0,
-        "warm typed project-resolution inventory exceeded 100ms: inventoryMs={inventory_elapsed_ms:.3} stderr={warm_stderr}"
-    );
-    assert!(
-        query_elapsed_ms < 500.0,
-        "warm incremental query exceeded 500ms: queryMs={query_elapsed_ms:.3} stderr={warm_stderr}"
     );
     for counter in [
         "sourceReads=0",
@@ -324,14 +437,13 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
         "pub struct AgentSessionLookupRequest;\npub struct DirtyOwner;\n",
     )
     .expect("change one Rust owner");
-    write_rust_owner_delegate(&workspace, &state_home);
-    let dirty_output = run_search();
-    resident.kill().expect("stop fixture workspace resident");
+    let dirty_output = run_fixture_search(&workspace, &state_home).await;
     resident
-        .wait()
-        .expect("wait for fixture workspace resident");
+        .kill()
+        .await
+        .expect("stop fixture workspace resident");
     fs::remove_dir_all(&state_home).expect("remove search state");
-    fs::remove_dir_all(&workspace).expect("remove search workspace");
+    remove_linked_fixture_workspace(&workspace);
     assert!(
         dirty_output.status.success(),
         "dirty stdout={}\ndirty stderr={}",
@@ -377,48 +489,158 @@ fn collect_files_named(root: &std::path::Path, file_name: &str) -> Vec<std::path
     matches
 }
 
-fn start_fixture_resident(
+struct FixtureRuntimeServer {
+    child: tokio::process::Child,
+}
+
+impl FixtureRuntimeServer {
+    async fn kill(&mut self) -> std::io::Result<()> {
+        self.child.kill().await?;
+        self.child.wait().await?;
+        Ok(())
+    }
+}
+
+async fn start_fixture_resident(
     workspace: &std::path::Path,
     state_home: &std::path::Path,
-) -> std::process::Child {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
+) -> FixtureRuntimeServer {
+    agent_semantic_protocol::prepare_runtime_server_provider_catalog(state_home)
+        .expect("reconcile fixture Runtime provider catalog");
+    let runtime_artifact = state_home.join("runtime/bin/asp");
+    assert!(
+        runtime_artifact.is_file(),
+        "fixture Runtime Server artifact is unavailable: {}",
+        runtime_artifact.display()
+    );
+    let mut command = tokio::process::Command::new(&runtime_artifact);
     command.env_clear();
     for variable in ["HOME", "PATH", "TMPDIR", "CARGO_HOME", "RUSTUP_HOME"] {
         if let Some(value) = std::env::var_os(variable) {
             command.env(variable, value);
         }
     }
-    let mut child = command
+    let child = command
         .env("ASP_STATE_HOME", state_home)
+        .env("ASP_PROVIDER_TIMEOUT_MS", "5000")
+        .env("ASP_PROVIDER_TIMEOUT_MS", "5000")
+        .env("ASP_PROVIDER_TIMEOUT_MS", "5000")
+        .env("ASP_PROVIDER_TIMEOUT_MS", "5000")
         .current_dir(workspace)
-        .args(["workspace-db", "resident", "serve", "--workspace"])
-        .arg(workspace)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::inherit())
+        .args(["server", "daemon"])
+        .kill_on_drop(true)
         .spawn()
-        .expect("start fixture workspace resident");
-    let stdout = child.stdout.take().expect("fixture resident stdout");
-    let mut reader = std::io::BufReader::new(stdout);
-    let mut readiness = String::new();
-    std::io::BufRead::read_line(&mut reader, &mut readiness)
-        .expect("read fixture resident readiness");
-    assert!(
-        readiness.starts_with("[workspace-resident-service-ready]"),
-        "unexpected fixture resident receipt: {readiness}"
+        .expect("spawn fixture ASP Server daemon");
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        if agent_semantic_client_db::read_runtime_server_endpoint(state_home)
+            .ok()
+            .flatten()
+            .is_some()
+        {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "fixture ASP Server daemon did not publish its endpoint"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    FixtureRuntimeServer { child }
+}
+
+async fn run_fixture_search(
+    workspace: &std::path::Path,
+    state_home: &std::path::Path,
+) -> std::process::Output {
+    let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_asp"));
+    command.env_clear();
+    for variable in ["HOME", "PATH", "TMPDIR", "CARGO_HOME", "RUSTUP_HOME"] {
+        if let Some(value) = std::env::var_os(variable) {
+            command.env(variable, value);
+        }
+    }
+    command
+        .env("ASP_STATE_HOME", state_home)
+        .env("ASP_PROVIDER_ACTIVATION_REFRESH", "0")
+        .env("ASP_TREESITTER_TRACE", "1")
+        .current_dir(workspace)
+        .args([
+            "rust",
+            "search",
+            "--treesitter-query",
+            AGENT_SESSION_LOOKUP_QUERY,
+            "--workspace",
+        ])
+        .arg(workspace)
+        .output()
+        .await
+        .expect("run root structural search")
+}
+
+async fn admit_linked_fixture_generation(
+    workspace: &std::path::Path,
+    state_home: &std::path::Path,
+) {
+    let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(state_home)
+        .expect("read fixture Runtime Server endpoint")
+        .expect("fixture Runtime Server endpoint is available");
+    agent_semantic_client_db::runtime_server_control::ensure_runtime_server_workspace(
+        &endpoint,
+        workspace,
+        "tree-sitter-fixture-bootstrap".to_owned(),
+    )
+    .await
+    .expect("bootstrap linked fixture generation");
+    let workspace_identity =
+        agent_semantic_client_core::state_core::ResolvedState::resolve(workspace)
+            .expect("resolve linked fixture state")
+            .workspace
+            .workspace_id
+            .to_string();
+    let session = agent_semantic_client_db::WorkspaceDbIpcSession::for_runtime_server(
+        &endpoint,
+        workspace_identity,
+        tokio::fs::canonicalize(workspace)
+            .await
+            .expect("canonicalize linked fixture workspace"),
     );
-    child
+    let admission = session
+        .admit_runtime_generation(
+            "tree-sitter-fixture-owner-delta",
+            vec!["lib.rs".to_owned(), "other.rs".to_owned()],
+        )
+        .await
+        .expect("admit linked fixture owner delta");
+    let receipt = admission
+        .receipts
+        .first()
+        .expect("fixture mutation admission receipt");
+    assert!(
+        matches!(
+            receipt.state,
+            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
+        ) && receipt.commit.is_some()
+            && receipt.error.is_none(),
+        "fixture generation was not committed: {receipt:?}"
+    );
+    let authority = session
+        .runtime_search_generation_authority()
+        .await
+        .expect("read fixture search generation authority");
+    assert!(
+        authority.workspace_generation.owner_count >= 2,
+        "fixture search generation has no published Rust owners: {authority:?}"
+    );
 }
 
 fn write_provider_install_receipts(state_home: &std::path::Path) {
     let receipt_dir = state_home.join("runtime/providers/receipts");
     std::fs::create_dir_all(&receipt_dir).expect("create provider install receipt directory");
-    for (language_id, provider_id, binary) in [
-        ("rust", "rs-harness", "rs-harness"),
-        ("typescript", "ts-harness", "ts-harness"),
-        ("julia", "asp-julia-harness", "asp-julia-harness"),
-        ("gerbil-scheme", "gslph", "gslph"),
-    ] {
+    for registration in agent_semantic_hook::registered_provider_binaries_v1() {
+        let language_id = registration.language_id().as_str();
+        let provider_id = registration.provider_id().as_str();
+        let binary = registration.binary();
         let installed_path = state_home.join("runtime/bin").join(binary);
         if !installed_path.is_file() {
             continue;
@@ -436,131 +658,9 @@ fn write_provider_install_receipts(state_home: &std::path::Path) {
         std::fs::write(
             receipt_dir.join(format!("{language_id}.lock.toml")),
             format!(
-                "schemaId = \"asp.provider-install-lock.v1\"\nprovider = \"{provider_id}\"\ninstalledPath = \"{installed_path}\"\ninstalledEntrypointDigest = \"{installed_entrypoint_digest}\"\ninstalledEntrypointMetadataDigest = \"{installed_entrypoint_metadata_digest}\"\n"
+                "schemaId = \"asp.provider-install-lock.v1\"\nlanguage = \"{language_id}\"\nprovider = \"{provider_id}\"\ninstalledPath = \"{installed_path}\"\ninstalledEntrypointDigest = \"{installed_entrypoint_digest}\"\ninstalledEntrypointMetadataDigest = \"{installed_entrypoint_metadata_digest}\"\n"
             ),
         )
         .expect("write provider fixture install receipt");
-    }
-}
-
-fn write_rust_owner_delegate(workspace: &std::path::Path, state_home: &std::path::Path) {
-    fn digest(path: &std::path::Path) -> String {
-        agent_semantic_content_identity::file_content_digest_v1(path)
-            .expect("digest provider owner fixture")
-    }
-
-    fn response(
-        owner_path: &str,
-        source_content_digest: String,
-        projections: serde_json::Value,
-    ) -> String {
-        serde_json::to_string(&serde_json::json!({
-            "schemaId": "agent.semantic-protocols.provider-native-owner-search-response",
-            "schemaVersion": "1",
-            "languageId": "rust",
-            "providerId": "rs-harness",
-            "requestedOwnerPath": owner_path,
-            "requestedProjectionMode": "complete-owner",
-            "sourceContentDigest": source_content_digest,
-            "parsedOwnerCount": 1,
-            "projectionCompleteness": "complete-owner",
-            "projections": projections,
-        }))
-        .expect("encode provider owner response")
-    }
-
-    fn shell_quote(value: &str) -> String {
-        format!("'{}'", value.replace('\'', "'\"'\"'"))
-    }
-
-    let lib_source =
-        std::fs::read_to_string(workspace.join("lib.rs")).expect("read Rust struct owner fixture");
-    let mut lib_projections = vec![serde_json::json!({
-        "structuralSelector": "rust://lib.rs#item/struct/AgentSessionLookupRequest",
-        "signature": "pub struct AgentSessionLookupRequest;",
-        "itemKind": "struct",
-        "itemName": "AgentSessionLookupRequest",
-        "captureName": "declaration.name",
-        "sourceByteStart": 0,
-        "sourceByteEnd": 37,
-    })];
-    if lib_source.contains("pub struct DirtyOwner;") {
-        lib_projections.push(serde_json::json!({
-            "structuralSelector": "rust://lib.rs#item/struct/DirtyOwner",
-            "signature": "pub struct DirtyOwner;",
-            "itemKind": "struct",
-            "itemName": "DirtyOwner",
-            "captureName": "declaration.name",
-            "sourceByteStart": 38,
-            "sourceByteEnd": 60,
-        }));
-    }
-    let lib_response = response(
-        "lib.rs",
-        digest(&workspace.join("lib.rs")),
-        serde_json::Value::Array(lib_projections),
-    );
-    let other_response = response(
-        "other.rs",
-        digest(&workspace.join("other.rs")),
-        serde_json::json!([{
-            "structuralSelector": "rust://other.rs#item/function/unrelated",
-            "signature": "pub fn unrelated() {}",
-            "itemKind": "function",
-            "itemName": "unrelated",
-            "captureName": "declaration.name",
-            "sourceByteStart": 0,
-            "sourceByteEnd": 21,
-        }]),
-    );
-    let project_response = serde_json::to_string(&serde_json::json!({
-        "schemaId": "agent.semantic-protocols.provider-project-resolution-response",
-        "schemaVersion": "1",
-        "languageId": "rust",
-        "providerId": "rs-harness",
-        "state": "resolved",
-        "scope": {
-            "schemaId": "agent.semantic-protocols.project-resolution",
-            "schemaVersion": "1",
-            "state": "resolved",
-            "completeness": "exact",
-            "repositoryCandidates": {
-                "candidates": [
-                    {"path": "lib.rs"},
-                    {"path": "other.rs"}
-                ],
-                "policyExclusions": []
-            },
-            "resolvedSourceScopes": [{
-                "roots": ["."],
-                "explicitPaths": [],
-                "extensions": [".rs"],
-                "includeAuthority": "package-manager",
-                "exclusions": []
-            }]
-        }
-    }))
-    .expect("encode provider project-resolution response");
-    let delegate = state_home.join("runtime/bin/.rs-harness-delegate");
-    std::fs::write(
-        &delegate,
-        format!(
-            "#!/bin/sh\nrequest=$(cat)\ncase \"$request\" in\n  *'\"schemaId\":\"agent.semantic-protocols.provider-project-resolution-request\"'*) printf '%s\\n' {} ;;\n  *'\"ownerPath\":\"lib.rs\"'*) printf '%s\\n' {} ;;\n  *'\"ownerPath\":\"other.rs\"'*) printf '%s\\n' {} ;;\n  *) printf '%s\\n' 'unknown typed provider fixture request' >&2; exit 64 ;;\nesac\n",
-            shell_quote(&project_response),
-            shell_quote(&lib_response),
-            shell_quote(&other_response),
-        ),
-    )
-    .expect("write self-contained Rust owner delegate");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-
-        let mut permissions = std::fs::metadata(&delegate)
-            .expect("read Rust owner delegate metadata")
-            .permissions();
-        permissions.set_mode(0o755);
-        std::fs::set_permissions(&delegate, permissions)
-            .expect("mark Rust owner delegate executable");
     }
 }

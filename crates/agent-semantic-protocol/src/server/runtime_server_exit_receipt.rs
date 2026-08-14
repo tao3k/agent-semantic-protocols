@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 
 const EXIT_RECEIPT_FILE: &str = "daemon-exit.v1.json";
 const DRAIN_RECEIPT_FILE: &str = "daemon-drain.v1.json";
-const EXIT_RECEIPT_WAIT_BOUNDARY: std::time::Duration = std::time::Duration::from_millis(250);
+const EXIT_RECEIPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const EXIT_RECEIPT_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(5);
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -138,32 +139,36 @@ pub(crate) async fn await_owner_exit(
 ) -> Result<RuntimeServerExitReceipt, String> {
     let path = receipt_path(state_home);
     let started = tokio::time::Instant::now();
-    loop {
-        match tokio::fs::read(&path).await {
-            Ok(bytes) => {
-                let receipt: RuntimeServerExitReceipt = serde_json::from_slice(&bytes)
-                    .map_err(|error| format!("decode {}: {error}", path.display()))?;
-                if receipt.owner_epoch == owner_epoch {
-                    return Ok(receipt);
+    let completion = async {
+        loop {
+            match tokio::fs::read(&path).await {
+                Ok(bytes) => {
+                    let receipt: RuntimeServerExitReceipt = serde_json::from_slice(&bytes)
+                        .map_err(|error| format!("decode {}: {error}", path.display()))?;
+                    if receipt.owner_epoch == owner_epoch {
+                        return Ok(receipt);
+                    }
                 }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(format!("failed to read {}: {error}", path.display())),
             }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(format!("failed to read {}: {error}", path.display())),
+            tokio::time::sleep(EXIT_RECEIPT_POLL_INTERVAL).await;
         }
-        if started.elapsed() >= EXIT_RECEIPT_WAIT_BOUNDARY {
-            return Err(serde_json::json!({
+    };
+    tokio::time::timeout(EXIT_RECEIPT_TIMEOUT, completion)
+        .await
+        .map_err(|_| {
+            serde_json::json!({
                 "schemaId": "agent.semantic-protocols.runtime-server-daemon-exit-failure",
                 "schemaVersion": "1",
                 "state": "unavailable",
-                "reasonKind": "daemon-exit-receipt-boundary-exceeded",
+                "reasonKind": "daemon-exit-receipt-timeout",
                 "ownerEpoch": owner_epoch,
-                "boundaryMicros": EXIT_RECEIPT_WAIT_BOUNDARY.as_micros(),
+                "timeoutMicros": EXIT_RECEIPT_TIMEOUT.as_micros(),
                 "elapsedMicros": started.elapsed().as_micros(),
             })
-            .to_string());
-        }
-        tokio::task::yield_now().await;
-    }
+            .to_string()
+        })?
 }
 
 /// Reads an already-published terminal receipt without waiting.  Supervisor

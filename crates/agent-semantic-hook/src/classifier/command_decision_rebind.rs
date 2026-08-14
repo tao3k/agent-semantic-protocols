@@ -43,8 +43,15 @@ pub fn rebind_command_decision_to_payload(decision: HookDecision, payload: &Valu
     let actions = collect_payload_tool_actions(payload);
     let mut decision = with_action_receipt_fields(decision, payload, &actions);
     if let Some(key) = shell_command_key(payload) {
-        decision.subject.command = Some(key.command);
+        decision.subject.command = Some(key.command.clone());
         decision.subject.tool_name = Some(key.tool_name);
+        if decision.reason_kind == crate::ReasonKind::SubagentReceiptRequired
+            && !decision.message.contains(&key.command)
+        {
+            decision
+                .message
+                .push_str(&format!("\nDenied command: `{}`.", key.command));
+        }
     }
     enforce_org_choice_plane_boundary(resolve_dispatch_decision(decision, payload))
 }

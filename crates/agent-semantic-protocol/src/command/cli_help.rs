@@ -261,10 +261,7 @@ fn facade_subcommand(language: &str, subcommand: &'static str) -> Command {
 }
 
 fn is_language_facade(value: &str) -> bool {
-    matches!(
-        value,
-        "gerbil-scheme" | "julia" | "python" | "rust" | "typescript"
-    )
+    super::provider_selector::is_language_facade(value)
 }
 
 fn is_document_facade(value: &str) -> bool {

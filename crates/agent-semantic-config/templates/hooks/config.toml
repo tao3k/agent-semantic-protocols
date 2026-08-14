@@ -117,7 +117,7 @@ priority = 100000
 intent = "reasoning-search"
 decision = "deny"
 reasonKind = "subagent-receipt-required"
-message = "{{agentSessionInstruction}}"
+message = "Raw search over registered source is denied only in the current Agent; registered source belong in `asp <language> search`. ASP remains available. {{agentSessionInstruction}}"
 event = "pre-tool"
 
 [rules.match]
@@ -138,7 +138,7 @@ priority = 90000
 intent = "test-build-command"
 decision = "deny"
 reasonKind = "subagent-receipt-required"
-message = "{{agentSessionInstruction}}"
+message = "This operation is denied only in the current Agent; ASP remains available. {{agentSessionInstruction}}"
 event = "pre-tool"
 
 [rules.match]
@@ -167,7 +167,7 @@ event = "pre-tool"
 priority = 20000
 decision = "deny"
 reasonKind = "raw-broad-search"
-message = "{{agentSessionInstruction}}"
+message = "Raw search over registered source is denied only in the current Agent; registered source belong in `asp <language> search`. ASP remains available. {{agentSessionInstruction}}"
 
 [rules.match]
 actionPolicyAll = ["raw-host-search", "registered-language-source"]

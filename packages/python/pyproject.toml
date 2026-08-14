@@ -12,7 +12,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "pyinstaller>=6.21,<7",
     "python-lang-project-harness",
     "pytest>=9,<10",
 ]

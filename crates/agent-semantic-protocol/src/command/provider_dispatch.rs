@@ -13,15 +13,11 @@ use super::client_backend_worker::run_client_backend_on_worker;
 use super::gerbil_check_cache::try_replay_gerbil_check_cache;
 use super::gerbil_deps::try_run_gerbil_deps_index_command;
 use super::protocol_version_line;
-use super::provider_fast_path::{
-    run_activated_owner_language_preflight,
-};
+use super::provider_fast_path::run_activated_owner_language_preflight;
 use super::provider_process::{
     provider_invocation_with_profile, provider_invocations, run_guide_command, run_provider_command,
 };
-use super::provider_roots::{
-    activation_project_root, effective_project_root_and_args,
-};
+use super::provider_roots::{activation_project_root, effective_project_root_and_args};
 pub(crate) use super::provider_selector::{
     is_language_facade, unsupported_language_facade_message,
 };
@@ -250,7 +246,8 @@ pub(crate) async fn run_language_command(
         &activation_path,
         &invocation_root,
         language_id,
-    )?;
+    )
+    .await?;
     exact_query_trace("activation-loaded", exact_query_started);
     if let Some(diagnostics) = command_diagnostics.as_mut() {
         diagnostics.mark_stage("activation-loaded");
@@ -368,6 +365,4 @@ fn is_guide_help(args: &[String]) -> bool {
 }
 use super::provider_activation::{load_activation_for_language_message, provider_activation_path};
 use super::provider_execution::provider_process_args;
-use super::provider_selector::{
-        is_provider_owned_structural_selector_query,
-};
+use super::provider_selector::is_provider_owned_structural_selector_query;

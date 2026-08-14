@@ -645,6 +645,7 @@ fn record_development_provider_install(
         )?;
         Some(
             super::global_provider_catalog::publish_global_provider_catalog(
+                &state_home,
                 &provider_binaries.provider_receipts,
             )?,
         )

@@ -71,6 +71,16 @@ pub(super) async fn run_session_control_plane(args: &[String]) -> Result<(), Str
     Ok(())
 }
 
+pub(super) async fn register_current_child_session() -> Result<(), String> {
+    let platform = current_session_platform()?;
+    let project_root = std::env::current_dir()
+        .map_err(|error| format!("failed to resolve Agent registration workspace: {error}"))?;
+    let receipt =
+        crate::multi_agent_session::register_current_child_session(&project_root, platform).await?;
+    println!("{}", receipt);
+    Ok(())
+}
+
 fn current_session_platform() -> Result<&'static str, String> {
     session_platform_from_ids(
         std::env::var("CODEX_SESSION_ID").ok().as_deref(),

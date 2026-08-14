@@ -31,7 +31,9 @@ mod install_provider_development;
 mod install_provider_reconcile;
 mod install_provider_release;
 mod install_provider_runtime_reconcile;
+pub use install_provider_runtime_reconcile::prepare_runtime_server_provider_catalog;
 pub(crate) use install_provider_runtime_reconcile::reconcile_global_provider_catalog_for_runtime;
+
 mod install_provider_target;
 mod live_corpus;
 mod managed_hook_config;
@@ -44,6 +46,7 @@ mod paths;
 pub(crate) mod protocol_binary;
 mod protocol_version;
 mod provider_activation;
+pub(crate) use provider_activation::resolve_provider_runtime_in_server;
 mod provider_dispatch;
 mod provider_exact_args;
 mod provider_execution;

@@ -105,6 +105,12 @@ pub(super) enum WorkspaceWriteCommand {
         overlay: WorkspaceRuntimeSelectorOverlay,
         reply: oneshot::Sender<Result<WorkspaceRuntimeSelectorOverlayReceipt, String>>,
     },
+    RebindSelectorOverlay {
+        target: WorkspaceWriteTarget,
+        workspace_identity: String,
+        rebind: WorkspaceRuntimeSelectorRebind,
+        reply: oneshot::Sender<Result<WorkspaceRuntimeSelectorOverlayReceipt, String>>,
+    },
     PublishOwnerIdentityDelta {
         target: WorkspaceWriteTarget,
         source_mutation_id: String,
@@ -681,6 +687,27 @@ async fn workspace_writer_lane(
                 .await;
                 let _ = reply.send(result);
             }
+            WorkspaceWriteCommand::RebindSelectorOverlay {
+                target,
+                workspace_identity,
+                rebind,
+                reply,
+            } => {
+                let result = async {
+                    let base = current_generation(&target.current, &workspace_identity)?;
+                    let (receipt, staged) = target.overlays.rebind_selector(
+                        base.generation(),
+                        &workspace_identity,
+                        rebind,
+                    )?;
+                    if let Some(staged) = staged {
+                        target.overlays.commit(staged);
+                    }
+                    Ok(receipt)
+                }
+                .await;
+                let _ = reply.send(result);
+            }
             WorkspaceWriteCommand::PublishOwnerIdentityDelta {
                 target,
                 source_mutation_id,
@@ -794,3 +821,4 @@ async fn workspace_writer_lane(
         }
     }
 }
+use crate::runtime_server_workspace::WorkspaceRuntimeSelectorRebind;

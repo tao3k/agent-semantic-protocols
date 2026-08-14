@@ -239,7 +239,12 @@ impl CompiledHookRule {
             .iter()
             .map(|route| route.decision_route(runtime))
             .collect::<Vec<_>>();
-        let message = self.rendered_message();
+        let mut message = self.rendered_message();
+        if self.reason_kind == ReasonKind::SubagentReceiptRequired
+            && let Some(command) = action.command.as_deref()
+        {
+            message.push_str(&format!("\nDenied command: `{command}`."));
+        }
         let mut subject = subject_for_action(action);
         subject.paths = paths.to_vec();
         let mut decision_fields = self

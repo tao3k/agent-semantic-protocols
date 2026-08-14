@@ -99,6 +99,7 @@ pub(in super::super) fn record_registered_provider_workspace_install(
         },
     )?;
     let global_provider_catalog = publish_global_catalog_if_needed(
+        &runtime_state.protocol_home,
         install_scope,
         &runtime_state.runtime_bin_dir,
         &runtime_state.provider_lock_dir,
@@ -163,6 +164,7 @@ fn install_scope_and_lock<'a>(
 }
 
 fn publish_global_catalog_if_needed(
+    state_home: &Path,
     install_scope: &super::super::InstallScope,
     runtime_bin_dir: &Path,
     provider_lock_dir: &Path,
@@ -177,6 +179,7 @@ fn publish_global_catalog_if_needed(
         provider_lock_dir,
     )?;
     super::super::super::global_provider_catalog::publish_global_provider_catalog(
+        state_home,
         &provider_binaries.provider_receipts,
     )
     .map(|publication| Some(publication.catalog_generation))

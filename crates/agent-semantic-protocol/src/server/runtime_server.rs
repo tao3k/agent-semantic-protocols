@@ -48,6 +48,8 @@ pub(crate) const RUNTIME_SERVER_SUPERVISOR_EXECUTION_BUDGET: std::time::Duration
     std::time::Duration::from_millis(800);
 pub(crate) const OPERATOR_RUNTIME_SERVER_STARTUP_BUDGET: std::time::Duration =
     std::time::Duration::from_secs(5);
+const OPERATOR_RUNTIME_SERVER_ACTIVE_STARTUP_BUDGET: std::time::Duration =
+    std::time::Duration::from_secs(30);
 
 pub(crate) async fn runtime_server_workspace_session_async(
     project_root: &Path,
@@ -57,7 +59,7 @@ pub(crate) async fn runtime_server_workspace_session_async(
     let state_home = state_home()?;
     let endpoint = read_endpoint(&runtime_server_endpoint_path(&state_home)?).await?;
     Ok(
-        agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::for_runtime_server_read_only(
+        agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::for_runtime_server_client(
             &endpoint,
             workspace_identity,
             canonical_project_root,
@@ -104,7 +106,6 @@ pub(super) fn runtime_server_query_workspace_scope(
     // admission, bootstrap, repair, and retry remain lifecycle-only actions.
     Ok((workspace_identity, project_root.to_path_buf()))
 }
-
 
 pub(crate) async fn run_runtime_server_command(args: &[String]) -> Result<(), String> {
     let parsed = ServerArgs::try_parse_from(
@@ -242,6 +243,7 @@ pub(crate) async fn await_healthy_runtime_server(
         state_home,
         RUNTIME_SERVER_SUPERVISOR_EXECUTION_BUDGET,
         "detached lifecycle",
+        None,
     )
     .await
 }
@@ -268,6 +270,7 @@ async fn await_operator_runtime_server(
         state_home,
         OPERATOR_RUNTIME_SERVER_STARTUP_BUDGET,
         "operator lifecycle",
+        Some(OPERATOR_RUNTIME_SERVER_ACTIVE_STARTUP_BUDGET),
     )
     .await
 }
@@ -276,11 +279,13 @@ async fn await_healthy_runtime_server_with_budget(
     state_home: &Path,
     budget: std::time::Duration,
     surface: &'static str,
+    active_startup_budget: Option<std::time::Duration>,
 ) -> Result<RuntimeServerControlReceipt, String> {
     let started = tokio::time::Instant::now();
-    let deadline = started + budget;
+    let mut deadline = started + budget;
+    let mut startup_progress_observed = false;
     loop {
-        let observation = match healthcheck_runtime_server_at(state_home).await {
+        let observation = match observe_runtime_server_readiness(state_home).await {
             Ok(receipt)
                 if receipt.state
                     == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy =>
@@ -308,87 +313,76 @@ async fn await_healthy_runtime_server_with_budget(
             })
             .to_string());
         }
+        if !startup_progress_observed
+            && let Some(active_budget) = active_startup_budget
+            && tokio::fs::metadata(state_home.join("runtime/server/daemon-startup.v1.json"))
+                .await
+                .is_ok()
+        {
+            startup_progress_observed = true;
+            deadline = started + active_budget;
+        }
         if tokio::time::Instant::now() >= deadline {
+            let short_owner_stderr_path =
+                agent_semantic_client_db::runtime_server_runtime_base(state_home)?
+                    .join("owner-stderr.log");
+            let legacy_owner_stderr_path = state_home
+                .join("runtime")
+                .join("server")
+                .join("owner-stderr.log");
+            let owner_stderr = match tokio::fs::read_to_string(&short_owner_stderr_path).await {
+                Ok(stderr) => stderr,
+                Err(_) => tokio::fs::read_to_string(&legacy_owner_stderr_path)
+                    .await
+                    .unwrap_or_default(),
+            };
+            let owner_stderr = owner_stderr
+                .lines()
+                .rev()
+                .take(20)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join(" | ");
+            let spawn_receipt =
+                crate::server::runtime_server_supervisor::read_runtime_server_spawn_receipt(
+                    state_home,
+                )
+                .await?
+                .and_then(|receipt| serde_json::to_string(&receipt).ok())
+                .unwrap_or_else(|| "unavailable".to_owned());
+            let startup_receipt =
+                tokio::fs::read_to_string(state_home.join("runtime/server/daemon-startup.v1.json"))
+                    .await
+                    .unwrap_or_else(|_| "unavailable".to_owned());
             return Err(format!(
-                "{surface} did not publish a healthy Runtime Server within {}ms: {}",
+                "{surface} did not publish a healthy Runtime Server within {}ms: {}; spawnReceipt={}; startupReceipt={}; ownerStderr={}",
                 started.elapsed().as_millis(),
-                observation
+                observation,
+                spawn_receipt,
+                startup_receipt,
+                if owner_stderr.is_empty() {
+                    "unavailable"
+                } else {
+                    owner_stderr.as_str()
+                }
             ));
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
 }
 
-pub(crate) async fn healthcheck_runtime_server_at(
+async fn observe_runtime_server_readiness(
     state_home: &Path,
 ) -> Result<RuntimeServerControlReceipt, String> {
     let endpoint = read_supervisor_endpoint(&runtime_server_endpoint_path(state_home)?).await?;
-    let canonical_runtime = state_home.join("runtime").join("bin").join("asp");
-    let canonical_artifact =
-        tokio::fs::canonicalize(&canonical_runtime)
-            .await
-            .map_err(|error| {
-                format!(
-                    "failed to resolve canonical ASP runtime {}: {error}",
-                    canonical_runtime.display()
-                )
-            })?;
-    let running_artifact = tokio::fs::canonicalize(&endpoint.runtime_artifact_path)
-        .await
-        .map_err(|error| {
-            format!(
-                "failed to resolve running ASP Runtime Server artifact {}: {error}",
-                endpoint.runtime_artifact_path
-            )
-        })?;
-    let canonical_runtime_artifact_digest =
-        crate::command::protocol_binary::canonical_protocol_binary_artifact_digest(
-            &canonical_runtime,
+    let mut receipt =
+        agent_semantic_client_db::runtime_server_control::read_runtime_server_cached_health_status(
+            Path::new(&endpoint.status_memory_path),
+            request_identity("startup-readiness").await?,
         )
         .await?;
-    let artifact_action = runtime_server_artifact_action(
-        &canonical_artifact,
-        &running_artifact,
-        &canonical_runtime_artifact_digest,
-        &endpoint.runtime_artifact_digest,
-    );
-    let expected_transport_contract_digest =
-        agent_semantic_client_db::runtime_server_control::runtime_server_transport_contract_digest(
-        );
-    let artifact_catalog =
-        agent_semantic_runtime::runtime_artifact_catalog::load_runtime_artifact_catalog(state_home)
-            .await?;
-    let artifact_catalog_matches = endpoint.artifact_mode == artifact_catalog.mode_label()
-        && endpoint.artifact_catalog_digest == artifact_catalog.digest();
-    if !artifact_catalog_matches {
-        return call_runtime_server(
-            &endpoint,
-            RuntimeServerOperation::Restart,
-            canonical_runtime_artifact_digest,
-            request_identity("healthcheck-artifact-catalog-restart").await?,
-        )
-        .await;
-    }
-    let receipt = match artifact_action {
-        RuntimeServerArtifactAction::Status
-            if endpoint.transport_contract_digest == expected_transport_contract_digest =>
-        {
-            agent_semantic_client_db::runtime_server_control::read_runtime_server_cached_health_status(
-                Path::new(&endpoint.status_memory_path),
-                request_identity("healthcheck").await?,
-            )
-            .await?
-        }
-        RuntimeServerArtifactAction::Status | RuntimeServerArtifactAction::Restart => {
-            agent_semantic_client_db::runtime_server_control::reconcile_runtime_server(
-                &endpoint,
-                canonical_runtime_artifact_digest.clone(),
-                expected_transport_contract_digest,
-                request_identity("healthcheck-reconcile").await?,
-            )
-            .await?
-        }
-    };
     let endpoint_present = tokio::fs::try_exists(&endpoint.socket_path)
         .await
         .map_err(|error| format!("failed to inspect Runtime Server endpoint: {error}"))?;
@@ -396,11 +390,9 @@ pub(crate) async fn healthcheck_runtime_server_at(
         == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
         && !endpoint_present
     {
-        let mut unavailable = receipt;
-        unavailable.state =
+        receipt.state =
             agent_semantic_client_db::runtime_server_control::RuntimeServerState::Starting;
-        unavailable.reason = Some("Runtime Server endpoint is not present".to_owned());
-        return Ok(unavailable);
+        receipt.reason = Some("Runtime Server endpoint is not present".to_owned());
     }
     Ok(receipt)
 }
@@ -440,18 +432,18 @@ pub(crate) fn state_home() -> Result<PathBuf, String> {
     Ok(PathBuf::from(home).join(".agent-semantic-protocols"))
 }
 
-pub(crate) fn runtime_server_telemetry_socket_path(state_home: &Path) -> PathBuf {
-    state_home
-        .join("runtime")
-        .join("server")
-        .join("opentelemetry.sock")
+pub(crate) fn runtime_server_telemetry_socket_path(state_home: &Path) -> Result<PathBuf, String> {
+    Ok(
+        agent_semantic_client_db::runtime_server_runtime_base(state_home)?
+            .join("opentelemetry.sock"),
+    )
 }
 
-fn runtime_server_telemetry_query_socket_path(state_home: &Path) -> PathBuf {
-    state_home
-        .join("runtime")
-        .join("server")
-        .join("opentelemetry-query.sock")
+fn runtime_server_telemetry_query_socket_path(state_home: &Path) -> Result<PathBuf, String> {
+    Ok(
+        agent_semantic_client_db::runtime_server_runtime_base(state_home)?
+            .join("opentelemetry-query.sock"),
+    )
 }
 
 async fn request_identity(seed: &str) -> Result<String, String> {
@@ -481,7 +473,6 @@ async fn os_entropy() -> Result<[u8; 32], String> {
         .map_err(|error| format!("failed to read OS entropy: {error}"))?;
     Ok(entropy)
 }
-use super::runtime_server_artifact::{RuntimeServerArtifactAction, runtime_server_artifact_action};
 use super::runtime_server_endpoint_io::{
     cleanup_endpoint, read_endpoint, read_supervisor_endpoint, remove_stale_socket,
 };

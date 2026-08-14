@@ -54,10 +54,10 @@ pub(crate) struct GlobalProviderCatalogReadiness {
     pub(crate) elapsed_micros: u64,
 }
 
-fn catalog_path() -> Result<PathBuf, String> {
-    Ok(agent_semantic_runtime::state_core::resolve_state_home()?
+fn catalog_path(state_home: &Path) -> PathBuf {
+    state_home
         .join("runtime")
-        .join(GLOBAL_PROVIDER_CATALOG_FILE))
+        .join(GLOBAL_PROVIDER_CATALOG_FILE)
 }
 
 fn canonical_path(path: &Path) -> PathBuf {
@@ -179,8 +179,8 @@ fn active_catalog() -> &'static RwLock<Option<Arc<GlobalProviderCatalog>>> {
     ACTIVE.get_or_init(Default::default)
 }
 
-fn load_catalog_from_disk() -> Result<Arc<GlobalProviderCatalog>, String> {
-    let path = catalog_path()?;
+fn load_catalog_from_disk(state_home: &Path) -> Result<Arc<GlobalProviderCatalog>, String> {
+    let path = catalog_path(state_home);
     let bytes = std::fs::read(&path).map_err(|error| {
         format!(
             "failed to read Global provider catalog {}: {error}",
@@ -197,7 +197,7 @@ fn load_catalog_from_disk() -> Result<Arc<GlobalProviderCatalog>, String> {
     Ok(Arc::new(catalog))
 }
 
-fn runtime_catalog() -> Result<Arc<GlobalProviderCatalog>, String> {
+fn runtime_catalog(state_home: &Path) -> Result<Arc<GlobalProviderCatalog>, String> {
     if let Some(catalog) = active_catalog()
         .read()
         .map_err(|_| "Global provider catalog read guard is poisoned".to_owned())?
@@ -206,7 +206,7 @@ fn runtime_catalog() -> Result<Arc<GlobalProviderCatalog>, String> {
     {
         return Ok(catalog);
     }
-    let catalog = load_catalog_from_disk()?;
+    let catalog = load_catalog_from_disk(state_home)?;
     let mut active = active_catalog()
         .write()
         .map_err(|_| "Global provider catalog write guard is poisoned".to_owned())?;
@@ -217,10 +217,11 @@ fn runtime_catalog() -> Result<Arc<GlobalProviderCatalog>, String> {
     Ok(catalog)
 }
 
-pub(crate) fn read_global_provider_catalog_readiness()
--> Result<GlobalProviderCatalogReadiness, String> {
+pub(crate) fn read_global_provider_catalog_readiness(
+    state_home: &Path,
+) -> Result<GlobalProviderCatalogReadiness, String> {
     let started_at = std::time::Instant::now();
-    let catalog = load_catalog_from_disk()?;
+    let catalog = load_catalog_from_disk(state_home)?;
     Ok(GlobalProviderCatalogReadiness {
         catalog_generation: catalog.catalog_generation.clone(),
         provider_count: catalog.providers.len(),
@@ -241,11 +242,12 @@ pub(crate) fn empty_global_provider_catalog_readiness()
     })
 }
 
-pub(crate) fn read_runtime_provider_catalog_readiness()
--> Result<GlobalProviderCatalogReadiness, String> {
-    let path = catalog_path()?;
+pub(crate) fn read_runtime_provider_catalog_readiness(
+    state_home: &Path,
+) -> Result<GlobalProviderCatalogReadiness, String> {
+    let path = catalog_path(state_home);
     match std::fs::metadata(&path) {
-        Ok(_) => read_global_provider_catalog_readiness(),
+        Ok(_) => read_global_provider_catalog_readiness(state_home),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             empty_global_provider_catalog_readiness()
         }
@@ -259,7 +261,8 @@ pub(crate) fn read_runtime_provider_catalog_readiness()
 pub(crate) fn runtime_provider_registry_snapshot(
     project_root: &Path,
 ) -> Result<(agent_semantic_client_core::ProviderRegistrySnapshot, String), String> {
-    let catalog = runtime_catalog()?;
+    let state = agent_semantic_runtime::state_core::ResolvedState::resolve(project_root)?;
+    let catalog = runtime_catalog(&state.state_home)?;
     let mut snapshot = agent_semantic_client_core::ProviderRegistrySnapshot::load(project_root)?;
     for provider in &mut snapshot.providers {
         let catalog_provider = catalog
@@ -286,6 +289,7 @@ pub(crate) fn runtime_provider_registry_snapshot(
 }
 
 pub(super) fn publish_global_provider_catalog(
+    state_home: &Path,
     receipts: &[super::install_provider_reconcile::ProviderInstallReceipt],
 ) -> Result<GlobalProviderCatalogPublication, String> {
     let started_at = std::time::Instant::now();
@@ -320,10 +324,12 @@ pub(super) fn publish_global_provider_catalog(
             })
         })
         .collect::<Vec<_>>();
+    let path = catalog_path(state_home);
     let active_generation = active_catalog()
         .read()
         .map_err(|_| "Global provider catalog read guard is poisoned".to_owned())?
         .as_ref()
+        .filter(|_| path.is_file())
         .filter(|active| {
             active_catalog_matches_receipts(active, &manifests, receipts, catalog_identities)
         })
@@ -470,7 +476,7 @@ pub(super) fn publish_global_provider_catalog(
         });
     }
     validate_catalog(&catalog)?;
-    let path = catalog_path()?;
+    let path = catalog_path(state_home);
     let previous = if path.exists() {
         let bytes = std::fs::read(&path).map_err(|error| {
             format!(

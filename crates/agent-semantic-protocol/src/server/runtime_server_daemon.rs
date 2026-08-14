@@ -20,16 +20,34 @@ async fn serve_runtime_search_requests(
 ) {
     use agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceRequest;
 
+    let mut tasks = tokio::task::JoinSet::new();
     while let Some(request) = requests.recv().await {
-        match request {
-            RuntimeSearchServiceRequest::ProviderOwner {
-                workspace_identity,
-                project_root,
-                language_id,
-                owner_path,
-                response,
-            } => {
-                let result = async {
+        tasks.spawn(async move {
+            match request {
+                RuntimeSearchServiceRequest::ProviderRuntime {
+                    project_root,
+                    language_id,
+                    response,
+                } => {
+                    let result = crate::command::resolve_provider_runtime_in_server(
+                        &project_root,
+                        &language_id,
+                    )
+                    .and_then(|runtime| {
+                        serde_json::to_value(runtime).map_err(|error| {
+                            format!("encode Runtime-owned provider runtime: {error}")
+                        })
+                    });
+                    let _ = response.send(result);
+                }
+                RuntimeSearchServiceRequest::ProviderOwner {
+                    workspace_identity,
+                    project_root,
+                    language_id,
+                    owner_path,
+                    response,
+                } => {
+                    let result = async {
                     let (registry, _) = crate::command::global_provider_catalog::
                         runtime_provider_registry_snapshot(&project_root)?;
                     if !registry
@@ -51,25 +69,28 @@ async fn serve_runtime_search_requests(
                         .await
                 }
                 .await;
-                let _ = response.send(result);
+                    let _ = response.send(result);
+                }
+                RuntimeSearchServiceRequest::TreeSitterQuery {
+                    workspace_identity: _,
+                    project_root,
+                    language_id,
+                    args,
+                    response,
+                } => {
+                    let result = crate::command::run_runtime_server_tree_sitter_query(
+                        &language_id,
+                        &args,
+                        &project_root,
+                    )
+                    .await;
+                    let _ = response.send(result);
+                }
             }
-            RuntimeSearchServiceRequest::TreeSitterQuery {
-                workspace_identity: _,
-                project_root,
-                language_id,
-                args,
-                response,
-            } => {
-                let result = crate::command::run_runtime_server_tree_sitter_query(
-                    &language_id,
-                    &args,
-                    &project_root,
-                )
-                .await;
-                let _ = response.send(result);
-            }
-        }
+        });
+        while tasks.try_join_next().is_some() {}
     }
+    while tasks.join_next().await.is_some() {}
 }
 
 pub(super) async fn run_daemon() -> Result<(), String> {
@@ -82,12 +103,32 @@ pub(super) async fn run_daemon() -> Result<(), String> {
         singleton_socket::SingletonSocketElection::Acquired(guard) => guard,
         singleton_socket::SingletonSocketElection::ResidentExists => return Ok(()),
     };
+    let (owner_epoch, binding_token) = daemon_identity().await?;
+    let startup_started = tokio::time::Instant::now();
+    crate::server::runtime_server_startup_receipt::publish(
+        &state_home,
+        owner_epoch,
+        "owner-election",
+        "ready",
+        startup_started,
+        None,
+    )
+    .await?;
     let workspace_store =
         agent_semantic_client_db::runtime_server_workspace::prepare_runtime_server_workspace_store(
             &state_home.join("runtime").join("server"),
         )
         .await
         .map_err(|error| format!("failed to prepare Runtime Server workspace store: {error}"))?;
+    crate::server::runtime_server_startup_receipt::publish(
+        &state_home,
+        owner_epoch,
+        "workspace-store",
+        "ready",
+        startup_started,
+        None,
+    )
+    .await?;
     let runtime_artifact_path = std::env::current_exe()
         .map_err(|error| format!("failed to resolve running ASP artifact: {error}"))?;
     let runtime_artifact_digest =
@@ -95,22 +136,20 @@ pub(super) async fn run_daemon() -> Result<(), String> {
             &runtime_artifact_path,
         )
         .await?;
-    let artifact_catalog =
-        agent_semantic_runtime::runtime_artifact_catalog::load_runtime_artifact_catalog(
-            &state_home,
-        )
-        .await?;
-    let (owner_epoch, binding_token) = daemon_identity().await?;
-    let startup_started = tokio::time::Instant::now();
     crate::server::runtime_server_startup_receipt::publish(
         &state_home,
         owner_epoch,
-        "daemon-identity",
+        "runtime-artifact-digest",
         "ready",
         startup_started,
         None,
     )
     .await?;
+    let artifact_catalog =
+        agent_semantic_runtime::runtime_artifact_catalog::load_runtime_artifact_catalog(
+            &state_home,
+        )
+        .await?;
     crate::server::runtime_server_startup_receipt::publish(
         &state_home,
         owner_epoch,
@@ -133,8 +172,8 @@ pub(super) async fn run_daemon() -> Result<(), String> {
     .await?;
     let socket_path = PathBuf::from(&endpoint.socket_path);
     let data_plane_socket_path = PathBuf::from(&endpoint.data_plane_socket_path);
-    let telemetry_socket_path = runtime_server_telemetry_socket_path(&state_home);
-    let telemetry_query_socket_path = runtime_server_telemetry_query_socket_path(&state_home);
+    let telemetry_socket_path = runtime_server_telemetry_socket_path(&state_home)?;
+    let telemetry_query_socket_path = runtime_server_telemetry_query_socket_path(&state_home)?;
     remove_stale_socket(&socket_path).await?;
     remove_stale_socket(&data_plane_socket_path).await?;
     remove_stale_socket(&telemetry_socket_path).await?;
@@ -164,8 +203,10 @@ pub(super) async fn run_daemon() -> Result<(), String> {
         .await?;
     let lifecycle_bus = agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus::new();
     let provider_catalog_generation =
-        crate::command::global_provider_catalog::read_runtime_provider_catalog_readiness()?
-            .catalog_generation;
+        crate::command::global_provider_catalog::read_runtime_provider_catalog_readiness(
+            &state_home,
+        )?
+        .catalog_generation;
     let generation_builder_catalog = provider_catalog_generation.clone();
     let generation_builder: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateBuilder =
     std::sync::Arc::new(move |_workspace_identity, project_root, changed_paths| {

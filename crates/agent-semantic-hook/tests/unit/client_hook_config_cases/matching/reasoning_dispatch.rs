@@ -351,8 +351,8 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
                     if decision_json["reasonKind"].as_str()
                         == Some("subagent-receipt-required")
                     {
-                        let expected_message = format!(
-                            "Please use `asp session --agents choice-plane` to create or resume the {} `@{}` ({}; {}).",
+                        let mut expected_message = format!(
+                            "This operation is denied only in the current Agent; ASP remains available. Please use `asp session --agents choice-plane` to create or resume the {} `@{}` ({}; {}).",
                             decision_json["fields"]["targetAgentKind"]
                                 .as_str()
                                 .expect("target agent kind"),
@@ -367,6 +367,11 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
                                 .as_str()
                                 .expect("target description"),
                         );
+                        if let Some(expected_command) = expected_command {
+                            expected_message.push_str("\nDenied command: `");
+                            expected_message.push_str(expected_command);
+                            expected_message.push_str("`.");
+                        }
                         assert_eq!(
                             decision_json["message"].as_str(),
                             Some(expected_message.as_str()),

@@ -11,6 +11,162 @@ pub(super) enum HostLifecycleDisposition {
     Recorded,
 }
 
+async fn publish_host_lifecycle_event_locally(
+    state_home: &Path,
+    lifecycle_event: &mut AgentHostLifecycleEventIpc,
+) -> Result<(), String> {
+    const SCHEMA: &str = "agent.host-lifecycle-local-authority.v1";
+
+    let namespace_key = lifecycle_event
+        .namespace_id
+        .strip_prefix("blake3-256:")
+        .unwrap_or(&lifecycle_event.namespace_id);
+    let authority_dir = state_home
+        .join("hooks")
+        .join("host-sessions")
+        .join(namespace_key);
+    tokio::fs::create_dir_all(&authority_dir)
+        .await
+        .map_err(|error| {
+            format!(
+                "failed to create Host lifecycle authority {}: {error}",
+                authority_dir.display()
+            )
+        })?;
+
+    let lock_path = authority_dir.join(".publication-lock");
+    let mut lock_acquired = false;
+    for _ in 0..100 {
+        match tokio::fs::create_dir(&lock_path).await {
+            Ok(()) => {
+                lock_acquired = true;
+                break;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+            Err(error) => {
+                return Err(format!(
+                    "failed to acquire Host lifecycle authority lock {}: {error}",
+                    lock_path.display()
+                ));
+            }
+        }
+    }
+    if !lock_acquired {
+        return Err(format!(
+            "timed out acquiring Host lifecycle authority lock {}",
+            lock_path.display()
+        ));
+    }
+
+    let authority_path = authority_dir.join("authority.v1.json");
+    let publication = async {
+        let mut authority = match tokio::fs::read(&authority_path).await {
+            Ok(bytes) => serde_json::from_slice::<Value>(&bytes).map_err(|error| {
+                format!(
+                    "failed to decode Host lifecycle authority {}: {error}",
+                    authority_path.display()
+                )
+            })?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => serde_json::json!({
+                "schema": SCHEMA,
+                "projectId": lifecycle_event.project_id,
+                "namespaceId": lifecycle_event.namespace_id,
+                "lastSequence": 0,
+                "events": [],
+            }),
+            Err(error) => {
+                return Err(format!(
+                    "failed to read Host lifecycle authority {}: {error}",
+                    authority_path.display()
+                ));
+            }
+        };
+        if authority.get("schema").and_then(Value::as_str) != Some(SCHEMA)
+            || authority.get("projectId").and_then(Value::as_str)
+                != Some(lifecycle_event.project_id.as_str())
+            || authority.get("namespaceId").and_then(Value::as_str)
+                != Some(lifecycle_event.namespace_id.as_str())
+        {
+            return Err(format!(
+                "Host lifecycle authority identity mismatch at {}",
+                authority_path.display()
+            ));
+        }
+        let last_sequence = authority
+            .get("lastSequence")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        let events = authority
+            .get_mut("events")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| {
+                format!(
+                    "Host lifecycle authority has no events array at {}",
+                    authority_path.display()
+                )
+            })?;
+        if let Some(sequence) = events.iter().find_map(|event| {
+            (event.get("hostEventId").and_then(Value::as_str)
+                == Some(lifecycle_event.host_event_id.as_str()))
+            .then(|| event.get("sequence").and_then(Value::as_u64))
+            .flatten()
+        }) {
+            lifecycle_event.host_event_sequence = sequence as _;
+            return Ok(());
+        }
+
+        let sequence = last_sequence
+            .checked_add(1)
+            .ok_or_else(|| "Host lifecycle authority sequence exhausted".to_owned())?;
+        lifecycle_event.host_event_sequence = sequence as _;
+        events.push(serde_json::json!({
+            "hostEventId": lifecycle_event.host_event_id,
+            "sequence": sequence,
+            "event": serde_json::to_value(&*lifecycle_event)
+                .map_err(|error| format!("failed to encode Host lifecycle event: {error}"))?,
+        }));
+        authority["lastSequence"] = serde_json::json!(sequence);
+
+        let encoded = serde_json::to_vec_pretty(&authority)
+            .map_err(|error| format!("failed to encode Host lifecycle authority: {error}"))?;
+        let temporary_path = authority_dir.join(format!(
+            ".authority.v1.{}.{}.tmp",
+            std::process::id(),
+            lifecycle_event
+                .host_event_id
+                .trim_start_matches("blake3-256:")
+        ));
+        tokio::fs::write(&temporary_path, encoded)
+            .await
+            .map_err(|error| {
+                format!(
+                    "failed to write Host lifecycle authority temporary file {}: {error}",
+                    temporary_path.display()
+                )
+            })?;
+        if let Err(error) = tokio::fs::rename(&temporary_path, &authority_path).await {
+            let _ = tokio::fs::remove_file(&temporary_path).await;
+            return Err(format!(
+                "failed to publish Host lifecycle authority {}: {error}",
+                authority_path.display()
+            ));
+        }
+        Ok(())
+    }
+    .await;
+    let unlock_result = tokio::fs::remove_dir(&lock_path).await;
+    match (publication, unlock_result) {
+        (Err(error), _) => Err(error),
+        (Ok(()), Err(error)) => Err(format!(
+            "failed to release Host lifecycle authority lock {}: {error}",
+            lock_path.display()
+        )),
+        (Ok(()), Ok(())) => Ok(()),
+    }
+}
+
 pub(super) async fn record_host_lifecycle_event(
     client: &str,
     event: &str,
@@ -84,7 +240,7 @@ pub(super) async fn record_host_lifecycle_event(
         "codex\0{project_id}\0{root_session_id}\0{}",
         route.route_key.as_str()
     );
-    let lifecycle_event = AgentHostLifecycleEventIpc {
+    let mut lifecycle_event = AgentHostLifecycleEventIpc {
         host_event_id: format!(
             "blake3-256:{}",
             blake3::hash(event_identity.as_bytes()).to_hex()
@@ -114,105 +270,101 @@ pub(super) async fn record_host_lifecycle_event(
         transcript_path: string_field(payload, "transcript_path").map(str::to_owned),
         observed_at,
     };
-    crate::server::runtime_server_hook_mutation::ensure(
-        project_root,
-        lifecycle_event.host_event_id.clone(),
-    )
-    .await?
-    .validate()?;
-    let runtime_registry =
-        agent_semantic_client_db::AgentSessionRegistry::open_runtime_project_proxy(project_root)?
-            .ok_or_else(|| {
-                "host-lifecycle-runtime-registry-required: generation admission completed without a Runtime registry proxy"
-                    .to_owned()
-            })?;
-    if lifecycle_event.kind
-        == agent_semantic_client_db::workspace_db_ipc::AgentHostLifecycleEventKind::Started
-    {
-        if lifecycle_event.parent_session_id == lifecycle_event.root_session_id {
-            runtime_registry
-                .register_control_plane_agent(
-                    agent_semantic_client_db::SessionControlPlaneAgentRegistration {
+    publish_host_lifecycle_event_locally(&state.state_home, &mut lifecycle_event).await?;
+
+    // The Host session authority above is the deterministic publication point.
+    // Runtime admission and registry delivery are secondary reconciliation: a
+    // missing endpoint or source generation must not erase an observed Host
+    // lifecycle event or force the Host to recreate its native child.
+    let _ = async {
+        let Some(runtime_registry) =
+            agent_semantic_client_db::AgentSessionRegistry::open_runtime_project_proxy(
+                project_root,
+            )?
+        else {
+            return Ok::<(), String>(());
+        };
+        if lifecycle_event.kind
+            == agent_semantic_client_db::workspace_db_ipc::AgentHostLifecycleEventKind::Started
+        {
+            if lifecycle_event.parent_session_id == lifecycle_event.root_session_id {
+                runtime_registry
+                    .register_control_plane_agent(
+                        agent_semantic_client_db::SessionControlPlaneAgentRegistration {
+                            project_id: lifecycle_event.project_id.clone(),
+                            root_session_id: lifecycle_event.root_session_id.clone(),
+                            session_id: lifecycle_event.root_session_id.clone(),
+                            parent_session_id: None,
+                            resident_name: "codex-root".to_owned(),
+                            capability: serde_json::from_value(serde_json::json!("standard"))
+                                .map_err(|error| {
+                                    format!(
+                                        "failed to decode standard delegation capability: {error}"
+                                    )
+                                })?,
+                        },
+                    )
+                    .await?;
+            }
+            let snapshot = runtime_registry
+                .read_control_plane_snapshot(
+                    lifecycle_event.project_id.clone(),
+                    lifecycle_event.root_session_id.clone(),
+                )
+                .await?;
+            let proposed_child_capability = match route.focus_mode {
+                agent_semantic_config::agent_route_registry::AgentFocusMode::Standard => {
+                    serde_json::from_value(serde_json::json!("standard")).map_err(|error| {
+                        format!("failed to decode standard delegation capability: {error}")
+                    })?
+                }
+                agent_semantic_config::agent_route_registry::AgentFocusMode::Leaf => {
+                    serde_json::from_value(serde_json::json!("focused-leaf")).map_err(|error| {
+                        format!("failed to decode focused-leaf delegation capability: {error}")
+                    })?
+                }
+            };
+            let transaction = runtime_registry
+                .admit_control_plane_delegation(
+                    agent_semantic_client_db::SessionControlPlaneDelegationProposal {
+                        event_id: lifecycle_event.host_event_id.clone(),
                         project_id: lifecycle_event.project_id.clone(),
                         root_session_id: lifecycle_event.root_session_id.clone(),
-                        session_id: lifecycle_event.root_session_id.clone(),
-                        parent_session_id: None,
-                        resident_name: "codex-root".to_owned(),
-                        capability: serde_json::from_value(serde_json::json!("standard")).map_err(
-                            |error| {
-                                format!("failed to decode standard delegation capability: {error}")
-                            },
-                        )?,
+                        current_session_id: lifecycle_event.parent_session_id.clone(),
+                        proposed_child_session_id: lifecycle_event.child_session_id.clone(),
+                        proposed_child_resident_name: lifecycle_event.route_key.clone(),
+                        proposed_child_capability,
+                        expected_generation: snapshot.generation,
+                        evidence_refs: vec![
+                            lifecycle_event.payload_digest.clone(),
+                            lifecycle_event.profile_digest.clone(),
+                            format!("route:{}", lifecycle_event.route_key),
+                        ],
+                        observed_at_ms: lifecycle_event.observed_at.saturating_mul(1_000),
                     },
                 )
                 .await?;
-        }
-        let snapshot = runtime_registry
-            .read_control_plane_snapshot(
-                lifecycle_event.project_id.clone(),
-                lifecycle_event.root_session_id.clone(),
-            )
-            .await?;
-        let proposed_child_capability = match route.focus_mode {
-            agent_semantic_config::agent_route_registry::AgentFocusMode::Standard => {
-                serde_json::from_value(serde_json::json!("standard")).map_err(|error| {
-                    format!("failed to decode standard delegation capability: {error}")
-                })?
+            if serde_json::to_value(&transaction.admission.decision)
+                .map_err(|error| format!("failed to encode delegation decision: {error}"))?
+                == serde_json::json!("denied")
+            {
+                return Err(transaction
+                    .admission
+                    .reason_kind
+                    .unwrap_or_else(|| "focused-agent-delegation-denied".to_owned()));
             }
-            agent_semantic_config::agent_route_registry::AgentFocusMode::Leaf => {
-                serde_json::from_value(serde_json::json!("focused-leaf")).map_err(|error| {
-                    format!("failed to decode focused-leaf delegation capability: {error}")
-                })?
-            }
-        };
-        let transaction = runtime_registry
-            .admit_control_plane_delegation(
-                agent_semantic_client_db::SessionControlPlaneDelegationProposal {
-                    event_id: lifecycle_event.host_event_id.clone(),
-                    project_id: lifecycle_event.project_id.clone(),
-                    root_session_id: lifecycle_event.root_session_id.clone(),
-                    current_session_id: lifecycle_event.parent_session_id.clone(),
-                    proposed_child_session_id: lifecycle_event.child_session_id.clone(),
-                    proposed_child_resident_name: lifecycle_event.route_key.clone(),
-                    proposed_child_capability,
-                    expected_generation: snapshot.generation,
-                    evidence_refs: vec![
-                        lifecycle_event.payload_digest.clone(),
-                        lifecycle_event.profile_digest.clone(),
-                        format!("route:{}", lifecycle_event.route_key),
-                    ],
-                    observed_at_ms: lifecycle_event.observed_at.saturating_mul(1_000),
-                },
-            )
-            .await?;
-        if serde_json::to_value(&transaction.admission.decision)
-            .map_err(|error| format!("failed to encode delegation decision: {error}"))?
-            == serde_json::json!("denied")
-        {
-            return Err(transaction
-                .admission
-                .reason_kind
-                .unwrap_or_else(|| "focused-agent-delegation-denied".to_owned()));
         }
-    }
-    if let Ok(Some(runtime_registry)) =
-        agent_semantic_client_db::AgentSessionRegistry::open_runtime_project_proxy(project_root)
-        && tokio::time::timeout(
-            // Host lifecycle delivery is a local Runtime IPC round trip, not
-            // part of the synchronous policy-classification budget.  A
-            // sub-millisecond deadline made healthy Runtime registrations
-            // spuriously fall back to the workspace mmap inbox, which a
-            // read-only Agent cannot acknowledge.  Keep the hand-off bounded
-            // while allowing the Runtime owner to durably register the child.
+        tokio::time::timeout(
             std::time::Duration::from_millis(100),
             runtime_registry.record_host_lifecycle_event_async(lifecycle_event.clone()),
         )
         .await
-        .is_ok_and(|result| result.is_ok())
-    {
-        return Ok(HostLifecycleDisposition::Recorded);
+        .map_err(|_| "Host lifecycle Runtime reconciliation timed out".to_owned())??;
+        Ok::<(), String>(())
     }
-    Err("host-lifecycle-runtime-delivery-required".to_owned())
+    .await;
+
+    Ok(HostLifecycleDisposition::Recorded)
 }
 
 fn host_lifecycle_kind(client: &str, event: &str) -> Option<AgentHostLifecycleEventKind> {

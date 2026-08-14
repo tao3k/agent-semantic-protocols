@@ -262,45 +262,6 @@ mod discovery_task_tests;
 #[path = "../tests/unit/workspace_db_ipc_server_generation_mutation.rs"]
 mod mutation_submission_tests;
 
-pub(super) async fn ensure_runtime_generation_ready(
-    memory_registry: &RuntimeServerWorkspaceRegistry,
-    generation_admission: Option<std::sync::Arc<WorkspaceGenerationAdmission>>,
-    workspace_identity: &str,
-    project_root: String,
-) -> WorkspaceDbIpcResult {
-    let Some(admission) = generation_admission else {
-        return WorkspaceDbIpcResult::Failed {
-            code: "runtime-server-generation-admission-unavailable".to_owned(),
-            message: "Runtime Server has no canonical generation builder".to_owned(),
-        };
-    };
-    let project_root_path = PathBuf::from(&project_root);
-    match publish_lifecycle_generation(
-        memory_registry,
-        Some(std::sync::Arc::clone(&admission)),
-        workspace_identity,
-        project_root,
-    )
-    .await
-    {
-        Ok(()) => match admission.current(workspace_identity, &project_root_path) {
-            Some(receipt) => WorkspaceDbIpcResult::RuntimeGenerationReady { receipt },
-            None => WorkspaceDbIpcResult::Failed {
-                code: "runtime-server-generation-ready-receipt-missing".to_owned(),
-                message: format!(
-                    "Runtime generation became ready without a resident admission receipt: workspaceIdentity={} projectRoot={}",
-                    workspace_identity,
-                    project_root_path.display(),
-                ),
-            },
-        },
-        Err(message) => WorkspaceDbIpcResult::Failed {
-            code: "runtime-server-generation-ready-failed".to_owned(),
-            message,
-        },
-    }
-}
-
 pub(super) fn submit_mutation(
     memory_registry: std::sync::Arc<RuntimeServerWorkspaceRegistry>,
     generation_admission: Option<std::sync::Arc<WorkspaceGenerationAdmission>>,

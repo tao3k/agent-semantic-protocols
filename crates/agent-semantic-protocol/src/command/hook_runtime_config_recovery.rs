@@ -545,7 +545,7 @@ pub(crate) struct LoadedHookConfig {
 }
 
 fn recovery_instruction() -> &'static str {
-    "run `asp hook refresh --client codex`; if binary/config admission fails, run a validated candidate `<candidate-asp> install binary --target <ASP_STATE_HOME>/runtime/bin/asp`"
+    "automatic Hook matcher publication could not recover; repair invalid source config or atomically install a validated candidate `<candidate-asp> install binary --target <ASP_STATE_HOME>/runtime/bin/asp` through the Host bootstrap channel"
 }
 
 fn append_file_identity(hasher: &mut Sha256, path: &Path) -> Result<(), String> {
@@ -588,56 +588,70 @@ pub(crate) fn load_fresh_hook_config(
     shell_read_keys: &[agent_semantic_hook::ShellReadSourceKey],
     shell_command_key: Option<&agent_semantic_hook::ShellCommandKey>,
 ) -> Result<(LoadedHookConfig, &'static str), String> {
-    match load_active_matcher(
-        config_path,
-        project_root,
-        direct_read_extension,
-        direct_read_path,
-        shell_read_keys,
-        shell_command_key,
-    ) {
+    let load_requested = || {
+        load_active_matcher(
+            config_path,
+            project_root,
+            direct_read_extension,
+            direct_read_path,
+            shell_read_keys,
+            shell_command_key,
+        )
+    };
+    let has_specialized_request = direct_read_extension.is_some()
+        || !shell_read_keys.is_empty()
+        || shell_command_key.is_some();
+    let load_complete = || load_active_matcher(config_path, project_root, None, None, &[], None);
+
+    match load_requested() {
         Ok(Some(loaded)) => return Ok((loaded, "mmap-hit")),
-        Ok(None)
-            if direct_read_extension.is_some()
-                || !shell_read_keys.is_empty()
-                || shell_command_key.is_some() =>
-        {
-            // An unregistered extension intentionally has no decision shard.
-            // Fall back to the immutable complete matcher instead of treating
-            // a policy allow case as a cache miss that republishes generation.
-            match load_active_matcher(config_path, project_root, None, None, &[], None) {
-                Ok(Some(loaded)) => return Ok((loaded, "mmap-hit")),
-                Ok(None) => {}
-                Err(error) => {
-                    return Err(format!(
-                        "Hook matcher Binary v1 is corrupt for {}: {error}; {}",
-                        project_root.display(),
-                        recovery_instruction()
-                    ));
-                }
+        Ok(None) if has_specialized_request => {
+            if let Ok(Some(loaded)) = load_complete() {
+                return Ok((loaded, "mmap-hit"));
             }
         }
+        Ok(None) | Err(_) => {}
+    }
+
+    publish_hook_matcher_generation(config_path, project_root).map_err(|error| {
+        format!(
+            "Hook matcher Binary v1 automatic publication failed for {}: {error}",
+            project_root.display()
+        )
+    })?;
+
+    match load_requested() {
+        Ok(Some(loaded)) => return Ok((loaded, "self-recovered")),
+        Ok(None) if has_specialized_request => match load_complete() {
+            Ok(Some(loaded)) => return Ok((loaded, "self-recovered")),
+            Ok(None) => {}
+            Err(error) => {
+                return Err(format!(
+                    "Hook matcher Binary v1 reload failed after automatic publication for {}: {error}",
+                    project_root.display()
+                ));
+            }
+        },
         Ok(None) => {}
         Err(error) => {
             return Err(format!(
-                "Hook matcher Binary v1 is corrupt for {}: {error}; {}",
-                project_root.display(),
-                recovery_instruction()
+                "Hook matcher Binary v1 reload failed after automatic publication for {}: {error}",
+                project_root.display()
             ));
         }
     }
     Err(format!(
-        "Hook matcher Binary v1 is not published for {}; config={}; {}",
+        "Hook matcher Binary v1 remained unavailable after automatic publication for {}; config={}",
         project_root.display(),
         config_path.display(),
-        recovery_instruction()
     ))
 }
 
 /// Compile and atomically publish one workspace's immutable Hook matcher.
 ///
-/// This is a control-plane operation used by canonical install/config refresh.
-/// Host action evaluation must never call it.
+/// This is a bounded control-plane operation used by canonical installation and
+/// by one in-process recovery attempt when the immutable matcher is absent or
+/// corrupt. It does not invoke the Hook CLI or recursively re-enter PreToolUse.
 pub(crate) fn publish_hook_matcher_generation(
     config_path: &Path,
     project_root: &Path,

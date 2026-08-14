@@ -30,7 +30,7 @@ fn resident_exact_adapter_does_not_own_diagnostic_policy() {
         );
     }
     assert!(adapter_source.contains("crate::exact_projection_diagnostic_io::"));
-    assert!(adapter_source.contains("runtime_server_workspace_exact_projection_client_async"));
+    assert!(adapter_source.contains("runtime_server_workspace_exact_projection_async"));
     assert!(!adapter_source.contains("ensure_runtime_generation_ready"));
     assert!(
         !adapter_source.contains("runtime_server_workspace_session_async"),
@@ -115,9 +115,7 @@ fn contains_command_token(source: &str, token: &str) -> bool {
     })
 }
 
-use implementation::{
-    ProviderExactResolutionRender, ProviderNativeExactResolution, render_provider_exact_resolution,
-};
+use implementation::{ProviderNativeExactResolution, render_provider_exact_resolution};
 
 fn missing_resolution() -> ProviderNativeExactResolution {
     ProviderNativeExactResolution {
@@ -137,42 +135,16 @@ fn missing_resolution() -> ProviderNativeExactResolution {
         item_name: "missing".to_owned(),
         candidates: vec!["rust://src/runtime_server.rs#item/function/live".to_owned()],
         actual_kinds: Vec::new(),
-        recommended_next: None,
     }
 }
 
 #[test]
 fn default_resolution_is_a_human_failure_not_json_stdout() {
-    let rendered = render_provider_exact_resolution(
-        &missing_resolution(),
-        implementation::ProviderExactResolutionFormat::Human,
-        None,
-    )
-    .expect("human diagnostic should render");
-    let ProviderExactResolutionRender::Diagnostic(diagnostic) = rendered else {
-        panic!("default resolution must not be encoded as JSON output");
-    };
+    let diagnostic = render_provider_exact_resolution(&missing_resolution());
     assert!(!diagnostic.starts_with('{'));
     assert!(diagnostic.contains("state=item-missing"));
     assert!(diagnostic.contains("reasonKind=item-not-in-live-owner"));
     assert!(!diagnostic.contains(" next="));
-}
-
-#[test]
-fn explicit_json_resolution_preserves_the_typed_packet() {
-    let rendered = render_provider_exact_resolution(
-        &missing_resolution(),
-        implementation::ProviderExactResolutionFormat::Json,
-        None,
-    )
-    .expect("JSON packet should render");
-    let ProviderExactResolutionRender::Output(output) = rendered else {
-        panic!("explicit JSON mode must return typed output");
-    };
-    let value: serde_json::Value =
-        serde_json::from_slice(&output).expect("rendered packet should be JSON");
-    assert_eq!(value["resolutionState"], "item-missing");
-    assert_eq!(value["reasonKind"], "item-not-in-live-owner");
 }
 
 #[test]
@@ -191,7 +163,6 @@ fn diagnostic_owner_constructs_stale_selector_receipt() {
         item_name: "missing".to_owned(),
         candidates: Vec::new(),
         actual_kinds: Vec::new(),
-        workspace: ".".to_owned(),
     });
 
     assert_eq!(resolution.resolution_state, "selector-stale");
@@ -202,14 +173,6 @@ fn diagnostic_owner_constructs_stale_selector_receipt() {
     );
     assert_eq!(resolution.item_kind, "function");
     assert_eq!(resolution.item_name, "missing");
-    assert_eq!(
-        resolution
-            .recommended_next
-            .as_ref()
-            .expect("stale selector must carry recovery")
-            .command,
-        "asp rust search lexical --query 'missing' --query 'function missing' --workspace . --view seeds"
-    );
 }
 
 #[test]
@@ -229,18 +192,9 @@ fn active_owner_item_missing_is_terminal_and_cannot_repeat_discovery() {
         item_name: "definitely_missing".to_owned(),
         candidates: vec!["rust://src/runtime_server.rs#item/function/live".to_owned()],
         actual_kinds: Vec::new(),
-        workspace: ".".to_owned(),
     });
 
-    assert!(resolution.recommended_next.is_none());
-    let ProviderExactResolutionRender::Diagnostic(diagnostic) = render_provider_exact_resolution(
-        &resolution,
-        implementation::ProviderExactResolutionFormat::Human,
-        None,
-    )
-    .expect("terminal miss should render") else {
-        panic!("terminal miss must remain a diagnostic")
-    };
+    let diagnostic = render_provider_exact_resolution(&resolution);
     assert!(diagnostic.contains("state=item-missing"));
     assert!(!diagnostic.contains(" next="));
 }

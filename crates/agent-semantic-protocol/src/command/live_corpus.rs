@@ -136,9 +136,9 @@ struct LiveCorpusSyncReceiptV1 {
     status: &'static str,
 }
 
-pub(crate) fn run_live_corpus_command(args: &[String]) -> Result<(), String> {
+pub(crate) async fn run_live_corpus_command(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
-        Some("materialize") => materialize(parse_materialize_request(&args[1..])?),
+        Some("materialize") => materialize(parse_materialize_request(&args[1..])?).await,
         Some("path") => print_path(parse_path_request(&args[1..])?),
         Some("sync") => sync_resource(parse_resource_request(&args[1..], sync_usage)?),
         Some("help" | "--help" | "-h") => {
@@ -232,7 +232,7 @@ fn parse_materialize_request(args: &[String]) -> Result<MaterializeRequest, Stri
     })
 }
 
-fn materialize(request: MaterializeRequest) -> Result<(), String> {
+async fn materialize(request: MaterializeRequest) -> Result<(), String> {
     let total_started = std::time::Instant::now();
     let mut step_started = total_started;
     let lock = load_lock(&request.lock_path)?;
@@ -270,7 +270,7 @@ fn materialize(request: MaterializeRequest) -> Result<(), String> {
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
     let activation_path = provider_activation_path(&invocation_root);
     let runtime =
-        load_activation_for_language(&activation_path, &invocation_root, &corpus.language)?;
+        load_activation_for_language(&activation_path, &invocation_root, &corpus.language).await?;
     emit_live_corpus_timing("activation", &mut step_started);
     let provider = runtime
         .providers

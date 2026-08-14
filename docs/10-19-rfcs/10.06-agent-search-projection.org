@@ -21,6 +21,23 @@
 
 * Search projection summary
 
+Public exact query and derived search projection are separate protocols, not
+output modes of one command.  A public exact query has one meaning: resolve one
+parser-owned selector and return its source bytes with typed source authority.
+It has no projection flag, JSON flag, callable-skeleton fallback, or provider
+packet output.
+
+Callable skeletons belong exclusively to the Runtime Server's internal search
+derived-projection API.  Search may consume that typed projection while ranking
+or refining evidence, but neither CLI nor Hook may expose its machine envelope
+as code.  Exact-source requests and derived-projection requests use disjoint
+request and response schemas; a component receiving the wrong schema fails
+closed before rendering or caching the payload.
+
+Recommended next work is a typed action owned by the Runtime Server.  Free-form
+command strings are not protocol authority and must not cross the Runtime,
+CLI, Hook, or agent boundary.
+
 Every agent-facing =search= response carries a typed decision graph feature:
 schema-owned semantic graph facts are projected into role-typed aliases,
 grouped relation edges, a legend-declared search root, algorithm-owned rank,

@@ -22,7 +22,7 @@ pub(super) async fn run_telemetry_query(args: TelemetryQueryArgs) -> Result<(), 
         );
     let receipt =
         agent_semantic_client_db::runtime_server_opentelemetry::query_runtime_performance(
-            &super::runtime_server_telemetry_query_socket_path(&state_home),
+            &super::runtime_server_telemetry_query_socket_path(&state_home)?,
             &query,
         )
         .await?;

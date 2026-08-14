@@ -1,16 +1,13 @@
 use crate::exact_projection_diagnostic::{
-    ProviderExactResolutionFormat, ProviderExactResolutionRender, ProviderNativeExactResolution,
-    render_provider_exact_resolution, validate_resolution,
+    ProviderNativeExactResolution, render_provider_exact_resolution, validate_resolution,
 };
 
 pub(crate) async fn emit_resolution(
     resolution: &ProviderNativeExactResolution,
     language_id: &str,
     provider_id: &str,
-    format: ProviderExactResolutionFormat,
     owner_path: &str,
     structural_selector: &str,
-    provider_output: Option<&[u8]>,
 ) -> Result<(), String> {
     validate_resolution(
         resolution,
@@ -19,12 +16,7 @@ pub(crate) async fn emit_resolution(
         owner_path,
         structural_selector,
     )?;
-    match render_provider_exact_resolution(resolution, format, provider_output)? {
-        ProviderExactResolutionRender::Output(output) => {
-            write_stdout(&output, "exact-selector resolution").await
-        }
-        ProviderExactResolutionRender::Diagnostic(diagnostic) => Err(diagnostic),
-    }
+    Err(render_provider_exact_resolution(resolution))
 }
 
 pub(crate) async fn write_stdout(bytes: &[u8], subject: &str) -> Result<(), String> {

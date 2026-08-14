@@ -26,6 +26,11 @@ use tokio::{io::BufStream, net::UnixStream};
 /// This is deliberately local to IPC. It is not a process-startup or
 /// generation-admission budget, and a timeout never authorizes repair.
 const SEARCH_DATA_PLANE_IO_BUDGET: std::time::Duration = std::time::Duration::from_millis(500);
+/// Per-operation deadline for the stateful incremental Tree-sitter query.
+///
+/// Unlike immutable data-plane reads this operation advances Runtime-owned
+/// query state, so it has a distinct budget and must never be retried locally.
+const TREE_SITTER_QUERY_IO_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 const RUNTIME_HEALTH_IO_BUDGET: std::time::Duration = std::time::Duration::from_millis(500);
 
 #[derive(Debug)]
@@ -39,6 +44,7 @@ pub(in crate::workspace_db_ipc) struct WorkspaceDbIpcSessionState {
     client_id: u64,
     next_request_id: std::sync::atomic::AtomicU64,
     lanes: Vec<tokio::sync::Mutex<Option<BufStream<UnixStream>>>>,
+    runtime_mutation_capable: bool,
     pub(in crate::workspace_db_ipc) runtime_generation_mutations:
         std::sync::OnceLock<std::sync::Arc<MutationWorkspaceLane>>,
     pub(in crate::workspace_db_ipc) runtime_search_generation_authority:
@@ -67,6 +73,7 @@ impl WorkspaceDbIpcSession {
             lanes: (0..read_lane_capacity)
                 .map(|_| tokio::sync::Mutex::new(None))
                 .collect(),
+            runtime_mutation_capable: matches!(profile, WorkspaceDbSessionProfile::Full),
             runtime_generation_mutations: std::sync::OnceLock::new(),
             runtime_search_generation_authority: tokio::sync::OnceCell::new(),
         })
@@ -155,6 +162,29 @@ impl WorkspaceDbIpcSession {
         Self { endpoint, shared }
     }
 
+    /// Bind a typed Runtime client without exposing generation-pointer or mmap
+    /// authority to the caller. Mutations still execute exclusively in the
+    /// daemon's Tokio writer lanes through typed IPC operations.
+    pub fn for_runtime_server_client(
+        endpoint: &crate::runtime_server_control::RuntimeServerEndpoint,
+        workspace_identity: impl Into<String>,
+        project_root: PathBuf,
+    ) -> Self {
+        let endpoint = WorkspaceDbSessionBinding {
+            workspace_identity: workspace_identity.into(),
+            project_root: Some(project_root),
+            transport_contract_digest: endpoint.transport_contract_digest.clone(),
+            owner_epoch: endpoint.owner_epoch,
+            runtime_binary_path: endpoint.runtime_artifact_path.clone(),
+            runtime_binary_digest: endpoint.runtime_artifact_digest.clone(),
+            binding_token: endpoint.binding_token.clone(),
+            socket_path: endpoint.data_plane_socket_path.clone(),
+            generation_pointer_path: None,
+        };
+        let shared = Self::new_state(WorkspaceDbSessionProfile::Full);
+        Self { endpoint, shared }
+    }
+
     pub(in crate::workspace_db_ipc) fn runtime_project_root(&self) -> Result<&Path, String> {
         self.endpoint.project_root.as_deref().ok_or_else(|| {
             "Runtime Server operation requires a session-bound project root".to_owned()
@@ -236,6 +266,27 @@ impl WorkspaceDbIpcSession {
         &self,
         operation: WorkspaceDbIpcOperation,
     ) -> Result<WorkspaceDbIpcResult, String> {
+        if !self.shared.runtime_mutation_capable
+            && matches!(
+                &operation,
+                WorkspaceDbIpcOperation::PublishRuntimeSelectorOverlay { .. }
+                    | WorkspaceDbIpcOperation::RebindRuntimeSelectorOverlay { .. }
+                    | WorkspaceDbIpcOperation::AdmitRuntimeGeneration { .. }
+                    | WorkspaceDbIpcOperation::SubmitRuntimeGenerationMutation { .. }
+                    | WorkspaceDbIpcOperation::WriteProviderIncrementalOwner { .. }
+                    | WorkspaceDbIpcOperation::WriteProviderTreeSitterOwnerResult { .. }
+                    | WorkspaceDbIpcOperation::UpsertProviderInventory { .. }
+                    | WorkspaceDbIpcOperation::FinishWrites { .. }
+                    | WorkspaceDbIpcOperation::PublishRuntimeOwner { .. }
+                    | WorkspaceDbIpcOperation::TombstoneRuntimeOwner { .. }
+                    | WorkspaceDbIpcOperation::RelocateRuntimeOwner { .. }
+            )
+        {
+            return Err(
+                "runtime-client-capability-denied: read-only session cannot submit Runtime mutations"
+                    .to_owned(),
+            );
+        }
         if is_search_data_plane_read(&operation) {
             return match tokio::time::timeout(
                 SEARCH_DATA_PLANE_IO_BUDGET,
@@ -249,6 +300,26 @@ impl WorkspaceDbIpcSession {
                     Err(format!(
                         "runtime-search-io-timeout: immutable data-plane read exceeded {}ms",
                         SEARCH_DATA_PLANE_IO_BUDGET.as_millis()
+                    ))
+                }
+            };
+        }
+        if matches!(
+            &operation,
+            WorkspaceDbIpcOperation::ProjectTreeSitterQuery { .. }
+        ) {
+            return match tokio::time::timeout(
+                TREE_SITTER_QUERY_IO_BUDGET,
+                self.call_operation_inner(operation),
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(_) => {
+                    self.discard_idle_connection_lanes();
+                    Err(format!(
+                        "runtime-tree-sitter-query-timeout: Runtime-owned incremental query exceeded {}ms",
+                        TREE_SITTER_QUERY_IO_BUDGET.as_millis()
                     ))
                 }
             };

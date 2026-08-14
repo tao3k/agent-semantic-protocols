@@ -15,7 +15,6 @@ pub(super) fn search_owner_items_owner_path(args: &[String]) -> Option<&str> {
     args.get(2).map(String::as_str)
 }
 
-
 pub(super) fn run_activated_owner_language_preflight(
     language_id: &str,
     command_args: &[String],

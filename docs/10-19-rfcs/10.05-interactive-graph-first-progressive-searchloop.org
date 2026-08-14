@@ -186,6 +186,48 @@ the root development installer.
 
 **** Runtime generation incremental admission
 
+Exact source reads and search-derived projections use disjoint Tokio data-plane
+operations.  The exact-source operation accepts a parser-owned selector and
+returns source bytes only.  The search projection operation is Runtime-internal
+and may return callable-skeleton or other derived facts to SearchLoop.  CLI and
+Hook are typed clients of those operations and cannot choose an alternate
+projection, request raw provider JSON, or reinterpret one operation's response
+as the other.
+
+The Runtime Server rejects request/response schema drift at admission.  There
+is no compatibility fallback from exact source to derived projection, no local
+CLI/provider execution path, and no free-form recommended command string.
+
+V1 assigns all provider runtime resolution, workspace mutation, generation
+admission, selector rebind, single-flight coordination, lifecycle completion,
+and timeout authority to the resident ASP Runtime Server.  CLI and Hook
+processes are typed clients only: they may parse public arguments and render
+receipts, but they MUST NOT construct provider runtimes, mutate activation or
+generation state, open mmap/generation pointers, coordinate daemon ownership,
+or treat elapsed performance thresholds as lifecycle correctness.
+
+Runtime clients MUST declare an explicit capability.  A read-only capability
+MUST reject every mutating operation before transport I/O.  A mutation-capable
+client still receives no mmap or generation-pointer authority; it submits a
+typed V1 operation whose state transition executes in the daemon's Tokio
+writer lane.  A client API whose name or profile claims read-only authority
+MUST NOT be used to publish or rebind selector overlays.
+
+Registered language and provider identity is catalog-derived.  The Runtime
+Server resolves provider selection and executable profiles from the registered
+provider catalog and returns a versioned typed projection.  Language facade,
+Hook, and CLI code MUST NOT carry a hard-coded language set or synthesize a
+provider runtime locally.  Provider processes are supervised by Tokio tasks;
+environment construction and process execution belong to the Runtime command
+operation rather than the CLI dispatcher.
+
+Tokio timeout is a failure containment mechanism, not a performance assertion.
+Lifecycle completion is established by typed owner/start/exit receipts and
+matching epochs.  Fixed elapsed-time gates, busy-yield polling, and local
+preflight loops MUST NOT decide Runtime correctness.  Performance budgets are
+reported separately as telemetry and never change a successful typed state
+transition into a failure.
+
 Registered language runtime cold start is a Tokio Runtime Server operation, not
 a CLI activation-materialization operation.  The V1 client sends a typed
 =EnsureProviderRuntime= intent and consumes the daemon's provider-runtime

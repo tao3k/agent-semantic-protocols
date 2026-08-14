@@ -247,6 +247,91 @@ async fn owner_overlay_cannot_manufacture_a_canonical_generation() {
     let _ = tokio::fs::remove_dir_all(root).await;
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn selector_overlay_atomically_rebinds_a_stale_generation_owner() {
+    let root = fixture_root();
+    let workspace_identity = "workspace-selector-live-owner-rebind";
+    let selector = "rust://src/lib.rs#item/function/live";
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(root.clone()).expect("create workspace registry");
+    let base =
+        generation_with_selectors(workspace_identity, &root, 1, b"fn stale() {}", Vec::new());
+    registry
+        .publish(
+            "selector-live-owner-base",
+            WorkspaceRecoverySource::TursoGeneration,
+            base,
+        )
+        .await
+        .expect("publish canonical base generation");
+
+    let bytes = b"fn live() {}".to_vec();
+    let owner_content_digest = format!("blake3-256:{}", blake3::hash(&bytes).to_hex());
+    let owner = WorkspaceOwnerSnapshot {
+        owner_path: "src/lib.rs".to_owned(),
+        content_digest: owner_content_digest.clone(),
+        bytes: bytes.clone(),
+        selectors: vec![
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot {
+                selector: selector.to_owned(),
+                byte_start: 0,
+                byte_end: bytes.len(),
+                derived_projections: Vec::new(),
+            },
+        ],
+    };
+    let receipt = registry
+        .rebind_selector_overlay(
+            workspace_identity,
+            &root,
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRebind {
+                owner,
+                overlay:
+                    agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorOverlay {
+                projection_kind:
+                    agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::Source,
+                structural_selector: selector.to_owned(),
+                owner_path: "src/lib.rs".to_owned(),
+                owner_content_digest: owner_content_digest.clone(),
+                byte_start: 0,
+                byte_end: bytes.len(),
+                projection_bytes: bytes.clone(),
+                    },
+            },
+        )
+        .await
+        .expect("atomically rebind live owner and selector projection");
+    assert!(receipt.inserted);
+    let rebound_owner = registry
+        .read_runtime_owner(workspace_identity, &root, "src/lib.rs")
+        .expect("read rebound resident owner");
+    assert!(matches!(
+        rebound_owner,
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::Owner {
+            owner,
+            ..
+        } if owner.content_digest == owner_content_digest
+    ));
+    assert!(matches!(
+        registry
+            .read_runtime_selector(
+                workspace_identity,
+                &root,
+                agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::Source,
+                selector,
+            )
+            .expect("read rebound selector projection"),
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead::Projection {
+            bytes: projection,
+            ..
+        } if projection == bytes
+    ));
+
+    let shutdown = registry.shutdown().await.expect("drain writer lane");
+    assert!(shutdown.queued_publications_drained);
+    let _ = tokio::fs::remove_dir_all(root).await;
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn moved_owner_overlay_publishes_one_atomic_relocation_epoch() {
     let root = fixture_root();

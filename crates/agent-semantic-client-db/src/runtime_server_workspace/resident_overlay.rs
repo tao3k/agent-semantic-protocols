@@ -250,6 +250,56 @@ impl ResidentOverlayStore {
         ))
     }
 
+    pub(super) fn rebind_selector(
+        &self,
+        base: &WorkspaceMemoryGeneration,
+        workspace_identity: &str,
+        rebind: super::model::WorkspaceRuntimeSelectorRebind,
+    ) -> Result<
+        (
+            WorkspaceRuntimeSelectorOverlayReceipt,
+            Option<ResidentOverlaySnapshot>,
+        ),
+        String,
+    > {
+        let super::model::WorkspaceRuntimeSelectorRebind { owner, overlay } = rebind;
+        if owner.owner_path != overlay.owner_path
+            || owner.content_digest != overlay.owner_content_digest
+        {
+            return Err("runtime selector rebind live owner identity mismatch".to_owned());
+        }
+        validate_owner(&owner)?;
+        let mut state = self.staged_state(base);
+        let owner_path = owner.owner_path.clone();
+        let owner_digest = owner.content_digest.clone();
+        state.owners.insert(owner_path.clone(), owner.clone());
+        state.tombstones.remove(&owner_path);
+        state
+            .selectors
+            .retain(|_, selector| selector.owner_path != owner_path);
+        state.workspace_snapshot = state
+            .workspace_snapshot
+            .with_overlay([(owner_path, owner_digest)]);
+        validate_selector_overlay(&owner, &overlay)?;
+        let key = (
+            overlay.projection_kind.clone(),
+            overlay.structural_selector.clone(),
+        );
+        state.selectors.insert(key, overlay.clone());
+        state.advance();
+        let receipt = WorkspaceRuntimeSelectorOverlayReceipt {
+            schema_id: super::model::WORKSPACE_RUNTIME_SELECTOR_OVERLAY_RECEIPT_SCHEMA_ID
+                .to_owned(),
+            schema_version: "1".to_owned(),
+            workspace_identity: workspace_identity.to_owned(),
+            generation_digest: state.generation_digest.clone(),
+            projection_kind: overlay.projection_kind,
+            structural_selector: overlay.structural_selector,
+            inserted: true,
+        };
+        Ok((receipt, Some(ResidentOverlaySnapshot { state })))
+    }
+
     fn staged_state(&self, base: &WorkspaceMemoryGeneration) -> ResidentOverlayState {
         let state = self.state.read();
         if state.base_generation_digest == base.generation_digest {
@@ -537,6 +587,13 @@ fn validate_selector_overlay(
 ) -> Result<(), String> {
     if owner.content_digest != overlay.owner_content_digest {
         return Err("runtime selector overlay owner digest drift".to_owned());
+    }
+    if !owner.selectors.iter().any(|selector| {
+        selector.selector == overlay.structural_selector
+            && selector.byte_start == overlay.byte_start
+            && selector.byte_end == overlay.byte_end
+    }) {
+        return Err("runtime selector overlay is not declared by the admitted owner".to_owned());
     }
     let source = owner
         .bytes

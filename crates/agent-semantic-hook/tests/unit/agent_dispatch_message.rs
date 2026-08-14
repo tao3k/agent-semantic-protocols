@@ -14,7 +14,7 @@ fn explorer_message_keeps_only_the_native_call_target_in_identity_backticks() {
 
     assert_eq!(
         rendered,
-        "Please use `asp session --agents choice-plane` to create or resume the Subagent `@asp_explorer` (Evidence Explorer; for code and evidence search)."
+        "This operation is denied only in the current Agent; ASP remains available. Please use `asp session --agents choice-plane` to create or resume the Subagent `@asp_explorer` (Evidence Explorer; for code and evidence search)."
     );
 }
 
@@ -29,7 +29,7 @@ fn testing_message_uses_the_same_four_slot_grammar() {
 
     assert_eq!(
         rendered,
-        "Please use `asp session --agents choice-plane` to create or resume the Subagent `@asp_testing` (Test Runner; for build and test jobs)."
+        "This operation is denied only in the current Agent; ASP remains available. Please use `asp session --agents choice-plane` to create or resume the Subagent `@asp_testing` (Test Runner; for build and test jobs)."
     );
     assert_eq!(CHOICE_PLANE_COMMAND, "asp session --agents choice-plane");
 }
@@ -45,7 +45,7 @@ fn native_call_target_is_canonicalized_with_one_at_sign() {
 
     assert_eq!(
         rendered,
-        "Please use `asp session --agents choice-plane` to create or resume the Subagent `@asp_explorer` (Evidence Explorer; for code and evidence search)."
+        "This operation is denied only in the current Agent; ASP remains available. Please use `asp session --agents choice-plane` to create or resume the Subagent `@asp_explorer` (Evidence Explorer; for code and evidence search)."
     );
 }
 

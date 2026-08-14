@@ -137,6 +137,10 @@ pub enum WorkspaceDbIpcOperation {
         language_id: LanguageId,
         owner_path: String,
     },
+    ResolveProviderRuntime {
+        project_root: String,
+        language_id: LanguageId,
+    },
     ProjectTreeSitterQuery {
         project_root: String,
         language_id: LanguageId,
@@ -149,10 +153,9 @@ pub enum WorkspaceDbIpcOperation {
         project_root: String,
         overlay: crate::runtime_server_workspace::WorkspaceRuntimeSelectorOverlay,
     },
-    EnsureRuntimeGenerationReady {
-        #[serde(deserialize_with = "deserialize_mutation_id")]
-        request_id: String,
+    RebindRuntimeSelectorOverlay {
         project_root: String,
+        rebind: crate::runtime_server_workspace::WorkspaceRuntimeSelectorRebind,
     },
     AdmitRuntimeGeneration {
         #[serde(deserialize_with = "deserialize_mutation_id")]
@@ -337,6 +340,9 @@ pub enum WorkspaceDbIpcResult {
     },
     ProviderOwnerProjection {
         owner: crate::runtime_server_workspace::WorkspaceOwnerSnapshot,
+    },
+    ProviderRuntime {
+        runtime: serde_json::Value,
     },
     TreeSitterQuery {
         rendered: Option<String>,

@@ -4719,6 +4719,7 @@ dependencies = [
 name = "rust-lang-project-harness"
 version = "0.1.2"
 dependencies = [
+ "agent-semantic-content-identity",
  "cargo-lock",
  "cargo_toml",
  "proc-macro2",

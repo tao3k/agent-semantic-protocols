@@ -134,11 +134,14 @@ fn write_catalog(path: &Path, providers: &[catalog::GlobalProviderCatalogProvide
 fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
     let _runtime_snapshot_entrypoint = catalog::runtime_provider_registry_snapshot;
     let _publication_entrypoint: fn(
+        &std::path::Path,
         &[install_provider_reconcile::ProviderInstallReceipt],
     )
         -> Result<catalog::GlobalProviderCatalogPublication, String> =
         catalog::publish_global_provider_catalog;
-    let _readiness_entrypoint: fn() -> Result<catalog::GlobalProviderCatalogReadiness, String> =
+    let _readiness_entrypoint: fn(
+        &std::path::Path,
+    ) -> Result<catalog::GlobalProviderCatalogReadiness, String> =
         catalog::read_global_provider_catalog_readiness;
     let _environment_lock = ENVIRONMENT_LOCK
         .lock()
@@ -164,11 +167,11 @@ fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
     let _environment = EnvironmentGuard::install(&state_home, &fake_home);
     let catalog_path = runtime.join("provider-catalog.v1.json");
 
-    let missing = catalog::read_global_provider_catalog_readiness()
+    let missing = catalog::read_global_provider_catalog_readiness(&state_home)
         .expect_err("missing State Home catalog must fail closed");
     assert!(missing.contains("failed to read Global provider catalog"));
     std::fs::write(&catalog_path, b"{").expect("write malformed catalog");
-    let malformed = catalog::read_global_provider_catalog_readiness()
+    let malformed = catalog::read_global_provider_catalog_readiness(&state_home)
         .expect_err("malformed State Home catalog must fail closed");
     assert!(malformed.contains("failed to parse Global provider catalog"));
 
@@ -185,13 +188,13 @@ fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
     ];
     write_catalog(&catalog_path, &providers);
 
-    let readiness =
-        catalog::read_global_provider_catalog_readiness().expect("load valid provider catalog");
+    let readiness = catalog::read_global_provider_catalog_readiness(&state_home)
+        .expect("load valid provider catalog");
     assert_eq!(readiness.provider_count, 2);
 
     std::fs::write(&typescript_path, b"typescript-provider-drift")
         .expect("drift TypeScript provider metadata");
-    let digest_drift = catalog::read_global_provider_catalog_readiness()
+    let digest_drift = catalog::read_global_provider_catalog_readiness(&state_home)
         .expect_err("artifact metadata drift must fail closed");
     assert!(digest_drift.contains("artifact metadata drift"));
 
@@ -263,8 +266,8 @@ fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
         serde_json::to_vec_pretty(&obsolete_catalog).expect("encode obsolete provider catalog"),
     )
     .expect("write obsolete provider catalog");
-    let changed =
-        catalog::publish_global_provider_catalog(&receipts).expect("publish receipt catalog");
+    let changed = catalog::publish_global_provider_catalog(&state_home, &receipts)
+        .expect("publish receipt catalog");
     assert_eq!(changed.binary_byte_reads, 0);
     assert!(changed.changed_leaf_count > 0);
     assert!(changed.catalog_write);
@@ -339,7 +342,7 @@ fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
         ),
         "warm catalog reuse must reject manifest identity drift"
     );
-    let warm = catalog::publish_global_provider_catalog(&receipts)
+    let warm = catalog::publish_global_provider_catalog(&state_home, &receipts)
         .expect("reuse unchanged receipt catalog");
     assert_eq!(warm.catalog_generation, changed.catalog_generation);
     assert_eq!(warm.binary_byte_reads, 0);
@@ -377,12 +380,12 @@ fn clean_state_home_admits_empty_runtime_catalog_without_weakening_strict_reads(
     std::fs::create_dir_all(&fake_home).expect("create isolated HOME");
     let _environment = EnvironmentGuard::install(&state_home, &fake_home);
 
-    let readiness = catalog::read_runtime_provider_catalog_readiness()
+    let readiness = catalog::read_runtime_provider_catalog_readiness(&state_home)
         .expect("clean State Home must admit an empty runtime provider catalog");
     assert_eq!(readiness.provider_count, 0);
     assert!(readiness.catalog_generation.starts_with("blake3-256:"));
 
-    let strict = catalog::read_global_provider_catalog_readiness()
+    let strict = catalog::read_global_provider_catalog_readiness(&state_home)
         .expect_err("provider dispatch must still reject a missing catalog");
     assert!(strict.contains("failed to read Global provider catalog"));
 

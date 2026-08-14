@@ -2,9 +2,6 @@
 
 use std::path::Path;
 
-
-
-
 /// Reads one exact projection through the resident Runtime Server authority.
 ///
 /// The CLI process must never open the generation pointer or mmap segment. The
@@ -103,8 +100,11 @@ pub(crate) async fn runtime_server_workspace_exact_projection_async(
                 })?,
     };
     session
-        .publish_runtime_selector_overlay(
-            agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorOverlay {
+        .rebind_runtime_selector_overlay(
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRebind {
+                owner: live_owner.clone(),
+                overlay:
+                    agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorOverlay {
                 projection_kind,
                 structural_selector: requested_selector.clone(),
                 owner_path: live_owner.owner_path.clone(),
@@ -112,6 +112,7 @@ pub(crate) async fn runtime_server_workspace_exact_projection_async(
                 byte_start: selector.byte_start,
                 byte_end: selector.byte_end,
                 projection_bytes: projection_bytes.clone(),
+                    },
             },
         )
         .await?;

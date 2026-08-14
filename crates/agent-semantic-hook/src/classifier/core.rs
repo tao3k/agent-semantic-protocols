@@ -249,6 +249,14 @@ fn with_hook_match_receipt(
     config: &ClientHookConfig,
 ) -> HookDecision {
     let mut decision = with_action_receipt_fields(decision, payload, actions);
+    if decision.reason_kind == ReasonKind::SubagentReceiptRequired
+        && let Some(command) = payload_command(payload)
+        && !decision.message.contains(&command)
+    {
+        decision
+            .message
+            .push_str(&format!("\nDenied command: `{command}`."));
+    }
     if let Some((generation_digest, kernel_version)) = config.hook_policy_receipt() {
         decision.fields.insert(
             "hookPolicySnapshotDigest".to_string(),
@@ -264,6 +272,18 @@ fn with_hook_match_receipt(
         );
     }
     decision
+}
+
+fn payload_command(payload: &Value) -> Option<String> {
+    ["tool_input", "toolInput", "parameters", "input"]
+        .into_iter()
+        .filter_map(|key| payload.get(key))
+        .find_map(|input| {
+            ["cmd", "command"]
+                .into_iter()
+                .find_map(|key| input.get(key).and_then(Value::as_str))
+        })
+        .map(str::to_owned)
 }
 
 pub(super) fn with_action_receipt_fields(

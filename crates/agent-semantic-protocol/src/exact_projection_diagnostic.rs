@@ -1,11 +1,5 @@
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ProviderNativeExactRecommendedNext {
-    pub(crate) command: String,
-}
-
-#[derive(serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct ProviderNativeExactResolution {
     pub(crate) schema_id: String,
     pub(crate) schema_version: String,
@@ -23,8 +17,6 @@ pub(crate) struct ProviderNativeExactResolution {
     pub(crate) candidates: Vec<String>,
     #[serde(default)]
     pub(crate) actual_kinds: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) recommended_next: Option<ProviderNativeExactRecommendedNext>,
 }
 
 pub(crate) struct ProviderExactResolutionFacts {
@@ -40,13 +32,11 @@ pub(crate) struct ProviderExactResolutionFacts {
     pub(crate) item_name: String,
     pub(crate) candidates: Vec<String>,
     pub(crate) actual_kinds: Vec<String>,
-    pub(crate) workspace: String,
 }
 
 pub(crate) fn resolution_from_facts(
     facts: ProviderExactResolutionFacts,
 ) -> ProviderNativeExactResolution {
-    let next_query = facts.item_name.replace('\'', "");
     ProviderNativeExactResolution {
         schema_id: "agent.semantic-protocols.provider-native-exact-projection".to_owned(),
         schema_version: "1".to_owned(),
@@ -62,26 +52,7 @@ pub(crate) fn resolution_from_facts(
         item_name: facts.item_name,
         candidates: facts.candidates,
         actual_kinds: facts.actual_kinds,
-        recommended_next: (facts.resolution_state == "owner-missing").then(|| {
-            ProviderNativeExactRecommendedNext {
-                command: format!(
-                    "asp {} search lexical --query '{}' --query '{} {}' --workspace {} --view seeds",
-                    facts.language_id, next_query, facts.item_kind, next_query, facts.workspace
-                ),
-            }
-        }),
     }
-}
-
-pub(crate) enum ProviderExactResolutionRender {
-    Output(Vec<u8>),
-    Diagnostic(String),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ProviderExactResolutionFormat {
-    Human,
-    Json,
 }
 
 pub(crate) fn validate_resolution(
@@ -108,12 +79,6 @@ pub(crate) fn validate_resolution(
     if resolution.resolution_state.is_empty() || resolution.reason_kind.is_empty() {
         return Err("exact-selector semantic resolution is incomplete".to_owned());
     }
-    if resolution.resolution_state == "item-missing" && resolution.recommended_next.is_some() {
-        return Err(
-            "active-generation item-missing resolution must not request repeat discovery"
-                .to_owned(),
-        );
-    }
     validate_generation_digest(&resolution.active_generation_digest)?;
     validate_root_digest(&resolution.root_digest)?;
     Ok(())
@@ -121,20 +86,8 @@ pub(crate) fn validate_resolution(
 
 pub(crate) fn render_provider_exact_resolution(
     resolution: &ProviderNativeExactResolution,
-    format: ProviderExactResolutionFormat,
-    provider_output: Option<&[u8]>,
-) -> Result<ProviderExactResolutionRender, String> {
-    if format == ProviderExactResolutionFormat::Json {
-        let output = match provider_output {
-            Some(output) => output.to_vec(),
-            None => serde_json::to_vec(resolution)
-                .map_err(|error| format!("failed to encode exact-selector resolution: {error}"))?,
-        };
-        return Ok(ProviderExactResolutionRender::Output(output));
-    }
-    Ok(ProviderExactResolutionRender::Diagnostic(
-        render_human_diagnostic(resolution),
-    ))
+) -> String {
+    render_human_diagnostic(resolution)
 }
 
 fn render_human_diagnostic(resolution: &ProviderNativeExactResolution) -> String {
@@ -157,10 +110,6 @@ fn render_human_diagnostic(resolution: &ProviderNativeExactResolution) -> String
     if !resolution.actual_kinds.is_empty() {
         diagnostic.push_str(" actualKinds=");
         diagnostic.push_str(&resolution.actual_kinds.join(","));
-    }
-    if let Some(next) = resolution.recommended_next.as_ref() {
-        diagnostic.push_str(" next=");
-        diagnostic.push_str(&next.command);
     }
     diagnostic
 }

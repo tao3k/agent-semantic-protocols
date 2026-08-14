@@ -215,6 +215,13 @@ pub struct WorkspaceRuntimeSelectorOverlay {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct WorkspaceRuntimeSelectorRebind {
+    pub owner: WorkspaceOwnerSnapshot,
+    pub overlay: WorkspaceRuntimeSelectorOverlay,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceRuntimeSelectorOverlayReceipt {
     pub schema_id: String,
     pub schema_version: String,

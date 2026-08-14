@@ -26,7 +26,7 @@ pub(crate) struct ProviderSpec {
 pub(crate) fn provider(language_id: impl AsRef<str>, command_prefix: Vec<String>) -> ProviderSpec {
     assert!(
         command_prefix.is_empty(),
-        "State Home v1 activation fixtures cannot embed provider command prefixes"
+        "State Home v1 activation fixtures cannot embed provider command prefixes: commandPrefix={command_prefix:?}"
     );
     ProviderSpec {
         language_id: language_id.as_ref().to_string(),
@@ -295,6 +295,32 @@ pub(crate) fn asp_command(root: &Path) -> Command {
     command
 }
 
+pub(crate) struct RuntimeServerGuard {
+    root: PathBuf,
+}
+
+impl Drop for RuntimeServerGuard {
+    fn drop(&mut self) {
+        let _ = asp_command(&self.root).args(["server", "stop"]).status();
+    }
+}
+
+pub(crate) fn start_runtime_server(root: &Path) -> RuntimeServerGuard {
+    let output = asp_command(root)
+        .args(["server", "start"])
+        .output()
+        .expect("start isolated Runtime Server");
+    assert!(
+        output.status.success(),
+        "start isolated Runtime Server: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    RuntimeServerGuard {
+        root: root.to_path_buf(),
+    }
+}
+
 pub(super) fn state_runtime_bin(root: &Path) -> PathBuf {
     state_home(root).join("runtime/bin")
 }
@@ -361,6 +387,50 @@ pub(crate) fn write_marker_provider(bin_dir: &Path, binary: &str, marker: &Path)
         ),
         _ => ("test", binary, r#"[".txt"]"#),
     };
+    let candidate_generation_digest = format!(
+        "blake3-256:{}",
+        blake3::hash(
+            format!(
+                "provider-project-resolution-v1\0{language_id}\0{provider_id}\0{source_extensions}\0fixture-package\0fixture-lib\0fixture-root"
+            )
+            .as_bytes()
+        )
+        .to_hex()
+    );
+    let package_graph = serde_json::to_string(&serde_json::json!({
+        "schemaId": "agent.semantic-protocols.language-package-graph",
+        "schemaVersion": "1",
+        "languageId": language_id,
+        "providerId": provider_id,
+        "projectEntry": "Cargo.toml",
+        "parserId": provider_id,
+        "manifests": [{
+            "path": "Cargo.toml",
+            "kind": "manifest",
+            "digest": candidate_generation_digest,
+        }],
+        "lockfiles": [],
+        "packages": [{
+            "packageId": "fixture-package",
+            "name": "fixture-package",
+            "manifestPath": "Cargo.toml",
+            "root": ".",
+            "workspaceMember": true,
+            "targets": [{
+                "targetId": "fixture-lib",
+                "kind": "lib",
+                "name": "fixture-lib",
+                "explicit": true,
+                "sourceRoots": ["."],
+                "entrypoints": ["lib.rs"],
+                "generatedRoots": [],
+            }],
+        }],
+        "internalDependencyEdges": [],
+        "externalDependencies": [],
+        "unresolved": [],
+    }))
+    .expect("serialize fixture language package graph");
     write_provider_script(
         bin_dir,
         binary,
@@ -368,8 +438,7 @@ pub(crate) fn write_marker_provider(bin_dir: &Path, binary: &str, marker: &Path)
             r#"#!/bin/sh
 # agent-semantic-protocol-test-project-resolution-shim-v1
 if [ "$1" = "project-resolution-stdin" ]; then
-  candidates=$(git ls-files --cached --others --exclude-standard | awk 'BEGIN {{ sep="" }} {{ gsub(/\\\\/, "\\\\\\\\"); gsub(/"/, "\\\\\""); printf "%s{{\\\"path\\\":\\\"%s\\\"}}", sep, $0; sep="," }}')
-  printf '{{"schemaId":"agent.semantic-protocols.provider-project-resolution-response","schemaVersion":"1","languageId":"{language_id}","providerId":"{provider_id}","state":"resolved","scope":{{"schemaId":"agent.semantic-protocols.project-resolution","schemaVersion":"1","state":"resolved","completeness":"exact","repositoryCandidates":{{"candidates":[%s],"policyExclusions":[]}},"resolvedSourceScopes":[{{"roots":["."],"explicitPaths":[],"extensions":{source_extensions},"includeAuthority":"package-manager","exclusions":[]}}]}}}}\n' "$candidates"
+  printf '{{"schemaId":"agent.semantic-protocols.provider-project-resolution-response","schemaVersion":"1","languageId":"{language_id}","providerId":"{provider_id}","state":"resolved","scope":{{"schemaId":"agent.semantic-protocols.project-resolution","schemaVersion":"1","state":"resolved","completeness":"exact","languageId":"{language_id}","providerId":"{provider_id}","parserId":"{provider_id}","candidateGenerationDigest":"{candidate_generation_digest}","projectEntry":"Cargo.toml","packageGraph":{package_graph},"conflicts":[],"metrics":{{"parsedManifestCount":1,"parsedLockfileCount":0,"affectedPackageCount":1,"fullWorkspaceReads":0,"fullManifestReparses":0,"dbOpens":0,"elapsedMicros":0}},"sourceScopes":[{{"scopeId":"fixture-root","packageId":"fixture-package","targetId":"fixture-lib","roots":["."],"explicitPaths":[],"extensions":{source_extensions},"includeAuthority":"package-manager","exclusions":[]}}]}}}}\n'
   exit 0
 fi
 if [ -x '{}' ]; then
@@ -582,7 +651,8 @@ fn write_provider_install_receipts(root: &Path) {
         std::fs::write(
             lock_path,
             format!(
-                "schemaId = \"asp.provider-install-lock.v1\"\nprovider = \"{}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{}\"\ninstalledEntrypointMetadataDigest = \"{}\"\n",
+                "schemaId = \"asp.provider-install-lock.v1\"\nlanguage = \"{}\"\nprovider = \"{}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{}\"\ninstalledEntrypointMetadataDigest = \"{}\"\n",
+                manifest.language_id(),
                 manifest.provider_id(),
                 installed.display(),
                 content_digest,

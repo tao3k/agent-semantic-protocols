@@ -192,12 +192,9 @@ impl HookActivation {
             &self.protocol_version,
             HOOK_PROTOCOL_VERSION,
         )?;
-        if !matches!(
-            self.generated_by.runtime.as_str(),
-            "asp" | "agent-semantic-hook"
-        ) {
+        if self.generated_by.runtime.trim().is_empty() {
             return Err(AgentHookError::InvalidActivationConfig(format!(
-                "invalid activation generatedBy.runtime: expected asp or agent-semantic-hook, got {}",
+                "invalid activation generatedBy.runtime: expected a non-empty registered Runtime identity, got {:?}",
                 self.generated_by.runtime
             )));
         }

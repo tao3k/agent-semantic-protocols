@@ -149,11 +149,11 @@ fn non_empty_env(name: &str) -> Option<String> {
 
 fn default_agent_flow_markdown(platform: &str) -> &'static str {
     if platform.eq_ignore_ascii_case("codex") {
-        "Codex: delegate the lookup to `spawn_agent` with the ASP route below when available; otherwise run the route directly and return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next. Do not return source bodies, snippets, or line-range selectors."
+        "ASP denies this operation only in the current Agent; ASP remains available. Registered source belong in `asp <language> search`. Create or resume the Subagent with `asp session --agents choice-plane`, then delegate the lookup to `spawn_agent` with the ASP route below when available; otherwise run the route directly and return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next. Do not return source bodies, snippets, or line-range selectors."
     } else if platform.eq_ignore_ascii_case("claude") {
-        "Claude: run the ASP route below directly and return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next. Do not return source bodies, snippets, or line-range selectors."
+        "ASP denies this operation only in the current Agent; ASP remains available. Registered source belong in `asp <language> search`. Create or resume the Subagent with `asp session --agents choice-plane`, then run the ASP route below directly and return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next. Do not return source bodies, snippets, or line-range selectors."
     } else {
-        "Run the ASP route below directly and return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next. Do not return source bodies, snippets, or line-range selectors."
+        "ASP denies this operation only in the current Agent; ASP remains available. Registered source belong in `asp <language> search`. Create or resume the Subagent with `asp session --agents choice-plane`, then run the ASP route below directly and return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next. Do not return source bodies, snippets, or line-range selectors."
     }
 }
 

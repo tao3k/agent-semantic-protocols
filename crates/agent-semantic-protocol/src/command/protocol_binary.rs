@@ -527,24 +527,7 @@ fn managed_protocol_binary_path_aliases(
     primary_target: &Path,
     path_dirs: &[PathBuf],
 ) -> Result<Vec<PathBuf>, String> {
-    let runtime_root = artifact_root.parent().ok_or_else(|| {
-        format!(
-            "protocol artifact root has no runtime parent: {}",
-            artifact_root.display()
-        )
-    })?;
-    let protocol_home = runtime_root.parent().ok_or_else(|| {
-        format!(
-            "protocol runtime root has no State Home parent: {}",
-            runtime_root.display()
-        )
-    })?;
-    let state_home_alias = protocol_home.join(".bin").join(SEMANTIC_AGENT_PROTOCOL_BIN);
-    let mut aliases = if same_protocol_binary_entry(&state_home_alias, primary_target) {
-        Vec::new()
-    } else {
-        vec![state_home_alias]
-    };
+    let mut aliases = Vec::new();
     for candidate in path_dirs
         .iter()
         .map(|dir| dir.join(SEMANTIC_AGENT_PROTOCOL_BIN))

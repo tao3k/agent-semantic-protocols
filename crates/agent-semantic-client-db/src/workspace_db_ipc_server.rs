@@ -229,16 +229,17 @@ async fn dispatch_workspace_db_session_operation(
         WorkspaceDbIpcOperation::ReadRuntimeSelector { .. }
         | WorkspaceDbIpcOperation::ReadRuntimeOwner { .. }
         | WorkspaceDbIpcOperation::ProjectProviderOwner { .. }
+        | WorkspaceDbIpcOperation::ResolveProviderRuntime { .. }
         | WorkspaceDbIpcOperation::ReadRuntimeSearchGenerationAuthority { .. } => Err(
             "resident runtime selector reads are only accepted by the Runtime Server data plane"
                 .to_owned(),
         ),
-        WorkspaceDbIpcOperation::PublishRuntimeSelectorOverlay { .. } => Err(
+        WorkspaceDbIpcOperation::PublishRuntimeSelectorOverlay { .. }
+        | WorkspaceDbIpcOperation::RebindRuntimeSelectorOverlay { .. } => Err(
             "resident runtime selector writes are only accepted by the Runtime Server data plane"
                 .to_owned(),
         ),
-        WorkspaceDbIpcOperation::EnsureRuntimeGenerationReady { .. }
-        | WorkspaceDbIpcOperation::AdmitRuntimeGeneration { .. }
+        WorkspaceDbIpcOperation::AdmitRuntimeGeneration { .. }
         | WorkspaceDbIpcOperation::SubmitRuntimeGenerationMutation { .. }
         | WorkspaceDbIpcOperation::ReadRuntimeGenerationDurability { .. }
         | WorkspaceDbIpcOperation::ReadRuntimeGraphFacts { .. }
@@ -622,6 +623,29 @@ pub async fn serve_runtime_server_workspace_stream(
                             .to_owned(),
                     },
                 },
+                WorkspaceDbIpcOperation::ResolveProviderRuntime {
+                    project_root,
+                    language_id,
+                } => match runtime_search_service {
+                    Some(service) => match service
+                        .provider_runtime(
+                            Path::new(&project_root).to_path_buf(),
+                            language_id.to_string(),
+                        )
+                        .await
+                    {
+                        Ok(runtime) => WorkspaceDbIpcResult::ProviderRuntime { runtime },
+                        Err(message) => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-provider-runtime-resolution-failed".to_owned(),
+                            message,
+                        },
+                    },
+                    None => WorkspaceDbIpcResult::Failed {
+                        code: "runtime-server-provider-runtime-resolution-unavailable".to_owned(),
+                        message: "Runtime Server provider runtime service is unavailable"
+                            .to_owned(),
+                    },
+                },
                 WorkspaceDbIpcOperation::ReadRuntimeSearchGenerationAuthority { project_root } => {
                     match memory_registry
                         .projection_search_generation_authority(
@@ -676,17 +700,24 @@ pub async fn serve_runtime_server_workspace_stream(
                         },
                     }
                 }
-                WorkspaceDbIpcOperation::EnsureRuntimeGenerationReady {
-                    request_id: _,
+                WorkspaceDbIpcOperation::RebindRuntimeSelectorOverlay {
                     project_root,
+                    rebind,
                 } => {
-                    generation::ensure_runtime_generation_ready(
-                        memory_registry,
-                        generation_admission.cloned(),
-                        &request.workspace_identity,
-                        project_root,
-                    )
-                    .await
+                    match memory_registry
+                        .rebind_selector_overlay(
+                            &request.workspace_identity,
+                            Path::new(&project_root),
+                            rebind,
+                        )
+                        .await
+                    {
+                        Ok(receipt) => WorkspaceDbIpcResult::RuntimeSelectorOverlay { receipt },
+                        Err(message) => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-selector-rebind-failed".to_owned(),
+                            message,
+                        },
+                    }
                 }
                 WorkspaceDbIpcOperation::AdmitRuntimeGeneration {
                     mutation_id,

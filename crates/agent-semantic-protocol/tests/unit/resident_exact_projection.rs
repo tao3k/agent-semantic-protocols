@@ -112,6 +112,29 @@ fn relocated_item_with_missing_projection_is_not_selector_stale() {
 }
 
 #[test]
+fn cross_owner_symbol_candidates_do_not_make_an_exact_selector_ambiguous() {
+    let requested = "rust://src/requested.rs#item/function/run";
+    let resolution = resolve(
+        WorkspaceRuntimeSelectorRead::RelocationAmbiguous {
+            generation_digest: "generation".to_owned(),
+            root_digest: "root".to_owned(),
+            candidates: vec![
+                "rust://src/other.rs#item/function/run".to_owned(),
+                "rust://src/another.rs#item/function/run".to_owned(),
+            ],
+        },
+        requested,
+    )
+    .expect("resolve owner-scoped selector miss");
+    let ResidentExactProjection::Miss(miss) = resolution else {
+        panic!("cross-owner symbols must not resolve the requested owner");
+    };
+    assert_eq!(miss.state, "owner-missing");
+    assert_eq!(miss.reason_kind, "owner-not-in-workspace");
+    assert!(miss.candidates.is_empty());
+}
+
+#[test]
 fn same_symbol_with_another_item_kind_remains_a_real_kind_mismatch() {
     let resolution = resolve(
         WorkspaceRuntimeSelectorRead::OwnerForRepair {

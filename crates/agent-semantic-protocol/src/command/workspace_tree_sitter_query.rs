@@ -43,11 +43,9 @@ pub(crate) async fn run_runtime_server_tree_sitter_query(
         return Ok(None);
     };
     let activation_path = super::provider_activation::provider_activation_path(project_root);
-    let runtime = super::provider_activation::load_activation_for_language(
-        &activation_path,
-        project_root,
-        language_id,
-    )?;
+    let _ = activation_path;
+    let runtime =
+        super::provider_activation::resolve_provider_runtime_in_server(project_root, language_id)?;
     let provider = runtime
         .providers
         .iter()
@@ -232,10 +230,12 @@ async fn run_workspace_tree_sitter_query(
     let before = read_tree_sitter_query(&client_db_session, &query_identity, 0).await?;
     tree_sitter_trace("initial-query-read", phase_started, None);
     let phase_started = std::time::Instant::now();
-    let mut owners = super::workspace_tree_sitter_inventory::collect_provider_inventory(
+    let mut owners = super::workspace_tree_sitter_inventory::collect_runtime_inventory(
+        &client_db_session,
         &state.provider_workspace_root,
         provider,
-    )?;
+    )
+    .await?;
     tree_sitter_trace("inventory-enumerate", phase_started, Some(owners.len()));
     let phase_started = std::time::Instant::now();
     probe_inventory_entries(&client_db_session, &state, &mut owners).await?;

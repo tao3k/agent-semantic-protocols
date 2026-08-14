@@ -56,7 +56,7 @@ pub use model::{
     WorkspaceOwnerSnapshot, WorkspaceRecoveryReceipt, WorkspaceRecoverySource,
     WorkspaceRuntimeOwnerRead, WorkspaceRuntimeSelectorOverlay,
     WorkspaceRuntimeSelectorOverlayReceipt, WorkspaceRuntimeSelectorRead,
-    WorkspaceSelectorSnapshot,
+    WorkspaceRuntimeSelectorRebind, WorkspaceSelectorSnapshot,
 };
 pub use pointer::WorkspaceGenerationPointerReader;
 pub use registry::{PublishedWorkspaceGenerationState, RuntimeServerWorkspaceRegistry};

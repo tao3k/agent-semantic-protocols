@@ -6,29 +6,26 @@ fn args(values: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn accepts_only_the_typed_exact_projection_surface() {
+fn accepts_only_the_source_query_surface() {
     let parsed = subject::parse_exact_query_args(&args(&[
         "query",
         "--selector",
         "rust://src/lib.rs#item/function/run",
-        "--projection",
-        "source",
     ]))
     .expect("typed exact query");
     assert_eq!(
         parsed.structural_selector,
         "rust://src/lib.rs#item/function/run"
     );
-    assert_eq!(parsed.projection, "source");
-    assert!(!parsed.json);
 }
 
 #[test]
-fn generated_usage_exposes_only_the_typed_surface() {
+fn generated_usage_exposes_only_the_source_surface() {
     let mut command = subject::exact_query_command();
     let usage = command.render_usage().to_string();
     assert!(usage.contains("--selector <selector>"));
-    assert!(usage.contains("--projection <projection>"));
+    assert!(!usage.contains("--projection"));
+    assert!(!usage.contains("--json"));
     assert!(!usage.contains("--code"));
     assert!(!usage.contains("--names-only"));
 }
@@ -39,8 +36,6 @@ fn removed_code_flag_is_an_unknown_argument() {
         "query",
         "--selector",
         "rust://src/lib.rs#item/function/run",
-        "--projection",
-        "source",
         "--code",
     ]))
     .expect_err("removed flag must fail before runtime I/O");
@@ -53,10 +48,33 @@ fn removed_names_only_flag_is_an_unknown_argument() {
         "query",
         "--selector",
         "rust://src/lib.rs#item/function/run",
-        "--projection",
-        "source",
         "--names-only",
     ]))
     .expect_err("removed flag must fail before runtime I/O");
     assert!(error.contains("unexpected argument '--names-only'"));
+}
+
+#[test]
+fn removed_projection_flag_is_an_unknown_argument() {
+    let error = subject::parse_exact_query_args(&args(&[
+        "query",
+        "--selector",
+        "rust://src/lib.rs#item/function/run",
+        "--projection",
+        "source",
+    ]))
+    .expect_err("removed projection flag must fail before runtime I/O");
+    assert!(error.contains("unexpected argument '--projection'"));
+}
+
+#[test]
+fn removed_json_flag_is_an_unknown_argument() {
+    let error = subject::parse_exact_query_args(&args(&[
+        "query",
+        "--selector",
+        "rust://src/lib.rs#item/function/run",
+        "--json",
+    ]))
+    .expect_err("removed JSON flag must fail before runtime I/O");
+    assert!(error.contains("unexpected argument '--json'"));
 }

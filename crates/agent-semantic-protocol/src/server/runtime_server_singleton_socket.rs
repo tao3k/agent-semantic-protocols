@@ -23,7 +23,7 @@ pub(super) struct SingletonSocketGuard {
 }
 
 pub(super) async fn resident_exists(state_home: &Path) -> Result<bool, String> {
-    let path = singleton_path(state_home);
+    let path = singleton_path(state_home)?;
     match timeout(SINGLETON_IO_DEADLINE, tokio::fs::metadata(&path)).await {
         Ok(Ok(_)) => probe_live(&path).await,
         Ok(Err(error)) if error.kind() == io::ErrorKind::NotFound => Ok(false),
@@ -40,7 +40,7 @@ pub(super) async fn resident_exists(state_home: &Path) -> Result<bool, String> {
 
 pub(super) async fn acquire(state_home: &Path) -> Result<SingletonSocketElection, String> {
     require_canonical_global_owner(state_home).await?;
-    let path = singleton_path(state_home);
+    let path = singleton_path(state_home)?;
     let parent = path.parent().ok_or_else(|| {
         format!(
             "Runtime Server singleton socket has no parent: {}",
@@ -136,11 +136,11 @@ impl Drop for SingletonSocketGuard {
     }
 }
 
-fn singleton_path(state_home: &Path) -> PathBuf {
-    state_home
-        .join("runtime")
-        .join("server")
-        .join("runtime-server-singleton.sock")
+fn singleton_path(state_home: &Path) -> Result<PathBuf, String> {
+    Ok(
+        agent_semantic_client_db::runtime_server_runtime_base(state_home)?
+            .join("runtime-server-singleton.sock"),
+    )
 }
 
 async fn require_canonical_global_owner(state_home: &Path) -> Result<(), String> {

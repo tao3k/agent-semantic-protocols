@@ -106,3 +106,5 @@ mod workspace_db_registry;
 mod workspace_project_resolution;
 #[path = "unit/workspace_runtime_selector_wire.rs"]
 mod workspace_runtime_selector_wire;
+#[path = "unit/workspace_runtime_session_capability.rs"]
+mod workspace_runtime_session_capability;
