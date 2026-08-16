@@ -28,7 +28,7 @@ pub(super) async fn run_search_owner_items_query_command(
 ) -> Result<(), String> {
     if context.frontier_receipt.is_some() {
         return Err(
-            "--frontier-receipt-out is not supported by provider-native owner discovery".to_owned(),
+            "--frontier-receipt-out is not supported by resident owner discovery".to_owned(),
         );
     }
     match preflight_search_command_args(&context.language_id.into(), args, context.project_root) {
@@ -45,24 +45,41 @@ pub(super) async fn run_search_owner_items_query_command(
         search_owner_items_workspace(args).as_deref(),
     );
     let owner_path = normalized_owner_key(&project_root, &owner_query_args.owner)?;
-    run_server_owner_items(&owner_query_args.query, &project_root, &owner_path, context).await
+    run_server_owner_items(&owner_query_args.query, &project_root, &owner_path).await
 }
 
 async fn run_server_owner_items(
     query: &str,
     project_root: &Path,
     owner_path: &str,
-    context: SearchOwnerItemsContext<'_>,
 ) -> Result<(), String> {
-    let canonical_root =
-        std::fs::canonicalize(project_root).unwrap_or_else(|_| project_root.into());
-    let session = crate::server::runtime_server::runtime_server_stateless_search_session_async(
-        &canonical_root,
-    )
-    .await?;
-    let owner = session
-        .project_provider_owner(context.language_id.into(), owner_path)
-        .await?;
+    let session =
+        crate::server::runtime_server::runtime_server_stateless_search_session_async(project_root)
+            .await?;
+    let (owner, generation_digest, root_digest) = match session
+        .read_runtime_owner(owner_path)
+        .await?
+    {
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::Owner {
+            generation_digest,
+            root_digest,
+            owner,
+        } => (owner, generation_digest, root_digest),
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::OwnerMissing {
+            generation_digest,
+            root_digest,
+        } => {
+            return Err(format!(
+                "item-not-in-live-owner: owner/items resident generation miss; generationDigest={generation_digest} rootDigest={root_digest} candidates=[]"
+            ));
+        }
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::GenerationMissing => {
+            return Err(
+                "active-workspace-generation-required: owner/items requires one admitted resident generation; candidates=[]"
+                    .to_owned(),
+            );
+        }
+    };
     let query_alternatives = query
         .split('|')
         .map(str::trim)
@@ -103,21 +120,22 @@ async fn run_server_owner_items(
         })
         .collect::<Vec<_>>();
     println!(
-        "[search-owner] q={} owner={} selector=items alg=asp-provider-native-owner-items-v1",
+        "[search-owner] q={} owner={} selector=items alg=asp-runtime-resident-owner-items-v1",
         query, owner_path
     );
     for (selector, identity) in &selectors {
         println!(
-            "|item symbol={} kind={} structuralSelector={} reason=provider-native-owner",
+            "|item symbol={} kind={} structuralSelector={} reason=runtime-resident-owner",
             identity.symbol.as_str(),
             identity.kind.as_str(),
             selector.selector
         );
     }
     println!(
-        "entries={} generation=provider-native rootDigest={} rootDepth=1,0 ownerChanged=false providerInvocations=1 databaseOpens=0 controlRoundtrips=0",
+        "entries={} generation={} rootDigest={} rootDepth=1,0 ownerChanged=false providerInvocations=0 databaseOpens=0 controlRoundtrips=0",
         selectors.len(),
-        owner.content_digest
+        generation_digest,
+        root_digest,
     );
     Ok(())
 }

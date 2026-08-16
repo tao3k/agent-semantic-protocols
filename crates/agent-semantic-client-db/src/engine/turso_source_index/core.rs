@@ -151,6 +151,7 @@ pub async fn refresh_turso_source_index_import_on_connection(
     let requested_source_snapshot = request.source_snapshot;
     let import = request.import;
     let mut canonical_import = import.clone();
+    let mut writer_import = import.clone();
     let workspace_snapshot = materialization.workspace_snapshot.clone();
     workspace_snapshot.validate()?;
     if workspace_snapshot.root_digest() != requested_source_snapshot.root_digest {
@@ -228,10 +229,15 @@ pub async fn refresh_turso_source_index_import_on_connection(
                 .await?;
             let changed_owner_set = changed_owner_paths.iter().cloned().collect();
             let removed_owner_set = removed_owner_paths.iter().cloned().collect();
+            writer_import = crate::source_index::partial_source_index_import(
+                &import,
+                &changed_owner_set,
+                &removed_owner_set,
+            )?;
             canonical_import = crate::overlay_active_source_index_import(
                 &previous,
                 &active_blobs,
-                &import,
+                &writer_import,
                 &changed_owner_set,
                 &removed_owner_set,
             )?;
@@ -296,7 +302,7 @@ pub async fn refresh_turso_source_index_import_on_connection(
     source_index_db_trace("reuse-probe-missed", trace_started);
     let write_stats = write_turso_source_index_rows(
         connection,
-        &import,
+        &writer_import,
         &materialization,
         &membership_change_set,
         &project_root,

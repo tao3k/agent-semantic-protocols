@@ -1,0 +1,15 @@
+{
+  "schemaId": "agent.semantic-protocols.provider-server-lifecycle-receipt",
+  "schemaVersion": "1",
+  "languageId": "julia",
+  "providerId": "julia-lang-project-harness",
+  "state": "ready",
+  "attempt": 1,
+  "publicationEpoch": 1,
+  "artifactDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+  "manifestDigest": "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
+  "runtimeContractDigest": "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",
+  "endpoint": "http://127.0.0.1:49152",
+  "operations": ["project-resolution-stdin"],
+  "error": null
+}

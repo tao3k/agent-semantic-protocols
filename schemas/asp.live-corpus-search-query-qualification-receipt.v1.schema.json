@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp.live-corpus-search-query-qualification-receipt.v1.schema.json",
+  "title": "ASP Live Corpus Search Query Qualification Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "planDigest",
+    "lockDigest",
+    "qualifiedCaseCount",
+    "cases",
+    "status"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.live-corpus-search-query-qualification-receipt.v1"
+    },
+    "schemaVersion": { "const": "1" },
+    "planDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+    "lockDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+    "qualifiedCaseCount": { "type": "integer", "minimum": 1 },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/caseReceipt" }
+    },
+    "status": { "const": "qualified" }
+  },
+  "$defs": {
+    "caseReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caseId",
+        "resourceId",
+        "languageId",
+        "providerId",
+        "revision",
+        "gitTree",
+        "generationDigest",
+        "rootDigest",
+        "searchOperationId",
+        "searchElapsedMicros",
+        "candidateCount",
+        "selector",
+        "queryOperationId",
+        "queryElapsedMicros",
+        "zeroMatchOperationId",
+        "telemetryEventDigests",
+        "status"
+      ],
+      "properties": {
+        "caseId": { "type": "string", "minLength": 1 },
+        "resourceId": { "type": "string", "minLength": 1 },
+        "languageId": { "type": "string", "minLength": 1 },
+        "providerId": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "minLength": 1 },
+        "gitTree": { "type": "string", "minLength": 1 },
+        "generationDigest": { "type": "string", "minLength": 1 },
+        "rootDigest": { "type": "string", "minLength": 1 },
+        "searchOperationId": { "type": "string", "minLength": 1 },
+        "searchElapsedMicros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "candidateCount": { "type": "integer", "minimum": 1 },
+        "selector": { "type": "string", "minLength": 1 },
+        "queryOperationId": { "type": "string", "minLength": 1 },
+        "queryElapsedMicros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "zeroMatchOperationId": { "type": "string", "minLength": 1 },
+        "telemetryEventDigests": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" }
+        },
+        "status": { "const": "qualified" }
+      }
+    }
+  }
+}

@@ -63,6 +63,7 @@ pub(crate) fn write_rust_activation(root: &Path) -> std::path::PathBuf {
             provider_command_prefix: Vec::new(),
             execution_command_digest,
             search_capabilities: manifest.search_capabilities().clone(),
+            language_projection: manifest.language_projection().cloned(),
             semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
             query_pack_descriptor: manifest.query_pack_descriptor().clone(),
             semantic_registry_digest,
@@ -158,6 +159,7 @@ pub(crate) fn write_gerbil_activation_with_command_prefix(
             provider_command_prefix: Vec::new(),
             execution_command_digest,
             search_capabilities: manifest.search_capabilities().clone(),
+            language_projection: manifest.language_projection().cloned(),
             semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
             query_pack_descriptor: manifest.query_pack_descriptor().clone(),
             semantic_registry_digest,
@@ -280,6 +282,32 @@ if sys.argv[1] == "projection-batch-stdin":
                         "schemaId": "asp.canonical-language-item-identity.v1",
                         "schemaVersion": "1",
                         "languageId": "rust",
+                        "kind": "function",
+                        "symbol": name,
+                        "scopes": [],
+                    }},
+                    "projections": [],
+                }})
+        elif CONFIG["languageId"] == "gerbil-scheme":
+            pattern = re.compile(rb"\(def\s+\(([A-Za-z_][A-Za-z0-9_-]*)")
+            for match in pattern.finditer(source):
+                name = match.group(1).decode("utf-8")
+                line_end = source.find(b"\n", match.start())
+                if line_end < 0:
+                    line_end = len(source)
+                selector = f"gerbil-scheme://{{owner['ownerPath']}}#item/function/{{name}}"
+                items.append({{
+                    "itemId": f"item:function:{{name}}",
+                    "ownerId": f"owner:{{owner['ownerPath']}}",
+                    "kind": "function",
+                    "name": name,
+                    "selector": selector,
+                    "sourceByteStart": match.start(),
+                    "sourceByteEnd": line_end,
+                    "identity": {{
+                        "schemaId": "asp.canonical-language-item-identity.v1",
+                        "schemaVersion": "1",
+                        "languageId": "gerbil-scheme",
                         "kind": "function",
                         "symbol": name,
                         "scopes": [],
@@ -440,6 +468,9 @@ impl Drop for EnvVarGuard {
 }
 
 pub(crate) struct RuntimeServerFixture {
+    admission: std::sync::Arc<
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission,
+    >,
     shutdown: agent_semantic_client_db::runtime_server::RuntimeServerShutdownHandle,
     task: tokio::task::JoinHandle<
         Result<agent_semantic_client_db::runtime_server::RuntimeServerExit, String>,
@@ -492,8 +523,8 @@ impl RuntimeServerFixture {
                     let registry = agent_semantic_client_core::ProviderRegistrySnapshot::load(
                         &project_root,
                     )?;
-                    crate::source_index::prepare_runtime_server_owner_projection_with_registry_async(
-                        project_root,
+crate::source_index::prepare_runtime_server_owner_projection_with_registry_async(
+    project_root,
                         workspace_identity,
                         owner_path,
                         registry,
@@ -537,8 +568,8 @@ impl RuntimeServerFixture {
                     let registry = agent_semantic_client_core::ProviderRegistrySnapshot::load(
                         &project_root,
                     )?;
-                    crate::source_index::prepare_runtime_server_workspace_generation_with_registry_async(
-                        project_root,
+crate::source_index::prepare_runtime_server_workspace_generation_with_registry_async(
+    project_root,
                         registry,
                         collection_scope,
                     )
@@ -546,9 +577,13 @@ impl RuntimeServerFixture {
                 })
             },
         ), owner_projection_builder);
+        let admission = server
+            .workspace_generation_admission()
+            .expect("fixture Runtime Server generation admission");
         let shutdown = server.shutdown_handle();
         let task = tokio::spawn(server.serve());
         Self {
+            admission,
             shutdown,
             task,
             runtime_base,
@@ -589,9 +624,26 @@ impl RuntimeServerFixture {
         assert!(
             matches!(
                 receipt.generation_state,
-                agent_semantic_client_db::workspace_db_ipc::RuntimeCacheGenerationState::Ready
+                agent_semantic_client_db::workspace_db_ipc::RuntimeCacheGenerationState::Rebuilding
+                    | agent_semantic_client_db::workspace_db_ipc::RuntimeCacheGenerationState::Ready
             ) && receipt.mutation_id.as_deref() == Some(mutation_id.as_str()),
-            "fixture lifecycle cache-control rebuild must be terminal Ready before any query: {receipt:?}"
+            "fixture lifecycle cache-control rebuild must publish an immediate admission receipt: {receipt:?}"
+        );
+        let workspace_identity =
+            agent_semantic_client_core::state_core::ResolvedState::resolve(root)
+                .expect("resolve fixture Runtime workspace identity")
+                .workspace
+                .workspace_id
+                .to_string();
+        let terminal = self
+            .admission
+            .wait_terminal(&workspace_identity, root)
+            .await
+            .expect("wait for terminal Runtime Server generation admission");
+        assert_eq!(
+            terminal.state,
+            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready,
+            "fixture lifecycle cache-control rebuild must publish terminal Ready: {terminal:?}"
         );
     }
 

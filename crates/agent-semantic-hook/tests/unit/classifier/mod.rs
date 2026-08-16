@@ -146,6 +146,7 @@ pub(super) fn provider(
             .map(|config| (*config).to_string())
             .collect(),
         search_capabilities: manifest.search_capabilities().clone(),
+        language_projection: manifest.language_projection().cloned(),
         project_resolution: manifest.project_resolution().cloned(),
         document_resolution: manifest.document_resolution().cloned(),
         semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),

@@ -153,6 +153,8 @@ fn reusable_receipt(
     active_epoch: u64,
     started: tokio::time::Instant,
 ) -> Result<WorkspaceRecoveryReceipt, String> {
+    let projection_capability =
+        generation.projection_capability_receipt(generation.active_epoch)?;
     last_receipts
         .get(scope_key)
         .cloned()
@@ -160,6 +162,7 @@ fn reusable_receipt(
             active_epoch
                 .checked_sub(1)
                 .map(|previous_epoch| WorkspaceRecoveryReceipt {
+                    projection_capability: projection_capability.clone(),
                     schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
                     schema_version: "1".to_owned(),
                     request_id,
@@ -189,6 +192,7 @@ fn publishing_receipt(
     started: tokio::time::Instant,
 ) -> Result<WorkspaceRecoveryReceipt, String> {
     Ok(WorkspaceRecoveryReceipt {
+        projection_capability: generation.projection_capability_receipt(generation.active_epoch)?,
         schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
         schema_version: "1".to_owned(),
         request_id: request_id.to_owned(),
@@ -230,6 +234,8 @@ async fn publish_new_generation(
         )?,
     );
     let receipt = WorkspaceRecoveryReceipt {
+        projection_capability: generation
+            .projection_capability_receipt(active_epoch.saturating_add(1))?,
         schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
         schema_version: "1".to_owned(),
         request_id,

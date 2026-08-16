@@ -11,7 +11,6 @@ pub use api::current_live_provider_source_index_snapshot_with_registry;
 mod projection;
 mod provider_envelope;
 
-pub(crate) use api::current_source_index_snapshot_with_registry;
 #[cfg(test)]
 pub(crate) use api::materialized_current_source_index_snapshot;
 pub use api::{
@@ -21,8 +20,13 @@ pub use api::{
     current_workspace_search_source_index_snapshot,
 };
 pub use async_rebuild::{
+    prepare_runtime_server_owner_projection_with_resident_runtime_async,
+    prepare_runtime_server_workspace_generation_with_runtime_service_async,
+};
+
+#[cfg(test)]
+pub(crate) use async_rebuild::{
     prepare_runtime_server_owner_projection_with_registry_async,
-    prepare_runtime_server_workspace_generation_async,
     prepare_runtime_server_workspace_generation_with_registry_async,
 };
 pub use provider_envelope::{

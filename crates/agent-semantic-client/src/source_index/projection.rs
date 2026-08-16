@@ -21,12 +21,98 @@ use agent_semantic_content_identity::{
     },
     workspace_merkle_v1::WorkspacePathMerkleTreeV1,
 };
+use agent_semantic_provider_transport::ProviderRuntimeActorClient;
 use agent_semantic_provider_transport::projection_batch::{
     ProviderProjectedItem, ProviderProjectedOwner, ProviderProjectionBatchRequest,
-    ProviderProjectionOwner, provider_projection_batch_ranges, run_provider_projection_batch,
+    ProviderProjectionOwner, provider_projection_batch_ranges,
 };
 
+enum ProviderProjectionExecutor<'a> {
+    #[cfg(test)]
+    OneShot(agent_semantic_provider_transport::ProviderProcessSupervisor),
+    Resident(&'a ProviderRuntimeActorClient),
+    RuntimeService(
+        &'a agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
+    ),
+}
+
+#[cfg(test)]
 pub(super) async fn project_generation(
+    project_root: &Path,
+    workspace_identity: &str,
+    registry: &ProviderRegistrySnapshot,
+    files: &[ClientDbSourceIndexScopeFile],
+    source_blobs: &ClientDbSourceIndexSourceBlobs,
+) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
+    let tree = WorkspacePathMerkleTreeV1::from_file_digests(
+        source_blobs
+            .iter()
+            .map(|(owner_path, bytes)| (owner_path.to_owned(), blake3_content_digest_v1(bytes))),
+    )
+    .map_err(|error| format!("build exact-selector workspace Merkle tree: {error}"))?;
+    let mut projected = files.to_vec();
+    let executor = ProviderProjectionExecutor::OneShot(
+        agent_semantic_provider_transport::ProviderProcessSupervisor::default(),
+    );
+    for provider in registry
+        .providers
+        .iter()
+        .filter(|provider| provider.language_projection.is_some())
+    {
+        project_provider(
+            &executor,
+            project_root,
+            workspace_identity,
+            provider,
+            &tree,
+            source_blobs,
+            &mut projected,
+        )
+        .await?;
+    }
+    Ok(projected)
+}
+
+pub(super) async fn project_generation_with_resident_runtime(
+    runtime: &ProviderRuntimeActorClient,
+    project_root: &Path,
+    workspace_identity: &str,
+    registry: &ProviderRegistrySnapshot,
+    files: &[ClientDbSourceIndexScopeFile],
+    source_blobs: &ClientDbSourceIndexSourceBlobs,
+) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
+    project_generation_with_executor(
+        ProviderProjectionExecutor::Resident(runtime),
+        project_root,
+        workspace_identity,
+        registry,
+        files,
+        source_blobs,
+    )
+    .await
+}
+
+pub(super) async fn project_generation_with_runtime_service(
+    runtime: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
+    project_root: &Path,
+    workspace_identity: &str,
+    registry: &ProviderRegistrySnapshot,
+    files: &[ClientDbSourceIndexScopeFile],
+    source_blobs: &ClientDbSourceIndexSourceBlobs,
+) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
+    project_generation_with_executor(
+        ProviderProjectionExecutor::RuntimeService(runtime),
+        project_root,
+        workspace_identity,
+        registry,
+        files,
+        source_blobs,
+    )
+    .await
+}
+
+async fn project_generation_with_executor(
+    executor: ProviderProjectionExecutor<'_>,
     project_root: &Path,
     workspace_identity: &str,
     registry: &ProviderRegistrySnapshot,
@@ -46,6 +132,7 @@ pub(super) async fn project_generation(
         .filter(|provider| provider.language_projection.is_some())
     {
         project_provider(
+            &executor,
             project_root,
             workspace_identity,
             provider,
@@ -59,6 +146,7 @@ pub(super) async fn project_generation(
 }
 
 async fn project_provider(
+    executor: &ProviderProjectionExecutor<'_>,
     project_root: &Path,
     workspace_identity: &str,
     provider: &ResolvedProvider,
@@ -87,7 +175,6 @@ async fn project_provider(
     let query_pack_json = serde_json::to_vec(&provider.query_pack_descriptor)
         .map_err(|error| format!("encode provider query-pack identity: {error}"))?;
     let query_pack_digest = derive_query_pack_identity_digest_v1(&query_pack_json);
-    let command = provider_command_argv(provider)?;
     let owner_sizes = owner_indexes
         .iter()
         .map(|index| {
@@ -127,14 +214,64 @@ async fn project_provider(
             base_generation_root_digest: None,
             owners,
         };
-        let response = run_provider_projection_batch(
-            &command,
-            descriptor.command_binding(),
-            project_root,
-            &request,
-        )
-        .await
-        .map_err(|error| error.to_string())?;
+        let response = match executor {
+            #[cfg(test)]
+            ProviderProjectionExecutor::OneShot(supervisor) => {
+                agent_semantic_provider_transport::projection_batch::run_provider_projection_batch(
+                    supervisor,
+                    provider.runtime_command_argv.as_deref().ok_or_else(|| {
+                        format!(
+                            "test provider projection has no runtime command: providerId={}",
+                            provider.provider_id
+                        )
+                    })?,
+                    descriptor.command_binding(),
+                    project_root,
+                    &request,
+                )
+                .await
+                .map_err(|error| error.to_string())?
+            }
+            ProviderProjectionExecutor::Resident(runtime) => {
+                let encoded = request.encode().map_err(|error| error.to_string())?;
+                let response = runtime
+                    .request(descriptor.command_binding(), encoded)
+                    .await?;
+                agent_semantic_provider_transport::projection_batch::ProviderProjectionBatchResponse::decode_for(
+                    &request,
+                    &response,
+                )
+                .map_err(|error| error.to_string())?
+            }
+            ProviderProjectionExecutor::RuntimeService(runtime) => {
+                runtime
+                    .provider_runtime(
+                        project_root.to_path_buf(),
+                        provider.language_id.as_str().to_owned(),
+                    )
+                    .await?;
+                runtime
+                    .provider_runtime_await_ready(
+                        project_root.to_path_buf(),
+                        provider.language_id.as_str().to_owned(),
+                    )
+                    .await?;
+                let encoded = request.encode().map_err(|error| error.to_string())?;
+                let response = runtime
+                    .provider_operation(
+                        project_root.to_path_buf(),
+                        provider.language_id.as_str().to_owned(),
+                        descriptor.command_binding().to_owned(),
+                        encoded,
+                    )
+                    .await?;
+                agent_semantic_provider_transport::projection_batch::ProviderProjectionBatchResponse::decode_for(
+                    &request,
+                    &response,
+                )
+                .map_err(|error| error.to_string())?
+            }
+        };
         let response_by_owner = response
             .owners
             .into_iter()
@@ -269,24 +406,6 @@ fn normalized_item_parser_facts(item: &ProviderProjectedItem) -> Result<Vec<u8>,
 #[cfg(test)]
 #[path = "../../tests/unit/source_index_projection_memory.rs"]
 mod tests;
-
-fn provider_command_argv(provider: &ResolvedProvider) -> Result<Vec<String>, String> {
-    provider
-        .runtime_command_argv
-        .as_ref()
-        .filter(|argv| !argv.is_empty())
-        .cloned()
-        .or_else(|| {
-            (!provider.provider_command_prefix.is_empty())
-                .then(|| provider.provider_command_prefix.clone())
-        })
-        .ok_or_else(|| {
-            format!(
-                "projection provider command is unavailable: languageId={} providerId={}",
-                provider.language_id, provider.provider_id
-            )
-        })
-}
 
 fn relative_owner_path(project_root: &Path, path: &Path) -> String {
     path.strip_prefix(project_root)

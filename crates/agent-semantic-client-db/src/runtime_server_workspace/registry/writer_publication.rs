@@ -38,7 +38,10 @@ pub(super) async fn publish_staged_overlay_generation(
             base.generation().active_epoch
         ));
     }
-    let generation = staged.materialize_generation(base.generation())?;
+    let generation = staged.materialize_generation(
+        base.generation(),
+        base.generation().projection_capability.clone(),
+    )?;
     let receipt = publish_generation(
         &target.current,
         target.publisher.as_ref(),
@@ -59,14 +62,18 @@ pub(super) async fn publish_owner_delta(
     target: &WorkspaceWriteTarget,
     request_id: String,
     workspace_identity: &str,
-    owners: Vec<crate::runtime_server_workspace::WorkspaceOwnerSnapshot>,
-    tombstones: Vec<String>,
+    delta: crate::runtime_server_workspace::WorkspaceGenerationDelta,
     counters: &RuntimeDataPlaneCounterState,
 ) -> Result<WorkspaceRecoveryReceipt, String> {
     let base = current_generation(&target.current, workspace_identity)?;
-    let staged = target
-        .overlays
-        .publish_owner_delta(base.generation(), owners, tombstones)?;
+    delta.validate()?;
+    if delta.base_generation_digest != base.generation().generation_digest {
+        return Err("workspace generation delta base generation digest mismatch".to_owned());
+    }
+    let staged =
+        target
+            .overlays
+            .publish_owner_delta(base.generation(), delta.owners, delta.tombstones)?;
     publish_staged_overlay_generation(
         target,
         request_id,
@@ -82,8 +89,7 @@ pub(super) struct PublishOwnerDeltaCommand {
     pub(super) target: super::core::WorkspaceWriteTarget,
     pub(super) request_id: String,
     pub(super) workspace_identity: String,
-    pub(super) owners: Vec<crate::runtime_server_workspace::WorkspaceOwnerSnapshot>,
-    pub(super) tombstones: Vec<String>,
+    pub(super) delta: crate::runtime_server_workspace::WorkspaceGenerationDelta,
     pub(super) reply: tokio::sync::oneshot::Sender<
         Result<crate::runtime_server_workspace::WorkspaceRecoveryReceipt, String>,
     >,
@@ -101,8 +107,7 @@ pub(super) async fn publish_owner_delta_command(
         &command.target,
         command.request_id,
         &command.workspace_identity,
-        command.owners,
-        command.tombstones,
+        command.delta,
         counters,
     )
     .await;
@@ -131,6 +136,7 @@ pub(super) async fn publish_generation(
     let workspace_identity = generation.workspace_identity.clone();
     let generation_digest = generation.generation_digest.clone();
     let source_root_digest = generation.source_snapshot.root_digest.clone();
+    let projection_capability = generation.projection_capability_receipt(target_epoch)?;
     let generation = Arc::new(generation);
     let prepared_index =
         WorkspaceMemoryBackend::prepare_index(&generation.owners, &generation.relations);
@@ -144,6 +150,7 @@ pub(super) async fn publish_generation(
     counters.filesystem_writes.fetch_add(1, Ordering::Relaxed);
     current.send_replace(Some(backend));
     let receipt = WorkspaceRecoveryReceipt {
+        projection_capability,
         schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
         schema_version: "1".to_owned(),
         request_id,
@@ -190,8 +197,15 @@ pub(super) async fn restore_checkpoint(
     }
     let generation_digest = backend.generation().generation_digest.clone();
     let source_root_digest = backend.generation().source_snapshot.root_digest.clone();
+    let projection_capability = backend.generation().projection_capability.clone();
     current.send_replace(Some(backend));
     let receipt = WorkspaceRecoveryReceipt {
+        projection_capability: projection_capability.into_ready_receipt(
+            workspace_identity.clone(),
+            generation_digest.clone(),
+            source_root_digest.clone(),
+            target_epoch,
+        )?,
         schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
         schema_version: "1".to_owned(),
         request_id,

@@ -3,8 +3,9 @@ use std::time::{Duration, Instant};
 use super::{ValidatedSortedRecordTable, encode_sorted_record_table};
 
 #[test]
-fn thirty_run_large_directory_cold_open_p99_is_sub_millisecond() {
+fn large_directory_table_parse_p99_is_sub_millisecond() {
     const RECORDS: usize = 131_072;
+    const RUNS: usize = 1_000;
     let records = (0..RECORDS)
         .map(|index| {
             (
@@ -14,9 +15,9 @@ fn thirty_run_large_directory_cold_open_p99_is_sub_millisecond() {
         })
         .collect();
     let encoded = encode_sorted_record_table(records).expect("encode large search directory");
-    let mut samples = Vec::with_capacity(30);
+    let mut samples = Vec::with_capacity(RUNS);
 
-    for _ in 0..30 {
+    for _ in 0..RUNS {
         let started = Instant::now();
         let table = ValidatedSortedRecordTable::parse(&encoded).expect("open search directory");
         assert_eq!(table.len(), RECORDS);
@@ -24,9 +25,10 @@ fn thirty_run_large_directory_cold_open_p99_is_sub_millisecond() {
     }
 
     samples.sort_unstable();
-    let p99 = samples[samples.len() - 1];
+    let p99_index = samples.len().saturating_mul(99).div_ceil(100) - 1;
+    let p99 = samples[p99_index];
     eprintln!(
-        "search-memory-table-cold-open records={RECORDS} runs=30 p99Nanos={}",
+        "search-memory-table-parse records={RECORDS} runs={RUNS} p99Nanos={}",
         p99.as_nanos()
     );
     assert!(
@@ -95,4 +97,106 @@ fn memory_search_cost_receipt_is_opentelemetry_serializable() {
     assert_eq!(wire["memorySearchTursoOpens"], 0);
     assert_eq!(wire["memorySearchSocketConnects"], 0);
     assert_eq!(wire["memorySearchProviderSpawns"], 0);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn fresh_client_first_merkle_read_uses_the_published_generation() {
+    let temporary = tempfile::tempdir().expect("temporary generation directory");
+    let project_root = temporary.path().join("workspace");
+    tokio::fs::create_dir_all(&project_root)
+        .await
+        .expect("create workspace root");
+    let generation_directory = temporary.path().join("generation");
+    tokio::fs::create_dir_all(&generation_directory)
+        .await
+        .expect("create generation directory");
+
+    let owner_bytes = b"pub fn cold_owner() {}\n".to_vec();
+    let sibling_bytes = b"pub fn sibling_owner() {}\n".to_vec();
+    let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes([
+        ("src/lib.rs", owner_bytes.as_slice()),
+        ("src/sibling.rs", sibling_bytes.as_slice()),
+    ]);
+    let projection_capability =
+        crate::active_generation_projection_capability::test_projection_capability_manifest();
+    let source_snapshot = workspace_snapshot.evidence(
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        projection_capability.provider_catalog_digest.clone(),
+    );
+    let generation = crate::runtime_server_workspace::WorkspaceMemoryGeneration::try_from_build(
+        crate::runtime_server_workspace::WorkspaceGenerationBuild {
+            projection_capability,
+            workspace_identity: "workspace-cold-merkle-read".to_owned(),
+            project_root: project_root.to_string_lossy().into_owned(),
+            active_epoch: 1,
+            workspace_snapshot,
+            source_snapshot,
+            module_graph_digest: format!(
+                "blake3-256:{}",
+                blake3::hash(b"cold-merkle-module-graph").to_hex()
+            ),
+            project_resolutions: Vec::new(),
+            owners: vec![
+                crate::runtime_server_workspace::WorkspaceOwnerSnapshot {
+                    owner_path: "src/lib.rs".to_owned(),
+                    content_digest: format!("blake3-256:{}", blake3::hash(&owner_bytes).to_hex()),
+                    bytes: owner_bytes,
+                    selectors: Vec::new(),
+                },
+                crate::runtime_server_workspace::WorkspaceOwnerSnapshot {
+                    owner_path: "src/sibling.rs".to_owned(),
+                    content_digest: format!("blake3-256:{}", blake3::hash(&sibling_bytes).to_hex()),
+                    bytes: sibling_bytes,
+                    selectors: Vec::new(),
+                },
+            ],
+            relations: Vec::new(),
+        },
+    )
+    .expect("workspace generation");
+    let publisher =
+        crate::runtime_server_workspace::WorkspaceGenerationPublisher::new(generation_directory)
+            .await
+            .expect("generation publisher");
+    let snapshot = publisher
+        .publish(std::sync::Arc::new(generation), false)
+        .await
+        .expect("publish generation before cold client starts");
+
+    let started = tokio::time::Instant::now();
+    let client = crate::runtime_server_workspace::WorkspaceSearchGenerationDataPlaneClient::open(
+        publisher.pointer_path(),
+        &project_root,
+    )
+    .await
+    .expect("cold client opens published search generation");
+    let read = client
+        .read_merkle_owner("src/lib.rs")
+        .expect("cold client reads Merkle owner proof");
+    let elapsed = started.elapsed();
+
+    let crate::runtime_server_workspace::WorkspaceRuntimeMerkleOwnerRead::Owner {
+        active_epoch,
+        generation_digest,
+        root_digest,
+        owner_path,
+        inclusion_proof,
+        ..
+    } = read
+    else {
+        panic!("published owner must be present");
+    };
+    assert_eq!(active_epoch, snapshot.active_epoch);
+    assert_eq!(generation_digest, snapshot.generation_digest);
+    assert_eq!(root_digest, snapshot.source_root_digest);
+    assert_eq!(owner_path, "src/lib.rs");
+    assert!(!inclusion_proof.is_empty());
+    eprintln!(
+        "search-published-generation-cold-first-read elapsedMicros={}",
+        elapsed.as_micros()
+    );
+    assert!(
+        elapsed < std::time::Duration::from_millis(25),
+        "published-generation cold first read must remain below 25ms: elapsed={elapsed:?}"
+    );
 }

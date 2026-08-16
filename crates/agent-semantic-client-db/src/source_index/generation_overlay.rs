@@ -94,6 +94,94 @@ fn base_selectors(
         .collect())
 }
 
+/// Restrict one complete provider import to the owner membership admitted by
+/// an incremental generation mutation.
+///
+/// The durable writer consumes this packet as the changed-owner side of a
+/// Merkle overlay. Unchanged owners remain owned by the active generation and
+/// are cloned exactly once by [`overlay_active_source_index_import`].
+pub fn partial_source_index_import(
+    import: &ClientDbSourceIndexImport,
+    changed_owner_paths: &BTreeSet<String>,
+    removed_owner_paths: &BTreeSet<String>,
+) -> Result<ClientDbSourceIndexImport, String> {
+    if !removed_owner_paths.is_disjoint(changed_owner_paths) {
+        return Err("source-index owner cannot be both changed and tombstoned".to_string());
+    }
+
+    let owners = import
+        .owners
+        .iter()
+        .filter(|owner| changed_owner_paths.contains(owner.owner_path.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    let selectors = import
+        .selectors
+        .iter()
+        .filter(|selector| changed_owner_paths.contains(selector.owner_path.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    let selector_owners = import
+        .selectors
+        .iter()
+        .map(|selector| {
+            (
+                selector.selector_id.as_str().to_string(),
+                selector.owner_path.as_str().to_string(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut relations = Vec::new();
+    for relation in &import.relations {
+        let owner_path = selector_owners
+            .get(relation.from.id.as_str())
+            .ok_or_else(|| {
+                format!(
+                    "source-index relation has no parser-owned source selector: selectorId={}",
+                    relation.from.id
+                )
+            })?;
+        if changed_owner_paths.contains(owner_path) {
+            relations.push(relation.clone());
+        }
+    }
+    let file_hashes = import
+        .file_hashes
+        .iter()
+        .filter(|record| {
+            changed_owner_paths.contains(record.path.as_str())
+                || changed_owner_paths.iter().any(|owner_path| {
+                    record.path == format!("@scope/selector-generation/{owner_path}")
+                })
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let source_blobs = import
+        .source_blobs
+        .iter()
+        .filter(|(path, _)| changed_owner_paths.contains(*path))
+        .map(|(path, bytes)| {
+            (
+                ClientDbSourceIndexPath::new(path.to_string()),
+                bytes.to_vec(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let partial = ClientDbSourceIndexImport {
+        generation_id: import.generation_id.clone(),
+        project_root: import.project_root.clone(),
+        schema_id: import.schema_id.clone(),
+        schema_version: import.schema_version.clone(),
+        file_hashes,
+        source_blobs: ClientDbSourceIndexSourceBlobs::from_normalized(source_blobs),
+        owners,
+        selectors,
+        relations,
+    };
+    validate_overlay_membership(changed_owner_paths, removed_owner_paths, &partial)?;
+    Ok(partial)
+}
+
 /// Derive one complete successor import without reopening unchanged owner bytes.
 ///
 /// The returned packet is for canonical materialization. Durable Turso refresh

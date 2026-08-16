@@ -72,6 +72,26 @@ pub(crate) fn resolve(
                 reason_kind: "projection-mode-not-in-active-generation",
             }));
         }
+        WorkspaceRuntimeSelectorRead::ProjectionScopeOmitted {
+            generation_digest,
+            root_digest,
+            resolved_selector,
+            projection_scope: _,
+            owner_content_digest: _,
+        } => {
+            return Ok(ResidentExactProjection::Miss(ResidentExactProjectionMiss {
+                owner_path: owner_path.to_owned(),
+                structural_selector: structural_selector.to_owned(),
+                active_generation_digest: generation_digest,
+                root_digest,
+                item_kind: requested.kind.as_str().to_owned(),
+                item_name: requested.symbol.as_str().to_owned(),
+                candidates: vec![resolved_selector],
+                actual_kinds: vec![requested.kind.as_str().to_owned()],
+                state: "source-unavailable",
+                reason_kind: "projection-scope-omitted",
+            }));
+        }
         WorkspaceRuntimeSelectorRead::OwnerForRepair {
             generation_digest,
             root_digest,

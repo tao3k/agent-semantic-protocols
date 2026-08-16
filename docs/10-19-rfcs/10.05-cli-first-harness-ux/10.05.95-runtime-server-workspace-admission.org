@@ -105,10 +105,20 @@ runtime in the CLI process.
 
 * Hook lifecycle
 
-The hook submits workspace admission asynchronously after resolving the
-canonical workspace identity.  The hook path has a bounded millisecond budget:
-it may join or enqueue admission, but it may not perform provider parsing,
-Turso bootstrap, or generation construction.
+The synchronous Hook path never submits, joins, enqueues, waits for, or polls a
+Runtime Server workspace admission.  Hook execution is a =HookLocalKernel v1=:
+it resolves the effective workspace identity, consumes immutable compiled
+matcher and agent-registry snapshots, evaluates policy, and emits only bounded
+local evidence or a public recovery hint.  It has no Runtime Server, Turso,
+workspace IPC, provider activation, source-index generation, or agent-session
+admission dependency.
+
+After the Hook returns, an independently owned host lifecycle or Runtime
+supervisor may submit a typed workspace admission.  That out-of-band operation
+is not part of Hook execution and cannot change the Hook decision already
+returned.  Provider parsing, Turso bootstrap, and generation construction
+belong to the Runtime single-writer lane; the Hook may not perform or await
+them, synchronously or asynchronously.
 
 Exact search/query is read-only against an admitted epoch.  Missing admission
 returns a typed control-plane receipt and never falls back to local rebuild.

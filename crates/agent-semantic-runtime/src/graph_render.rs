@@ -5,8 +5,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use agent_semantic_provider_transport::{
-    OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode,
-    run_provider_process_async as run_transport_process,
+    OutputMode, ProviderProcessLimits, ProviderProcessSpec, ProviderProcessSupervisor, StdinMode,
 };
 use bytes::Bytes;
 
@@ -19,8 +18,13 @@ pub struct GraphRenderReceiptRequest {
     pub command_fingerprint: String,
 }
 
-pub async fn run_graph_render_packet(packet_path: &Path, max_stdout_bytes: u64) -> Option<Bytes> {
+pub async fn run_graph_render_packet(
+    supervisor: &ProviderProcessSupervisor,
+    packet_path: &Path,
+    max_stdout_bytes: u64,
+) -> Option<Bytes> {
     run_graph_render_process(
+        supervisor,
         packet_path.display().to_string(),
         StdinMode::Closed,
         max_stdout_bytes,
@@ -33,10 +37,12 @@ pub async fn run_graph_render_packet(packet_path: &Path, max_stdout_bytes: u64) 
 }
 
 pub async fn run_graph_render_packet_bytes(
+    supervisor: &ProviderProcessSupervisor,
     packet_bytes: impl Into<Bytes>,
     max_stdout_bytes: u64,
 ) -> Option<Bytes> {
     run_graph_render_process(
+        supervisor,
         "-".to_string(),
         StdinMode::bytes(packet_bytes.into()),
         max_stdout_bytes,
@@ -49,11 +55,13 @@ pub async fn run_graph_render_packet_bytes(
 }
 
 pub async fn run_graph_render_packet_bytes_with_receipt(
+    supervisor: &ProviderProcessSupervisor,
     packet_bytes: impl Into<Bytes>,
     max_stdout_bytes: u64,
     receipt: &GraphRenderReceiptRequest,
 ) -> Result<Option<Bytes>, String> {
     run_graph_render_process(
+        supervisor,
         "-".to_string(),
         StdinMode::bytes(packet_bytes.into()),
         max_stdout_bytes,
@@ -64,6 +72,7 @@ pub async fn run_graph_render_packet_bytes_with_receipt(
 }
 
 async fn run_graph_render_process(
+    supervisor: &ProviderProcessSupervisor,
     packet_arg: String,
     stdin: StdinMode,
     max_stdout_bytes: u64,
@@ -90,22 +99,23 @@ async fn run_graph_render_process(
             receipt.command_fingerprint.clone(),
         ]);
     }
-    let output = match run_transport_process(ProviderProcessSpec {
-        program: protocol_graph_renderer_binary().display().to_string(),
-        args,
-        cwd: env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-        env: BTreeMap::new(),
-        stdin,
-        stdout: OutputMode::Capture,
-        stderr: OutputMode::Capture,
-        limits: ProviderProcessLimits::new(
-            None,
-            Some(max_stdout_bytes as usize + 1),
-            Some(64 * 1024),
-            Some(1024 * 1024 * 1024),
-        ),
-    })
-    .await
+    let output = match supervisor
+        .run(ProviderProcessSpec {
+            program: protocol_graph_renderer_binary().display().to_string(),
+            args,
+            cwd: env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            env: BTreeMap::new(),
+            stdin,
+            stdout: OutputMode::Capture,
+            stderr: OutputMode::Capture,
+            limits: ProviderProcessLimits::new(
+                None,
+                Some(max_stdout_bytes as usize + 1),
+                Some(64 * 1024),
+                Some(1024 * 1024 * 1024),
+            ),
+        })
+        .await
     {
         Ok(output) => output,
         Err(error) if strict => return Err(format!("failed to run graph renderer: {error}")),

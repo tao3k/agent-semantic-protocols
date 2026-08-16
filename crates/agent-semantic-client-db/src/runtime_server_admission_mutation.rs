@@ -1,12 +1,9 @@
-use std::{
-    path::PathBuf,
-    sync::{Arc, atomic::Ordering},
-};
+use std::{path::PathBuf, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
 use crate::runtime_server_admission::{
-    AdmissionEntry, PendingWorkspaceMutation, WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID,
+    PendingWorkspaceMutation, WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID,
     WorkspaceGenerationAdmission, WorkspaceGenerationAdmissionKey,
     WorkspaceGenerationAdmissionReceipt, WorkspaceGenerationAdmissionState,
 };
@@ -434,45 +431,17 @@ impl WorkspaceGenerationAdmission {
             workspace_identity: workspace_identity.clone(),
             project_root: project_root.clone(),
         };
-        if let Some(entry) = self
+        let receipt = mutation_submission_receipt(&workspace_identity, &candidate, 1)?;
+        let active_mutation = Some(super::WorkspaceMutationIdentity {
+            mutation_id: mutation_id.clone(),
+            changed_paths: Arc::clone(&changed_paths),
+            candidate: candidate.clone(),
+        });
+        let (entry, inserted) = self
             .entries
-            .get(&key)
-            .map(|entry| Arc::clone(entry.value()))
-        {
-            let claims = entry.mutation_claims.load();
-            if let Some(claimed) = claims.get(&mutation_id) {
-                if claimed.changed_paths.as_ref() != changed_paths.as_ref()
-                    || claimed.candidate.as_ref() != &candidate
-                {
-                    return Err(format!(
-                        "workspace mutation identity was reused with different candidate evidence: mutationId={mutation_id}"
-                    ));
-                }
-                let mut submission = mutation_submission_receipt(
-                    &workspace_identity,
-                    claimed.candidate.as_ref(),
-                    claimed.attempt,
-                )?;
-                submission.accepted = false;
-                return Ok(submission);
-            }
-        }
-        let (entry, inserted_receipt) = match self.entries.entry(key) {
-            dashmap::mapref::entry::Entry::Occupied(existing) => (Arc::clone(existing.get()), None),
-            dashmap::mapref::entry::Entry::Vacant(vacant) => {
-                let receipt = mutation_submission_receipt(&workspace_identity, &candidate, 1)?;
-                let candidate_entry = Arc::new(AdmissionEntry::new(
-                    receipt.clone(),
-                    Some(super::WorkspaceMutationIdentity {
-                        mutation_id: mutation_id.clone(),
-                        changed_paths: Arc::clone(&changed_paths),
-                        candidate: candidate.clone(),
-                    }),
-                ));
-                vacant.insert(Arc::clone(&candidate_entry));
-                (candidate_entry, Some(receipt))
-            }
-        };
+            .get_or_insert(key, receipt.clone(), active_mutation)
+            .await?;
+        let inserted_receipt = inserted.then_some(receipt);
         if let Some(receipt) = inserted_receipt {
             // The entry claim is the control-plane linearization point.  Candidate cache and
             // catalog publication must only be performed by that single owner; doing either
@@ -493,59 +462,44 @@ impl WorkspaceGenerationAdmission {
             return Ok(receipt);
         }
 
-        let claimed_attempt = loop {
-            let claims = entry.mutation_claims.load();
-            if let Some(claimed) = claims.get(&mutation_id) {
-                if claimed.changed_paths.as_ref() != changed_paths.as_ref()
-                    || claimed.candidate.as_ref() != &candidate
-                {
-                    return Err(format!(
-                        "workspace mutation identity was reused with different candidate evidence: mutationId={mutation_id}"
-                    ));
-                }
-                let mut submission = mutation_submission_receipt(
-                    &workspace_identity,
-                    claimed.candidate.as_ref(),
-                    claimed.attempt,
-                )?;
-                submission.accepted = false;
-                return Ok(submission);
-            }
-            let changed = entry.mutation_claim_changed.notified();
-            tokio::pin!(changed);
-            changed.as_mut().enable();
-            if entry
-                .mutation_claim_writer
-                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-                .is_ok()
+        if let Some(active) = entry.active_mutation.borrow().as_ref()
+            && active.mutation_id == mutation_id
+        {
+            if active.changed_paths.as_ref() != changed_paths.as_ref()
+                || active.candidate != candidate
             {
-                let claims = entry.mutation_claims.load();
-                if claims.contains_key(&mutation_id) {
-                    entry.mutation_claim_writer.store(false, Ordering::Release);
-                    entry.mutation_claim_changed.notify_waiters();
-                    continue;
-                }
-                let attempt = entry.attempt.fetch_add(1, Ordering::AcqRel) + 1;
-                let mut published = claims.as_ref().clone();
-                published.insert(
-                    mutation_id.clone(),
-                    super::WorkspaceMutationClaim {
-                        changed_paths: Arc::clone(&changed_paths),
-                        candidate: Arc::new(candidate.clone()),
-                        attempt,
-                    },
-                );
-                entry.mutation_claims.store(Arc::new(published));
-                entry.mutation_claim_writer.store(false, Ordering::Release);
-                entry.mutation_claim_changed.notify_waiters();
-                break attempt;
+                return Err(format!(
+                    "workspace mutation identity was reused with different candidate evidence: mutationId={mutation_id}"
+                ));
             }
-            let claims = entry.mutation_claims.load();
-            if claims.contains_key(&mutation_id) {
-                continue;
-            }
-            changed.as_mut().await;
-        };
+            let observed = entry.observed();
+            let mut submission = mutation_submission_receipt(
+                &workspace_identity,
+                &active.candidate,
+                observed.attempt,
+            )?;
+            submission.accepted = false;
+            return Ok(submission);
+        }
+
+        let claim = entry
+            .lane
+            .claim_mutation(
+                mutation_id.clone(),
+                Arc::clone(&changed_paths),
+                candidate.clone(),
+            )
+            .await?;
+        if !claim.inserted {
+            let mut submission = mutation_submission_receipt(
+                &workspace_identity,
+                claim.candidate.as_ref(),
+                claim.attempt,
+            )?;
+            submission.accepted = false;
+            return Ok(submission);
+        }
+        let claimed_attempt = claim.attempt;
         let claimed_submission =
             mutation_submission_receipt(&workspace_identity, &candidate, claimed_attempt)?;
 
@@ -584,8 +538,8 @@ impl WorkspaceGenerationAdmission {
             }
             return Ok(entry.observed());
         }
-        if !entry.building.load(Ordering::Acquire) {
-            entry.building.store(true, Ordering::Release);
+        if !entry.lane.observed().building {
+            entry.lane.begin_claimed(claimed_attempt).await?;
             let attempt = claimed_attempt;
             let accepted = claimed_submission.clone();
             let build_mode = super::observed_mutation_build_mode(&entry.observed());
@@ -610,15 +564,17 @@ impl WorkspaceGenerationAdmission {
             return Ok(accepted);
         }
 
-        let mut mutations = entry.mutations.lock().await;
-        if entry.building.load(Ordering::Acquire) {
+        if entry.lane.observed().building {
             let attempt = claimed_attempt;
-            mutations.pending.push_back(PendingWorkspaceMutation {
-                mutation_id,
-                changed_paths,
-                attempt,
-                candidate: candidate.clone(),
-            });
+            entry
+                .lane
+                .enqueue_mutation(PendingWorkspaceMutation {
+                    mutation_id,
+                    changed_paths,
+                    attempt,
+                    candidate: candidate.clone(),
+                })
+                .await?;
             let queued = claimed_submission;
             return Ok(queued);
         }

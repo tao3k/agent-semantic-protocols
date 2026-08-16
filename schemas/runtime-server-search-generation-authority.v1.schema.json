@@ -12,6 +12,7 @@
     "projectRoot",
     "activeEpoch",
     "generationDigest",
+    "ownerMerkleRootDigest",
     "sourceSnapshot",
     "workspaceGeneration"
   ],
@@ -35,6 +36,9 @@
       "minimum": 1
     },
     "generationDigest": {
+      "$ref": "#/$defs/wireDigest"
+    },
+    "ownerMerkleRootDigest": {
       "$ref": "#/$defs/wireDigest"
     },
     "sourceSnapshot": {

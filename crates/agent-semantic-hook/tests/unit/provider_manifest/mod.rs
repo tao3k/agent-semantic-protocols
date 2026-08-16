@@ -10,6 +10,7 @@ mod activation_sync;
 mod builtin;
 mod provider_manifest_contract;
 mod provider_query_pack_descriptor;
+mod provider_runtime_contract;
 mod provider_semantic_facts_descriptor;
 mod provider_workspace_install;
 

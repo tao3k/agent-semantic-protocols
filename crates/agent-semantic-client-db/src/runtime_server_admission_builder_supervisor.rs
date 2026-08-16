@@ -47,13 +47,16 @@ pub(super) async fn run(
     }
 }
 
-#[cfg(test)]
+pub(crate) const DEFAULT_GENERATION_BUILD_LEASE: std::time::Duration =
+    std::time::Duration::from_secs(30);
+
 pub(crate) async fn run_with_deadline(
     builder: WorkspaceGenerationBuilder,
     workspace_identity: String,
     project_root: PathBuf,
     candidate: WorkspaceGenerationCandidateIdentity,
     build_mode: WorkspaceGenerationBuildMode,
+    changed_paths: std::sync::Arc<std::collections::BTreeSet<PathBuf>>,
     cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
     deadline: std::time::Duration,
 ) -> Result<WorkspaceGenerationBuildCompletion, WorkspaceGenerationBuildFailure> {
@@ -65,7 +68,7 @@ pub(crate) async fn run_with_deadline(
             project_root,
             candidate,
             build_mode,
-            std::sync::Arc::new(std::collections::BTreeSet::new()),
+            changed_paths,
             cancellation.clone(),
         ),
     )

@@ -181,11 +181,12 @@ pub(crate) fn validate_registered_provider_projection_contracts(
 
     for manifest in manifests {
         match (
-            manifest.project_resolution(),
-            manifest.document_resolution(),
-            manifest.language_projection(),
-        ) {
-            (Some(_), None, Some(projection)) => {
+        manifest.project_resolution(),
+        manifest.document_resolution(),
+        manifest.language_projection(),
+    ) {
+        (Some(_), None, None) => {}
+        (Some(_), None, Some(projection)) => {
                 let contract = (
                     projection.schema_id().to_owned(),
                     projection.schema_version().to_owned(),
@@ -497,13 +498,6 @@ pub fn registered_language_ids() -> Vec<agent_semantic_config::LanguageId> {
         .iter()
         .map(|language_id| agent_semantic_config::LanguageId::new(*language_id))
         .collect()
-}
-
-pub(crate) fn registered_language_id(candidate: &str) -> Option<agent_semantic_config::LanguageId> {
-    REGISTERED_LANGUAGE_ID_STRINGS
-        .iter()
-        .find(|language_id| language_id.eq_ignore_ascii_case(candidate))
-        .map(|language_id| agent_semantic_config::LanguageId::new(*language_id))
 }
 
 fn normalize_language_provider_manifest(manifest: &mut ProviderManifest) {

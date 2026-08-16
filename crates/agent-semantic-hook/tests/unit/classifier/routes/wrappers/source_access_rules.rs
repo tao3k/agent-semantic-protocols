@@ -9,7 +9,6 @@ fn wrapper_source_access_rule_routes_to_provider_query_when_supported() {
         "DIRENV_SILENCE=1 direnv exec . rg -n WorkflowExecution src/lib.rs",
         "direnv exec . rg -n WorkflowExecution src/lib.rs",
         "rtk proxy rg -n WorkflowExecution src/lib.rs",
-        "rtk run -c \"rg -n WorkflowExecution src/lib.rs\"",
         "bash -lc \"rg -n WorkflowExecution src/lib.rs\"",
         "zsh -lc \"rg -n WorkflowExecution src/lib.rs\"",
     ] {
@@ -25,93 +24,6 @@ fn wrapper_source_access_rule_routes_to_provider_query_when_supported() {
             ReasonKind::RawBroadSearch,
             "{command}"
         );
-    }
-}
-
-#[test]
-fn unseen_wrapper_label_cannot_bypass_registered_testing_profile() {
-    let command = "/opt/new-wrapper --program 'cargo test -p agent-semantic-hook'";
-    let decision = classify_hook(
-        &crate::classifier::registry_without_providers(),
-        "codex",
-        "pre-tool",
-        &json!({ "tool_name": "functions.exec_command", "tool_input": { "cmd": command } }),
-    );
-
-    assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
-    assert_eq!(
-        decision.reason_kind,
-        ReasonKind::SubagentReceiptRequired,
-        "{command}"
-    );
-    assert_eq!(
-        decision
-            .fields
-            .get("configRuleId")
-            .and_then(serde_json::Value::as_str),
-        Some("resident-testing-dispatch"),
-        "{command}"
-    );
-    assert!(
-        decision
-            .message
-            .contains("denied only in the current Agent"),
-        "{}",
-        decision.message
-    );
-    assert!(
-        decision.message.contains("ASP remains available")
-            && decision
-                .message
-                .contains("asp session --agents choice-plane")
-            && decision.message.contains(command),
-        "{}",
-        decision.message
-    );
-
-    let in_lane = classify_hook(
-        &crate::classifier::registry_without_providers(),
-        "codex",
-        "pre-tool",
-        &json!({
-            "agent_id": "testing-child",
-            "agent_type": "asp_testing",
-            "is_subagent": true,
-            "tool_name": "functions.exec_command",
-            "tool_input": { "cmd": command }
-        }),
-    );
-    assert_eq!(in_lane.decision, DecisionKind::Allow, "{in_lane:?}");
-    assert_eq!(
-        in_lane.fields["dispatchSatisfied"].as_bool(),
-        Some(true),
-        "{in_lane:?}"
-    );
-}
-
-#[test]
-fn asp_no_agent_is_a_terminal_override_for_every_policy() {
-    for command in [
-        "ASP_NO_AGENT=1 cargo test -p agent-semantic-hook",
-        "env ASP_NO_AGENT=disabled-by-presence cargo test -p agent-semantic-hook",
-        "/bin/bash -lc 'ASP_NO_AGENT=1 cargo test -p agent-semantic-hook'",
-        "ASP_NO_AGENT=1 sed -n '1,40p' src/lib.rs",
-    ] {
-        let decision = classify_hook(
-            &registry(),
-            "codex",
-            "pre-tool",
-            &json!({ "tool_name": "functions.exec_command", "tool_input": { "cmd": command } }),
-        );
-
-        assert_eq!(decision.decision, DecisionKind::Allow, "{command}");
-        assert_eq!(decision.reason_kind, ReasonKind::None, "{command}");
-        assert_eq!(
-            decision.fields["aspNoAgentPassthrough"].as_bool(),
-            Some(true),
-            "{command}"
-        );
-        assert!(decision.routes.is_empty(), "{command}");
     }
 }
 

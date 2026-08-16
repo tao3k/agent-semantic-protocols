@@ -19,15 +19,19 @@ pub use engine::{
     SessionControlPlaneRuntimeRegistry, SessionControlPlaneSnapshot,
     SessionControlPlaneTransactionReceipt,
 };
+pub mod active_generation_projection_capability;
 pub mod graph_turbo_cache;
 pub mod parser_read_authority;
 mod runtime_concurrency;
 pub mod runtime_generation_cancellation;
+pub mod runtime_merkle_owner_proof_qualification;
+pub mod runtime_resident_read;
 pub mod runtime_search_service;
 pub mod runtime_server;
 pub mod runtime_server_admission;
 mod runtime_server_admission_builder_supervisor;
 pub mod runtime_server_admission_catalog;
+mod runtime_server_admission_registry;
 mod runtime_server_agent_control_plane;
 mod runtime_server_agent_session_status;
 pub mod runtime_server_control;

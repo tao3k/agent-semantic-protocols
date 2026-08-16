@@ -53,7 +53,7 @@ fn healthcheck_command() -> Command {
         .arg(Arg::new("json").long("json").action(ArgAction::SetTrue))
 }
 
-fn live_corpus_command() -> Command {
+pub(crate) fn live_corpus_command() -> Command {
     Command::new("live-corpus")
         .bin_name("asp live-corpus")
         .about("Qualify and publish provider live-corpus artifacts")
@@ -97,6 +97,14 @@ fn live_corpus_command() -> Command {
                         .required(true),
                 )
                 .arg(Arg::new("lock").long("lock").value_name("LOCK_JSON"))
+                .arg(Arg::new("json").long("json").action(ArgAction::SetTrue)),
+        )
+        .subcommand(
+            Command::new("qualify")
+                .about(
+                    "Measure resident search and exact-query projections for every locked corpus",
+                )
+                .arg(Arg::new("plan").long("plan").value_name("PLAN_JSON"))
                 .arg(Arg::new("json").long("json").action(ArgAction::SetTrue)),
         )
 }
@@ -200,7 +208,7 @@ fn facade_leaf_command(name: &'static str, bin_name: &'static str) -> Command {
                     .help("Run a workspace-wide structural reasoning search"),
             )
             .after_help(
-                "Tree-sitter discovery belongs to search. Use query with an exact --selector for deterministic projection.\n\nSearch pipe surfaces: asp <language> search pipe <query> --surface <owner,items,tests,deps,topology> [--view seeds|graph-turbo-request] [--workspace ROOT].",
+                "Tree-sitter discovery belongs to search. Use query with an exact --selector for deterministic projection.",
             );
     }
     command.arg(

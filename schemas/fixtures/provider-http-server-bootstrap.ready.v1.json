@@ -1,0 +1,8 @@
+{
+  "schemaId": "agent.semantic-protocols.provider-http-server-bootstrap",
+  "schemaVersion": "1",
+  "providerId": "julia-lang-project-harness",
+  "transport": "http-json-v1",
+  "state": "ready",
+  "endpoint": "http://127.0.0.1:49152"
+}

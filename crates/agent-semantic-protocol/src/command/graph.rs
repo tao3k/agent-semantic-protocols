@@ -6,7 +6,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 use agent_semantic_provider_transport::{
-    OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode, run_provider_process_async,
+    OutputMode, ProviderProcessLimits, ProviderProcessSpec, ProviderProcessSupervisor, StdinMode,
 };
 use serde_json::Value;
 
@@ -237,18 +237,22 @@ pub(super) async fn write_graph_turbo_receipt(
         "--field".to_string(),
         format!("captureSource={}", capture.capture_source),
     ]);
-    let output = run_provider_process_async(ProviderProcessSpec {
-        program: graph_turbo_program(),
-        args,
-        cwd,
-        env: BTreeMap::new(),
-        stdin: StdinMode::bytes(packet_bytes.to_vec()),
-        stdout: OutputMode::Capture,
-        stderr: OutputMode::Capture,
-        limits: ProviderProcessLimits::default(),
-    })
-    .await
-    .map_err(|error| format!("failed to run asp-graph-turbo receipt: {error}"))?;
+    let supervisor = ProviderProcessSupervisor::default();
+    let result = supervisor
+        .run(ProviderProcessSpec {
+            program: graph_turbo_program(),
+            args,
+            cwd,
+            env: BTreeMap::new(),
+            stdin: StdinMode::bytes(packet_bytes.to_vec()),
+            stdout: OutputMode::Capture,
+            stderr: OutputMode::Capture,
+            limits: ProviderProcessLimits::default(),
+        })
+        .await
+        .map_err(|error| format!("failed to run asp-graph-turbo receipt: {error}"));
+    supervisor.shutdown().await;
+    let output = result?;
     if !output.stderr.is_empty() {
         io::stderr()
             .write_all(output.stderr.as_ref())

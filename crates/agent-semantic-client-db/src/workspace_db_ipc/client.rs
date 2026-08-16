@@ -58,3 +58,24 @@ pub async fn cache_control_via_runtime_server(
     let session = connect_runtime_server_workspace_session(&project_root).await?;
     session.cache_control(request).await
 }
+
+/// Read one owner-bound Merkle proof from the immutable Runtime search segment.
+pub async fn read_runtime_merkle_owner_via_runtime_server(
+    project_root: &Path,
+    owner_path: impl Into<String>,
+) -> Result<crate::runtime_server_workspace::WorkspaceRuntimeMerkleOwnerRead, String> {
+    let session = connect_runtime_server_workspace_session(project_root).await?;
+    match session
+        .call_operation(super::WorkspaceDbIpcOperation::ReadRuntimeMerkleOwner {
+            request: super::RuntimeMerkleOwnerReadRequest::new(
+                project_root.to_string_lossy().into_owned(),
+                owner_path,
+            ),
+        })
+        .await?
+    {
+        super::WorkspaceDbIpcResult::RuntimeMerkleOwner { read } => Ok(read),
+        super::WorkspaceDbIpcResult::Failed { code, message } => Err(format!("{code}: {message}")),
+        _ => Err("Runtime Server returned an unexpected Merkle owner response".to_owned()),
+    }
+}

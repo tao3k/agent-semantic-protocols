@@ -60,6 +60,11 @@
       "properties": {
         "root": { "$ref": "#/$defs/relativePath" },
         "entrypoint": { "$ref": "#/$defs/relativePath" },
+        "runtimeDependencies": {
+          "type": "array",
+          "description": "Files copied from the canonical launch program installation prefix into the immutable artifact before its digest is computed.",
+          "items": { "$ref": "#/$defs/runtimeDependency" }
+        },
         "launch": { "$ref": "#/$defs/launch" }
       }
     },
@@ -77,6 +82,22 @@
         "args": { "type": "array", "items": { "type": "string" } },
         "programRelativeToArtifact": { "type": "boolean" },
         "argsRelativeToArtifact": { "type": "boolean" }
+      }
+    },
+    "runtimeDependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A runtime file required by the artifact-relative launch program.",
+      "required": ["source", "target"],
+      "properties": {
+        "source": {
+          "description": "Path relative to the canonical launch program installation prefix.",
+          "$ref": "#/$defs/relativePath"
+        },
+        "target": {
+          "description": "Destination path relative to the immutable artifact root.",
+          "$ref": "#/$defs/relativePath"
+        }
       }
     },
     "command": {

@@ -1,7 +1,7 @@
 use std::fs;
 use std::time::{Duration, Instant};
 
-use crate::run_provider_process_async;
+use crate::ProviderProcessSupervisor;
 
 use super::support::{script, spec, temp_dir};
 
@@ -14,21 +14,29 @@ async fn provider_process_hot_path_stays_inside_performance_gate() {
     let batch_gate = Duration::from_secs(8);
     let started_at = Instant::now();
     let mut run_times = Vec::with_capacity(iterations);
+    let mut admission_times = Vec::with_capacity(iterations);
+    let supervisor = ProviderProcessSupervisor::default();
 
     for _ in 0..iterations {
-        let output = run_provider_process_async(spec(program.clone(), root.clone()))
+        let output = supervisor
+            .run(spec(program.clone(), root.clone()))
             .await
             .expect("run provider");
         assert!(output.status.success());
         assert_eq!(output.stdout.as_ref(), b"ok");
+        admission_times.push(output.receipt.admission_wait());
         run_times.push(output.receipt.elapsed());
     }
+    supervisor.shutdown().await;
 
     let elapsed = started_at.elapsed();
     let mut sorted_run_times = run_times.clone();
     sorted_run_times.sort();
     let median = sorted_run_times[sorted_run_times.len() / 2];
     let slowest = sorted_run_times[sorted_run_times.len() - 1];
+    eprintln!(
+        "[provider-process-performance] batch={elapsed:?} runs={run_times:?} admissions={admission_times:?}"
+    );
     assert!(
         median < median_gate,
         "provider process median exceeded {median_gate:?}; median={median:?}; slowest={slowest:?}; runs={run_times:?}"

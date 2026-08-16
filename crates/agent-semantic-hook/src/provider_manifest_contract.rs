@@ -10,6 +10,12 @@ pub fn validate_provider_manifest_contract(manifest: &ProviderManifest) -> Vec<S
     }
 
     if let Err(error) =
+        crate::protocol_activation::protocol_activation_runtime::validate_runtime_contract(manifest)
+    {
+        errors.push(error.to_string());
+    }
+
+    if let Err(error) =
         crate::protocol_activation::provider_query_pack::validate_query_pack_descriptor(manifest)
     {
         errors.push(error.to_string());

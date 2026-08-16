@@ -46,6 +46,14 @@ pub enum RuntimeCacheControlRequest {
         mutation_id: String,
         scope: RuntimeCacheInvalidationScope,
     },
+    ApplyOwnerDelta {
+        project_root: String,
+        #[serde(deserialize_with = "deserialize_mutation_id")]
+        mutation_id: String,
+        changed_paths: Vec<String>,
+        removed_paths: Vec<String>,
+        fallback_policy: RuntimeCacheOwnerDeltaFallbackPolicy,
+    },
 }
 
 impl RuntimeCacheControlRequest {
@@ -55,16 +63,17 @@ impl RuntimeCacheControlRequest {
             Self::Status { project_root }
             | Self::RefreshSourceIndex { project_root, .. }
             | Self::RebuildSourceIndex { project_root, .. }
-            | Self::Invalidate { project_root, .. } => project_root,
+            | Self::Invalidate { project_root, .. }
+            | Self::ApplyOwnerDelta { project_root, .. } => project_root,
         }
     }
 
     #[must_use]
     pub fn mutation_id(&self) -> Option<&str> {
         match self {
-            Self::RebuildSourceIndex { mutation_id, .. } | Self::Invalidate { mutation_id, .. } => {
-                Some(mutation_id)
-            }
+            Self::RebuildSourceIndex { mutation_id, .. }
+            | Self::Invalidate { mutation_id, .. }
+            | Self::ApplyOwnerDelta { mutation_id, .. } => Some(mutation_id),
             Self::Status { .. } | Self::RefreshSourceIndex { .. } => None,
         }
     }
@@ -76,6 +85,13 @@ pub enum RuntimeCacheInvalidationScope {
     WorkspaceGeneration,
     ProviderOwners,
     SyntaxRows,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RuntimeCacheOwnerDeltaFallbackPolicy {
+    FailClosed,
+    FullGeneration,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -102,6 +118,54 @@ pub struct RuntimeCacheControlReceipt {
     pub failure: Option<String>,
 }
 
+pub const RUNTIME_MERKLE_OWNER_READ_REQUEST_SCHEMA_ID: &str =
+    "agent.semantic-protocols.runtime-merkle-owner-read-request";
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RuntimeMerkleOwnerReadRequest {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub project_root: String,
+    pub owner_path: String,
+}
+
+impl RuntimeMerkleOwnerReadRequest {
+    pub fn new(project_root: impl Into<String>, owner_path: impl Into<String>) -> Self {
+        Self {
+            schema_id: RUNTIME_MERKLE_OWNER_READ_REQUEST_SCHEMA_ID.to_owned(),
+            schema_version: "1".to_owned(),
+            project_root: project_root.into(),
+            owner_path: owner_path.into(),
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_id != RUNTIME_MERKLE_OWNER_READ_REQUEST_SCHEMA_ID
+            || self.schema_version != "1"
+        {
+            return Err("runtime Merkle owner read request schema mismatch".to_owned());
+        }
+        if self.project_root.trim().is_empty() || self.owner_path.trim().is_empty() {
+            return Err(
+                "runtime Merkle owner read request requires project root and owner path".to_owned(),
+            );
+        }
+        let owner_path = std::path::Path::new(&self.owner_path);
+        if owner_path.is_absolute()
+            || owner_path.components().any(|component| {
+                matches!(
+                    component,
+                    std::path::Component::CurDir | std::path::Component::ParentDir
+                )
+            })
+        {
+            return Err("runtime Merkle owner path must be normalized and relative".to_owned());
+        }
+        Ok(())
+    }
+}
+
 /// Typed workspace operation accepted by the Runtime Server data-plane protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(
@@ -118,6 +182,9 @@ pub enum WorkspaceDbIpcOperation {
     ReadSourceIndex {
         request: WorkspaceDbSourceIndexLookupRequest,
     },
+    ReadTreeSitterInventory {
+        request: WorkspaceDbSourceIndexLookupRequest,
+    },
     ReadRuntimeGraphFacts {
         project_root: String,
         sources: Vec<RuntimeGraphFactSource>,
@@ -128,9 +195,18 @@ pub enum WorkspaceDbIpcOperation {
         projection_kind: crate::runtime_server_workspace::ExactProjectionKind,
         structural_selector: String,
     },
+    ProviderSearch {
+        operation_id: String,
+        project_root: String,
+        language_id: LanguageId,
+        args: Vec<String>,
+    },
     ReadRuntimeOwner {
         project_root: String,
         owner_path: String,
+    },
+    ReadRuntimeMerkleOwner {
+        request: RuntimeMerkleOwnerReadRequest,
     },
     ProjectProviderOwner {
         project_root: String,
@@ -156,6 +232,9 @@ pub enum WorkspaceDbIpcOperation {
     RebindRuntimeSelectorOverlay {
         project_root: String,
         rebind: crate::runtime_server_workspace::WorkspaceRuntimeSelectorRebind,
+    },
+    RequireRuntimeGeneration {
+        project_root: String,
     },
     AdmitRuntimeGeneration {
         #[serde(deserialize_with = "deserialize_mutation_id")]
@@ -338,11 +417,17 @@ pub enum WorkspaceDbIpcResult {
     RuntimeOwner {
         read: crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead,
     },
+    RuntimeMerkleOwner {
+        read: crate::runtime_server_workspace::WorkspaceRuntimeMerkleOwnerRead,
+    },
     ProviderOwnerProjection {
         owner: crate::runtime_server_workspace::WorkspaceOwnerSnapshot,
     },
     ProviderRuntime {
         runtime: serde_json::Value,
+    },
+    ProviderSearch {
+        receipt: crate::runtime_search_service::RuntimeProviderSearchReceipt,
     },
     TreeSitterQuery {
         rendered: Option<String>,

@@ -91,6 +91,16 @@ pub(crate) fn record_workspace_ipc_terminal(
     context.elapsed_micros = Some(elapsed.as_micros() as u64);
     let reason_kind = match result {
         WorkspaceDbIpcResult::Failed { code, .. } => code.clone(),
+        WorkspaceDbIpcResult::RuntimeSelector {
+            read:
+                crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead::ProjectionScopeOmitted {
+                    generation_digest,
+                    ..
+                },
+        } => {
+            context.generation_digest = Some(generation_digest.clone());
+            "projection-scope-omitted".to_owned()
+        }
         _ => return Ok(None),
     };
     sender.try_record_search_terminal(

@@ -2,7 +2,6 @@
 
 mod agent_session;
 
-pub(crate) use agent_config_sync::synchronize_agent_config_from_project_root;
 mod agent_config_sync;
 mod agent_control_plane;
 mod agent_window;
@@ -12,7 +11,6 @@ mod client_backend_worker;
 mod dispatch;
 mod dispatch_agent_session_policy;
 mod document_provider;
-mod gerbil_check_cache;
 mod gerbil_deps;
 pub(crate) mod global_provider_catalog;
 mod graph;
@@ -46,7 +44,6 @@ mod paths;
 pub(crate) mod protocol_binary;
 mod protocol_version;
 mod provider_activation;
-pub(crate) use provider_activation::resolve_provider_runtime_in_server;
 mod provider_dispatch;
 mod provider_exact_args;
 mod provider_execution;
@@ -81,3 +78,4 @@ mod workspace_tree_sitter_inventory;
 mod workspace_tree_sitter_query;
 pub(crate) use workspace_tree_sitter_query::run_runtime_server_tree_sitter_query;
 mod workspace_tree_sitter_query_trace;
+pub(crate) use agent_config_sync::synchronize_embedded_agent_config;

@@ -53,31 +53,6 @@ pub(crate) fn protocol_binary_digest_from_canonical_artifact_path(
     agent_semantic_content_identity::blake3_digest_from_canonical_artifact_path(canonical)
 }
 
-pub(crate) async fn canonical_protocol_binary_artifact_digest(
-    path: &Path,
-) -> Result<String, String> {
-    let canonical = fs::canonicalize(path).map_err(|error| {
-        format!(
-            "failed to resolve canonical ASP runtime artifact {}: {error}",
-            path.display()
-        )
-    })?;
-    if let Some(digest) = protocol_binary_digest_from_canonical_artifact_path(&canonical) {
-        return Ok(digest);
-    }
-    let identity_path = canonical.clone();
-    tokio::task::spawn_blocking(move || {
-        agent_semantic_content_identity::file_content_digest_v1(&identity_path).map_err(|error| {
-            format!(
-                "failed to derive ASP runtime artifact identity from {}: {error}",
-                identity_path.display()
-            )
-        })
-    })
-    .await
-    .map_err(|error| format!("join ASP runtime artifact identity task: {error}"))?
-}
-
 fn valid_blake3_digest(digest: &str) -> bool {
     digest.len() == 64
         && digest

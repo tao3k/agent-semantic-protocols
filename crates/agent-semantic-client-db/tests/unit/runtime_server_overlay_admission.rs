@@ -1,7 +1,8 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use agent_semantic_client_db::runtime_server_workspace::{
-    RuntimeServerWorkspaceRegistry, WorkspaceCanonicalMaterialization, WorkspaceMemoryGeneration,
+    RuntimeServerWorkspaceRegistry, WORKSPACE_GENERATION_DELTA_SCHEMA_ID,
+    WorkspaceCanonicalMaterialization, WorkspaceGenerationDelta, WorkspaceMemoryGeneration,
     WorkspaceOwnerSnapshot, WorkspaceRecoverySource,
 };
 
@@ -44,6 +45,7 @@ fn generation_with_selectors(
     );
     WorkspaceMemoryGeneration::try_from_build(
         agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
+            projection_capability: crate::fixture::projection_capability_manifest_fixture(),
             relations: Vec::new(),
             workspace_identity: workspace_identity.to_owned(),
             project_root: project_root.display().to_string(),
@@ -105,7 +107,12 @@ fn canonical_materialization_binds_snapshot_import_and_complete_owner_count() {
                 language_id: "rust".into(),
                 provider_id: "rs-harness".into(),
                 text: "source".to_owned(),
-                selectors: Vec::new(),
+                selectors: vec![crate::db_engine_source_index::rust_selector_fixture(
+                    "src/lib.rs",
+                    "rust://src/lib.rs#item/function/fixture",
+                    "fixture",
+                    b"source",
+                )],
             }],
         },
     )
@@ -115,7 +122,7 @@ fn canonical_materialization_binds_snapshot_import_and_complete_owner_count() {
     );
     let source_snapshot = workspace_snapshot.evidence(
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-        "provider-digest".to_owned(),
+        "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
     );
     let materialization = WorkspaceCanonicalMaterialization::new(
         "workspace-canonical-materialization",
@@ -126,7 +133,14 @@ fn canonical_materialization_binds_snapshot_import_and_complete_owner_count() {
             owner_path: "src/lib.rs".to_owned(),
             content_digest: format!("blake3-256:{}", blake3::hash(b"source").to_hex()),
             bytes: b"source".to_vec(),
-            selectors: Vec::new(),
+            selectors: vec![
+                agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot {
+                    selector: "rust://src/lib.rs#item/function/fixture".to_owned(),
+                    byte_start: 0,
+                    byte_end: b"source".len(),
+                    derived_projections: Vec::new(),
+                },
+            ],
         }],
         Vec::new(),
     )
@@ -411,21 +425,26 @@ async fn multi_owner_delta_publishes_one_atomic_generation_epoch() {
             "publish-owner-delta-atomically",
             workspace_identity,
             &root,
-            vec![
-                WorkspaceOwnerSnapshot {
-                    owner_path: "src/first.rs".to_owned(),
-                    content_digest: format!("blake3-256:{}", blake3::hash(first).to_hex()),
-                    bytes: first.to_vec(),
-                    selectors: Vec::new(),
-                },
-                WorkspaceOwnerSnapshot {
-                    owner_path: "src/second.rs".to_owned(),
-                    content_digest: format!("blake3-256:{}", blake3::hash(second).to_hex()),
-                    bytes: second.to_vec(),
-                    selectors: Vec::new(),
-                },
-            ],
-            vec!["src/lib.rs".to_owned()],
+            WorkspaceGenerationDelta {
+                schema_id: WORKSPACE_GENERATION_DELTA_SCHEMA_ID.to_owned(),
+                schema_version: "1".to_owned(),
+                base_generation_digest: old_lease.generation().generation_digest.clone(),
+                owners: vec![
+                    WorkspaceOwnerSnapshot {
+                        owner_path: "src/first.rs".to_owned(),
+                        content_digest: format!("blake3-256:{}", blake3::hash(first).to_hex()),
+                        bytes: first.to_vec(),
+                        selectors: Vec::new(),
+                    },
+                    WorkspaceOwnerSnapshot {
+                        owner_path: "src/second.rs".to_owned(),
+                        content_digest: format!("blake3-256:{}", blake3::hash(second).to_hex()),
+                        bytes: second.to_vec(),
+                        selectors: Vec::new(),
+                    },
+                ],
+                tombstones: vec!["src/lib.rs".to_owned()],
+            },
         )
         .await
         .expect("publish owner delta in one writer epoch");
@@ -458,6 +477,114 @@ async fn multi_owner_delta_publishes_one_atomic_generation_epoch() {
         .shutdown()
         .await
         .expect("drain owner delta writer lane");
+    let _ = tokio::fs::remove_dir_all(root).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn stale_owner_delta_is_rejected_before_pointer_or_epoch_change() {
+    let root = fixture_root();
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(root.clone()).expect("create workspace registry");
+    let workspace_identity = "workspace-owner-delta-cas";
+    registry
+        .publish(
+            "publish-canonical-before-cas",
+            WorkspaceRecoverySource::TursoGeneration,
+            generation(workspace_identity, &root, 1, b"fn baseline() {}\n"),
+        )
+        .await
+        .expect("publish canonical generation");
+    let baseline = registry
+        .lease(workspace_identity, &root)
+        .expect("lease baseline generation");
+    let pointer_path =
+        agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
+            &root,
+            workspace_identity,
+            &root,
+        )
+        .expect("baseline pointer path");
+    let pointer_before = tokio::fs::read(&pointer_path)
+        .await
+        .expect("read baseline pointer");
+    let baseline_epoch = baseline.epoch();
+    let baseline_digest = baseline.generation().generation_digest.clone();
+    let owner = WorkspaceOwnerSnapshot {
+        owner_path: "src/lib.rs".to_owned(),
+        content_digest: format!("blake3-256:{}", blake3::hash(b"fn next() {}\n").to_hex()),
+        bytes: b"fn next() {}\n".to_vec(),
+        selectors: Vec::new(),
+    };
+    let stale = registry
+        .publish_owner_delta(
+            "publish-stale-owner-delta",
+            workspace_identity,
+            &root,
+            WorkspaceGenerationDelta {
+                schema_id: WORKSPACE_GENERATION_DELTA_SCHEMA_ID.to_owned(),
+                schema_version: "1".to_owned(),
+                base_generation_digest:
+                    "blake3-256:0000000000000000000000000000000000000000000000000000000000000000"
+                        .to_owned(),
+                owners: vec![owner.clone()],
+                tombstones: Vec::new(),
+            },
+        )
+        .await
+        .expect_err("stale owner delta must fail closed");
+    assert!(stale.contains("base generation digest mismatch"));
+    let unchanged = registry
+        .lease(workspace_identity, &root)
+        .expect("lease unchanged generation");
+    let pointer_after_stale = tokio::fs::read(&pointer_path)
+        .await
+        .expect("read pointer after stale delta");
+    assert_eq!(pointer_after_stale, pointer_before);
+    assert_eq!(unchanged.epoch(), baseline_epoch);
+    assert_eq!(unchanged.generation().generation_digest, baseline_digest);
+    assert!(unchanged.owner("src/lib.rs").is_some());
+
+    let valid = registry
+        .publish_owner_delta(
+            "publish-valid-owner-delta-after-cas",
+            workspace_identity,
+            &root,
+            WorkspaceGenerationDelta {
+                schema_id: WORKSPACE_GENERATION_DELTA_SCHEMA_ID.to_owned(),
+                schema_version: "1".to_owned(),
+                base_generation_digest: baseline_digest.clone(),
+                owners: vec![owner],
+                tombstones: Vec::new(),
+            },
+        )
+        .await
+        .expect("current-base owner delta publishes");
+    assert_eq!(valid.target_epoch, baseline_epoch + 1);
+    assert!(valid.old_generation_readable);
+    let current = registry
+        .lease(workspace_identity, &root)
+        .expect("lease published generation");
+    assert_ne!(current.generation().generation_digest, baseline_digest);
+    let pointer_after_valid = tokio::fs::read(&pointer_path)
+        .await
+        .expect("read pointer after valid delta");
+    assert_ne!(pointer_after_valid, pointer_before);
+    let data_plane = agent_semantic_client_db::runtime_server_workspace::WorkspaceSearchGenerationDataPlaneClient::open(
+        &pointer_path,
+        &root,
+    )
+    .await
+    .expect("open fresh published search generation");
+    let fresh_owner = data_plane
+        .read_merkle_owner("src/lib.rs")
+        .expect("read fresh owner proof");
+    assert!(matches!(
+        fresh_owner,
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeMerkleOwnerRead::Owner { .. }
+    ));
+    assert_eq!(registry.data_plane_counters().database_opens, 0);
+    assert_eq!(registry.data_plane_counters().provider_spawns, 0);
+    registry.shutdown().await.expect("drain CAS writer lane");
     let _ = tokio::fs::remove_dir_all(root).await;
 }
 
@@ -502,7 +629,12 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
             line_count: Some(1),
             query_keys: Vec::new(),
         }],
-        selectors: Vec::new(),
+        selectors: vec![crate::db_engine_source_index::rust_selector_fixture(
+            "src/lib.rs",
+            "rust://src/lib.rs#item/function/restored",
+            "restored",
+            b"pub fn restored() {}\n",
+        )],
     };
     let source_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes([(
         "src/lib.rs",

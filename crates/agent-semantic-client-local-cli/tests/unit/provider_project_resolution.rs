@@ -17,6 +17,7 @@ fn project_resolution_request_carries_typed_candidate_generation_identity() {
             .expect("discover repository candidates")
             .expect("Git candidate snapshot");
     let (_, request, _) = super::provider_project_resolution_invocation_with_candidates(
+        agent_semantic_provider_transport::ProviderProcessSupervisor::default(),
         &provider,
         project_root,
         &super::ProviderProjectResolutionCollectionScope::CompleteGeneration,
@@ -47,6 +48,7 @@ fn provider_invocation_rebases_repository_snapshot_before_language_harness() {
             .expect("Git candidate snapshot");
 
     let (_, request, _) = super::provider_project_resolution_invocation_with_candidates(
+        agent_semantic_provider_transport::ProviderProcessSupervisor::default(),
         &provider,
         &project_root,
         &super::ProviderProjectResolutionCollectionScope::CompleteGeneration,
@@ -199,6 +201,29 @@ fn candidate_fixture(
         paths: paths.iter().map(|path| (*path).to_owned()).collect(),
         policy_exclusions,
     }
+}
+
+#[test]
+fn not_applicable_provider_resolution_maps_to_unsupported() {
+    let stdout = serde_json::to_vec(&serde_json::json!({
+        "schemaId": "agent.semantic-protocols.provider-project-resolution-response",
+        "schemaVersion": "1",
+        "languageId": "python",
+        "providerId": "py-harness",
+        "state": "not-applicable"
+    }))
+    .expect("encode not-applicable provider response");
+    let resolution = super::project_resolution_from_stdout(
+        &stdout,
+        &super::LanguageId::from("python"),
+        &super::ProviderId::from("py-harness"),
+        &candidate_fixture(&[], Vec::new()),
+    )
+    .expect("not-applicable provider response");
+    assert!(matches!(
+        resolution,
+        super::ProviderProjectResolution::Unsupported
+    ));
 }
 
 fn project_resolution_scope(source_scopes: serde_json::Value) -> serde_json::Value {

@@ -28,11 +28,13 @@ live Git candidate generation, scan the checkout, invoke a provider, or rebuild
 the source index before making the last committed generation readable.
 
 Checkout drift detection is a separate edge-triggered reconciliation operation.
-The lifecycle hook or supervisor submits it asynchronously and the writer lane
-stages a replacement generation. Readers continue leasing the last committed
-generation until the replacement commits atomically. Thus cold restore cost is
-bounded by durable receipt validation and memory publication, while source
-mutation never creates an authority gap.
+An out-of-band host lifecycle owner or Runtime supervisor submits it
+asynchronously and the writer lane stages a replacement generation. The
+synchronous Hook path never submits, joins, waits for, or polls this operation.
+Readers continue leasing the last committed generation until the replacement
+commits atomically. Thus cold restore cost is bounded by durable receipt
+validation and memory publication, while source mutation never creates an
+authority gap.
 
 An empty project-resolution set is a valid committed generation for a workspace
 whose admitted scope contains only document providers or no programming-language

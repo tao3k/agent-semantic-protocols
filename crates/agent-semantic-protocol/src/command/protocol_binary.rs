@@ -2,16 +2,33 @@
 
 #[path = "protocol_binary_identity.rs"]
 mod protocol_binary_identity;
+
+/// Publishes a verified, digest-addressed Runtime Server artifact into State Home.
+///
+/// Runtime startup accepts only artifacts installed through this identity contract; it never
+/// hashes an unregistered executable as a compatibility fallback.
+pub fn publish_runtime_server_artifact(source: &Path, state_home: &Path) -> Result<String, String> {
+    let installed = install_protocol_binary_target(
+        source,
+        &state_home.join("runtime/bin/asp"),
+        &state_home.join("runtime/artifacts"),
+        &RuntimeBinaryIdentityV1::asp_bootstrap(),
+    )?;
+    Ok(installed.artifact_digest)
+}
+
+/// Returns the identity of the published Runtime Server artifact without reading its bytes.
+pub fn published_runtime_server_artifact_digest(state_home: &Path) -> Option<String> {
+    protocol_binary_artifact_path_digest(&state_home.join("runtime/bin/asp"))
+}
 #[path = "protocol_binary_retention.rs"]
 mod protocol_binary_retention;
 
 pub(crate) use protocol_binary_retention::prune_runtime_binary_artifacts;
 
 use protocol_binary_identity::is_digest_addressed_protocol_binary;
+pub(crate) use protocol_binary_identity::protocol_binary_artifact_path_digest;
 pub(crate) use protocol_binary_identity::protocol_binary_digest_from_canonical_artifact_path;
-pub(crate) use protocol_binary_identity::{
-    canonical_protocol_binary_artifact_digest, protocol_binary_artifact_path_digest,
-};
 
 use std::env;
 use std::ffi::OsString;

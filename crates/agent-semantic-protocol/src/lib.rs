@@ -29,6 +29,9 @@ mod state_cli;
 pub use cli::{run_cli_args, run_cli_from_env};
 #[doc(hidden)]
 pub mod hook_bootstrap;
+pub use command::protocol_binary::{
+    publish_runtime_server_artifact, published_runtime_server_artifact_digest,
+};
 #[doc(hidden)]
 pub use state_cli::run_binary_from_env;
 pub(crate) mod codex;

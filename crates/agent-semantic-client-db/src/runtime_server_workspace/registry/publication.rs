@@ -25,7 +25,7 @@ impl RuntimeServerWorkspaceRegistry {
             .writer
             .send(WorkspaceWriteCommand::PublishSelectorOverlay {
                 target: entry.write_target(),
-                workspace_identity,
+                workspace_identity: workspace_identity.clone(),
                 overlay,
                 reply,
             })
@@ -49,7 +49,7 @@ impl RuntimeServerWorkspaceRegistry {
             .writer
             .send(WorkspaceWriteCommand::RebindSelectorOverlay {
                 target: entry.write_target(),
-                workspace_identity,
+                workspace_identity: workspace_identity.clone(),
                 rebind,
                 reply,
             })
@@ -176,8 +176,7 @@ impl RuntimeServerWorkspaceRegistry {
         request_id: impl Into<String>,
         workspace_identity: impl Into<String>,
         project_root: &std::path::Path,
-        owners: Vec<WorkspaceOwnerSnapshot>,
-        tombstones: Vec<String>,
+        delta: crate::runtime_server_workspace::WorkspaceGenerationDelta,
     ) -> Result<WorkspaceRecoveryReceipt, String> {
         let workspace_identity = workspace_identity.into();
         let entry = self.entry(&workspace_identity, project_root).await?;
@@ -189,8 +188,7 @@ impl RuntimeServerWorkspaceRegistry {
                     target: entry.write_target(),
                     request_id: request_id.into(),
                     workspace_identity,
-                    owners,
-                    tombstones,
+                    delta,
                     reply,
                 },
             ))
@@ -293,11 +291,14 @@ impl RuntimeServerWorkspaceRegistry {
         {
             let target_epoch = active.generation().active_epoch;
             let receipt = crate::runtime_server_workspace::WorkspaceRecoveryReceipt {
+                projection_capability: active
+                    .generation()
+                    .projection_capability_receipt(active.generation().active_epoch)?,
                 schema_id: crate::runtime_server_workspace::WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID
                     .to_owned(),
                 schema_version: "1".to_owned(),
                 request_id,
-                workspace_identity,
+                workspace_identity: workspace_identity.clone(),
                 source: WorkspaceRecoverySource::MmapCheckpoint,
                 state: crate::runtime_server_workspace::WorkspaceGenerationState::Ready,
                 active_epoch: target_epoch.saturating_sub(1),
@@ -309,11 +310,13 @@ impl RuntimeServerWorkspaceRegistry {
                 counters: crate::runtime_server_workspace::RuntimeDataPlaneCounters::default(),
             };
             receipt.validate()?;
+            self.prepare_search_projection_client(&workspace_identity, project_root)
+                .await?;
             return Ok(receipt);
         }
         let (materialization, prepared_index) = materialization.into_parts();
-        let project_root = std::path::Path::new(&materialization.project_root);
-        let entry = self.entry(&workspace_identity, project_root).await?;
+        let project_root = std::path::PathBuf::from(&materialization.project_root);
+        let entry = self.entry(&workspace_identity, &project_root).await?;
         let (reply, receive) = oneshot::channel();
         entry
             .writer
@@ -321,7 +324,7 @@ impl RuntimeServerWorkspaceRegistry {
                 super::canonical_publication_owner::EnsureCanonicalGenerationCommand {
                     target: entry.write_target(),
                     request_id,
-                    workspace_identity,
+                    workspace_identity: workspace_identity.clone(),
                     materialization,
                     prepared_index,
                     reply,
@@ -329,9 +332,19 @@ impl RuntimeServerWorkspaceRegistry {
             ))
             .await
             .map_err(|_| "runtime workspace writer lane is unavailable".to_owned())?;
-        receive
+        let receipt = receive
             .await
-            .map_err(|_| "runtime workspace writer lane dropped its completion".to_owned())?
+            .map_err(|_| "runtime workspace writer lane dropped its completion".to_owned())??;
+        self.wait_canonical_generation_durable(
+            &workspace_identity,
+            &project_root,
+            &receipt.generation_digest,
+            receipt.target_epoch,
+        )
+        .await?;
+        self.prepare_search_projection_client(&workspace_identity, &project_root)
+            .await?;
+        Ok(receipt)
     }
 
     pub async fn ensure_canonical_generation(

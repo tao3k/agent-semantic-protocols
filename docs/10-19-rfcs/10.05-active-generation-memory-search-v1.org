@@ -94,6 +94,23 @@ Readers open the active receipt once and pin its generation for the request.
 They never observe a mixture of two generations and never take the Turso writer
 lock on the Memory Search path.
 
+Runtime generation admission has one Tokio-owned mutable authority. Requests enter
+that authority through =tokio::sync::mpsc= and receive command completion through
+=tokio::sync::oneshot=. The writer publishes only validated immutable receipts
+through =tokio::sync::watch=; query paths subscribe to that watch value and never
+mutate admission state. =BTreeSet= and related collections are canonical schema
+values only. =DashMap=, synchronous mutexes, and atomics do not own admission
+lifecycle state or participate in the request hot path.
+
+The writer owns single-flight build scheduling, publication epoch allocation,
+cancellation, and shutdown. A submission returns an immutable =Building= or
+=Ready= receipt without waiting for the build body. Publication epochs are
+strictly monotonic; duplicate or stale publications fail closed. Cancellation
+and channel closure resolve every waiter, abort or join every owned task, and
+leave no detached generation task. The conformance suite exercises 256
+concurrent submissions, cancellation, closed command and subscriber channels,
+repeated publication epochs, shutdown, and orphan-task absence under Tokio time.
+
 * Typed Ranker Artifact
 
 The Runtime Server MUST launch the activated standalone =asp-graph-turbo= artifact directly as its v1 IPC peer. The immutable runtime catalog binds that artifact locator and content digest before daemon publication. A Python interpreter locator, =python -m= launch, query-time materialization, healthcheck-time installation, =uv= environment, or checkout execution is a contract violation, not a recovery path.
@@ -114,6 +131,29 @@ run an installer during the request, or select an untyped ranker.
 The installed-search performance gate rejects any process tree containing
 =uv= and requires the ranker receipt to identify the same bytes selected by
 activation.
+
+* Resident Provider Runtime Contract
+
+Every activated provider manifest MUST declare a =runtimeContract=.  The
+contract binds the =runtime-ipc-v1= transport and the request and response
+schema identity of every admitted provider operation.  Missing, empty,
+duplicate, or schema-incomplete contracts fail activation; route booleans and
+CLI command templates are not runtime capability evidence.
+
+The Runtime Server MUST validate the provider artifact digest, manifest digest,
+and runtime-contract digest before launching one provider actor for the active
+catalog generation.  Startup completes only after the actor returns a typed
+handshake receipt whose transport and operation set exactly match the manifest.
+The immutable Ready receipt is published through Tokio =watch=; requests submit
+typed work through the actor's bounded Tokio =mpsc= mailbox and receive one
+=oneshot= response.
+
+No query, search, owner projection, exact projection, healthcheck, or workspace
+generation path may spawn a provider process.  A missing or stopped actor is a
+typed =provider-runtime-not-ready= state.  Shutdown closes admission, cancels
+the actor, drains outstanding responses, reaps the child, and publishes a
+terminal receipt.  There is no request-time process fallback and no framed
+stdin compatibility transport in this architecture.
 
 * Resident Provider Relation Graph
 
@@ -137,6 +177,58 @@ edge only when its generation equals the pinned selector generation. Cross
 workspace relation reads and mixtures of two generation epochs fail closed.
 
 * Generation Segment Contract Admission
+** Projection capability atomicity
+
+*** Generation build lease and cache-control acknowledgement
+
+An explicit cache refresh or rebuild admits exactly one server-owned generation
+attempt and returns a typed =Rebuilding= receipt immediately after enqueue.  The
+request connection does not own the build lifetime and MUST NOT wait for a
+generation to become =Ready=.  =Status= is the observation surface for the
+eventual =Ready=, =Failed=, or =Cancelled= terminal receipt.
+
+Every admitted generation attempt owns a bounded Runtime Server lease.  Lease
+expiry cancels the generation builder, completes its single-writer lane, wakes
+waiters, and publishes one terminal failure or cancellation receipt.  A later
+explicit refresh may start a new attempt; an expired attempt MUST NOT leave the
+workspace permanently =Building=.
+
+Cold search, owner, and exact-query paths consume only an already-published
+immutable mmap generation.  They never join the build lease, wait for provider
+startup, open Turso, or start admission.  Missing or rebuilding state returns a
+typed =NotReady= or =RecoveryRequired= receipt within the synchronous read
+budget.  These rules refine the existing v1 contract and do not introduce a v2
+schema or compatibility fallback.
+
+An active generation is publishable only when one durable commit binds all of
+the following authorities:
+
+- the workspace generation digest and source root digest,
+- admitted owner membership,
+- every canonical selector exposed by discovery or callable-skeleton output,
+- the projection modes that can materialize each exposed selector, and
+- the provider-catalog digest whose provider implementation validates those
+  projections.
+
+The Runtime Server MUST NOT publish =Ready= or =Healthy= while any bound
+provider catalog is unreadable, any exposed selector lacks a same-generation
+projection capability, or the resident projection segment is absent.  A query
+MUST consume this single receipt; it MUST NOT join discovery identity from one
+generation with projection bytes or capability metadata from another.
+
+Callable-skeleton output MAY expose branch, binding, or expression segment
+selectors only when the active receipt declares the requested projection mode
+for those selectors.  Otherwise generation construction fails before
+publication.  The query path does not repair, rebind, or synthesize capability
+state and does not downgrade the failure to =source-unavailable=.
+
+Explicit operator lifecycle actions and background reconciliation are distinct
+authorities.  =server start= and =server restart= clear an operator-stop marker
+and run the catalog/capability admission transaction.  Hook health checks and
+background =ensure= preserve operator stop and never spawn implicitly.  A
+healthy lifecycle receipt is therefore a postcondition receipt for a readable
+provider catalog and an admitted projection-capability generation, not merely
+evidence that a daemon process or socket once existed.
 
 The resident data plane MUST reject a mapped generation before payload
 deserialization when its binary segment contract does not match the current
@@ -189,3 +281,77 @@ The receipt and Memory Search consumption contract are language-neutral.
 Language harnesses produce parser-owned canonical item identities and
 generation materialization proofs.  They do not depend on ASP crates and do not
 own active receipt layout, runtime caching, or query routing.
+* Resident Search Authority V1
+
+The ASP Server MUST expose one resident search authority per workspace.  Its
+committed value is an immutable search generation.  The generation binds the
+workspace identity, generation digest, source root digest, provider catalog
+digest, provider runtime contract digest, projection capability receipt, and
+the resident lexical, owner, selector, relation, and graph sections that are
+actually available to readers.
+
+The source root digest and the owner-index Merkle root are distinct identity
+domains.  The former binds the admitted workspace snapshot; the latter binds
+the path-addressed owner bytes and selector index used by resident search.
+They MUST each be validated according to their own canonical construction and
+MUST NOT be compared for equality.  A receipt that exposes both identities
+MUST name them separately; equality across the two domains is not a readiness
+or integrity condition.
+
+Provider manifests and CLI route strings are discovery inputs only.  They are
+not runtime capability authority.  Before a provider can contribute to a
+generation, the installed executable MUST return a typed provider runtime
+contract receipt.  ASP MUST compare that receipt with the catalog declaration
+and executable artifact digest.  A mismatch is terminal for that provider
+generation and MUST NOT be rendered as an empty search result.
+
+Each provider manifest MUST declare a =runtimeContract= descriptor with the
+operation name and request/response schema identifiers for every operation it
+offers.  Capability booleans and command-route bindings are not a substitute
+for this declaration.  Catalog resolution binds the descriptor to an installed
+artifact and emits the separate runtime receipt; admission accepts only the
+digest of that validated receipt.  Missing operation schema metadata is a
+typed contract failure, never a guessed mapping or a lexical fallback.
+
+The mutable authority is one Tokio writer task.  Build, admission,
+publication, cancellation, and shutdown commands enter through
+=tokio::sync::mpsc= and complete through =oneshot=.  The writer publishes only
+validated immutable receipts through =watch=.  A =BTreeSet= or =BTreeMap= in a
+receipt is only a canonical schema value; it is never a lifecycle or
+concurrency authority.
+
+Agent-facing search and exact query are read-plane operations.  They clone the
+latest committed =Arc<SearchGeneration>= from =watch= and read resident
+sections directly.  They MUST NOT await the writer, start a provider, repair an
+overlay, admit a generation, probe a checkout, or translate a provider CLI
+view on the query hot path.  Provider work belongs to generation construction;
+publication is the sole transition that makes the resulting sections visible.
+
+The public terminal states are disjoint:
+
+- =Ready= with zero hits is a successful empty result;
+- =ActiveGenerationRequired= means no committed generation is readable;
+- =CapabilityUnavailable= means the committed generation does not contain the
+  requested operation or projection mode;
+- =ProviderContractMismatch= means the installed executable and catalog do
+  not agree;
+- =GenerationCorrupt= means committed evidence failed validation;
+- =Cancelled= and =AuthorityClosed= terminate all waiters without retrying in
+  the same generation.
+
+No adapter may convert any non-=Ready= state into =Miss=.  =Miss= is only a
+query result inside a validated =Ready= generation.
+
+Publication is monotonic by workspace epoch.  Repeating the same generation
+and capability receipt is idempotent.  Reusing an epoch for different evidence
+or publishing an older epoch fails without changing the watched value.  On
+shutdown the writer closes command intake, cancels and joins every owned build
+task, publishes terminal closure, and leaves no detached provider or workspace
+task.
+
+The latency contract is split by plane.  Resident reads perform no command
+mailbox round trip and remain bounded by immutable in-memory section lookup.
+Writer admission latency is measured separately from reader latency and MUST
+retain single-flight behavior under 256 concurrent submissions.  Tests MUST
+cover cancellation, closed command channels, duplicate and regressing epochs,
+atomic reader visibility, and zero orphan tasks after shutdown.

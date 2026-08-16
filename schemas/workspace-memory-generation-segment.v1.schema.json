@@ -38,8 +38,8 @@
     "byteLength": { "type": "integer", "minimum": 1 },
     "sections": {
       "type": "array",
-        "minItems": 7,
-        "maxItems": 7,
+        "minItems": 8,
+        "maxItems": 8,
       "items": { "$ref": "#/$defs/section" }
     }
   },
@@ -64,7 +64,8 @@
             "owner-bytes",
             "lexical-index",
             "selector-index",
-            "graph-relations"
+            "graph-relations",
+            "merkle-owner-index"
           ]
         },
         "offset": { "type": "integer", "minimum": 0 },

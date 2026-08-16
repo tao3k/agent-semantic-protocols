@@ -147,10 +147,11 @@ impl From<&str> for SourceIndexOwnerPath {
 /// Capture the current content-authoritative source snapshot used by both
 /// source-index rebuild and lookup.
 pub async fn current_source_index_snapshot(
+    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
     project_root: &Path,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     let provider_registry = ProviderRegistrySnapshot::load(project_root)?;
-    current_source_index_snapshot_with_registry(project_root, &provider_registry).await
+    current_source_index_snapshot_with_registry(supervisor, project_root, &provider_registry).await
 }
 
 /// Capture a workspace-search snapshot from complete provider-owned coverage.
@@ -158,11 +159,13 @@ pub async fn current_source_index_snapshot(
 /// Missing provider owners fail closed; activation scope is never merged into
 /// the provider snapshot.
 pub async fn current_workspace_search_source_index_snapshot(
+    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
     project_root: &Path,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     let provider_registry = ProviderRegistrySnapshot::load(project_root)?;
     let registry = provider_registry.evidence(project_root);
     let files = super::collect::collect_workspace_search_source_index_files(
+        supervisor,
         project_root,
         &provider_registry,
         &super::collect::SourceIndexCollectionScope::CompleteGeneration,
@@ -196,6 +199,7 @@ pub fn current_provider_source_index_snapshot_with_registry(
 /// This is the rootDepth=0 query boundary. It performs no envelope
 /// publication, CAS write, database bootstrap, or activation synchronization.
 pub async fn current_live_provider_source_index_snapshot_with_registry(
+    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
     project_root: &Path,
     language_id: &agent_semantic_client_core::LanguageId,
     provider_id: &agent_semantic_client_core::ProviderId,
@@ -203,6 +207,7 @@ pub async fn current_live_provider_source_index_snapshot_with_registry(
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     let registry = provider_registry.evidence(project_root);
     let files = collect_source_index_files(
+        supervisor,
         project_root,
         provider_registry,
         &super::collect::SourceIndexCollectionScope::TargetProvider {
@@ -398,6 +403,7 @@ fn normalized_envelope_relative_path(path: &str) -> Result<PathBuf, String> {
 }
 
 pub(super) async fn fresh_target_provider_source_index_snapshot_with_registry(
+    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
     project_root: &Path,
     language_id: &agent_semantic_client_core::LanguageId,
     provider_id: &agent_semantic_client_core::ProviderId,
@@ -405,8 +411,13 @@ pub(super) async fn fresh_target_provider_source_index_snapshot_with_registry(
     provider_registry: &ProviderRegistrySnapshot,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     let registry = provider_registry.evidence(project_root);
-    let files =
-        collect_source_index_files(project_root, provider_registry, collection_scope).await?;
+    let files = collect_source_index_files(
+        supervisor,
+        project_root,
+        provider_registry,
+        collection_scope,
+    )
+    .await?;
     if files.is_empty()
         || files
             .iter()
@@ -518,11 +529,13 @@ fn explicit_snapshot_owner_path(project_root: &Path, owner_path: &str) -> Result
 }
 
 pub(crate) async fn current_source_index_snapshot_with_registry(
+    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
     project_root: &Path,
     provider_registry: &ProviderRegistrySnapshot,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     let registry = provider_registry.evidence(project_root);
     let files = collect_source_index_files(
+        supervisor,
         project_root,
         provider_registry,
         &super::collect::SourceIndexCollectionScope::CompleteGeneration,

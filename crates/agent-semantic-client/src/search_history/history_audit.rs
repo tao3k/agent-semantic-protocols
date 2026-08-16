@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use agent_semantic_client_core::ProjectContext;
 use agent_semantic_client_db::{ClientDbArtifactEvent, ClientDbEngine};
 use agent_semantic_provider_transport::{
-    OutputMode, ProviderProcessLimits, ProviderProcessOutput, ProviderProcessSpec, StdinMode,
-    run_provider_process_async,
+    OutputMode, ProviderProcessLimits, ProviderProcessOutput, ProviderProcessSpec,
+    ProviderProcessSupervisor, StdinMode,
 };
 use bytes::Bytes;
 
@@ -15,7 +15,10 @@ use super::artifact_events::{artifact_file_count, scan_artifact_events_for_db};
 
 pub(crate) async fn run_search_history(project_root: &Path, args: &[String]) -> Result<(), String> {
     let (audit_root, forwarded_args) = parse_history_audit_args(project_root, args)?;
-    print_history_audit(&audit_root, forwarded_args).await
+    let supervisor = ProviderProcessSupervisor::default();
+    let result = print_history_audit(&supervisor, &audit_root, forwarded_args).await;
+    supervisor.shutdown().await;
+    result
 }
 
 fn parse_history_audit_args<'a>(
@@ -37,11 +40,16 @@ fn parse_history_audit_args<'a>(
     }
 }
 
-async fn print_history_audit(audit_root: &Path, forwarded_args: &[String]) -> Result<(), String> {
+async fn print_history_audit(
+    supervisor: &ProviderProcessSupervisor,
+    audit_root: &Path,
+    forwarded_args: &[String],
+) -> Result<(), String> {
     let project_context = ProjectContext::resolve(audit_root)?;
     let artifact_dir = project_context.state_layout().artifacts_dir().to_path_buf();
     let events_packet = artifact_events_packet(&project_context, &artifact_dir)?;
-    let output = run_graph_turbo_timeline(&artifact_dir, forwarded_args, events_packet).await?;
+    let output =
+        run_graph_turbo_timeline(supervisor, &artifact_dir, forwarded_args, events_packet).await?;
     if !output.status.success() {
         return Err(format!(
             "graph-turbo timeline failed status={} stderr={}",
@@ -57,6 +65,7 @@ async fn print_history_audit(audit_root: &Path, forwarded_args: &[String]) -> Re
 }
 
 async fn run_graph_turbo_timeline(
+    supervisor: &ProviderProcessSupervisor,
     artifact_dir: &Path,
     forwarded_args: &[String],
     events_packet: Option<Bytes>,
@@ -71,7 +80,7 @@ async fn run_graph_turbo_timeline(
         StdinMode::Closed
     };
     args.extend(forwarded_args.iter().cloned());
-    run_provider_process_async(ProviderProcessSpec {
+    supervisor.run(ProviderProcessSpec {
         program: "asp-graph-turbo".to_string(),
         args,
         cwd,

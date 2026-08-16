@@ -951,7 +951,7 @@ fn temp_root(label: &str) -> PathBuf {
     root
 }
 
-fn rust_selector_fixture(
+pub(crate) fn rust_selector_fixture(
     owner_path: &str,
     selector: &str,
     symbol: &str,

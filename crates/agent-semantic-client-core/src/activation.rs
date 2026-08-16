@@ -143,7 +143,7 @@ impl TryFrom<&ActivatedProvider> for ResolvedProvider {
             source_extensions: provider.source_extensions.clone(),
             scope_authority,
             search_capabilities: provider.search_capabilities.clone(),
-            language_projection: manifest.language_projection().cloned(),
+            language_projection: provider.language_projection.clone(),
             query_pack_descriptor: provider.query_pack_descriptor.clone(),
             semantic_facts_descriptor: provider.semantic_facts_descriptor.clone(),
         })

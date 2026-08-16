@@ -49,11 +49,12 @@ pub use exact_segment::{
 pub use lease::WorkspaceGenerationLease;
 pub use memory_backend::WorkspaceProjectionLease;
 pub use model::{
-    ExactProjectionKind, RuntimeDataPlaneCounters, RuntimeServerShutdownReceipt,
-    WORKSPACE_GENERATION_DELTA_SCHEMA_ID, WorkspaceDataPlanePerformanceReceipt,
-    WorkspaceDerivedProjectionSnapshot, WorkspaceGenerationBuild, WorkspaceGenerationDelta,
-    WorkspaceGenerationSnapshot, WorkspaceGenerationState, WorkspaceMemoryGeneration,
-    WorkspaceOwnerSnapshot, WorkspaceRecoveryReceipt, WorkspaceRecoverySource,
+    ExactProjectionKind, RUNTIME_MERKLE_OWNER_READ_RECEIPT_SCHEMA_ID, RuntimeDataPlaneCounters,
+    RuntimeProjectionScope, RuntimeServerShutdownReceipt, WORKSPACE_GENERATION_DELTA_SCHEMA_ID,
+    WorkspaceDataPlanePerformanceReceipt, WorkspaceDerivedProjectionSnapshot,
+    WorkspaceGenerationBuild, WorkspaceGenerationDelta, WorkspaceGenerationSnapshot,
+    WorkspaceGenerationState, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
+    WorkspaceRecoveryReceipt, WorkspaceRecoverySource, WorkspaceRuntimeMerkleOwnerRead,
     WorkspaceRuntimeOwnerRead, WorkspaceRuntimeSelectorOverlay,
     WorkspaceRuntimeSelectorOverlayReceipt, WorkspaceRuntimeSelectorRead,
     WorkspaceRuntimeSelectorRebind, WorkspaceSelectorSnapshot,
@@ -66,8 +67,8 @@ pub use search_generation_authority::WorkspaceSearchGenerationAuthority;
 #[doc(hidden)]
 pub use search_generation_authority::read_search_generation_authority_fixture;
 pub(crate) use search_generation_authority::{
-    publish_search_generation_authority_segment, read_search_generation_authority_segment,
-    resident_search_generation_authority,
+    WorkspaceSearchGenerationAuthorityPublisher, WorkspaceSearchGenerationAuthorityReader,
+    publish_search_generation_authority_segment, workspace_search_generation_authority_channel,
 };
 pub use search_index_projection::{
     WorkspaceSearchGenerationDataPlaneClient, encode_workspace_search_generation_segment,
@@ -89,3 +90,6 @@ pub use retirement::{
     ResidentWorkspaceRetirementReceipt,
 };
 mod atomic_snapshot_pointer;
+#[cfg(test)]
+#[path = "../../tests/unit/runtime_server_search_index_cold_open.rs"]
+mod runtime_server_search_index_cold_open;

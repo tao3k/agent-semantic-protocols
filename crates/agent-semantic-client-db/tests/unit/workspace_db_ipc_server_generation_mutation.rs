@@ -31,6 +31,7 @@ fn generation(
     );
     crate::runtime_server_workspace::WorkspaceMemoryGeneration::try_from_build(
         crate::runtime_server_workspace::WorkspaceGenerationBuild {
+    projection_capability: agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest::single_selector("blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(), "rust://fixture/src/lib.rs#item/function/fixture".to_owned(), "src/lib.rs".to_owned(), std::collections::BTreeSet::from([agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionMode::Source])).expect("test projection capability manifest"),
             relations: Vec::new(),
             workspace_identity: workspace_identity.to_owned(),
             project_root: project_root.display().to_string(),
@@ -93,6 +94,12 @@ async fn admitted_mutation_does_not_require_git_candidate_rediscovery() {
                     crate::runtime_server_admission::WorkspaceGenerationBuildCompletion::new(
                             candidate,
                             crate::runtime_server_admission::WorkspaceGenerationCommitReceipt {
+    projection_capability: crate::fixture::ready_projection_capability_fixture(
+        "workspace-test",
+        "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+        "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
+        1,
+    ),
                                 active_epoch: 1,
                                 generation_digest: "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
                                 source_root_digest: "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(),
@@ -177,6 +184,12 @@ async fn resident_reads_fail_closed_while_a_new_generation_is_building() {
                     crate::runtime_server_admission::WorkspaceGenerationBuildCompletion::new(
                         candidate,
                         crate::runtime_server_admission::WorkspaceGenerationCommitReceipt {
+    projection_capability: crate::fixture::ready_projection_capability_fixture(
+        "workspace-test",
+        format!("blake3-256:{:064x}", index + 1),
+        format!("blake3-256:{:064x}", index + 2),
+        index as u64 + 1,
+    ),
                             active_epoch: index as u64 + 1,
                             generation_digest: format!("blake3-256:{:064x}", index + 1),
                             source_root_digest: format!("blake3-256:{:064x}", index + 2),
@@ -234,22 +247,13 @@ async fn resident_reads_fail_closed_while_a_new_generation_is_building() {
     admission.shutdown().await.expect("shutdown admission");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn first_ipc_mutation_discovers_and_publishes_an_empty_workspace_catalog() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn first_ipc_mutation_requires_a_prepublished_generation() {
     let temp = tempfile::tempdir().expect("temporary first-mutation Runtime root");
     let project_root = temp.path().join("project");
-    tokio::fs::create_dir_all(project_root.join("src"))
+    tokio::fs::create_dir_all(&project_root)
         .await
         .expect("create first-mutation source root");
-    tokio::fs::write(project_root.join("src/lib.rs"), b"fn changed() {}\n")
-        .await
-        .expect("write first-mutation owner");
-    let git = std::process::Command::new("git")
-        .args(["init", "--quiet"])
-        .current_dir(&project_root)
-        .status()
-        .expect("initialize candidate repository");
-    assert!(git.success(), "initialize candidate repository");
     let workspace_identity = "workspace-first-ipc-mutation";
     let registry = std::sync::Arc::new(
         crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry::new(
@@ -257,51 +261,25 @@ async fn first_ipc_mutation_discovers_and_publishes_an_empty_workspace_catalog()
         )
         .expect("create first-mutation workspace registry"),
     );
-    let build_started = std::sync::Arc::new(tokio::sync::Notify::new());
+    let build_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let admission = std::sync::Arc::new(
         crate::runtime_server_admission::WorkspaceGenerationAdmission::new(std::sync::Arc::new({
-            let registry = std::sync::Arc::clone(&registry);
-            let build_started = std::sync::Arc::clone(&build_started);
-            move |workspace_identity, project_root, candidate, _mode, _paths, _cancellation| {
-                let registry = std::sync::Arc::clone(&registry);
-                let build_started = std::sync::Arc::clone(&build_started);
+            let build_count = std::sync::Arc::clone(&build_count);
+            move |_workspace, _root, _candidate, _mode, _paths, _cancellation| {
+                build_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
                 Box::pin(async move {
-                    let recovery = registry
-                        .publish(
-                            "publish-first-ipc-mutation",
-                            crate::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
-                            generation(&workspace_identity, &project_root, b"fn changed() {}\n"),
-                        )
-                        .await
-                        .map_err(|error| {
-                            crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
-                                crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
-                                error,
-                            )
-                        })?;
-                    build_started.notify_one();
-                    let commit = crate::runtime_server_admission::WorkspaceGenerationCommitReceipt::from_recovery(&recovery)
-                        .map_err(|error| {
-                            crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
-                                crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
-                                error,
-                            )
-                        })?;
-                    crate::runtime_server_admission::WorkspaceGenerationBuildCompletion::new(
-                        candidate,
-                        commit,
-                    )
-                    .map_err(|error| {
+                    Err(
                         crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
-                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
-                            error,
-                        )
-                    })
+                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
+                            "missing-generation mutation must not schedule a builder",
+                        ),
+                    )
                 })
             }
         })),
     );
 
+    let started = std::time::Instant::now();
     let result = submit_mutation(
         std::sync::Arc::clone(&registry),
         Some(std::sync::Arc::clone(&admission)),
@@ -310,22 +288,17 @@ async fn first_ipc_mutation_discovers_and_publishes_an_empty_workspace_catalog()
         project_root.display().to_string(),
         vec![project_root.join("src/lib.rs").display().to_string()],
     );
-    assert!(matches!(
-        result,
-        crate::workspace_db_ipc::WorkspaceDbIpcResult::RuntimeGenerationMutationSubmission { .. }
-    ));
-    tokio::time::timeout(std::time::Duration::from_secs(1), build_started.notified())
-        .await
-        .expect("first mutation discovery reached canonical builder");
-    let terminal = admission
-        .wait_terminal(workspace_identity, &project_root)
-        .await
-        .expect("first mutation terminal receipt");
-    assert_eq!(
-        terminal.state,
-        crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
-    );
-    assert!(registry.lease(workspace_identity, &project_root).is_ok());
+    let elapsed = started.elapsed();
+
+    match result {
+        crate::workspace_db_ipc::WorkspaceDbIpcResult::Failed { code, message } => {
+            assert_eq!(code, "runtime-server-generation-not-ready");
+            assert!(message.contains("reasonKind=runtime-generation-not-ready"));
+        }
+        result => panic!("missing generation must fail closed, got {result:?}"),
+    }
+    assert!(elapsed < std::time::Duration::from_millis(1), "{elapsed:?}");
+    assert_eq!(build_count.load(std::sync::atomic::Ordering::Acquire), 0);
 
     admission.shutdown().await.expect("shutdown admission");
     registry.shutdown().await.expect("shutdown registry");

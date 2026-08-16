@@ -34,7 +34,7 @@ pub(super) struct WorkspaceEntry {
         Option<crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt>,
     >,
     overlays: Arc<ResidentOverlayStore>,
-    publisher: Arc<WorkspaceGenerationPublisher>,
+    pub(super) publisher: Arc<WorkspaceGenerationPublisher>,
     pub(super) writer: mpsc::Sender<WorkspaceWriteCommand>,
 }
 
@@ -150,17 +150,6 @@ pub(super) enum WorkspaceWriteCommand {
 pub struct RuntimeServerWorkspaceRegistry {
     pub(crate) root: PathBuf,
     entries: RwLock<HashMap<String, Arc<WorkspaceResident>>>,
-    search_projection_slots: dashmap::DashMap<
-        (String, String),
-        Arc<
-            tokio::sync::Mutex<
-                Option<(
-                    u64,
-                    Arc<crate::runtime_server_workspace::WorkspaceSearchGenerationDataPlaneClient>,
-                )>,
-            >,
-        >,
-    >,
     writer_capacity: usize,
     blocking_lane_ready: tokio::sync::OnceCell<()>,
     counters: Arc<RuntimeDataPlaneCounterState>,
@@ -188,7 +177,6 @@ impl RuntimeServerWorkspaceRegistry {
         Ok(Self {
             root,
             entries: RwLock::new(HashMap::new()),
-            search_projection_slots: dashmap::DashMap::new(),
             writer_capacity,
             blocking_lane_ready: tokio::sync::OnceCell::new(),
             counters: Arc::new(RuntimeDataPlaneCounterState::default()),
@@ -443,6 +431,20 @@ impl RuntimeServerWorkspaceRegistry {
                     .map_err(|error| format!("join runtime workspace writer lane: {error}"))?;
             }
         }
+        let publishers = residents
+            .iter()
+            .flat_map(|(_, resident)| {
+                resident
+                    .scopes
+                    .read()
+                    .values()
+                    .filter_map(|slot| slot.get().map(|entry| Arc::clone(&entry.publisher)))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        for publisher in publishers {
+            publisher.shutdown().await?;
+        }
         for (workspace_identity, resident) in &residents {
             let project_roots = resident.scopes.read().keys().cloned().collect::<Vec<_>>();
             for project_root in project_roots {
@@ -545,6 +547,15 @@ impl RuntimeServerWorkspaceRegistry {
                         .fetch_add(2, Ordering::Relaxed);
                 }
                 let publisher = WorkspaceGenerationPublisher::new(directory).await?;
+                if let Some(backend) = restored.as_ref() {
+                    publisher
+                        .restore_search_generation_authority(
+                            workspace_identity,
+                            project_root.to_string_lossy().as_ref(),
+                            backend.generation().active_epoch,
+                        )
+                        .await?;
+                }
                 let overlays = Arc::new(ResidentOverlayStore::new(
                     restored
                         .as_ref()

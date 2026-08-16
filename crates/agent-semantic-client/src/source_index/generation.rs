@@ -30,6 +30,7 @@ pub struct TargetProviderSourceEnvelopePublicationRequestV1<'a> {
 /// Publish one provider-scoped source envelope without opening a complete
 /// workspace generation transaction.
 pub async fn publish_target_provider_source_envelope_v1(
+    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
     publication: TargetProviderSourceEnvelopePublicationRequestV1<'_>,
 ) -> Result<PathBuf, String> {
     let requested_provider = match &publication.collection_scope {
@@ -74,6 +75,7 @@ pub async fn publish_target_provider_source_envelope_v1(
         }
     };
     let snapshot = super::api::fresh_target_provider_source_index_snapshot_with_registry(
+        supervisor,
         publication.project_root,
         &requested_provider.language_id,
         &requested_provider.provider_id,

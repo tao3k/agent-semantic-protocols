@@ -1,7 +1,7 @@
 use std::fs;
 use std::time::Duration;
 
-use crate::{ProviderProcessError, run_provider_process_async};
+use crate::{ProviderProcessError, ProviderProcessSupervisor};
 
 use super::support::{script, spec, temp_dir};
 
@@ -17,7 +17,8 @@ async fn times_out_and_kills_child_process() {
     let mut process = spec(program, root.clone());
     process.limits = process.limits.with_timeout(Some(Duration::from_millis(50)));
 
-    let error = run_provider_process_async(process)
+    let error = ProviderProcessSupervisor::default()
+        .run(process)
         .await
         .expect_err("provider should time out");
     match error {

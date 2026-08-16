@@ -28,6 +28,19 @@ fn owner(path: &str, selector: &str, bytes: &[u8]) -> WorkspaceOwnerSnapshot {
     }
 }
 
+fn owner_with_range(
+    path: &str,
+    selector: &str,
+    bytes: &[u8],
+    byte_start: usize,
+    byte_end: usize,
+) -> WorkspaceOwnerSnapshot {
+    let mut owner = owner(path, selector, bytes);
+    owner.selectors[0].byte_start = byte_start;
+    owner.selectors[0].byte_end = byte_end;
+    owner
+}
+
 fn generation(
     workspace_identity: &str,
     project_root: &std::path::Path,
@@ -57,6 +70,7 @@ fn generation_with_owners(
     );
     WorkspaceMemoryGeneration::try_from_build(
         agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
+    projection_capability: agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest::single_selector("blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(), "rust://fixture/src/lib.rs#item/function/fixture".to_owned(), "src/lib.rs".to_owned(), std::collections::BTreeSet::from([agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionMode::Source])).expect("test projection capability manifest"),
             relations: Vec::new(),
             workspace_identity: workspace_identity.to_owned(),
             project_root: project_root.display().to_string(),
@@ -209,15 +223,22 @@ async fn ready_recovery_receipt_reuses_resident_generation_without_resetting_ove
                 "workspace-a",
                 temporary.path(),
                 4,
-                owner(
+                owner_with_range(
                     "src/lib.rs",
-                    "rust://src/lib.rs#item/function/first",
+                    "rust://src/lib.rs#item/function/second",
                     source,
+                    14,
+                    source.len(),
                 ),
             ),
         )
         .await
         .expect("publish resident generation");
+    registry
+        .lease("workspace-a", temporary.path())
+        .expect("resident generation lease before overlay")
+        .project(selector)
+        .expect("admitted owner declares selector before overlay");
     registry
         .publish_selector_overlay(
             "workspace-a",

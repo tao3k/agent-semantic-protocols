@@ -49,6 +49,74 @@ fn cache_invalidation_requires_a_scoped_server_mutation() {
 }
 
 #[test]
+fn runtime_merkle_owner_read_is_a_typed_runtime_data_plane_operation() {
+    let operation: WorkspaceDbIpcOperation = serde_json::from_value(serde_json::json!({
+        "kind": "read-runtime-merkle-owner",
+        "request": {
+            "schemaId": agent_semantic_client_db::workspace_db_ipc::RUNTIME_MERKLE_OWNER_READ_REQUEST_SCHEMA_ID,
+            "schemaVersion": "1",
+            "projectRoot": "/workspace/root",
+            "ownerPath": "src/lib.rs"
+        }
+    }))
+    .expect("decode typed Merkle owner request");
+
+    assert_eq!(
+        operation,
+        WorkspaceDbIpcOperation::ReadRuntimeMerkleOwner {
+            request: agent_semantic_client_db::workspace_db_ipc::RuntimeMerkleOwnerReadRequest::new(
+                "/workspace/root",
+                "src/lib.rs",
+            ),
+        }
+    );
+}
+
+#[test]
+fn runtime_merkle_owner_read_rejects_non_normalized_owner_paths() {
+    let request = agent_semantic_client_db::workspace_db_ipc::RuntimeMerkleOwnerReadRequest::new(
+        "/workspace/root",
+        "src/../secret.rs",
+    );
+    assert_eq!(
+        request
+            .validate()
+            .expect_err("parent path must fail closed"),
+        "runtime Merkle owner path must be normalized and relative"
+    );
+}
+
+#[test]
+fn cache_owner_delta_decodes_the_schema_owned_fail_closed_policy() {
+    let operation: WorkspaceDbIpcOperation = serde_json::from_value(serde_json::json!({
+        "kind": "cache-control",
+        "request": {
+            "action": "apply-owner-delta",
+            "projectRoot": "/workspace/root",
+            "mutationId": "session-root/cache-owner-delta-1",
+            "changedPaths": ["src/lib.rs"],
+            "removedPaths": [],
+            "fallbackPolicy": "full-generation"
+        }
+    }))
+    .expect("cache owner delta should decode through the workspace IPC contract");
+
+    assert_eq!(
+        operation,
+        WorkspaceDbIpcOperation::CacheControl {
+            request: RuntimeCacheControlRequest::ApplyOwnerDelta {
+                project_root: "/workspace/root".to_owned(),
+                mutation_id: "session-root/cache-owner-delta-1".to_owned(),
+                changed_paths: vec!["src/lib.rs".to_owned()],
+                removed_paths: Vec::new(),
+                fallback_policy:
+                    agent_semantic_client_db::workspace_db_ipc::RuntimeCacheOwnerDeltaFallbackPolicy::FullGeneration,
+            },
+        }
+    );
+}
+
+#[test]
 fn cache_rebuild_rejects_an_empty_mutation_identity() {
     let error = serde_json::from_value::<WorkspaceDbIpcOperation>(serde_json::json!({
         "kind": "cache-control",

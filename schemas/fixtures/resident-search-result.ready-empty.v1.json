@@ -1,0 +1,7 @@
+{
+  "schemaId": "agent.semantic-protocols.resident-search-result",
+  "schemaVersion": "1",
+  "state": "Ready",
+  "generationDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+  "hits": []
+}

@@ -62,12 +62,10 @@ async fn admit_generation(
         .await
         .is_some_and(|receipt| receipt.state == WorkspaceGenerationAdmissionState::Building)
     {
-        let _ = admission
-            .wait_terminal(workspace_identity, project_root)
-            .await?;
+        return Ok((RuntimeCacheGenerationState::Rebuilding, None));
     }
     let candidate = discover_workspace_generation_candidate(project_root).await?;
-    let mut admitted = admission
+    let admitted = admission
         .admit(
             workspace_identity.to_owned(),
             project_root.to_path_buf(),
@@ -75,9 +73,7 @@ async fn admit_generation(
         )
         .await?;
     if admitted.state == WorkspaceGenerationAdmissionState::Building {
-        admitted = admission
-            .wait_terminal_attempt(workspace_identity, project_root, admitted.attempt)
-            .await?;
+        return Ok((RuntimeCacheGenerationState::Rebuilding, None));
     }
     if admitted.state != WorkspaceGenerationAdmissionState::Ready {
         return Err(format!(
@@ -105,12 +101,10 @@ async fn rebuild_generation(
         .await
         .is_some_and(|receipt| receipt.state == WorkspaceGenerationAdmissionState::Building)
     {
-        let _ = admission
-            .wait_terminal(workspace_identity, project_root)
-            .await?;
+        return Ok((RuntimeCacheGenerationState::Rebuilding, None));
     }
     let candidate = discover_workspace_generation_candidate(project_root).await?;
-    let mut admitted = admission
+    let admitted = admission
         .admit_cache_rebuild(
             mutation_id.to_owned(),
             workspace_identity.to_owned(),
@@ -119,9 +113,7 @@ async fn rebuild_generation(
         )
         .await?;
     if admitted.state == WorkspaceGenerationAdmissionState::Building {
-        admitted = admission
-            .wait_terminal_attempt(workspace_identity, project_root, admitted.attempt)
-            .await?;
+        return Ok((RuntimeCacheGenerationState::Rebuilding, None));
     }
     if admitted.state != WorkspaceGenerationAdmissionState::Ready {
         return Err(format!(
@@ -287,6 +279,52 @@ pub(super) async fn evaluate(
                 Ok((state, digest)) => receipt("invalidate", state, digest, Some(mutation_id)),
                 Err(message) => WorkspaceDbIpcResult::Failed {
                     code: "runtime-server-cache-invalidate-failed".to_owned(),
+                    message,
+                },
+            }
+        }
+        RuntimeCacheControlRequest::ApplyOwnerDelta {
+            project_root,
+            mutation_id,
+            changed_paths,
+            removed_paths,
+            fallback_policy,
+        } => {
+            if changed_paths.is_empty() && removed_paths.is_empty() {
+                return WorkspaceDbIpcResult::Failed {
+                    code: "runtime-server-cache-owner-delta-empty".to_owned(),
+                    message: "cache owner delta requires at least one changed or removed path"
+                        .to_owned(),
+                };
+            }
+            if matches!(
+                fallback_policy,
+                crate::workspace_db_ipc::RuntimeCacheOwnerDeltaFallbackPolicy::FailClosed
+            ) {
+                return WorkspaceDbIpcResult::Failed {
+                    code: "runtime-server-cache-owner-delta-incremental-unavailable".to_owned(),
+                    message:
+                        "incremental owner delta is unavailable and fallbackPolicy=fail-closed"
+                            .to_owned(),
+                };
+            }
+            let Some(admission) = generation_admission else {
+                return admission_unavailable();
+            };
+            match rebuild_generation(
+                memory_registry,
+                admission,
+                workspace_identity,
+                Path::new(&project_root),
+                &mutation_id,
+            )
+            .await
+            {
+                Ok((state, digest)) => {
+                    receipt("apply-owner-delta", state, digest, Some(mutation_id))
+                }
+                Err(message) => WorkspaceDbIpcResult::Failed {
+                    code: "runtime-server-cache-owner-delta-failed".to_owned(),
                     message,
                 },
             }

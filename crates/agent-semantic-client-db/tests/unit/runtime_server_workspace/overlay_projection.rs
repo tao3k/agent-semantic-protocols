@@ -66,6 +66,7 @@ fn generation_with_owners(
     );
     WorkspaceMemoryGeneration::try_from_build(
         agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
+            projection_capability: crate::fixture::overlay_projection_capability_manifest_fixture(),
             relations: Vec::new(),
             workspace_identity: workspace_identity.to_owned(),
             project_root: project_root(workspace_identity).display().to_string(),
@@ -709,14 +710,15 @@ async fn selector_overlay_binds_projection_kind_and_projection_bytes() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn concurrent_projection_reads_share_one_slot_with_bounded_warm_latency() {
+async fn concurrent_projection_reads_share_one_watch_snapshot_with_bounded_warm_latency() {
     let _performance = crate::test_support::performance_lock();
     let temporary = tempdir().expect("temporary runtime root");
-    let publisher =
-        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let registry = std::sync::Arc::new(
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry"),
+    );
     let source = b"fn projection_target() {}";
     let selector = "rust://src/lib.rs#item/function/projection_target";
-    publisher
+    registry
         .publish(
             "projection-slot-generation",
             agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
@@ -728,11 +730,6 @@ async fn concurrent_projection_reads_share_one_slot_with_bounded_warm_latency() 
         )
         .await
         .expect("publish projection generation");
-    drop(publisher);
-
-    let registry = std::sync::Arc::new(
-        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("cold registry"),
-    );
     let mut tasks = tokio::task::JoinSet::new();
     for _ in 0..256 {
         let registry = std::sync::Arc::clone(&registry);
@@ -751,11 +748,10 @@ async fn concurrent_projection_reads_share_one_slot_with_bounded_warm_latency() 
             .expect("read projection authority");
         assert_eq!(authority.workspace_identity, "workspace-projection-slot");
     }
-    assert_eq!(registry.search_projection_slot_count(), 1);
     assert_eq!(
         registry.workspace_count(),
-        0,
-        "projection-only reads must not decode the complete generation or start a writer lane"
+        1,
+        "the lifecycle publisher owns the one resident generation consumed by projection reads"
     );
     let mut samples = Vec::with_capacity(30);
     for _ in 0..30 {
@@ -773,8 +769,7 @@ async fn concurrent_projection_reads_share_one_slot_with_bounded_warm_latency() 
     let p75 = samples[(samples.len() * 75).div_ceil(100) - 1];
     let max = *samples.last().expect("warm projection samples");
     eprintln!(
-        "[runtime-projection-slot-performance] concurrentFirstReads=256 slots={} writerResidents={} warmRuns=30 p75Nanos={p75} maxNanos={max} typicalBudgetNanos=1000000 hardBudgetNanos=10000000",
-        registry.search_projection_slot_count(),
+        "[runtime-resident-search-watch-performance] concurrentReads=256 writerResidents={} warmRuns=30 p75Nanos={p75} maxNanos={max} typicalBudgetNanos=1000000 hardBudgetNanos=10000000",
         registry.workspace_count(),
     );
     assert!(
@@ -904,6 +899,7 @@ async fn process_cold_owner_identity_is_independent_of_unrelated_selector_volume
     );
     let published = WorkspaceMemoryGeneration::try_from_build(
         agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
+            projection_capability: crate::fixture::overlay_projection_capability_manifest_fixture(),
             relations: Vec::new(),
             workspace_identity: "workspace-owner-identity-performance".to_owned(),
             project_root: project_root("workspace-owner-identity-performance")

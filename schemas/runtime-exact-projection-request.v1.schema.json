@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent.semantic-protocols.runtime-exact-projection-request.v1",
+  "title": "Runtime exact projection request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "projectRoot",
+    "languageId",
+    "projectionKind",
+    "projectionScope",
+    "structuralSelector"
+  ],
+  "properties": {
+    "kind": {
+      "const": "read-runtime-exact-projection"
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectionKind": {
+      "enum": ["source", "callable-skeleton"]
+    },
+    "projectionScope": {
+      "enum": ["production", "test-all-targets", "live-corpus"]
+    },
+    "structuralSelector": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

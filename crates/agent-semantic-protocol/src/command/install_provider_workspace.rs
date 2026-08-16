@@ -6,8 +6,8 @@ use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 use agent_semantic_provider_transport::{
-    OutputMode, ProviderProcessSpec, StdinMode, provider_process_limits_from_environment,
-    run_provider_process_async,
+    OutputMode, ProviderProcessSpec, ProviderProcessSupervisor, StdinMode,
+    provider_process_limits_from_environment,
 };
 use serde::Deserialize;
 
@@ -36,6 +36,15 @@ struct WorkspaceArtifactDescriptor {
     root: String,
     entrypoint: String,
     launch: Option<WorkspaceLaunchDescriptor>,
+    #[serde(default)]
+    runtime_dependencies: Vec<WorkspaceRuntimeDependencyDescriptor>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WorkspaceRuntimeDependencyDescriptor {
+    source: String,
+    target: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
@@ -71,6 +80,13 @@ pub(super) struct BuiltProviderWorkspace {
     source_root: PathBuf,
     entrypoint: PathBuf,
     launch: Option<WorkspaceLaunchDescriptor>,
+    runtime_dependencies: Vec<BuiltWorkspaceRuntimeDependency>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct BuiltWorkspaceRuntimeDependency {
+    source: PathBuf,
+    target: PathBuf,
 }
 
 pub(super) struct PublishedProviderWorkspace {
@@ -202,11 +218,95 @@ pub(super) async fn build_registered_provider_workspace(
             source_entrypoint.display()
         ));
     }
+    let runtime_dependencies = resolve_runtime_dependencies(
+        &source_root,
+        descriptor.workspace_artifact.launch.as_ref(),
+        &descriptor.workspace_artifact.runtime_dependencies,
+    )?;
     Ok(BuiltProviderWorkspace {
         source_root,
         entrypoint,
         launch: descriptor.workspace_artifact.launch,
+        runtime_dependencies,
     })
+}
+
+fn resolve_runtime_dependencies(
+    source_root: &Path,
+    launch: Option<&WorkspaceLaunchDescriptor>,
+    dependencies: &[WorkspaceRuntimeDependencyDescriptor],
+) -> Result<Vec<BuiltWorkspaceRuntimeDependency>, String> {
+    if dependencies.is_empty() {
+        return Ok(Vec::new());
+    }
+    let launch = launch.ok_or_else(|| {
+        "workspaceArtifact.runtimeDependencies requires workspaceArtifact.launch".to_owned()
+    })?;
+    if !launch.program_relative_to_artifact {
+        return Err(
+            "workspaceArtifact.runtimeDependencies requires an artifact-relative launch program"
+                .to_owned(),
+        );
+    }
+    let launch_program = Path::new(&launch.program);
+    validate_relative_path(launch_program, false, "workspaceArtifact.launch.program")?;
+    let resolved_launch_program = source_root
+        .join(launch_program)
+        .canonicalize()
+        .map_err(|error| format!("resolve workspace artifact launch program: {error}"))?;
+    if !resolved_launch_program.is_file() {
+        return Err(format!(
+            "resolved workspace artifact launch program is not a file: {}",
+            resolved_launch_program.display()
+        ));
+    }
+    let launch_bin = resolved_launch_program.parent().ok_or_else(|| {
+        format!(
+            "resolved workspace artifact launch program has no parent: {}",
+            resolved_launch_program.display()
+        )
+    })?;
+    let launch_prefix = launch_bin.parent().ok_or_else(|| {
+        format!(
+            "resolved workspace artifact launch program has no installation prefix: {}",
+            resolved_launch_program.display()
+        )
+    })?;
+    dependencies
+        .iter()
+        .map(|dependency| {
+            let source = Path::new(&dependency.source);
+            validate_relative_path(
+                source,
+                false,
+                "workspaceArtifact.runtimeDependencies.source",
+            )?;
+            let source = launch_prefix.join(source).canonicalize().map_err(|error| {
+                format!(
+                    "resolve workspace artifact runtime dependency {}: {error}",
+                    dependency.source
+                )
+            })?;
+            ensure_within(
+                &source,
+                launch_prefix,
+                "workspace artifact runtime dependency",
+            )?;
+            if !source.is_file() {
+                return Err(format!(
+                    "workspace artifact runtime dependency is not a file: {}",
+                    source.display()
+                ));
+            }
+            let target = PathBuf::from(&dependency.target);
+            validate_relative_path(
+                &target,
+                false,
+                "workspaceArtifact.runtimeDependencies.target",
+            )?;
+            Ok(BuiltWorkspaceRuntimeDependency { source, target })
+        })
+        .collect()
 }
 
 async fn run_workspace_command(
@@ -227,29 +327,33 @@ async fn run_workspace_command(
             )
         })
         .collect();
-    let limits = provider_process_limits_from_environment()?;
-    let output = run_provider_process_async(ProviderProcessSpec {
-        program: program.to_string(),
-        args: args.to_vec(),
-        cwd,
-        env,
-        stdin: StdinMode::Inherit,
-        stdout: OutputMode::Tee,
-        stderr: OutputMode::Tee,
-        limits: if limits.timeout().is_some() {
-            limits
-        } else {
-            limits.with_timeout(Some(DEFAULT_WORKSPACE_BUILD_TIMEOUT))
-        },
-    })
-    .await
-    .map_err(|error| {
-        format!(
-            "registered provider {stage} gate failed: language={} provider={} error={error}",
-            registration.language_id.as_str(),
-            registration.provider_id.as_str()
-        )
-    })?;
+    let limits = provider_process_limits_from_environment()?.with_workspace_build_memory_budget();
+    let supervisor = ProviderProcessSupervisor::default();
+    let result = supervisor
+        .run(ProviderProcessSpec {
+            program: program.to_string(),
+            args: args.to_vec(),
+            cwd,
+            env,
+            stdin: StdinMode::Inherit,
+            stdout: OutputMode::Tee,
+            stderr: OutputMode::Tee,
+            limits: if limits.timeout().is_some() {
+                limits
+            } else {
+                limits.with_timeout(Some(DEFAULT_WORKSPACE_BUILD_TIMEOUT))
+            },
+        })
+        .await
+        .map_err(|error| {
+            format!(
+                "registered provider {stage} gate failed: language={} provider={} error={error}",
+                registration.language_id.as_str(),
+                registration.provider_id.as_str()
+            )
+        });
+    supervisor.shutdown().await;
+    let output = result?;
     if !output.status.success() {
         return Err(format!(
             "registered provider {stage} failed: language={} provider={} status={}",
@@ -268,7 +372,30 @@ pub(super) fn publish_provider_workspace(
     registration: &agent_semantic_hook::ProviderDevelopmentRegistrationV1,
     built: BuiltProviderWorkspace,
 ) -> Result<PublishedProviderWorkspace, String> {
-    let (artifact_digest, artifact_leaf_count) = artifact_snapshot(&built.source_root)?;
+    let publication_root = protocol_home
+        .join("runtime/provider-artifacts")
+        .join(&registration.binary)
+        .join("artifacts/blake3-merkle-v1");
+    fs::create_dir_all(&publication_root)
+        .map_err(|error| format!("create {}: {error}", publication_root.display()))?;
+    let stage = publication_root.join(format!(
+        ".workspace.{}.{}.tmp",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| format!("read provider publication clock: {error}"))?
+            .as_nanos()
+    ));
+    fs::create_dir(&stage).map_err(|error| {
+        format!(
+            "create provider artifact stage {}: {error}",
+            stage.display()
+        )
+    })?;
+    let staged_root = stage.join("root");
+    copy_artifact_root(&built.source_root, &staged_root)?;
+    materialize_runtime_dependencies(&staged_root, &built.runtime_dependencies)?;
+    let (artifact_digest, artifact_leaf_count) = artifact_snapshot(&staged_root)?;
     let digest_leaf = artifact_digest
         .strip_prefix("blake3-256:")
         .unwrap_or(&artifact_digest);
@@ -277,12 +404,6 @@ pub(super) fn publish_provider_workspace(
             "unsupported workspace artifact digest: {artifact_digest}"
         ));
     }
-    let publication_root = protocol_home
-        .join("runtime/provider-artifacts")
-        .join(&registration.binary)
-        .join("artifacts/blake3-merkle-v1");
-    fs::create_dir_all(&publication_root)
-        .map_err(|error| format!("create {}: {error}", publication_root.display()))?;
     let artifact_dir = publication_root.join(digest_leaf);
     let artifact_root = artifact_dir.join("root");
     let artifact_entrypoint = if built.source_root.is_file() && built.entrypoint == Path::new(".") {
@@ -311,29 +432,13 @@ pub(super) fn publish_provider_workspace(
                 launcher.display()
             ));
         }
-    } else {
-        let stage = publication_root.join(format!(".{digest_leaf}.{}.tmp", std::process::id()));
-        if stage.exists() {
-            return Err(format!(
-                "provider workspace publication is already staged: {}",
-                stage.display()
-            ));
-        }
-        fs::create_dir(&stage).map_err(|error| {
+        fs::remove_dir_all(&stage).map_err(|error| {
             format!(
-                "create provider artifact stage {}: {error}",
+                "remove redundant provider artifact stage {}: {error}",
                 stage.display()
             )
         })?;
-        let staged_root = stage.join("root");
-        copy_artifact_root(&built.source_root, &staged_root)?;
-        let (staged_digest, staged_leaf_count) = artifact_snapshot(&staged_root)?;
-        if staged_digest != artifact_digest || staged_leaf_count != artifact_leaf_count {
-            return Err(format!(
-                "staged provider workspace artifact drift: expected={} actual={}",
-                artifact_digest, staged_digest
-            ));
-        }
+    } else {
         let staged_launcher = stage.join("launcher");
         fs::write(&staged_launcher, expected_launcher.as_bytes())
             .map_err(|error| format!("write {}: {error}", staged_launcher.display()))?;
@@ -364,6 +469,66 @@ pub(super) fn publish_provider_workspace(
         launcher,
         installed_path: installed.path,
     })
+}
+
+fn materialize_runtime_dependencies(
+    staged_root: &Path,
+    dependencies: &[BuiltWorkspaceRuntimeDependency],
+) -> Result<(), String> {
+    if dependencies.is_empty() {
+        return Ok(());
+    }
+    if !staged_root.is_dir() {
+        return Err(
+            "workspace artifact runtime dependencies require a directory artifact".to_owned(),
+        );
+    }
+    for dependency in dependencies {
+        let target = staged_root.join(&dependency.target);
+        if target.exists() {
+            return Err(format!(
+                "workspace artifact runtime dependency target already exists: {}",
+                target.display()
+            ));
+        }
+        let parent = target.parent().ok_or_else(|| {
+            format!(
+                "workspace artifact runtime dependency target has no parent: {}",
+                target.display()
+            )
+        })?;
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "create workspace artifact runtime dependency directory {}: {error}",
+                parent.display()
+            )
+        })?;
+        fs::copy(&dependency.source, &target).map_err(|error| {
+            format!(
+                "copy workspace artifact runtime dependency {} to {}: {error}",
+                dependency.source.display(),
+                target.display()
+            )
+        })?;
+        fs::set_permissions(
+            &target,
+            fs::metadata(&dependency.source)
+                .map_err(|error| {
+                    format!(
+                        "inspect workspace artifact runtime dependency {}: {error}",
+                        dependency.source.display()
+                    )
+                })?
+                .permissions(),
+        )
+        .map_err(|error| {
+            format!(
+                "copy workspace artifact runtime dependency permissions {}: {error}",
+                target.display()
+            )
+        })?;
+    }
+    Ok(())
 }
 
 fn validate_descriptor(

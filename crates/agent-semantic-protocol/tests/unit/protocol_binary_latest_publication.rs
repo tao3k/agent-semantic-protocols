@@ -1,8 +1,7 @@
 use super::{
-    ProtocolBinaryInstallPlan, SEMANTIC_AGENT_PROTOCOL_BIN,
-    canonical_protocol_binary_artifact_digest, ensure_protocol_binary_installed,
+    ProtocolBinaryInstallPlan, SEMANTIC_AGENT_PROTOCOL_BIN, ensure_protocol_binary_installed,
     install_protocol_binary_target, next_protocol_binary_publish_sequence,
-    prune_runtime_binary_artifacts,
+    protocol_binary_artifact_path_digest, prune_runtime_binary_artifacts,
 };
 use std::{
     env, fs,
@@ -21,8 +20,8 @@ fn fixture_root(name: &str) -> PathBuf {
 }
 
 #[tokio::test]
-async fn canonical_control_digest_is_a_sub_millisecond_path_identity_lookup() {
-    let root = fixture_root("control-digest-fast-path");
+async fn published_runtime_identity_lookup_never_reads_artifact_bytes() {
+    let root = fixture_root("published-runtime-identity");
     let artifact_root = root.join("runtime/artifacts");
     let target = root.join("runtime/bin/asp");
     let source = fixture_source(&root, "source-asp", b"control-digest-fixture");
@@ -37,21 +36,20 @@ async fn canonical_control_digest_is_a_sub_millisecond_path_identity_lookup() {
     let mut samples = Vec::with_capacity(10_000);
     for _ in 0..10_000 {
         let started = std::time::Instant::now();
-        let digest = canonical_protocol_binary_artifact_digest(&target)
-            .await
-            .expect("read canonical artifact path identity");
+        let digest = protocol_binary_artifact_path_digest(&target)
+            .expect("read published artifact path identity without binary hashing");
         samples.push(started.elapsed());
         assert_eq!(digest, installed.artifact_digest);
     }
     samples.sort_unstable();
     let p99 = samples[(samples.len() * 99) / 100];
     eprintln!(
-        "[runtime-binary-control-fast-path] requests=10000 p99Nanos={} binaryByteReads=0",
+        "[runtime-binary-published-identity] requests=10000 p99Nanos={} binaryByteReads=0",
         p99.as_nanos()
     );
     assert!(
         p99 < std::time::Duration::from_millis(1),
-        "canonical runtime digest path lookup p99 must remain sub-millisecond, observed {p99:?}"
+        "published runtime identity lookup p99 must remain sub-millisecond, observed {p99:?}"
     );
 
     fs::remove_dir_all(root).expect("remove protocol binary fixture");

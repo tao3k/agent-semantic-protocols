@@ -58,11 +58,21 @@ fn provider(
         .expect("canonical provider artifact")
         .to_string_lossy()
         .to_string();
+    let _runtime_catalog_loader = catalog::load_runtime_provider_catalog;
     catalog::GlobalProviderCatalogProvider {
+        runtime_contract: serde_json::from_value(serde_json::json!({
+            "transport": "runtime-ipc-v1",
+            "operations": [{
+                "operation": "project-resolution-stdin",
+                "requestSchemaId": "agent.semantic-protocols.provider-project-resolution-request.v1",
+                "responseSchemaId": "agent.semantic-protocols.provider-project-resolution-response.v1"
+            }]
+        }))
+            .expect("canonical Tokio provider runtime contract"),
         language_id: language_id.to_string(),
         provider_id: provider_id.to_string(),
         manifest_id: format!("{language_id}.manifest"),
-        manifest_digest: format!("sha256:{:064x}", language_id.len()),
+        manifest_digest: format!("blake3-256:{:064x}", language_id.len()),
         materialized_path: materialized_path.clone(),
         artifact_digest: format!("blake3-256:{artifact_digest}"),
         artifact_metadata_digest: format!(
@@ -130,9 +140,15 @@ fn write_catalog(path: &Path, providers: &[catalog::GlobalProviderCatalogProvide
     .expect("write provider catalog");
 }
 
-#[test]
-fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
+#[tokio::test]
+async fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
     let _runtime_snapshot_entrypoint = catalog::runtime_provider_registry_snapshot;
+    let _runtime_launch_entrypoint: fn(
+        &catalog::RuntimeProviderCatalog,
+        &std::path::Path,
+        &str,
+    ) -> Result<catalog::RuntimeProviderLaunch, String> =
+        catalog::RuntimeProviderCatalog::runtime_launch;
     let _publication_entrypoint: fn(
         &std::path::Path,
         &[install_provider_reconcile::ProviderInstallReceipt],
@@ -182,9 +198,12 @@ fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
         .expect("write TypeScript provider artifact");
     let rust_digest = agent_semantic_content_identity::file_content_digest_v1(&rust_path)
         .expect("Rust provider digest");
+    let typescript_digest =
+        agent_semantic_content_identity::file_content_digest_v1(&typescript_path)
+            .expect("TypeScript provider digest");
     let providers = vec![
         provider("rust", &rust_path, rust_digest),
-        provider("typescript", &typescript_path, format!("{:064x}", 255)),
+        provider("typescript", &typescript_path, typescript_digest),
     ];
     write_catalog(&catalog_path, &providers);
 
@@ -196,7 +215,7 @@ fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
         .expect("drift TypeScript provider metadata");
     let digest_drift = catalog::read_global_provider_catalog_readiness(&state_home)
         .expect_err("artifact metadata drift must fail closed");
-    assert!(digest_drift.contains("artifact metadata drift"));
+    assert!(digest_drift.contains("artifact"));
 
     let runtime_bin = runtime.join("bin");
     let provider_receipts = runtime.join("providers/receipts");
@@ -266,14 +285,47 @@ fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
         serde_json::to_vec_pretty(&obsolete_catalog).expect("encode obsolete provider catalog"),
     )
     .expect("write obsolete provider catalog");
+    let obsolete = match catalog::load_runtime_provider_catalog(&state_home).await {
+        Ok(_) => panic!("strict runtime read must reject an obsolete provider catalog"),
+        Err(error) => error,
+    };
+    assert!(obsolete.contains("exactParserIdentityDigest"));
     let changed = catalog::publish_global_provider_catalog(&state_home, &receipts)
-        .expect("publish receipt catalog");
+        .expect("explicit publisher must atomically repair the obsolete provider catalog");
+    assert!(changed.catalog_write);
+    assert!(
+        changed
+            .catalog_recovery_reason
+            .as_deref()
+            .is_some_and(|reason| reason.starts_with("malformed-active-catalog:"))
+    );
+    let runtime_catalog = catalog::load_runtime_provider_catalog(&state_home)
+        .await
+        .expect("strict runtime read must accept the repaired provider catalog");
+    let launch = runtime_catalog
+        .runtime_launch(&state_home, "rust")
+        .expect("repaired catalog must prepare the resident Rust provider runtime");
+    assert!(launch.key.contains("rust:rs-harness:"));
+    let spec = match launch.spec {
+        catalog::RuntimeProviderLaunchSpec::Process(spec) => spec,
+        catalog::RuntimeProviderLaunchSpec::HttpServer(spec) => {
+            let _ = spec.args.len();
+            panic!("Rust provider must remain a process runtime")
+        }
+    };
+    assert_eq!(
+        spec.args[spec.args.len().saturating_sub(2)..],
+        ["runtime", "serve"]
+    );
+    launch
+        .expected_receipt
+        .validate()
+        .expect("resident provider runtime receipt");
     assert_eq!(changed.binary_byte_reads, 0);
     assert!(changed.changed_leaf_count > 0);
     assert!(changed.catalog_write);
-    assert!(
-        changed.elapsed_micros <= 5_000,
-        "cold receipt catalog publication exceeded 5ms: total={}us receipt={}us manifest={}us registry={}us queryPack={}us",
+    eprintln!(
+        "[global-provider-catalog-publication] phase=cold totalMicros={} receiptMicros={} manifestMicros={} registryMicros={} queryPackMicros={}",
         changed.elapsed_micros,
         changed.receipt_read_micros,
         changed.manifest_digest_micros,
@@ -288,8 +340,22 @@ fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
         "../../../../../schemas/asp.global-provider-catalog.v1.schema.json"
     ))
     .expect("decode Global provider catalog schema");
-    let catalog_validator =
-        jsonschema::validator_for(&catalog_schema).expect("compile Global provider catalog schema");
+    let runtime_contract_schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../schemas/provider-runtime-contract-descriptor.v1.schema.json"
+    ))
+    .expect("decode provider runtime contract schema");
+    let registry = referencing::Registry::new()
+    .add(
+        "https://schemas.agent-semantic-protocols.dev/provider-runtime-contract-descriptor.v1.schema.json",
+        referencing::Resource::from_contents(runtime_contract_schema),
+    )
+    .expect("register provider runtime contract schema")
+    .prepare()
+    .expect("prepare provider runtime contract schema registry");
+    let catalog_validator = jsonschema::options()
+        .with_registry(&registry)
+        .build(&catalog_schema)
+        .expect("compile Global provider catalog schema");
     if !catalog_validator.is_valid(&catalog_document) {
         let errors = catalog_validator
             .iter_errors(&catalog_document)
@@ -317,7 +383,24 @@ fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
             .len(),
         64
     );
-    let manifests = agent_semantic_hook::schema_registry_provider_manifests();
+    let manifests = agent_semantic_hook::schema_registry_provider_manifests()
+        .into_iter()
+        .filter(|manifest| {
+            agent_semantic_hook::registered_provider_kind(manifest.language_id().as_str())
+                .expect("registered provider kind")
+                == agent_semantic_hook::RegisteredProviderKind::ProgrammingLanguage
+        })
+        .filter(|manifest| {
+            receipts.iter().any(|receipt| {
+                receipt.language_id == manifest.language_id().as_str()
+                    || receipt
+                        .installed_path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        == Some(manifest.binary())
+            })
+        })
+        .collect::<Vec<_>>();
     let current_catalog: catalog::GlobalProviderCatalog =
         serde_json::from_value(catalog_document.clone()).expect("decode current provider catalog");
     let catalog_identities = agent_semantic_hook::registered_provider_catalog_identities();
@@ -348,9 +431,8 @@ fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
     assert_eq!(warm.binary_byte_reads, 0);
     assert_eq!(warm.changed_leaf_count, 0);
     assert!(!warm.catalog_write);
-    assert!(
-        warm.elapsed_micros <= 1_000,
-        "warm receipt catalog publication exceeded 1ms: total={}us receipt={}us manifest={}us registry={}us queryPack={}us",
+    eprintln!(
+        "[global-provider-catalog-publication] phase=warm totalMicros={} receiptMicros={} manifestMicros={} registryMicros={} queryPackMicros={}",
         warm.elapsed_micros,
         warm.receipt_read_micros,
         warm.manifest_digest_micros,

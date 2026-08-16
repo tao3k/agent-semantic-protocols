@@ -60,6 +60,8 @@ pub struct WorkspaceGenerationPublisher {
     directory: PathBuf,
     pointer_path: PathBuf,
     state: tokio::sync::OnceCell<WorkspaceGenerationPublisherState>,
+    search_authority_publisher: super::WorkspaceSearchGenerationAuthorityPublisher,
+    search_authority_reader: super::WorkspaceSearchGenerationAuthorityReader,
 }
 
 #[derive(Debug)]
@@ -91,11 +93,68 @@ impl WorkspaceGenerationPublisher {
 
     pub async fn new(directory: PathBuf) -> Result<Self, String> {
         let pointer_path = directory.join("active-generation.pointer");
+        let (search_authority_publisher, search_authority_reader) =
+            super::workspace_search_generation_authority_channel(64);
         Ok(Self {
             directory,
             pointer_path,
             state: tokio::sync::OnceCell::new(),
+            search_authority_publisher,
+            search_authority_reader,
         })
+    }
+
+    pub async fn shutdown(&self) -> Result<(), String> {
+        self.search_authority_publisher.shutdown().await
+    }
+
+    pub(crate) fn search_generation_data_plane(
+        &self,
+    ) -> Option<Arc<super::WorkspaceSearchGenerationDataPlaneClient>> {
+        self.search_authority_reader
+            .observed()
+            .map(|generation| Arc::clone(generation.data_plane()))
+    }
+
+    pub(crate) fn search_generation_exact_projection(
+        &self,
+    ) -> Option<Arc<super::WorkspaceExactProjectionDataPlaneClient>> {
+        self.search_authority_reader
+            .observed()
+            .map(|generation| Arc::clone(generation.exact_projection()))
+    }
+
+    pub(crate) async fn restore_search_generation_authority(
+        &self,
+        workspace_identity: &str,
+        project_root: &str,
+        active_epoch: u64,
+    ) -> Result<(), String> {
+        let data_plane = Arc::new(
+            super::WorkspaceSearchGenerationDataPlaneClient::open(
+                &self.pointer_path,
+                std::path::Path::new(project_root),
+            )
+            .await?,
+        );
+        let exact_projection = Arc::new(
+            super::WorkspaceExactProjectionDataPlaneClient::open(&self.pointer_path).await?,
+        );
+        let authority = Arc::new(data_plane.authority().clone());
+        if authority.workspace_identity != workspace_identity
+            || authority.active_epoch != active_epoch
+        {
+            return Err("restored workspace search generation authority drift".to_owned());
+        }
+        let generation = Arc::new(
+            super::search_generation_authority::WorkspaceResidentSearchGeneration::new(
+                authority,
+                data_plane,
+                exact_projection,
+            )?,
+        );
+        self.search_authority_publisher.publish(generation).await?;
+        Ok(())
     }
 
     async fn state(&self) -> Result<&WorkspaceGenerationPublisherState, String> {
@@ -287,12 +346,41 @@ impl WorkspaceGenerationPublisher {
             previous_epoch_readable,
         };
         snapshot.validate()?;
-        super::publish_search_generation_authority_segment(state.pointer.path(), &generation)
-            .await?;
+        let search_authority =
+            super::publish_search_generation_authority_segment(state.pointer.path(), &generation)
+                .await?;
         state.pointer.publish(&snapshot).await?;
         super::WorkspaceGenerationDataPlaneClient::invalidate_committed_pointer(
             state.pointer.path(),
         );
+        let data_plane = Arc::new(
+            super::WorkspaceSearchGenerationDataPlaneClient::open(
+                state.pointer.path(),
+                std::path::Path::new(&generation.project_root),
+            )
+            .await?,
+        );
+        let exact_projection = Arc::new(
+            super::WorkspaceExactProjectionDataPlaneClient::open(state.pointer.path()).await?,
+        );
+        let resident_generation = Arc::new(
+            super::search_generation_authority::WorkspaceResidentSearchGeneration::new(
+                search_authority,
+                data_plane,
+                exact_projection,
+            )?,
+        );
+        let search_authority = self
+            .search_authority_publisher
+            .publish(resident_generation)
+            .await?;
+        let observed = self
+            .search_authority_reader
+            .observed()
+            .ok_or_else(|| "workspace search generation authority was not published".to_owned())?;
+        if observed.authority().as_ref() != search_authority.authority().as_ref() {
+            return Err("workspace search generation authority publication drift".to_owned());
+        }
         super::WorkspaceExactProjectionDataPlaneClient::prime_committed_pointer(
             state.pointer.path(),
         )

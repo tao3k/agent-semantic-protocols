@@ -121,16 +121,6 @@ async fn run_hook_bootstrap(args: Vec<OsString>) -> Result<i32, String> {
     let started = std::time::Instant::now();
     validate_hook_args(&args)?;
     let input = read_bounded_stdin()?;
-    if bootstrap_asp_no_agent_passthrough_requested(&input)? {
-        if std::env::var_os(TRACE_ENV).is_some() {
-            eprintln!(
-                "[asp-hook] route=bootstrap-asp-no-agent-passthrough elapsedMicros={}",
-                started.elapsed().as_micros()
-            );
-        }
-        emit_empty_success()?;
-        return Ok(0);
-    }
     match crate::hook_break_glass::evaluate_hook_break_glass(&input) {
         crate::hook_break_glass::HookBreakGlassEvaluation::Authorized(capability) => {
             if std::env::var_os(TRACE_ENV).is_some() {
@@ -208,17 +198,6 @@ async fn run_hook_bootstrap(args: Vec<OsString>) -> Result<i32, String> {
             Ok(0)
         }
     }
-}
-
-fn bootstrap_asp_no_agent_passthrough_requested(input: &[u8]) -> Result<bool, String> {
-    if std::env::var_os("ASP_NO_AGENT").is_some() {
-        return Ok(true);
-    }
-    let payload = serde_json::from_slice::<serde_json::Value>(input)
-        .map_err(|error| format!("hook payload must be JSON before recovery override: {error}"))?;
-    Ok(agent_semantic_hook::asp_no_agent_passthrough_requested(
-        &payload,
-    ))
 }
 
 fn emit_empty_success() -> Result<(), String> {

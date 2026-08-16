@@ -12,8 +12,8 @@ use agent_semantic_client_core::{
 };
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessError, ProviderProcessLimits, ProviderProcessReceipt,
-    ProviderProcessSpec, StdinMode, provider_process_limits_from_environment,
-    run_provider_process_async as run_transport_process,
+    ProviderProcessSpec, ProviderProcessSupervisor, StdinMode,
+    provider_process_limits_from_environment,
 };
 use bytes::{Bytes, BytesMut};
 
@@ -54,14 +54,22 @@ pub fn activated_provider_command_prefix(
 }
 
 /// Execution backend that shells out to activated provider binaries.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct LocalNativeCliBackend {
     snapshot: ProviderRegistrySnapshot,
+    supervisor: ProviderProcessSupervisor,
 }
 
 impl LocalNativeCliBackend {
-    pub fn new(snapshot: ProviderRegistrySnapshot) -> Self {
-        Self { snapshot }
+    pub fn new(snapshot: ProviderRegistrySnapshot, supervisor: ProviderProcessSupervisor) -> Self {
+        Self {
+            snapshot,
+            supervisor,
+        }
+    }
+
+    pub async fn shutdown(&self) {
+        self.supervisor.shutdown().await;
     }
 
     fn prepare_uncanonicalized(
@@ -282,8 +290,9 @@ impl LocalNativeCliBackend {
         limits: ProviderProcessLimits,
     ) -> Result<LocalNativeOutput, String> {
         let prepared_commands = self.prepare_all(request)?;
-        let (provider, stdout, stderr, status_code, provider_commands, elapsed_ms) =
-            Self::run_provider_commands(prepared_commands, request.stdin.clone(), limits).await?;
+        let (provider, stdout, stderr, status_code, provider_commands, elapsed_ms) = self
+            .run_provider_commands(prepared_commands, request.stdin.clone(), limits)
+            .await?;
         let receipt = Self::receipt_for_run(
             request,
             &provider,
@@ -302,6 +311,7 @@ impl LocalNativeCliBackend {
     }
 
     async fn run_provider_commands(
+        &self,
         prepared_commands: Vec<LocalNativeCommand>,
         stdin: Option<Bytes>,
         limits: ProviderProcessLimits,
@@ -319,20 +329,22 @@ impl LocalNativeCliBackend {
         for prepared in prepared_commands {
             let provider_argv = prepared.argv();
             let provider_cwd = prepared.project_root.clone();
-            let output = run_transport_process(ProviderProcessSpec {
-                program: prepared.program.clone(),
-                args: prepared.args.clone(),
-                cwd: prepared.project_root.clone(),
-                env: Self::protocol_renderer_env(),
-                stdin: stdin
-                    .clone()
-                    .map(StdinMode::bytes)
-                    .unwrap_or(StdinMode::Inherit),
-                stdout: OutputMode::Capture,
-                stderr: OutputMode::Capture,
-                limits,
-            })
-            .await;
+            let output = self
+                .supervisor
+                .run(ProviderProcessSpec {
+                    program: prepared.program.clone(),
+                    args: prepared.args.clone(),
+                    cwd: prepared.project_root.clone(),
+                    env: Self::protocol_renderer_env(),
+                    stdin: stdin
+                        .clone()
+                        .map(StdinMode::bytes)
+                        .unwrap_or(StdinMode::Inherit),
+                    stdout: OutputMode::Capture,
+                    stderr: OutputMode::Capture,
+                    limits,
+                })
+                .await;
             let output = match output {
                 Ok(output) => output,
                 Err(ProviderProcessError::Timeout { timeout, receipt }) => {

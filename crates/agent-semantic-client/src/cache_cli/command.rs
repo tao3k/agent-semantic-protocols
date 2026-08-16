@@ -218,9 +218,6 @@ pub(crate) async fn run_cache(
 ) -> Result<(), String> {
     let project_root_text = project_root.display().to_string();
     match forwarded_args {
-        [subcommand, rest @ ..] if subcommand == "migrate" => {
-            super::run_cache_migration(project_root, rest, receipt_json)
-        }
         [subcommand, rest @ ..] if subcommand == "gc" => {
             super::project_registry_gc_command::run_project_registry_gc(
                 project_root,

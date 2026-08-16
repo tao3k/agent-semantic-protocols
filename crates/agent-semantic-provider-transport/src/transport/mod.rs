@@ -7,8 +7,7 @@ mod runtime;
 mod io_tasks;
 
 pub use runtime::{
-    ProviderProcessOutput, provider_process_limits_from_environment, run_provider_process_async,
-    run_provider_process_async_with_framing,
+    ProviderProcessOutput, ProviderProcessSupervisor, provider_process_limits_from_environment,
 };
 
 #[cfg(test)]

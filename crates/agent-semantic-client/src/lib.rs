@@ -4,11 +4,7 @@
 
 mod activation_cache;
 mod cache_cli;
-pub use cache_cli::{
-    cache_migration_clap_command, project_registry_clean_clap_command,
-    project_registry_gc_clap_command,
-};
-mod cache_replay;
+pub use cache_cli::{project_registry_clean_clap_command, project_registry_gc_clap_command};
 pub mod cli;
 mod cli_args;
 mod compact_mode;
@@ -38,7 +34,7 @@ pub use source_index::{
     SourceIndexCandidate, SourceIndexLookupRequest, SourceIndexLookupResult,
     SourceIndexLookupState, SourceIndexRefreshReport, SourceIndexSourceKind,
     lookup_search_pipe_source_index_for_language, lookup_source_index,
-    lookup_source_index_for_language, prepare_runtime_server_workspace_generation_async,
+    lookup_source_index_for_language,
 };
 pub use syntax_query_preflight::validate_syntax_query_request as validate_client_syntax_query_request;
 
@@ -49,21 +45,8 @@ mod activation_cache_tests;
 #[path = "../tests/unit/cache_cli/command.rs"]
 mod cache_cli_command_tests;
 #[cfg(test)]
-#[path = "../tests/unit/cache_cli/probe.rs"]
-mod cache_cli_probe_tests;
-#[cfg(test)]
 #[path = "../tests/unit/cache_cli/source_index.rs"]
 mod cache_cli_source_index_tests;
-
-#[cfg(test)]
-#[path = "../tests/unit/cache_replay/row_replay.rs"]
-mod cache_replay_row_replay_tests;
-#[cfg(test)]
-#[path = "../tests/unit/cache_replay/structured_evidence.rs"]
-mod cache_replay_structured_evidence_tests;
-#[cfg(test)]
-#[path = "../tests/unit/cache_replay.rs"]
-mod cache_replay_tests;
 
 #[cfg(test)]
 #[path = "../tests/unit/cli_args.rs"]

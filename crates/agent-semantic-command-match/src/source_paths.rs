@@ -20,10 +20,10 @@ pub fn command_source_paths(command: &str, tokens: &[String]) -> Vec<String> {
         });
 
     let mut candidates = parsed_words.unwrap_or_else(|| tokens.to_vec());
-    let embedded_candidates = embedded_literal_candidates(&candidates);
-    candidates.extend(embedded_candidates);
     candidates.extend(crate::bash_parser::quoted_literal_candidates(command));
     candidates.extend(crate::bash_parser::bash_heredoc_literal_candidates(command));
+    let embedded_candidates = embedded_literal_candidates(&candidates);
+    candidates.extend(embedded_candidates);
     stable_unique(&candidates)
 }
 
@@ -32,10 +32,32 @@ pub fn command_source_paths(command: &str, tokens: &[String]) -> Vec<String> {
 /// This keeps interpreter `-c` payload discovery in the command parser owner
 /// while leaving language/provider classification to the caller.
 pub fn embedded_literal_candidates(tokens: &[String]) -> Vec<String> {
-    let mut candidates = tokens
-        .iter()
-        .flat_map(|token| crate::bash_parser::quoted_literal_candidates(token))
-        .collect::<Vec<_>>();
+    const MAX_LITERAL_DEPTH: usize = 4;
+    const MAX_LITERAL_CANDIDATES: usize = 256;
+
+    let mut candidates = Vec::new();
+    let mut frontier = tokens.to_vec();
+    for _ in 0..MAX_LITERAL_DEPTH {
+        let mut next = Vec::new();
+        for token in &frontier {
+            for candidate in crate::bash_parser::quoted_literal_candidates(token) {
+                if candidates.len() + next.len() == MAX_LITERAL_CANDIDATES {
+                    break;
+                }
+                if !tokens.iter().any(|existing| existing == &candidate)
+                    && !candidates.iter().any(|existing| existing == &candidate)
+                    && !next.iter().any(|existing| existing == &candidate)
+                {
+                    next.push(candidate);
+                }
+            }
+        }
+        if next.is_empty() {
+            break;
+        }
+        candidates.extend(next.iter().cloned());
+        frontier = next;
+    }
     candidates.extend(
         tokens
             .iter()

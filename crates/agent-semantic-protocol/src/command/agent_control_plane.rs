@@ -19,7 +19,6 @@ pub(crate) async fn run_session_control_plane_command(args: &[String]) -> Result
             println!("{}", agent_window::session_control_plane_usage());
             Ok(())
         }
-        Some("register-current-child") => agent_window::register_current_child_session().await,
         _ => agent_window::run_session_control_plane(args).await,
     }
 }

@@ -26,8 +26,7 @@ pub use command_decision_rebind::{
     ShellCommandKey, rebind_command_decision_to_payload, shell_command_key,
 };
 pub use core::{
-    DirectReadSourceKey, HookClassificationRequest, ShellReadSourceKey,
-    asp_no_agent_passthrough_decision, asp_no_agent_passthrough_requested, classify_hook,
+    DirectReadSourceKey, HookClassificationRequest, ShellReadSourceKey, classify_hook,
     classify_hook_with_config, direct_read_source_extension, direct_read_source_key,
     shell_read_source_key, shell_read_source_keys,
 };

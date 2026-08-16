@@ -218,3 +218,30 @@ embedded registry per language leaf.
   and an unchanged warm publication writes no catalog;
 - warm exact-selector latency below the configured millisecond gate;
 - FTS and vector queries remain generation-bound and workspace-bound.
+* Normative v1 supersession: query is never an admission plane
+
+This section supersedes every earlier paragraph in this document that assigns
+lazy provider-catalog admission, provider activation, cache repair, hashing, or
+generation construction to a search/query request.
+
+The stable v1 contract has exactly three authority boundaries:
+
+1. Host/session lifecycle submits workspace admission to the Runtime Server.
+   The Runtime Server owns the single-flight build independently of the
+   submitting IPC connection.
+2. Cache mutation submits a normalized Merkle delta to the Runtime Server's
+   serialized writer lane.  The mutation constructs and atomically publishes
+   an immutable successor generation; it never mutates the active generation.
+3. Search/query is a read-only consumer.  It checks the published generation
+   state before opening an mmap lease.  =Missing=, =Building=, =Failed=, and
+   =Cancelled= return an immediate typed v1 receipt.  Only =Ready= may enter
+   the resident read plane.
+
+Hook execution is not one of these Runtime boundaries.  The HookLocalKernel v1
+uses only its compiled local snapshots and must not contact the Runtime Server,
+open Turso, activate a provider, or submit workspace admission.
+
+There is no provider-native, client-local, Turso-open, stale-generation, or
+schema-version fallback.  New additive evidence is merged into the existing v1
+contracts; this RFC does not authorize a v2 search, cache, generation, or
+qualification schema.

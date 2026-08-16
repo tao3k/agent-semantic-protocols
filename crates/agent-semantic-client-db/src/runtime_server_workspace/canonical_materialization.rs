@@ -20,6 +20,7 @@ pub struct WorkspaceCanonicalMaterialization {
     pub provider_schema_digest: String,
     pub import_digest: String,
     pub selector_set_digest: String,
+    pub projection_capability: crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest,
     pub workspace_source_scope_generation: String,
     pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
     pub relations: Vec<agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation>,
@@ -391,11 +392,15 @@ impl WorkspaceCanonicalMaterialization {
             workspace_identity: workspace_identity.into(),
             project_root: Self::canonical_project_root(&import.project_root)?,
             workspace_snapshot,
-            source_snapshot,
+            source_snapshot: source_snapshot.clone(),
             workspace_generation,
             provider_schema_digest: agent_semantic_runtime::project_resolution_schema_digest(),
             import_digest: Self::canonical_import_digest(import)?,
             selector_set_digest,
+            projection_capability: crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest::from_source_index(
+                source_snapshot.provider_digest.clone(),
+                &import.selectors,
+            )?,
             workspace_source_scope_generation,
             project_resolutions,
             relations: import.relations.clone(),
@@ -568,6 +573,7 @@ impl WorkspaceCanonicalMaterialization {
             .checked_add(1)
             .ok_or_else(|| "workspace generation epoch overflow".to_owned())?;
         WorkspaceMemoryGeneration::try_from_build(super::WorkspaceGenerationBuild {
+            projection_capability: self.projection_capability.clone(),
             workspace_identity: self.workspace_identity,
             project_root: self.project_root,
             active_epoch: target_epoch,

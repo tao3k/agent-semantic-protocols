@@ -132,6 +132,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-stream",
+ "tracing",
  "turso",
  "which 8.0.4",
 ]
@@ -262,6 +263,7 @@ dependencies = [
  "memmap2",
  "orgize",
  "proc-macro2",
+ "referencing",
  "rs-harness",
  "rust-lang-project-harness 0.1.2",
  "serde",
@@ -272,6 +274,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "toml 0.9.12+spec-1.1.0",
+ "tracing",
  "tree-sitter",
  "which 8.0.4",
 ]
@@ -281,17 +284,19 @@ name = "agent-semantic-provider-transport"
 version = "0.1.0"
 dependencies = [
  "agent-semantic-content-identity",
+ "base64 0.22.1",
  "bstr",
  "bytes",
  "criterion",
- "fs2",
  "futures-util",
  "libc",
  "memchr",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "tokio",
+ "tokio-stream",
  "tokio-util",
  "tracing",
 ]
@@ -5635,6 +5640,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

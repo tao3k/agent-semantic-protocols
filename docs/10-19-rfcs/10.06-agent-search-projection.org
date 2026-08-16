@@ -21,6 +21,153 @@
 
 * Search projection summary
 
+** Runtime cache ownership
+
+*** Cold client first-result gate
+
+Lifecycle, publication, and cancellation are Tokio-owned.  Once admission has
+produced a Ready capability, the Tokio task executes search, owner-proof, and
+exact-projection reads synchronously against the leased immutable mmap segment.
+No Tokio channel, IPC round trip, timer, or scheduler handoff is part of the
+measured resident read.  Scenario and Live Corpus qualification use the same
+receipt and require zero provider, scheduler, filesystem, database, and socket
+work.  Increasing a deadline cannot qualify a path that violates this boundary.
+
+The primary search performance gate is a cold client reading an already
+published generation.  A cold client is a newly started CLI or agent process
+with no process-local Runtime connection, generation lease, or mmap handle.
+It is not a workspace bootstrap and it does not authorize preparation work.
+
+The first search request from that client MUST resolve the immutable Runtime
+locator, connect to the existing Runtime Server, validate a nonzero active
+generation capability, open or lease the published mmap generation, and read
+the requested projection.  That path MUST NOT start or ensure the Runtime
+Server, admit or rebuild a generation, wait for a generation builder, start a
+language provider, open Turso, walk the workspace, acquire a publication lock,
+repair activation, or retry through a local cache implementation.
+
+If the Runtime endpoint, active capability, or published generation is absent,
+the request MUST return an immediate typed terminal receipt.  Workspace
+bootstrap and generation construction belong to an explicit control-plane
+operation and MUST NOT be hidden inside search latency.
+
+Warm-search measurements are secondary.  They measure reuse of the connection,
+generation lease, mmap pages, and decoded table metadata only after the cold
+client gate passes.  A warm result cannot qualify an implementation whose first
+request performs synchronous preparation.
+
+The cold-client gate records at least elapsed time, Runtime control roundtrips,
+mmap opens, provider invocations, database opens by the client, workspace walks,
+generation admissions, generation rebuilds, and fallback attempts.  Provider
+invocations, client database opens, workspace walks, generation admissions,
+generation rebuilds, and fallback attempts MUST all be zero for a query against
+an already published generation.
+
+*** Incremental Merkle generation boundary
+
+=WorkspacePathMerkleTreeV1= is the canonical snapshot-identity and proof
+algorithm for v1 generations.  Its sorted leaf array and pairwise level
+construction require materializing the complete ordered leaf set; the presence
+of an owner delta does not make v1 tree construction incremental.  Implementors
+MUST NOT describe full v1 reconstruction or per-owner proof precomputation as
+an incremental cache update.
+
+A generation that promises work proportional to changed owners MUST use a new
+versioned shared Merkle contract with stable path-addressed nodes, immutable
+structural sharing, explicit base-generation and base-root preconditions, and a
+typed successor root.  The new contract must be defined in shared schemas
+before any provider implementation.  It may not silently change v1 root or
+proof semantics.
+
+The shared contracts are
+=agent.semantic-protocols.workspace-path-merkle-tree.v1= and
+=agent.semantic-protocols.workspace-merkle-delta.v1=.  The tree contract owns
+the path-radix algorithm identity, generation/root binding, node-table digest,
+and inclusion-proof shape.  The delta contract owns mutation idempotency,
+base-generation and base-root compare-and-swap, typed upsert/remove operations,
+the successor root, and touched/written/reused-node counters.  A successful
+incremental delta records =fullMerkleRebuilds= as zero.  Incremental updates
+are additive within this single v1 contract; they do not introduce a second
+public schema version or a dual-read migration path.
+
+Query code MUST NOT rebuild the v1 tree on a miss or fall back to Turso or
+provider parsing.  An unsupported incremental capability returns a typed
+fail-closed receipt.
+
+The v1 incremental lifecycle is explicit: a query has no hidden build edge;
+=WorkspaceGenerationDelta= is the mutation payload; =base_generation_digest=
+is the compare-and-swap authority; and =PublishOwnerDeltaCommand= is the sole
+writer entry point.  A rejected base digest MUST leave both the active pointer
+and epoch unchanged.  A successful delta MUST publish exactly once and retain
+the previous generation as readable while the new generation is admitted.
+
+*** Merkle owner read plane
+
+The canonical workspace Merkle tree is generation evidence and a resident
+search index, not a client cache.  Generation publication MUST derive owner
+leaf digests, owner-subtree digests, and inclusion proofs from the shared
+=WorkspacePathMerkleTreeV1= contract.  Runtime code MUST NOT duplicate the
+hashing algorithm or derive a second root from cache-private state.
+
+The immutable search mmap segment MUST carry a sorted owner-to-proof index
+bound to the same workspace root and generation digest as its generation
+authority.  A warm owner proof read performs one bounded mmap lookup and MUST
+NOT open Turso, start a provider, walk the workspace, reconstruct the Merkle
+tree, or enqueue a generation rebuild.
+
+The V1 generation carries two distinct typed identities: =sourceSnapshot.rootDigest=
+commits the source snapshot representation, while =ownerMerkleRootDigest=
+commits the canonical WorkspacePathMerkleTreeV1 owner-proof tree.  They MUST
+not be interchanged.  Owner-proof readers verify against the latter; source
+snapshot consumers verify against the former.
+
+The public read contract is
+=agent.semantic-protocols.runtime-merkle-owner-read-request= v1 and
+=agent.semantic-protocols.runtime-merkle-owner-read-receipt= v1.  A hit
+returns the source-blob digest, owner-subtree digest, and canonical inclusion
+proof.  A miss remains bound to the requested owner path, generation digest,
+and workspace root.  Proof validation failure is terminal generation
+corruption; it MUST NOT fall back to a client-local scan or database lookup.
+
+Owner upsert, tombstone, and relocation continue to enter through the existing
+typed Runtime data-plane operations and the single resident writer.  They
+publish one immutable successor generation and atomically replace the bounded
+pointer.  Concurrent readers observe either the complete previous generation
+or the complete successor generation.  Cache-control =invalidate= and
+=rebuild-source-index= are not substitutes for owner-delta publication.
+
+The schema-owned v1 mutation set also includes =apply-owner-delta=.  It carries non-empty
+=changedPaths= or =removedPaths= plus a stable =mutationId=.  Its explicit =fallbackPolicy= is
+either =fail-closed= or =full-generation=: the former returns a typed failure when incremental
+application is unavailable, while the latter authorizes only the Runtime Server resident writer
+to rebuild the complete generation.
+
+Provider execution and agent-facing clients MUST NOT inspect, open, migrate, or write a
+client-directory database or cache manifest.  They MUST NOT replay prompt-output or search-packet
+artifacts from a client-owned cache.  Cache status and every cache mutation use the Runtime Server
+v1 typed IPC action set; the resident generation is the only reusable search authority.
+
+The legacy =asp cache migrate= command is removed.  Database format migration is an internal
+Runtime Server owner responsibility and is never exposed as a client-side cache lifecycle.
+
+When the required resident generation or capability is unavailable, the client returns the typed
+Runtime Server failure unchanged.  It does not fall back to client-local replay, direct database
+access, manifest reconstruction, or provider-private cache ownership.
+Public programming-language search is a Runtime Server operation.  A language
+facade MUST submit a typed provider-search request to the workspace Runtime
+Server and render its typed receipt.  It MUST NOT instantiate a provider
+backend or spawn a provider process in the CLI process.  Provider resolution,
+generation admission, process execution, cache publication, timeout and
+OpenTelemetry terminal events belong to one Tokio task owned by the Runtime
+Server.
+
+The provider-search request and receipt use disjoint versioned schemas.  The
+request carries a typed query plan rather than forwarded argv.  The receipt
+carries provider, catalog, generation and root identities plus the validated
+search packet.  Raw provider stdout is transport evidence only and is never a
+successful public response.  There is no local-backend compatibility mode.
+
+
 Public exact query and derived search projection are separate protocols, not
 output modes of one command.  A public exact query has one meaning: resolve one
 parser-owned selector and return its source bytes with typed source authority.
@@ -44,6 +191,29 @@ grouped relation edges, a legend-declared search root, algorithm-owned rank,
 inline next actions, exact locators, and explicit omission/avoidance facts.
 
 ** Provider-scoped incremental generation projection
+
+*** Exact projection scope and observability
+
+Exact selector resolution MUST execute inside the Runtime Server data plane as
+one typed operation: generation read, cache lookup, provider-owner repair,
+selector relocation, overlay rebind, and terminal receipt publication.  The
+CLI and protocol adapter MUST NOT reproduce that sequence or classify misses.
+
+Every exact-projection span and terminal receipt MUST identify the requested
+selector, resolved selector when present, language/provider identity,
+projection kind, admitted projection scope, active generation and root
+digests, owner/source digest, provider catalog and executable digests, cache
+state, relocation state, and a typed terminal reason.  A selector excluded
+from the admitted production scope (for example a =cfg(test)= item when no
+all-targets generation is admitted) is =projection-scope-omitted=; it is not
+=owner-missing= and MUST NOT be reported as cache corruption.
+
+Production, test/all-targets, and live-corpus projections are separate
+admission scopes.  A query MUST name or inherit exactly one admitted scope;
+Runtime MUST never silently widen scope, rebuild a generation, or clean cache
+to satisfy an exact miss.  OpenTelemetry export is derived from the same typed
+receipt, so diagnostic text, metrics, traces, and Runtime behavior cannot
+disagree about the cause.
 *** RuntimeServer-centered cache authority
 Fallback release transfer MUST be one-shot. Before =Drop= schedules a Tokio
 cleanup task, it MUST mark the transferred guard so cancellation during runtime
@@ -194,6 +364,14 @@ selected language provider owns canonical selector and signature production;
 ASP owns provider-scoped storage, incremental generation admission, graph
 ranking, and rendering.
 
+Owner/items discovery and exact-query reads MUST acquire the same admitted
+=RuntimeResidentReadClient= binding of =workspaceIdentity=,
+=generationDigest=, and =rootDigest=.  Selector discovery MUST NOT project a
+provider-native owner catalog while exact query reads a different Runtime
+generation.  A generation or root mismatch is a typed =stale-generation=
+terminal result with =candidates=[]=.  The consumer MUST NOT refresh or repair
+authority, invoke a provider, reopen a database, or wait on a timeout.
+
 Hook lifecycle events use the typed, non-blocking
 =admit-runtime-generation= operation so PreToolUse never waits for project
 resolution.  Search and exact-query consumers only open an already published
@@ -302,6 +480,46 @@ Compact search receipts report the selected =projectId=,
 =projectResolutionGeneration= when those facts affect routing.  They omit
 repeated path data but never omit scope authority, completeness, ambiguity, or
 the relation that makes an owner reachable.
+
+*** Live Corpus qualification completeness
+
+Only the release publication authority may turn a locked Live Corpus checkout
+into an immutable resident search projection.  The public Runtime has no Code
+Prepare or indexing operation.  The published Ready receipt binds the lock
+resource, revision, provider/language identity, workspace generation, source
+root, projection completeness, and terminal OpenTelemetry event.  A partial or
+incremental generation cannot prove owner enumeration or absence and must never
+be promoted to Ready.  Missing Ready evidence is a typed, immediate read
+failure; it never schedules discovery or waits for publication.
+
+Merkle owner-proof changes require two independent qualifications over the
+same versioned receipt.  Scenarios exercise Ready, missing, stale, tampered,
+and generation-transition states.  Live Corpus exercises every locked resource
+and every registered provider language against real owner/selector sets.  Both
+validate the proof against the same generation digest, root digest, owner path,
+owner content digest, and selector identity.  They also assert zero provider,
+scheduler, filesystem, database, and socket operations on the warm read path.
+A timeout, cancellation, or elapsed-budget failure is evidence of an invalid
+architecture, not a successful bounded fallback.
+
+Qualification consumes that receipt without mutation.  Any attempt to build,
+restore an unqualified materialization, invoke a provider, or repair a missing
+projection while measuring search/query latency is a typed terminal failure.
+A Live Corpus qualification is complete only when the qualification plan and
+the canonical corpus lock have identical resource sets and matching
+=languageId=/=providerId= identities. Every case MUST publish one admitted
+generation receipt, one positive resident-search receipt, one deterministic
+parser-owned exact-query receipt, one typed zero-match receipt, and correlated
+OpenTelemetry terminal events. The receipt MUST retain revision, Git tree,
+generation/root digests, selector identity, candidate count, and separate
+resident-read/service/total latency.
+
+Qualification MUST execute against canonical State Home checkouts and the
+Runtime Server data plane. Provider package roots, synthetic fixtures, raw
+source reads, direct provider processes, and CLI-local caches are not evidence
+for this gate. Project-resolution success without parser-index completeness, or
+search success without an exact-query receipt, is incomplete and MUST fail
+closed.
 
 * Problem
 

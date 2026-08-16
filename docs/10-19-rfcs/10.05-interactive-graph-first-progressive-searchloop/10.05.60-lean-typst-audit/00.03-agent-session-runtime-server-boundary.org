@@ -9,6 +9,12 @@ authority boundary.  It is not an independent runtime architecture RFC.
 * Normative authority contract
 
 - The Runtime Server is the sole storage owner of the workspace agent-session registry.
+- Sole storage ownership does not make the Hook a Runtime Server client.  =HookLocalKernel v1=
+  never opens the registry, connects to Runtime IPC, submits workspace admission, activates a
+  provider, or waits for a generation.
+- Hook evaluation is total over immutable local matcher and agent-registry snapshots plus the
+  current event.  Any Runtime or session action rendered by the Hook is a public recovery hint for
+  a later host-owned operation, never a hidden Hook dependency or fallback.
 - Sole ownership means one long-lived Turso =Database= instance per State Home inside the Runtime
   Server.  Request handlers may acquire independent read connections or a serialized writer
   connection from that shared Database, but must not build another Database for the same path.

@@ -1,7 +1,7 @@
 use std::fs;
 use std::time::Duration;
 
-use crate::run_provider_process_async;
+use crate::ProviderProcessSupervisor;
 
 use super::support::{script, spec, temp_dir};
 
@@ -46,7 +46,12 @@ async fn cancelling_async_transport_kills_the_provider_process() {
             pid_path.display()
         ),
     );
-    let task = tokio::spawn(run_provider_process_async(spec(program, root.clone())));
+    let supervisor = ProviderProcessSupervisor::default();
+    let task_root = root.clone();
+    let task = tokio::spawn({
+        let supervisor = supervisor.clone();
+        async move { supervisor.run(spec(program, task_root)).await }
+    });
     let pid = tokio::time::timeout(Duration::from_secs(2), async {
         loop {
             if let Ok(pid) = tokio::fs::read_to_string(&pid_path).await

@@ -37,6 +37,9 @@ fn generation(
             active_epoch: 1,
             workspace_snapshot,
             source_snapshot,
+            projection_capability:
+                crate::active_generation_projection_capability::test_projection_capability_manifest(
+                ),
             module_graph_digest: format!(
                 "blake3-256:{}",
                 blake3::hash(b"mutation-builder-module-graph").to_hex()
@@ -138,7 +141,7 @@ async fn mutation_builder_projects_only_changed_owner_and_publishes_one_epoch() 
         &project_root,
     )
     .expect("resolve mutation generation pointer");
-    let authority = crate::runtime_server_workspace::read_search_generation_authority_segment(
+    let authority = crate::runtime_server_workspace::read_search_generation_authority_fixture(
         &pointer_path,
         2,
         workspace_identity,

@@ -39,8 +39,8 @@ pub(super) async fn run_stop() -> Result<(), String> {
         .await?;
         if !exit.clean_drain {
             return Err(format!(
-                "Runtime Server owner {} exited after a failed service drain",
-                exit.owner_epoch
+                "Runtime Server owner {} exited after a failed service drain: errors={:?}",
+                exit.owner_epoch, exit.errors
             ));
         }
     }

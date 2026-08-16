@@ -10,7 +10,6 @@ use std::env;
 use std::path::Path;
 
 use super::client_backend_worker::run_client_backend_on_worker;
-use super::gerbil_check_cache::try_replay_gerbil_check_cache;
 use super::gerbil_deps::try_run_gerbil_deps_index_command;
 use super::protocol_version_line;
 use super::provider_fast_path::run_activated_owner_language_preflight;
@@ -72,6 +71,40 @@ pub(crate) async fn run_language_command(
             && args.get(1).is_none_or(|subcommand| subcommand != "guide"))
             || matches!(args.first().map(String::as_str), Some("check"))
             || matches!(args.first().map(String::as_str), Some("cache"))
+    }
+
+    async fn run_runtime_provider_search_command(
+        language_id: &str,
+        args: Vec<String>,
+        project_root: &Path,
+    ) -> Result<(), String> {
+        let language_id = agent_semantic_client_core::LanguageId::try_from(language_id)
+            .map_err(|error| format!("decode provider search language id: {error}"))?;
+        let session =
+            crate::server::runtime_server::runtime_server_workspace_session_async(project_root)
+                .await?;
+        let operation_id = format!(
+            "provider-search-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|error| format!("read provider search operation clock: {error}"))?
+                .as_nanos()
+        );
+        let receipt = session
+            .provider_search(operation_id, language_id, args)
+            .await?;
+        std::io::Write::write_all(&mut std::io::stderr(), &receipt.stderr)
+            .map_err(|error| format!("write Runtime provider search stderr: {error}"))?;
+        std::io::Write::write_all(&mut std::io::stdout(), &receipt.stdout)
+            .map_err(|error| format!("write Runtime provider search stdout: {error}"))?;
+        if receipt.status_code != 0 {
+            return Err(format!(
+                "Runtime provider search failed: statusCode={} operationId={}",
+                receipt.status_code, receipt.operation_id
+            ));
+        }
+        Ok(())
     }
 
     async fn run_client_backend_command(
@@ -232,6 +265,17 @@ pub(crate) async fn run_language_command(
         {
             return Ok(());
         }
+        if provider_args
+            .first()
+            .is_some_and(|command| command == "search")
+        {
+            return run_runtime_provider_search_command(
+                language_id,
+                provider_args,
+                &project_root,
+            )
+            .await;
+        }
         return run_client_backend_command(
             language_id,
             &provider_args,
@@ -308,9 +352,6 @@ pub(crate) async fn run_language_command(
         return Err(
             "--frontier-receipt-* fact flags require an ASP graph-turbo fast search".to_string(),
         );
-    }
-    if try_replay_gerbil_check_cache(language_id, &provider_args, &project_root)? {
-        return Ok(());
     }
     let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
     if is_guide(&command_args) {

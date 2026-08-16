@@ -104,13 +104,27 @@ pub(crate) async fn publish_mutation_generation(
             tombstones.push(owner_path);
         }
     }
+    let base_generation_digest = memory_registry
+        .lease(workspace_identity, project_root)
+        .map_err(|error| WorkspaceGenerationBuildFailure::new(
+            crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
+            error,
+        ))?
+        .generation()
+        .generation_digest
+        .clone();
     let published = memory_registry
         .publish_owner_delta(
             request_id,
             workspace_identity,
             project_root,
-            owners,
-            tombstones,
+            crate::runtime_server_workspace::WorkspaceGenerationDelta {
+                schema_id: crate::runtime_server_workspace::WORKSPACE_GENERATION_DELTA_SCHEMA_ID.to_owned(),
+                schema_version: "1".to_owned(),
+                base_generation_digest,
+                owners,
+                tombstones,
+            },
         )
         .await
         .map_err(|error| {

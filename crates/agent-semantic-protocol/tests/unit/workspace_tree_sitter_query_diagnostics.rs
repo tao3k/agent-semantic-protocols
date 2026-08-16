@@ -164,7 +164,7 @@ async fn zero_match_tree_sitter_query_explains_structural_semantics() {
     assert!(stdout.contains("asp rust search pipe"), "stdout={stdout}");
 }
 
-fn create_linked_fixture_workspace(name: &str) -> std::path::PathBuf {
+pub(crate) fn create_linked_fixture_workspace(name: &str) -> std::path::PathBuf {
     let workspace = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
     let owner_checkout = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     if workspace.exists() {
@@ -208,7 +208,7 @@ fn remove_linked_fixture_workspace(workspace: &std::path::Path) {
     assert!(removed.success(), "linked fixture checkout removal failed");
 }
 
-fn commit_linked_fixture_workspace(workspace: &std::path::Path) {
+pub(crate) fn commit_linked_fixture_workspace(workspace: &std::path::Path) {
     let committed = Command::new("/usr/bin/git")
         .current_dir(workspace)
         .args([

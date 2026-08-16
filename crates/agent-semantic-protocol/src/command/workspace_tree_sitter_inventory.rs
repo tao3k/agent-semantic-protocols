@@ -22,7 +22,7 @@ pub(super) async fn collect_runtime_inventory(
     provider: &ActivatedProvider,
 ) -> Result<Vec<InventoryOwner>, String> {
     let lookup = session
-        .read_source_index(
+        .read_tree_sitter_inventory(
             &agent_semantic_client_db::workspace_db_ipc::WorkspaceDbSourceIndexLookupRequest {
                 project_root: provider_workspace_root.to_path_buf(),
                 indexed_project_root: provider_workspace_root.to_path_buf(),

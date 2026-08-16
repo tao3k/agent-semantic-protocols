@@ -24,6 +24,7 @@ fn generation(workspace_identity: &str) -> WorkspaceMemoryGeneration {
     );
     WorkspaceMemoryGeneration::try_from_build(
         agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
+    projection_capability: agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest::single_selector("blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(), "rust://fixture/src/lib.rs#item/function/fixture".to_owned(), "src/lib.rs".to_owned(), std::collections::BTreeSet::from([agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionMode::Source])).expect("test projection capability manifest"),
             relations: Vec::new(),
             workspace_identity: workspace_identity.to_owned(),
             project_root: project_root(workspace_identity).display().to_string(),

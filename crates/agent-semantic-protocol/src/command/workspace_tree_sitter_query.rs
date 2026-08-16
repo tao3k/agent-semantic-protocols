@@ -196,6 +196,10 @@ pub(super) struct InventoryOwner {
     pub(super) entry: agent_semantic_client_db::ProviderOwnerInventoryEntry,
 }
 
+#[cfg(test)]
+#[path = "../../tests/unit/workspace_tree_sitter_capture_join.rs"]
+mod capture_join_tests;
+
 struct ProcessedOwner {
     owner_path: String,
     fingerprint: agent_semantic_client_db::ProviderOwnerFingerprint,
@@ -652,37 +656,33 @@ fn join_capture_projections(
     language: &tree_sitter::Language,
     query: &agent_semantic_tree_sitter::CompiledNativeSyntaxQuery,
     source: &str,
-    owner_path: &str,
+    _owner_path: &str,
     owner_projections: &[agent_semantic_client_db::ProviderSelectorProjection],
 ) -> Result<Vec<agent_semantic_client_db::ProviderTreeSitterCaptureProjection>, String> {
     agent_semantic_tree_sitter::execute_native_query(language, query, source)?
         .matches
         .into_iter()
         .flat_map(|matched| matched.captures)
-        .map(|capture| {
+        .filter_map(|capture| {
             let start = capture.node.start_byte as u64;
             let end = capture.node.end_byte as u64;
             let item = owner_projections
                 .iter()
                 .filter(|item| item.source_byte_start <= start && end <= item.source_byte_end)
-                .min_by_key(|item| item.source_byte_end - item.source_byte_start)
-                .ok_or_else(|| {
-                    format!(
-                        "Tree-sitter capture has no containing complete-owner item: owner={} capture={} span={}..{}",
-                        owner_path, capture.capture_name, start, end
-                    )
-                })?;
-            Ok(agent_semantic_client_db::ProviderTreeSitterCaptureProjection {
-                structural_selector: item.structural_selector.clone(),
-                signature: item.signature.clone(),
-                item_kind: item.item_kind.clone(),
-                item_name: item.item_name.clone(),
-                capture_name: capture.capture_name,
-                item_source_byte_start: item.source_byte_start,
-                item_source_byte_end: item.source_byte_end,
-                source_byte_start: start,
-                source_byte_end: end,
-            })
+                .min_by_key(|item| item.source_byte_end - item.source_byte_start)?;
+            Some(Ok(
+                agent_semantic_client_db::ProviderTreeSitterCaptureProjection {
+                    structural_selector: item.structural_selector.clone(),
+                    signature: item.signature.clone(),
+                    item_kind: item.item_kind.clone(),
+                    item_name: item.item_name.clone(),
+                    capture_name: capture.capture_name,
+                    item_source_byte_start: item.source_byte_start,
+                    item_source_byte_end: item.source_byte_end,
+                    source_byte_start: start,
+                    source_byte_end: end,
+                },
+            ))
         })
         .collect()
 }

@@ -1,0 +1,186 @@
+{
+  "schemaId": "agent.semantic-protocols.live-corpus-search-query-qualification-plan.v1",
+  "schemaVersion": "1",
+  "lockPath": "benchmarks/large-library-runtime-corpora.v1.json",
+  "requiredLanguages": [
+    "gerbil-scheme",
+    "julia",
+    "md",
+    "org",
+    "python",
+    "rust",
+    "typescript"
+  ],
+  "cases": [
+    {
+      "caseId": "gerbil-scheme.gerbil.core",
+      "resourceId": "gerbil-scheme.gerbil",
+      "languageId": "gerbil-scheme",
+      "providerId": "gerbil-scheme-harness",
+      "search": { "method": "lexical", "terms": ["def", "import"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
+      "zeroMatchTerms": ["asp_live_corpus_zero_match_gerbil_7c02"],
+      "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
+    },
+    {
+      "caseId": "julia.dataframes.core",
+      "resourceId": "julia.dataframes",
+      "languageId": "julia",
+      "providerId": "julia-lang-project-harness",
+      "search": { "method": "lexical", "terms": ["DataFrame", "function"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
+      "zeroMatchTerms": ["asp_live_corpus_zero_match_dataframes_92a1"],
+      "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
+    },
+    {
+      "caseId": "julia.flux.core",
+      "resourceId": "julia.flux",
+      "languageId": "julia",
+      "providerId": "julia-lang-project-harness",
+      "search": { "method": "lexical", "terms": ["Flux", "Chain"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
+      "zeroMatchTerms": ["asp_live_corpus_zero_match_flux_ee31"],
+      "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
+    },
+    {
+      "caseId": "julia.makie.core",
+      "resourceId": "julia.makie",
+      "languageId": "julia",
+      "providerId": "julia-lang-project-harness",
+      "search": { "method": "lexical", "terms": ["Figure", "plot"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
+      "zeroMatchTerms": ["asp_live_corpus_zero_match_makie_3ba9"],
+      "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
+    },
+    {
+      "caseId": "md.mdn-content.core",
+      "resourceId": "md.mdn-content",
+      "languageId": "md",
+      "providerId": "orgize",
+      "search": { "method": "lexical", "terms": ["JavaScript", "CSS"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
+      "zeroMatchTerms": ["asp_live_corpus_zero_match_mdn_77dc"],
+      "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
+    },
+    {
+      "caseId": "org.worg.core",
+      "resourceId": "org.worg",
+      "languageId": "org",
+      "providerId": "orgize",
+      "search": { "method": "lexical", "terms": ["Org", "Emacs"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
+      "zeroMatchTerms": ["asp_live_corpus_zero_match_worg_5f11"],
+      "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
+    },
+    {
+      "caseId": "python.fastapi.core",
+      "resourceId": "python.fastapi",
+      "languageId": "python",
+      "providerId": "py-harness",
+      "search": { "method": "lexical", "terms": ["FastAPI", "APIRouter"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
+      "zeroMatchTerms": ["asp_live_corpus_zero_match_fastapi_d197"],
+      "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
+    },
+    {
+      "caseId": "python.pandas.core",
+      "resourceId": "python.pandas",
+      "languageId": "python",
+      "providerId": "py-harness",
+      "search": { "method": "lexical", "terms": ["DataFrame", "Series"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
+      "zeroMatchTerms": ["asp_live_corpus_zero_match_pandas_a603"],
+      "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
+    },
+    {
+      "caseId": "python.rich.core",
+      "resourceId": "python.rich",
+      "languageId": "python",
+      "providerId": "py-harness",
+      "search": { "method": "lexical", "terms": ["Console", "RenderableType"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
+      "zeroMatchTerms": ["asp_live_corpus_zero_match_rich_4e8d"],
+      "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
+    },
+    {
+      "caseId": "rust.tokio.core",
+      "resourceId": "rust.tokio",
+      "languageId": "rust",
+      "providerId": "rs-harness",
+      "search": { "method": "lexical", "terms": ["spawn", "Runtime"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
+      "zeroMatchTerms": ["asp_live_corpus_zero_match_tokio_b2ca"],
+      "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
+    },
+    {
+      "caseId": "rust.bytes.core",
+      "resourceId": "rust.bytes",
+      "languageId": "rust",
+      "providerId": "rs-harness",
+      "search": { "method": "lexical", "terms": ["Bytes", "Buf"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
+      "zeroMatchTerms": ["asp_live_corpus_zero_match_bytes_1ad4"],
+      "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
+    },
+    {
+      "caseId": "rust.ripgrep.core",
+      "resourceId": "rust.ripgrep",
+      "languageId": "rust",
+      "providerId": "rs-harness",
+      "search": { "method": "lexical", "terms": ["RegexMatcher", "search"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
+      "zeroMatchTerms": ["asp_live_corpus_zero_match_ripgrep_995b"],
+      "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
+    },
+    {
+      "caseId": "typescript.compiler.core",
+      "resourceId": "typescript.compiler",
+      "languageId": "typescript",
+      "providerId": "ts-harness",
+      "search": { "method": "lexical", "terms": ["createProgram", "SourceFile"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
+      "zeroMatchTerms": ["asp_live_corpus_zero_match_typescript_a77e"],
+      "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
+    },
+    {
+      "caseId": "typescript.effect.core",
+      "resourceId": "typescript.effect",
+      "languageId": "typescript",
+      "providerId": "ts-harness",
+      "search": { "method": "lexical", "terms": ["Effect", "Layer"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
+      "zeroMatchTerms": ["asp_live_corpus_zero_match_effect_124f"],
+      "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
+    },
+    {
+      "caseId": "typescript.playwright.core",
+      "resourceId": "typescript.playwright",
+      "languageId": "typescript",
+      "providerId": "ts-harness",
+      "search": { "method": "lexical", "terms": ["Browser", "Page"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
+      "zeroMatchTerms": ["asp_live_corpus_zero_match_playwright_c341"],
+      "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
+    },
+    {
+      "caseId": "typescript.vite.core",
+      "resourceId": "typescript.vite",
+      "languageId": "typescript",
+      "providerId": "ts-harness",
+      "search": { "method": "lexical", "terms": ["defineConfig", "Plugin"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
+      "zeroMatchTerms": ["asp_live_corpus_zero_match_vite_02f8"],
+      "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
+    },
+    {
+      "caseId": "typescript.vue.core",
+      "resourceId": "typescript.vue",
+      "languageId": "typescript",
+      "providerId": "ts-harness",
+      "search": { "method": "lexical", "terms": ["createApp", "Component"], "view": "seeds", "minimumCandidates": 1, "maximumResidentMicros": 1000 },
+      "query": { "selectorStrategy": "first-ranked-parser-owned", "ownerView": "items", "projectionScope": "live-corpus", "maximumResidentMicros": 1000 },
+      "zeroMatchTerms": ["asp_live_corpus_zero_match_vue_889a"],
+      "requiredTelemetryEvents": ["runtime_resident_search_terminal", "runtime_exact_projection_terminal"]
+    }
+  ]
+}

@@ -306,9 +306,7 @@ impl Drop for RuntimeServerGuard {
 }
 
 pub(crate) fn start_runtime_server(root: &Path) -> RuntimeServerGuard {
-    let output = asp_command(root)
-        .args(["server", "start"])
-        .output()
+    let output = super::runtime_support::run_runtime_server_start(root)
         .expect("start isolated Runtime Server");
     assert!(
         output.status.success(),
@@ -319,6 +317,10 @@ pub(crate) fn start_runtime_server(root: &Path) -> RuntimeServerGuard {
     RuntimeServerGuard {
         root: root.to_path_buf(),
     }
+}
+
+pub(crate) fn admit_runtime_resident_generation(root: &Path) {
+    super::runtime_support::admit_runtime_resident_generation(root);
 }
 
 pub(super) fn state_runtime_bin(root: &Path) -> PathBuf {
@@ -367,6 +369,27 @@ pub(crate) fn write_echo_provider(bin_dir: &Path, binary: &str, label: &str) {
             "#!/bin/sh\nprintf '{label} args='\nfor arg in \"$@\"; do printf '[%s]' \"$arg\"; done\nprintf '\\n'\n"
         ),
     );
+}
+
+pub(crate) fn write_recording_provider(
+    root: &Path,
+    bin_dir: &Path,
+    language_id: &str,
+    binary: &str,
+    label: &str,
+    marker: &Path,
+) {
+    write_provider_script(
+        bin_dir,
+        binary,
+        &format!(
+            "#!/bin/sh\nprintf '{label} args=' > '{}'\nfor arg in \"$@\"; do printf '[%s]' \"$arg\" >> '{}'; done\nprintf '\\n' >> '{}'\nprintf '{label} args='\nfor arg in \"$@\"; do printf '[%s]' \"$arg\"; done\nprintf '\\n'\n",
+            marker.display(),
+            marker.display(),
+            marker.display(),
+        ),
+    );
+    install_state_home_provider(root, language_id, &bin_dir.join(binary));
 }
 
 pub(crate) fn write_marker_provider(bin_dir: &Path, binary: &str, marker: &Path) {

@@ -5,7 +5,7 @@ pub const WORKSPACE_SEARCH_GENERATION_SEGMENT_SCHEMA_ID: &str =
 const SEGMENT_MAGIC: &[u8; 16] = b"ASPWSSEARCHIDXV1";
 const SEGMENT_HEADER_LEN: usize = 72;
 const SECTION_DESCRIPTOR_LEN: usize = 64;
-const REQUIRED_SECTION_COUNT: usize = 7;
+const REQUIRED_SECTION_COUNT: usize = 8;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[repr(u8)]
@@ -17,6 +17,7 @@ pub enum SearchGenerationSectionKind {
     LexicalIndex = 5,
     SelectorIndex = 6,
     GraphRelations = 7,
+    MerkleOwnerIndex = 8,
 }
 
 impl SearchGenerationSectionKind {
@@ -29,6 +30,7 @@ impl SearchGenerationSectionKind {
             5 => Ok(Self::LexicalIndex),
             6 => Ok(Self::SelectorIndex),
             7 => Ok(Self::GraphRelations),
+            8 => Ok(Self::MerkleOwnerIndex),
             _ => Err(format!("unknown search generation section kind {value}")),
         }
     }
@@ -42,6 +44,7 @@ impl SearchGenerationSectionKind {
             Self::LexicalIndex,
             Self::SelectorIndex,
             Self::GraphRelations,
+            Self::MerkleOwnerIndex,
         ]
     }
 }

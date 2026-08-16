@@ -153,14 +153,17 @@ fn registered_gerbil_scheme_provider_stays_bounded_under_294_owner_pressure() {
             base_generation_root_digest: None,
             owners: owners[range.clone()].to_vec(),
         };
+        let supervisor = crate::ProviderProcessSupervisor::default();
         let response = runtime
             .block_on(super::run_provider_projection_batch(
+                &supervisor,
                 &[binary.to_string_lossy().into_owned()],
                 "projection-batch-stdin",
                 std::env::current_dir().expect("pressure workspace"),
                 &request,
             ))
             .expect("bounded GSLPH projection batch");
+        runtime.block_on(supervisor.shutdown());
         projected_owner_count += response.owners.len();
     }
 

@@ -184,7 +184,92 @@ single-file installation.  Descriptor identity or path escape failures are
 typed provider-local admission failures; they never authorize falling back to
 the root development installer.
 
+**** All-provider Live Corpus search/query qualification
+
+Tokio is the sole Runtime execution ecosystem.  It owns lifecycle, generation
+publication, cancellation, background construction, and connection handling.
+That ownership does not turn a warm resident read into an asynchronous service
+request: admitted search, owner-proof, and exact-projection reads execute as
+bounded synchronous mmap computation inside the Tokio task.  They MUST NOT
+await a channel, socket, provider future, filesystem operation, database
+operation, scheduler turn, or timer.  A timeout is not a recovery mechanism;
+reaching one proves that cold or queued work crossed the publication boundary
+and fails architectural qualification.
+
+The qualification plan's ordered =terms= array is encoded as one
+space-delimited resident source-index query, preserving term order.  The
+language-neutral qualification reader uses a fixed limit of 64 candidates;
+providers do not reinterpret the terms or select a private default limit.
+
+Resident-read OpenTelemetry is a Tokio-owned bounded side lane.  The read
+finishes and seals its typed receipt first, then performs a non-blocking
+=try_send= outside the measured interval.  Backpressure drops the observation
+and increments an explicit dropped-observation counter; it never delays,
+cancels, retries, or changes the query result.  Qualification validates the
+sealed operation identity and enqueue/drop evidence without polling a telemetry
+socket.
+
+Live Corpus artifact publication and qualification are separate authority
+boundaries.  The release pipeline owns pinned checkout synchronization,
+artifact materialization, complete parser projection, canonical generation
+publication, and the versioned Ready receipt.  No public Runtime command owns
+Code Prepare or indexing.  Publication must finish before Runtime admission and
+must emit stage progress plus terminal OpenTelemetry evidence.
+
+=live-corpus qualify= is a read-only resident consumer.  Before its first query
+it must validate the immutable artifact pointer and the matching active Ready
+generation.  Missing, stale, partial, or identity-mismatched state returns an
+immediate typed terminal failure.  Qualification never discovers sources,
+launches providers, rebuilds a generation, replays a cache, or waits for cold
+projection.  Its latency measurements cover only the admitted Runtime data
+plane and retain the sub-millisecond per-query budget.
+
+Runtime mutation submission likewise requires an existing Ready generation.
+It may publish an incremental successor, but it never bootstraps a missing
+generation through discovery, provider execution, or source-index refresh.
+The repository MUST own one immutable qualification plan that covers every
+resource in the canonical large-library corpus lock. Qualification is not a
+smoke test over provider package roots. Every locked revision MUST be synced
+into the canonical State Home checkout, materialized under the live-corpus
+artifact contract, admitted as a complete Runtime generation, and exercised by
+both resident search and exact query.
+
+The qualification plan binds =resourceId=, =languageId=, =providerId=, fixed
+search terms, a deterministic parser-owned selector strategy, a zero-match
+query, the live-corpus projection scope, and operation budgets. The lock owns
+revision and Git-tree identity; the plan owns behavior. A qualification receipt
+binds both digests and records generation/root identity, selected selector,
+candidate count, resident search/query latency, and terminal telemetry evidence.
+
+All registered live-corpus languages are mandatory in the same gate. A missing
+checkout, missing provider, partial generation, zero candidates for a positive
+case, selector ambiguity, provider invocation during query, absent terminal
+telemetry, or resident latency above one millisecond fails the whole gate.
+There is no language allowlist, provider-local fallback, packet-first path,
+cache-only replay, or compatibility mode.
+
 **** Runtime generation incremental admission
+
+Every Runtime lifecycle component uses Tokio for execution, synchronization,
+cancellation, and publication.  No second async runtime, unmanaged worker
+thread, or provider-owned executor may participate in Runtime authority.
+Published-generation reads remain synchronous mmap computation performed
+inside the admitted Tokio task; Tokio ownership does not authorize a channel,
+socket, timer, or scheduler hop in the warm data plane.
+Provider search shares the same Tokio ownership boundary as generation
+admission, but an admitted warm read is not a Tokio request task.  Runtime owns
+publication of the immutable generation pointer, validated mmap segments, and
+capability receipt.  The CLI maps those artifacts once and performs search,
+owner proof, and exact projection without socket traffic, filesystem lookup,
+database access, locks, provider execution, or scheduler work.  IPC remains the
+typed control/write plane for admission and mutation only.  Terminal telemetry
+is appended asynchronously and cannot delay or authorize the read.
+
+A timeout is not a recovery transition and MUST NOT be used to make a blocking
+read path appear bounded.  Warm reads contain no awaited operation.  Missing or
+invalid mapped authority fails synchronously with a typed readiness receipt;
+cold publication is a separate release/writer operation.
+
 
 Exact source reads and search-derived projections use disjoint Tokio data-plane
 operations.  The exact-source operation accepts a parser-owned selector and
@@ -237,6 +322,14 @@ query MUST NOT read a workspace-local active ASP artifact receipt, rebuild a
 full Hook activation, or validate the ASP/Graph Turbo binary merely to select
 one provider.  ASP binary and ranker artifacts are daemon-global authority;
 workspace state contains only workspace identity and generation references.
+
+=EnsureProviderRuntime= is a control-plane admission operation, never a process
+launch hidden inside a query.  The daemon validates the manifest's mandatory
+=runtimeContract=, starts and handshakes the resident provider actor once per
+catalog generation, then publishes its immutable Ready receipt through Tokio
+=watch=.  Search requests use only the actor's bounded =mpsc= mailbox and
+=oneshot= response channel.  If that receipt is absent or terminal, the query
+fails immediately with typed =provider-runtime-not-ready= evidence.
 
 Legacy =active-asp-artifact-receipt.v1.json= files are not an authority or a
 recovery input for provider queries.  Their digest failure MUST NOT be surfaced
@@ -518,6 +611,27 @@ Owns:
 - proof-discovered RFC corrections.
 
 ** 10.05.70 Migration and compatibility
+- V1 is the only active contract generation. Migration MUST erase a superseded
+  command, receipt decoder, renderer, recovery action, matcher branch, test
+  fixture, and agent guidance together; it MUST NOT retain an alias or derive
+  fields omitted by an obsolete receipt.
+- The public language command surface is generated from the active provider
+  registration and its V1 query pack. A command spelling that is absent from
+  that registration is invalid input; hidden positional dispatch and help-only
+  command descriptions are forbidden.
+- Exact query has one schema-owned projection contract. Removed projection
+  flags MUST NOT remain in help, Hook guidance, recommended-next actions, or
+  provider adapters.
+- Defect-capability minting treats its bound command as opaque data. The Hook
+  matcher MUST classify only the outer mint operation and MUST NOT recursively
+  classify or deny the command payload before the capability exists.
+- Host recovery guidance MUST name an executable action from the same active
+  CLI schema. A removed action such as a stale Hook refresh command is a
+  contract error, not a compatibility hint.
+- Registered child identity is bound to the Codex V2 Host lifecycle event and
+  role capability. A host-reported model revision may advance through a typed
+  registration reconciliation; it MUST NOT invalidate an existing, live,
+  unachieved namespace merely because a configured model label is stale.
 
 Owns:
 

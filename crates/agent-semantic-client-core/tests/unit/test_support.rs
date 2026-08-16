@@ -58,6 +58,7 @@ pub(super) fn resolved_provider() -> crate::ResolvedProvider {
         source_extensions: vec!["rs".to_string()],
         config_files: vec!["Cargo.toml".to_string()],
         search_capabilities: manifest.search_capabilities().clone(),
+        language_projection: manifest.language_projection().cloned(),
         project_resolution: manifest.project_resolution().cloned(),
         document_resolution: manifest.document_resolution().cloned(),
         semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),

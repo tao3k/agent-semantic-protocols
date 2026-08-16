@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use bstr::BStr;
 use bytes::Bytes;
 use tokio::process::{Child, Command};
-use tracing::{Instrument, debug, info_span, warn};
+use tracing::{Instrument, debug, info_span};
 
 use crate::byte_text;
 use crate::process_contract::{
@@ -97,17 +97,133 @@ impl ProviderProcessOutput {
     }
 }
 
-/// Run a provider process asynchronously and capture stdout, stderr, and receipt data.
-pub async fn run_provider_process_async(
-    spec: ProviderProcessSpec,
-) -> Result<ProviderProcessOutput, ProviderProcessError> {
-    run_provider_process_async_with_framing(spec, ProviderProcessFraming::default()).await
+/// Tokio-owned admission authority for provider process execution.
+///
+/// The supervisor is deliberately instance-owned: Runtime Server code keeps one
+/// alive for its lifecycle, while the free functions below remain cold
+/// compatibility wrappers.  Admission never performs filesystem IO, never
+/// polls, and never degrades into an unbounded execution path.
+#[derive(Clone, Debug)]
+pub struct ProviderProcessSupervisor {
+    permits: std::sync::Arc<tokio::sync::Semaphore>,
+    cancellation: tokio_util::sync::CancellationToken,
+    active: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    idle: std::sync::Arc<tokio::sync::Notify>,
 }
 
-const PROVIDER_PROCESS_ADMISSION_POLL_INTERVAL: Duration = Duration::from_millis(2);
+struct ProviderProcessExecutionGuard {
+    active: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    idle: std::sync::Arc<tokio::sync::Notify>,
+}
 
-struct ProviderProcessAdmissionPermit {
-    _slot: std::fs::File,
+impl Drop for ProviderProcessExecutionGuard {
+    fn drop(&mut self) {
+        self.active
+            .fetch_sub(1, std::sync::atomic::Ordering::Release);
+        self.idle.notify_waiters();
+    }
+}
+
+impl ProviderProcessSupervisor {
+    /// Creates a supervisor whose capacity is bounded by the configured
+    /// provider-process resource policy.
+    pub fn new(limits: ProviderProcessLimits) -> Self {
+        Self::with_capacity(provider_process_admission_slots(limits))
+    }
+
+    /// Creates a supervisor with an explicit bounded concurrency limit.
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            permits: std::sync::Arc::new(tokio::sync::Semaphore::new(capacity.max(1))),
+            cancellation: tokio_util::sync::CancellationToken::new(),
+            active: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            idle: std::sync::Arc::new(tokio::sync::Notify::new()),
+        }
+    }
+
+    /// Cancels queued and active work, closes admission, and waits until every
+    /// child process future has released its owned permit.
+    pub async fn shutdown(&self) {
+        self.cancellation.cancel();
+        self.permits.close();
+        loop {
+            let notified = self.idle.notified();
+            if self.active.load(std::sync::atomic::Ordering::Acquire) == 0 {
+                return;
+            }
+            notified.await;
+        }
+    }
+
+    /// Runs one provider process using the default byte framing.
+    pub async fn run(
+        &self,
+        spec: ProviderProcessSpec,
+    ) -> Result<ProviderProcessOutput, ProviderProcessError> {
+        self.run_with_framing(spec, ProviderProcessFraming::default())
+            .await
+    }
+
+    /// Runs one provider process under this supervisor's Tokio admission
+    /// authority.
+    pub async fn run_with_framing(
+        &self,
+        spec: ProviderProcessSpec,
+        framing: ProviderProcessFraming,
+    ) -> Result<ProviderProcessOutput, ProviderProcessError> {
+        let timeout_ms = spec.limits.timeout().map(|timeout| timeout.as_millis());
+        let permits = self.permits.clone();
+        let cancellation = self.cancellation.clone();
+        let active = self.active.clone();
+        let idle = self.idle.clone();
+        let span = info_span!(
+            "provider_process",
+            program = %spec.program,
+            cwd = %spec.cwd.display(),
+            args = spec.args.len(),
+            timeout_ms = ?timeout_ms,
+        );
+
+        async move {
+            let admission_started = Instant::now();
+            let _admission_permit = tokio::select! {
+                _ = cancellation.cancelled() => return Err(ProviderProcessError::Cancelled),
+                permit = permits.acquire_owned() => permit.map_err(|_| ProviderProcessError::AdmissionClosed)?,
+            };
+            active.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+            let _execution = ProviderProcessExecutionGuard { active, idle };
+            let admission_wait = admission_started.elapsed();
+            let admission_wait_ms = admission_wait.as_millis();
+            debug!(admission_wait_ms, "admitted provider process");
+            let start = Instant::now();
+            let stdin_mode = spec.stdin.clone();
+            let stdout_mode = spec.stdout;
+            let stderr_mode = spec.stderr;
+            let limits = spec.limits;
+            let mut child = spawn_provider_process(&spec, &stdin_mode).await?;
+            debug!("spawned provider process");
+            let io_tasks = spawn_provider_io_tasks(
+                &mut child,
+                stdin_mode,
+                stdout_mode,
+                stderr_mode,
+                limits,
+                framing,
+            )?;
+            tokio::select! {
+                output = collect_provider_output(child, io_tasks, limits, start, admission_wait) => output,
+                _ = cancellation.cancelled() => Err(ProviderProcessError::Cancelled),
+            }
+        }
+        .instrument(span)
+        .await
+    }
+}
+
+impl Default for ProviderProcessSupervisor {
+    fn default() -> Self {
+        Self::new(ProviderProcessLimits::default())
+    }
 }
 
 pub(super) struct ProviderChild {
@@ -133,56 +249,6 @@ impl Drop for ProviderChild {
     fn drop(&mut self) {
         kill_provider_process_group(self.process_group_id);
         let _ = self.child.start_kill();
-    }
-}
-
-async fn acquire_provider_process_admission(
-    limits: ProviderProcessLimits,
-) -> Option<ProviderProcessAdmissionPermit> {
-    let admission_root = provider_process_admission_root();
-    if let Err(error) = std::fs::create_dir_all(&admission_root) {
-        warn!(
-            path = %admission_root.display(),
-            %error,
-            "failed to create provider process admission directory; continuing without admission"
-        );
-        return None;
-    }
-
-    loop {
-        for slot in 0..provider_process_admission_slots(limits) {
-            let slot_path = admission_root.join(format!("slot-{slot}.lock"));
-            let file = match std::fs::OpenOptions::new()
-                .create(true)
-                .read(true)
-                .write(true)
-                .truncate(false)
-                .open(&slot_path)
-            {
-                Ok(file) => file,
-                Err(error) => {
-                    warn!(
-                        path = %slot_path.display(),
-                        %error,
-                        "failed to open provider process admission slot; continuing without admission"
-                    );
-                    return None;
-                }
-            };
-            match fs2::FileExt::try_lock_exclusive(&file) {
-                Ok(()) => return Some(ProviderProcessAdmissionPermit { _slot: file }),
-                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
-                Err(error) => {
-                    warn!(
-                        path = %slot_path.display(),
-                        %error,
-                        "failed to lock provider process admission slot; continuing without admission"
-                    );
-                    return None;
-                }
-            }
-        }
-        tokio::time::sleep(PROVIDER_PROCESS_ADMISSION_POLL_INTERVAL).await;
     }
 }
 
@@ -232,60 +298,6 @@ fn provider_memory_budget_bytes() -> Option<u64> {
 #[cfg(not(unix))]
 fn provider_memory_budget_bytes() -> Option<u64> {
     None
-}
-
-fn provider_process_admission_root() -> std::path::PathBuf {
-    let mut root = std::env::temp_dir();
-    #[cfg(unix)]
-    root.push(format!(
-        "agent-semantic-provider-admission-v1-{}",
-        // SAFETY: geteuid has no preconditions and does not dereference memory.
-        unsafe { libc::geteuid() }
-    ));
-    #[cfg(not(unix))]
-    root.push("agent-semantic-provider-admission-v1");
-    root
-}
-
-/// Run a provider process asynchronously with explicit stdout/stderr framing.
-pub async fn run_provider_process_async_with_framing(
-    spec: ProviderProcessSpec,
-    framing: ProviderProcessFraming,
-) -> Result<ProviderProcessOutput, ProviderProcessError> {
-    let timeout_ms = spec.limits.timeout().map(|timeout| timeout.as_millis());
-    let span = info_span!(
-        "provider_process",
-        program = %spec.program,
-        cwd = %spec.cwd.display(),
-        args = spec.args.len(),
-        timeout_ms = ?timeout_ms,
-    );
-
-    async move {
-        let admission_started = Instant::now();
-        let _admission_permit = acquire_provider_process_admission(spec.limits).await;
-        let admission_wait = admission_started.elapsed();
-        let admission_wait_ms = admission_wait.as_millis();
-        debug!(admission_wait_ms, "admitted provider process");
-        let start = Instant::now();
-        let stdin_mode = spec.stdin.clone();
-        let stdout_mode = spec.stdout;
-        let stderr_mode = spec.stderr;
-        let limits = spec.limits;
-        let mut child = spawn_provider_process(&spec, &stdin_mode).await?;
-        debug!("spawned provider process");
-        let io_tasks = spawn_provider_io_tasks(
-            &mut child,
-            stdin_mode,
-            stdout_mode,
-            stderr_mode,
-            limits,
-            framing,
-        )?;
-        collect_provider_output(child, io_tasks, limits, start, admission_wait).await
-    }
-    .instrument(span)
-    .await
 }
 
 pub(super) async fn spawn_provider_process(

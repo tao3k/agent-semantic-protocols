@@ -46,6 +46,7 @@ fn ready_receipt(workspace_identity: &str) -> WorkspaceGenerationAdmissionReceip
         attempt: 1,
         commit: Some(
             agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
+    projection_capability: agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest::single_selector("blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(), "rust://fixture/src/lib.rs#item/function/fixture".to_owned(), "src/lib.rs".to_owned(), std::collections::BTreeSet::from([agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionMode::Source])).expect("test projection capability manifest").into_ready_receipt("workspace-test".to_owned(), "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(), "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(), 1).expect("test projection capability receipt"),
                 active_epoch: 1,
                 generation_digest:
                     "blake3-256:1111111111111111111111111111111111111111111111111111111111111111"
@@ -62,6 +63,7 @@ fn ready_receipt(workspace_identity: &str) -> WorkspaceGenerationAdmissionReceip
 fn committed_generation()
 -> agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
     agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
+    projection_capability: agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest::single_selector("blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(), "rust://fixture/src/lib.rs#item/function/fixture".to_owned(), "src/lib.rs".to_owned(), std::collections::BTreeSet::from([agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionMode::Source])).expect("test projection capability manifest").into_ready_receipt("workspace-test".to_owned(), "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(), "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(), 1).expect("test projection capability receipt"),
         active_epoch: 1,
         generation_digest:
             "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
@@ -659,6 +661,5 @@ async fn failed_generation_build_retries_only_on_explicit_admission() {
 
 #[path = "runtime_server_generation_admission_failure.rs"]
 mod runtime_server_generation_admission_failure;
-
 #[path = "runtime_server_generation_admission_mutation.rs"]
 mod runtime_server_generation_admission_mutation;

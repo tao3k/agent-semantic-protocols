@@ -38,6 +38,7 @@ def authority() -> dict[str, object]:
         "projectRoot": "/workspace",
         "activeEpoch": 1,
         "generationDigest": f"blake3-256:{digest}",
+        "ownerMerkleRootDigest": f"blake3-256:{'b' * 64}",
         "sourceSnapshot": {
             "schemaId": "asp.source-snapshot.v1",
             "algorithm": "blake3-merkle-v1",

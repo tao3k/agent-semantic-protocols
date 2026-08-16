@@ -6,3 +6,5 @@ mod command_match_contract;
 mod source_paths;
 #[path = "unit/typed_stage_contract.rs"]
 mod typed_stage_contract;
+#[path = "unit/wrapped_source_paths.rs"]
+mod wrapped_source_paths;

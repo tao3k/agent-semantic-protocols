@@ -24,6 +24,16 @@ struct SearchOwnerRecord {
     selectors: Vec<super::WorkspaceSelectorSnapshot>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SearchMerkleOwnerRecord {
+    owner_path: String,
+    source_blob_digest: String,
+    owner_subtree_digest: String,
+    inclusion_proof:
+        Vec<agent_semantic_content_identity::exact_selector_merkle::MerkleInclusionStepV1>,
+}
+
 #[derive(Debug)]
 pub struct WorkspaceSearchGenerationDataPlaneClient {
     mapping: Mmap,
@@ -47,6 +57,92 @@ pub fn encode_workspace_search_generation_segment(
 
     let mut owners = generation.owners.iter().collect::<Vec<_>>();
     owners.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
+    let merkle_tree =
+        agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1::from_file_digests(
+            owners.iter().map(|owner| {
+                (
+                    owner.owner_path.clone(),
+                    agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
+                        &owner.bytes,
+                    ),
+                )
+            }),
+        )
+        .map_err(|error| format!("build workspace search Merkle owner index: {error}"))?;
+    let merkle_records = owners
+        .iter()
+        .map(|owner| {
+            let source_blob_digest = merkle_tree
+                .source_blob_digest(&owner.owner_path)
+                .ok_or_else(|| {
+                    format!(
+                        "workspace search Merkle tree omitted owner source digest: ownerPath={}",
+                        owner.owner_path
+                    )
+                })?;
+            let owner_subtree_digest = merkle_tree
+                .owner_subtree_digest(&owner.owner_path)
+                .ok_or_else(|| {
+                    format!(
+                        "workspace search Merkle tree omitted owner subtree: ownerPath={}",
+                        owner.owner_path
+                    )
+                })?;
+            let inclusion_proof =
+                merkle_tree
+                    .inclusion_proof(&owner.owner_path)
+                    .ok_or_else(|| {
+                        format!(
+                            "workspace search Merkle tree omitted owner proof: ownerPath={}",
+                            owner.owner_path
+                        )
+                    })?;
+            let record = SearchMerkleOwnerRecord {
+                owner_path: owner.owner_path.clone(),
+                source_blob_digest: source_blob_digest.as_str().to_owned(),
+                owner_subtree_digest: owner_subtree_digest.as_str().to_owned(),
+                inclusion_proof,
+            };
+            let source_blob_digest =
+                agent_semantic_content_identity::exact_selector_merkle::parse_content_digest_v1(
+                    &record.source_blob_digest,
+                )
+                .map_err(|error| {
+                    format!(
+                        "workspace search Merkle owner source digest is invalid: ownerPath={} error={error}",
+                        owner.owner_path
+                    )
+                })?;
+            let owner_subtree_digest =
+                agent_semantic_content_identity::exact_selector_merkle::parse_content_digest_v1(
+                    &record.owner_subtree_digest,
+                )
+                .map_err(|error| {
+                    format!(
+                        "workspace search Merkle owner subtree digest is invalid: ownerPath={} error={error}",
+                        owner.owner_path
+                    )
+                })?;
+            let root_digest = merkle_tree.root_digest();
+            if !agent_semantic_content_identity::workspace_merkle_v1::verify_owner_inclusion_v1(
+                &record.owner_path,
+                &source_blob_digest,
+                &owner_subtree_digest,
+                &record.inclusion_proof,
+                root_digest,
+            ) {
+                return Err(format!(
+                    "workspace search Merkle owner proof self-check failed: ownerPath={}",
+                    owner.owner_path
+                ));
+            }
+            Ok((
+                owner.owner_path.as_bytes().to_vec(),
+                serde_json::to_vec(&record)
+                    .map_err(|error| format!("encode workspace search Merkle owner: {error}"))?,
+            ))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     let mut owner_bytes = Vec::new();
     let mut owner_records = Vec::with_capacity(owners.len());
     let mut lexical = BTreeMap::<String, Vec<String>>::new();
@@ -108,6 +204,7 @@ pub fn encode_workspace_search_generation_segment(
     let lexical_index = encode_sorted_record_table(lexical_records)?;
     let selector_index = encode_sorted_record_table(selectors)?;
     let graph_relations = encode_sorted_record_table(graph_records)?;
+    let merkle_owner_index = encode_sorted_record_table(merkle_records)?;
     let lexical_count = ValidatedSortedRecordTable::parse(&lexical_index)?.len();
     let selector_count = ValidatedSortedRecordTable::parse(&selector_index)?.len();
     let graph_count = ValidatedSortedRecordTable::parse(&graph_relations)?.len();
@@ -156,9 +253,19 @@ pub fn encode_workspace_search_generation_segment(
                 graph_count,
                 graph_relations,
             ),
+            section(
+                SearchGenerationSectionKind::MerkleOwnerIndex,
+                SearchGenerationSectionRepresentation::SortedOffsetTable,
+                generation.owners.len(),
+                merkle_owner_index,
+            ),
         ],
     )
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/runtime_server_workspace/merkle_owner_index.rs"]
+mod merkle_owner_index_tests;
 
 impl WorkspaceSearchGenerationDataPlaneClient {
     pub async fn open(pointer_path: &Path, project_root: &Path) -> Result<Self, String> {
@@ -256,6 +363,82 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             index_artifact_digest: Some(crate::client_db_source_index_artifact_digest(
                 &self.authority.source_snapshot,
             )),
+        })
+    }
+
+    pub fn read_merkle_owner(
+        &self,
+        owner_path: &str,
+    ) -> Result<super::WorkspaceRuntimeMerkleOwnerRead, String> {
+        let root_digest = if self
+            .authority
+            .owner_merkle_root_digest
+            .starts_with("blake3-256:")
+        {
+            self.authority.owner_merkle_root_digest.clone()
+        } else {
+            format!("blake3-256:{}", self.authority.owner_merkle_root_digest)
+        };
+        let segment = ValidatedSearchGenerationSegment::parse(&self.mapping)?;
+        let (bytes, _, _) = segment.section(SearchGenerationSectionKind::MerkleOwnerIndex);
+        let table = ValidatedSortedRecordTable::parse(bytes)?;
+        let Some(value) = table.get_checked(owner_path.as_bytes())? else {
+            return Ok(super::WorkspaceRuntimeMerkleOwnerRead::OwnerMissing {
+                schema_id: super::RUNTIME_MERKLE_OWNER_READ_RECEIPT_SCHEMA_ID.to_owned(),
+                schema_version: "1".to_owned(),
+                workspace_identity: self.authority.workspace_identity.clone(),
+                project_root: self.authority.project_root.clone(),
+                active_epoch: self.authority.active_epoch,
+                generation_digest: self.authority.generation_digest.clone(),
+                root_digest,
+                owner_path: owner_path.to_owned(),
+            });
+        };
+        let record: SearchMerkleOwnerRecord = serde_json::from_slice(value)
+            .map_err(|error| format!("decode workspace search Merkle owner: {error}"))?;
+        if record.owner_path != owner_path {
+            return Err("workspace search Merkle owner key drift".to_owned());
+        }
+        let source_blob_digest =
+            agent_semantic_content_identity::exact_selector_merkle::parse_content_digest_v1(
+                &record.source_blob_digest,
+            )
+            .map_err(|error| format!("decode workspace search Merkle source digest: {error}"))?;
+        let owner_subtree_digest =
+            agent_semantic_content_identity::exact_selector_merkle::parse_content_digest_v1(
+                &record.owner_subtree_digest,
+            )
+            .map_err(|error| format!("decode workspace search Merkle subtree digest: {error}"))?;
+        let parsed_root_digest =
+            agent_semantic_content_identity::exact_selector_merkle::parse_content_digest_v1(
+                root_digest
+                    .strip_prefix("blake3-256:")
+                    .unwrap_or(&root_digest),
+            )
+            .map_err(|error| format!("decode workspace search Merkle root digest: {error}"))?;
+        if !agent_semantic_content_identity::workspace_merkle_v1::verify_owner_inclusion_v1(
+            &record.owner_path,
+            &source_blob_digest,
+            &owner_subtree_digest,
+            &record.inclusion_proof,
+            &parsed_root_digest,
+        ) {
+            return Err(format!(
+                "workspace search Merkle owner proof drift: ownerPath={owner_path}"
+            ));
+        }
+        Ok(super::WorkspaceRuntimeMerkleOwnerRead::Owner {
+            schema_id: super::RUNTIME_MERKLE_OWNER_READ_RECEIPT_SCHEMA_ID.to_owned(),
+            schema_version: "1".to_owned(),
+            workspace_identity: self.authority.workspace_identity.clone(),
+            project_root: self.authority.project_root.clone(),
+            active_epoch: self.authority.active_epoch,
+            generation_digest: self.authority.generation_digest.clone(),
+            root_digest,
+            owner_path: record.owner_path,
+            source_blob_digest: record.source_blob_digest,
+            owner_subtree_digest: record.owner_subtree_digest,
+            inclusion_proof: record.inclusion_proof,
         })
     }
 

@@ -786,6 +786,12 @@ than printing hidden source or JSON.  When =--code= would select multiple code
 windows, providers should reject the request or require a more exact selector or
 predicate.
 
+A semantic Tree-sitter match is a parser capture contained by a provider-owned
+=complete-owner= item.  Raw captures outside every complete owner, such as module
+attributes, are excluded before =matches= and =shown= are counted.  The renderer
+MUST NOT fabricate an owner or structural selector for them, and cold and cached
+reads MUST apply the same exclusion.
+
 =python -m tools tree-sitter validate frontier-code-contract= is the
 package-local rollout gate for syntax locate/code output and Rust, TypeScript,
 and Python =native-projection= packets: each JSON packet must retain

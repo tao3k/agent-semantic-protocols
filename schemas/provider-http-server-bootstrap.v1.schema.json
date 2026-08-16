@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/provider-http-server-bootstrap.v1.schema.json",
+  "title": "Provider HTTP Server Bootstrap v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "providerId", "transport", "state", "endpoint"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.provider-http-server-bootstrap" },
+    "schemaVersion": { "const": "1" },
+    "providerId": { "type": "string", "minLength": 1 },
+    "transport": { "const": "http-json-v1" },
+    "state": { "const": "ready" },
+    "endpoint": { "type": "string", "pattern": "^http://127\\.0\\.0\\.1:[1-9][0-9]{0,4}$" }
+  }
+}

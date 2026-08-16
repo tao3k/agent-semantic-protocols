@@ -1,5 +1,7 @@
 //! Activation manifest loading and provider/source resolution.
 
+use std::collections::BTreeSet;
+
 use crate::protocol::{
     AgentHookError, HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
     HOOK_PROTOCOL_VERSION, PROVIDER_MANIFEST_SCHEMA_ID, PROVIDER_MANIFEST_SCHEMA_VERSION,
@@ -7,7 +9,8 @@ use crate::protocol::{
 
 use super::digest::provider_manifest_digest;
 use super::protocol_activation_manifest::{
-    ActivatedProvider, ActivatedProviderConfig, HookActivation, HookRuntime, ProviderManifest,
+    ActivatedProvider, ActivatedProviderConfig, HookActivation, HookRuntime, ProviderExecution,
+    ProviderManifest, ProviderRuntimeContractDescriptor, ProviderRuntimeContractTransport,
 };
 use super::provider_query_pack::{
     validate_query_pack_descriptor, validate_semantic_facts_descriptor,
@@ -21,6 +24,124 @@ fn expect_field(field: &str, actual: &str, expected: &str) -> Result<(), AgentHo
             "{field} must be `{expected}`, got `{actual}`"
         )))
     }
+}
+
+pub(crate) fn validate_runtime_contract(manifest: &ProviderManifest) -> Result<(), AgentHookError> {
+    let contract = manifest.runtime_contract();
+    match (contract.transport(), contract.server()) {
+        (ProviderRuntimeContractTransport::HttpJsonV1, Some(server)) => {
+            if server.schema_id != "agent.semantic-protocols.provider-server-descriptor"
+                || server.schema_version != "1"
+                || server.transport != ProviderRuntimeContractTransport::HttpJsonV1
+                || server.command.is_empty()
+                || server.command.iter().any(String::is_empty)
+                || !server.health_path.starts_with('/')
+                || !server.request_path.starts_with('/')
+                || !server.shutdown_path.starts_with('/')
+                || server.warmup_policy != "before-ready"
+            {
+                return Err(AgentHookError::InvalidActivationConfig(
+                    "provider HTTP server descriptor is invalid".to_owned(),
+                ));
+            }
+        }
+        (ProviderRuntimeContractTransport::HttpJsonV1, None) => {
+            return Err(AgentHookError::InvalidActivationConfig(
+                "provider HTTP runtime requires a server descriptor".to_owned(),
+            ));
+        }
+        (_, Some(_)) => {
+            return Err(AgentHookError::InvalidActivationConfig(
+                "non-HTTP provider runtime cannot declare a server descriptor".to_owned(),
+            ));
+        }
+        (_, None) => {}
+    }
+    match (manifest.execution(), contract.transport()) {
+        (ProviderExecution::ExternalProcess, ProviderRuntimeContractTransport::RuntimeIpcV1)
+        | (ProviderExecution::ExternalProcess, ProviderRuntimeContractTransport::HttpJsonV1)
+        | (ProviderExecution::Embedded, ProviderRuntimeContractTransport::InProcessV1) => {}
+        (execution, transport) => {
+            return Err(AgentHookError::InvalidActivationConfig(format!(
+                "provider runtimeContract transport `{transport:?}` does not match execution `{execution:?}`"
+            )));
+        }
+    }
+    if contract.operations.is_empty() {
+        return Err(AgentHookError::InvalidActivationConfig(
+            "provider runtimeContract must declare at least one operation".to_owned(),
+        ));
+    }
+
+    let mut operations = BTreeSet::new();
+    for operation in &contract.operations {
+        if operation.operation.trim().is_empty()
+            || operation.request_schema_id.trim().is_empty()
+            || operation.response_schema_id.trim().is_empty()
+        {
+            return Err(AgentHookError::InvalidActivationConfig(
+                "provider runtimeContract operations require operation, requestSchemaId, and responseSchemaId"
+                    .to_owned(),
+            ));
+        }
+        if !operations.insert(operation.operation.as_str()) {
+            return Err(AgentHookError::InvalidActivationConfig(format!(
+                "provider runtimeContract contains duplicate operation `{}`",
+                operation.operation
+            )));
+        }
+    }
+
+    if manifest.execution() == ProviderExecution::Embedded {
+        require_runtime_operation(
+            contract,
+            "provider-search",
+            "agent.semantic-protocols.runtime-provider-search-request",
+            "agent.semantic-protocols.runtime-provider-search-receipt",
+        )?;
+    }
+    if let Some(descriptor) = manifest.language_projection() {
+        require_runtime_operation(
+            contract,
+            descriptor.command_binding(),
+            descriptor.request_schema(),
+            descriptor.response_schema(),
+        )?;
+    }
+    if let Some(descriptor) = manifest.project_resolution() {
+        require_runtime_operation(
+            contract,
+            &descriptor.command_binding,
+            &descriptor.request_schema,
+            &descriptor.response_schema,
+        )?;
+    }
+    Ok(())
+}
+
+fn require_runtime_operation(
+    contract: &ProviderRuntimeContractDescriptor,
+    operation: &str,
+    request_schema_id: &str,
+    response_schema_id: &str,
+) -> Result<(), AgentHookError> {
+    let Some(admitted) = contract
+        .operations()
+        .iter()
+        .find(|candidate| candidate.operation() == operation)
+    else {
+        return Err(AgentHookError::InvalidActivationConfig(format!(
+            "provider runtimeContract omits required resident operation `{operation}`"
+        )));
+    };
+    if admitted.request_schema_id() != request_schema_id
+        || admitted.response_schema_id() != response_schema_id
+    {
+        return Err(AgentHookError::InvalidActivationConfig(format!(
+            "provider runtimeContract operation `{operation}` schema identity drift"
+        )));
+    }
+    Ok(())
 }
 
 /// Parse, validate, and resolve activation JSON against provider manifests.
@@ -113,6 +234,7 @@ fn resolve_activation(
             || activated.provider_id != manifest.provider_id
             || activated.execution != manifest.execution
             || activated.search_capabilities != manifest.search_capabilities
+            || activated.language_projection != manifest.language_projection
             || activated.semantic_facts_descriptor != manifest.semantic_facts_descriptor
             || activated.query_pack_descriptor != manifest.query_pack_descriptor
         {
@@ -135,6 +257,7 @@ fn resolve_activation(
             source_extensions: activated.coverage.source_extensions.clone(),
             config_files: activated.coverage.config_files.clone(),
             search_capabilities: activated.search_capabilities.clone(),
+            language_projection: activated.language_projection.clone(),
             project_resolution: manifest.project_resolution.clone(),
             document_resolution: manifest.document_resolution.clone(),
             semantic_facts_descriptor: activated.semantic_facts_descriptor.clone(),
@@ -221,6 +344,7 @@ impl ProviderManifest {
             &self.protocol_version,
             HOOK_PROTOCOL_VERSION,
         )?;
+        validate_runtime_contract(self)?;
         Ok(())
     }
 }

@@ -7,6 +7,62 @@ use super::{
 };
 use std::{fs, path::Path};
 
+fn merkle_selector(
+    owner_path: &str,
+    symbol: &str,
+    source: &[u8],
+    tree: &agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1,
+) -> agent_semantic_client_db::ClientDbSourceIndexSelector {
+    use agent_semantic_content_identity::canonical_item_identity::{
+        CanonicalItemIdentity, CanonicalItemSelector,
+    };
+    use agent_semantic_content_identity::exact_selector_merkle::{
+        ExactProjectionModeV1, canonical_content_digest_v1,
+    };
+    use agent_semantic_content_identity::exact_selector_projection_packet::{
+        ExactSelectorProjectionPacketV1Input, ProjectionPacketLanguageIdV1,
+        ProjectionPacketOwnerPathV1, ProjectionPacketProviderIdV1,
+        ProjectionPacketStructuralSelectorV1, build_exact_selector_projection_packet_v1,
+    };
+
+    let structural_selector = format!("rust://{owner_path}#item/function/{symbol}");
+    let packet = build_exact_selector_projection_packet_v1(ExactSelectorProjectionPacketV1Input {
+        language_id: &ProjectionPacketLanguageIdV1::from("rust"),
+        provider_id: &ProjectionPacketProviderIdV1::from("rs-harness"),
+        canonical_item_selector: CanonicalItemSelector::new(
+            CanonicalItemIdentity::new("rust", "function", symbol),
+            structural_selector.clone(),
+        ),
+        parser_identity_digest: &canonical_content_digest_v1(b"parser", &[b"rs-harness"]),
+        query_pack_digest: &canonical_content_digest_v1(b"query-pack", &[b"rust"]),
+        owner_path: &ProjectionPacketOwnerPathV1::from(owner_path),
+        structural_selector: &ProjectionPacketStructuralSelectorV1::from(
+            structural_selector.clone(),
+        ),
+        projection_mode: ExactProjectionModeV1::Code,
+        source_byte_start: 0,
+        source_byte_end: source.len() as u64,
+        source,
+        normalized_parser_facts: br#"{"kind":"fn"}"#,
+        projection: source,
+    });
+    agent_semantic_client_db::ClientDbSourceIndexSelector {
+        owner_path: agent_semantic_client_db::ClientDbSourceIndexPath::new(owner_path),
+        provider_id: ProviderId::from("rs-harness"),
+        selector_id: agent_semantic_client_db::ClientDbSourceIndexSelectorId::from(
+            structural_selector,
+        ),
+        symbol: None,
+        kind: None,
+        source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
+        query_keys: Vec::new(),
+        projection_record: packet
+            .enrich_projection_record(tree)
+            .expect("enrich Merkle fixture selector"),
+        derived_projections: Vec::new(),
+    }
+}
+
 fn merkle_import(
     project_root: &Path,
     generation_id: &str,
@@ -15,6 +71,19 @@ fn merkle_import(
     ClientDbSourceIndexImport,
     agent_semantic_client_db::ClientDbSourceIndexSourceBlobs,
 ) {
+    let projection_tree =
+        agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1::from_file_digests(
+            files.iter().map(|(path, _, symbol)| {
+                let source = format!("pub fn {symbol}() {{}}\n");
+                (
+                    (*path).to_string(),
+                    agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
+                        source.as_bytes(),
+                    ),
+                )
+            }),
+        )
+        .expect("Merkle fixture projection tree");
     let source_blobs = agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
         files.iter().map(|(path, _, symbol)| {
             (
@@ -53,7 +122,12 @@ fn merkle_import(
                 language_id: LanguageId::from("rust"),
                 provider_id: ProviderId::from("rs-harness"),
                 text: format!("pub fn {symbol}() {{}}\n"),
-                selectors: Vec::new(),
+                selectors: vec![merkle_selector(
+                    path,
+                    symbol,
+                    format!("pub fn {symbol}() {{}}\n").as_bytes(),
+                    &projection_tree,
+                )],
             })
             .collect(),
     })

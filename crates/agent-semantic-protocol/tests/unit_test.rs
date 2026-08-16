@@ -1,9 +1,14 @@
 #![recursion_limit = "256"]
 #![deny(dead_code)]
 
+#[path = "unit/runtime_server_operator_stop.rs"]
+mod runtime_server_operator_stop;
+
 #[path = "unit/command/build_profile.rs"]
 mod command_build_profile;
 
+#[path = "unit/agent_config_sync.rs"]
+mod agent_config_sync;
 #[path = "unit/agent_session_lifecycle_projection.rs"]
 mod agent_session_lifecycle_projection;
 #[path = "unit/ast_patch.rs"]
@@ -30,8 +35,6 @@ mod codex_plugin_install;
 mod command_ascent_search_router_graph_state;
 #[path = "unit/command/dispatch_agent_session_policy.rs"]
 mod command_dispatch_agent_session_policy;
-#[path = "unit/command/gerbil_check_cache.rs"]
-mod command_gerbil_check_cache;
 #[path = "unit/command/global_provider_catalog.rs"]
 mod command_global_provider_catalog;
 #[path = "unit/command/graph_turbo_resident_runtime.rs"]

@@ -4,6 +4,7 @@
 
 pub mod agent_route_registry;
 mod codex_plugin_config;
+pub mod embedded_agent_assets;
 mod hook_client_config;
 pub mod runtime_dev;
 

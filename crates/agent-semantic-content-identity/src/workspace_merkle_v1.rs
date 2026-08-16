@@ -248,3 +248,6 @@ impl fmt::Display for WorkspaceMerkleV1Error {
 }
 
 impl std::error::Error for WorkspaceMerkleV1Error {}
+#[path = "workspace_merkle_incremental_v1.rs"]
+mod incremental_v1;
+pub use incremental_v1::*;

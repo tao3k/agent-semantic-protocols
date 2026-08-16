@@ -4,17 +4,17 @@ use std::time::{Duration, Instant};
 #[cfg(target_os = "macos")]
 use crate::ProviderProcessError;
 use crate::{
-    DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES, ProviderProcessLimits, StdinMode,
-    run_provider_process_async,
+    DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES, ProviderProcessLimits, ProviderProcessSupervisor,
+    StdinMode,
 };
 
 use super::support::{script, spec, temp_dir};
 
 #[test]
-fn default_limits_enforce_the_two_gibibyte_provider_process_group_ceiling() {
+fn default_limits_use_the_machine_adaptive_provider_process_group_ceiling() {
     assert_eq!(
         ProviderProcessLimits::default().memory_limit_bytes(),
-        Some(DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES)
+        Some(crate::process_contract::adaptive_provider_memory_limit_bytes())
     );
     assert_eq!(DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES, 2 * 1024 * 1024 * 1024);
 }
@@ -27,7 +27,8 @@ async fn captures_stdout_stderr_and_exit_status() {
         "provider.sh",
         "#!/bin/sh\nprintf 'out'\nprintf 'err' >&2\nexit 7\n",
     );
-    let output = run_provider_process_async(spec(program, root.clone()))
+    let output = ProviderProcessSupervisor::default()
+        .run(spec(program, root.clone()))
         .await
         .expect("run provider");
 
@@ -62,7 +63,8 @@ async fn completed_provider_invocation_kills_background_descendants_before_retur
     );
     let started = Instant::now();
 
-    let output = run_provider_process_async(spec(program, root.clone()))
+    let output = ProviderProcessSupervisor::default()
+        .run(spec(program, root.clone()))
         .await
         .expect("run provider");
 
@@ -84,7 +86,8 @@ async fn writes_bytes_to_stdin() {
     let program = script(&root, "provider.sh", "#!/bin/sh\ncat\n");
     let mut process = spec(program, root.clone());
     process.stdin = StdinMode::bytes("payload");
-    let output = run_provider_process_async(process)
+    let output = ProviderProcessSupervisor::default()
+        .run(process)
         .await
         .expect("run provider");
 
@@ -99,7 +102,8 @@ async fn stdin_broken_pipe_still_reports_provider_output() {
     let program = script(&root, "provider.sh", "#!/bin/sh\nprintf 'ready'\nexit 0\n");
     let mut process = spec(program, root.clone());
     process.stdin = StdinMode::bytes(vec![b'x'; 1024 * 1024]);
-    let output = run_provider_process_async(process)
+    let output = ProviderProcessSupervisor::default()
+        .run(process)
         .await
         .expect("run provider");
 
@@ -118,7 +122,8 @@ async fn passes_cwd_and_env() {
     );
     let mut process = spec(program, root.clone());
     process.env.insert("ASP_TEST_VALUE".into(), "ok".into());
-    let output = run_provider_process_async(process)
+    let output = ProviderProcessSupervisor::default()
+        .run(process)
         .await
         .expect("run provider");
     let stdout = output.stdout_lossy();
@@ -140,7 +145,8 @@ async fn records_signal_termination_with_memory_limit_context() {
         .limits
         .with_memory_limit_bytes(Some(512 * 1024 * 1024));
 
-    let output = run_provider_process_async(process)
+    let output = ProviderProcessSupervisor::default()
+        .run(process)
         .await
         .expect("run provider");
 
@@ -165,7 +171,8 @@ async fn records_success_with_enforced_memory_limit() {
         .limits
         .with_memory_limit_bytes(Some(512 * 1024 * 1024));
 
-    let output = run_provider_process_async(process)
+    let output = ProviderProcessSupervisor::default()
+        .run(process)
         .await
         .expect("run provider");
 
@@ -191,7 +198,8 @@ async fn macos_parent_kills_provider_after_rss_limit() {
         .limits
         .with_memory_limit_bytes(Some(32 * 1024 * 1024));
 
-    let error = run_provider_process_async(process)
+    let error = ProviderProcessSupervisor::default()
+        .run(process)
         .await
         .expect_err("memory limit must terminate provider");
     let ProviderProcessError::MemoryLimit {
@@ -222,7 +230,8 @@ async fn macos_parent_kills_provider_when_child_pushes_process_group_over_rss_li
         .limits
         .with_memory_limit_bytes(Some(32 * 1024 * 1024));
 
-    let error = run_provider_process_async(process)
+    let error = ProviderProcessSupervisor::default()
+        .run(process)
         .await
         .expect_err("process-group memory must terminate provider");
     let ProviderProcessError::MemoryLimit {

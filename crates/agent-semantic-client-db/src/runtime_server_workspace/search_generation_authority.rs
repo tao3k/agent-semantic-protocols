@@ -1,17 +1,13 @@
 use serde::{Deserialize, Serialize};
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 
 use super::WorkspaceGenerationLease;
 
 pub const WORKSPACE_SEARCH_GENERATION_AUTHORITY_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-search-generation-authority";
 const MAX_WORKSPACE_SEARCH_GENERATION_AUTHORITY_BYTES: usize = 4 * 1024 * 1024;
-
-static RESIDENT_SEARCH_AUTHORITIES: LazyLock<
-    dashmap::DashMap<PathBuf, Arc<WorkspaceSearchGenerationAuthority>>,
-> = LazyLock::new(dashmap::DashMap::new);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -22,6 +18,7 @@ pub struct WorkspaceSearchGenerationAuthority {
     pub project_root: String,
     pub active_epoch: u64,
     pub generation_digest: String,
+    pub owner_merkle_root_digest: String,
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
     pub workspace_generation: agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
@@ -37,6 +34,16 @@ impl WorkspaceSearchGenerationAuthority {
     }
 
     pub fn from_generation(generation: &super::WorkspaceMemoryGeneration) -> Self {
+        let mut owners = generation.owners.iter().collect::<Vec<_>>();
+        owners.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
+        let owner_merkle_root_digest = agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1::from_file_digests(
+            owners.iter().map(|owner| (
+                owner.owner_path.clone(),
+                agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(&owner.bytes),
+            )),
+        )
+        .map(|tree| format!("blake3-256:{}", tree.root_digest().as_str()))
+        .unwrap_or_default();
         Self {
             schema_id: WORKSPACE_SEARCH_GENERATION_AUTHORITY_SCHEMA_ID.to_owned(),
             schema_version: "1".to_owned(),
@@ -44,6 +51,7 @@ impl WorkspaceSearchGenerationAuthority {
             project_root: generation.project_root.clone(),
             active_epoch: generation.active_epoch,
             generation_digest: generation.generation_digest.clone(),
+            owner_merkle_root_digest,
             source_snapshot: generation.source_snapshot.clone(),
             project_resolutions: generation.project_resolutions.clone(),
             workspace_generation: generation.workspace_generation.clone(),
@@ -61,6 +69,7 @@ impl WorkspaceSearchGenerationAuthority {
             || self.project_root != project_root
             || self.active_epoch == 0
             || !self.generation_digest.starts_with("blake3-256:")
+            || !self.owner_merkle_root_digest.starts_with("blake3-256:")
         {
             return Err(format!(
                 "Runtime Server search generation authority binding mismatch: expectedWorkspace={} actualWorkspace={} expectedProjectRoot={} actualProjectRoot={}",
@@ -94,16 +103,6 @@ pub(crate) async fn read_search_generation_authority_segment(
     workspace_identity: &str,
     project_root: &str,
 ) -> Result<WorkspaceSearchGenerationAuthority, String> {
-    if let Some(authority) = resident_search_generation_authority(generation_pointer_path) {
-        authority.validate_binding(workspace_identity, project_root)?;
-        if authority.active_epoch != active_epoch {
-            return Err(format!(
-                "resident search generation authority epoch mismatch: expected={active_epoch} actual={}",
-                authority.active_epoch
-            ));
-        }
-        return Ok(authority.as_ref().clone());
-    }
     let path = search_generation_authority_segment_path(generation_pointer_path, active_epoch)?;
     let bytes = tokio::fs::read(&path).await.map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
@@ -149,18 +148,177 @@ pub async fn read_search_generation_authority_fixture(
     .await
 }
 
-pub(crate) fn resident_search_generation_authority(
-    generation_pointer_path: &Path,
-) -> Option<Arc<WorkspaceSearchGenerationAuthority>> {
-    RESIDENT_SEARCH_AUTHORITIES
-        .get(generation_pointer_path)
-        .map(|authority| Arc::clone(authority.value()))
+#[derive(Debug)]
+pub(crate) struct WorkspaceResidentSearchGeneration {
+    authority: Arc<WorkspaceSearchGenerationAuthority>,
+    data_plane: Arc<super::WorkspaceSearchGenerationDataPlaneClient>,
+    exact_projection: Arc<super::WorkspaceExactProjectionDataPlaneClient>,
+}
+
+impl WorkspaceResidentSearchGeneration {
+    pub(crate) fn new(
+        authority: Arc<WorkspaceSearchGenerationAuthority>,
+        data_plane: Arc<super::WorkspaceSearchGenerationDataPlaneClient>,
+        exact_projection: Arc<super::WorkspaceExactProjectionDataPlaneClient>,
+    ) -> Result<Self, String> {
+        if data_plane.authority() != authority.as_ref() {
+            return Err("workspace resident search generation authority drift".to_owned());
+        }
+        Ok(Self {
+            authority,
+            data_plane,
+            exact_projection,
+        })
+    }
+
+    pub(crate) fn authority(&self) -> &Arc<WorkspaceSearchGenerationAuthority> {
+        &self.authority
+    }
+
+    pub(crate) fn data_plane(&self) -> &Arc<super::WorkspaceSearchGenerationDataPlaneClient> {
+        &self.data_plane
+    }
+
+    pub(crate) fn exact_projection(&self) -> &Arc<super::WorkspaceExactProjectionDataPlaneClient> {
+        &self.exact_projection
+    }
+}
+
+enum WorkspaceSearchGenerationAuthorityCommand {
+    Publish {
+        generation: Arc<WorkspaceResidentSearchGeneration>,
+        completed:
+            tokio::sync::oneshot::Sender<Result<Arc<WorkspaceResidentSearchGeneration>, String>>,
+    },
+    Shutdown(tokio::sync::oneshot::Sender<()>),
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct WorkspaceSearchGenerationAuthorityPublisher {
+    commands: tokio::sync::mpsc::Sender<WorkspaceSearchGenerationAuthorityCommand>,
+    task: Arc<tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct WorkspaceSearchGenerationAuthorityReader {
+    current: tokio::sync::watch::Receiver<Option<Arc<WorkspaceResidentSearchGeneration>>>,
+}
+
+pub(crate) fn workspace_search_generation_authority_channel(
+    command_capacity: usize,
+) -> (
+    WorkspaceSearchGenerationAuthorityPublisher,
+    WorkspaceSearchGenerationAuthorityReader,
+) {
+    let (current_sender, current) = tokio::sync::watch::channel(None);
+    let (commands, mut receiver) = tokio::sync::mpsc::channel(command_capacity.max(1));
+    let task = tokio::spawn(async move {
+        let mut committed: Option<Arc<WorkspaceResidentSearchGeneration>> = None;
+        while let Some(command) = receiver.recv().await {
+            match command {
+                WorkspaceSearchGenerationAuthorityCommand::Publish {
+                    generation,
+                    completed,
+                } => {
+                    let result = publish_resident_generation(&mut committed, generation);
+                    if let Ok(generation) = &result {
+                        current_sender.send_replace(Some(Arc::clone(generation)));
+                    }
+                    let _ = completed.send(result);
+                }
+                WorkspaceSearchGenerationAuthorityCommand::Shutdown(completed) => {
+                    receiver.close();
+                    current_sender.send_replace(None);
+                    let _ = completed.send(());
+                    break;
+                }
+            }
+        }
+    });
+    (
+        WorkspaceSearchGenerationAuthorityPublisher {
+            commands,
+            task: Arc::new(tokio::sync::Mutex::new(Some(task))),
+        },
+        WorkspaceSearchGenerationAuthorityReader { current },
+    )
+}
+
+impl WorkspaceSearchGenerationAuthorityPublisher {
+    pub(crate) async fn publish(
+        &self,
+        generation: Arc<WorkspaceResidentSearchGeneration>,
+    ) -> Result<Arc<WorkspaceResidentSearchGeneration>, String> {
+        let (completed, response) = tokio::sync::oneshot::channel();
+        self.commands
+            .send(WorkspaceSearchGenerationAuthorityCommand::Publish {
+                generation,
+                completed,
+            })
+            .await
+            .map_err(|_| "workspace search generation authority is closed".to_owned())?;
+        response.await.map_err(|_| {
+            "workspace search generation authority closed without a receipt".to_owned()
+        })?
+    }
+
+    pub(crate) async fn shutdown(&self) -> Result<(), String> {
+        let (completed, response) = tokio::sync::oneshot::channel();
+        if self
+            .commands
+            .send(WorkspaceSearchGenerationAuthorityCommand::Shutdown(
+                completed,
+            ))
+            .await
+            .is_ok()
+        {
+            let _ = response.await;
+        }
+        if let Some(task) = self.task.lock().await.take() {
+            task.await
+                .map_err(|error| format!("join workspace search generation authority: {error}"))?;
+        }
+        Ok(())
+    }
+}
+
+impl WorkspaceSearchGenerationAuthorityReader {
+    pub(crate) fn observed(&self) -> Option<Arc<WorkspaceResidentSearchGeneration>> {
+        self.current.borrow().as_ref().map(Arc::clone)
+    }
+}
+
+fn publish_resident_generation(
+    committed: &mut Option<Arc<WorkspaceResidentSearchGeneration>>,
+    generation: Arc<WorkspaceResidentSearchGeneration>,
+) -> Result<Arc<WorkspaceResidentSearchGeneration>, String> {
+    let authority = generation.authority();
+    authority.validate_binding(&authority.workspace_identity, &authority.project_root)?;
+    if let Some(current) = committed.as_ref() {
+        let current_authority = current.authority();
+        if authority.workspace_identity != current_authority.workspace_identity
+            || authority.project_root != current_authority.project_root
+        {
+            return Err("workspace search generation authority binding changed".to_owned());
+        }
+        if authority.active_epoch < current_authority.active_epoch {
+            return Err("workspace search generation authority epoch regressed".to_owned());
+        }
+        if authority.active_epoch == current_authority.active_epoch {
+            if authority.as_ref() == current_authority.as_ref() {
+                return Ok(Arc::clone(current));
+            }
+            return Err("workspace search generation authority epoch was reused".to_owned());
+        }
+    }
+    *committed = Some(Arc::clone(&generation));
+    Ok(generation)
 }
 
 pub(crate) async fn publish_search_generation_authority_segment(
     generation_pointer_path: &Path,
     generation: &super::WorkspaceMemoryGeneration,
-) -> Result<(), String> {
+) -> Result<Arc<WorkspaceSearchGenerationAuthority>, String> {
     let authority = WorkspaceSearchGenerationAuthority::from_generation(generation);
     authority.validate_binding(&generation.workspace_identity, &generation.project_root)?;
     let bytes = serde_json::to_vec(&authority)
@@ -212,6 +370,5 @@ pub(crate) async fn publish_search_generation_authority_segment(
         .sync_all()
         .await
         .map_err(|error| format!("sync authority directory after atomic rename: {error}"))?;
-    RESIDENT_SEARCH_AUTHORITIES.insert(generation_pointer_path.to_path_buf(), Arc::new(authority));
-    Ok(())
+    Ok(Arc::new(authority))
 }

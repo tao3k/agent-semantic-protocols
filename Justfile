@@ -111,9 +111,9 @@ agent-tools-install-global bin_dir="":
       just agent-tools-install-languages; \
       echo "[agent-tools-install-global] installed asp with built-in graph-turbo ranker and all language provider harnesses into ${bin_dir}"
 
-# Develop mode: build and install the Orgize provider from this checkout.
-agent-tools-install-orgize:
-    @just agent-tools-install-language org
+# Develop mode: build and install the shared asp binary with the embedded Orgize provider.
+agent-tools-install-orgize bin_dir="":
+    @just agent-tools-install-asp "{{bin_dir}}"
 
 # Develop mode: build and install all language providers from this checkout.
 agent-tools-install-languages:
@@ -122,8 +122,7 @@ agent-tools-install-languages:
     @just agent-tools-install-py
     @just agent-tools-install-julia
     @just agent-tools-install-gerbil
-    @just agent-tools-install-orgize
-    @echo "[agent-tools-install-languages] installed rs-harness, ts-harness, py-harness, asp-julia-harness, gslph, and orgize into {{asp_runtime_bin}}"
+    @echo "[agent-tools-install-languages] installed rs-harness, ts-harness, py-harness, asp-julia-harness, and gslph into {{asp_runtime_bin}}"
 
 # Develop mode: build and install the shared asp binary from this checkout.
 agent-tools-install-asp bin_dir="":
@@ -350,6 +349,14 @@ check-language-evidence-smoke-all: check-language-evidence-smoke-all-setup
       uv run --project packages/python/asp_graph_turbo --frozen pytest tests/unit/test_language_evidence_smoke.py -q
     protocol_home="$(PATH="$PWD/.bin:$PATH" .bin/asp hook paths . | awk -F= '$1=="protocolHome"{print substr($0, 14)}')" && \
       cat "$protocol_home/language-evidence-smoke-all-providers.json"
+
+# Qualify every locked large-library corpus through resident search, exact projection, and OTel.
+check-live-corpus-search-query-all-setup: check-language-evidence-smoke-all-setup
+    just agent-tools-install-orgize
+
+check-live-corpus-search-query-all:
+    PATH="$PWD/.bin:$PATH" .bin/asp server start >/dev/null
+    PATH="$PWD/.bin:$PATH" .bin/asp live-corpus qualify --plan benchmarks/live-corpus-search-query-qualification.v1.json
 
 provider-gate: check-rust-warnings check-schema-profiles check-rfc-docs check-schema-manager check-tree-sitter-query-contracts check-language-workspace-search-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia
 

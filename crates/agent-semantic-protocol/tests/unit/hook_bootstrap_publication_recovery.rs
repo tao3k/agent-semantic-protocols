@@ -1,8 +1,8 @@
 use std::ffi::OsString;
 
 use super::{
-    bootstrap_asp_no_agent_passthrough_requested, hook_event_is_canonical_recovery,
-    is_synchronous_hook_dispatch, is_synchronous_hook_dispatch_with_override,
+    hook_event_is_canonical_recovery, is_synchronous_hook_dispatch,
+    is_synchronous_hook_dispatch_with_override,
 };
 
 fn pre_tool_args() -> Vec<OsString> {
@@ -34,21 +34,6 @@ fn unrelated_hook_commands_are_not_recovery_edges() {
         &pre_tool_args(),
         &bash_payload("asp hook paths ."),
     ));
-}
-
-#[test]
-fn shell_environment_assignment_bypasses_before_policy_kernel() {
-    for command in [
-        "ASP_NO_AGENT=1 cargo test -p owner",
-        "env ASP_NO_AGENT=present cargo test -p owner",
-        "/bin/bash -lc 'ASP_NO_AGENT=1 cargo test -p owner'",
-    ] {
-        assert!(
-            bootstrap_asp_no_agent_passthrough_requested(&bash_payload(command))
-                .expect("evaluate bootstrap override"),
-            "{command}"
-        );
-    }
 }
 
 #[test]

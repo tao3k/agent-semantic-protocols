@@ -169,13 +169,16 @@ async fn ensure_provider_source_index_snapshot_at_artifact_root_with_registry(
     provider_id: &agent_semantic_client_core::ProviderId,
     provider_registry: &ProviderRegistrySnapshot,
 ) -> Result<agent_semantic_client::source_index::CurrentSourceIndexSnapshot, String> {
-    ensure_provider_snapshot(ProviderSourceEnvelopeLookupRequestV1 {
-        project_root,
-        artifact_root,
-        language_id,
-        provider_id,
-        provider_registry,
-    })
+    ensure_provider_snapshot(
+        &agent_semantic_provider_transport::ProviderProcessSupervisor::default(),
+        ProviderSourceEnvelopeLookupRequestV1 {
+            project_root,
+            artifact_root,
+            language_id,
+            provider_id,
+            provider_registry,
+        },
+    )
     .await
 }
 
@@ -184,15 +187,18 @@ async fn publish_rust_provider_workspace_envelope(
     artifact_root: &std::path::Path,
     provider_registry: &ProviderRegistrySnapshot,
 ) -> Result<std::path::PathBuf, String> {
-    publish_target_provider_source_envelope_v1(TargetProviderSourceEnvelopePublicationRequestV1 {
-        collection_scope: SourceIndexCollectionScope::TargetProvider {
-            language_id: "rust".into(),
-            provider_id: "rs-harness".into(),
+    publish_target_provider_source_envelope_v1(
+        &agent_semantic_provider_transport::ProviderProcessSupervisor::default(),
+        TargetProviderSourceEnvelopePublicationRequestV1 {
+            collection_scope: SourceIndexCollectionScope::TargetProvider {
+                language_id: "rust".into(),
+                provider_id: "rs-harness".into(),
+            },
+            provider_registry,
+            artifact_root,
+            project_root: provider_workspace_root,
         },
-        provider_registry,
-        artifact_root,
-        project_root: provider_workspace_root,
-    })
+    )
     .await
 }
 
@@ -218,6 +224,7 @@ async fn target_provider_publication_does_not_require_complete_generation() {
     };
     let first_live =
         agent_semantic_client::source_index::current_live_provider_source_index_snapshot_with_registry(
+            &agent_semantic_provider_transport::ProviderProcessSupervisor::default(),
             &root,
             &"rust".into(),
             &"rs-harness".into(),
@@ -227,6 +234,7 @@ async fn target_provider_publication_does_not_require_complete_generation() {
         .expect("collect first deterministic live provider snapshot");
     let second_live =
         agent_semantic_client::source_index::current_live_provider_source_index_snapshot_with_registry(
+            &agent_semantic_provider_transport::ProviderProcessSupervisor::default(),
             &root,
             &"rust".into(),
             &"rs-harness".into(),
@@ -238,6 +246,7 @@ async fn target_provider_publication_does_not_require_complete_generation() {
     let artifact_root = root.with_extension("artifacts");
 
     let envelope = publish_target_provider_source_envelope_v1(
+        &agent_semantic_provider_transport::ProviderProcessSupervisor::default(),
         TargetProviderSourceEnvelopePublicationRequestV1 {
             collection_scope: SourceIndexCollectionScope::TargetProvider {
                 language_id: "rust".into(),
@@ -254,6 +263,7 @@ async fn target_provider_publication_does_not_require_complete_generation() {
     assert!(envelope.is_file());
     let after_publication =
         agent_semantic_client::source_index::current_live_provider_source_index_snapshot_with_registry(
+            &agent_semantic_provider_transport::ProviderProcessSupervisor::default(),
             &root,
             &"rust".into(),
             &"rs-harness".into(),
@@ -387,6 +397,7 @@ async fn target_provider_live_snapshot_does_not_require_published_envelope() {
 
     let snapshot =
         agent_semantic_client::source_index::current_live_provider_source_index_snapshot_with_registry(
+            &agent_semantic_provider_transport::ProviderProcessSupervisor::default(),
             &root,
             &"gerbil-scheme".into(),
             &"gerbil-scheme-harness".into(),
@@ -420,6 +431,7 @@ async fn target_provider_gerbil_envelope_shape_publishes_source_owner() {
     let artifact_root = root.with_extension("artifacts");
 
     let envelope = publish_target_provider_source_envelope_v1(
+        &agent_semantic_provider_transport::ProviderProcessSupervisor::default(),
         TargetProviderSourceEnvelopePublicationRequestV1 {
             collection_scope: SourceIndexCollectionScope::TargetProvider {
                 language_id: "gerbil-scheme".into(),
@@ -468,6 +480,7 @@ async fn target_provider_id_publication_materializes_only_the_registered_provide
     let artifact_root = root.with_extension("artifacts");
 
     let envelope = publish_target_provider_source_envelope_v1(
+        &agent_semantic_provider_transport::ProviderProcessSupervisor::default(),
         TargetProviderSourceEnvelopePublicationRequestV1 {
             collection_scope: SourceIndexCollectionScope::TargetProviderId {
                 provider_id: "gerbil-scheme-harness".into(),
@@ -642,6 +655,7 @@ async fn target_provider_id_publication_fails_closed_when_provider_is_missing() 
     let artifact_root = root.with_extension("artifacts");
 
     let error = publish_target_provider_source_envelope_v1(
+        &agent_semantic_provider_transport::ProviderProcessSupervisor::default(),
         TargetProviderSourceEnvelopePublicationRequestV1 {
             collection_scope: SourceIndexCollectionScope::TargetProviderId {
                 provider_id: "missing-harness".into(),

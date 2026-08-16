@@ -211,10 +211,12 @@ async fn cache_source_index_refresh_uses_provider_project_resolution() {
     let blocking_root = root.clone();
     let result = server
         .operation(move || async move {
-            let current_snapshot =
-                crate::source_index::current_source_index_snapshot(&blocking_root)
-                    .await
-                    .expect("capture current source-index snapshot");
+            let current_snapshot = crate::source_index::current_source_index_snapshot(
+                &agent_semantic_provider_transport::ProviderProcessSupervisor::default(),
+                &blocking_root,
+            )
+            .await
+            .expect("capture current source-index snapshot");
             assert_eq!(
                 current_snapshot.source_snapshot.leaf_count,
                 1,

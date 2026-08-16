@@ -6,22 +6,13 @@ use std::fs;
 use std::io::{self, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 
-use agent_semantic_client_core::{
-    ByteCount, CacheManifestStatus, CacheStatus, ClientCacheManifest, ClientMethod, ClientRequest,
-    LanguageId, ProviderRegistrySnapshot,
-};
-use agent_semantic_client_local_cli::{LocalNativeCliBackend, LocalNativeOutput};
+use agent_semantic_client_core::{ClientMethod, ClientRequest, LanguageId};
+use agent_semantic_client_local_cli::LocalNativeCliBackend;
 use agent_semantic_provider_transport::{
-    OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode, run_provider_process_async,
+    OutputMode, ProviderProcessLimits, ProviderProcessSpec, ProviderProcessSupervisor, StdinMode,
 };
 use bytes::Bytes;
-use sha2::{Digest, Sha256};
 
-use crate::cache_cli::{
-    apply_provider_cache_probe, cache_hit_receipt, provider_cache_probe,
-    write_prompt_output_cache_after_provider_success,
-    write_search_packet_cache_after_provider_success,
-};
 use crate::cli_args::ParsedArgs;
 
 const ASP_DEBUG_CLIENT_STAGE_ENV: &str = "ASP_DEBUG_CLIENT_STAGE";
@@ -33,6 +24,7 @@ fn debug_client_stage(stage: &str) {
 }
 
 pub(crate) async fn run_provider_method(
+    supervisor: ProviderProcessSupervisor,
     parsed: ParsedArgs,
     method: ClientMethod,
     language_id: LanguageId,
@@ -89,109 +81,14 @@ pub(crate) async fn run_provider_method(
     snapshot
         .provider_for_language(&request_language_id)
         .ok_or_else(|| format!("provider is missing for language {}", request_language_id))?;
-    debug_client_stage("provider-method:cache-probe");
-    let request_started_at = std::time::Instant::now();
-    let cache_probe = if request.stdin.is_some() {
-        None
-    } else {
-        provider_cache_probe(&parsed.project_root, &snapshot, &request).await
-    };
-    debug_client_stage("provider-method:cache-replay");
-    if let Some(cache_probe) = &cache_probe
-        && let Some(replay) = &cache_probe.replay
-    {
-        crate::compact_mode::validate_compact_provider_stdout(&request, &replay.stdout)?;
-        io::stdout()
-            .write_all(&replay.stdout)
-            .map_err(|error| format!("failed to write cache replay stdout: {error}"))?;
-        if parsed.receipt_json {
-            let mut receipt = cache_hit_receipt(
-                request.method.clone(),
-                cache_probe,
-                replay,
-                agent_semantic_client_core::ElapsedMillis::new(
-                    request_started_at
-                        .elapsed()
-                        .as_millis()
-                        .min(u128::from(u64::MAX)) as u64,
-                ),
-            );
-            crate::syntax_receipt::apply_syntax_query_receipt_metadata(
-                &mut receipt,
-                &replay.stdout,
-            );
-            let receipt = serde_json::to_string(&receipt)
-                .map_err(|error| format!("failed to serialize receipt JSON: {error}"))?;
-            eprintln!("{receipt}");
-        }
-        return Ok(());
-    }
-    let execution_cache_status = cache_probe
-        .as_ref()
-        .map_or(CacheStatus::Miss, |probe| probe.cache_status);
-    debug_client_stage("provider-method:manifest-policy");
-    let cache_manifest_allows_packet_first =
-        cache_manifest_allows_packet_first(&parsed.project_root);
-    debug_client_stage("provider-method:packet-first");
-    let packet_first_output =
-        if cache_manifest_allows_packet_first && should_try_search_packet_first(&request) {
-            run_search_packet_first_miss(
-                &parsed.project_root,
-                &snapshot,
-                &request,
-                execution_cache_status,
-                parsed.frontier_receipt_out.as_deref(),
-            )
-            .await?
-        } else {
-            None
-        };
-    let mut output = if let Some(output) = packet_first_output {
-        output
-    } else {
-        debug_client_stage("provider-method:clone-snapshot");
-        let writeback_snapshot = snapshot.clone();
+    let mut output = {
         debug_client_stage("provider-method:new-backend");
-        let backend = LocalNativeCliBackend::new(snapshot);
+        let backend = LocalNativeCliBackend::new(snapshot, supervisor.clone());
         debug_client_stage("provider-method:execute");
-        let mut output = backend.execute(&request).await?;
+        let output = backend.execute(&request).await?;
         debug_client_stage("provider-method:execute-done");
         if output.status_code == 0 {
             crate::compact_mode::validate_compact_provider_stdout(&request, &output.stdout)?;
-        }
-        let writeback_probe = if output.status_code == 0 && request.stdin.is_none() {
-            write_prompt_output_cache_after_provider_success(
-                &parsed.project_root,
-                &writeback_snapshot,
-                &request,
-                &output.stdout,
-                &output.receipt.provider_commands,
-            )
-            .await
-        } else {
-            None
-        };
-        if let Some(cache_probe) = &cache_probe {
-            apply_provider_cache_probe(&mut output.receipt, cache_probe);
-        }
-        let execution_cache_status = output.receipt.cache_status;
-        if let Some(writeback_probe) = &writeback_probe {
-            if let Some(cache_probe) = &writeback_probe.cache_probe {
-                apply_provider_cache_probe(&mut output.receipt, cache_probe);
-                output.receipt.cache_status = execution_cache_status;
-            }
-            if !writeback_probe.provider_commands.is_empty() {
-                let command_count = writeback_probe
-                    .provider_commands
-                    .len()
-                    .min(u32::MAX as usize) as u32;
-                output.receipt.cache_writeback_provider_command_count = Some(command_count);
-                output.receipt.cache_writeback_provider_processes_spawned = Some(command_count);
-                output.receipt.cache_writeback_provider_elapsed_ms =
-                    Some(writeback_probe.provider_elapsed_ms);
-                output.receipt.cache_writeback_provider_commands =
-                    Some(writeback_probe.provider_commands.clone());
-            }
         }
         output
     };
@@ -207,9 +104,12 @@ pub(crate) async fn run_provider_method(
             &output.stderr,
         )?;
         if output.status_code != 0 && check_failure_frontier_view {
-            let frontier =
-                render_last_check_failure_frontier(&parsed.project_root, &request_language_id)
-                    .await?;
+            let frontier = render_last_check_failure_frontier(
+                &supervisor,
+                &parsed.project_root,
+                &request_language_id,
+            )
+            .await?;
             io::stdout()
                 .write_all(frontier.as_ref())
                 .map_err(|error| format!("failed to write failure frontier stdout: {error}"))?;
@@ -342,6 +242,7 @@ fn normalize_check_forwarded_args(args: Vec<String>) -> Vec<String> {
 }
 
 async fn render_last_check_failure_frontier(
+    supervisor: &ProviderProcessSupervisor,
     project_root: &Path,
     language_id: &LanguageId,
 ) -> Result<Vec<u8>, String> {
@@ -350,26 +251,27 @@ async fn render_last_check_failure_frontier(
         .unwrap_or_else(|| PathBuf::from("asp"))
         .to_string_lossy()
         .into_owned();
-    let output = run_provider_process_async(ProviderProcessSpec {
-        program,
-        args: vec![
-            language_id.to_string(),
-            "search".to_string(),
-            "failure".to_string(),
-            "--from-last-check".to_string(),
-            "--view".to_string(),
-            "seeds".to_string(),
-            ".".to_string(),
-        ],
-        cwd: project_root.to_path_buf(),
-        env: BTreeMap::new(),
-        stdin: StdinMode::Closed,
-        stdout: OutputMode::Capture,
-        stderr: OutputMode::Capture,
-        limits: ProviderProcessLimits::default(),
-    })
-    .await
-    .map_err(|error| format!("failed to render check failure frontier: {error}"))?;
+    let output = supervisor
+        .run(ProviderProcessSpec {
+            program,
+            args: vec![
+                language_id.to_string(),
+                "search".to_string(),
+                "failure".to_string(),
+                "--from-last-check".to_string(),
+                "--view".to_string(),
+                "seeds".to_string(),
+                ".".to_string(),
+            ],
+            cwd: project_root.to_path_buf(),
+            env: BTreeMap::new(),
+            stdin: StdinMode::Closed,
+            stdout: OutputMode::Capture,
+            stderr: OutputMode::Capture,
+            limits: ProviderProcessLimits::default(),
+        })
+        .await
+        .map_err(|error| format!("failed to render check failure frontier: {error}"))?;
     if !output.stderr.is_empty() {
         io::stderr()
             .write_all(output.stderr.as_ref())
@@ -384,148 +286,8 @@ async fn render_last_check_failure_frontier(
     Ok(output.stdout.to_vec())
 }
 
-pub(crate) fn should_try_search_packet_first(request: &ClientRequest) -> bool {
-    request.method == ClientMethod::Search
-        && !is_workspace_seed_search(&request.forwarded_args)
-        && !is_compare_search(&request.forwarded_args)
-        && !request.forwarded_args.iter().any(|arg| {
-            arg == "items"
-                || arg == "ingest"
-                || arg == "--json"
-                || arg == "--projection"
-                || arg.starts_with("--projection=")
-        })
-        && (is_prime_seed_search(&request.forwarded_args)
-            || is_search_packet_seed_search(&request.forwarded_args)
-            || is_dependency_search(&request.forwarded_args))
-}
-
-fn cache_manifest_allows_packet_first(project_root: &Path) -> bool {
-    matches!(
-        ClientCacheManifest::inspect_project(project_root).status,
-        CacheManifestStatus::Missing | CacheManifestStatus::Present
-    )
-}
-
-fn is_prime_seed_search(args: &[String]) -> bool {
-    args.first().is_some_and(|arg| arg == "prime") && has_seed_view(args)
-}
-
-fn is_workspace_seed_search(args: &[String]) -> bool {
-    args.first().is_some_and(|arg| arg == "workspace") && has_seed_view(args)
-}
-
-fn is_compare_search(args: &[String]) -> bool {
-    args.first().is_some_and(|arg| arg == "compare")
-}
-
-fn is_search_packet_seed_search(args: &[String]) -> bool {
-    args.first()
-        .is_some_and(|arg| arg == "lexical" || arg == "pipe")
-        && has_seed_view(args)
-}
-
 fn has_seed_view(args: &[String]) -> bool {
     args.windows(2)
         .any(|window| window[0] == "--view" && window[1] == "seeds")
         || args.iter().any(|arg| arg == "--view=seeds")
-}
-
-fn is_dependency_search(args: &[String]) -> bool {
-    args.first()
-        .is_some_and(|arg| arg == "dependency" || arg == "deps")
-}
-
-async fn run_search_packet_first_miss(
-    project_root: &Path,
-    snapshot: &ProviderRegistrySnapshot,
-    request: &ClientRequest,
-    execution_cache_status: CacheStatus,
-    frontier_receipt_out: Option<&Path>,
-) -> Result<Option<LocalNativeOutput>, String> {
-    let Some(language_id) = request.language_id.clone() else {
-        return Ok(None);
-    };
-    let mut packet_args = search_packet_first_forwarded_args(&request.forwarded_args);
-    insert_json_flag_before_project_root(&mut packet_args);
-    let packet_request = ClientRequest::new(ClientMethod::Search, project_root.to_path_buf())
-        .with_forwarded_args(packet_args)
-        .with_language(language_id);
-    let backend = LocalNativeCliBackend::new(snapshot.clone());
-    let mut output = backend.execute(&packet_request).await?;
-    if output.status_code != 0 {
-        return Ok(None);
-    }
-    let receipt_request = frontier_receipt_out
-        .map(|path| search_frontier_receipt_request(path, request, &output.stdout));
-    let rendered_stdout = if let Some(receipt_request) = receipt_request.as_ref() {
-        crate::cache_replay::render_search_packet_bytes_with_receipt(
-            output.stdout.clone(),
-            receipt_request,
-        )
-        .await?
-    } else {
-        crate::cache_replay::render_search_packet_bytes(output.stdout.clone()).await
-    };
-    let Some(rendered_stdout) = rendered_stdout else {
-        return Ok(None);
-    };
-    let Some(writeback_probe) = write_search_packet_cache_after_provider_success(
-        project_root,
-        snapshot,
-        request,
-        &output.stdout,
-        &rendered_stdout,
-    )
-    .await
-    else {
-        return Ok(None);
-    };
-    apply_provider_cache_probe(&mut output.receipt, &writeback_probe);
-    output.receipt.cache_status = execution_cache_status;
-    output.receipt.packet_bytes = Some(ByteCount::from_len(output.stdout.len()));
-    output.receipt.stdout_bytes = ByteCount::from_len(rendered_stdout.len());
-    output.stdout = rendered_stdout;
-    Ok(Some(output))
-}
-
-fn search_frontier_receipt_request(
-    out_path: &Path,
-    request: &ClientRequest,
-    packet_bytes: &[u8],
-) -> crate::cache_replay::SearchFrontierReceiptRequest {
-    let packet_hash = short_sha256(packet_bytes);
-    let language_id = request
-        .language_id
-        .as_ref()
-        .map(ToString::to_string)
-        .unwrap_or_else(|| "unknown".to_string());
-    crate::cache_replay::SearchFrontierReceiptRequest {
-        out_path: out_path.to_path_buf(),
-        receipt_id: format!("asp.search-frontier.{language_id}.{packet_hash}"),
-        task_fingerprint: format!("task:asp-search-frontier:{language_id}:{packet_hash}"),
-        command_fingerprint: format!("command:asp-search:{language_id}:{packet_hash}"),
-    }
-}
-
-fn short_sha256(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    format!("{digest:x}").chars().take(16).collect()
-}
-
-pub(crate) fn search_packet_first_forwarded_args(args: &[String]) -> Vec<String> {
-    let mut normalized = args.to_vec();
-    if normalized.first().is_some_and(|arg| arg == "dependency") {
-        normalized[0] = "deps".to_string();
-    }
-    normalized
-}
-
-fn insert_json_flag_before_project_root(args: &mut Vec<String>) {
-    let insert_at = if args.last().is_some_and(|arg| arg == ".") {
-        args.len().saturating_sub(1)
-    } else {
-        args.len()
-    };
-    args.insert(insert_at, "--json".to_string());
 }

@@ -16,6 +16,29 @@ fn missing_generation_is_a_typed_read_only_failure() {
     );
 }
 
+#[test]
+fn selector_outside_the_admitted_projection_scope_is_typed() {
+    let resolution = resolve(
+        WorkspaceRuntimeSelectorRead::ProjectionScopeOmitted {
+            generation_digest: "generation".to_owned(),
+            root_digest: "root".to_owned(),
+            resolved_selector: SELECTOR.to_owned(),
+            projection_scope:
+                agent_semantic_client_db::runtime_server_workspace::RuntimeProjectionScope::Production,
+            owner_content_digest: "owner-digest".to_owned(),
+        },
+        SELECTOR,
+    )
+    .expect("resolve projection-scope omission");
+    let ResidentExactProjection::Miss(miss) = resolution else {
+        panic!("expected projection-scope miss");
+    };
+    assert_eq!(miss.state, "source-unavailable");
+    assert_eq!(miss.reason_kind, "projection-scope-omitted");
+    assert_eq!(miss.active_generation_digest, "generation");
+    assert_eq!(miss.root_digest, "root");
+}
+
 fn owner_with(selector: &str) -> WorkspaceOwnerSnapshot {
     WorkspaceOwnerSnapshot {
         owner_path: "src/lib.rs".to_owned(),

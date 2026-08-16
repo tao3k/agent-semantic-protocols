@@ -42,8 +42,24 @@ fn generation(
             blake3::hash(b"runtime-workspace-fixture-provider").to_hex()
         ),
     );
+    let selector_capability = owner
+        .selectors
+        .first()
+        .expect("fixture owner has one selector")
+        .selector
+        .clone();
+    let selector_owner_path = owner.owner_path.clone();
     WorkspaceMemoryGeneration::try_from_build(
         agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
+            projection_capability: agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest::single_selector(
+                "blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
+                selector_capability,
+                selector_owner_path,
+                std::collections::BTreeSet::from([
+                    agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionMode::Source,
+                ]),
+            )
+            .expect("test projection capability manifest"),
             relations: Vec::new(),
             workspace_identity: workspace_identity.to_owned(),
             project_root: project_root(workspace_identity).display().to_string(),
@@ -111,11 +127,22 @@ async fn source_generation_transition_invalidates_selector_overlays() {
     let first_source = b"fn first() {}";
     let selector = "rust://src/lib.rs#item/function/first";
     let first_owner = owner("src/lib.rs", selector, first_source);
+    let mut first_generation =
+        generation("workspace-selector-invalidation", 1, first_owner.clone());
+    first_generation.projection_capability.selectors.push(
+        agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationSelectorCapability {
+            selector: "rust://src/lib.rs#item/function/repaired".to_owned(),
+            owner_path: first_owner.owner_path.clone(),
+            projection_modes: std::collections::BTreeSet::from([
+                agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionMode::Source,
+            ]),
+        },
+    );
     registry
         .publish(
             "canonical-generation",
             agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
-            generation("workspace-selector-invalidation", 1, first_owner.clone()),
+            first_generation,
         )
         .await
         .expect("publish canonical generation");

@@ -22,18 +22,6 @@ fn bash_ast_tokens_surface_outer_and_nested_wrapper_stages() {
             "src/lib.rs"
         ]
     );
-    assert_eq!(
-        semantic_shell_tokens("/opt/new-wrapper --program 'cargo test -p agent-semantic-hook'"),
-        vec![
-            "/opt/new-wrapper",
-            "--program",
-            "cargo test -p agent-semantic-hook",
-            "cargo",
-            "test",
-            "-p",
-            "agent-semantic-hook"
-        ]
-    );
 }
 
 #[test]

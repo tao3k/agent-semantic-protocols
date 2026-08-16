@@ -163,10 +163,10 @@ async fn run_control_status() -> Result<(), String> {
 
 async fn run_start() -> Result<(), String> {
     let state_home = state_home()?;
-    prepare_runtime_server_start(&state_home).await?;
-    super::runtime_server_supervisor::ensure_runtime_server(&state_home, true).await?;
-    let receipt = await_operator_runtime_server(&state_home).await?;
-    print_receipt(&receipt).await
+    match super::runtime_server_supervisor::ensure_runtime_server(&state_home, true).await? {
+        Some(receipt) => print_receipt(&receipt).await,
+        None => run_status().await,
+    }
 }
 
 async fn run_status() -> Result<(), String> {
@@ -200,7 +200,6 @@ async fn run_status() -> Result<(), String> {
 
 async fn run_restart() -> Result<(), String> {
     let state_home = state_home()?;
-    prepare_runtime_server_start(&state_home).await?;
     let endpoint_path = runtime_server_endpoint_path(&state_home)?;
     if let Ok(endpoint) = read_supervisor_endpoint(&endpoint_path).await {
         crate::server::runtime_server_exit_receipt::remove_stale(&state_home).await?;
@@ -220,19 +219,9 @@ async fn run_restart() -> Result<(), String> {
     print_receipt(&receipt).await
 }
 
-async fn prepare_runtime_server_start(state_home: &Path) -> Result<(), String> {
-    let artifact_catalog =
-        agent_semantic_runtime::runtime_artifact_catalog::load_runtime_artifact_catalog(state_home)
-            .await?;
-    runtime_server_agent_config::synchronize_for_reconcile(&artifact_catalog, state_home).await?;
-    crate::command::reconcile_global_provider_catalog_for_runtime(state_home)?;
-    Ok(())
-}
-
 pub(crate) async fn reconcile_runtime_server_for_healthcheck(
     state_home: &Path,
 ) -> Result<RuntimeServerControlReceipt, String> {
-    prepare_runtime_server_start(state_home).await?;
     super::runtime_server_supervisor::reconcile_healthy_runtime_server(state_home).await
 }
 
@@ -403,7 +392,7 @@ async fn observe_runtime_server_readiness(
 /// restarts, or waits on the supervisor. Admission can therefore spend its
 /// small read budget on one status request and hand repair to the separately
 /// bounded supervisor path.
-async fn print_receipt(receipt: &RuntimeServerControlReceipt) -> Result<(), String> {
+async fn print_receipt<T: serde::Serialize>(receipt: &T) -> Result<(), String> {
     let mut bytes = serde_json::to_vec(receipt)
         .map_err(|error| format!("failed to encode Runtime Server receipt: {error}"))?;
     bytes.push(b'\n');
@@ -439,7 +428,9 @@ pub(crate) fn runtime_server_telemetry_socket_path(state_home: &Path) -> Result<
     )
 }
 
-fn runtime_server_telemetry_query_socket_path(state_home: &Path) -> Result<PathBuf, String> {
+pub(crate) fn runtime_server_telemetry_query_socket_path(
+    state_home: &Path,
+) -> Result<PathBuf, String> {
     Ok(
         agent_semantic_client_db::runtime_server_runtime_base(state_home)?
             .join("opentelemetry-query.sock"),

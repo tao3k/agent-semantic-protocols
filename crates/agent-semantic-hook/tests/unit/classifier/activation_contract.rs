@@ -107,6 +107,7 @@ fn activation_value(manifest: &ProviderManifest, manifest_digest: &str) -> Value
         provider_command_prefix: Vec::new(),
         execution_command_digest: "test-execution-command-digest".to_string(),
         search_capabilities: manifest.search_capabilities().clone(),
+        language_projection: manifest.language_projection().cloned(),
         semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
         query_pack_descriptor: manifest.query_pack_descriptor().clone(),
         semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),

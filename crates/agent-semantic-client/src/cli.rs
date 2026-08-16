@@ -62,28 +62,36 @@ pub async fn run_cli_args(
                 )
                 .await;
             }
-            run_provider_method(
-                parsed,
-                ClientMethod::Search,
-                language_id.ok_or_else(|| provider_language_required("search"))?,
+            Err(
+                "provider search is Runtime Server-owned; use the ASP language facade ProviderSearch operation"
+                    .to_owned(),
             )
-            .await
         }
         Some("query") => {
-            run_provider_method(
+            let supervisor =
+                agent_semantic_provider_transport::ProviderProcessSupervisor::default();
+            let result = run_provider_method(
+                supervisor.clone(),
                 parsed,
                 ClientMethod::Query,
                 language_id.ok_or_else(|| provider_language_required("query"))?,
             )
-            .await
+            .await;
+            supervisor.shutdown().await;
+            result
         }
         Some("check") => {
-            run_provider_method(
+            let supervisor =
+                agent_semantic_provider_transport::ProviderProcessSupervisor::default();
+            let result = run_provider_method(
+                supervisor.clone(),
                 parsed,
                 ClientMethod::Check,
                 language_id.ok_or_else(|| provider_language_required("check"))?,
             )
-            .await
+            .await;
+            supervisor.shutdown().await;
+            result
         }
         Some(command) => Err(format!("unknown client command: {command}")),
     }

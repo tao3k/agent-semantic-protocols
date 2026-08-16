@@ -20,46 +20,30 @@ pub(super) fn match_registered_asp_command<'a>(
     let stages =
         crate::command_match::bash::parse_bash_command_candidates(action.command.as_deref()?)
             .ok()?;
-    for stage in stages {
+    for language_id in crate::provider_registry::registered_language_ids() {
         for pattern in patterns {
-            if stage.words().len() < pattern.len() {
-                continue;
-            }
-            for candidate in stage.words().windows(pattern.len()) {
-                let mut registered_language = None;
-                let matches =
-                    candidate
-                        .iter()
-                        .zip(pattern)
-                        .enumerate()
-                        .all(|(index, (actual, expected))| {
-                            if expected == "<registered-language>" {
-                                if let Some(language_id) =
-                                    crate::provider_registry::registered_language_id(actual)
-                                {
-                                    registered_language = Some(language_id);
-                                    return true;
-                                }
-                                return false;
-                            }
-                            actual.eq_ignore_ascii_case(expected)
-                                || (index == 0
-                                    && actual
-                                        .rsplit(['/', '\\'])
-                                        .next()
-                                        .is_some_and(|name| name.eq_ignore_ascii_case(expected)))
-                        });
-                if !matches {
-                    continue;
-                }
-                let language_id = registered_language?;
-                let provider = runtime
-                    .providers
-                    .iter()
-                    .find(|provider| provider.language_id == language_id);
+            let concrete_prefix = pattern
+                .iter()
+                .map(|token| {
+                    if token == "<registered-language>" {
+                        language_id.as_str().to_owned()
+                    } else {
+                        token.clone()
+                    }
+                })
+                .collect::<Vec<_>>();
+            if agent_semantic_command_match::command_stages_match_wrapped_prefix(
+                &stages,
+                &concrete_prefix,
+            )
+            .routes_protected()
+            {
                 return Some(RegisteredAspMatch {
+                    provider: runtime
+                        .providers
+                        .iter()
+                        .find(|provider| provider.language_id == language_id),
                     language_id,
-                    provider,
                 });
             }
         }

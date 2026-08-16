@@ -15,6 +15,7 @@
     "providerId",
     "namespace",
     "binary",
+    "runtimeContract",
     "development",
     "searchCapabilities",
     "queryPackDescriptor",
@@ -59,6 +60,9 @@
     "binary": {
       "type": "string",
       "minLength": 1
+    },
+    "runtimeContract": {
+      "$ref": "https://schemas.agent-semantic-protocols.dev/provider-runtime-contract-descriptor.v1.schema.json"
     },
     "execution": {
       "$ref": "#/$defs/providerExecution"

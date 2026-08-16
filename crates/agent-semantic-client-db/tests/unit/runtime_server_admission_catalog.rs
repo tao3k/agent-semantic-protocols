@@ -51,6 +51,12 @@ fn initialize_candidate_checkout(path: &std::path::Path) {
 fn committed_generation()
 -> agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
     agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
+        projection_capability: crate::fixture::ready_projection_capability_fixture(
+            "workspace-test",
+            "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+            "blake3-256:2222222222222222222222222222222222222222222222222222222222222222",
+            1,
+        ),
         active_epoch: 1,
         generation_digest:
             "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),

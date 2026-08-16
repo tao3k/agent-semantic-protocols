@@ -1,0 +1,10 @@
+{
+  "schemaId": "agent.semantic-protocols.provider-server-descriptor",
+  "schemaVersion": "1",
+  "transport": "http-json-v1",
+  "command": ["server", "serve"],
+  "healthPath": "/health",
+  "requestPath": "/v1/provider-runtime",
+  "shutdownPath": "/shutdown",
+  "warmupPolicy": "before-ready"
+}

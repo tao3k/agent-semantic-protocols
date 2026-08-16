@@ -7,14 +7,14 @@ use agent_semantic_client_core::{
     ClientMethod, ClientRequest, LanguageId, ProviderId, ProviderRegistrySnapshot,
     ResolvedProvider, scoped_child_path,
 };
-use agent_semantic_provider_transport::ProviderProcessLimits;
+use agent_semantic_provider_transport::{ProviderProcessLimits, ProviderProcessSupervisor};
 use serde::Deserialize;
 
 use crate::LocalNativeCliBackend;
 
 const PROVIDER_PROJECT_RESOLUTION_RESPONSE_SCHEMA_ID: &str =
     "agent.semantic-protocols.provider-project-resolution-response";
-const PROJECT_RESOLUTION_PROVIDER_TIMEOUT_MS: u64 = 5_000;
+const PROJECT_RESOLUTION_PROVIDER_TIMEOUT_MS: u64 = 15_000;
 const PROJECT_RESOLUTION_MAX_STDOUT_BYTES: usize = 1024 * 1024;
 const PROJECT_RESOLUTION_MAX_STDERR_BYTES: usize = 128 * 1024;
 
@@ -160,12 +160,14 @@ pub fn provider_scope_authority_permits_project_resolution(
 }
 
 pub async fn provider_project_resolution_with_candidates(
+    supervisor: ProviderProcessSupervisor,
     provider: &ResolvedProvider,
     project_root: &Path,
     collection_scope: ProviderProjectResolutionCollectionScope,
     repository_candidates: agent_semantic_runtime::git::RepositoryCandidateSnapshot,
 ) -> Result<ProviderProjectResolution, String> {
     let (backend, request, candidates) = provider_project_resolution_invocation_with_candidates(
+        supervisor,
         provider,
         project_root,
         &collection_scope,
@@ -184,6 +186,7 @@ pub async fn provider_project_resolution_with_candidates(
 }
 
 fn provider_project_resolution_invocation_with_candidates(
+    supervisor: ProviderProcessSupervisor,
     provider: &ResolvedProvider,
     project_root: &Path,
     collection_scope: &ProviderProjectResolutionCollectionScope,
@@ -218,7 +221,11 @@ fn provider_project_resolution_invocation_with_candidates(
         activation_path: PathBuf::new(),
         providers: vec![provider.clone()],
     };
-    Ok((LocalNativeCliBackend::new(snapshot), request, candidates))
+    Ok((
+        LocalNativeCliBackend::new(snapshot, supervisor),
+        request,
+        candidates,
+    ))
 }
 
 fn provider_project_resolution_from_output(
@@ -259,6 +266,7 @@ fn project_resolution_provider_limits() -> ProviderProcessLimits {
 
 /// Resolve file-backed project scope entries for a project root.
 pub async fn provider_project_resolution_files_with_candidates(
+    supervisor: ProviderProcessSupervisor,
     project_root: &Path,
     provider: &ResolvedProvider,
     package_root_path: &Path,
@@ -266,6 +274,7 @@ pub async fn provider_project_resolution_files_with_candidates(
     repository_candidates: agent_semantic_runtime::git::RepositoryCandidateSnapshot,
 ) -> Result<ProviderProjectResolutionFiles, String> {
     let ProviderProjectResolution::Supported(packet) = provider_project_resolution_with_candidates(
+        supervisor,
         provider,
         project_root,
         collection_scope,
@@ -392,6 +401,15 @@ pub fn project_resolution_from_stdout(
             "provider project-resolution identity mismatch: expectedLanguageId={} actualLanguageId={} expectedProviderId={} actualProviderId={}",
             expected_language_id, packet.language_id, expected_provider_id, packet.provider_id
         ));
+    }
+    if packet.state == "not-applicable" {
+        if packet.scope.is_some() || packet.failure.is_some() {
+            return Err(format!(
+                "provider project-resolution not-applicable response must omit scope and failure: languageId={} providerId={}",
+                packet.language_id, packet.provider_id
+            ));
+        }
+        return Ok(ProviderProjectResolution::Unsupported);
     }
     if packet.state != "resolved" {
         let failure = packet.failure.ok_or_else(|| {

@@ -216,7 +216,7 @@ impl ResidentOverlayStore {
                 .or_else(|| base_owner(base, &overlay.owner_path))
         }
         .ok_or_else(|| "runtime selector overlay owner is unavailable".to_owned())?;
-        validate_selector_overlay(owner, &overlay)?;
+        validate_selector_overlay(owner, &base.projection_capability, &overlay)?;
         let key = (
             overlay.projection_kind.clone(),
             overlay.structural_selector.clone(),
@@ -280,7 +280,7 @@ impl ResidentOverlayStore {
         state.workspace_snapshot = state
             .workspace_snapshot
             .with_overlay([(owner_path, owner_digest)]);
-        validate_selector_overlay(&owner, &overlay)?;
+        validate_selector_overlay(&owner, &base.projection_capability, &overlay)?;
         let key = (
             overlay.projection_kind.clone(),
             overlay.structural_selector.clone(),
@@ -314,6 +314,7 @@ impl ResidentOverlaySnapshot {
     pub(super) fn materialize_generation(
         &self,
         base: &WorkspaceMemoryGeneration,
+        projection_capability: crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest,
     ) -> Result<WorkspaceMemoryGeneration, String> {
         let mut owners = base
             .owners
@@ -331,7 +332,7 @@ impl ResidentOverlaySnapshot {
                     overlay.owner_path
                 )
             })?;
-            materialize_selector(owner, overlay)?;
+            materialize_selector(owner, &projection_capability, overlay)?;
         }
         let mut owners = owners.into_values().collect::<Vec<_>>();
         for owner in &mut owners {
@@ -346,6 +347,7 @@ impl ResidentOverlaySnapshot {
         source_snapshot.base_root_digest = Some(base.source_snapshot.root_digest.clone());
         source_snapshot.dirty_paths_digest = Some(overlay_delta_digest(&self.state));
         WorkspaceMemoryGeneration::try_from_build(super::model::WorkspaceGenerationBuild {
+            projection_capability,
             workspace_identity: base.workspace_identity.clone(),
             project_root: base.project_root.clone(),
             active_epoch: self.epoch(),
@@ -361,9 +363,10 @@ impl ResidentOverlaySnapshot {
 
 fn materialize_selector(
     owner: &mut WorkspaceOwnerSnapshot,
+    capability: &crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest,
     overlay: &WorkspaceRuntimeSelectorOverlay,
 ) -> Result<(), String> {
-    validate_selector_overlay(owner, overlay)?;
+    validate_selector_overlay(owner, capability, overlay)?;
     let selector = match owner
         .selectors
         .iter_mut()
@@ -522,7 +525,12 @@ impl ResidentOverlayState {
             base_epoch: generation.active_epoch,
             revision: 0,
             workspace_snapshot: generation.workspace_snapshot.clone(),
-            owners: HashMap::new(),
+            owners: generation
+                .owners
+                .iter()
+                .cloned()
+                .map(|owner| (owner.owner_path.clone(), owner))
+                .collect(),
             tombstones: HashSet::new(),
             selectors: HashMap::new(),
         }
@@ -583,17 +591,36 @@ fn validate_owner(owner: &WorkspaceOwnerSnapshot) -> Result<(), String> {
 
 fn validate_selector_overlay(
     owner: &WorkspaceOwnerSnapshot,
+    capability: &crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest,
     overlay: &WorkspaceRuntimeSelectorOverlay,
 ) -> Result<(), String> {
     if owner.content_digest != overlay.owner_content_digest {
         return Err("runtime selector overlay owner digest drift".to_owned());
     }
-    if !owner.selectors.iter().any(|selector| {
-        selector.selector == overlay.structural_selector
-            && selector.byte_start == overlay.byte_start
-            && selector.byte_end == overlay.byte_end
-    }) {
-        return Err("runtime selector overlay is not declared by the admitted owner".to_owned());
+    if let Some(selector) = owner
+        .selectors
+        .iter()
+        .find(|selector| selector.selector == overlay.structural_selector)
+    {
+        if selector.byte_start != overlay.byte_start || selector.byte_end != overlay.byte_end {
+            return Err("runtime selector overlay range drifts from the admitted owner".to_owned());
+        }
+    } else {
+        let projection_mode = match overlay.projection_kind {
+            super::model::ExactProjectionKind::Source => crate::active_generation_projection_capability::ActiveGenerationProjectionMode::Source,
+            super::model::ExactProjectionKind::CallableSkeleton => crate::active_generation_projection_capability::ActiveGenerationProjectionMode::CallableSkeleton,
+        };
+        let admitted = capability.selectors.iter().any(|selector| {
+            selector.owner_path == overlay.owner_path
+                && selector.selector == overlay.structural_selector
+                && selector.projection_modes.contains(&projection_mode)
+        });
+        if !admitted {
+            return Err(
+                "runtime selector overlay is not declared by the active generation capability"
+                    .to_owned(),
+            );
+        }
     }
     let source = owner
         .bytes

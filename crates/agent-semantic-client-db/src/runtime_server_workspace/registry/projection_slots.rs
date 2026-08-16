@@ -4,62 +4,59 @@ use super::RuntimeServerWorkspaceRegistry;
 use crate::runtime_server_workspace::{
     ExactProjectionKind, WorkspaceExactProjectionDataPlaneClient, WorkspaceRuntimeOwnerRead,
     WorkspaceRuntimeSelectorRead, WorkspaceSearchGenerationAuthority,
-    WorkspaceSearchGenerationDataPlaneClient, workspace_generation_pointer_path,
+    WorkspaceSearchGenerationDataPlaneClient,
 };
 
 impl RuntimeServerWorkspaceRegistry {
-    #[must_use]
-    pub fn search_projection_slot_count(&self) -> usize {
-        self.search_projection_slots.len()
-    }
-
-    fn projection_pointer_path(
-        &self,
-        workspace_identity: &str,
-        project_root: &Path,
-    ) -> Result<std::path::PathBuf, String> {
-        if workspace_identity.trim().is_empty() {
-            return Err("workspace identity must be non-empty text".to_owned());
-        }
-        if !project_root.is_absolute() {
-            return Err(format!(
-                "runtime workspace project root must be absolute: {}",
-                project_root.display()
-            ));
-        }
-        workspace_generation_pointer_path(&self.root, workspace_identity, project_root)
-    }
-
-    async fn search_projection_client(
+    fn resident_search_projection_client(
         &self,
         workspace_identity: &str,
         project_root: &Path,
     ) -> Result<Arc<WorkspaceSearchGenerationDataPlaneClient>, String> {
-        let pointer_path = self.projection_pointer_path(workspace_identity, project_root)?;
-        let pointer =
-            crate::runtime_server_workspace::WorkspaceGenerationPointerReader::open(&pointer_path)
-                .await?;
-        let snapshot = pointer.read()?;
-        let key = (
-            workspace_identity.to_owned(),
-            project_root.to_string_lossy().into_owned(),
-        );
-        let slot = self
-            .search_projection_slots
-            .entry(key)
-            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(None)))
-            .clone();
-        let mut current = slot.lock().await;
-        if let Some((epoch, client)) = current.as_ref()
-            && *epoch == snapshot.active_epoch
-        {
-            return Ok(Arc::clone(client));
-        }
-        let client = Arc::new(
-            WorkspaceSearchGenerationDataPlaneClient::open(&pointer_path, project_root).await?,
-        );
-        *current = Some((client.authority().active_epoch, Arc::clone(&client)));
-        Ok(client)
+        let entry = self
+            .ready_entry(workspace_identity, project_root)?
+            .ok_or_else(|| {
+                crate::runtime_server_workspace::ACTIVE_WORKSPACE_GENERATION_REQUIRED.to_owned()
+            })?;
+        entry
+            .publisher
+            .search_generation_data_plane()
+            .ok_or_else(|| {
+                crate::runtime_server_workspace::ACTIVE_WORKSPACE_GENERATION_REQUIRED.to_owned()
+            })
+    }
+
+    fn resident_exact_projection_client(
+        &self,
+        workspace_identity: &str,
+        project_root: &Path,
+    ) -> Result<Arc<WorkspaceExactProjectionDataPlaneClient>, String> {
+        let entry = self
+            .ready_entry(workspace_identity, project_root)?
+            .ok_or_else(|| {
+                crate::runtime_server_workspace::ACTIVE_WORKSPACE_GENERATION_REQUIRED.to_owned()
+            })?;
+        entry
+            .publisher
+            .search_generation_exact_projection()
+            .ok_or_else(|| {
+                crate::runtime_server_workspace::ACTIVE_WORKSPACE_GENERATION_REQUIRED.to_owned()
+            })
+    }
+
+    pub async fn prepare_search_projection_client(
+        &self,
+        workspace_identity: &str,
+        project_root: &Path,
+    ) -> Result<(), String> {
+        let entry = self.entry(workspace_identity, project_root).await?;
+        entry
+            .publisher
+            .search_generation_data_plane()
+            .ok_or_else(|| {
+                crate::runtime_server_workspace::ACTIVE_WORKSPACE_GENERATION_REQUIRED.to_owned()
+            })
+            .map(|_| ())
     }
 
     pub async fn read_projection_selector(
@@ -69,9 +66,7 @@ impl RuntimeServerWorkspaceRegistry {
         projection_kind: ExactProjectionKind,
         structural_selector: &str,
     ) -> Result<WorkspaceRuntimeSelectorRead, String> {
-        let pointer_path = self.projection_pointer_path(workspace_identity, project_root)?;
-        WorkspaceExactProjectionDataPlaneClient::open(&pointer_path)
-            .await?
+        self.resident_exact_projection_client(workspace_identity, project_root)?
             .read_runtime_selector(projection_kind, structural_selector)
     }
 
@@ -81,9 +76,18 @@ impl RuntimeServerWorkspaceRegistry {
         project_root: &Path,
         owner_path: &str,
     ) -> Result<WorkspaceRuntimeOwnerRead, String> {
-        self.search_projection_client(workspace_identity, project_root)
-            .await?
+        self.resident_search_projection_client(workspace_identity, project_root)?
             .read_owner(owner_path)
+    }
+
+    pub async fn read_projection_merkle_owner(
+        &self,
+        workspace_identity: &str,
+        project_root: &Path,
+        owner_path: &str,
+    ) -> Result<crate::runtime_server_workspace::WorkspaceRuntimeMerkleOwnerRead, String> {
+        self.resident_search_projection_client(workspace_identity, project_root)?
+            .read_merkle_owner(owner_path)
     }
 
     pub async fn projection_search_generation_authority(
@@ -91,11 +95,8 @@ impl RuntimeServerWorkspaceRegistry {
         workspace_identity: &str,
         project_root: &Path,
     ) -> Result<WorkspaceSearchGenerationAuthority, String> {
-        Ok(self
-            .search_projection_client(workspace_identity, project_root)
-            .await?
-            .authority()
-            .clone())
+        self.resident_search_projection_client(workspace_identity, project_root)
+            .map(|client| client.authority().clone())
     }
 
     pub async fn read_projection_source_index(
@@ -106,8 +107,7 @@ impl RuntimeServerWorkspaceRegistry {
         language_id: Option<&agent_semantic_client_core::LanguageId>,
         limit: u32,
     ) -> Result<crate::ClientDbSourceIndexLookupResult, String> {
-        self.search_projection_client(workspace_identity, project_root)
-            .await?
+        self.resident_search_projection_client(workspace_identity, project_root)?
             .read_source_index(query, language_id, limit)
     }
 
@@ -117,8 +117,7 @@ impl RuntimeServerWorkspaceRegistry {
         project_root: &Path,
         sources: &[crate::workspace_db_ipc::RuntimeGraphFactSource],
     ) -> Result<crate::workspace_db_ipc::RuntimeGraphFactsRead, String> {
-        self.search_projection_client(workspace_identity, project_root)
-            .await?
+        self.resident_search_projection_client(workspace_identity, project_root)?
             .read_graph_facts(sources)
     }
 }

@@ -256,6 +256,13 @@ pub enum WorkspaceRuntimeSelectorRead {
         root_digest: String,
         resolved_selector: String,
     },
+    ProjectionScopeOmitted {
+        generation_digest: String,
+        root_digest: String,
+        resolved_selector: String,
+        projection_scope: RuntimeProjectionScope,
+        owner_content_digest: String,
+    },
     OwnerForRepair {
         generation_digest: String,
         root_digest: String,
@@ -270,6 +277,14 @@ pub enum WorkspaceRuntimeSelectorRead {
         root_digest: String,
         candidates: Vec<String>,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RuntimeProjectionScope {
+    Production,
+    TestAllTargets,
+    LiveCorpus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -291,8 +306,46 @@ pub enum WorkspaceRuntimeOwnerRead {
     },
 }
 
+pub const RUNTIME_MERKLE_OWNER_READ_RECEIPT_SCHEMA_ID: &str =
+    "agent.semantic-protocols.runtime-merkle-owner-read-receipt";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "state",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
+pub enum WorkspaceRuntimeMerkleOwnerRead {
+    Owner {
+        schema_id: String,
+        schema_version: String,
+        workspace_identity: String,
+        project_root: String,
+        active_epoch: u64,
+        generation_digest: String,
+        root_digest: String,
+        owner_path: String,
+        source_blob_digest: String,
+        owner_subtree_digest: String,
+        inclusion_proof:
+            Vec<agent_semantic_content_identity::exact_selector_merkle::MerkleInclusionStepV1>,
+    },
+    OwnerMissing {
+        schema_id: String,
+        schema_version: String,
+        workspace_identity: String,
+        project_root: String,
+        active_epoch: u64,
+        generation_digest: String,
+        root_digest: String,
+        owner_path: String,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceGenerationBuild {
+    pub projection_capability:
+        crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest,
     pub workspace_identity: String,
     pub project_root: String,
     pub active_epoch: u64,
@@ -321,6 +374,7 @@ pub struct WorkspaceMemoryGeneration {
     pub provider_schema_digest: String,
     pub module_graph_digest: String,
     pub selector_set_digest: String,
+    pub projection_capability: crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest,
     pub memory_backend_digest: String,
     pub workspace_source_scope_generation: String,
     pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
@@ -331,6 +385,21 @@ pub struct WorkspaceMemoryGeneration {
 }
 
 impl WorkspaceMemoryGeneration {
+    pub fn projection_capability_receipt(
+        &self,
+        publication_epoch: u64,
+    ) -> Result<
+        crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityReceipt,
+        String,
+    > {
+        self.projection_capability.clone().into_ready_receipt(
+            self.workspace_identity.clone(),
+            self.generation_digest.clone(),
+            self.source_snapshot.root_digest.clone(),
+            publication_epoch,
+        )
+    }
+
     pub fn try_from_build(input: WorkspaceGenerationBuild) -> Result<Self, String> {
         let workspace_generation =
             agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1 {
@@ -377,7 +446,7 @@ impl WorkspaceMemoryGeneration {
             project_root: input.project_root,
             state: WorkspaceGenerationState::Ready,
             active_epoch: input.active_epoch,
-            generation_digest,
+            generation_digest: generation_digest.clone(),
             root_depth: [1, 0],
             workspace_snapshot: input.workspace_snapshot,
             source_snapshot: input.source_snapshot,
@@ -386,6 +455,7 @@ impl WorkspaceMemoryGeneration {
             module_graph_digest: input.module_graph_digest,
             selector_set_digest,
             memory_backend_digest,
+            projection_capability: input.projection_capability,
             workspace_source_scope_generation,
             project_resolutions: input.project_resolutions,
             owners: input.owners,
@@ -536,6 +606,8 @@ pub struct WorkspaceRecoveryReceipt {
     pub target_epoch: u64,
     pub generation_digest: String,
     pub source_root_digest: String,
+    pub projection_capability:
+        crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityReceipt,
     pub old_generation_readable: bool,
     pub resident_publication_elapsed_micros: u64,
     pub counters: RuntimeDataPlaneCounters,
@@ -543,6 +615,21 @@ pub struct WorkspaceRecoveryReceipt {
 
 impl WorkspaceRecoveryReceipt {
     pub fn validate(&self) -> Result<(), String> {
+        self.projection_capability.validate()?;
+        if self.projection_capability.publication_epoch != self.target_epoch {
+            return Err(format!(
+                "workspace recovery projection capability epoch drift: receiptTargetEpoch={} capabilityPublicationEpoch={}",
+                self.target_epoch, self.projection_capability.publication_epoch
+            ));
+        }
+        if self.projection_capability.generation_digest != self.generation_digest {
+            return Err(
+                "workspace recovery projection capability generation digest drift".to_owned(),
+            );
+        }
+        if self.projection_capability.root_digest != self.source_root_digest {
+            return Err("workspace recovery projection capability root digest drift".to_owned());
+        }
         if self.schema_id != WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID || self.schema_version != "1" {
             return Err("workspace recovery receipt schema identity mismatch".to_owned());
         }

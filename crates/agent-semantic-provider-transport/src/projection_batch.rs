@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     OutputFraming, OutputMode, ProviderProcessFraming, ProviderProcessLimits, ProviderProcessSpec,
-    StdinMode, run_provider_process_async_with_framing,
+    ProviderProcessSupervisor, StdinMode,
 };
 
 pub const PROJECTION_BATCH_REQUEST_SCHEMA_ID: &str =
@@ -229,7 +229,21 @@ impl ProviderProjectionBatchRequest {
     }
 }
 
+impl ProviderProjectionBatchResponse {
+    pub fn decode_for(
+        request: &ProviderProjectionBatchRequest,
+        bytes: &[u8],
+    ) -> Result<Self, ProviderProjectionBatchError> {
+        let response: Self = serde_json::from_slice(bytes).map_err(|error| {
+            ProviderProjectionBatchError(format!("decode projection batch response: {error}"))
+        })?;
+        validate_response(request, &response)?;
+        Ok(response)
+    }
+}
+
 pub async fn run_provider_projection_batch(
+    supervisor: &ProviderProcessSupervisor,
     command_argv: &[String],
     command_binding: impl Into<String>,
     cwd: impl AsRef<Path>,
@@ -253,17 +267,18 @@ pub async fn run_provider_projection_batch(
         stderr: OutputMode::Capture,
         limits: ProviderProcessLimits::default(),
     };
-    let output = run_provider_process_async_with_framing(
-        spec,
-        ProviderProcessFraming {
-            stdout: OutputFraming::Bytes,
-            stderr: OutputFraming::Bytes,
-        },
-    )
-    .await
-    .map_err(|error| {
-        ProviderProjectionBatchError(format!("projection provider failed: {error}"))
-    })?;
+    let output = supervisor
+        .run_with_framing(
+            spec,
+            ProviderProcessFraming {
+                stdout: OutputFraming::Bytes,
+                stderr: OutputFraming::Bytes,
+            },
+        )
+        .await
+        .map_err(|error| {
+            ProviderProjectionBatchError(format!("projection provider failed: {error}"))
+        })?;
     if !output.status.success() {
         return Err(ProviderProjectionBatchError(format!(
             "projection provider exited with status {:?}: {}",
@@ -271,12 +286,7 @@ pub async fn run_provider_projection_batch(
             output.stderr_lossy()
         )));
     }
-    let response: ProviderProjectionBatchResponse = serde_json::from_slice(&output.stdout)
-        .map_err(|error| {
-            ProviderProjectionBatchError(format!("decode projection batch response: {error}"))
-        })?;
-    validate_response(request, &response)?;
-    Ok(response)
+    ProviderProjectionBatchResponse::decode_for(request, &output.stdout)
 }
 
 fn validate_response(

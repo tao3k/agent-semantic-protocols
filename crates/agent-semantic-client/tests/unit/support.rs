@@ -109,7 +109,10 @@ pub(crate) async fn lookup_current_source_index_for_language(
     query: &str,
     limit: u32,
 ) -> Result<crate::source_index::SourceIndexLookupResult, String> {
-    let snapshot = crate::source_index::current_source_index_snapshot(project_root).await?;
+    let supervisor = agent_semantic_provider_transport::ProviderProcessSupervisor::default();
+    let snapshot =
+        crate::source_index::current_source_index_snapshot(&supervisor, project_root).await?;
+    supervisor.shutdown().await;
     crate::source_index::lookup_source_index_for_language(
         project_root,
         &snapshot.source_snapshot,
@@ -118,10 +121,6 @@ pub(crate) async fn lookup_current_source_index_for_language(
         limit,
     )
     .await
-}
-
-pub(crate) fn v2_cache_root(workspace_state_root: &Path) -> PathBuf {
-    workspace_state_root.join("live").join("client")
 }
 
 pub(crate) fn owner_backed_temp_root(label: &str) -> PathBuf {
@@ -146,67 +145,4 @@ pub(crate) fn owner_backed_temp_root(label: &str) -> PathBuf {
     std::fs::create_dir_all(&root).expect("create isolated owner-backed client fixture");
     gix::init(&root).expect("initialize owner-backed client fixture with Gix");
     root
-}
-
-pub(crate) fn artifacts_root_from_cache_root(cache_root: &Path) -> PathBuf {
-    let live_dir = cache_root.parent().expect("cache root live dir");
-    assert_eq!(
-        cache_root.file_name().and_then(|name| name.to_str()),
-        Some("client")
-    );
-    assert_eq!(
-        live_dir.file_name().and_then(|name| name.to_str()),
-        Some("live")
-    );
-    live_dir
-        .parent()
-        .expect("cache root workspace dir")
-        .join("artifacts")
-}
-pub(super) fn resolved_provider(language_id: &str) -> agent_semantic_client_core::ResolvedProvider {
-    let manifest = agent_semantic_hook::builtin_provider_manifests()
-        .into_iter()
-        .find(|manifest| manifest.language_id().as_str() == language_id)
-        .unwrap_or_else(|| panic!("builtin provider manifest for {language_id}"));
-    let manifest_digest = agent_semantic_hook::provider_manifest_digest(&manifest)
-        .unwrap_or_else(|error| panic!("{language_id} manifest digest: {error}"));
-    let semantic_registry_digest = agent_semantic_hook::semantic_registry_digest();
-    let routes = agent_semantic_hook::materialize_provider_routes(&manifest)
-        .unwrap_or_else(|error| panic!("{language_id} provider routes: {error}"));
-    let current_exe =
-        std::env::current_exe().unwrap_or_else(|error| panic!("current test executable: {error}"));
-    let verified_executable_artifact_digest =
-        agent_semantic_content_identity::file_content_digest_v1(&current_exe)
-            .unwrap_or_else(|error| panic!("{language_id} executable digest: {error}"));
-    let provider_command_prefix = vec![current_exe.to_string_lossy().into_owned()];
-    let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
-        &provider_command_prefix,
-        &verified_executable_artifact_digest,
-    )
-    .unwrap_or_else(|error| panic!("{language_id} execution command digest: {error}"));
-    let provider = agent_semantic_hook::ActivatedProvider {
-        manifest_id: manifest.manifest_id().to_owned(),
-        manifest_digest,
-        language_id: manifest.language_id().clone(),
-        provider_id: manifest.provider_id().clone(),
-        binary: manifest.binary().to_owned(),
-        execution: manifest.execution(),
-        provider_command_prefix,
-        execution_command_digest,
-        namespace: manifest.namespace().to_owned(),
-        package_roots: vec![".".to_string()],
-        source_extensions: Vec::new(),
-        config_files: Vec::new(),
-        search_capabilities: manifest.search_capabilities().clone(),
-        project_resolution: manifest.project_resolution().cloned(),
-        document_resolution: manifest.document_resolution().cloned(),
-        semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
-        query_pack_descriptor: manifest.query_pack_descriptor().clone(),
-        semantic_registry_digest,
-        policy: manifest.policy().clone(),
-        routes,
-    };
-
-    agent_semantic_client_core::ResolvedProvider::try_from(&provider)
-        .unwrap_or_else(|error| panic!("canonical activated {language_id} provider: {error}"))
 }

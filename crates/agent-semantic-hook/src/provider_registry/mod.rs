@@ -9,7 +9,6 @@ pub(crate) use argument_projection::{
     ProviderMethodArgumentSlotNameV1, ProviderMethodArgumentTokenV1,
     ProviderMethodArgumentValueTypeV1,
 };
-pub(crate) use catalog::registered_language_id;
 pub use catalog::registered_provider_method_projected_argv_v1;
 pub use catalog::{
     ProviderDevelopmentRegistrationV1, RegisteredProviderCatalogIdentity, RegisteredProviderKind,

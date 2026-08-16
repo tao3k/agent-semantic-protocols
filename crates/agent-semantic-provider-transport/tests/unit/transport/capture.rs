@@ -1,6 +1,6 @@
 use std::fs;
 
-use crate::{OutputMode, run_provider_process_async};
+use crate::{OutputMode, ProviderProcessSupervisor};
 
 use super::support::{script, spec, temp_dir};
 
@@ -17,7 +17,8 @@ async fn truncates_captured_streams_but_counts_full_bytes() {
         .limits
         .with_max_stdout_bytes(Some(3))
         .with_max_stderr_bytes(Some(2));
-    let output = run_provider_process_async(process)
+    let output = ProviderProcessSupervisor::default()
+        .run(process)
         .await
         .expect("run provider");
 
@@ -40,7 +41,8 @@ async fn tee_mode_still_retains_captured_bytes() {
     let program = script(&root, "provider.sh", "#!/bin/sh\nprintf 'tee-out'\n");
     let mut process = spec(program, root.clone());
     process.stdout = OutputMode::Tee;
-    let output = run_provider_process_async(process)
+    let output = ProviderProcessSupervisor::default()
+        .run(process)
         .await
         .expect("run provider");
 
@@ -58,7 +60,8 @@ async fn handles_large_stdout_and_stderr_without_deadlock() {
         "provider.sh",
         "#!/bin/sh\ni=0\nwhile [ $i -lt 2000 ]; do printf 'stdout-line-%s\\n' \"$i\"; printf 'stderr-line-%s\\n' \"$i\" >&2; i=$((i + 1)); done\n",
     );
-    let output = run_provider_process_async(spec(program, root.clone()))
+    let output = ProviderProcessSupervisor::default()
+        .run(spec(program, root.clone()))
         .await
         .expect("run provider");
 

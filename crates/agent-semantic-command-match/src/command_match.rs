@@ -138,10 +138,10 @@ pub fn candidate_matches_prefix(candidate: &[String], prefix: &[String]) -> bool
 
 /// Parse a Bash command into bounded normalized command candidates.
 pub fn parse_bash_command_candidates(command: &str) -> Result<Vec<CommandStageV1>, String> {
-    parse_bash_command_candidates_with_nested_scripts(command, 0)
+    parse_bash_command_candidates_with_shell_operands(command, 0)
 }
 
-fn parse_bash_command_candidates_with_nested_scripts(
+fn parse_bash_command_candidates_with_shell_operands(
     command: &str,
     depth: usize,
 ) -> Result<Vec<CommandStageV1>, String> {
@@ -153,35 +153,42 @@ fn parse_bash_command_candidates_with_nested_scripts(
     if depth >= 4 {
         return Ok(candidates);
     }
-    // Wrapper discovery is structural and deliberately independent of the
-    // wrapper executable's spelling. Tree-sitter-normalized quoted arguments
-    // retain their internal whitespace, so they can be parsed into bounded
-    // executable stages without enumerating wrapper names or paths. Policy
-    // matching only observes the resulting argv stages.
     let scripts = candidates
         .iter()
-        .flat_map(|candidate| nested_stage_arguments(candidate.words()))
-        .map(str::to_string)
+        .filter_map(|candidate| shell_execution_operand(candidate.words()))
+        .map(str::to_owned)
         .collect::<Vec<_>>();
-    if scripts.is_empty() {
-        return Ok(candidates);
-    }
     for script in scripts {
-        let Ok(nested_candidates) =
-            parse_bash_command_candidates_with_nested_scripts(script.as_str(), depth + 1)
-        else {
-            continue;
-        };
-        for nested in nested_candidates {
-            if candidates.len() >= MAX_COMMAND_CANDIDATES
-                || candidates.iter().any(|candidate| candidate == &nested)
-            {
-                continue;
+        for nested in parse_bash_command_candidates_with_shell_operands(&script, depth + 1)? {
+            if candidates.len() >= MAX_COMMAND_CANDIDATES {
+                return Ok(candidates);
             }
-            candidates.push(nested);
+            if !candidates.contains(&nested) {
+                candidates.push(nested);
+            }
         }
     }
     Ok(candidates)
+}
+
+fn shell_execution_operand(words: &[String]) -> Option<&str> {
+    let mut executable_index = 0usize;
+    let mut executable = words.first()?.rsplit('/').next()?;
+    if executable == "env" {
+        executable_index = words.iter().enumerate().skip(1).find_map(|(index, word)| {
+            (!word.starts_with('-') && !word.contains('=')).then_some(index)
+        })?;
+        executable = words[executable_index].rsplit('/').next()?;
+    }
+    if !matches!(executable, "bash" | "sh" | "zsh") {
+        return None;
+    }
+    words[executable_index + 1..].windows(2).find_map(|pair| {
+        let option = pair[0].as_str();
+        let is_command_option = option == "--command"
+            || (option.starts_with('-') && option.trim_start_matches('-').contains('c'));
+        is_command_option.then_some(pair[1].as_str())
+    })
 }
 
 fn simple_command_words(command: &str) -> Option<Vec<String>> {
@@ -218,18 +225,6 @@ fn simple_command_words(command: &str) -> Option<Vec<String>> {
         words.push(word);
     }
     (!words.is_empty() && words.len() <= MAX_STAGE_TOKENS).then_some(words)
-}
-
-fn nested_stage_arguments(words: &[String]) -> Vec<&str> {
-    words
-        .windows(2)
-        .filter_map(|pair| {
-            let option = &pair[0];
-            let value = &pair[1];
-            (option.starts_with('-') && option != "--" && value.chars().any(char::is_whitespace))
-                .then_some(value.as_str())
-        })
-        .collect()
 }
 
 fn parse_bash_command_candidates_impl(command: &str) -> Result<Vec<CommandStageV1>, String> {

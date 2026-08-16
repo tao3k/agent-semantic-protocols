@@ -223,6 +223,55 @@ pub fn workspace_identity_from_fixture_dir(
     format!("workspace-fixture-{}", &hasher.finalize().to_hex()[..16])
 }
 
+pub fn projection_capability_manifest_fixture()
+-> crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest {
+    crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest::from_source_index(
+        "test-provider-catalog".to_owned(),
+        &[],
+    )
+    .expect("projection capability manifest fixture must satisfy the v1 contract")
+}
+
+pub fn ready_projection_capability_fixture(
+    workspace_identity: impl Into<String>,
+    generation_digest: impl Into<String>,
+    root_digest: impl Into<String>,
+    publication_epoch: u64,
+) -> crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityReceipt {
+    use crate::active_generation_projection_capability::{
+        ACTIVE_GENERATION_PROJECTION_CAPABILITY_SCHEMA_ID,
+        ACTIVE_GENERATION_PROJECTION_CAPABILITY_SCHEMA_VERSION, ActiveGenerationCapabilityState,
+        ActiveGenerationProjectionCapabilityReceipt, ActiveGenerationProjectionMode,
+        ActiveGenerationSelectorCapability,
+    };
+
+    let receipt = ActiveGenerationProjectionCapabilityReceipt {
+        schema_id: ACTIVE_GENERATION_PROJECTION_CAPABILITY_SCHEMA_ID.to_owned(),
+        schema_version: ACTIVE_GENERATION_PROJECTION_CAPABILITY_SCHEMA_VERSION.to_owned(),
+        state: ActiveGenerationCapabilityState::Ready,
+        workspace_identity: workspace_identity.into(),
+        generation_digest: generation_digest.into(),
+        root_digest: root_digest.into(),
+        provider_catalog_digest:
+            "blake3-256:3333333333333333333333333333333333333333333333333333333333333333".to_owned(),
+        provider_catalog_readable: true,
+        publication_epoch,
+        selectors: vec![ActiveGenerationSelectorCapability {
+            selector: "rust://src/lib.rs#item/function/example".to_owned(),
+            owner_path: "src/lib.rs".to_owned(),
+            projection_modes: std::collections::BTreeSet::from([
+                ActiveGenerationProjectionMode::Source,
+                ActiveGenerationProjectionMode::CallableSkeleton,
+            ]),
+        }],
+        failure: None,
+    };
+    receipt
+        .validate()
+        .expect("ready projection capability fixture must satisfy the v1 contract");
+    receipt
+}
+
 fn canonical_source_snapshot(
     request: &crate::ClientDbSourceIndexRefreshRequest,
     source_blobs: &crate::ClientDbSourceIndexSourceBlobs,

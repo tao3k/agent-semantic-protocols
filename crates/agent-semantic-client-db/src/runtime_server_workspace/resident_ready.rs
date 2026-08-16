@@ -69,6 +69,8 @@ impl RuntimeServerWorkspaceRegistry {
             .checked_sub(1)
             .ok_or_else(|| "runtime workspace generation epoch must be positive".to_owned())?;
         let receipt = WorkspaceRecoveryReceipt {
+            projection_capability: generation
+                .projection_capability_receipt(generation.active_epoch)?,
             schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
             schema_version: "1".to_owned(),
             request_id: request_id.into(),

@@ -23,7 +23,7 @@ pub(in super::super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenari
     let max_total_ms = duration_millis_from_manifest(&benchmark.max_total).max(550);
     assert_eq!(
         benchmark.route_source.as_deref(),
-        Some("owner-items-provider-cache"),
+        Some("runtime-resident-owner-items"),
         "rust owner-items hot path benchmark must declare route_source"
     );
     assert_eq!(
@@ -63,6 +63,13 @@ pub(in super::super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenari
     });
     install_state_home_provider(&root, "rust", &provider_path);
     write_activation(&root, &[provider_with_owner_items("rust", Vec::new())]);
+    let runtime_server = crate::provider_command::support::start_runtime_server(&root);
+    crate::provider_command::support::admit_runtime_resident_generation(&root);
+    assert_eq!(
+        fs::read_to_string(&count_path).expect("resident generation provider count"),
+        "1",
+        "complete generation setup must invoke the Rust provider exactly once"
+    );
     let command_args = [
         "rust",
         "search",
@@ -109,6 +116,14 @@ pub(in super::super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenari
     assert!(
         !stdout.contains("read=crate/src/lib.rs:1:1"),
         "owner-items hot path must not expose executable line-range selectors: {stdout}"
+    );
+    assert!(
+        stdout.contains("providerInvocations=0"),
+        "resident owner-items measurement must invoke zero providers: {stdout}"
+    );
+    assert!(
+        stdout.contains("generation=blake3-256:") && !stdout.contains("generation=provider-native"),
+        "resident owner-items must bind one admitted generation: {stdout}"
     );
     assert_eq!(
         fs::read_to_string(&count_path).expect("provider count"),
@@ -175,6 +190,7 @@ pub(in super::super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenari
     assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
+    drop(runtime_server);
     let _ = fs::remove_dir_all(root);
 }
 

@@ -138,11 +138,6 @@ impl<T> AtomicSnapshotPointerReader<T>
 where
     T: Clone + DeserializeOwned,
 {
-    pub(super) fn committed_generation(&self) -> Option<u64> {
-        let observed = pointer_generation(&self.mapping).load(Ordering::Acquire);
-        (observed != 0 && observed & 1 == 0).then_some(observed)
-    }
-
     pub(super) async fn open(path: &Path, context: &'static str) -> Result<Self, String> {
         Self::open_optional(path, context).await?.ok_or_else(|| {
             format!(

@@ -623,6 +623,7 @@ pub(crate) fn activate_provider(
     }
     Ok(ActivatedProviderConfig {
         search_capabilities: manifest.search_capabilities.clone(),
+        language_projection: manifest.language_projection.clone(),
         semantic_facts_descriptor: manifest.semantic_facts_descriptor.clone(),
         query_pack_descriptor: manifest.query_pack_descriptor.clone(),
         manifest_id: manifest.manifest_id.clone(),

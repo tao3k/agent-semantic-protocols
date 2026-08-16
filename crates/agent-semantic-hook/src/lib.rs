@@ -90,13 +90,12 @@ pub use crate::active_artifact_receipt::{
 };
 pub use classifier::{
     DirectReadSourceKey, HOOK_TRIGGER_PROMPT_FILE_NAME, HookClassificationRequest, ShellCommandKey,
-    ShellReadSourceKey, asp_no_agent_passthrough_decision, asp_no_agent_passthrough_requested,
-    classify_hook, classify_hook_with_config, default_hook_trigger_prompt_message,
-    direct_read_source_extension, direct_read_source_key, hook_trigger_prompt_document,
-    materialize_hook_trigger_prompt_agent_flow_for_client, merge_hook_trigger_prompt_document,
-    rebind_command_decision_to_payload, render_hook_trigger_prompt_document,
-    runtime_binary_policy_decision_v1, shell_command_key, shell_read_source_key,
-    shell_read_source_keys,
+    ShellReadSourceKey, classify_hook, classify_hook_with_config,
+    default_hook_trigger_prompt_message, direct_read_source_extension, direct_read_source_key,
+    hook_trigger_prompt_document, materialize_hook_trigger_prompt_agent_flow_for_client,
+    merge_hook_trigger_prompt_document, rebind_command_decision_to_payload,
+    render_hook_trigger_prompt_document, runtime_binary_policy_decision_v1, shell_command_key,
+    shell_read_source_key, shell_read_source_keys,
 };
 pub use codex_config::{
     CodexUserTrustStatus, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, claude_hook_block, codex_hook_block,
@@ -148,8 +147,9 @@ pub use protocol_activation::protocol_activation_manifest::{
     ActivatedProvider, ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy,
     HookActivation, HookRuntime, ProviderExecution, ProviderLanguageProjectionDescriptor,
     ProviderManifest, ProviderProjectResolutionDescriptor, ProviderQueryPackDescriptor,
-    ProviderQueryPackTermRole, ProviderSearchCapabilities, ProviderSemanticFactsDescriptor,
-    ProviderSemanticFactsIntentAxis,
+    ProviderQueryPackTermRole, ProviderRuntimeContractDescriptor,
+    ProviderRuntimeContractOperationDescriptor, ProviderRuntimeContractTransport,
+    ProviderSearchCapabilities, ProviderSemanticFactsDescriptor, ProviderSemanticFactsIntentAxis,
 };
 pub use protocol_activation::protocol_activation_runtime::parse_activation;
 pub use provider_manifest::{

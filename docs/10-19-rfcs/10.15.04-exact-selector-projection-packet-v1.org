@@ -99,6 +99,26 @@ closed to a typed miss or explicit error; they never return cached bytes.
 
 ** Active-generation projection completeness
 
+The active generation receipt is the sole authority for exact projection
+completeness.  It binds the provider-catalog digest, admitted owner path,
+canonical selector, and supported projection modes in one publication epoch.
+Discovery and callable-skeleton projection MUST NOT expose a selector that this
+same receipt cannot project.
+
+Segment selectors are first-class selectors.  A branch, binding, or expression
+segment emitted by callable-skeleton therefore requires an admitted =source=
+or =callable-skeleton= capability exactly like a top-level item.  Missing
+capability is a generation build failure with
+=projection-capability-missing=; it is not an agent-facing
+=source-unavailable= state and the query path MUST NOT repair it.
+
+The versioned receipt contract is
+=schemas/active-generation-projection-capability.v1.schema.json=.  A =ready=
+receipt proves that its provider catalog is readable and every exposed selector
+has at least one declared projection mode.  Provider catalog, membership,
+selector inventory, and projection segments are committed by one writer and
+become visible at the same epoch.
+
 Projection capability is generation-wide authority, not a per-selector best
 effort hint.  When an activated provider declares a projection mode, every
 parser-minted selector admitted to that generation must carry either the exact

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/resident-search-result.v1.schema.json",
+  "title": "Resident Search Result V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "state", "hits"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.resident-search-result" },
+    "schemaVersion": { "const": "1" },
+    "state": {
+      "enum": [
+        "Ready",
+        "ActiveGenerationRequired",
+        "CapabilityUnavailable",
+        "ProviderContractMismatch",
+        "GenerationCorrupt",
+        "Cancelled",
+        "AuthorityClosed"
+      ]
+    },
+    "generationDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "hits": { "type": "array", "items": { "type": "object" } },
+    "error": { "type": "string", "minLength": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "Ready" } } },
+      "then": { "required": ["generationDigest"], "not": { "required": ["error"] } },
+      "else": { "required": ["error"], "properties": { "hits": { "maxItems": 0 } } }
+    }
+  ]
+}

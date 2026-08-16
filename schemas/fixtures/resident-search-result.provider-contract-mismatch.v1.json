@@ -1,0 +1,7 @@
+{
+  "schemaId": "agent.semantic-protocols.resident-search-result",
+  "schemaVersion": "1",
+  "state": "ProviderContractMismatch",
+  "hits": [],
+  "error": "installed provider runtime contract does not match the active catalog"
+}

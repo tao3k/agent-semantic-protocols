@@ -184,8 +184,8 @@ pub(super) async fn write_turso_source_index_rows(
                     successor_source_snapshot.dirty_paths_digest =
                         partial_source_snapshot.dirty_paths_digest;
                     let full_materialization =
-                        crate::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
-                            materialization.workspace_identity.clone(),
+                crate::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
+            materialization.workspace_identity.clone(),
                             &successor_source_snapshot,
                             &full_import,
                             &full_import.source_blobs,

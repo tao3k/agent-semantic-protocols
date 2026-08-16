@@ -64,6 +64,50 @@ fn sync_args_require_a_locked_resource() {
     assert!(error.contains("usage: asp live-corpus sync"));
 }
 
+#[tokio::test]
+async fn qualify_args_require_a_plan_path_after_the_flag() {
+    let error = crate::command::live_corpus::run_live_corpus_command(&[
+        "qualify".to_owned(),
+        "--plan".to_owned(),
+    ])
+    .await
+    .expect_err("qualification plan path is required");
+    assert!(error.contains("requires a path after --plan"));
+}
+
+#[tokio::test]
+async fn removed_prepare_command_is_not_a_public_surface() {
+    let error = crate::command::live_corpus::run_live_corpus_command(&["prepare".to_owned()])
+        .await
+        .expect_err("removed preparation command must fail closed");
+    assert!(error.contains("Usage: asp live-corpus"), "{error}");
+    assert!(!error.contains("live-corpus prepare"), "{error}");
+    assert!(!error.contains("live-corpus prepare"));
+}
+
+#[test]
+fn live_corpus_help_exposes_only_current_typed_subcommands() {
+    let command = crate::command::cli_help::selected_command(&["live-corpus".to_owned()]);
+    let subcommands = command
+        .get_subcommands()
+        .map(clap::Command::get_name)
+        .collect::<Vec<_>>();
+
+    assert!(subcommands.contains(&"qualify"), "{subcommands:?}");
+    assert!(!subcommands.contains(&"prepare"), "{subcommands:?}");
+}
+
+#[tokio::test]
+async fn qualify_args_reject_unknown_options_before_runtime_access() {
+    let error = crate::command::live_corpus::run_live_corpus_command(&[
+        "qualify".to_owned(),
+        "--unknown".to_owned(),
+    ])
+    .await
+    .expect_err("unknown qualification options must be rejected");
+    assert_eq!(error, "unknown live-corpus qualify option: --unknown");
+}
+
 #[test]
 fn repository_corpus_lock_is_the_materializer_contract() {
     let lock_path = Path::new(env!("CARGO_MANIFEST_DIR"))

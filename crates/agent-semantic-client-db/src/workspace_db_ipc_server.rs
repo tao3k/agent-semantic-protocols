@@ -103,7 +103,7 @@ async fn serve_workspace_db_session_stream(
         } else if shutdown_requested {
             WorkspaceDbIpcResult::ShutdownAccepted
         } else {
-            dispatch_workspace_db_session_operation(
+            dispatch::dispatch_workspace_db_session_operation(
                 registry,
                 &request.workspace_identity,
                 request.operation,
@@ -204,182 +204,6 @@ pub async fn serve_workspace_db_session_until_shutdown(
     }
 }
 
-async fn dispatch_workspace_db_session_operation(
-    registry: &WorkspaceDbRegistry,
-    workspace_identity: &str,
-    operation: WorkspaceDbIpcOperation,
-) -> WorkspaceDbIpcResult {
-    let dispatched = match operation {
-        WorkspaceDbIpcOperation::ProjectTreeSitterQuery { .. } => Err(
-            "Tree-sitter queries are available only through the Runtime Server".to_owned(),
-        ),
-        WorkspaceDbIpcOperation::Health => return WorkspaceDbIpcResult::Healthy,
-        WorkspaceDbIpcOperation::Shutdown => return WorkspaceDbIpcResult::ShutdownAccepted,
-        WorkspaceDbIpcOperation::CacheControl { .. } => Err(
-            "cache-control operations are only accepted by the Runtime Server data plane"
-                .to_owned(),
-        ),
-        WorkspaceDbIpcOperation::AgentSessionRegistry { .. } => Err(
-            "agent-session registry operations are not admitted until the staged registry dispatcher is published"
-                .to_owned(),
-        ),
-        WorkspaceDbIpcOperation::ReadSourceIndex { .. } => {
-            Err("source-index reads are only accepted by the Runtime Server data plane".to_owned())
-        }
-        WorkspaceDbIpcOperation::ReadRuntimeSelector { .. }
-        | WorkspaceDbIpcOperation::ReadRuntimeOwner { .. }
-        | WorkspaceDbIpcOperation::ProjectProviderOwner { .. }
-        | WorkspaceDbIpcOperation::ResolveProviderRuntime { .. }
-        | WorkspaceDbIpcOperation::ReadRuntimeSearchGenerationAuthority { .. } => Err(
-            "resident runtime selector reads are only accepted by the Runtime Server data plane"
-                .to_owned(),
-        ),
-        WorkspaceDbIpcOperation::PublishRuntimeSelectorOverlay { .. }
-        | WorkspaceDbIpcOperation::RebindRuntimeSelectorOverlay { .. } => Err(
-            "resident runtime selector writes are only accepted by the Runtime Server data plane"
-                .to_owned(),
-        ),
-        WorkspaceDbIpcOperation::AdmitRuntimeGeneration { .. }
-        | WorkspaceDbIpcOperation::SubmitRuntimeGenerationMutation { .. }
-        | WorkspaceDbIpcOperation::ReadRuntimeGenerationDurability { .. }
-        | WorkspaceDbIpcOperation::ReadRuntimeGraphFacts { .. }
-        | WorkspaceDbIpcOperation::EvaluateGraphTurbo { .. } => Err(
-            "canonical generation admission is only accepted by the Runtime Server data plane"
-                .to_owned(),
-        ),
-        WorkspaceDbIpcOperation::RefreshCodexMultiAgentControlPlane { .. }
-        | WorkspaceDbIpcOperation::ReadCodexMultiAgentControlPlane { .. } => Err(
-            "Codex multi-agent control-plane operations are only accepted by the Runtime Server data plane"
-                .to_owned(),
-        ),
-        WorkspaceDbIpcOperation::WriteProviderIncrementalOwner { request } => {
-            let session = registry
-                .acquire(&request.scope.project_root, &request.scope)
-                .await;
-            match session {
-                Ok(session) => session
-                    .write_provider_incremental_owner(&request)
-                    .await
-                    .map(|receipt| WorkspaceDbIpcResult::ProviderIncrementalOwner { receipt }),
-                Err(error) => Err(error),
-            }
-        }
-        WorkspaceDbIpcOperation::ReadProviderTreeSitterQuery {
-            query,
-            incremental_budget,
-            continuation,
-        } => {
-            let session = registry
-                .acquire(&query.scope.project_root, &query.scope)
-                .await;
-            match session {
-                Ok(session) => session
-                    .read_provider_treesitter_query(
-                        &query,
-                        incremental_budget,
-                        continuation.as_ref(),
-                    )
-                    .await
-                    .map(|read| WorkspaceDbIpcResult::ProviderTreeSitterQuery { read }),
-                Err(error) => Err(error),
-            }
-        }
-        WorkspaceDbIpcOperation::ReadProviderOwnerSnapshot { scope, owner_path } => {
-            let session = registry.acquire(&scope.project_root, &scope).await;
-            match session {
-                Ok(session) => session
-                    .read_provider_owner_snapshot(&scope, &owner_path)
-                    .await
-                    .map(|snapshot| WorkspaceDbIpcResult::ProviderOwnerSnapshot { snapshot }),
-                Err(error) => Err(error),
-            }
-        }
-        WorkspaceDbIpcOperation::ReadProviderOwnerWarm { scope, owner } => {
-            let session = admitted_or_bootstrap_workspace(
-                registry,
-                workspace_identity,
-                Path::new(&scope.project_root),
-            )
-            .await;
-            match session {
-                Ok(session) => session.read_provider_owner_warm(&scope, &owner).await.map(
-                    |(probe, snapshot)| WorkspaceDbIpcResult::ProviderOwnerWarm { probe, snapshot },
-                ),
-                Err(error) => Err(error),
-            }
-        }
-        WorkspaceDbIpcOperation::ReadResidentSelector { request } => {
-            let session = admitted_or_bootstrap_workspace(
-                registry,
-                workspace_identity,
-                Path::new(&request.project_root),
-            )
-            .await;
-            match session {
-                Ok(session) => session
-                    .read_resident_selector(&request)
-                    .await
-                    .map(|read| WorkspaceDbIpcResult::ResidentSelector { read }),
-                Err(error) => Err(error),
-            }
-        }
-        WorkspaceDbIpcOperation::WriteProviderTreeSitterOwnerResult { query, result } => {
-            let session = registry
-                .acquire(&query.scope.project_root, &query.scope)
-                .await;
-            match session {
-                Ok(session) => session
-                    .write_provider_treesitter_owner_result(&query, &result)
-                    .await
-                    .map(|receipt| WorkspaceDbIpcResult::ProviderTreeSitterOwner { receipt }),
-                Err(error) => Err(error),
-            }
-        }
-        WorkspaceDbIpcOperation::ProbeProviderOwners { scope, owners } => {
-            let session = registry.acquire(&scope.project_root, &scope).await;
-            match session {
-                Ok(session) => session
-                    .probe_provider_owners(&scope, &owners)
-                    .await
-                    .map(|receipt| WorkspaceDbIpcResult::ProviderOwners { receipt }),
-                Err(error) => Err(error),
-            }
-        }
-        WorkspaceDbIpcOperation::UpsertProviderInventory { request } => {
-            let session = registry
-                .acquire(&request.scope.project_root, &request.scope)
-                .await;
-            match session {
-                Ok(session) => session
-                    .upsert_provider_owner_inventory(&request)
-                    .await
-                    .map(|receipt| WorkspaceDbIpcResult::ProviderInventory { receipt }),
-                Err(error) => Err(error),
-            }
-        }
-        WorkspaceDbIpcOperation::FinishWrites { scope, mode } => {
-            let session = registry.acquire(&scope.project_root, &scope).await;
-            match session {
-                Ok(session) => session
-                    .finish_writes(mode)
-                    .await
-                    .map(|receipt| WorkspaceDbIpcResult::WriteFinish { receipt }),
-                Err(error) => Err(error),
-            }
-        }
-        WorkspaceDbIpcOperation::PublishRuntimeOwner { .. }
-        | WorkspaceDbIpcOperation::TombstoneRuntimeOwner { .. }
-        | WorkspaceDbIpcOperation::RelocateRuntimeOwner { .. } => Err(
-            "Runtime owner publication is only accepted by the Runtime Server data plane"
-                .to_owned(),
-        ),
-    };
-    dispatched.unwrap_or_else(|message| WorkspaceDbIpcResult::Failed {
-        code: "workspace-owner-operation-failed".to_owned(),
-        message,
-    })
-}
-
 pub(crate) async fn admitted_or_bootstrap_workspace(
     registry: &WorkspaceDbRegistry,
     workspace_identity: &str,
@@ -412,6 +236,10 @@ async fn run_agent_session_registry_operation(
 mod agent_session;
 #[path = "workspace_db_ipc_server_agent_session_registry.rs"]
 mod agent_session_registry_dispatch;
+#[path = "workspace_db_ipc_server_dispatch.rs"]
+mod dispatch;
+#[path = "workspace_db_ipc_server_exact_projection.rs"]
+mod exact_projection;
 #[path = "workspace_db_ipc_server_generation.rs"]
 mod generation;
 #[path = "workspace_db_ipc_server_graph_turbo.rs"]
@@ -555,6 +383,80 @@ pub async fn serve_runtime_server_workspace_stream(
                         message,
                     },
                 },
+                WorkspaceDbIpcOperation::ProviderSearch {
+                    operation_id,
+                    project_root,
+                    language_id,
+                    args,
+                } => {
+                    let provider_search_started = tokio::time::Instant::now();
+                    let query = args
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(index, arg)| {
+                            (arg == "--query").then(|| args.get(index + 1)).flatten()
+                        })
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    match memory_registry
+                        .read_projection_source_index(
+                            &request.workspace_identity,
+                            Path::new(&project_root),
+                            &query,
+                            Some(&language_id),
+                            200,
+                        )
+                        .await
+                    {
+                        Ok(lookup) => {
+                            let resident_read_elapsed_micros = provider_search_started
+                                .elapsed()
+                                .as_micros()
+                                .min(u128::from(u64::MAX))
+                                as u64;
+                            match crate::runtime_search_service::build_runtime_provider_search_receipt(
+                                    operation_id.clone(),
+                                    language_id.clone(),
+                                    lookup,
+                                    resident_read_elapsed_micros,
+                                ) {
+                                    Ok(receipt) => WorkspaceDbIpcResult::ProviderSearch { receipt },
+                                    Err(message) => {
+                                        tracing::error!(
+                                            event = "runtime_provider_search_terminal",
+                                            operation_id,
+                                            workspace_identity = %request.workspace_identity,
+                                            language_id = %language_id,
+                                            reason_kind = "runtime-server-provider-search-failed",
+                                            elapsed_micros = provider_search_started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64,
+                                            error = %message
+                                        );
+                                        WorkspaceDbIpcResult::Failed {
+                                            code: "runtime-server-provider-search-failed"
+                                                .to_owned(),
+                                            message,
+                                        }
+                                    }
+                                }
+                        }
+                        Err(message) => {
+                            tracing::error!(
+                                event = "runtime_provider_search_terminal",
+                                operation_id,
+                                workspace_identity = %request.workspace_identity,
+                                language_id = %language_id,
+                                reason_kind = "runtime-server-provider-search-index-read-failed",
+                                elapsed_micros = provider_search_started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64,
+                                error = %message
+                            );
+                            WorkspaceDbIpcResult::Failed {
+                                code: "runtime-server-provider-search-index-read-failed".to_owned(),
+                                message,
+                            }
+                        }
+                    }
+                }
                 WorkspaceDbIpcOperation::ReadRuntimeOwner {
                     project_root,
                     owner_path,
@@ -572,57 +474,56 @@ pub async fn serve_runtime_server_workspace_stream(
                         message,
                     },
                 },
+                WorkspaceDbIpcOperation::ReadRuntimeMerkleOwner {
+                    request: merkle_request,
+                } => match merkle_request.validate() {
+                    Ok(()) => match memory_registry
+                        .read_projection_merkle_owner(
+                            &request.workspace_identity,
+                            Path::new(&merkle_request.project_root),
+                            &merkle_request.owner_path,
+                        )
+                        .await
+                    {
+                        Ok(read) => WorkspaceDbIpcResult::RuntimeMerkleOwner { read },
+                        Err(message) => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-merkle-owner-read-failed".to_owned(),
+                            message,
+                        },
+                    },
+                    Err(message) => WorkspaceDbIpcResult::Failed {
+                        code: "runtime-server-merkle-owner-request-invalid".to_owned(),
+                        message,
+                    },
+                },
                 WorkspaceDbIpcOperation::ProjectTreeSitterQuery {
                     project_root,
                     language_id,
                     args,
-                } => match runtime_search_service {
-                    Some(service) => match service
-                        .tree_sitter_query(
-                            request.workspace_identity.clone(),
-                            Path::new(&project_root).to_path_buf(),
-                            language_id.to_string(),
-                            args,
-                        )
-                        .await
-                    {
-                        Ok(rendered) => WorkspaceDbIpcResult::TreeSitterQuery { rendered },
-                        Err(message) => WorkspaceDbIpcResult::Failed {
-                            code: "runtime-server-tree-sitter-query-failed".to_owned(),
-                            message,
-                        },
-                    },
-                    None => WorkspaceDbIpcResult::Failed {
-                        code: "runtime-server-search-service-unavailable".to_owned(),
-                        message: "Runtime search service is not configured".to_owned(),
-                    },
-                },
+                } => {
+                    exact_projection::tree_sitter_query(
+                        runtime_search_service,
+                        &request.workspace_identity,
+                        project_root,
+                        language_id,
+                        args,
+                    )
+                    .await
+                }
                 WorkspaceDbIpcOperation::ProjectProviderOwner {
                     project_root,
                     language_id,
                     owner_path,
-                } => match runtime_search_service {
-                    Some(service) => match service
-                        .provider_owner(
-                            request.workspace_identity.clone(),
-                            Path::new(&project_root).to_path_buf(),
-                            language_id.to_string(),
-                            owner_path,
-                        )
-                        .await
-                    {
-                        Ok(owner) => WorkspaceDbIpcResult::ProviderOwnerProjection { owner },
-                        Err(message) => WorkspaceDbIpcResult::Failed {
-                            code: "runtime-server-provider-owner-query-failed".to_owned(),
-                            message,
-                        },
-                    },
-                    None => WorkspaceDbIpcResult::Failed {
-                        code: "runtime-server-provider-owner-query-unavailable".to_owned(),
-                        message: "Runtime Server provider owner query service is unavailable"
-                            .to_owned(),
-                    },
-                },
+                } => {
+                    exact_projection::provider_owner(
+                        runtime_search_service,
+                        &request.workspace_identity,
+                        project_root,
+                        language_id,
+                        owner_path,
+                    )
+                    .await
+                }
                 WorkspaceDbIpcOperation::ResolveProviderRuntime {
                     project_root,
                     language_id,
@@ -718,6 +619,15 @@ pub async fn serve_runtime_server_workspace_stream(
                             message,
                         },
                     }
+                }
+                WorkspaceDbIpcOperation::RequireRuntimeGeneration { project_root } => {
+                    generation::require_lifecycle_generation(
+                        memory_registry,
+                        generation_admission,
+                        &request.workspace_identity,
+                        project_root,
+                    )
+                    .await
                 }
                 WorkspaceDbIpcOperation::AdmitRuntimeGeneration {
                     mutation_id,
@@ -833,6 +743,9 @@ pub async fn serve_runtime_server_workspace_stream(
                 }
                 WorkspaceDbIpcOperation::ReadSourceIndex {
                     request: lookup_request,
+                }
+                | WorkspaceDbIpcOperation::ReadTreeSitterInventory {
+                    request: lookup_request,
                 } => {
                     let lookup = memory_registry
                         .read_projection_source_index(
@@ -914,7 +827,7 @@ pub async fn serve_runtime_server_workspace_stream(
                     }
                 }
                 operation => {
-                    dispatch_workspace_db_session_operation(
+                    dispatch::dispatch_workspace_db_session_operation(
                         registry,
                         &request.workspace_identity,
                         operation,

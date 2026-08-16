@@ -213,6 +213,7 @@ import ASPProof.AgentSessionRegistryOwnerLifetime
 import ASPProof.AgentSessionBootstrapProgress
 import ASPProof.Audit.AgentSessionBootstrapProgress
 import ASPProof.AgentSessionNativeRouterLifecycle
+import ASPProof.AgentSessionCapabilityAdmissibility
 import ASPProof.AgentSessionDispatchTransaction
 import ASPProof.AgentSessionDispatchLinearization
 import ASPProof.AgentSessionHostAcceptanceDurability
@@ -288,3 +289,4 @@ import ASPProof.HookMemoryInboxDeadlockFreedom
 import ASPProof.Audit.HookMemoryInboxDeadlockFreedom
 import ASPProof.HookSourceAccessReplayIdentity
 import ASPProof.Audit.HookSourceAccessReplayIdentity
+import ASPProof.IncrementalCacheAuthority

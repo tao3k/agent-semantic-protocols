@@ -1,7 +1,7 @@
 use agent_semantic_hook::{ActivatedProvider, RuntimeProfiles};
 use agent_semantic_provider_transport::{
-    OutputMode, ProviderProcessLimits, ProviderProcessOutput, ProviderProcessSpec, StdinMode,
-    provider_process_limits_from_environment, run_provider_process_async as run_transport_process,
+    OutputMode, ProviderProcessLimits, ProviderProcessOutput, ProviderProcessSpec,
+    ProviderProcessSupervisor, StdinMode, provider_process_limits_from_environment,
 };
 use agent_semantic_runtime::project_state_paths;
 use std::collections::BTreeMap;
@@ -209,9 +209,12 @@ async fn run_provider_process_with_stdin(
     request: ProviderProcessRun<'_>,
 ) -> Result<ProviderProcessOutput, String> {
     let (spec, language_id, provider_id) = provider_process_spec(request).await?;
-    run_transport_process(spec).await.map_err(|error| {
+    let supervisor = ProviderProcessSupervisor::default();
+    let result = supervisor.run(spec).await.map_err(|error| {
         format!("failed to run provider `{provider_id}` for language `{language_id}`: {error}")
-    })
+    });
+    supervisor.shutdown().await;
+    result
 }
 
 async fn provider_process_spec(

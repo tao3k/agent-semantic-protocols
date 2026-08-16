@@ -91,6 +91,20 @@ struct ProviderMemoryByteLimit(u64);
 
 /// Default resident-memory ceiling for one ASP provider process group.
 pub const DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+const PROVIDER_MEMORY_LIMIT_BYTES_PER_EXECUTION_SLOT: u64 = 1024 * 1024 * 1024;
+pub const MAX_ADAPTIVE_PROVIDER_MEMORY_LIMIT_BYTES: u64 = 16 * 1024 * 1024 * 1024;
+
+pub fn adaptive_provider_memory_limit_bytes() -> u64 {
+    let execution_slots = std::thread::available_parallelism()
+        .map(|parallelism| parallelism.get() as u64)
+        .unwrap_or(1);
+    execution_slots
+        .saturating_mul(PROVIDER_MEMORY_LIMIT_BYTES_PER_EXECUTION_SLOT)
+        .clamp(
+            DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES,
+            MAX_ADAPTIVE_PROVIDER_MEMORY_LIMIT_BYTES,
+        )
+}
 
 /// Optional limits applied while running a provider process.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -105,9 +119,22 @@ pub struct ProviderProcessLimits {
     memory_limit_bytes: Option<ProviderMemoryByteLimit>,
 }
 
+impl ProviderProcessLimits {
+    pub fn with_workspace_build_memory_budget(self) -> Self {
+        let adaptive_limit = adaptive_provider_memory_limit_bytes();
+        let selected_limit = self.memory_limit_bytes().unwrap_or(0).max(adaptive_limit);
+        self.with_memory_limit_bytes(Some(selected_limit))
+    }
+}
+
 impl Default for ProviderProcessLimits {
     fn default() -> Self {
-        Self::new(None, None, None, Some(DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES))
+        Self::new(
+            None,
+            None,
+            None,
+            Some(adaptive_provider_memory_limit_bytes()),
+        )
     }
 }
 
@@ -394,6 +421,10 @@ impl ProviderProcessReceipt {
 /// Transport-level failure while running an external provider process.
 #[derive(Debug)]
 pub enum ProviderProcessError {
+    /// The Tokio-owned provider supervisor was closed before this request was admitted.
+    AdmissionClosed,
+    /// The Tokio-owned provider supervisor cancelled this request during shutdown.
+    Cancelled,
     /// The current-thread runtime used by the blocking adapter could not start.
     Runtime { source: io::Error },
     /// The provider process could not be spawned.
@@ -444,6 +475,8 @@ pub enum ProviderProcessError {
 impl fmt::Display for ProviderProcessError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::AdmissionClosed => write!(formatter, "provider process supervisor is closed"),
+            Self::Cancelled => write!(formatter, "provider process execution was cancelled"),
             Self::Runtime { source } => {
                 write!(
                     formatter,
@@ -516,6 +549,8 @@ impl Error for ProviderProcessError {
             Self::CaptureStdout
             | Self::CaptureStderr
             | Self::CaptureStdin
+            | Self::AdmissionClosed
+            | Self::Cancelled
             | Self::Timeout { .. }
             | Self::MemoryLimit { .. } => None,
         }

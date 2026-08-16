@@ -374,7 +374,10 @@
       },
       "membershipOverrides": {
         "includeSchemaPaths": [
-          "schemas/asp.active-workspace-generation.v1.schema.json"
+        "schemas/asp.active-workspace-generation.v1.schema.json",
+        "schemas/active-generation-projection-capability.v1.schema.json",
+        "schemas/active-search-generation.v1.schema.json",
+        "schemas/active-search-generation.v2.schema.json"
         ]
       },
       "definitionSchemaPath": "schemas/workspace-definitions.v1.schema.json",

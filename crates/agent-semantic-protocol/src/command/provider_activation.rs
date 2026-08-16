@@ -32,25 +32,9 @@ pub(super) fn load_activation(path: &Path, invocation_root: &Path) -> Result<Hoo
 pub(super) async fn load_activation_for_language(
     path: &Path,
     invocation_root: &Path,
-    language_id: &str,
+    _language_id: &str,
 ) -> Result<HookRuntime, String> {
-    let _ = path;
-    let session =
-        crate::server::runtime_server::runtime_server_workspace_session_async(invocation_root)
-            .await?;
-    let runtime = session
-        .resolve_provider_runtime(language_id.into())
-        .await
-        .and_then(|runtime| {
-            serde_json::from_value(runtime)
-                .map_err(|error| format!("decode Runtime-owned provider runtime: {error}"))
-        });
-    runtime.map_err(|error| {
-        format!(
-                "state=cold-required reasonKind=runtime-server-provider-runtime-unavailable languageId={language_id} projectRoot={} error={error}",
-            invocation_root.display(),
-        )
-    })
+    load_activation(path, invocation_root)
 }
 
 /// Resolve a provider runtime inside the resident ASP Server.

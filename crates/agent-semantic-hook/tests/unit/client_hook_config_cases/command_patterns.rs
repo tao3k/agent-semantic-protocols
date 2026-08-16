@@ -331,7 +331,7 @@ fn configurable_hook_default_rule_classification_stays_fast() {
         }),
         json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "asp rust search pipe 'HookDecision' --workspace . --view seeds"}
+            "tool_input": {"command": "asp rust search --workspace . --treesitter-query '(identifier) @id'"}
         }),
     ];
     // Keep the total decision count high while using short samples so unrelated
@@ -406,4 +406,26 @@ fn configurable_hook_default_rule_classification_stays_fast() {
     );
 
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn break_glass_command_value_is_not_reclassified_as_registered_search() {
+    let config = ClientHookConfig::default();
+    let registry = registry();
+    let payload = json!({
+        "tool_name": "Bash",
+        "tool_input": {
+            "command": "asp hook break-glass mint --defect-kind local-hook-policy-authority-unavailable --command \"asp rust search --workspace . --treesitter-query '(identifier) @id'\" ."
+        }
+    });
+
+    let decision = classify_hook_with_config(HookClassificationRequest {
+        registry: &registry,
+        config: &config,
+        platform: "codex",
+        event: "pre-tool",
+        payload: &payload,
+    });
+
+    assert_eq!(decision.decision, DecisionKind::Allow);
 }

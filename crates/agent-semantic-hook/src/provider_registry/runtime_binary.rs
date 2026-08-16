@@ -289,9 +289,10 @@ pub fn registered_provider_matches_candidate_paths<'a>(
     }
     if let Some(project) = manifest.project_resolution() {
         return Ok(candidates.into_iter().any(|candidate| {
-            project.entry_markers.iter().any(|marker| {
-                candidate == std::path::Path::new(marker) || candidate.ends_with(marker)
-            })
+            project
+                .entry_markers
+                .iter()
+                .any(|marker| candidate == std::path::Path::new(marker))
         }));
     }
     Ok(true)

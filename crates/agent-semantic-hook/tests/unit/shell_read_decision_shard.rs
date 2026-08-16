@@ -3,7 +3,13 @@ use serde_json::json;
 use super::CommandDecisionShard;
 
 fn decision(label: &str) -> crate::HookDecision {
-    let mut decision = crate::asp_no_agent_passthrough_decision(
+    let mut decision = crate::classify_hook(
+        &crate::HookRuntime {
+            project_root: ".".to_owned(),
+            rankers: Vec::new(),
+            providers: Vec::new(),
+            policy_providers: Vec::new(),
+        },
         "codex",
         "pre-tool",
         &json!({"tool_name":"semantic-shell", "tool_input":{"command":label}}),

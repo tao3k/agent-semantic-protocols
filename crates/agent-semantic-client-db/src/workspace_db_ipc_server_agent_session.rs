@@ -46,11 +46,11 @@ pub(super) async fn evaluate(
             .await;
             return control_plane_result(result);
         }
-        operation => evaluate_legacy(owner, project_root, operation).await,
+        operation => evaluate_resident_registry(owner, project_root, operation).await,
     }
 }
 
-async fn evaluate_legacy(
+async fn evaluate_resident_registry(
     owner: Option<&Arc<AgentSessionRegistry>>,
     project_root: String,
     operation: AgentSessionRegistryIpcOperation,

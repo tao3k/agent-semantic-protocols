@@ -10,6 +10,12 @@
 
 * One-sentence summary
 
+The former client-local cache manifest, prompt/search replay, and provider writeback design is
+retired.  =agent-semantic-client-cache-manifest.v1= is retained only to validate historical
+artifacts during explicit migration; it is not a live cache authority.  Runtime Server cache-control
+v1 and its resident generation are the sole status, mutation, and reusable-search authority.
+Clients and providers never open or reconstruct the legacy cache and never fall back to it.
+
 =agent-semantic-client= is the local-first agent client over native semantic
 language providers.  It exposes one stable =asp= command surface while routing
 to local provider CLIs, Cloud Flight, or both behind the same compact prompt

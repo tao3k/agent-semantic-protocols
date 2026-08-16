@@ -1,6 +1,6 @@
 use std::fs;
 
-use crate::{OutputFraming, ProviderProcessFraming, run_provider_process_async_with_framing};
+use crate::{OutputFraming, ProviderProcessFraming, ProviderProcessSupervisor};
 
 use super::support::{script, spec, temp_dir};
 
@@ -12,15 +12,16 @@ async fn line_framing_normalizes_line_payloads() {
         "provider.sh",
         "#!/bin/sh\nprintf 'first\\nsecond'\nprintf 'warn\\n' >&2\n",
     );
-    let output = run_provider_process_async_with_framing(
-        spec(program, root.clone()),
-        ProviderProcessFraming {
-            stdout: OutputFraming::Lines,
-            stderr: OutputFraming::Lines,
-        },
-    )
-    .await
-    .expect("run provider");
+    let output = ProviderProcessSupervisor::default()
+        .run_with_framing(
+            spec(program, root.clone()),
+            ProviderProcessFraming {
+                stdout: OutputFraming::Lines,
+                stderr: OutputFraming::Lines,
+            },
+        )
+        .await
+        .expect("run provider");
 
     assert!(output.status.success());
     assert_eq!(output.stdout.as_ref(), b"first\nsecond\n");
@@ -38,15 +39,16 @@ async fn length_delimited_framing_captures_payload_bytes() {
         "provider.sh",
         "#!/bin/sh\nprintf '\\000\\000\\000\\005hello\\000\\000\\000\\005world'\n",
     );
-    let output = run_provider_process_async_with_framing(
-        spec(program, root.clone()),
-        ProviderProcessFraming {
-            stdout: OutputFraming::LengthDelimited,
-            stderr: OutputFraming::Bytes,
-        },
-    )
-    .await
-    .expect("run provider");
+    let output = ProviderProcessSupervisor::default()
+        .run_with_framing(
+            spec(program, root.clone()),
+            ProviderProcessFraming {
+                stdout: OutputFraming::LengthDelimited,
+                stderr: OutputFraming::Bytes,
+            },
+        )
+        .await
+        .expect("run provider");
 
     assert!(output.status.success());
     assert_eq!(output.stdout.as_ref(), b"helloworld");

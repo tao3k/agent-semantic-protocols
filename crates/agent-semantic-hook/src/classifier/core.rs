@@ -46,46 +46,6 @@ pub fn classify_hook(
     })
 }
 
-fn is_asp_no_agent_assignment(token: &str) -> bool {
-    token
-        .split_once('=')
-        .is_some_and(|(name, _)| name == "ASP_NO_AGENT")
-}
-
-/// Returns true when the intercepted command carries the process-scoped Hook
-/// recovery override. This uses the normalized shell token projection, so the
-/// result is independent of the concrete shell or wrapper executable name.
-pub fn asp_no_agent_passthrough_requested(payload: &Value) -> bool {
-    collect_payload_tool_actions(payload).iter().any(|action| {
-        action
-            .command_tokens()
-            .is_some_and(|tokens| tokens.iter().any(|token| is_asp_no_agent_assignment(token)))
-    })
-}
-
-/// Constructs the terminal allow receipt for the highest-priority recovery
-/// override. Callers may use this before project discovery, policy loading,
-/// Runtime access, locks, or telemetry.
-pub fn asp_no_agent_passthrough_decision(
-    platform: &str,
-    event: &str,
-    payload: &Value,
-) -> HookDecision {
-    let actions = collect_payload_tool_actions(payload);
-    let subject = actions.first().map(subject_for_action).unwrap_or_default();
-    let mut decision = allow(platform, event, subject);
-    decision.message = "Allowed because `ASP_NO_AGENT` is set. Hook policy evaluation was bypassed before configuration, Runtime, locks, and telemetry; ASP itself remains available.".to_owned();
-    decision.fields.insert(
-        "aspNoAgentPassthrough".to_owned(),
-        serde_json::Value::Bool(true),
-    );
-    decision.fields.insert(
-        "policyPriority".to_owned(),
-        serde_json::Value::String("recovery-override".to_owned()),
-    );
-    decision
-}
-
 fn normalized_agent_name(value: &str) -> &str {
     value.trim().trim_start_matches('@')
 }
@@ -172,11 +132,52 @@ pub(super) fn resolve_dispatch_decision(
     decision
 }
 
-/// Classify one hook payload using a named `HookClassificationRequest`.
-pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> HookDecision {
-    if asp_no_agent_passthrough_requested(request.payload) {
-        return asp_no_agent_passthrough_decision(request.platform, request.event, request.payload);
+fn enforce_registered_subagent_capability(
+    mut decision: HookDecision,
+    payload: &serde_json::Value,
+) -> HookDecision {
+    let is_subagent = payload
+        .get("is_subagent")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    if !is_subagent || decision.decision != DecisionKind::Allow {
+        return decision;
     }
+
+    let dispatch_satisfied = decision
+        .fields
+        .get("dispatchSatisfied")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let registration_verified = payload
+        .get("registration_verified")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    if dispatch_satisfied && registration_verified {
+        return decision;
+    }
+
+    decision.decision = DecisionKind::Deny;
+    decision.reason_kind = ReasonKind::SubagentReceiptRequired;
+    decision.message =
+        "registered subagent capability receipt is required before tool execution".to_owned();
+    decision.fields.insert(
+        "requiredAction".to_owned(),
+        serde_json::Value::String("dispatch-registered-agent-capability".to_owned()),
+    );
+    decision.fields.insert(
+        "capabilityAdmission".to_owned(),
+        serde_json::Value::String("registered-route-required".to_owned()),
+    );
+    decision
+}
+
+/// Classify one hook payload using a named `HookClassificationRequest`.
+#[cfg(test)]
+#[path = "../../tests/unit/classifier_capability.rs"]
+mod capability_tests;
+
+pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> HookDecision {
     let actions = collect_payload_tool_actions(request.payload);
     let decision = if let Some(decision) =
         super::classify_user_prompt(request.platform, request.event, request.payload)
@@ -190,7 +191,10 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
         let subject = actions.first().map(subject_for_action).unwrap_or_default();
         allow(request.platform, request.event, subject)
     };
-    let decision = resolve_dispatch_decision(decision, request.payload);
+    let decision = enforce_registered_subagent_capability(
+        resolve_dispatch_decision(decision, request.payload),
+        request.payload,
+    );
     let decision = super::with_selector_only_subagent_message(decision);
     let decision = with_prompt_scope_fields(decision, request.payload);
     let decision =

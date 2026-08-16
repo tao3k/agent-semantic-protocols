@@ -48,7 +48,7 @@ fn diagnostic_commands_do_not_require_activation() {
         vec!["providers", "list"],
         vec!["cache", "status"],
     ] {
-        let output = asp_command(&root)
+        let output = super::runtime_support::runtime_client_command(&root)
             .args(&args)
             .output()
             .expect("run asp diagnostic command");
@@ -124,43 +124,151 @@ fn non_agent_command_surface_is_rejected_without_provider_spawn() {
 }
 #[test]
 fn provider_language_facades_route_language_search_through_runtime_provider() {
-    let root = temp_project_root("provider-dash-language-query");
+    let root = crate::workspace_tree_sitter_query_diagnostics::create_linked_fixture_workspace(
+        "provider-dash-language-query",
+    );
+    std::fs::write(
+        root.join(".gitignore"),
+        "home/\n.bin/\n*.provider-invocation\n",
+    )
+    .expect("write provider search fixture ignore rules");
+    std::fs::write(
+        root.join("fixture.rs"),
+        "pub fn provider_search_fixture() {}\n",
+    )
+    .expect("write provider search fixture source");
     let bin_dir = root.join(".bin");
-    super::support::write_echo_provider(&bin_dir, "rs-harness", "rs");
-    super::support::write_echo_provider(&bin_dir, "asp-julia-harness", "jl");
-    write_activation(
-        &root,
-        &[provider("rust", Vec::new()), provider("julia", Vec::new())],
+    let languages = [
+        ("gerbil-scheme", "gerbil-scheme-harness"),
+        ("julia", "asp-julia-harness"),
+        ("python", "py-harness"),
+        ("rust", "rs-harness"),
+        ("typescript", "ts-harness"),
+    ];
+    let providers = languages
+        .iter()
+        .map(|&(language_id, binary)| {
+            super::support::write_recording_provider(
+                &root,
+                &bin_dir,
+                language_id,
+                binary,
+                &format!("{language_id}-runtime"),
+                &root.join(format!("{language_id}.provider-invocation")),
+            );
+            provider(language_id, Vec::new())
+        })
+        .collect::<Vec<_>>();
+    write_activation(&root, &providers);
+    let staged = std::process::Command::new("git")
+        .current_dir(&root)
+        .args(["add", ".pre-commit-config.yaml", ".gitignore", "fixture.rs"])
+        .status()
+        .expect("stage provider search linked fixture");
+    assert!(staged.success(), "stage provider search linked fixture");
+    crate::workspace_tree_sitter_query_diagnostics::commit_linked_fixture_workspace(&root);
+    super::runtime_support::publish_runtime_server_artifact(&root);
+    let runtime_start = std::time::Instant::now();
+    let runtime_server = super::support::start_runtime_server(&root);
+    let runtime_start_elapsed = runtime_start.elapsed();
+    eprintln!(
+        "[runtime-language-provider-perf] phase=server-start elapsedMs={:.3}",
+        runtime_start_elapsed.as_secs_f64() * 1_000.0
     );
-    let _runtime_server = super::support::start_runtime_server(&root);
-    let output = asp_command(&root)
-        .env("PATH", prepend_path(&bin_dir))
-        .args([
-            "rust",
-            "search",
-            "lexical",
-            "--query",
-            "owner",
-            "--query",
-            "tests",
-            "--workspace",
-            ".",
-            "--view",
-            "seeds",
-        ])
-        .output()
-        .expect("run asp rust search");
-    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        output.status.success(),
-        "stderr={stderr}\nstdout={}",
-        String::from_utf8_lossy(&output.stdout)
+        runtime_start_elapsed < std::time::Duration::from_secs(5),
+        "Runtime Server startup exceeded 5s: elapsed={runtime_start_elapsed:?}"
     );
-    let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(
-        stdout.contains("rs args=[search][lexical][--query][owner][--query][tests][--view][seeds]"),
-        "{stdout}"
-    );
+    super::runtime_support::admit_runtime_resident_generation(&root);
+    for (language_id, _) in languages {
+        let provider_marker_path = root.join(format!("{language_id}.provider-invocation"));
+        let provider_marker_before_query = std::fs::read(&provider_marker_path).ok();
+        let resident = super::runtime_support::run_resident_search(
+            &root,
+            language_id,
+            &[
+                "search", "lexical", "--query", "owner", "--query", "tests", "--view", "seeds",
+            ],
+        );
+        eprintln!(
+            "[runtime-language-provider-perf] phase=resident-query languageId={language_id} elapsedMicros={} residentReadMicros={} serviceMicros={} readState={:?} candidates={}",
+            resident.elapsed_micros,
+            resident.resident_read_elapsed_micros,
+            resident.service_elapsed_micros,
+            resident.read_state,
+            resident.candidate_count
+        );
+        assert_eq!(resident.status_code, 0, "languageId={language_id}");
+        assert!(
+            resident.elapsed_micros < 1_000,
+            "Runtime resident provider query exceeded 1ms: languageId={language_id} elapsedMicros={}",
+            resident.elapsed_micros
+        );
+        assert!(
+            matches!(
+                resident.read_state,
+                agent_semantic_client_db::ClientDbSourceIndexLookupState::Hit
+                    | agent_semantic_client_db::ClientDbSourceIndexLookupState::Miss
+                    | agent_semantic_client_db::ClientDbSourceIndexLookupState::EmptyIndex
+            ),
+            "languageId={language_id} readState={:?}",
+            resident.read_state
+        );
+        let output = asp_command(&root)
+            .args([
+                language_id,
+                "search",
+                "lexical",
+                "--query",
+                "owner",
+                "--query",
+                "tests",
+                "--workspace",
+                ".",
+                "--view",
+                "seeds",
+            ])
+            .output()
+            .expect("run ASP language search through Runtime Server");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            output.status.success(),
+            "languageId={language_id} stderr={stderr}\nstdout={}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        let stdout = String::from_utf8(output.stdout).expect("stdout");
+        assert_eq!(
+            std::fs::read(&provider_marker_path).ok(),
+            provider_marker_before_query,
+            "languageId={language_id} query invoked a provider process; stdout={stdout} stderr={stderr}"
+        );
+        let repeated = super::runtime_support::run_resident_search(
+            &root,
+            language_id,
+            &[
+                "search", "lexical", "--query", "owner", "--query", "tests", "--view", "seeds",
+            ],
+        );
+        eprintln!(
+            "[runtime-language-provider-perf] phase=resident-repeat languageId={language_id} elapsedMicros={} residentReadMicros={} serviceMicros={} readState={:?} candidates={}",
+            repeated.elapsed_micros,
+            repeated.resident_read_elapsed_micros,
+            repeated.service_elapsed_micros,
+            repeated.read_state,
+            repeated.candidate_count
+        );
+        assert!(
+            repeated.elapsed_micros < 1_000,
+            "Repeated Runtime resident provider query exceeded 1ms: languageId={language_id} elapsedMicros={}",
+            repeated.elapsed_micros
+        );
+        assert_eq!(repeated.stdout, resident.stdout, "languageId={language_id}");
+        assert_eq!(
+            std::fs::read(&provider_marker_path).ok(),
+            provider_marker_before_query,
+            "languageId={language_id} repeated query invoked a provider process"
+        );
+    }
     let output = asp_command(&root)
         .args(["check", "--language", "rust", "."])
         .output()
@@ -175,31 +283,12 @@ fn provider_language_facades_route_language_search_through_runtime_provider() {
         stderr.contains("use asp <rust|typescript|python|julia> check"),
         "{stderr}"
     );
-    let output = asp_command(&root)
-        .args([
-            "julia",
-            "search",
-            "lexical",
-            "--query",
-            "owner",
-            "--query",
-            "tests",
-            "--workspace",
-            ".",
-            "--view",
-            "seeds",
-        ])
-        .output()
-        .expect("run asp julia search");
-    assert!(
-        output.status.success(),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(
-        stdout.contains("jl args=[search][lexical][--query][owner][--query][tests][--view][seeds]"),
-        "{stdout}"
-    );
-    let _ = std::fs::remove_dir_all(root);
+    drop(runtime_server);
+    let removed = std::process::Command::new("git")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .args(["worktree", "remove", "--force"])
+        .arg(&root)
+        .status()
+        .expect("remove provider search linked fixture");
+    assert!(removed.success(), "remove provider search linked fixture");
 }

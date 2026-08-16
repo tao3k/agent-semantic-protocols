@@ -11,7 +11,7 @@ const MATRIX_SCHEMA: &str =
     include_str!("../../../../schemas/semantic-hook-blackbox-test.v1.schema.json");
 
 #[test]
-fn process_environment_no_agent_bypasses_before_state_or_config_access() {
+fn process_environment_no_agent_cannot_bypass_local_policy_authority() {
     let root = fixture_root();
     let state_home = root.join("state-home-that-does-not-exist");
     let mut child = Command::new(env!("CARGO_BIN_EXE_asp"))
@@ -40,30 +40,62 @@ fn process_environment_no_agent_bypasses_before_state_or_config_access() {
     let output = child.wait_with_output().expect("wait for Hook decision");
     assert!(
         output.status.success(),
-        "Hook recovery override failed: stdout={} stderr={}",
+        "Hook fail-closed decision failed: stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
     let decision: Value = serde_json::from_slice(&output.stdout).expect("decode Hook decision");
-    assert_eq!(decision, json!({}), "{decision}");
-    let stderr = String::from_utf8(output.stderr).expect("Hook trace UTF-8");
-    let elapsed = stderr
-        .lines()
-        .find_map(|line| {
-            line.strip_prefix("[asp-hook] route=bootstrap-asp-no-agent-passthrough elapsedMicros=")
-        })
-        .expect("bootstrap passthrough trace")
-        .parse::<u64>()
-        .expect("bootstrap passthrough elapsed micros");
-    assert!(
-        elapsed < 1_000,
-        "ASP_NO_AGENT bootstrap path exceeded 1ms: elapsedMicros={elapsed} stderr={stderr}"
+    assert_eq!(
+        decision["hookSpecificOutput"]["permissionDecision"], "deny",
+        "{decision}"
+    );
+    assert_eq!(
+        decision["systemMessage"],
+        "ASP local Hook policy authority is unavailable; the enforcing event is denied until canonical recovery completes.",
+        "{decision}"
     );
     assert!(
         !state_home.exists(),
         "highest-priority bypass must not materialize Hook or Runtime state"
     );
     std::fs::remove_dir_all(root).expect("remove Hook recovery fixture");
+}
+
+#[test]
+fn choice_plane_deny_is_published_before_hook_returns() {
+    let root = fixture_root();
+    let state_home = root.join(".agent-semantic-protocols");
+    write_fixture(&root, &state_home);
+    let activation = crate::state_home_fixture::canonical_activation_path(&root, &state_home);
+    let decision = run_hook(
+        &root,
+        &state_home,
+        &activation,
+        json!({
+            "session_id": "root-session-fixture",
+            "tool_name": "exec_command",
+            "tool_input": {
+                "cmd": "asp rust search pipe 'runtime long' --workspace . --view seeds"
+            }
+        }),
+    );
+    assert_eq!(decision["decision"], "deny", "{decision}");
+    assert_eq!(
+        decision["fields"]["hookEventProjectionStatus"], "project-ledger",
+        "ChoicePlane deny was not durably projected: {decision}"
+    );
+    let projection_path = decision["fields"]["hookEventProjectionPath"]
+        .as_str()
+        .expect("project-ledger projection path");
+    let projected = std::fs::read_to_string(projection_path)
+        .expect("read ChoicePlane route immediately after Hook return");
+    assert!(
+        projected.contains("registered-asp-reasoning-search")
+            && projected.contains("asp_explorer")
+            && projected.contains("asp session --agents choice-plane"),
+        "project ledger omitted the current ChoicePlane route: {projected}"
+    );
+    std::fs::remove_dir_all(root).expect("remove ChoicePlane route fixture");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

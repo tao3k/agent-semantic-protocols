@@ -25,6 +25,7 @@ fs2 = { workspace = true }
 fs4 = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 tokio-stream.workspace = true
+tracing = "0.1.44"
 parking_lot.workspace = true
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true

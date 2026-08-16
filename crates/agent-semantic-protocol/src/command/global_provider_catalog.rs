@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +14,7 @@ pub(super) struct GlobalProviderCatalogProvider {
     pub(super) provider_id: String,
     pub(super) manifest_id: String,
     pub(super) manifest_digest: String,
+    pub(super) runtime_contract: agent_semantic_hook::ProviderRuntimeContractDescriptor,
     pub(super) materialized_path: String,
     pub(super) artifact_digest: String,
     pub(super) artifact_metadata_digest: String,
@@ -37,6 +38,7 @@ pub(super) struct GlobalProviderCatalog {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct GlobalProviderCatalogPublication {
     pub(super) catalog_generation: String,
+    pub(super) catalog_recovery_reason: Option<String>,
     pub(super) changed_leaf_count: usize,
     pub(super) binary_byte_reads: usize,
     pub(super) catalog_write: bool,
@@ -174,12 +176,9 @@ fn validate_catalog(catalog: &GlobalProviderCatalog) -> Result<(), String> {
     Ok(())
 }
 
-fn active_catalog() -> &'static RwLock<Option<Arc<GlobalProviderCatalog>>> {
-    static ACTIVE: OnceLock<RwLock<Option<Arc<GlobalProviderCatalog>>>> = OnceLock::new();
-    ACTIVE.get_or_init(Default::default)
-}
-
-fn load_catalog_from_disk(state_home: &Path) -> Result<Arc<GlobalProviderCatalog>, String> {
+fn load_catalog_document_from_disk(
+    state_home: &Path,
+) -> Result<Arc<GlobalProviderCatalog>, String> {
     let path = catalog_path(state_home);
     let bytes = std::fs::read(&path).map_err(|error| {
         format!(
@@ -197,24 +196,194 @@ fn load_catalog_from_disk(state_home: &Path) -> Result<Arc<GlobalProviderCatalog
     Ok(Arc::new(catalog))
 }
 
-fn runtime_catalog(state_home: &Path) -> Result<Arc<GlobalProviderCatalog>, String> {
-    if let Some(catalog) = active_catalog()
-        .read()
-        .map_err(|_| "Global provider catalog read guard is poisoned".to_owned())?
-        .as_ref()
-        .cloned()
-    {
-        return Ok(catalog);
-    }
-    let catalog = load_catalog_from_disk(state_home)?;
-    let mut active = active_catalog()
-        .write()
-        .map_err(|_| "Global provider catalog write guard is poisoned".to_owned())?;
-    if let Some(current) = active.as_ref() {
-        return Ok(Arc::clone(current));
-    }
-    *active = Some(Arc::clone(&catalog));
+fn load_catalog_from_disk(state_home: &Path) -> Result<Arc<GlobalProviderCatalog>, String> {
+    let catalog = load_catalog_document_from_disk(state_home)?;
+    validate_catalog_artifacts(&catalog)?;
     Ok(catalog)
+}
+
+#[derive(Clone)]
+pub(crate) struct RuntimeProviderCatalog {
+    catalog: Arc<GlobalProviderCatalog>,
+}
+
+pub(crate) struct RuntimeProviderLaunch {
+    pub(crate) key: String,
+    pub(crate) spec: RuntimeProviderLaunchSpec,
+    pub(crate) expected_receipt: agent_semantic_provider_transport::ProviderRuntimeContractReceipt,
+}
+
+pub(crate) enum RuntimeProviderLaunchSpec {
+    Process(agent_semantic_provider_transport::ProviderRuntimeProcessSpec),
+    HttpServer(agent_semantic_provider_transport::ProviderHttpServerSpec),
+}
+
+impl RuntimeProviderCatalog {
+    pub(crate) fn runtime_launch(
+        &self,
+        project_root: &Path,
+        language_id: &str,
+    ) -> Result<RuntimeProviderLaunch, String> {
+        let provider = self
+            .catalog
+            .providers
+            .iter()
+            .find(|provider| provider.language_id == language_id)
+            .ok_or_else(|| {
+                format!("Runtime search provider is not registered: languageId={language_id}")
+            })?;
+        let transport = match provider.runtime_contract.transport() {
+            agent_semantic_hook::ProviderRuntimeContractTransport::RuntimeIpcV1 => {
+                agent_semantic_provider_transport::ProviderRuntimeContractTransport::RuntimeIpcV1
+            }
+            agent_semantic_hook::ProviderRuntimeContractTransport::HttpJsonV1 => {
+                agent_semantic_provider_transport::ProviderRuntimeContractTransport::HttpJsonV1
+            }
+            agent_semantic_hook::ProviderRuntimeContractTransport::InProcessV1 => {
+                return Err(format!(
+                    "provider-runtime-not-process-owned: languageId={language_id} providerId={}",
+                    provider.provider_id
+                ));
+            }
+        };
+        let (program, prefix_args) = provider.argv_prefix.split_first().ok_or_else(|| {
+            format!(
+                "runtime provider command is empty: languageId={language_id} providerId={}",
+                provider.provider_id
+            )
+        })?;
+        let operations = provider
+            .runtime_contract
+            .operations()
+            .iter()
+            .map(
+                |operation| agent_semantic_provider_transport::ProviderRuntimeContractOperation {
+                    operation: operation.operation().to_owned(),
+                    request_schema_id: operation.request_schema_id().to_owned(),
+                    response_schema_id: operation.response_schema_id().to_owned(),
+                },
+            )
+            .collect();
+        let expected_receipt =
+            agent_semantic_provider_transport::ProviderRuntimeContractReceipt::new(
+                provider.provider_id.clone(),
+                provider.language_id.clone(),
+                provider.artifact_digest.clone(),
+                provider.manifest_digest.clone(),
+                transport.clone(),
+                operations,
+            )?;
+        let server_descriptor = provider.runtime_contract.server();
+        let launch_args = match transport {
+            agent_semantic_provider_transport::ProviderRuntimeContractTransport::HttpJsonV1 => {
+                server_descriptor
+                    .ok_or_else(|| "provider HTTP server descriptor is absent".to_owned())?
+                    .command()
+                    .to_vec()
+            }
+            _ => vec!["runtime".to_owned(), "serve".to_owned()],
+        };
+        let mut env = std::collections::BTreeMap::new();
+        env.insert(
+            "ASP_PROVIDER_ARTIFACT_DIGEST".to_owned(),
+            provider.artifact_digest.clone(),
+        );
+        env.insert(
+            "ASP_PROVIDER_MANIFEST_DIGEST".to_owned(),
+            provider.manifest_digest.clone(),
+        );
+        env.insert(
+            "ASP_PROVIDER_RUNTIME_CONTRACT_DIGEST".to_owned(),
+            expected_receipt.contract_digest.clone(),
+        );
+        let spec = match transport {
+            agent_semantic_provider_transport::ProviderRuntimeContractTransport::HttpJsonV1 => {
+                let mut spec = agent_semantic_provider_transport::ProviderHttpServerSpec::new(
+                    program.clone(),
+                    project_root.to_path_buf(),
+                );
+                let server = server_descriptor
+                    .ok_or_else(|| "provider HTTP server descriptor is absent".to_owned())?;
+                spec.args = prefix_args.iter().cloned().chain(launch_args).collect();
+                spec.env = env;
+                spec.health_path = server.health_path().to_owned();
+                spec.request_path = server.request_path().to_owned();
+                spec.shutdown_path = server.shutdown_path().to_owned();
+                RuntimeProviderLaunchSpec::HttpServer(spec)
+            }
+            _ => {
+                let mut spec = agent_semantic_provider_transport::ProviderRuntimeProcessSpec::new(
+                    program.clone(),
+                    project_root.to_path_buf(),
+                );
+                spec.args = prefix_args.iter().cloned().chain(launch_args).collect();
+                spec.env = env;
+                RuntimeProviderLaunchSpec::Process(spec)
+            }
+        };
+        Ok(RuntimeProviderLaunch {
+            key: format!(
+                "{}:{}:{}",
+                provider.language_id,
+                provider.provider_id,
+                project_root.to_string_lossy()
+            ),
+            spec,
+            expected_receipt,
+        })
+    }
+}
+
+pub(crate) async fn load_runtime_provider_catalog(
+    state_home: &Path,
+) -> Result<RuntimeProviderCatalog, String> {
+    let path = catalog_path(state_home);
+    let bytes = tokio::fs::read(&path).await.map_err(|error| {
+        format!(
+            "failed to read Global provider catalog {}: {error}",
+            path.display()
+        )
+    })?;
+    let catalog: GlobalProviderCatalog = serde_json::from_slice(&bytes).map_err(|error| {
+        format!(
+            "failed to parse Global provider catalog {}: {error}",
+            path.display()
+        )
+    })?;
+    validate_catalog(&catalog)?;
+    let catalog = Arc::new(catalog);
+    let artifact_catalog = Arc::clone(&catalog);
+    tokio::task::spawn_blocking(move || validate_catalog_artifacts(&artifact_catalog))
+        .await
+        .map_err(|error| {
+            format!("Global provider catalog artifact validation task failed: {error}")
+        })??;
+    Ok(RuntimeProviderCatalog { catalog })
+}
+
+fn validate_catalog_artifacts(catalog: &GlobalProviderCatalog) -> Result<(), String> {
+    for provider in &catalog.providers {
+        let path = Path::new(&provider.materialized_path);
+        let artifact_digest = blake3_integrity_ref(
+            &agent_semantic_content_identity::file_content_digest_v1(path)?,
+        );
+        if artifact_digest != provider.artifact_digest {
+            return Err(format!(
+                "Global provider catalog artifact digest drift: languageId={} providerId={}",
+                provider.language_id, provider.provider_id
+            ));
+        }
+        let metadata_digest = blake3_integrity_ref(
+            &agent_semantic_content_identity::file_artifact_metadata_digest_v1(path)?,
+        );
+        if metadata_digest != provider.artifact_metadata_digest {
+            return Err(format!(
+                "Global provider catalog artifact metadata drift: languageId={} providerId={}",
+                provider.language_id, provider.provider_id
+            ));
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn read_global_provider_catalog_readiness(
@@ -260,9 +429,9 @@ pub(crate) fn read_runtime_provider_catalog_readiness(
 
 pub(crate) fn runtime_provider_registry_snapshot(
     project_root: &Path,
+    runtime_catalog: &RuntimeProviderCatalog,
 ) -> Result<(agent_semantic_client_core::ProviderRegistrySnapshot, String), String> {
-    let state = agent_semantic_runtime::state_core::ResolvedState::resolve(project_root)?;
-    let catalog = runtime_catalog(&state.state_home)?;
+    let catalog = &runtime_catalog.catalog;
     let mut snapshot = agent_semantic_client_core::ProviderRegistrySnapshot::load(project_root)?;
     for provider in &mut snapshot.providers {
         let catalog_provider = catalog
@@ -325,18 +494,25 @@ pub(super) fn publish_global_provider_catalog(
         })
         .collect::<Vec<_>>();
     let path = catalog_path(state_home);
-    let active_generation = active_catalog()
-        .read()
-        .map_err(|_| "Global provider catalog read guard is poisoned".to_owned())?
-        .as_ref()
-        .filter(|_| path.is_file())
-        .filter(|active| {
-            active_catalog_matches_receipts(active, &manifests, receipts, catalog_identities)
-        })
-        .map(|active| active.catalog_generation.clone());
+    let (active_catalog, mut catalog_recovery_reason) = if path.is_file() {
+        match load_catalog_document_from_disk(state_home) {
+            Ok(active) => (Some(active), None),
+            Err(error) => (None, Some(format!("malformed-active-catalog: {error}"))),
+        }
+    } else {
+        (None, Some("missing-active-catalog".to_owned()))
+    };
+    let active_generation = active_catalog.as_ref().and_then(|active| {
+        active_catalog_matches_receipts(active, &manifests, receipts, catalog_identities)
+            .then(|| active.catalog_generation.clone())
+    });
+    if active_catalog.is_some() && active_generation.is_none() {
+        catalog_recovery_reason = Some("stale-active-catalog".to_owned());
+    }
     if let Some(catalog_generation) = active_generation {
         return Ok(GlobalProviderCatalogPublication {
             catalog_generation,
+            catalog_recovery_reason: None,
             changed_leaf_count: 0,
             binary_byte_reads: 0,
             catalog_write: false,
@@ -426,9 +602,10 @@ pub(super) fn publish_global_provider_catalog(
             Ok(GlobalProviderCatalogProvider {
                 language_id: manifest.language_id().to_string(),
                 provider_id: manifest.provider_id().to_string(),
-                manifest_id: manifest.manifest_id().to_owned(),
-                manifest_digest,
-                materialized_path: provider_path.to_string_lossy().to_string(),
+    manifest_id: manifest.manifest_id().to_owned(),
+            manifest_digest,
+    runtime_contract: manifest.runtime_contract().clone(),
+    materialized_path: provider_path.to_string_lossy().to_string(),
                 artifact_digest,
                 artifact_metadata_digest: blake3_integrity_ref(
                     &receipt.installed_entrypoint_metadata_digest,
@@ -453,14 +630,13 @@ pub(super) fn publish_global_provider_catalog(
         catalog_generation: generation_digest(&providers)?,
         providers,
     };
-    if active_catalog()
-        .read()
-        .map_err(|_| "Global provider catalog read guard is poisoned".to_owned())?
+    if active_catalog
         .as_ref()
         .is_some_and(|active| active.catalog_generation == catalog.catalog_generation)
     {
         return Ok(GlobalProviderCatalogPublication {
             catalog_generation: catalog.catalog_generation,
+            catalog_recovery_reason: None,
             changed_leaf_count: 0,
             binary_byte_reads: 0,
             catalog_write: false,
@@ -520,12 +696,9 @@ pub(super) fn publish_global_provider_catalog(
         .as_ref()
         .is_some_and(|previous| previous.catalog_generation == catalog.catalog_generation)
     {
-        *active_catalog()
-            .write()
-            .map_err(|_| "Global provider catalog write guard is poisoned".to_owned())? =
-            Some(Arc::new(catalog.clone()));
         return Ok(GlobalProviderCatalogPublication {
             catalog_generation: catalog.catalog_generation,
+            catalog_recovery_reason: None,
             changed_leaf_count: 0,
             binary_byte_reads: 0,
             catalog_write: false,
@@ -570,12 +743,9 @@ pub(super) fn publish_global_provider_catalog(
             path.display()
         )
     })?;
-    *active_catalog()
-        .write()
-        .map_err(|_| "Global provider catalog write guard is poisoned".to_owned())? =
-        Some(Arc::new(catalog.clone()));
     Ok(GlobalProviderCatalogPublication {
         catalog_generation: catalog.catalog_generation,
+        catalog_recovery_reason,
         changed_leaf_count,
         binary_byte_reads: 0,
         catalog_write: true,

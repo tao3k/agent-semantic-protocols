@@ -355,9 +355,11 @@ pub fn provider_source_snapshot_envelope_path_at_artifact_root_with_registry(
 
 /// Refresh and publish one provider workspace envelope, then load it strictly.
 pub async fn ensure_provider_source_index_snapshot_at_artifact_root_with_registry(
+    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
     request: ProviderSourceEnvelopeLookupRequestV1<'_>,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     super::generation::publish_target_provider_source_envelope_v1(
+        supervisor,
         super::generation::TargetProviderSourceEnvelopePublicationRequestV1 {
             collection_scope: super::collect::SourceIndexCollectionScope::TargetProvider {
                 language_id: request.language_id.clone(),

@@ -297,15 +297,7 @@ pub(super) async fn publish_child_session_registration(
     let model = route.model.as_deref().ok_or_else(|| {
         "child-self-registration-model-required: selected route has no model".to_owned()
     })?;
-    if metadata
-        .model()
-        .is_some_and(|host_model| host_model != model)
-    {
-        return Err(format!(
-            "child-self-registration-model-drift: configured={model} observed={}",
-            metadata.model().unwrap_or_default(),
-        ));
-    }
+    let observed_model = metadata.model().map(str::to_owned);
     let profile = tokio::fs::read(&route.profile_path)
         .await
         .map_err(|error| {
@@ -331,6 +323,7 @@ pub(super) async fn publish_child_session_registration(
         route.route_key.as_str(),
     )? && receipt.child_session_id == child_session_id
         && receipt.parent_session_id == parent_session_id
+        && receipt.observed_model_id == observed_model
     {
         return serde_json::to_string(&receipt)
             .map_err(|error| format!("failed to encode child registration receipt: {error}"));
@@ -339,11 +332,9 @@ pub(super) async fn publish_child_session_registration(
         .await
         .map_err(|error| {
             if error.kind() == std::io::ErrorKind::PermissionDenied {
-                let executable = std::env::current_exe()
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_else(|_| "asp".to_owned());
                 format!(
-                    "child-self-registration-host-native-required: execute the preserved command `{executable} session register-current-child` with sandbox_permissions=require_escalated from this same child session"
+                    "child-registration-authority-permission-denied: Host lifecycle publication cannot create {}",
+                    authority_dir.display()
                 )
             } else {
                 format!("failed to create child registration authority: {error}")
@@ -415,7 +406,6 @@ pub(super) async fn publish_child_session_registration(
             .unwrap_or(0)
             .checked_add(1)
             .ok_or_else(|| "child-self-registration-generation-exhausted".to_owned())?;
-        let observed_model = metadata.model().map(str::to_owned);
         let receipt = ChildSessionRegistrationReceipt {
             schema_id: CHILD_REGISTRATION_SCHEMA_ID.to_owned(),
             schema_version: 1,

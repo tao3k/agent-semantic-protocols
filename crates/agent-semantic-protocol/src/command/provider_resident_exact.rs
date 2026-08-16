@@ -63,7 +63,7 @@ async fn resident_exact_projection(
     crate::server::runtime_server::runtime_server_workspace_exact_projection_async(
         project_root,
         language_id,
-        "source",
+        exact.projection.as_str(),
         &exact.structural_selector,
     )
     .await

@@ -33,6 +33,7 @@ async fn delayed_builder_hits_short_deadline_with_typed_reason() {
         std::path::PathBuf::from("/workspace"),
         candidate(),
         WorkspaceGenerationBuildMode::RestoreOrBuild,
+        std::sync::Arc::new(std::collections::BTreeSet::new()),
         GenerationCancellation::new(),
         Duration::from_millis(5),
     )
@@ -69,6 +70,7 @@ async fn cancellation_remains_distinct_from_deadline() {
         std::path::PathBuf::from("/workspace"),
         candidate(),
         WorkspaceGenerationBuildMode::RestoreOrBuild,
+        std::sync::Arc::new(std::collections::BTreeSet::new()),
         cancellation.clone(),
         Duration::from_secs(1),
     ));

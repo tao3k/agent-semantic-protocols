@@ -33,14 +33,9 @@ mod hook_runtime_workspace_mutation;
 #[path = "../../tests/unit/command/hook_workspace_candidate.rs"]
 mod hook_workspace_candidate_tests;
 
-#[cfg(test)]
-#[path = "../../tests/unit/command_child_self_registration.rs"]
-mod command_child_self_registration_tests;
-
 use super::{codex_enforcement_report, payload_indicates_subagent_context};
 use agent_semantic_hook::{
-    HookClassificationRequest, HookDecision, asp_no_agent_passthrough_decision,
-    asp_no_agent_passthrough_requested, classify_hook_with_config, default_client_config_path,
+    HookClassificationRequest, HookDecision, classify_hook_with_config, default_client_config_path,
     parse_payload,
 };
 use agent_semantic_runtime::project_state_paths;
@@ -264,6 +259,64 @@ fn insert_missing_or_blank(
 #[path = "../../tests/unit/hook_runtime_subagent_context.rs"]
 mod hook_runtime_subagent_context_tests;
 
+fn apply_verified_child_registration_context(
+    payload: &mut serde_json::Value,
+    receipt_json: &str,
+) -> Result<(), String> {
+    let receipt: serde_json::Value = serde_json::from_str(receipt_json)
+        .map_err(|error| format!("child-session-registration-receipt-invalid: {error}"))?;
+    let generation = receipt
+        .get("generation")
+        .and_then(serde_json::Value::as_u64)
+        .filter(|generation| *generation > 0)
+        .ok_or_else(|| "child-session-registration-receipt-generation-invalid".to_owned())?;
+    let lifecycle_is_live = receipt
+        .get("lifecycleState")
+        .and_then(serde_json::Value::as_str)
+        == Some("live");
+    let routable = receipt
+        .get("routable")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let authority = receipt
+        .get("registrationAuthority")
+        .and_then(serde_json::Value::as_str)
+        .filter(|authority| !authority.trim().is_empty())
+        .ok_or_else(|| "child-session-registration-receipt-authority-invalid".to_owned())?;
+    let host_receipt_digest = receipt
+        .get("hostCallReceiptDigest")
+        .and_then(serde_json::Value::as_str)
+        .filter(|digest| digest.starts_with("blake3-256:"))
+        .ok_or_else(|| "child-session-registration-receipt-host-digest-invalid".to_owned())?;
+    if !lifecycle_is_live || !routable {
+        return Err("child-session-registration-receipt-not-routable".to_owned());
+    }
+    let object = payload
+        .as_object_mut()
+        .ok_or_else(|| "hook payload must be an object".to_owned())?;
+    object.insert(
+        "registration_verified".to_owned(),
+        serde_json::Value::Bool(true),
+    );
+    object.insert(
+        "registration_generation".to_owned(),
+        serde_json::Value::Number(generation.into()),
+    );
+    object.insert(
+        "registration_authority".to_owned(),
+        serde_json::Value::String(authority.to_owned()),
+    );
+    object.insert(
+        "registration_host_receipt_digest".to_owned(),
+        serde_json::Value::String(host_receipt_digest.to_owned()),
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/hook_runtime_registration_context.rs"]
+mod registration_context_tests;
+
 async fn run_hook_with_input(
     args: &[String],
     client: &str,
@@ -296,12 +349,6 @@ async fn run_hook_with_input(
         }
     };
     let parsed_micros = hook_started.elapsed().as_micros();
-    if std::env::var_os("ASP_NO_AGENT").is_some() || asp_no_agent_passthrough_requested(&payload) {
-        trace_stage("asp-no-agent-passthrough");
-        let mut decision = asp_no_agent_passthrough_decision(client, event, &payload);
-        annotate_hook_decision_budget(&mut decision, hook_started, hook_cpu_started_micros);
-        return emit_decision(emit, &decision);
-    }
     enrich_codex_subagent_context(client, &mut payload);
     let payload_root = payload
         .get("cwd")
@@ -311,98 +358,17 @@ async fn run_hook_with_input(
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| PathBuf::from("."));
     let project_root = hook_workspace_candidate(&payload, &payload_root);
-    crate::multi_agent_session::register_child_session_from_host_payload(
-        &project_root,
-        client,
-        &payload,
-    )
-    .await?;
-    if client == "codex"
-        && classification_event == "pre-tool"
-        && payload
-            .get("tool_input")
-            .and_then(|input| input.get("command").or_else(|| input.get("cmd")))
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|command| {
-                command
-                    .split_whitespace()
-                    .any(|token| token.trim_matches(['\'', '"']) == "register-current-child")
-            })
-        && is_child_self_registration_command(&payload)
-    {
-        let _child_session_id = string_field(&payload, &["session_id"])
-            .or_else(|| string_field(&payload, &["sessionId"]))
-            .ok_or_else(|| {
-                "child-self-registration-current-session-required: Hook payload has no current session identity"
-                    .to_owned()
-            })?;
-        let transcript_path = string_field(&payload, &["transcript_path", "transcriptPath"])
-            .ok_or_else(|| {
-                "child-self-registration-transcript-required: Codex PreToolUse payload has no current child transcript identity"
-                    .to_owned()
-            })?;
-        let metadata = agent_semantic_runtime::codex_rollout_session_metadata_at_path(
-            std::path::Path::new(transcript_path.as_str()),
-        )?
-        .ok_or_else(|| {
-            "child-self-registration-rollout-metadata-required: current child transcript has no Codex rollout metadata"
-                .to_owned()
-        })?;
-        let child_session_id = metadata.session_id().as_str().to_owned();
-        crate::multi_agent_session::register_child_session(
-            &project_root,
-            client,
-            child_session_id.to_string(),
-        )
-        .await?;
-    }
-    crate::multi_agent_session::register_child_session_from_host_payload(
-        &project_root,
-        client,
-        &payload,
-    )
-    .await?;
-    let workspace_micros = hook_started.elapsed().as_micros();
-    if client == "codex" && event == "pre-tool" && is_child_self_registration_command(&payload) {
-        let _payload_session_id = string_field(
-            &payload,
-            &["agent_id", "agentId", "session_id", "sessionId"],
-        )
-            .ok_or_else(|| {
-                "child-self-registration-session-id-required: Codex PreToolUse payload has no current child session identity"
-                    .to_owned()
-            })?;
-        crate::multi_agent_session::register_child_session(
-            &project_root,
-            client,
-            agent_semantic_runtime::codex_rollout_session_metadata_at_path(
-                std::path::Path::new(
-                    string_field(&payload, &["transcript_path", "transcriptPath"])
-                        .ok_or_else(|| {
-                            "child-self-registration-transcript-required: Codex PreToolUse payload has no current child transcript identity"
-                                .to_owned()
-                        })?
-                        .as_str(),
-                ),
-            )?
-            .ok_or_else(|| {
-                "child-self-registration-rollout-metadata-required: current child transcript has no Codex rollout metadata"
-                    .to_owned()
-            })?
-            .session_id()
-            .as_str()
-            .to_owned(),
-        )
-            .await?;
-    }
-    if client == "codex" && event == "pre-tool" && is_child_self_registration_command(&payload) {
+    let registration_receipt =
         crate::multi_agent_session::register_child_session_from_host_payload(
             &project_root,
             client,
             &payload,
         )
         .await?;
+    if let Some(receipt_json) = registration_receipt.as_deref() {
+        apply_verified_child_registration_context(&mut payload, receipt_json)?;
     }
+    let workspace_micros = hook_started.elapsed().as_micros();
     if let Some(mut decision) =
         agent_semantic_hook::runtime_binary_policy_decision_v1(client, event, &payload)
     {
@@ -533,37 +499,47 @@ async fn run_hook_with_input(
         );
     }
     annotate_hook_decision_budget(&mut decision, hook_started, hook_cpu_started_micros);
-    decision.fields.insert(
-        "hookEventProjectionStatus".to_owned(),
-        serde_json::Value::String("out-of-band".to_owned()),
-    );
+    let requires_choice_plane_route = decision
+        .fields
+        .get("agentWindowCommand")
+        .and_then(serde_json::Value::as_str)
+        == Some("asp session --agents choice-plane")
+        && decision
+            .fields
+            .get("choicePlaneOwner")
+            .and_then(serde_json::Value::as_str)
+            == Some("org-contract:agent-interactive");
+    if requires_choice_plane_route {
+        decision.fields.insert(
+            "hookEventProjectionStatus".to_owned(),
+            serde_json::Value::String("project-ledger".to_owned()),
+        );
+        match agent_semantic_hook::try_append_hook_event_state(&project_root, &decision) {
+            Ok(path) => {
+                decision.fields.insert(
+                    "hookEventProjectionPath".to_owned(),
+                    serde_json::Value::String(path.display().to_string()),
+                );
+            }
+            Err(error) => {
+                decision.fields.insert(
+                    "hookEventProjectionStatus".to_owned(),
+                    serde_json::Value::String("failed".to_owned()),
+                );
+                decision.fields.insert(
+                    "hookEventProjectionFailure".to_owned(),
+                    serde_json::Value::String(error),
+                );
+            }
+        }
+    } else {
+        decision.fields.insert(
+            "hookEventProjectionStatus".to_owned(),
+            serde_json::Value::String("out-of-band".to_owned()),
+        );
+    }
     trace_stage("complete");
     emit_decision(emit, &decision)
-}
-
-pub(crate) fn is_child_self_registration_command(payload: &serde_json::Value) -> bool {
-    let Some(command) = ["tool_input", "toolInput", "parameters", "input"]
-        .into_iter()
-        .filter_map(|key| payload.get(key))
-        .find_map(|input| {
-            ["cmd", "command"]
-                .into_iter()
-                .find_map(|key| input.get(key).and_then(serde_json::Value::as_str))
-        })
-    else {
-        return false;
-    };
-    if command.contains([';', '|', '&', '\n', '\r']) {
-        return false;
-    }
-    let tokens = command.split_whitespace().collect::<Vec<_>>();
-    if tokens.len() != 3 || tokens[1] != "session" || tokens[2] != "register-current-child" {
-        return false;
-    }
-    std::path::Path::new(tokens[0].trim_matches(['\'', '"']))
-        .file_name()
-        .and_then(std::ffi::OsStr::to_str)
-        == Some("asp")
 }
 
 fn annotate_payload_context(decision: &mut HookDecision, payload: &serde_json::Value) {

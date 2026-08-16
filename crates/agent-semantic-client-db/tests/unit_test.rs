@@ -1,5 +1,10 @@
 #![deny(dead_code)]
 
+#[path = "unit/projection_capability_fixture.rs"]
+mod fixture;
+
+#[path = "unit/active_generation_projection_capability.rs"]
+mod active_generation_projection_capability;
 #[path = "unit/agent_session_dispatch_ipc.rs"]
 mod agent_session_dispatch_ipc;
 #[path = "unit/agent_session_runtime_proxy.rs"]

@@ -59,17 +59,19 @@ impl<'a>
 /// Capture the current content-authoritative source snapshot from an activation
 /// that the command boundary already loaded.
 pub async fn current_source_index_snapshot_from_activation(
+    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
     project_root: &Path,
     activation_path: &Path,
     activation: &agent_semantic_hook::HookRuntime,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     let provider_registry = ProviderRegistrySnapshot::from_activation(activation_path, activation)?;
-    current_source_index_snapshot_with_registry(project_root, &provider_registry).await
+    current_source_index_snapshot_with_registry(supervisor, project_root, &provider_registry).await
 }
 
 /// Capture the complete source scope for one provider from an activation that
 /// the command boundary already loaded.
 pub async fn current_provider_source_index_snapshot_from_activation(
+    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
     project_root: &Path,
     activation_path: &Path,
     activation: &agent_semantic_hook::HookRuntime,
@@ -78,6 +80,7 @@ pub async fn current_provider_source_index_snapshot_from_activation(
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     let provider_registry = ProviderRegistrySnapshot::from_activation(activation_path, activation)?;
     crate::source_index::current_live_provider_source_index_snapshot_with_registry(
+        supervisor,
         project_root,
         language_id,
         provider_id,
@@ -88,6 +91,7 @@ pub async fn current_provider_source_index_snapshot_from_activation(
 
 /// Refresh and publish one provider workspace envelope from an activation.
 pub async fn ensure_provider_source_index_snapshot_from_activation(
+    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
     project_root: &Path,
     activation_path: &Path,
     activation: &agent_semantic_hook::HookRuntime,
@@ -97,6 +101,7 @@ pub async fn ensure_provider_source_index_snapshot_from_activation(
     let provider_registry = ProviderRegistrySnapshot::from_activation(activation_path, activation)?;
     let project_context = ProjectContext::resolve(project_root)?;
     ensure_provider_source_index_snapshot_at_artifact_root_with_registry(
+        supervisor,
         ProviderSourceEnvelopeLookupRequestV1 {
             project_root,
             artifact_root: project_context.state_layout().artifacts_dir(),

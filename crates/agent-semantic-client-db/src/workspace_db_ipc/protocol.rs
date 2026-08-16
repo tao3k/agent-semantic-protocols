@@ -21,16 +21,18 @@ mod session;
 mod types;
 pub use client::{
     cache_control_via_runtime_server, connect_runtime_server_workspace_session,
-    read_source_index_via_runtime_server,
+    read_runtime_merkle_owner_via_runtime_server, read_source_index_via_runtime_server,
 };
 pub use session::WorkspaceDbIpcSession;
 pub(super) use session::WorkspaceDbIpcSessionState;
+pub use types::{RUNTIME_MERKLE_OWNER_READ_REQUEST_SCHEMA_ID, RuntimeMerkleOwnerReadRequest};
 pub use types::{
     RuntimeCacheControlReceipt, RuntimeCacheControlRequest, RuntimeCacheGenerationState,
-    RuntimeCacheInvalidationScope, WORKSPACE_DB_OWNER_ENDPOINT_SCHEMA_ID,
-    WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID, WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID,
-    WORKSPACE_DB_OWNER_SCHEMA_VERSION, WorkspaceDbIpcOperation, WorkspaceDbIpcRequest,
-    WorkspaceDbIpcResponse, WorkspaceDbIpcResult, WorkspaceDbSourceIndexLookupRequest,
+    RuntimeCacheInvalidationScope, RuntimeCacheOwnerDeltaFallbackPolicy,
+    WORKSPACE_DB_OWNER_ENDPOINT_SCHEMA_ID, WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID,
+    WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID, WORKSPACE_DB_OWNER_SCHEMA_VERSION,
+    WorkspaceDbIpcOperation, WorkspaceDbIpcRequest, WorkspaceDbIpcResponse, WorkspaceDbIpcResult,
+    WorkspaceDbSourceIndexLookupRequest,
 };
 
 pub use crate::workspace_db_ipc_server::{

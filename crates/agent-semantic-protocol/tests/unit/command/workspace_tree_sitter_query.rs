@@ -89,7 +89,7 @@ fn query_captures_join_canonical_selector_signature_and_byte_spans() {
 }
 
 #[test]
-fn query_capture_without_complete_owner_item_fails_closed() {
+fn query_capture_without_complete_owner_item_is_not_a_semantic_match() {
     let language = agent_semantic_tree_sitter::registered_language_grammar("rust".into())
         .expect("Rust grammar");
     let query = agent_semantic_tree_sitter::compile_native_query_source(
@@ -99,9 +99,9 @@ fn query_capture_without_complete_owner_item_fails_closed() {
     .expect("compile query");
     let source = r#"pub const INSTALL: &str = "asp install plugin --codex";"#;
 
-    let error = join_capture_projections(&language, &query, source, "src/lib.rs", &[])
-        .expect_err("missing complete-owner projection must fail");
-    assert!(error.contains("no containing complete-owner item"));
+    let captures = join_capture_projections(&language, &query, source, "src/lib.rs", &[])
+        .expect("unowned parser captures are excluded");
+    assert!(captures.is_empty());
 }
 
 #[test]

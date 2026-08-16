@@ -16,6 +16,8 @@ use std::{
 use super::provider_activation::{load_activation_for_language, provider_activation_path};
 
 const DEFAULT_LOCK_PATH: &str = "benchmarks/large-library-runtime-corpora.v1.json";
+#[path = "live_corpus_qualification.rs"]
+mod qualification;
 const BUILDER_ID: &str = "asp-live-corpus";
 
 #[derive(Clone, Debug, Deserialize)]
@@ -80,20 +82,20 @@ struct PathRequest {
     json: bool,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct LiveCorpusQualificationV1 {
-    schema_id: &'static str,
-    schema_version: &'static str,
+    schema_id: String,
+    schema_version: String,
     artifact_digest: String,
-    materialization_authority: &'static str,
+    materialization_authority: String,
     source_path: String,
     head_revision: String,
     git_tree: String,
     source_merkle_root: String,
     language_extension_evidence: LiveCorpusLanguageExtensionEvidenceV1,
     clean: bool,
-    status: &'static str,
+    status: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -139,6 +141,7 @@ struct LiveCorpusSyncReceiptV1 {
 pub(crate) async fn run_live_corpus_command(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("materialize") => materialize(parse_materialize_request(&args[1..])?).await,
+        Some("qualify") => qualification::run(&args[1..]).await,
         Some("path") => print_path(parse_path_request(&args[1..])?),
         Some("sync") => sync_resource(parse_resource_request(&args[1..], sync_usage)?),
         Some("help" | "--help" | "-h") => {
@@ -313,17 +316,17 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
     let manifest =
         live_corpus_artifact_manifest(&corpus.git.remote, &repository, &identity, &paths)?;
     let qualification = LiveCorpusQualificationV1 {
-        schema_id: "agent.semantic-protocols.live-corpus-artifact-qualification",
-        schema_version: "1",
+        schema_id: "agent.semantic-protocols.live-corpus-artifact-qualification".to_owned(),
+        schema_version: "1".to_owned(),
         artifact_digest: paths.artifact_digest.clone(),
-        materialization_authority: "developer-gix",
+        materialization_authority: "developer-gix".to_owned(),
         source_path: source.display().to_string(),
         head_revision: checkout.head_revision,
         git_tree: checkout.git_tree,
         source_merkle_root: checkout.source_merkle_root,
         language_extension_evidence: extension_evidence.clone(),
         clean: true,
-        status: "qualified",
+        status: "qualified".to_owned(),
     };
     emit_live_corpus_timing("artifact-identity", &mut step_started);
     publish_immutable_json(&paths.manifest_path, &manifest)?;
@@ -566,9 +569,9 @@ fn unique_temporary_path(parent: &Path, prefix: &str) -> PathBuf {
 }
 
 fn root_usage() -> String {
-    format!(
-        "usage: asp live-corpus <path|sync> --resource <resource-id> [--lock <path>] [--json]\n       asp live-corpus materialize --resource <resource-id> --source <canonical-state-home-checkout> [--lock <path>] [--json]\ndefaultLock={DEFAULT_LOCK_PATH}"
-    )
+    super::cli_help::live_corpus_command()
+        .render_long_help()
+        .to_string()
 }
 
 fn path_usage() -> String {
