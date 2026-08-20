@@ -14,11 +14,11 @@ RESPONSE_SCHEMA = ROOT / "schemas/provider-native-exact-response.v1.schema.json"
 DEPENDENCY_SCHEMAS = (
     ROOT / "schemas/canonical-item-selector.v1.schema.json",
     ROOT / "schemas/exact-structural-selector.v1.schema.json",
-    ROOT / "schemas/callable-skeleton-projection.v1.schema.json",
+    ROOT / "schemas/callable-skeleton.schema.json",
 )
 SKELETON_FIXTURE = (
     ROOT
-    / "schemas/fixtures/callable-skeleton-projection/valid-rust-dispatch.v1.json"
+    / "schemas/fixtures/semantic-projection.callable-skeleton.v1.json"
 )
 EXACT_RESPONSE_FIXTURES = ROOT / "schemas/fixtures/provider-native-exact-response"
 
@@ -96,7 +96,7 @@ def test_source_response_requires_text_and_forbids_skeleton_payload() -> None:
 
 def test_skeleton_response_requires_typed_payload_and_forbids_text() -> None:
     response = _response("callable-skeleton")
-    response["projectionPayload"] = _load(SKELETON_FIXTURE)
+    response["projectionPayload"] = _load(SKELETON_FIXTURE)["payload"]
     _validator(RESPONSE_SCHEMA).validate(response)
 
     response["projectionText"] = "fn run() {}"

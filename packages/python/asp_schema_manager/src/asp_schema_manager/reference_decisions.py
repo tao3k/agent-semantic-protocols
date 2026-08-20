@@ -113,10 +113,8 @@ def reconcile_reference_decisions(
                     "severity": "warning",
                     "code": "cross-family-reference-decision-missing",
                     "message": "cross-family reference opportunity lacks an accepted decision",
-                    "details": {
-                        "fingerprint": opportunity["fingerprint"],
-                        "familyIds": opportunity["familyIds"],
-                    },
+                "fingerprint": opportunity["fingerprint"],
+                "familyIds": opportunity["familyIds"],
                 }
             )
     for identity, entry in decisions.items():
@@ -126,7 +124,7 @@ def reconcile_reference_decisions(
                     "severity": "warning",
                     "code": "stale-reference-decision",
                     "message": "reference decision no longer matches a current cross-family opportunity",
-                    "details": {"fingerprint": entry.get("fingerprint")},
+                "fingerprint": entry.get("fingerprint"),
                 }
             )
     return diagnostics

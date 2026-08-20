@@ -17,6 +17,10 @@ pub struct HookClientRuleConfig {
     pub enabled: bool,
     #[serde(default)]
     pub priority: i64,
+    /// Stop Hook policy evaluation after this rule wins. Terminal rules are
+    /// restricted to declarative `allow` decisions by validation.
+    #[serde(default)]
+    pub terminal: bool,
     #[serde(default)]
     pub intent: Option<String>,
     #[serde(default)]
@@ -173,6 +177,10 @@ pub struct HookClientRuleMatchConfig {
     /// For example, `argvPrefixAny = [["rm", "-rf"]]` matches `rm -rf target`.
     #[serde(default)]
     pub argv_prefix_any: Vec<Vec<String>>,
+    /// Exact shell environment assignments in the leading assignment block of
+    /// the first parsed command stage.
+    #[serde(default)]
+    pub leading_environment_assignment_any: Vec<String>,
     #[serde(default)]
     pub command_contains_any: Vec<String>,
     #[serde(default)]

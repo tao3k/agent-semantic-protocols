@@ -4,6 +4,88 @@ use super::common::{
 };
 
 #[test]
+fn terminal_allow_rule_uses_parser_owned_leading_environment_assignment() {
+    let root = temp_root("leading-environment-assignment");
+    let config_path = root.join("config.toml");
+    fs::write(
+        &config_path,
+        super::common::with_required_resident_agents(
+            r#"
+schemaId = "agent.semantic-protocols.hook.client-config"
+schemaVersion = "1"
+protocolId = "agent.semantic-protocols.hook"
+protocolVersion = "1"
+
+[[rules]]
+id = "allow-explicit-no-agent-host-bypass"
+priority = 200000
+decision = "allow"
+terminal = true
+event = "pre-tool"
+
+[rules.match]
+leadingEnvironmentAssignmentAny = ["ASP_NO_AGENT=1"]
+
+[[rules]]
+id = "deny-shell-fallback"
+decision = "deny"
+
+[rules.match]
+toolAny = ["Bash", "functions.exec_command"]
+"#,
+        ),
+    )
+    .expect("write config");
+    let config = load_client_config(&config_path).expect("load client config");
+    let runtime = crate::classifier::registry_without_providers();
+
+    for command in [
+        "ASP_NO_AGENT=1 cargo test",
+        "TRACE=1 ASP_NO_AGENT=1 cargo test",
+    ] {
+        let decision = classify_hook_with_config(HookClassificationRequest {
+            registry: &runtime,
+            config: &config,
+            platform: "codex",
+            event: "pre-tool",
+            payload: &json!({
+                "tool_name": "functions.exec_command",
+                "tool_input": { "cmd": command }
+            }),
+        });
+        assert_eq!(decision.decision, DecisionKind::Allow, "{command}");
+        assert_eq!(
+            decision
+                .fields
+                .get("configRuleId")
+                .and_then(serde_json::Value::as_str),
+            Some("allow-explicit-no-agent-host-bypass")
+        );
+    }
+
+    for command in [
+        "NOT_ASP_NO_AGENT=1 cargo test",
+        "env ASP_NO_AGENT=1 cargo test",
+        "printf warmup && ASP_NO_AGENT=1 cargo test",
+        "bash -lc 'ASP_NO_AGENT=1 cargo test'",
+    ] {
+        let decision = classify_hook_with_config(HookClassificationRequest {
+            registry: &runtime,
+            config: &config,
+            platform: "codex",
+            event: "pre-tool",
+            payload: &json!({
+                "tool_name": "functions.exec_command",
+                "tool_input": { "cmd": command }
+            }),
+        });
+        assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
+    }
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn command_contains_any_rejects_empty_patterns() {
     let root = temp_root("command-contains-empty-pattern");
     let config_path = root.join("config.toml");

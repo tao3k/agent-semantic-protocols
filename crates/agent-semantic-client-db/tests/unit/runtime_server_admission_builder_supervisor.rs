@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation;
 use agent_semantic_client_db::runtime_server_admission::{
@@ -19,41 +18,18 @@ fn candidate() -> WorkspaceGenerationCandidateIdentity {
 }
 
 #[tokio::test]
-async fn delayed_builder_hits_short_deadline_with_typed_reason() {
-    let builder = Arc::new(
-        |_, _, _, _, _changed_paths, _cancellation| -> WorkspaceGenerationBuildFuture {
-            Box::pin(async {
-                std::future::pending::<Result<_, WorkspaceGenerationBuildFailure>>().await
-            })
-        },
-    );
-    let result = super::run_with_deadline(
-        builder,
-        "workspace".to_owned(),
-        std::path::PathBuf::from("/workspace"),
-        candidate(),
-        WorkspaceGenerationBuildMode::RestoreOrBuild,
-        std::sync::Arc::new(std::collections::BTreeSet::new()),
-        GenerationCancellation::new(),
-        Duration::from_millis(5),
-    )
-    .await;
-    let error = match result {
-        Ok(_) => panic!("deadline should fail"),
-        Err(error) => error,
-    };
-    assert_eq!(
-        error.stage,
-        WorkspaceGenerationFailureStage::GenerationBuilderSupervision
-    );
-}
-
-#[tokio::test]
-async fn cancellation_remains_distinct_from_deadline() {
+async fn runtime_cancellation_terminates_the_generation_builder() {
     let cancellation = GenerationCancellation::new();
     let cancelled = cancellation.clone();
     let builder = Arc::new(
-        move |_, _, _, _, _changed_paths, _cancellation| -> WorkspaceGenerationBuildFuture {
+        move |_,
+              _,
+              _,
+              _,
+              _changed_paths,
+              _provider_target,
+              _cancellation|
+              -> WorkspaceGenerationBuildFuture {
             let cancelled = cancelled.clone();
             Box::pin(async move {
                 cancelled.cancelled().await;
@@ -64,15 +40,15 @@ async fn cancellation_remains_distinct_from_deadline() {
             })
         },
     );
-    let task = tokio::spawn(super::run_with_deadline(
+    let task = tokio::spawn(super::run(
         builder,
         "workspace".to_owned(),
         std::path::PathBuf::from("/workspace"),
         candidate(),
         WorkspaceGenerationBuildMode::RestoreOrBuild,
         std::sync::Arc::new(std::collections::BTreeSet::new()),
+        None,
         cancellation.clone(),
-        Duration::from_secs(1),
     ));
     cancellation.cancel();
     let error = match task.await.expect("join") {

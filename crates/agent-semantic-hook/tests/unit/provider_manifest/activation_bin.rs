@@ -15,7 +15,7 @@ fn default_activation_uses_state_home_runtime_provider_receipt() {
     )
     .expect("write Cargo.toml");
     fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
-    install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
+    install_state_home_provider(&state_home, "rust", "asp-rust", "rs-harness");
 
     let activation =
         build_default_activation_with_state_home(&root, &state_home).expect("build activation");
@@ -51,7 +51,7 @@ fn default_activation_resolves_nested_provider_project_entries() {
         "def fixture():\n    return 1\n",
     )
     .expect("write nested Python candidate");
-    install_state_home_provider(&state_home, "python", "py-harness", "py-harness");
+    install_state_home_provider(&state_home, "python", "asp-python", "py-harness");
 
     let activation = build_default_activation_with_state_home(&root, &state_home)
         .expect("build nested provider activation");
@@ -133,7 +133,7 @@ fn document_language_flags_do_not_create_executable_activation_entries() {
     let state_home = root.join(".asp-state-home");
     git_init(&root);
     fs::write(root.join("README.md"), "# fixture\n").expect("write Markdown candidate");
-    install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
+    install_state_home_provider(&state_home, "rust", "asp-rust", "rs-harness");
     write_agent_config(
         &root,
         r#"[providers.typescript]
@@ -186,7 +186,7 @@ fn top_level_asp_toml_no_longer_configures_provider_activation() {
     git_init(&root);
     fs::write(root.join("README.md"), "# fixture\n").expect("write Markdown candidate");
     fs::write(root.join("fixture.org"), "* Fixture\n").expect("write Org candidate");
-    install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
+    install_state_home_provider(&state_home, "rust", "asp-rust", "rs-harness");
     fs::write(root.join("asp.toml"), "[providers.rust]\nenabled = false\n")
         .expect("write ignored top-level asp.toml");
 

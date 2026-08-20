@@ -14,7 +14,7 @@ async fn concurrent_generation_rebuild_admission_is_single_flight_and_sub_millis
     let admission = Arc::new(WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
         let release_repair = Arc::clone(&release_repair);
-        move |_, _, candidate, _, _changed_paths, _cancellation| {
+        move |_, _, candidate, _, _changed_paths, _provider_target, _cancellation| {
             let build_count = Arc::clone(&build_count);
             let release_repair = Arc::clone(&release_repair);
             Box::pin(async move {

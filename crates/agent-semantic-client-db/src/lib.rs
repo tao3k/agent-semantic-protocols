@@ -31,6 +31,7 @@ pub mod runtime_server;
 pub mod runtime_server_admission;
 mod runtime_server_admission_builder_supervisor;
 pub mod runtime_server_admission_catalog;
+mod runtime_server_admission_contract;
 mod runtime_server_admission_registry;
 mod runtime_server_agent_control_plane;
 mod runtime_server_agent_session_status;
@@ -89,6 +90,7 @@ pub use workspace_db_owner_election::{
 pub mod workspace_db_ipc;
 pub use workspace_db_ipc_server::serve_workspace_db_session_until_shutdown;
 mod workspace_db_ipc_server;
+mod workspace_db_ipc_server_single_request;
 pub mod workspace_db_owner_election;
 pub use types::ClientDbProviderCommandSelectionInput;
 pub use workspace_db_ipc::WorkspaceDbIpcSession;

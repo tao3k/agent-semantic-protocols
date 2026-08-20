@@ -3,16 +3,15 @@ use std::collections::BTreeMap;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 use super::{
-    CALLABLE_SKELETON_PROJECTION_SCHEMA_ID, CALLABLE_SKELETON_PROJECTION_SCHEMA_VERSION,
-    CallableDescriptorV1, CallableSkeletonCostV1, CallableSkeletonNodeKindV1,
-    CallableSkeletonNodeV1, CallableSkeletonProjectionV1, CallableSkeletonRelationV1,
-    CallableSkeletonValidationError,
+    CALLABLE_SKELETON_PAYLOAD_SCHEMA_ID, CallableDescriptorV1, CallableSkeletonCostV1,
+    CallableSkeletonNodeKindV1, CallableSkeletonNodeV1, CallableSkeletonPayload,
+    CallableSkeletonRelationV1, CallableSkeletonValidationError,
 };
 use crate::exact_structural_selector::{
     CanonicalItemSelector, EXACT_STRUCTURAL_SELECTOR_SCHEMA_ID,
-    EXACT_STRUCTURAL_SELECTOR_SCHEMA_VERSION, ExactStructuralSelectorSegmentV1,
-    ExactStructuralSelectorV1,
+    EXACT_STRUCTURAL_SELECTOR_SCHEMA_VERSION, ExactStructuralSelectorV1,
 };
+use crate::semantic_projection::SemanticProjection;
 
 fn root_selector() -> ExactStructuralSelectorV1 {
     ExactStructuralSelectorV1 {
@@ -39,9 +38,9 @@ fn root_selector() -> ExactStructuralSelectorV1 {
 
 #[test]
 fn public_projection_mode_matches_the_wire_projection_kind() {
-    assert_eq!(CallableSkeletonProjectionV1::projection_mode(), "skeleton");
+    assert_eq!(CallableSkeletonPayload::projection_mode(), "skeleton");
     assert_eq!(
-        CallableSkeletonProjectionV1::projection_kind(),
+        CallableSkeletonPayload::projection_kind(),
         "callable-skeleton"
     );
 }
@@ -49,43 +48,20 @@ fn public_projection_mode_matches_the_wire_projection_kind() {
 #[test]
 fn shared_json_schema_keeps_wire_identity_at_version_one() {
     let schema: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../../schemas/callable-skeleton-projection.v1.schema.json"
+        "../../../../../schemas/callable-skeleton.schema.json"
     ))
     .expect("callable skeleton shared schema must be valid JSON");
+    assert!(schema["properties"].get("projectionKind").is_none());
     assert_eq!(
-        schema["properties"]["schemaId"]["const"],
-        CALLABLE_SKELETON_PROJECTION_SCHEMA_ID
-    );
-    assert_eq!(
-        schema["properties"]["schemaVersion"]["const"],
-        CALLABLE_SKELETON_PROJECTION_SCHEMA_VERSION
-    );
-    assert_eq!(
-        schema["properties"]["projectionKind"]["const"],
-        CallableSkeletonProjectionV1::projection_kind()
+        schema["required"],
+        serde_json::json!(["rootNodeId", "callable", "nodes", "relations", "cost"])
     );
 }
 
-fn projection() -> CallableSkeletonProjectionV1 {
+fn projection() -> CallableSkeletonPayload {
     let root = root_selector();
-    let mut arm_selector = root.clone();
-    arm_selector.selector =
-        "rust://crates/example/src/lib.rs#node/function/run/arm/identity=rust".to_owned();
-    arm_selector
-        .segments
-        .push(ExactStructuralSelectorSegmentV1 {
-            relation: "contains".to_owned(),
-            kind: "arm".to_owned(),
-            identity: "pattern-command-rust".to_owned(),
-            label: Some("Command::Rust".to_owned()),
-        });
-    CallableSkeletonProjectionV1 {
-        schema_id: CALLABLE_SKELETON_PROJECTION_SCHEMA_ID.to_owned(),
-        schema_version: CALLABLE_SKELETON_PROJECTION_SCHEMA_VERSION.to_owned(),
-        projection_kind: "callable-skeleton".to_owned(),
-        language_id: "rust".to_owned(),
-        provider_id: "rs-harness".to_owned(),
-        root_selector: root,
+    let arm_selector = format!("{}/segment/arm/pattern-command-rust", root.selector);
+    CallableSkeletonPayload {
         root_node_id: "callable:run".to_owned(),
         callable: CallableDescriptorV1 {
             kind: "function".to_owned(),
@@ -99,7 +75,8 @@ fn projection() -> CallableSkeletonProjectionV1 {
                 label: "run".to_owned(),
                 order: 0,
                 queryable: false,
-                exact_selector: None,
+                selector: None,
+                selector_ref: None,
                 source_locator_hint: None,
                 language_facts: BTreeMap::new(),
             },
@@ -109,7 +86,8 @@ fn projection() -> CallableSkeletonProjectionV1 {
                 label: "Command::Rust".to_owned(),
                 order: 1,
                 queryable: true,
-                exact_selector: Some(arm_selector),
+                selector: Some(arm_selector),
+                selector_ref: None,
                 source_locator_hint: None,
                 language_facts: BTreeMap::new(),
             },
@@ -138,9 +116,9 @@ fn validates_queryable_child_round_trip_contract() {
 }
 
 #[test]
-fn rejects_queryable_node_without_exact_selector() {
+fn rejects_queryable_node_without_selector() {
     let mut value = projection();
-    value.nodes[1].exact_selector = None;
+    value.nodes[1].selector = None;
     assert!(matches!(
         value.validate(),
         Err(CallableSkeletonValidationError::MissingChildSelector(node)) if node == "arm:rust"
@@ -148,26 +126,82 @@ fn rejects_queryable_node_without_exact_selector() {
 }
 
 #[test]
-fn rejects_child_selector_from_another_generation() {
+fn accepts_packet_scoped_queryable_selector() {
     let mut value = projection();
-    value.nodes[1]
-        .exact_selector
-        .as_mut()
-        .expect("child selector")
-        .generation_identity_digest = "d".repeat(64);
+    value.nodes[1].selector = Some(format!(
+        "{}/segment/arm/ordinal-1",
+        root_selector().selector
+    ));
+    value
+        .validate()
+        .expect("packet-scoped selector should be valid");
+}
+
+#[test]
+fn runtime_reference_interns_authority_and_uses_packet_local_selectors() {
+    let mut value = projection();
+    value.nodes[0].queryable = true;
+    let root = root_selector().selector.to_owned();
+    value.nodes[0].selector = Some(root.clone());
+    let inline_bytes = serde_json::to_vec(&value)
+        .expect("encode inline projection")
+        .len();
+
+    let envelope = SemanticProjection::new(
+        CallableSkeletonPayload::projection_kind(),
+        "rust",
+        "asp-rust",
+        root,
+        "blake3-256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        CALLABLE_SKELETON_PAYLOAD_SCHEMA_ID,
+        value,
+    )
+    .expect("semantic projection envelope");
+    envelope.validate().expect("validate semantic projection");
+    assert_eq!(
+        envelope.payload.nodes[0].selector.as_deref(),
+        Some(envelope.root_selector.as_str())
+    );
+    assert!(
+        envelope.payload.nodes[1].selector.as_deref().is_some_and(
+            |selector| selector.starts_with(&format!("{}/segment/", envelope.root_selector))
+        )
+    );
+    assert!(
+        serde_json::to_vec(&envelope)
+            .expect("encode projection")
+            .len()
+            > inline_bytes
+    );
+}
+
+#[test]
+fn rejects_packet_scoped_selector_outside_root() {
+    let mut value = projection();
+    value.nodes[1].selector = Some("rust://other.rs#item/function/run".to_owned());
     assert!(matches!(
-        value.validate(),
+        value.validate_scope(&root_selector().selector),
         Err(CallableSkeletonValidationError::ChildSelectorContext(node)) if node == "arm:rust"
     ));
 }
 
 #[test]
+fn projected_packet_may_be_larger_than_source() {
+    let mut value = projection();
+    value.cost.projected_bytes = 140;
+    value.cost.omitted_bytes = 0;
+    value
+        .validate()
+        .expect("complete packet accounting should saturate omitted bytes");
+}
+
+#[test]
 fn encodes_validated_payload_for_exact_selector_packet() {
     let value = projection();
-    assert_eq!(CallableSkeletonProjectionV1::projection_mode(), "skeleton");
+    assert_eq!(CallableSkeletonPayload::projection_mode(), "skeleton");
     let encoded = value.encode_payload_base64().expect("encoded payload");
     let decoded = STANDARD.decode(encoded).expect("base64 payload");
-    let round_trip: CallableSkeletonProjectionV1 =
+    let round_trip: CallableSkeletonPayload =
         serde_json::from_slice(&decoded).expect("projection JSON");
     assert_eq!(round_trip, value);
 }

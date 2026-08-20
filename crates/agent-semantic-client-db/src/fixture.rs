@@ -226,7 +226,8 @@ pub fn workspace_identity_from_fixture_dir(
 pub fn projection_capability_manifest_fixture()
 -> crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest {
     crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest::from_source_index(
-        "test-provider-catalog".to_owned(),
+            "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+                .to_owned(),
         &[],
     )
     .expect("projection capability manifest fixture must satisfy the v1 contract")

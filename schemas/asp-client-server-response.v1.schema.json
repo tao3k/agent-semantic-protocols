@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/asp-client-server-response.v1.schema.json",
+  "title": "ASP Client Server Response v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "operationId",
+    "languageId",
+    "providerId",
+    "workspaceIdentity",
+    "generationDigest",
+    "rootDigest",
+    "providerCatalogDigest",
+    "transport",
+    "operation",
+    "projectionKind",
+    "requestPayloadDigest",
+    "terminalStatus",
+    "cacheState",
+    "elapsedMicros",
+    "resultDigest"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.asp-client-server-response"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "operationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "pattern": "^asp-[a-z0-9][a-z0-9-]*$"
+    },
+    "workspaceIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generationDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rootDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerCatalogDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "transport": {
+      "const": "http-json"
+    },
+    "operation": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectionKind": {
+      "enum": [
+        "owner-items",
+        "exact-source",
+        "search",
+        "graph",
+        "project-resolution"
+      ]
+    },
+    "requestPayloadDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "terminalStatus": {
+      "enum": ["completed", "cancelled", "failed"]
+    },
+    "cacheState": {
+      "enum": ["hit", "miss", "not-cacheable"]
+    },
+    "overlayIdentity": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "elapsedMicros": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "resultDigest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "result": {
+      "type": ["object", "null"]
+    },
+    "error": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["reasonKind", "message"],
+      "properties": {
+        "reasonKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "terminalStatus": {
+            "const": "completed"
+          }
+        }
+      },
+      "then": {
+        "required": ["result"]
+      },
+      "else": {
+        "required": ["error"]
+      }
+    }
+  ],
+  "oneOf": [
+    {
+      "properties": {
+        "languageId": {"const": "gerbil-scheme"},
+        "providerId": {"const": "asp-gerbil-scheme"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "julia"},
+        "providerId": {"const": "asp-julia"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "md"},
+        "providerId": {"const": "asp-md"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "org"},
+        "providerId": {"const": "asp-org"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "python"},
+        "providerId": {"const": "asp-python"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "rust"},
+        "providerId": {"const": "asp-rust"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "typescript"},
+        "providerId": {"const": "asp-typescript"}
+      }
+    }
+  ]
+}

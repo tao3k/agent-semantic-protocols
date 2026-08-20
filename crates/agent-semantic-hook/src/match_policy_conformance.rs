@@ -63,6 +63,18 @@ pub fn evaluate_match_policy_conformance(
     platform: &str,
 ) -> MatchPolicyConformanceReport {
     let cases = production_cases();
+    let config = match config.match_policy_conformance_config() {
+        Ok(config) => config,
+        Err(error) => {
+            return MatchPolicyConformanceReport {
+                configured_rule_count: config.rule_count(),
+                case_count: cases.len(),
+                covered_rule_ids: BTreeSet::new(),
+                failures: vec![format!("compile match-policy conformance config: {error}")],
+            };
+        }
+    };
+    let config = &config;
     let configured = config
         .rule_ids()
         .map(str::to_owned)
@@ -166,6 +178,20 @@ mod tests;
 
 fn production_cases() -> Vec<MatchPolicyCase> {
     vec![
+        MatchPolicyCase {
+            name: "explicit no-agent command bypass",
+            payload: shell("ASP_NO_AGENT=1 cargo test -p agent-semantic-hook"),
+            rule_id: "allow-explicit-no-agent-host-bypass",
+            decision: DecisionKind::Allow,
+            reason: ReasonKind::None,
+        },
+        MatchPolicyCase {
+            name: "explicit no-Agent Host bypass",
+            payload: shell("ASP_NO_AGENT=1 rg -n owner src/lib.rs"),
+            rule_id: "allow-explicit-no-agent-host-bypass",
+            decision: DecisionKind::Allow,
+            reason: ReasonKind::None,
+        },
         MatchPolicyCase {
             name: "registered reasoning search",
             payload: shell("asp rust search lexical --query classify_hook --workspace ."),

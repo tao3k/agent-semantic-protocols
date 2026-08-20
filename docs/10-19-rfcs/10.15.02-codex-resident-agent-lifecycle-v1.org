@@ -133,9 +133,8 @@ later command.
 - =default= can never be accepted as =asp_explorer=, even if its model and
   reasoning values happen to match.
 - =observedReasoningEffort=null= never means an observed match for a profile
-  that expects =low=. Missing hook evidence triggers one host-owned Codex
-  =thread/resume= metadata read with no turn and no overrides. It does not send
-  a follow-up task to the child.
+  that expects =low=. Missing hook evidence remains typed missing evidence; the
+  Runtime Server registry is the only host-observation authority.
 - When Codex still omits reasoning, ASP may accept a distinct
   =host-profile-attested-unobservable= result only if the same child was
   registered by typed =SubagentStart= as =asp_explorer=, or a recovery-only
@@ -153,15 +152,14 @@ later command.
   =SubagentStart= together with its root attribution and native message target
   before it can return =Ready=.
 
-Codex owns two complementary evidence surfaces. Typed =SubagentStart= is the
-normal fast path and supplies the native child ID, agent type, and observed
-model. =ThreadResumeResponse= is supplementary recovery evidence and may supply
-effective =model= and =reasoningEffort=, but some hosts currently return null
-reasoning. ASP may issue =thread/resume= with only =threadId= and
-=excludeTurns=true= to read that snapshot during recovery. It must not include
-model, reasoning, config, prompt, or other override parameters. The
-profile-attested branch is an explicit accommodation for the missing host
-field, not a synthetic runtime observation.
+Typed =SubagentStart= is the Host publication surface and supplies the native
+child ID, agent type, and observed model. The Runtime Server consumes that
+publication into its session registry. CLI and library callers MUST NOT launch
+an app-server child or issue =thread/list= or =thread/resume= to reconstruct
+host evidence. Recovery reads the Runtime-owned registry snapshot; absent
+fields remain absent rather than being synthesized by a second observation
+lane. The profile-attested branch is an explicit accommodation for a missing
+Host field, not a synthetic runtime observation.
 - Model drift is not repaired by sending a natural-language model-switch task
   to the child. Codex follow-up/resume does not expose a verified same-child
   runtime override.

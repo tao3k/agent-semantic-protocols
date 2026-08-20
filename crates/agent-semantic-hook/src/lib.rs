@@ -89,13 +89,14 @@ pub use crate::active_artifact_receipt::{
     verify_active_asp_artifact_receipt,
 };
 pub use classifier::{
-    DirectReadSourceKey, HOOK_TRIGGER_PROMPT_FILE_NAME, HookClassificationRequest, ShellCommandKey,
-    ShellReadSourceKey, classify_hook, classify_hook_with_config,
+    DirectReadSourceKey, HOOK_TRIGGER_PROMPT_FILE_NAME, HookClassificationRequest, HookMatcherKeys,
+    ShellCommandKey, ShellReadSourceKey, classify_hook, classify_hook_with_config,
     default_hook_trigger_prompt_message, direct_read_source_extension, direct_read_source_key,
-    hook_trigger_prompt_document, materialize_hook_trigger_prompt_agent_flow_for_client,
-    merge_hook_trigger_prompt_document, rebind_command_decision_to_payload,
+    hook_matcher_keys, hook_trigger_prompt_document,
+    materialize_hook_trigger_prompt_agent_flow_for_client, merge_hook_trigger_prompt_document,
+    rebind_command_decision_to_payload, rebind_command_decision_to_payload_with_keys,
     render_hook_trigger_prompt_document, runtime_binary_policy_decision_v1, shell_command_key,
-    shell_read_source_key, shell_read_source_keys,
+    shell_command_keys, shell_read_source_key, shell_read_source_keys,
 };
 pub use codex_config::{
     CodexUserTrustStatus, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, claude_hook_block, codex_hook_block,
@@ -189,7 +190,7 @@ pub use crate::provider_registry::{
     ProviderMethodArgumentValuesV1, RegisteredProviderCatalogIdentity, RegisteredProviderKind,
     registered_provider_catalog_identities, registered_provider_id_v1, registered_provider_kind,
     registered_provider_method_invocation_v1, registered_provider_method_projected_argv_v1,
-    registered_provider_projection_command_binding_v1,
+    registered_provider_projection_command_binding,
 };
 #[doc(hidden)]
 pub use agent_semantic_command_match as command_match;

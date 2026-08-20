@@ -151,11 +151,11 @@ fn managed_template_serializes_provider_owned_language_extensions() {
         .and_then(toml::Value::as_array)
         .expect("languageProviders projection");
     for (language_id, provider_id, extension) in [
-        ("rust", "rs-harness", ".rs"),
-        ("typescript", "ts-harness", ".ts"),
-        ("python", "py-harness", ".py"),
-        ("julia", "julia-lang-project-harness", ".jl"),
-        ("gerbil-scheme", "gerbil-scheme-harness", ".ss"),
+        ("rust", "asp-rust", ".rs"),
+        ("typescript", "asp-typescript", ".ts"),
+        ("python", "asp-python", ".py"),
+        ("julia", "asp-julia", ".jl"),
+        ("gerbil-scheme", "asp-gerbil-scheme", ".ss"),
     ] {
         let provider = providers
             .iter()

@@ -34,6 +34,7 @@ async fn thirty_run_admission_p99_within_durable_publication_boundary() {
          candidate,
          _build_mode,
          _changed_paths,
+         _provider_target,
          _cancellation| { Box::pin(async move { completed_generation(candidate) }) },
     ));
     let mut latencies = Vec::with_capacity(RUN_COUNT);

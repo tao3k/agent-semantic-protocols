@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/callable-skeleton.schema.json",
+  "title": "Callable Skeleton Payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["rootNodeId", "callable", "nodes", "relations", "cost"],
+  "properties": {
+    "rootNodeId": {"type": "string", "minLength": 1},
+    "callable": {"type": "object"},
+    "nodes": {"type": "array"},
+    "relations": {"type": "array"},
+    "cost": {"type": "object"},
+    "omissionReasons": {"type": "array"},
+    "languageFacts": {"type": "object"}
+  }
+}

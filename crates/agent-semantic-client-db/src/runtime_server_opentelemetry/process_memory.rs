@@ -290,3 +290,35 @@ fn peak_resident_bytes() -> Option<u64> {
 fn peak_resident_bytes() -> Option<u64> {
     None
 }
+pub(super) async fn run_sampler(
+    memory: tokio::sync::watch::Sender<Option<ProcessMemoryObservation>>,
+    mut shutdown: tokio::sync::watch::Receiver<bool>,
+) -> Result<(), String> {
+    let mut interval = tokio::time::interval(std::time::Duration::from_millis(250));
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        tokio::select! {
+            scheduled = interval.tick() => {
+                let event_loop_lag_micros = u64::try_from(
+                    tokio::time::Instant::now()
+                        .saturating_duration_since(scheduled)
+                        .as_micros(),
+                )
+                .unwrap_or(u64::MAX);
+                let scheduler = observe_runtime_scheduler();
+                let observation = tokio::task::spawn_blocking(move || {
+                    observe_process_memory(event_loop_lag_micros, scheduler)
+                })
+                .await
+                .map_err(|error| {
+                    format!("Runtime Server process-memory probe task failed: {error}")
+                })?;
+                memory.send_replace(observation);
+            }
+            changed = shutdown.changed() => {
+                let _ = changed;
+                return Ok(());
+            }
+        }
+    }
+}

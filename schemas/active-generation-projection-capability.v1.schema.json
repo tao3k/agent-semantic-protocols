@@ -72,7 +72,7 @@
             "const": true
           },
           "selectors": {
-            "minItems": 1
+          "minItems": 0
           }
         },
         "not": {

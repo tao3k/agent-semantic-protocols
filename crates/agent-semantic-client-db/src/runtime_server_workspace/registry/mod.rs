@@ -8,6 +8,7 @@ pub(super) mod owner_identity;
 mod publication;
 mod readiness;
 mod runtime_projection_reads;
+mod sparse_provider_owner_cache;
 pub(super) mod writer_publication;
 
 pub(super) use canonical_publication as canonical_publication_owner;

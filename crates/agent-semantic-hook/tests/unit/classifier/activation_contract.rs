@@ -72,7 +72,7 @@ fn activation_resolves_provider_manifest_and_project_coverage() {
     assert_eq!(runtime.project_root, ".");
     assert_eq!(runtime.providers.len(), 1);
     assert_eq!(runtime.providers[0].language_id, "typescript");
-    assert_eq!(runtime.providers[0].provider_id, "ts-harness");
+    assert_eq!(runtime.providers[0].provider_id, "asp-typescript");
     assert_eq!(runtime.providers[0].package_roots, expected_package_roots);
     assert_eq!(
         runtime.providers[0].routes.guide.as_ref().unwrap().argv,
@@ -85,7 +85,7 @@ fn provider_manifest() -> ProviderManifest {
         .into_iter()
         .find(|manifest| {
             manifest.language_id().as_str() == "typescript"
-                && manifest.provider_id().as_str() == "ts-harness"
+                && manifest.provider_id().as_str() == "asp-typescript"
         })
         .expect("builtin TypeScript provider manifest")
 }

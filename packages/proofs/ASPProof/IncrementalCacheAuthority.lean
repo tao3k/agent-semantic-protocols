@@ -60,4 +60,45 @@ theorem query_never_opens_turso_or_activates_provider
       .submitAdmission ∉ queryEffects state := by
   cases state <;> simp [queryEffects]
 
+def exactQueryEffects
+    (state : GenerationState)
+    (selectorAdmitted : Bool) : List QueryEffect :=
+  if state = .ready ∧ selectorAdmitted = true then [.openResidentMmap] else []
+
+theorem ready_empty_capability_fails_before_mmap :
+    exactQueryEffects .ready false = [] := by
+  rfl
+
+theorem exact_query_opens_mmap_only_with_same_generation_capability
+    (state : GenerationState)
+    (selectorAdmitted : Bool)
+    (h : .openResidentMmap ∈ exactQueryEffects state selectorAdmitted) :
+    state = .ready ∧ selectorAdmitted = true := by
+  unfold exactQueryEffects at h
+  split at h
+  · assumption
+  · simp at h
+
+structure GenerationAuthorityProjection where
+  cacheStatus : GenerationState
+  queryAdmission : GenerationState
+  pointerState : GenerationState
+  deriving DecidableEq, Repr
+
+def publishAuthorityState (state : GenerationState) : GenerationAuthorityProjection :=
+  { cacheStatus := state, queryAdmission := state, pointerState := state }
+
+theorem one_publication_has_no_split_generation_state
+    (state : GenerationState) :
+    let projection := publishAuthorityState state
+    projection.cacheStatus = projection.queryAdmission ∧
+      projection.queryAdmission = projection.pointerState := by
+  constructor <;> rfl
+
+theorem non_ready_publication_cannot_expose_a_ready_pointer
+    (state : GenerationState)
+    (h : state ≠ .ready) :
+    (publishAuthorityState state).pointerState ≠ .ready := by
+  simpa [publishAuthorityState] using h
+
 end ASPProof.IncrementalCacheAuthority

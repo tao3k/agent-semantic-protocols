@@ -132,6 +132,12 @@ pub(super) async fn publish_generation(
     generation: WorkspaceMemoryGeneration,
     counters: &RuntimeDataPlaneCounterState,
 ) -> Result<WorkspaceRecoveryReceipt, String> {
+    if generation.workspace_generation.leaf_count > 0 && generation.owners.is_empty() {
+        return Err(format!(
+            "source-index completeness gate rejected publication: matchingSourceCount={} ownerCount=0 leafCount={} reasonKind=source-index-resident-index-missing",
+            generation.workspace_generation.leaf_count, generation.workspace_generation.leaf_count,
+        ));
+    }
     let target_epoch = generation.active_epoch;
     let workspace_identity = generation.workspace_identity.clone();
     let generation_digest = generation.generation_digest.clone();

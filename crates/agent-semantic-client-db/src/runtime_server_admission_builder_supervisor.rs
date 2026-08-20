@@ -15,6 +15,7 @@ pub(super) async fn run(
     candidate: WorkspaceGenerationCandidateIdentity,
     build_mode: WorkspaceGenerationBuildMode,
     changed_paths: std::sync::Arc<std::collections::BTreeSet<PathBuf>>,
+    provider_target: Option<crate::runtime_server_admission::WorkspaceGenerationProviderTarget>,
     cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
 ) -> Result<WorkspaceGenerationBuildCompletion, WorkspaceGenerationBuildFailure> {
     let mut builders = tokio::task::JoinSet::new();
@@ -24,6 +25,7 @@ pub(super) async fn run(
         candidate,
         build_mode,
         changed_paths,
+        provider_target,
         cancellation.clone(),
     ));
     let outcome = tokio::select! {
@@ -44,44 +46,6 @@ pub(super) async fn run(
             WorkspaceGenerationFailureStage::GenerationBuilderSupervision,
             "workspace generation builder supervisor lost its task",
         )),
-    }
-}
-
-pub(crate) const DEFAULT_GENERATION_BUILD_LEASE: std::time::Duration =
-    std::time::Duration::from_secs(30);
-
-pub(crate) async fn run_with_deadline(
-    builder: WorkspaceGenerationBuilder,
-    workspace_identity: String,
-    project_root: PathBuf,
-    candidate: WorkspaceGenerationCandidateIdentity,
-    build_mode: WorkspaceGenerationBuildMode,
-    changed_paths: std::sync::Arc<std::collections::BTreeSet<PathBuf>>,
-    cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
-    deadline: std::time::Duration,
-) -> Result<WorkspaceGenerationBuildCompletion, WorkspaceGenerationBuildFailure> {
-    match tokio::time::timeout(
-        deadline,
-        run(
-            builder,
-            workspace_identity,
-            project_root,
-            candidate,
-            build_mode,
-            changed_paths,
-            cancellation.clone(),
-        ),
-    )
-    .await
-    {
-        Err(_) => {
-            cancellation.cancel();
-            Err(WorkspaceGenerationBuildFailure::new(
-                WorkspaceGenerationFailureStage::GenerationBuilderSupervision,
-                format!("workspace generation build exceeded {deadline:?}"),
-            ))
-        }
-        Ok(outcome) => outcome,
     }
 }
 

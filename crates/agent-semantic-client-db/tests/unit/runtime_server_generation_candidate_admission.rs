@@ -33,6 +33,7 @@ async fn ensure_rebuilds_when_repository_candidate_generation_advances() {
               candidate,
               _build_mode,
               _changed_paths,
+              _provider_target,
               _cancellation| {
             let builds = Arc::clone(&builds);
             Box::pin(async move {
@@ -102,6 +103,7 @@ async fn ready_receipt_uses_the_candidate_captured_by_the_builder() {
               _requested_candidate,
               _build_mode,
               _changed_paths,
+              _provider_target,
               _cancellation| {
             let captured = captured.clone();
             Box::pin(async move { completed_generation(captured) })
@@ -154,6 +156,7 @@ async fn tracked_source_edit_discovers_and_admits_a_new_generation() {
               candidate,
               _build_mode,
               _changed_paths,
+              _provider_target,
               _cancellation| {
             let builds = Arc::clone(&builds);
             Box::pin(async move {
@@ -257,6 +260,7 @@ async fn untracked_source_owner_discovers_and_admits_a_new_generation() {
               candidate,
               _build_mode,
               changed_paths,
+              _provider_target,
               _cancellation| {
             let builds = Arc::clone(&builds);
             Box::pin(async move {
@@ -300,6 +304,7 @@ async fn ensure_coalesces_an_advanced_candidate_behind_an_inflight_build() {
               candidate,
               _build_mode,
               _changed_paths,
+              _provider_target,
               _cancellation| {
             let builds = Arc::clone(&builds);
             let first_release = Arc::clone(&first_release);

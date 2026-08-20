@@ -67,7 +67,7 @@ fn provider_receipt_is_resigned_after_runtime_binary_becomes_a_cas_link() {
     let receipt =
         read_provider_install_receipt("rust", &lock_dir).expect("read typed provider receipt");
     assert_eq!(receipt.language_id, "rust");
-    assert_eq!(receipt.provider_id, "rs-harness");
+    assert_eq!(receipt.provider_id, "asp-rust");
     assert_eq!(receipt.installed_path, runtime_binary);
     assert_eq!(
         receipt.installed_entrypoint_digest,

@@ -190,7 +190,7 @@ fn runtime_binary_policy_preempts_config_command_profile_shard() {
     let payload = serde_json::json!({
         "session_id": "runtime-binary-policy-root",
         "tool_name": "Bash",
-        "tool_input": { "command": "rs-harness check" },
+        "tool_input": { "command": "asp-rust check" },
     });
     let decision = crate::runtime_binary_policy_decision_v1("codex", "pre-tool", &payload)
         .expect("registered provider binary owns a config-independent fast decision");

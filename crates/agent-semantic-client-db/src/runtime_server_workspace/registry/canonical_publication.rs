@@ -57,7 +57,7 @@ pub(super) async fn publish_canonical_generation(
             if active.as_ref().is_some_and(|backend| {
                 backend.generation().generation_digest == generation.generation_digest
                     && backend.generation().selector_set_digest == generation.selector_set_digest
-            }) && super::super::WorkspaceGenerationPointerReader::matches_generation(
+            }) && complete_published_generation_matches(
                 publisher.pointer_path(),
                 &generation,
             )
@@ -69,7 +69,6 @@ pub(super) async fn publish_canonical_generation(
                 request_id,
                 workspace_identity,
                 &generation,
-                active_epoch,
                 resident_publication_started,
             )
         }
@@ -126,6 +125,28 @@ pub(super) async fn publish_canonical_generation(
     let _ = reply.send(result);
 }
 
+async fn complete_published_generation_matches(
+    pointer_path: &std::path::Path,
+    generation: &crate::runtime_server_workspace::WorkspaceMemoryGeneration,
+) -> bool {
+    if !super::super::WorkspaceGenerationPointerReader::matches_generation(pointer_path, generation)
+        .await
+    {
+        return false;
+    }
+    matches!(
+        super::super::WorkspaceExactProjectionDataPlaneClient::open_state(pointer_path).await,
+        Ok(super::super::WorkspaceExactProjectionDataPlaneOpen::Ready(
+            _
+        ))
+    ) && super::super::WorkspaceSearchGenerationDataPlaneClient::open(
+        pointer_path,
+        std::path::Path::new(&generation.project_root),
+    )
+    .await
+    .is_ok()
+}
+
 fn record_generation_build(workspace_identity: &str, elapsed: std::time::Duration) {
     let elapsed_micros = elapsed.as_micros().min(u128::from(u64::MAX)) as u64;
     let budget_micros = 800_000;
@@ -150,7 +171,6 @@ fn reusable_receipt(
     request_id: String,
     workspace_identity: String,
     generation: &crate::runtime_server_workspace::WorkspaceMemoryGeneration,
-    active_epoch: u64,
     started: tokio::time::Instant,
 ) -> Result<WorkspaceRecoveryReceipt, String> {
     let projection_capability =
@@ -159,7 +179,8 @@ fn reusable_receipt(
         .get(scope_key)
         .cloned()
         .or_else(|| {
-            active_epoch
+            generation
+                .active_epoch
                 .checked_sub(1)
                 .map(|previous_epoch| WorkspaceRecoveryReceipt {
                     projection_capability: projection_capability.clone(),
@@ -170,7 +191,7 @@ fn reusable_receipt(
                     source: WorkspaceRecoverySource::MmapCheckpoint,
                     state: WorkspaceGenerationState::Ready,
                     active_epoch: previous_epoch,
-                    target_epoch: active_epoch,
+                    target_epoch: generation.active_epoch,
                     generation_digest: generation.generation_digest.clone(),
                     source_root_digest: generation.source_snapshot.root_digest.clone(),
                     old_generation_readable: previous_epoch != 0,
@@ -224,6 +245,12 @@ async fn publish_new_generation(
     started: tokio::time::Instant,
     counters: &RuntimeDataPlaneCounterState,
 ) -> Result<WorkspaceRecoveryReceipt, String> {
+    if generation.workspace_generation.leaf_count > 0 && generation.owners.is_empty() {
+        return Err(format!(
+            "source-index completeness gate rejected publication: matchingSourceCount={} ownerCount=0 leafCount={} reasonKind=source-index-resident-index-missing",
+            generation.workspace_generation.leaf_count, generation.workspace_generation.leaf_count,
+        ));
+    }
     let target_epoch = generation.active_epoch;
     let generation_digest = generation.generation_digest.clone();
     let source_root_digest = generation.source_snapshot.root_digest.clone();
@@ -234,8 +261,7 @@ async fn publish_new_generation(
         )?,
     );
     let receipt = WorkspaceRecoveryReceipt {
-        projection_capability: generation
-            .projection_capability_receipt(active_epoch.saturating_add(1))?,
+        projection_capability: generation.projection_capability_receipt(target_epoch)?,
         schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
         schema_version: "1".to_owned(),
         request_id,

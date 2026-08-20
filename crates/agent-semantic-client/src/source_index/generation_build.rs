@@ -52,7 +52,7 @@ impl SourceIndexRefreshContext {
         let Some(changed_owner_paths) = changed_owner_paths else {
             return Ok(prepared);
         };
-        super::generation_overlay::complete_incremental_generation(
+        super::generation_overlay::complete_generation_from_optional_active_base(
             &self.db_path,
             prepared,
             changed_owner_paths,
@@ -120,7 +120,7 @@ impl SourceIndexRefreshContext {
         let Some(changed_owner_paths) = changed_owner_paths else {
             return Ok(prepared);
         };
-        super::generation_overlay::complete_incremental_generation(
+        super::generation_overlay::complete_generation_from_optional_active_base(
             &self.db_path,
             prepared,
             changed_owner_paths,

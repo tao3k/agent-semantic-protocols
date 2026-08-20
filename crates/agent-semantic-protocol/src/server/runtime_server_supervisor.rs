@@ -255,7 +255,7 @@ pub(crate) async fn reconcile_healthy_runtime_server(
     protocol_home: &Path,
 ) -> Result<agent_semantic_client_db::runtime_server_control::RuntimeServerControlReceipt, String> {
     ensure_runtime_server(protocol_home, false).await?;
-    super::runtime_server::await_healthy_runtime_server(protocol_home).await
+    super::runtime_server::observe_runtime_server_readiness(protocol_home).await
 }
 
 pub(crate) async fn prepare_runtime_server_binary_switch(
@@ -265,25 +265,7 @@ pub(crate) async fn prepare_runtime_server_binary_switch(
     let endpoint =
         match super::runtime_server_endpoint_io::read_supervisor_endpoint(&endpoint_path).await {
             Ok(endpoint) => Some(endpoint),
-            Err(_) => {
-                let spawn_in_flight = read_runtime_server_spawn_receipt(protocol_home)
-                    .await?
-                    .is_some()
-                    && crate::server::runtime_server_exit_receipt::read_latest_owner_exit(
-                        protocol_home,
-                    )
-                    .await?
-                    .is_none();
-                if spawn_in_flight {
-                    super::runtime_server::await_healthy_runtime_server(protocol_home).await?;
-                    Some(
-                        super::runtime_server_endpoint_io::read_supervisor_endpoint(&endpoint_path)
-                            .await?,
-                    )
-                } else {
-                    None
-                }
-            }
+            Err(_) => None,
         };
     let Some(endpoint) = endpoint else {
         return Ok(false);

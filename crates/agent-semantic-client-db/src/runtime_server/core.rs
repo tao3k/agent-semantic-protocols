@@ -176,10 +176,13 @@ impl RuntimeServer {
         let builder = Arc::new(
             move |workspace_identity: String,
                   project_root: std::path::PathBuf,
-                  candidate: crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
-                  build_mode: crate::runtime_server_admission::WorkspaceGenerationBuildMode,
-                  changed_paths: Arc<std::collections::BTreeSet<std::path::PathBuf>>,
-                  _cancellation: crate::runtime_generation_cancellation::GenerationCancellation| {
+          candidate: crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
+          build_mode: crate::runtime_server_admission::WorkspaceGenerationBuildMode,
+          changed_paths: Arc<std::collections::BTreeSet<std::path::PathBuf>>,
+          provider_target: Option<
+            crate::runtime_server_admission::WorkspaceGenerationProviderTarget,
+          >,
+          _cancellation: crate::runtime_generation_cancellation::GenerationCancellation| {
                 let durable_registry = Arc::clone(&durable_registry);
                 let memory_registry = Arc::clone(&memory_registry);
                 let source_builder = source_builder.clone();
@@ -427,24 +430,39 @@ impl RuntimeServer {
                         crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
                         error,
                     ))?;
+                    const SOURCE_BUILDER_BUDGET: std::time::Duration =
+                        std::time::Duration::from_millis(800);
                     let source_build_started = std::time::Instant::now();
                     let source_build = await_stage(
                         &workspace_identity,
                         &operation_id,
                         Stage::SourceBuilder,
                         async {
-                            source_builder(
-                                workspace_for_build,
-                                project_root.clone(),
-                                changed_paths,
+                            tokio::time::timeout(
+                                SOURCE_BUILDER_BUDGET,
+                                source_builder(
+                                    workspace_for_build,
+                                    project_root.clone(),
+                                    changed_paths,
+                                    provider_target,
+                                ),
                             )
-                                .await
-                                .map_err(|error| {
-                                    crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
-                                        crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
-                                        error,
-                                    )
-                                })
+                            .await
+                            .map_err(|_| {
+                                crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                    crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
+                                    format!(
+                                        "workspace generation source builder exceeded budget: budgetMillis={}",
+                                        SOURCE_BUILDER_BUDGET.as_millis()
+                                    ),
+                                )
+                            })?
+                            .map_err(|error| {
+                                crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                    crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
+                                    error,
+                                )
+                            })
                         },
                     )
                     .await;
@@ -452,7 +470,7 @@ impl RuntimeServer {
                         .elapsed()
                         .as_micros()
                         .min(u128::from(u64::MAX)) as u64;
-                    let source_build_budget_micros = 800_000;
+                    let source_build_budget_micros = SOURCE_BUILDER_BUDGET.as_micros() as u64;
                     let mut source_build_observation = crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
                         "workspace-generation-admission",
                         "source-builder",

@@ -6,7 +6,6 @@ fn main() {
     println!(
         "cargo:rerun-if-changed=../../org/contracts/agent.multi-agent-session-control-plane.v1.org"
     );
-    println!("cargo:rerun-if-changed=../agent-semantic-runtime/src/codex_app_server_sessions.rs");
     let manifest_dir = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("manifest dir"));
     let agents_root = manifest_dir.join("../../agents");
     println!("cargo:rerun-if-changed={}", agents_root.display());

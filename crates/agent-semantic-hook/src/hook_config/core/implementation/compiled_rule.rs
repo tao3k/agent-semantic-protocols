@@ -15,13 +15,14 @@ use crate::protocol::{
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
     ReasonKind, StdinMode,
 };
+use crate::tool_action::{ToolAction, subject_for_action};
 use crate::{
     AgentOrgArtifactsArchiveWarning, AgentOrgArtifactsRecovery, CompiledAgentOrgArtifactsConfig,
     CompiledRecoveryPromptConfig, HookRuntime, collect_source_selector_matches,
 };
 
-use crate::tool_action::{ToolAction, subject_for_action};
-
+#[path = "compiled_rule_environment_assignment.rs"]
+mod environment_assignment;
 #[path = "compiled_rule_structured_projection_template.rs"]
 mod structured_projection_template;
 
@@ -57,6 +58,7 @@ type RuleCandidateIndex =
 pub(in crate::hook_config) struct CompiledHookRule {
     id: String,
     priority: i64,
+    terminal: bool,
     intent: Option<String>,
     fields: std::collections::BTreeMap<String, String>,
     pub(in crate::hook_config) dispatch: Option<CompiledRuleDispatch>,
@@ -92,6 +94,7 @@ pub(super) struct RuleMatch {
     command_any: Vec<String>,
     argv_pattern_any: Vec<Vec<String>>,
     argv_prefix_any: Vec<Vec<String>>,
+    leading_environment_assignment_any: Vec<String>,
     command_contains_any: CompiledCommandContains,
     path_any: Vec<String>,
     path_glob_any: CompiledPathGlobs,
@@ -362,6 +365,7 @@ impl RuleMatch {
             command_any: config.command_any,
             argv_pattern_any: config.argv_pattern_any,
             argv_prefix_any: config.argv_prefix_any,
+            leading_environment_assignment_any: config.leading_environment_assignment_any,
             command_contains_any,
             path_any: config.path_any,
             path_glob_any,
@@ -446,6 +450,7 @@ impl RuleMatch {
     fn needs_command_tokens(&self) -> bool {
         !self.command_any.is_empty()
             || !self.argv_prefix_any.is_empty()
+            || !self.leading_environment_assignment_any.is_empty()
             || !self.argv_source_any.is_empty()
             || !self.argv_source_glob_any.is_empty()
             || self.argv_workspace_regular_file
@@ -479,6 +484,7 @@ impl RuleMatch {
     fn matches_command(&self, action: &ToolAction, command_tokens: Option<&[String]>) -> bool {
         if self.command_any.is_empty()
             && self.argv_prefix_any.is_empty()
+            && self.leading_environment_assignment_any.is_empty()
             && self.command_contains_any.is_empty()
         {
             return true;
@@ -529,7 +535,9 @@ impl RuleMatch {
                 .argv_prefix_any
                 .iter()
                 .any(|prefix| matches_prefix(prefix).routes_protected());
-        token_match && prefix_match && contains_match
+        let leading_environment_match =
+            environment_assignment::matches(command, &self.leading_environment_assignment_any);
+        token_match && prefix_match && contains_match && leading_environment_match
     }
 
     fn matches_path(&self, paths: &[String]) -> bool {
@@ -859,6 +867,7 @@ impl CompiledHookRule {
         Ok(Self {
             id: config.id,
             priority: config.priority,
+            terminal: config.terminal,
             intent: config.intent,
             fields: config.fields,
             dispatch,

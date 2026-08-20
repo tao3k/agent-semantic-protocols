@@ -24,7 +24,7 @@ fn cli_install_materializes_activation_under_state_core_not_prj_cache() {
     let root = git_project_root("install-prj-cache-home");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
-    write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
+    write_state_home_provider_binary(&asp_state_home, "rust", "asp-rust", "rs-harness");
     let config_path = root.join(".agents").join("asp.toml");
     std::fs::create_dir_all(config_path.parent().expect("agent config parent"))
         .expect("create agent config parent");
@@ -98,7 +98,7 @@ fn cli_install_refreshes_drifted_managed_client_hook_config() {
     let root = git_project_root("install-preserves-client-config");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
-    write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
+    write_state_home_provider_binary(&asp_state_home, "rust", "asp-rust", "rs-harness");
     let protocol_bin_dir = root.join(".agent-bin");
     write_real_asp_launcher(&protocol_bin_dir);
     let client_config_path = asp_state_home.join("hooks/config.toml");
@@ -211,7 +211,7 @@ fn cli_install_preserves_top_level_flags_without_forging_hook_trust() {
     let root = git_project_root("install-unified-exec-feature");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
-    write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
+    write_state_home_provider_binary(&asp_state_home, "rust", "asp-rust", "rs-harness");
     let asp_bin_dir = asp_bin_dir(&root);
     let protocol_bin_dir = root.join(".agent-bin");
     write_real_asp_launcher(&protocol_bin_dir);

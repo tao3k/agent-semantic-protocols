@@ -224,7 +224,29 @@ This section supersedes every earlier paragraph in this document that assigns
 lazy provider-catalog admission, provider activation, cache repair, hashing, or
 generation construction to a search/query request.
 
-The stable v1 contract has exactly three authority boundaries:
+The stable v1 contract has exactly three authority boundaries.
+
+The shared v1 schemas own every wire-level digest representation.  Provider
+implementations MUST validate the schema-owned =digest= language and MUST NOT
+narrow it with a provider-private algorithm allowlist.  A schema-valid
+=sha256:= digest, =blake3-256:= digest, or bare lowercase 64-hex digest is a v1
+value, not a fallback.  Source-snapshot provider evidence and Runtime provider
+catalog publication remain distinct authority fields even when both values use
+that shared digest syntax; neither may be inferred from, substituted for, or
+silently upgraded into the other.
+
+The three boundaries are:
+
+=cache status=, workspace generation admission, the active pointer, projection
+capability, and parser-owned source-index lookup are projections of one atomic
+generation publication.  They MUST NOT maintain independent =Ready= ledgers.
+A =Ready= cache receipt is valid only when exact query admission exposes the
+same generation digest and the source-index owner route can resolve that
+generation.  If any consumer observes =Missing=, =Building=, =Failed=, or an
+owner miss for that digest, the public cache state is not =Ready= and the
+Runtime publishes one typed terminal inconsistency receipt.  No consumer may
+repair this by reading an older generation or falling back to a client-local
+index.
 
 1. Host/session lifecycle submits workspace admission to the Runtime Server.
    The Runtime Server owns the single-flight build independently of the
@@ -237,6 +259,12 @@ The stable v1 contract has exactly three authority boundaries:
    =Cancelled= return an immediate typed v1 receipt.  Only =Ready= may enter
    the resident read plane.
 
+A =Ready= generation may publish an explicit empty selector-capability set.
+That means the generation is valid but exposes no exact-selector projection;
+it does not mean that capability evidence is missing.  An exact-selector
+request against that set fails closed at the request boundary and must not
+fall back to provider execution, local parsing, Turso, or an older generation.
+
 Hook execution is not one of these Runtime boundaries.  The HookLocalKernel v1
 uses only its compiled local snapshots and must not contact the Runtime Server,
 open Turso, activate a provider, or submit workspace admission.
@@ -245,3 +273,36 @@ There is no provider-native, client-local, Turso-open, stale-generation, or
 schema-version fallback.  New additive evidence is merged into the existing v1
 contracts; this RFC does not authorize a v2 search, cache, generation, or
 qualification schema.
+
+* Required v1 scenario gates
+
+The implementation is incomplete unless all of the following are executable
+tests rather than documentation-only claims:
+
+- =Missing=, =Building=, =Failed=, and =Cancelled= queries return their typed
+  v1 receipt before mmap open, provider execution, filesystem discovery, Turso,
+  or admission submission.
+- The first read of an already published generation and all subsequent warm
+  reads use the same immutable mmap authority.  Warm readers perform zero DB
+  opens, zero provider invocations, and zero control-plane round trips.
+- Disconnecting the IPC client that submitted admission or mutation does not
+  cancel the Runtime-owned build.  Runtime shutdown, explicit supersession, and
+  lease expiry remain distinct terminal reasons.
+- Concurrent equivalent admissions and mutations have exactly one leader;
+  followers observe one receipt and cannot amplify provider, DB, or filesystem
+  work.
+- A one-file edit recomputes only the changed Merkle leaf and affected owner,
+  selector, relation, and proof records.  Unchanged CAS blobs and proofs retain
+  identity.
+- Rename is represented as one removed path plus one added path.  Deletion
+  cannot leave an owner, selector, relation, or synthetic generation record.
+- Failure before pointer publication leaves the previous complete generation
+  readable.  Readers observe either the previous generation or the complete
+  successor, never a partially written mixture.
+- A =Ready= generation with an empty selector-capability set is valid, but an
+  exact-selector request admits no projection and performs no read-plane
+  effect.
+- Hook tests prove zero Runtime Server, IPC, Turso, provider activation, and
+  generation-admission dependencies.
+- Repository gates reject parallel v2 search/cache/generation schemas; additive
+  evolution remains in the stable v1 contract.

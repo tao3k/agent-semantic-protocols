@@ -40,8 +40,7 @@
     {
       "id": "CREATE_AND_REGISTER",
       "instruction": "Create and register @asp_testing subagent from its configured read-only sandbox profile — ASP test/build execution lane. The Host owns the child identity and ASP Runtime Server records the resulting lifecycle event.",
-      "presentation": "pane",
-      "why": "the Hook-selected role is configured and has no resident registration"
+      "presentation": "pane"
     }
   ]
 }

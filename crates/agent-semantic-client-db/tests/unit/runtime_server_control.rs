@@ -700,7 +700,7 @@ async fn runtime_generation_mutation_submission_is_non_blocking_and_single_fligh
     .with_workspace_generation_builder(Arc::new({
         let source_build_count = Arc::clone(&source_build_count);
         let source_build_release = Arc::clone(&source_build_release);
-        move |_workspace_identity, _project_root, _changed_paths| {
+        move |_workspace_identity, _project_root, _changed_paths, _provider_target| {
             let source_build_count = Arc::clone(&source_build_count);
             let source_build_release = Arc::clone(&source_build_release);
             Box::pin(async move {
@@ -850,7 +850,7 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_bounded() 
     .with_workspace_generation_builder(Arc::new({
         let source_build_count = Arc::clone(&source_build_count);
         let source_build_release = Arc::clone(&source_build_release);
-        move |_workspace_identity, _project_root, _changed_paths| {
+        move |_workspace_identity, _project_root, _changed_paths, _provider_target| {
             let source_build_count = Arc::clone(&source_build_count);
             let source_build_release = Arc::clone(&source_build_release);
             Box::pin(async move {

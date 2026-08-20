@@ -40,7 +40,7 @@
         "scenarioId": { "type": "string", "minLength": 1 },
         "providerId": {
           "type": "string",
-          "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+          "pattern": "^asp-[a-z0-9][a-z0-9-]*$"
         },
         "language": {
           "enum": [

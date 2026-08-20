@@ -1,0 +1,67 @@
+#+title: 10.06.13 Unified Semantic Projection Envelope
+
+* Status
+
+This is the canonical breaking migration for Runtime-derived semantic
+projections.  It keeps =schemaVersion: "1"= and removes the specialized
+=agent.semantic-protocols.callable-skeleton-projection= wire envelope.
+
+* Problem
+
+The callable-skeleton contract currently owns both a semantic graph payload and
+the Runtime transport envelope.  That duplicates generation, provider,
+language, selector, cache, mmap, validation, and telemetry machinery for one
+projection kind.  Adding another projection would repeat that authority path.
+An =evidenceContextRef= reduces bytes but does not correct the ownership split.
+
+* Decision
+
+Runtime publishes exactly one wire envelope:
+=agent.semantic-protocols.semantic-projection= with =schemaVersion: "1"=.
+The envelope binds =projectionKind=, provider/language identity, one exact root
+selector reference, the immutable evidence-context reference, payload schema
+identity, payload digest, and payload bytes.  Callable skeleton is only
+=projectionKind: "callable-skeleton"= with a
+=agent.semantic-protocols.callable-skeleton= payload.  It owns node, relation,
+cost, omission, and language-fact semantics; it owns no generation or transport
+authority.
+
+Provider admission may produce an inline authority form.  Runtime validates it,
+interns its identity into the generation evidence catalog, and publishes only
+the referenced semantic-projection envelope into mmap.  Agent clients never
+receive provider-private wrappers and never reconstruct authority from payload
+fields.
+
+The old specialized envelope, Rust top-level type, schema fixture, mmap record,
+and serializer are deleted in the same migration.  There is no alias, decoder
+fallback, dual-write, or compatibility mode.  File names may retain =.v1= for
+artifact discovery; namespace and schema identity do not carry a version
+suffix, and =schemaVersion= remains ="1"=.
+
+* Runtime invariants
+
+- Cache identity is exactly generation identity, root selector,
+  =projectionKind=, evidence-context digest, and payload digest.
+- Generation publication atomically publishes the evidence context and every
+  semantic-projection record that references it.
+- Warm read is a synchronous immutable mmap lookup.  It performs no provider,
+  scheduler, filesystem, database, socket, or timer work.
+- A missing or mismatched context, payload digest, provider/language identity,
+  or generation binding is typed corruption.  Runtime never repairs it in the
+  read path.
+- Cancellation, request terminal state, and OpenTelemetry correlation belong
+  to the shared projection operation, not to an individual payload kind.
+
+* Verification
+
+The fast Scenario suite must exercise inline admission, referenced mmap read,
+context corruption, payload corruption, stale generation, concurrent isolation,
+cancellation, and one terminal OpenTelemetry receipt.  The Live Corpus suite
+must repeat positive search, semantic projection, exact source, Merkle proof,
+zero match, and telemetry checks for every locked provider/language corpus.
+Scenario-only or Live-Corpus-only evidence is insufficient.
+
+Lean refinement must prove that a validated inline provider projection and its
+Runtime referenced envelope preserve selector authority, payload identity, and
+generation isolation, and that no payload-kind-specific cache authority can be
+constructed.

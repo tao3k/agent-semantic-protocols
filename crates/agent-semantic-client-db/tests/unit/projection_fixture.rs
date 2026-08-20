@@ -87,38 +87,10 @@ pub(crate) fn source_blobs_fixture<'a>(
 }
 
 pub(crate) fn callable_skeleton_projection_fixture(
-    owner_path: &str,
     structural_selector: &str,
     symbol: &str,
 ) -> agent_semantic_client_db::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot {
-    let digest = "0".repeat(64);
-    let root_selector = serde_json::json!({
-        "schemaId": "asp.exact-structural-selector.v1",
-        "schemaVersion": "1",
-        "languageId": "rust",
-        "ownerPath": owner_path,
-        "selector": structural_selector,
-        "generationIdentityDigest": digest,
-        "parserIdentityDigest": "1".repeat(64),
-        "queryPackDigest": "2".repeat(64),
-        "rootItemSelector": {
-            "schemaId": "asp.canonical-item-selector.v1",
-            "schemaVersion": "1",
-            "languageId": "rust",
-            "kind": "function",
-            "symbol": symbol,
-            "scopes": [],
-            "structuralSelector": structural_selector,
-        },
-        "segments": [],
-    });
-    let bytes = serde_json::to_vec(&serde_json::json!({
-        "schemaId": "agent.semantic-protocols.callable-skeleton-projection",
-        "schemaVersion": "1",
-        "projectionKind": "callable-skeleton",
-        "languageId": "rust",
-        "providerId": "rs-harness",
-        "rootSelector": root_selector,
+    let payload = serde_json::json!({
         "rootNodeId": "callable:root",
         "callable": {
             "kind": "function",
@@ -138,10 +110,51 @@ pub(crate) fn callable_skeleton_projection_fixture(
             "projectedBytes": 0,
             "omittedBytes": 0,
         },
-    }))
-    .expect("encode callable skeleton fixture");
+    });
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"asp.projection-evidence-context.v1\0");
+    for component in [
+        "rust",
+        "asp-rust",
+        &"0".repeat(64),
+        &"1".repeat(64),
+        &"2".repeat(64),
+    ] {
+        hasher.update(&(component.len() as u64).to_le_bytes());
+        hasher.update(component.as_bytes());
+    }
+    let evidence_context_ref = format!("blake3-256:{}", hasher.finalize().to_hex());
+    let envelope = agent_semantic_content_identity::semantic_projection::SemanticProjection::new(
+        "callable-skeleton",
+        "rust",
+        "asp-rust",
+        structural_selector,
+        evidence_context_ref.clone(),
+        "agent.semantic-protocols.callable-skeleton",
+        payload,
+    )
+    .expect("build semantic projection fixture");
+    let mut envelope = serde_json::to_value(envelope).expect("encode semantic projection value");
+    let typed_payload: agent_semantic_content_identity::callable_skeleton_projection::CallableSkeletonPayload =
+        serde_json::from_value(envelope["payload"].clone()).expect("decode typed fixture payload");
+    let typed_bytes = serde_json::to_vec(&typed_payload).expect("encode typed fixture payload");
+    envelope["payloadDigest"] =
+        format!("blake3-256:{}", blake3::hash(&typed_bytes).to_hex()).into();
+    let bytes = serde_json::to_vec(&envelope).expect("encode callable skeleton fixture");
     agent_semantic_client_db::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot {
         projection_kind: agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::CallableSkeleton,
         bytes,
+        evidence_context: Some(
+            agent_semantic_content_identity::projection_evidence_context::ProjectionEvidenceContext {
+                schema_id: "agent.semantic-protocols.projection-evidence-context".to_owned(),
+                schema_version: "1".to_owned(),
+                evidence_context_ref,
+                language_id: "rust".to_owned(),
+                provider_id: "asp-rust".to_owned(),
+                generation_identity_digest: "0".repeat(64),
+                parser_identity_digest: "1".repeat(64),
+                query_pack_digest: "2".repeat(64),
+            },
+        ),
     }
 }

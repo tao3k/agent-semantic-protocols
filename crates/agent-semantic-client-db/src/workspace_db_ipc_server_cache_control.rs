@@ -180,7 +180,7 @@ pub(super) async fn evaluate(
                                     RuntimeCacheGenerationState::Rebuilding
                                 }
                                 WorkspaceGenerationAdmissionState::Ready => {
-                                    RuntimeCacheGenerationState::Ready
+                                    RuntimeCacheGenerationState::Stale
                                 }
                                 WorkspaceGenerationAdmissionState::Failed
                                 | WorkspaceGenerationAdmissionState::Cancelled => {
@@ -188,7 +188,14 @@ pub(super) async fn evaluate(
                                 }
                             },
                             admitted.commit.map(|commit| commit.generation_digest),
-                            admitted.error,
+                            admitted.error.or_else(|| {
+                                (admitted.state == WorkspaceGenerationAdmissionState::Ready).then(
+                                    || {
+                                        "admission is Ready but resident generation is absent"
+                                            .to_owned()
+                                    },
+                                )
+                            }),
                         ),
                         None => receipt("status", RuntimeCacheGenerationState::Missing, None, None),
                     },

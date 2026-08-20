@@ -85,7 +85,13 @@ async fn admitted_mutation_does_not_require_git_candidate_rediscovery() {
         crate::runtime_server_admission::WorkspaceGenerationAdmission::new(std::sync::Arc::new({
             let build_count = std::sync::Arc::clone(&build_count);
             let build_changed = std::sync::Arc::clone(&build_changed);
-            move |_workspace_identity, _project_root, candidate, _mode, _paths, _cancellation| {
+            move |_workspace_identity,
+                  _project_root,
+                  candidate,
+                  _mode,
+                  _paths,
+                  _provider_target,
+                  _cancellation| {
                 let build_count = std::sync::Arc::clone(&build_count);
                 let build_changed = std::sync::Arc::clone(&build_changed);
                 Box::pin(async move {
@@ -172,7 +178,7 @@ async fn resident_reads_fail_closed_while_a_new_generation_is_building() {
             let build_index = std::sync::Arc::clone(&build_index);
             let mutation_started = std::sync::Arc::clone(&mutation_started);
             let release_mutation = std::sync::Arc::clone(&release_mutation);
-            move |_workspace, _root, candidate, _mode, _paths, _cancellation| {
+            move |_workspace, _root, candidate, _mode, _paths, _provider_target, _cancellation| {
                 let index = build_index.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
                 let mutation_started = std::sync::Arc::clone(&mutation_started);
                 let release_mutation = std::sync::Arc::clone(&release_mutation);
@@ -205,6 +211,10 @@ async fn resident_reads_fail_closed_while_a_new_generation_is_building() {
             }
         }),
     );
+    let registry = crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry::new(
+        temp.path().join("runtime-read-guard"),
+    )
+    .expect("create runtime workspace registry");
     admission
         .admit(workspace_identity, project_root.clone(), candidate())
         .await
@@ -226,6 +236,7 @@ async fn resident_reads_fail_closed_while_a_new_generation_is_building() {
     mutation_started.notified().await;
 
     let error = crate::workspace_db_ipc_server::generation::require_terminal_generation_for_read(
+        &registry,
         Some(&admission),
         workspace_identity,
         &project_root,
@@ -239,6 +250,7 @@ async fn resident_reads_fail_closed_while_a_new_generation_is_building() {
         .await
         .expect("mutation generation ready");
     crate::workspace_db_ipc_server::generation::require_terminal_generation_for_read(
+        &registry,
         Some(&admission),
         workspace_identity,
         &project_root,
@@ -265,7 +277,7 @@ async fn first_ipc_mutation_requires_a_prepublished_generation() {
     let admission = std::sync::Arc::new(
         crate::runtime_server_admission::WorkspaceGenerationAdmission::new(std::sync::Arc::new({
             let build_count = std::sync::Arc::clone(&build_count);
-            move |_workspace, _root, _candidate, _mode, _paths, _cancellation| {
+            move |_workspace, _root, _candidate, _mode, _paths, _provider_target, _cancellation| {
                 build_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
                 Box::pin(async move {
                     Err(

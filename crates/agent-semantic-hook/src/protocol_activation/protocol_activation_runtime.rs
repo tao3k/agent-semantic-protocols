@@ -28,11 +28,11 @@ fn expect_field(field: &str, actual: &str, expected: &str) -> Result<(), AgentHo
 
 pub(crate) fn validate_runtime_contract(manifest: &ProviderManifest) -> Result<(), AgentHookError> {
     let contract = manifest.runtime_contract();
-    match (contract.transport(), contract.server()) {
-        (ProviderRuntimeContractTransport::HttpJsonV1, Some(server)) => {
-            if server.schema_id != "agent.semantic-protocols.provider-server-descriptor"
+    match (contract.transport(), contract.asp_client_server()) {
+        (ProviderRuntimeContractTransport::HttpJson, Some(server)) => {
+            if server.schema_id != "agent.semantic-protocols.asp-client-server-descriptor"
                 || server.schema_version != "1"
-                || server.transport != ProviderRuntimeContractTransport::HttpJsonV1
+                || server.transport != ProviderRuntimeContractTransport::HttpJson
                 || server.command.is_empty()
                 || server.command.iter().any(String::is_empty)
                 || !server.health_path.starts_with('/')
@@ -41,13 +41,13 @@ pub(crate) fn validate_runtime_contract(manifest: &ProviderManifest) -> Result<(
                 || server.warmup_policy != "before-ready"
             {
                 return Err(AgentHookError::InvalidActivationConfig(
-                    "provider HTTP server descriptor is invalid".to_owned(),
+                    "ASP Client Server descriptor is invalid".to_owned(),
                 ));
             }
         }
-        (ProviderRuntimeContractTransport::HttpJsonV1, None) => {
+        (ProviderRuntimeContractTransport::HttpJson, None) => {
             return Err(AgentHookError::InvalidActivationConfig(
-                "provider HTTP runtime requires a server descriptor".to_owned(),
+                "HTTP runtime requires an ASP Client Server descriptor".to_owned(),
             ));
         }
         (_, Some(_)) => {
@@ -58,9 +58,9 @@ pub(crate) fn validate_runtime_contract(manifest: &ProviderManifest) -> Result<(
         (_, None) => {}
     }
     match (manifest.execution(), contract.transport()) {
-        (ProviderExecution::ExternalProcess, ProviderRuntimeContractTransport::RuntimeIpcV1)
-        | (ProviderExecution::ExternalProcess, ProviderRuntimeContractTransport::HttpJsonV1)
-        | (ProviderExecution::Embedded, ProviderRuntimeContractTransport::InProcessV1) => {}
+        (ProviderExecution::ExternalProcess, ProviderRuntimeContractTransport::RuntimeIpc)
+        | (ProviderExecution::ExternalProcess, ProviderRuntimeContractTransport::HttpJson)
+        | (ProviderExecution::Embedded, ProviderRuntimeContractTransport::InProcess) => {}
         (execution, transport) => {
             return Err(AgentHookError::InvalidActivationConfig(format!(
                 "provider runtimeContract transport `{transport:?}` does not match execution `{execution:?}`"
@@ -100,12 +100,14 @@ pub(crate) fn validate_runtime_contract(manifest: &ProviderManifest) -> Result<(
             "agent.semantic-protocols.runtime-provider-search-receipt",
         )?;
     }
-    if let Some(descriptor) = manifest.language_projection() {
+    if manifest.project_resolution().is_some()
+        && manifest.search_capabilities().source_snapshot.is_some()
+    {
         require_runtime_operation(
             contract,
-            descriptor.command_binding(),
-            descriptor.request_schema(),
-            descriptor.response_schema(),
+            "projection-batch-stdin",
+            "https://schemas.agent-semantic-protocols.dev/provider-language-projection-batch-request.v1.schema.json",
+            "https://schemas.agent-semantic-protocols.dev/provider-language-projection-batch-response.v1.schema.json",
         )?;
     }
     if let Some(descriptor) = manifest.project_resolution() {

@@ -83,7 +83,7 @@ fn rust_provider() -> ActivatedProvider {
         StdinMode::PipeCandidates,
     );
     provider(
-        &builtin_provider_manifest("rust", "rs-harness"),
+        &builtin_provider_manifest("rust", "asp-rust"),
         ProviderFixtureLayout {
             source_extensions: &[".rs"],
             config_files: &["Cargo.toml", "Cargo.lock"],
@@ -93,7 +93,7 @@ fn rust_provider() -> ActivatedProvider {
 }
 
 fn python_provider() -> ActivatedProvider {
-    let manifest = builtin_provider_manifest("python", "py-harness");
+    let manifest = builtin_provider_manifest("python", "asp-python");
     let routes =
         agent_semantic_hook::materialize_provider_routes(&manifest).expect("python routes");
     provider(

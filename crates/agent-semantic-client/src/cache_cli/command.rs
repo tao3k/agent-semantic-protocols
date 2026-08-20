@@ -79,7 +79,7 @@ fn runtime_cache_mutation_id(action: &str) -> Result<String, String> {
         .map_err(|error| format!("system clock is before the Unix epoch: {error}"))?
         .as_nanos();
     Ok(format!(
-        "cache-v1:{action}:{}:{timestamp}",
+        "cache:{action}:{}:{timestamp}",
         std::process::id()
     ))
 }
@@ -239,41 +239,12 @@ pub(crate) async fn run_cache(
             receipt_json,
         )
         .await,
-        [subcommand] if subcommand == "import" => run_runtime_cache_control(
-            RuntimeCacheControlRequest::RebuildSourceIndex {
-                project_root: project_root_text,
-                mutation_id: runtime_cache_mutation_id("rebuild-source-index")?,
-            },
-            receipt_json,
-        )
-        .await,
-        [subcommand, action] if subcommand == "source-index" && action == "refresh" => {
-            run_runtime_cache_control(
-                RuntimeCacheControlRequest::RefreshSourceIndex {
-                    project_root: project_root_text,
-                    expected_generation: None,
-                },
-                receipt_json,
-            )
-            .await
-        }
         [subcommand, action, rest @ ..]
             if subcommand == "source-index" && action == "lookup" =>
         {
             run_source_index_lookup(project_root, facade_language_id, rest, receipt_json).await
         }
-        [subcommand, scope] if subcommand == "flush" && scope == "syntax-rows" => {
-            run_runtime_cache_control(
-                RuntimeCacheControlRequest::Invalidate {
-                    project_root: project_root_text,
-                    mutation_id: runtime_cache_mutation_id("invalidate-syntax-rows")?,
-                    scope: RuntimeCacheInvalidationScope::SyntaxRows,
-                },
-                receipt_json,
-            )
-            .await
-        }
-        [subcommand] if subcommand == "invalidate" || subcommand == "flush" => {
+        [subcommand] if subcommand == "invalidate" => {
             run_runtime_cache_control(
                 RuntimeCacheControlRequest::Invalidate {
                     project_root: project_root_text,
@@ -285,7 +256,7 @@ pub(crate) async fn run_cache(
             .await
         }
         _ => Err(
-            "usage: asp cache <status|gc [--grace-days <n>] [--apply]|clean --day[=<days>]|import|source-index refresh|source-index lookup --query <term> [--index-root <path>] [--limit <n>]|invalidate|flush [syntax-rows]>; use asp <language> cache source-index lookup ... for language-scoped lookup"
+            "usage: asp cache <status|gc [--grace-days <n>] [--apply]|clean --day[=<days>]|source-index lookup --query <term> [--index-root <path>] [--limit <n>]|invalidate>; use asp <language> cache source-index lookup ... for language-scoped lookup"
                 .to_owned(),
         ),
     }

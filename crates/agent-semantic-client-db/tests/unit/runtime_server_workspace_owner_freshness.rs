@@ -31,6 +31,7 @@ fn unchanged_owner_is_warm_after_selector_discovery_without_derived_projection()
             derived_projections: vec![WorkspaceDerivedProjectionSnapshot {
                 projection_kind: "callable-skeleton".to_owned(),
                 bytes: b"fn run()".to_vec(),
+                evidence_context: None,
             }],
         },
     ])));

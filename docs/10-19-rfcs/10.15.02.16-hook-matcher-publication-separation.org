@@ -86,14 +86,49 @@ The retired dependency chain admits this concrete cycle:
    cannot become executable work;
 4. canonical install requires the replacement binary that step 1 prevented.
 
-The new ordering detects =ASP_NO_AGENT= in either the Hook process environment
-or a normalized shell-command environment assignment before break-glass,
-matcher state, Policy Kernel, Runtime, locks, or telemetry.  It emits an empty
-Host-success response and terminates.  The override is therefore a recovery
-authority, not another policy rule.  This precedence is scoped by the CLI
+The new ordering has two explicit layers.  An inherited
+=ASP_NO_AGENT=1= in the Hook process environment is a bootstrap recovery
+override evaluated before payload or matcher state access.  The one-command
+form is a declarative Binary-v1 matcher rule whose
+=leadingEnvironmentAssignmentAny= predicate is interpreted by the generic
+command matcher and whose winning allow decision is terminal.  Classifier
+orchestration MUST NOT know the variable name.  Both forms emit an empty
+Host-success response and terminate, but only the inherited process variable
+is pre-matcher recovery authority.  This precedence is scoped by the CLI
 grammar: the process must first be an actual =asp hook <event>= dispatch.
 =ASP_NO_AGENT=1 asp --version= remains an ordinary CLI invocation and cannot be
 captured by the synchronous Hook bootstrap.
+
+The same config compiler publishes leading-environment decisions into both the
+=ShellRead= and =ShellCommand= mmap shards.  Runtime selection is one generic
+command-matcher operation; it does not duplicate bypass logic by Host action
+kind.  A cheap check that the raw command contains no equals sign may skip AST
+construction on the common prefix-only path, but it is only a negative
+performance gate.  Every positive
+environment match is still decided by the parser-owned first-stage assignment
+predicate.
+
+The leading-environment layer is terminal before every specialized command
+shard, including structured projection.  A structured projector grammar MUST
+NOT preempt a winning declarative environment decision.  This ordering is one
+generic matcher operation and does not name =ASP_NO_AGENT=, a projector binary,
+or a document format in classifier orchestration.
+
+Config-independent provider-binary admission uses a constant-time registry
+candidate gate before constructing a shell action graph.  Commands whose
+leading executable is not a registered provider-internal binary MUST NOT pay
+for a second shell parse before mmap shard selection.  The registry remains the
+identity authority and every positive candidate still runs the complete typed
+provider-binary policy.
+
+Match-policy conformance derives its rule inventory and witnesses from the
+resolved declarative configuration; it MUST NOT hard-code a rule count.  The
+conformance evaluator recompiles a verification-only capability snapshot in
+which every configured =lazy-executable= projector is available.  Host PATH
+availability controls whether an optional projector may execute in production,
+but cannot turn a valid projector rule into policy-schema drift.  The explicit
+no-agent command rule is covered by the same end-to-end witness and branch
+inventory as every other production rule.
 
 Typed target dispatch is idempotent: when both current =agent_type=/=agent_id=
 equal the policy target, evaluation returns allow.  Missing or blank typed
@@ -129,3 +164,22 @@ The Lean refinement is
 =ASPProof.HookMatcherPublicationSeparation=.  Its coupled-model counterexample
 shows that evaluation-owned publication can self-wait; the separated model
 proves missing generation terminates and evaluation preserves generation.
+
+* Native Host acceptance envelope
+:PROPERTIES:
+:CONTRACT_ID: ASP-RFC-10.15.02.16-NATIVE-HOST-ACCEPTANCE
+:END:
+
+Host acceptance remains a schemaVersion v1 diagnostic receipt.  The reader
+MUST recognize both native =function_call.arguments= envelopes and unified-exec
+=custom_tool_call.input= envelopes.  A unified-exec output is a structured
+=custom_tool_call_output= value rather than a scalar string, so source-leak
+inspection recursively visits string fields.
+
+Probe calls and outputs MUST be correlated by =call_id=.  A sentinel emitted by
+an unrelated diagnostic command cannot reject an otherwise valid Host deny,
+and a sentinel returned by the protected probe MUST reject the receipt with
+=reasonKind=source-bytes-leaked=.  Acceptance requires all of the following in
+one real normal-task rollout: plugin evidence, the correlated probe call, a
+Hook event, a deny decision, and no protected source bytes.  Manual
+=asp hook pre-tool= execution is not Host acceptance evidence.

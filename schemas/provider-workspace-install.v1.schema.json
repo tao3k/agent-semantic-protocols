@@ -8,6 +8,7 @@
     "schemaId",
     "schemaVersion",
     "schemaAuthority",
+    "languageId",
     "providerId",
     "binary",
     "workspaceArtifact",
@@ -24,9 +25,18 @@
       "type": "string",
       "format": "uri"
     },
+    "languageId": {
+      "enum": [
+        "gerbil-scheme",
+        "julia",
+        "python",
+        "rust",
+        "typescript"
+      ]
+    },
     "providerId": {
       "type": "string",
-      "minLength": 1
+      "pattern": "^asp-[a-z0-9][a-z0-9-]*$"
     },
     "binary": {
       "type": "string",
@@ -42,6 +52,38 @@
       "$ref": "#/$defs/workspaceBuild"
     }
   },
+  "oneOf": [
+    {
+      "properties": {
+        "languageId": {"const": "gerbil-scheme"},
+        "providerId": {"const": "asp-gerbil-scheme"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "julia"},
+        "providerId": {"const": "asp-julia"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "python"},
+        "providerId": {"const": "asp-python"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "rust"},
+        "providerId": {"const": "asp-rust"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "typescript"},
+        "providerId": {"const": "asp-typescript"}
+      }
+    }
+  ],
   "$defs": {
     "relativePath": {
       "type": "string",

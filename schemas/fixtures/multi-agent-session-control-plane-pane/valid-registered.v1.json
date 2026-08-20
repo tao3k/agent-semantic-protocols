@@ -62,8 +62,7 @@
     {
       "id": "CALL_RESUME_REGISTERED",
       "instruction": "Call/resume @asp_explorer subagent in read-only sandbox mode — ASP search/query evidence explorer.",
-      "presentation": "action",
-      "why": "the Hook-selected subagent has a routable registration"
+      "presentation": "action"
     }
   ]
 }

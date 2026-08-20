@@ -92,7 +92,7 @@ repository. Do not copy Python policy logic into the sandtable runner. Run the
 direct CLI form when you need the actual policy gate:
 
 ```sh
-uv run --project languages/python-lang-project-harness --frozen py-harness check --full .
+uv run --project languages/python-lang-project-harness --frozen asp-python check --full .
 ```
 
 If `just` is available in the active shell, `just check-python-policy` is the

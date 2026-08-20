@@ -48,6 +48,34 @@ impl CommandStageV1 {
     pub fn executable(&self) -> Option<&str> {
         self.words.first().map(String::as_str)
     }
+
+    /// Whether this stage is a shell control separator rather than an argv.
+    pub fn is_separator(&self) -> bool {
+        self.words.len() == 1 && bash_parser::is_separator(&self.words[0])
+    }
+}
+
+/// Render one normalized stage back to a shell string without changing argv
+/// boundaries. This is used only to hand a parser-owned stage to downstream
+/// declarative matchers; it never executes the rendered command.
+pub fn render_bash_command_stage(stage: &CommandStageV1) -> String {
+    stage
+        .words()
+        .iter()
+        .map(|word| {
+            if !word.is_empty()
+                && word.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric()
+                        || matches!(byte, b'_' | b'-' | b'.' | b'/' | b':' | b'=' | b'@' | b'%')
+                })
+            {
+                word.clone()
+            } else {
+                format!("'{}'", word.replace('\'', "'\\''"))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Match normalized command stages against a configured argv prefix.
@@ -87,6 +115,34 @@ pub fn command_stages_match_wrapped_prefix(
         }
     }
     PrefixMatch::NotMatched
+}
+
+/// Match an exact environment assignment in the leading assignment block of
+/// the first parsed command stage. Assignments passed to an executable such as
+/// `env NAME=VALUE` and assignments in later shell stages do not match.
+pub fn command_stages_match_leading_environment_assignment(
+    stages: &[CommandStageV1],
+    expected: &[String],
+) -> bool {
+    let Some(first_stage) = stages.first() else {
+        return false;
+    };
+    first_stage
+        .words()
+        .iter()
+        .take_while(|word| is_environment_assignment(word))
+        .any(|assignment| expected.iter().any(|expected| assignment == expected))
+}
+
+fn is_environment_assignment(word: &str) -> bool {
+    let Some((name, _)) = word.split_once('=') else {
+        return false;
+    };
+    let mut characters = name.chars();
+    characters
+        .next()
+        .is_some_and(|character| character == '_' || character.is_ascii_alphabetic())
+        && characters.all(|character| character == '_' || character.is_ascii_alphanumeric())
 }
 
 fn command_stages_match_prefix_impl(stages: &[CommandStageV1], prefix: &[String]) -> PrefixMatch {

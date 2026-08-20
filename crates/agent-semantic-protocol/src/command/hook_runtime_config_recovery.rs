@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 const ACTIVE_MATCHER_ARTIFACT: &str = "active-matcher.v1.bin";
-const ACTIVE_MATCHER_MAGIC: &[u8; 8] = b"ASPHOOK1";
+const ACTIVE_MATCHER_MAGIC: &[u8; 8] = b"ASPHK1PC";
 const ACTIVE_MATCHER_HEADER_LEN: usize = 8 + 8 + 16 + 8 + 16 + 64;
 const ACTIVE_MATCHER_SECTION_ENTRY_LEN: usize = 1 + 8 + 8 + 8 + 32;
 static ACTIVE_MATCHER_TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -203,7 +203,7 @@ fn load_active_matcher(
     direct_read_extension: Option<&str>,
     direct_read_path: Option<&str>,
     shell_read_keys: &[agent_semantic_hook::ShellReadSourceKey],
-    shell_command_key: Option<&agent_semantic_hook::ShellCommandKey>,
+    shell_command_keys: &[agent_semantic_hook::ShellCommandKey],
 ) -> Result<Option<LoadedHookConfig>, String> {
     let started = std::time::Instant::now();
     let trace_enabled = std::env::var_os("ASP_HOOK_BOOTSTRAP_TRACE").is_some();
@@ -269,7 +269,11 @@ fn load_active_matcher(
             matcher_section_key(&key.extension),
         )? {
             if let Some(mut decision) =
-                agent_semantic_hook::CommandDecisionShard::select(table, &key.command_tokens)?
+                agent_semantic_hook::CommandDecisionShard::select_for_command(
+                    table,
+                    &key.command,
+                    &key.command_tokens,
+                )?
             {
                 let placeholder = format!("__ASP_SHELL_READ_PATH__{}", key.extension);
                 if !decision.replace_template_marker(&placeholder, &key.path) {
@@ -299,36 +303,56 @@ fn load_active_matcher(
             projection: Some("shell-read-decision-shard"),
         }));
     }
-    if let Some(key) = shell_command_key {
-        if let Some(shard) =
-            select_matcher_section(bundle, MatcherSectionKind::StructuredProjection, [0; 8])?
-            && let Some(decision) =
-                agent_semantic_hook::StructuredProjectionDecisionShard::select(shard, key)?
-        {
-            trace("structured-projection-decision-shard");
+    if !shell_command_keys.is_empty() {
+        let shell_command_shard =
+            select_matcher_section(bundle, MatcherSectionKind::ShellCommand, [0; 8])?;
+        let structured_projection_shard =
+            select_matcher_section(bundle, MatcherSectionKind::StructuredProjection, [0; 8])?;
+        let mut first_allow = None;
+        let mut unmatched = false;
+        for key in shell_command_keys {
+            let selected = if let Some(table) = shell_command_shard
+                && let Some(decision) = agent_semantic_hook::CommandDecisionShard::select_leading_environment_for_command(table, &key.command)?
+            {
+                Some((decision, "leading-environment-decision-shard"))
+            } else if let Some(shard) = structured_projection_shard
+                && let Some(decision) = agent_semantic_hook::StructuredProjectionDecisionShard::select(shard, key)?
+            {
+                Some((decision, "structured-projection-decision-shard"))
+            } else if let Some(table) = shell_command_shard
+                && let Some(decision) = agent_semantic_hook::CommandDecisionShard::select_for_command(table, &key.command, &key.command_tokens)?
+            {
+                Some((decision, "shell-command-decision-shard"))
+            } else {
+                None
+            };
+            let Some((mut decision, projection)) = selected else {
+                unmatched = true;
+                continue;
+            };
+            decision.subject.command = Some(key.command.clone());
+            decision.subject.tool_name = Some(key.tool_name.clone());
+            if decision.decision != DecisionKind::Allow {
+                trace(projection);
+                return Ok(Some(LoadedHookConfig {
+                    config: None,
+                    decision: Some(decision),
+                    projection: Some(projection),
+                }));
+            }
+            first_allow.get_or_insert((decision, projection));
+        }
+        if unmatched {
+            return Ok(None);
+        }
+        if let Some((decision, projection)) = first_allow {
+            trace(projection);
             return Ok(Some(LoadedHookConfig {
                 config: None,
                 decision: Some(decision),
-                projection: Some("structured-projection-decision-shard"),
+                projection: Some(projection),
             }));
         }
-        let Some(table) = select_matcher_section(bundle, MatcherSectionKind::ShellCommand, [0; 8])?
-        else {
-            return Ok(None);
-        };
-        let Some(mut decision) =
-            agent_semantic_hook::CommandDecisionShard::select(table, &key.command_tokens)?
-        else {
-            return Ok(None);
-        };
-        decision.subject.command = Some(key.command.clone());
-        decision.subject.tool_name = Some(key.tool_name.clone());
-        trace("shell-command-decision-shard");
-        return Ok(Some(LoadedHookConfig {
-            config: None,
-            decision: Some(decision),
-            projection: Some("shell-command-decision-shard"),
-        }));
     }
     if let (Some(extension), Some(source_path)) = (direct_read_extension, direct_read_path) {
         let Some(template) = select_matcher_section(
@@ -570,6 +594,7 @@ fn append_file_identity(hasher: &mut Sha256, path: &Path) -> Result<(), String> 
 fn compiled_generation_key(config_path: &Path, project_root: &Path) -> Result<String, String> {
     let mut hasher = Sha256::new();
     hasher.update(b"asp-hook-compiled-mmap-generation-v1\0");
+    hasher.update(b"hook-matcher-compiler-v1-prefix-complete\0");
     hasher.update(project_root.as_os_str().as_encoded_bytes());
     hasher.update(agent_semantic_config::hook_client_contract_fingerprint().as_bytes());
     append_file_identity(&mut hasher, config_path)?;
@@ -586,7 +611,7 @@ pub(crate) fn load_fresh_hook_config(
     direct_read_extension: Option<&str>,
     direct_read_path: Option<&str>,
     shell_read_keys: &[agent_semantic_hook::ShellReadSourceKey],
-    shell_command_key: Option<&agent_semantic_hook::ShellCommandKey>,
+    shell_command_keys: &[agent_semantic_hook::ShellCommandKey],
 ) -> Result<(LoadedHookConfig, &'static str), String> {
     let load_requested = || {
         load_active_matcher(
@@ -595,13 +620,13 @@ pub(crate) fn load_fresh_hook_config(
             direct_read_extension,
             direct_read_path,
             shell_read_keys,
-            shell_command_key,
+            shell_command_keys,
         )
     };
     let has_specialized_request = direct_read_extension.is_some()
         || !shell_read_keys.is_empty()
-        || shell_command_key.is_some();
-    let load_complete = || load_active_matcher(config_path, project_root, None, None, &[], None);
+        || !shell_command_keys.is_empty();
+    let load_complete = || load_active_matcher(config_path, project_root, None, None, &[], &[]);
 
     match load_requested() {
         Ok(Some(loaded)) => return Ok((loaded, "mmap-hit")),

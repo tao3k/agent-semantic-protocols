@@ -17,7 +17,7 @@ fn receipt() -> ProviderRuntimeContractReceipt {
         "rust",
         digest('a'),
         digest('b'),
-        ProviderRuntimeContractTransport::RuntimeIpcV1,
+        ProviderRuntimeContractTransport::RuntimeIpc,
         vec![ProviderRuntimeContractOperation {
             operation: "provider-search".to_owned(),
             request_schema_id: "agent.semantic-protocols.runtime-provider-search-request"
@@ -32,7 +32,7 @@ fn receipt() -> ProviderRuntimeContractReceipt {
 #[tokio::test]
 async fn starting_runtime_fails_requests_immediately_and_shutdown_cancels_handshake() {
     let (_release, blocked) = tokio::sync::oneshot::channel::<()>();
-    let authority = spawn_provider_runtime_actor(
+    let authority = spawn_in_process_provider_runtime_actor(
         8,
         move || async move {
             blocked
@@ -43,16 +43,26 @@ async fn starting_runtime_fails_requests_immediately_and_shutdown_cancels_handsh
         |_operation, payload| async move { Ok(payload) },
     );
     let client = authority.client();
-    let mut states = client.states();
+    let mut states = client.lifecycle_states(receipt());
     assert_eq!(
-        states.next().await,
-        Some(ProviderRuntimeActorState::Starting)
+        states
+            .next()
+            .await
+            .expect("Starting lifecycle publication")
+            .expect("valid Starting lifecycle")
+            .state,
+        crate::AspClientServerLifecycleState::Starting,
     );
     assert_eq!(client.current(), ProviderRuntimeActorState::Starting);
     tokio::task::yield_now().await;
     assert_eq!(
-        states.next().await,
-        Some(ProviderRuntimeActorState::Warming)
+        states
+            .next()
+            .await
+            .expect("Warming lifecycle publication")
+            .expect("valid Warming lifecycle")
+            .state,
+        crate::AspClientServerLifecycleState::Warming,
     );
     assert_eq!(client.current(), ProviderRuntimeActorState::Warming);
     assert_eq!(
@@ -60,7 +70,7 @@ async fn starting_runtime_fails_requests_immediately_and_shutdown_cancels_handsh
             .request("provider-search", Bytes::from_static(b"request"))
             .await
             .expect_err("Warming must fail closed"),
-        "provider-runtime-not-ready: state=warming"
+        "asp-client-server-not-ready: state=warming"
     );
     authority.shutdown().await.expect("shutdown Warming actor");
     assert_eq!(client.current(), ProviderRuntimeActorState::Stopped);
@@ -72,7 +82,7 @@ async fn two_hundred_fifty_six_concurrent_requests_share_one_resident_actor() {
     let calls = Arc::new(AtomicUsize::new(0));
     let handshake_count = Arc::clone(&handshakes);
     let call_count = Arc::clone(&calls);
-    let authority = spawn_provider_runtime_actor(
+    let authority = spawn_in_process_provider_runtime_actor(
         64,
         move || async move {
             handshake_count.fetch_add(1, Ordering::AcqRel);
@@ -122,7 +132,7 @@ async fn two_hundred_fifty_six_concurrent_requests_share_one_resident_actor() {
 async fn failed_handshake_is_terminal_and_never_runs_handler() {
     let calls = Arc::new(AtomicUsize::new(0));
     let call_count = Arc::clone(&calls);
-    let authority = spawn_provider_runtime_actor(
+    let authority = spawn_in_process_provider_runtime_actor(
         8,
         || async { Err("typed handshake rejection".to_owned()) },
         move |_operation, payload| {

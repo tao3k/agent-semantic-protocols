@@ -3,8 +3,9 @@
 
 * Status
 
-This module defines an RFC and proof boundary.  It intentionally precedes the
-Rust Agent Session lifecycle refactor.
+This module defines the RFC, proof, and Rust refinement boundary for the
+Runtime-owned Agent Session registry.  The normal Rust path is implemented by
+the Runtime Server IPC data plane.
 
 * Observed Counterexample
 
@@ -98,9 +99,25 @@ The admitted audit digest is
 
 * Rust Refinement Boundary
 
-The later Rust refactor must route normal Agent Session operations through the
-ASP Server IPC data plane.  It must not let a CLI process compete for the server
+The Rust implementation routes normal Agent Session operations through the ASP
+Server IPC data plane.  It does not let a CLI process compete for the server
 owned Turso file lock.  Offline direct access requires an explicit ownership
 transition and cannot be selected merely because IPC failed.
 
-No Rust implementation is part of this RFC/proof phase.
+* Host Observation Critical Path
+
+The Runtime Server registry is the only normal authority for resident identity,
+model observation, lifecycle state, delegation admission, and ChoicePlane
+snapshots.  Host lifecycle events publish those facts through typed IPC.
+
+A CLI or library process MUST NOT launch =codex app-server --stdio= to poll
+=thread/list= or =thread/resume= during bootstrap, Hook classification, or
+ChoicePlane evaluation.  It MUST NOT cache such polling results behind a TTL.
+A thirty-second positive-observation cache merely hides repeated process launch
+and creates a stale-authority window; it is not an admitted Runtime design.
+
+The warm path is therefore one Runtime IPC snapshot read.  It has no Codex
+child-process launch, no =thread/resume= roundtrip, no client-side registry open,
+and no time-based observation cache.  Runtime shutdown is the cancellation
+authority; IPC failure returns a typed authority receipt and cannot select the
+removed polling lane.

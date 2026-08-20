@@ -353,6 +353,9 @@ impl WorkspaceGenerationPublisher {
         super::WorkspaceGenerationDataPlaneClient::invalidate_committed_pointer(
             state.pointer.path(),
         );
+        super::WorkspaceExactProjectionDataPlaneClient::invalidate_committed_pointer(
+            state.pointer.path(),
+        );
         let data_plane = Arc::new(
             super::WorkspaceSearchGenerationDataPlaneClient::open(
                 state.pointer.path(),

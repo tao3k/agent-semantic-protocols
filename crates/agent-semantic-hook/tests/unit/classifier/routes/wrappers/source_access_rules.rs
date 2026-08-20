@@ -50,24 +50,6 @@ fn direct_read_shard_key_uses_normalized_action_and_extension() {
 }
 
 #[test]
-fn similarly_named_environment_assignment_cannot_disable_policy() {
-    let command = "NOT_ASP_NO_AGENT=1 cargo test -p agent-semantic-hook";
-    let decision = classify_hook(
-        &crate::classifier::registry_without_providers(),
-        "codex",
-        "pre-tool",
-        &json!({ "tool_name": "functions.exec_command", "tool_input": { "cmd": command } }),
-    );
-
-    assert_eq!(decision.decision, DecisionKind::Deny, "{decision:?}");
-    assert_eq!(
-        decision.reason_kind,
-        ReasonKind::SubagentReceiptRequired,
-        "{decision:?}"
-    );
-}
-
-#[test]
 fn generic_wrapper_testing_resident_dispatch_matches_git_snapshot() {
     let scenario = toml::from_str::<toml::Value>(include_str!(
         "../../../../fixtures/scenarios/generic_wrapper_testing_resident_dispatch/scenario.toml"

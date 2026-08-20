@@ -158,6 +158,9 @@ fn reconcile_registered_provider_runtime_binaries_from(
             )
             .ok()?;
             let binary_path = runtime_bin_dir.join(registration.binary());
+            if receipt.provider_id != registration.provider_id().as_str() {
+                return None;
+            }
             super::install_provider_reconcile::provider_install_receipt_matches_artifact(
                 &receipt,
                 &binary_path,

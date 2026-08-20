@@ -317,7 +317,9 @@ fn validate_selector_capabilities(
     capabilities: &[ActiveGenerationSelectorCapability],
 ) -> Result<(), String> {
     if capabilities.is_empty() {
-        return Err("active generation exposes no selector capability".to_owned());
+        // An empty selector set is an explicit capability boundary for a
+        // Ready generation with no exact projections. Individual exact
+        // selector requests still fail closed through `admits`.
     }
     let mut selectors = BTreeSet::new();
     for capability in capabilities {

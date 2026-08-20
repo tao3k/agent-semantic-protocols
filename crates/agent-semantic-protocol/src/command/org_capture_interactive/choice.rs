@@ -246,10 +246,10 @@ impl AgentInteractiveChoice {
     ) -> String {
         let mut output =
             format!("[agent-interactive] contract={contract_id}\ncontext: {pane_context}");
-        for (selection, instruction, why) in choices {
+        for (selection, instruction, _why) in choices {
             output.push_str(&format!(
-                "\nchoice: {}\n   action: {}\n   why: {}",
-                selection, instruction, why,
+                "\nchoice: {}\n   action: {}",
+                selection, instruction
             ));
         }
         output
@@ -262,8 +262,8 @@ impl AgentInteractiveChoice {
         pane_context: &str,
     ) -> String {
         format!(
-            "[agent-interactive] contract={contract_id}\ncontext: {pane_context}\naction: {}\nwhy: {}",
-            choice.instruction, choice.use_if,
+            "[agent-interactive] contract={contract_id}\ncontext: {pane_context}\naction: {}",
+            choice.instruction,
         )
     }
 

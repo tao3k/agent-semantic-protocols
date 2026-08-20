@@ -298,7 +298,12 @@ impl WorkspaceGenerationLease {
                 }
             })
             .collect::<Vec<_>>();
-        let state = if candidates.is_empty() {
+        let state = if candidates.is_empty()
+            && generation.workspace_generation.owner_count == 0
+            && generation.workspace_generation.leaf_count == 0
+        {
+            crate::ClientDbSourceIndexLookupState::ColdRequired
+        } else if candidates.is_empty() {
             crate::ClientDbSourceIndexLookupState::Miss
         } else {
             crate::ClientDbSourceIndexLookupState::Hit

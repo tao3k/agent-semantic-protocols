@@ -6,16 +6,34 @@ Lifecycle admission MUST be idempotent and non-blocking. Ensuring an unseen
 workspace records the canonical workspace identity, starts exactly one
 supervisor-owned generation build, and immediately returns =Building=.
 
-Ensuring an already =Building=, =Ready=, or =Failed= workspace returns the
-observed receipt without waiting and without starting another attempt. Only
-supervisor restoration and explicit test or control-plane barriers may wait for
-a terminal receipt. Health and hook latency therefore measures admission submit
-time, never provider construction time.
+Ensuring an already =Building= or =Ready= workspace returns the observed receipt
+without waiting and without starting another attempt.  A query against =Failed=
+may submit the next Runtime-owned attempt; the prior failure is not a permanent
+admission lock.  Only explicit test or Runtime control-plane barriers may wait
+for a terminal receipt. Health and hook latency therefore measures admission
+submit time, never provider construction time.
 
-The query data plane MUST NOT invoke admission, repair, activation sync, or a
-provider process. A missing resident generation remains the typed
-=active-workspace-generation-required= state until lifecycle admission publishes
-one atomic generation.
+The query data plane may submit exactly one non-blocking =query-demand= command
+to the Runtime-owned admission coordinator.  It MUST NOT perform the build,
+repair activation, open a database, invoke a provider, or own cancellation.  A
+missing or failed resident generation returns the typed v1 in-progress receipt
+while the detached Runtime task publishes one atomic generation.
+
+For an exact structural-selector query, =cold-targeted= is executable scope,
+not a receipt label.  The Runtime data plane MUST parse the canonical selector,
+validate its language identity, resolve its normalized owner path beneath the
+workspace root, and carry that absolute owner target through the single-flight
+admission into the generation builder.  An empty target set means complete
+generation and is non-conforming for an exact selector.  The query request may
+drop after admission; only Runtime lifecycle authority may cancel the targeted
+build.  Concurrent requests for the same workspace and covered target set
+reuse the active admission.  A request for an uncovered target waits for the
+active attempt to publish a terminal receipt, then submits one successor
+targeted attempt; it is neither falsely satisfied by the first attempt nor
+widened into a complete-workspace build.  A =Ready= generation is reusable
+only when its accumulated target coverage contains the requested owner set.
+Empty coverage represents an explicitly complete generation, never an
+accidental exact-query fallback.
 
 * Cold restore preserves committed authority
 

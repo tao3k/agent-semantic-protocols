@@ -37,6 +37,10 @@ impl ProviderRuntimeProcessSpec {
 }
 
 pub struct ProviderRuntimeProcessPeer {
+    state: tokio::sync::Mutex<ProviderRuntimeProcessState>,
+}
+
+struct ProviderRuntimeProcessState {
     child: Child,
     stdin: ChildStdin,
     stdout: ChildStdout,
@@ -79,45 +83,52 @@ impl ProviderRuntimeProcessPeer {
         let stderr_task =
             tokio::spawn(async move { tokio::io::copy(&mut stderr, &mut tokio::io::sink()).await });
         Ok(Self {
-            child,
-            stdin,
-            stdout,
-            stderr_task,
-            max_frame_bytes: spec.max_frame_bytes.max(1),
-            next_request_id: 1,
+            state: tokio::sync::Mutex::new(ProviderRuntimeProcessState {
+                child,
+                stdin,
+                stdout,
+                stderr_task,
+                max_frame_bytes: spec.max_frame_bytes.max(1),
+                next_request_id: 1,
+            }),
         })
     }
 
-    async fn read_frame(&mut self) -> Result<Vec<u8>, String> {
-        let length = self
+    async fn read_frame(state: &mut ProviderRuntimeProcessState) -> Result<Vec<u8>, String> {
+        let length = state
             .stdout
             .read_u32()
             .await
             .map_err(|error| format!("read resident provider frame length: {error}"))?
             as usize;
-        if length == 0 || length > self.max_frame_bytes {
+        if length == 0 || length > state.max_frame_bytes {
             return Err(format!(
                 "resident provider frame length is outside contract: length={length} max={}",
-                self.max_frame_bytes
+                state.max_frame_bytes
             ));
         }
         let mut frame = vec![0_u8; length];
-        self.stdout
+        state
+            .stdout
             .read_exact(&mut frame)
             .await
             .map_err(|error| format!("read resident provider frame payload: {error}"))?;
         Ok(frame)
     }
 
-    async fn write_frame(&mut self, frame: &[u8]) -> Result<(), String> {
-        if frame.is_empty() || frame.len() > self.max_frame_bytes {
+    async fn write_frame(
+        state: &mut ProviderRuntimeProcessState,
+        frame: &[u8],
+    ) -> Result<(), String> {
+        if frame.is_empty() || frame.len() > state.max_frame_bytes {
             return Err(format!(
                 "resident provider request frame is outside contract: length={} max={}",
                 frame.len(),
-                self.max_frame_bytes
+                state.max_frame_bytes
             ));
         }
-        self.stdin
+        state
+            .stdin
             .write_u32(
                 frame
                     .len()
@@ -126,11 +137,13 @@ impl ProviderRuntimeProcessPeer {
             )
             .await
             .map_err(|error| format!("write resident provider frame length: {error}"))?;
-        self.stdin
+        state
+            .stdin
             .write_all(frame)
             .await
             .map_err(|error| format!("write resident provider frame payload: {error}"))?;
-        self.stdin
+        state
+            .stdin
             .flush()
             .await
             .map_err(|error| format!("flush resident provider frame: {error}"))
@@ -139,11 +152,12 @@ impl ProviderRuntimeProcessPeer {
 
 impl ProviderRuntimePeer for ProviderRuntimeProcessPeer {
     fn handshake(
-        &mut self,
+        &self,
     ) -> Pin<Box<dyn Future<Output = Result<ProviderRuntimeContractReceipt, String>> + Send + '_>>
     {
         Box::pin(async move {
-            let frame = self.read_frame().await?;
+            let mut state = self.state.lock().await;
+            let frame = Self::read_frame(&mut state).await?;
             let receipt: ProviderRuntimeContractReceipt = serde_json::from_slice(&frame)
                 .map_err(|error| format!("decode resident provider handshake: {error}"))?;
             receipt.validate()?;
@@ -152,20 +166,21 @@ impl ProviderRuntimePeer for ProviderRuntimeProcessPeer {
     }
 
     fn request(
-        &mut self,
+        &self,
         operation: String,
         payload: Bytes,
     ) -> Pin<Box<dyn Future<Output = Result<Bytes, String>> + Send + '_>> {
         Box::pin(async move {
-            let request_id = format!("provider-runtime-request-{}", self.next_request_id);
-            self.next_request_id = self.next_request_id.saturating_add(1);
+            let mut state = self.state.lock().await;
+            let request_id = format!("provider-runtime-request-{}", state.next_request_id);
+            state.next_request_id = state.next_request_id.saturating_add(1);
             let request = ProviderRuntimeRequestFrame::new(&request_id, operation, &payload)?;
             let encoded = serde_json::to_vec(&request)
                 .map_err(|error| format!("encode resident provider request: {error}"))?;
-            self.write_frame(&encoded).await?;
+            Self::write_frame(&mut state, &encoded).await?;
 
             let response: ProviderRuntimeResponseFrame =
-                serde_json::from_slice(&self.read_frame().await?)
+                serde_json::from_slice(&Self::read_frame(&mut state).await?)
                     .map_err(|error| format!("decode resident provider response: {error}"))?;
             response.validate()?;
             if response.request_id != request_id {
@@ -186,10 +201,11 @@ impl ProviderRuntimePeer for ProviderRuntimeProcessPeer {
         })
     }
 
-    fn shutdown(&mut self) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
+    fn shutdown(&self) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
         Box::pin(async move {
-            let _ = self.stdin.shutdown().await;
-            if self
+            let mut state = self.state.lock().await;
+            let _ = state.stdin.shutdown().await;
+            if state
                 .child
                 .try_wait()
                 .map_err(|error| {
@@ -197,16 +213,18 @@ impl ProviderRuntimePeer for ProviderRuntimeProcessPeer {
                 })?
                 .is_none()
             {
-                self.child
+                state
+                    .child
                     .kill()
                     .await
                     .map_err(|error| format!("kill resident provider runtime: {error}"))?;
             }
-            self.child
+            state
+                .child
                 .wait()
                 .await
                 .map_err(|error| format!("reap resident provider runtime: {error}"))?;
-            self.stderr_task.abort();
+            state.stderr_task.abort();
             Ok(())
         })
     }

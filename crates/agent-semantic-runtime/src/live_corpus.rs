@@ -87,7 +87,7 @@ pub struct LiveCorpusGitCheckoutQualification {
     pub canonical_remote_identity: String,
     pub head_revision: String,
     pub git_tree: String,
-    pub source_merkle_root: String,
+    pub checkout_identity_digest: String,
 }
 
 /// Provider-owned language-extension evidence read from a clean Git index.
@@ -317,7 +317,7 @@ pub fn qualify_live_corpus_git_checkout(
         .tree_id()
         .map_err(|error| format!("failed to resolve live corpus Git tree: {error}"))?
         .to_string();
-    let source_merkle_root = digest_fields(&[
+    let checkout_identity_digest = digest_fields(&[
         "live-corpus-git-tree-v1",
         &expected,
         &head_revision,
@@ -328,7 +328,7 @@ pub fn qualify_live_corpus_git_checkout(
         canonical_remote_identity: expected,
         head_revision,
         git_tree,
-        source_merkle_root,
+        checkout_identity_digest,
     })
 }
 

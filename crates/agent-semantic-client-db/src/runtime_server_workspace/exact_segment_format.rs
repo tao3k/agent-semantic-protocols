@@ -1,11 +1,13 @@
 //! Binary format boundary for immutable exact-projection mmap segments.
 
+use super::evidence_context::CONTEXT_ENTRY_LEN;
 use super::{
-    BLOB_OFFSET, GENERATION_DIGEST_LEN_OFFSET, GENERATION_DIGEST_OFFSET, HEADER_LEN, Header, MAGIC,
-    OWNER_COUNT_OFFSET, OWNER_ENTRY_LEN, OWNER_TABLE_OFFSET, RELOCATION_COUNT_OFFSET,
-    RELOCATION_ENTRY_LEN, RELOCATION_TABLE_OFFSET, ROOT_DIGEST_LEN_OFFSET, ROOT_DIGEST_OFFSET,
-    SELECTOR_COUNT_OFFSET, SELECTOR_ENTRY_LEN, SELECTOR_TABLE_OFFSET, STRING_TABLE_OFFSET,
-    TOTAL_LEN_OFFSET, WORKSPACE_ID_LEN_OFFSET, WORKSPACE_ID_OFFSET,
+    BLOB_OFFSET, CONTEXT_COUNT_OFFSET, CONTEXT_TABLE_OFFSET, GENERATION_DIGEST_LEN_OFFSET,
+    GENERATION_DIGEST_OFFSET, HEADER_LEN, Header, MAGIC, OWNER_COUNT_OFFSET, OWNER_ENTRY_LEN,
+    OWNER_TABLE_OFFSET, RELOCATION_COUNT_OFFSET, RELOCATION_ENTRY_LEN, RELOCATION_TABLE_OFFSET,
+    ROOT_DIGEST_LEN_OFFSET, ROOT_DIGEST_OFFSET, SELECTOR_COUNT_OFFSET, SELECTOR_ENTRY_LEN,
+    SELECTOR_TABLE_OFFSET, STRING_TABLE_OFFSET, TOTAL_LEN_OFFSET, WORKSPACE_ID_LEN_OFFSET,
+    WORKSPACE_ID_OFFSET,
 };
 
 pub(super) fn decode_header(mapping: &[u8]) -> Result<Header, String> {
@@ -28,6 +30,12 @@ pub(super) fn decode_header(mapping: &[u8]) -> Result<Header, String> {
             "relocation table offset",
         )?,
         relocation_count: read_usize(mapping, RELOCATION_COUNT_OFFSET, "relocation count")?,
+        context_table_offset: read_usize(
+            mapping,
+            CONTEXT_TABLE_OFFSET,
+            "evidence context table offset",
+        )?,
+        context_count: read_usize(mapping, CONTEXT_COUNT_OFFSET, "evidence context count")?,
         string_table_offset: read_usize(mapping, STRING_TABLE_OFFSET, "string table offset")?,
         blob_offset: read_usize(mapping, BLOB_OFFSET, "blob offset")?,
         generation_digest_offset: read_usize(
@@ -57,10 +65,15 @@ pub(super) fn decode_header(mapping: &[u8]) -> Result<Header, String> {
         .relocation_table_offset
         .checked_add(header.relocation_count.saturating_mul(RELOCATION_ENTRY_LEN))
         .ok_or_else(|| "workspace exact relocation table overflow".to_owned())?;
+    let context_table_end = header
+        .context_table_offset
+        .checked_add(header.context_count.saturating_mul(CONTEXT_ENTRY_LEN))
+        .ok_or_else(|| "workspace exact evidence context table overflow".to_owned())?;
     if header.owner_table_offset != HEADER_LEN
         || header.selector_table_offset != owner_table_end
         || header.relocation_table_offset != selector_table_end
-        || header.string_table_offset != relocation_table_end
+        || header.context_table_offset != relocation_table_end
+        || header.string_table_offset != context_table_end
         || header.string_table_offset > header.blob_offset
         || header.blob_offset > mapping.len()
     {

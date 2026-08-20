@@ -44,6 +44,13 @@ impl WorkspaceSearchGenerationAuthority {
         )
         .map(|tree| format!("blake3-256:{}", tree.root_digest().as_str()))
         .unwrap_or_default();
+        Self::from_generation_with_owner_merkle_root_digest(generation, owner_merkle_root_digest)
+    }
+
+    pub(super) fn from_generation_with_owner_merkle_root_digest(
+        generation: &super::WorkspaceMemoryGeneration,
+        owner_merkle_root_digest: String,
+    ) -> Self {
         Self {
             schema_id: WORKSPACE_SEARCH_GENERATION_AUTHORITY_SCHEMA_ID.to_owned(),
             schema_version: "1".to_owned(),

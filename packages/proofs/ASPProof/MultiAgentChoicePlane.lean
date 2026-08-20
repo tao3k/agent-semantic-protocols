@@ -117,6 +117,21 @@ theorem missing_resident_exposes_creation_without_speculative_resume :
       [.lifecycle .createAndRegister] := by
   rfl
 
+theorem registered_resident_exposes_call_resume_without_registration :
+    (admittedRows currentLifecycleRows registeredObservation).map (·.action) =
+      [.lifecycle .callResume] := by
+  rfl
+
+theorem registered_and_missing_resident_actions_are_distinct :
+    (admittedRows currentLifecycleRows registeredObservation).map (·.action) ≠
+      (admittedRows currentLifecycleRows missingResidentObservation).map (·.action) := by
+  decide
+
+theorem unavailable_runtime_cannot_be_registered :
+    observedNode { registeredObservation with runtimeAvailable := false } =
+      .unavailableAuthority := by
+  rfl
+
 def mismatchedResidentObservation : RuntimeObservation :=
   { registeredObservation with
       resident := some ⟨

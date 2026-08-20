@@ -45,8 +45,8 @@ fn rust_harness_activation_uses_provider_identity() {
     assert_eq!(runtime.providers.len(), 1);
     let provider = &runtime.providers[0];
     assert_eq!(provider.language_id, "rust");
-    assert_eq!(provider.provider_id, "rs-harness");
-    assert_eq!(provider.binary, "rs-harness");
+    assert_eq!(provider.provider_id, "asp-rust");
+    assert_eq!(provider.binary, "asp-rust");
     assert_eq!(provider.package_roots, ["."]);
     assert!(
         provider
@@ -74,7 +74,7 @@ fn rust_harness_activation_routes_explicit_reads_to_owner_frontier() {
     assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
     assert_eq!(decision.language_ids, ["rust"]);
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
-    assert_eq!(decision.routes[0].provider_id, "rs-harness");
+    assert_eq!(decision.routes[0].provider_id, "asp-rust");
 }
 
 #[test]

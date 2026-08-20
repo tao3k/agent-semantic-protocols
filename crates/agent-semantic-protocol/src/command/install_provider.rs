@@ -167,6 +167,9 @@ async fn run_install_binary(args: &[String]) -> Result<(), String> {
             &runtime_state.protocol_home,
             &project_root,
         )?;
+    agent_semantic_hook::reconcile_active_asp_artifact_receipt_if_present(
+        &runtime_state.activation_path,
+    )?;
     let active_artifact_receipt = agent_semantic_hook::rebind_active_asp_binary_receipt_if_present(
         &installed.path,
         &installed.artifact_digest,
@@ -286,7 +289,8 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
                     root,
                     &registration,
                     built,
-                );
+                )
+                .await;
             }
             return run_development_provider_installer(root, language_id, &target, project_root)
                 .await;
@@ -302,7 +306,8 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
                 &install_args.scope,
                 artifact,
                 root,
-            );
+            )
+            .await;
         }
         ProviderArtifactAuthority::LockedRelease => {}
     }
@@ -482,7 +487,7 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn record_development_provider_install(
+async fn record_development_provider_install(
     language_id: &str,
     provider_id: &str,
     registered_binary: &str,
@@ -561,7 +566,7 @@ fn record_development_provider_install(
             &provider_binary,
         )?;
     let runtime_state = project_runtime_state(project_root.unwrap_or(invocation_root))?;
-    let _reconciliation_guard = super::protocol_binary::ProtocolBinaryReconciliationGuard::acquire(
+    let reconciliation_guard = super::protocol_binary::ProtocolBinaryReconciliationGuard::acquire(
         &runtime_state.protocol_home,
     )?;
     let stable_entry = project_root.map_or_else(
@@ -652,8 +657,17 @@ fn record_development_provider_install(
     } else {
         None
     };
+    drop(reconciliation_guard);
+    let runtime_server_reconcile =
+        crate::server::runtime_server::reconcile_runtime_server_after_provider_catalog_change(
+            &runtime_state.protocol_home,
+            global_provider_catalog
+                .as_ref()
+                .is_some_and(|publication| publication.catalog_write),
+        )
+        .await?;
     println!(
-        "[asp-install] provider={} language={} scope={} installMode=develop-workspace sourceKind=develop-workspace devRoot={} target={} binary={} sha256={} installedPath={} lock={} switch=atomic globalProviderCatalog={} globalProviderCatalogWrite={}",
+        "[asp-install] provider={} language={} scope={} installMode=develop-workspace sourceKind=develop-workspace devRoot={} target={} binary={} sha256={} installedPath={} lock={} switch=atomic globalProviderCatalog={} globalProviderCatalogWrite={} runtimeServerReconcile={}",
         provider_id,
         language_id,
         scope,
@@ -670,6 +684,7 @@ fn record_development_provider_install(
         global_provider_catalog
             .as_ref()
             .is_some_and(|publication| publication.catalog_write),
+        runtime_server_reconcile,
     );
     Ok(())
 }

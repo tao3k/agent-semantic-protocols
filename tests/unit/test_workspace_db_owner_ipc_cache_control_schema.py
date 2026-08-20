@@ -51,7 +51,7 @@ def test_cache_control_owner_delta_request_is_valid() -> None:
     request = {
         "action": "apply-owner-delta",
         "projectRoot": "/workspace",
-        "mutationId": "cache-v1:owner-delta:1",
+        "mutationId": "cache:owner-delta:1",
         "changedPaths": ["src/lib.rs"],
         "removedPaths": ["src/legacy.rs"],
         "fallbackPolicy": "full-generation",
@@ -64,7 +64,7 @@ def test_cache_control_owner_delta_rejects_empty_delta() -> None:
     request = {
         "action": "apply-owner-delta",
         "projectRoot": "/workspace",
-        "mutationId": "cache-v1:owner-delta:empty",
+        "mutationId": "cache:owner-delta:empty",
         "changedPaths": [],
         "removedPaths": [],
         "fallbackPolicy": "fail-closed",

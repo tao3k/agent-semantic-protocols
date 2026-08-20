@@ -28,6 +28,9 @@ def test_live_corpus_search_query_plan_covers_the_complete_locked_matrix() -> No
     plan = load_json(PLAN_PATH)
     lock = load_json(LOCK_PATH)
     Draft202012Validator(plan_schema).validate(plan)
+    under_sampled = dict(plan)
+    under_sampled["residentSampleCount"] = 127
+    assert list(Draft202012Validator(plan_schema).iter_errors(under_sampled))
 
     locked = {
         entry["resourceId"]: (entry["language"], entry["providerId"])
@@ -50,17 +53,19 @@ def test_live_corpus_search_query_plan_covers_the_complete_locked_matrix() -> No
         "typescript",
     }
     assert {provider_id for _, provider_id in planned.values()} == {
-        "gerbil-scheme-harness",
-        "julia-lang-project-harness",
-        "orgize",
-        "py-harness",
-        "rs-harness",
-        "ts-harness",
+        "asp-gerbil-scheme",
+        "asp-julia",
+        "asp-md",
+        "asp-org",
+        "asp-python",
+        "asp-rust",
+        "asp-typescript",
     }
 
 
 def test_every_locked_corpus_has_fixed_search_query_and_telemetry_budgets() -> None:
     plan = load_json(PLAN_PATH)
+    assert plan["residentSampleCount"] >= 128
     case_ids = [entry["caseId"] for entry in plan["cases"]]
     assert len(case_ids) == len(set(case_ids))
 
@@ -75,3 +80,31 @@ def test_every_locked_corpus_has_fixed_search_query_and_telemetry_budgets() -> N
             "runtime_resident_search_terminal",
             "runtime_exact_projection_terminal",
         }
+
+
+def test_v1_receipt_requires_complete_sub_millisecond_latency_distributions() -> None:
+    receipt_schema = load_json(RECEIPT_SCHEMA_PATH)
+    case_schema = receipt_schema["$defs"]["caseReceipt"]
+    required = set(case_schema["required"])
+    assert {
+        "residentSampleCount",
+        "searchResidentReadLatencyMicros",
+        "searchServiceLatencyMicros",
+        "searchTotalLatencyMicros",
+        "exactSourceLatencyMicros",
+        "callableSkeletonLatencyMicros",
+    } <= required
+
+    distribution = receipt_schema["$defs"]["latencyDistribution"]
+    assert distribution["additionalProperties"] is False
+    assert set(distribution["required"]) == {
+        "sampleCount",
+        "minMicros",
+        "p50Micros",
+        "p95Micros",
+        "p99Micros",
+        "maxMicros",
+    }
+    assert distribution["properties"]["sampleCount"]["minimum"] == 128
+    for field in ("minMicros", "p50Micros", "p95Micros", "p99Micros", "maxMicros"):
+        assert distribution["properties"][field]["maximum"] == 1_000

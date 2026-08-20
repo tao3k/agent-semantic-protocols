@@ -8,23 +8,25 @@ use serde_json::Value;
 pub fn render_callable_skeleton(payload: &impl Serialize) -> Result<String, String> {
     let payload = serde_json::to_value(payload)
         .map_err(|error| format!("failed to encode callable skeleton payload: {error}"))?;
-    if payload.get("schemaId").and_then(Value::as_str)
-        != Some("agent.semantic-protocols.callable-skeleton-projection")
-        || payload.get("schemaVersion").and_then(Value::as_str) != Some("1")
-    {
+    let is_semantic_projection = payload.get("schemaId").and_then(Value::as_str)
+        == Some("agent.semantic-protocols.semantic-projection")
+        && payload.get("schemaVersion").and_then(Value::as_str) == Some("1")
+        && payload.get("projectionKind").and_then(Value::as_str) == Some("callable-skeleton")
+        && payload.get("payloadSchemaId").and_then(Value::as_str)
+            == Some("agent.semantic-protocols.callable-skeleton");
+    if !is_semantic_projection {
         return Err("callable skeleton payload has an unsupported schema identity".to_owned());
     }
-
-    let language_id = required_string(&payload, "languageId")?;
+    let language_id = required_string(&payload, "languageId")?.to_owned();
+    let root_selector = required_string(&payload, "rootSelector")?.to_owned();
+    let payload = payload
+        .get("payload")
+        .cloned()
+        .ok_or_else(|| "callable skeleton semantic projection is missing payload".to_owned())?;
     let callable = payload
         .get("callable")
         .ok_or_else(|| "callable skeleton payload is missing callable".to_owned())?;
     let display_name = required_string(callable, "displayName")?;
-    let root_selector = payload
-        .get("rootSelector")
-        .and_then(|selector| selector.get("selector"))
-        .and_then(Value::as_str)
-        .ok_or_else(|| "callable skeleton payload is missing rootSelector.selector".to_owned())?;
     let nodes = payload
         .get("nodes")
         .and_then(Value::as_array)
@@ -39,7 +41,7 @@ pub fn render_callable_skeleton(payload: &impl Serialize) -> Result<String, Stri
 
     let mut body = String::new();
     body.push_str("R=");
-    body.push_str(root_selector);
+    body.push_str(&root_selector);
     body.push('\n');
     for node in nodes {
         if node.get("nodeId").and_then(Value::as_str) == Some("callable:root") {
@@ -53,17 +55,29 @@ pub fn render_callable_skeleton(payload: &impl Serialize) -> Result<String, Stri
         let label = required_string(node, "label")?;
         let compact_label = serde_json::to_string(label)
             .map_err(|error| format!("failed to encode callable skeleton label: {error}"))?;
-        let selector = node
-            .get("exactSelector")
-            .and_then(|selector| selector.get("selector"))
-            .and_then(Value::as_str)
-            .ok_or_else(|| "queryable callable skeleton node is missing selector".to_owned())?;
-        let selector_ref = selector
-            .strip_prefix(root_selector)
-            .filter(|suffix| suffix.starts_with('/'))
-            .ok_or_else(|| {
-                format!("callable skeleton node selector is outside root selector: {selector}")
-            })?;
+        let selector_ref = match (
+            node.get("selector").and_then(Value::as_str),
+            node.get("selectorRef").and_then(Value::as_str),
+        ) {
+            (Some(selector), None) => selector
+                .strip_prefix(&root_selector)
+                .filter(|suffix| suffix.starts_with('/'))
+                .ok_or_else(|| {
+                    format!("callable skeleton node selector is outside root selector: {selector}")
+                })?,
+            (None, Some(selector_ref)) => selector_ref
+                .strip_prefix("$root")
+                .filter(|suffix| suffix.starts_with('/'))
+                .ok_or_else(|| {
+                    format!("callable skeleton node selectorRef is invalid: {selector_ref}")
+                })?,
+            _ => {
+                return Err(
+                    "queryable callable skeleton node must declare exactly one selector identity"
+                        .to_owned(),
+                );
+            }
+        };
         body.push_str(&format!(
             "N{order} kind={} label={} selector=R{}\n",
             compact_atom(kind),
@@ -78,7 +92,7 @@ pub fn render_callable_skeleton(payload: &impl Serialize) -> Result<String, Stri
         let omitted_bytes = source_bytes.saturating_sub(rendered_bytes as u64);
         let header = format!(
             "[callable-skeleton] language={} callable={} nodes={} sourceBytes={} renderedBytes={} omittedBytes={}\n",
-            compact_atom(language_id),
+            compact_atom(&language_id),
             compact_display_name,
             nodes.len(),
             source_bytes,

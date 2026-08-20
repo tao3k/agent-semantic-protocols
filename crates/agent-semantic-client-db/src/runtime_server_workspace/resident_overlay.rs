@@ -398,6 +398,7 @@ fn materialize_selector(
                 .push(WorkspaceDerivedProjectionSnapshot {
                     projection_kind: overlay.projection_kind,
                     bytes: overlay.projection_bytes.clone(),
+                    evidence_context: None,
                 });
         }
         selector

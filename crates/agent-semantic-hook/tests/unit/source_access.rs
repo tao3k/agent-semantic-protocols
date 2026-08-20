@@ -12,7 +12,7 @@ use crate::classifier::registry;
 fn explicit_fs_read_allows_source_bytes() {
     let decision = SourceAccessDecision::explicit_read_allow(SourceAccessExplicitReadInput {
         language_id: "rust".into(),
-        provider_id: "rs-harness".into(),
+        provider_id: "asp-rust".into(),
         rpc_method: "fs/readFile".to_string(),
         path: "src/lib.rs".to_string(),
     });
@@ -38,7 +38,7 @@ fn shell_egress_suppression_records_hidden_subprocess_output() {
         SourceAccessDecision::shell_egress_suppressed(SourceAccessShellEgressSuppressedInput {
             route: agent_semantic_hook::DecisionRoute {
                 language_id: "rust".into(),
-                provider_id: "rs-harness".into(),
+                provider_id: "asp-rust".into(),
                 binary: "asp".to_string(),
                 kind: agent_semantic_hook::DecisionRouteKind::Owner,
                 argv: vec![
@@ -85,7 +85,7 @@ fn provider_capability_allow_keeps_authorization_explicit() {
     let decision =
         SourceAccessDecision::provider_capability_allow(SourceAccessProviderCapabilityAllowInput {
             language_id: "rust".into(),
-            provider_id: "rs-harness".into(),
+            provider_id: "asp-rust".into(),
             command: "asp rust query --selector src/lib.rs --workspace . --code".to_string(),
             path: "src/lib.rs".to_string(),
         });
@@ -115,7 +115,7 @@ fn provider_capability_allow_keeps_authorization_explicit() {
             "modelVisibleBytesReturned": true,
             "authorization": "provider-capability",
             "languageIds": ["rust"],
-            "providerId": "rs-harness",
+            "providerId": "asp-rust",
             "subject": {
                 "toolName": "asp",
                 "command": "asp rust query --selector src/lib.rs --workspace . --code",
@@ -140,7 +140,7 @@ fn codex_fs_read_file_policy_allows_activated_source_path() {
     assert_eq!(value["modelVisibleBytesReturned"], true);
     assert_eq!(value["authorization"], "user-approved");
     assert_eq!(value["languageIds"], json!(["typescript"]));
-    assert_eq!(value["providerId"], "ts-harness");
+    assert_eq!(value["providerId"], "asp-typescript");
     assert_eq!(value["subject"]["paths"], json!(["src/cli/agent-hooks.ts"]));
     assert!(value["routes"].is_null());
 }
@@ -160,7 +160,7 @@ fn codex_shell_egress_policy_suppresses_activated_source_output() {
     assert_eq!(value["decision"], "suppress");
     assert_eq!(value["sourceBytesReturned"], true);
     assert_eq!(value["modelVisibleBytesReturned"], false);
-    assert_eq!(value["providerId"], "ts-harness");
+    assert_eq!(value["providerId"], "asp-typescript");
     assert_eq!(value["routes"][0]["kind"], "owner");
     assert_eq!(value["routes"][0]["argv"][2], "search");
     assert_eq!(value["routes"][0]["argv"][3], "owner");

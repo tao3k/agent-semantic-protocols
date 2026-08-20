@@ -364,6 +364,7 @@ impl ClientHookConfig {
                         }));
                     return Some(crate::hook_config::HookPolicyCandidate {
                         priority: rule.priority,
+                        terminal: rule.terminal,
                         decision,
                     });
                 }
@@ -371,6 +372,7 @@ impl ClientHookConfig {
             }
             return Some(crate::hook_config::HookPolicyCandidate {
                 priority: rule.priority,
+                terminal: rule.terminal,
                 decision: rule.decision(
                     runtime,
                     platform,
@@ -592,6 +594,25 @@ fn compile_rule_candidate_index(rules: &[CompiledHookRule]) -> super::RuleCandid
 }
 
 impl ClientHookConfig {
+    /// Recompile the resolved policy with every configured lazy executable
+    /// capability present. Conformance validates declarative rule semantics;
+    /// it must not turn an optional binary missing from the doctor's PATH into
+    /// a policy mismatch.
+    pub(crate) fn match_policy_conformance_config(&self) -> Result<Self, String> {
+        let source = self
+            .source_config
+            .clone()
+            .ok_or_else(|| "match-policy conformance requires source-compiled config".to_owned())?;
+        let capabilities = source
+            .rules
+            .iter()
+            .filter(|rule| rule.enabled)
+            .filter_map(|rule| rule.match_config.structured_projection.as_ref())
+            .map(|projection| projection.binary.clone())
+            .collect::<std::collections::BTreeSet<_>>();
+        compile_resolved_config(source, None, None, Some(&capabilities))
+    }
+
     /// Return the normalized config and already-compiled matcher automata as one typed artifact.
     pub fn durable_snapshot_config(&self) -> DurableHookConfigArtifact {
         let config = self
@@ -735,7 +756,13 @@ impl ClientHookConfig {
                         (prefix.clone(), decision)
                     })
                     .collect::<Vec<_>>();
-                let bytes = crate::CommandDecisionShard::new(entries)?.to_binary_bytes()?;
+                let environment_entries =
+                    self.durable_leading_environment_decisions(&runtime, Some(&path))?;
+                let bytes = crate::CommandDecisionShard::new_with_leading_environment_assignments(
+                    entries,
+                    environment_entries,
+                )?
+                .to_binary_bytes()?;
                 Ok((extension, path, bytes))
             })
             .collect()
@@ -856,7 +883,12 @@ impl ClientHookConfig {
                 (prefix, decision)
             })
             .collect();
-        crate::CommandDecisionShard::new(entries)?.to_binary_bytes()
+        let environment_entries = self.durable_leading_environment_decisions(&runtime, None)?;
+        crate::CommandDecisionShard::new_with_leading_environment_assignments(
+            entries,
+            environment_entries,
+        )?
+        .to_binary_bytes()
     }
 
     fn durable_command_decision_prefixes(
@@ -882,7 +914,12 @@ impl ClientHookConfig {
             .rules
             .iter()
             .filter(|rule| rule.enabled)
-            .flat_map(|rule| &rule.match_config.argv_pattern_any)
+            .flat_map(|rule| {
+                rule.match_config
+                    .argv_pattern_any
+                    .iter()
+                    .chain(&rule.match_config.argv_prefix_any)
+            })
         {
             if pattern.iter().any(|token| token == "<registered-language>") {
                 for language in &registered_languages {

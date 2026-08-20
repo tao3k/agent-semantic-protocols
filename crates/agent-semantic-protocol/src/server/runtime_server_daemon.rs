@@ -29,13 +29,12 @@ async fn serve_runtime_search_requests(
     fn runtime_state_receipt(
         runtime: &ResidentProviderRuntime,
     ) -> Result<serde_json::Value, String> {
-        let receipt =
-            agent_semantic_provider_transport::ProviderRuntimeAuthorityReceipt::from_actor_state(
-                &runtime.expected_receipt,
-                runtime.authority.client().current(),
-            )?;
+        let receipt = runtime
+            .authority
+            .client()
+            .current_lifecycle(&runtime.expected_receipt)?;
         serde_json::to_value(receipt)
-            .map_err(|error| format!("encode provider runtime authority receipt: {error}"))
+            .map_err(|error| format!("encode ASP Client Server lifecycle receipt: {error}"))
     }
 
     let mut runtimes = std::collections::BTreeMap::<String, ResidentProviderRuntime>::new();
@@ -54,17 +53,10 @@ async fn serve_runtime_search_requests(
                         return runtime_state_receipt(runtime);
                     }
                     let authority = match launch.spec {
-            crate::command::global_provider_catalog::RuntimeProviderLaunchSpec::Process(spec) => {
-                let peer = agent_semantic_provider_transport::ProviderRuntimeProcessPeer::start(
-                    spec,
-                )
-                .await?;
-                agent_semantic_provider_transport::spawn_provider_runtime_peer_actor(256, peer)
-            }
             crate::command::global_provider_catalog::RuntimeProviderLaunchSpec::HttpServer(
                 spec,
             ) => {
-                let peer = agent_semantic_provider_transport::ProviderHttpServerPeer::start(spec)
+                let peer = agent_semantic_provider_transport::AspClientServerPeer::start(spec)
                     .await?;
                 agent_semantic_provider_transport::spawn_provider_runtime_peer_actor(256, peer)
             }
@@ -89,7 +81,9 @@ async fn serve_runtime_search_requests(
                     let launch =
                         runtime_provider_catalog.runtime_launch(&project_root, &language_id)?;
                     let runtime = runtimes.get(&launch.key).ok_or_else(|| {
-                        format!("provider-runtime-not-ready: state=absent languageId={language_id}")
+                        format!(
+                            "asp-client-server-not-ready: state=absent languageId={language_id}"
+                        )
                     })?;
                     runtime_state_receipt(runtime)
                 })();
@@ -104,7 +98,9 @@ async fn serve_runtime_search_requests(
                     let launch =
                         runtime_provider_catalog.runtime_launch(&project_root, &language_id)?;
                     let runtime = runtimes.get(&launch.key).ok_or_else(|| {
-                        format!("provider-runtime-not-ready: state=absent languageId={language_id}")
+                        format!(
+                            "asp-client-server-not-ready: state=absent languageId={language_id}"
+                        )
                     })?;
                     Ok((runtime.authority.client(), runtime.expected_receipt.clone()))
                 })();
@@ -122,7 +118,7 @@ async fn serve_runtime_search_requests(
                             )),
                 Ok(receipt) => {
                     agent_semantic_provider_transport::
-                        ProviderRuntimeAuthorityReceipt::from_actor_state(
+    AspClientServerLifecycleReceipt::from_actor_state(
                             &expected_receipt,
                             agent_semantic_provider_transport::ProviderRuntimeActorState::Ready(
                                 receipt,
@@ -142,6 +138,47 @@ async fn serve_runtime_search_requests(
                     let _ = response.send(result);
                 });
             }
+            RuntimeSearchServiceRequest::ProviderRuntimeRelease {
+                project_root,
+                language_id,
+                response,
+            } => {
+                let result = (|| {
+                    let launch =
+                        runtime_provider_catalog.runtime_launch(&project_root, &language_id)?;
+                    runtimes.remove(&launch.key).ok_or_else(|| {
+                        format!(
+                            "asp-client-server-not-ready: state=absent languageId={language_id}"
+                        )
+                    })
+                })();
+                tasks.spawn(async move {
+                    let result = match result {
+                        Ok(runtime) => {
+                            let expected_receipt = runtime.expected_receipt;
+                            runtime
+                                .authority
+                                .drain()
+                                .await
+                                .and_then(|()| {
+                                    agent_semantic_provider_transport::
+                                    AspClientServerLifecycleReceipt::from_actor_state(
+                                        &expected_receipt,
+                                        agent_semantic_provider_transport::
+                                            ProviderRuntimeActorState::Stopped,
+                                    )
+                                })
+                                .and_then(|receipt| {
+                                    serde_json::to_value(receipt).map_err(|error| {
+                                        format!("encode provider runtime release receipt: {error}")
+                                    })
+                                })
+                        }
+                        Err(error) => Err(error),
+                    };
+                    let _ = response.send(result);
+                });
+            }
             RuntimeSearchServiceRequest::ProviderOperation {
                 project_root,
                 language_id,
@@ -153,7 +190,9 @@ async fn serve_runtime_search_requests(
                     let launch =
                         runtime_provider_catalog.runtime_launch(&project_root, &language_id)?;
                     let runtime = runtimes.get(&launch.key).ok_or_else(|| {
-                        format!("provider-runtime-not-ready: state=absent languageId={language_id}")
+                        format!(
+                            "asp-client-server-not-ready: state=absent languageId={language_id}"
+                        )
                     })?;
                     match runtime.authority.client().current() {
                         agent_semantic_provider_transport::ProviderRuntimeActorState::Ready(
@@ -165,7 +204,7 @@ async fn serve_runtime_search_requests(
                             ))
                         }
                         state => Err(format!(
-                            "provider-runtime-not-ready: languageId={language_id} state={state:?}"
+                            "asp-client-server-not-ready: languageId={language_id} state={state:?}"
                         )),
                     }
                 })();
@@ -191,7 +230,9 @@ async fn serve_runtime_search_requests(
                     let launch =
                         runtime_provider_catalog.runtime_launch(&project_root, &language_id)?;
                     let runtime = runtimes.get(&launch.key).ok_or_else(|| {
-                        format!("provider-runtime-not-ready: state=absent languageId={language_id}")
+                        format!(
+                            "asp-client-server-not-ready: state=absent languageId={language_id}"
+                        )
                     })?;
                     match runtime.authority.client().current() {
                         agent_semantic_provider_transport::ProviderRuntimeActorState::Ready(
@@ -204,29 +245,29 @@ async fn serve_runtime_search_requests(
                         }
                         agent_semantic_provider_transport::ProviderRuntimeActorState::Starting => {
                             return Err(format!(
-                                "provider-runtime-not-ready: state=starting languageId={language_id}"
+                                "asp-client-server-not-ready: state=starting languageId={language_id}"
                             ));
                         }
                         agent_semantic_provider_transport::ProviderRuntimeActorState::Warming => {
                             return Err(format!(
-                                "provider-runtime-not-ready: state=warming languageId={language_id}"
+                                "asp-client-server-not-ready: state=warming languageId={language_id}"
                             ));
                         }
                         agent_semantic_provider_transport::ProviderRuntimeActorState::Draining => {
                             return Err(format!(
-                                "provider-runtime-not-ready: state=draining languageId={language_id}"
+                                "asp-client-server-not-ready: state=draining languageId={language_id}"
                             ));
                         }
                         agent_semantic_provider_transport::ProviderRuntimeActorState::Failed(
                             reason,
                         ) => {
                             return Err(format!(
-                                "provider-runtime-not-ready: state=failed languageId={language_id} reason={reason}"
+                                "asp-client-server-not-ready: state=failed languageId={language_id} reason={reason}"
                             ));
                         }
                         agent_semantic_provider_transport::ProviderRuntimeActorState::Stopped => {
                             return Err(format!(
-                                "provider-runtime-not-ready: state=stopped languageId={language_id}"
+                                "asp-client-server-not-ready: state=stopped languageId={language_id}"
                             ));
                         }
                     }
@@ -284,6 +325,7 @@ async fn serve_runtime_search_requests(
 pub(super) async fn run_daemon() -> Result<(), String> {
     agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
     let state_home = state_home()?;
+    crate::command::reconcile_global_provider_catalog_for_runtime(&state_home)?;
     let runtime_provider_catalog =
         crate::command::global_provider_catalog::load_runtime_provider_catalog(&state_home).await?;
     let election = acquire_runtime_server_election(&state_home)
@@ -399,7 +441,6 @@ pub(super) async fn run_daemon() -> Result<(), String> {
         )
         .await?;
     let lifecycle_bus = agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus::new();
-    crate::command::reconcile_global_provider_catalog_for_runtime(&state_home)?;
     let provider_catalog_generation =
         crate::command::global_provider_catalog::read_runtime_provider_catalog_readiness(
             &state_home,
@@ -411,13 +452,58 @@ pub(super) async fn run_daemon() -> Result<(), String> {
     let generation_builder_runtime_catalog = runtime_provider_catalog.clone();
     let generation_builder_runtime_search = runtime_search_service.clone();
     let generation_builder: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateBuilder =
-    std::sync::Arc::new(move |_workspace_identity, project_root, changed_paths| {
+    std::sync::Arc::new(move |_workspace_identity, project_root, changed_paths, provider_target| {
         let provider_catalog_generation = generation_builder_catalog.clone();
         let runtime_provider_catalog = generation_builder_runtime_catalog.clone();
         let runtime_search_service = generation_builder_runtime_search.clone();
         Box::pin(async move {
             let changed_path_count = changed_paths.len();
-            let collection_scope = if changed_paths.is_empty() {
+            let (registry, current_catalog_generation) =
+                crate::command::global_provider_catalog::runtime_provider_registry_snapshot(
+                    &project_root,
+                    &runtime_provider_catalog,
+                )?;
+            if current_catalog_generation != provider_catalog_generation {
+                return Err(format!(
+                    "runtime provider catalog advanced after daemon admission: admitted={} current={}",
+                    provider_catalog_generation, current_catalog_generation
+                ));
+            }
+            let collection_scope = if let Some(provider_target) = provider_target {
+                let provider_id = match provider_target.provider_id {
+                    Some(provider_id) => provider_id,
+                    None => {
+                        let providers = registry
+                            .providers
+                            .iter()
+                            .filter(|provider| {
+                                provider.language_projection.is_some()
+                                    && provider.language_id.as_str()
+                                        == provider_target.language_id
+                            })
+                            .collect::<Vec<_>>();
+                        match providers.as_slice() {
+                            [provider] => provider.provider_id.as_str().to_owned(),
+                            [] => return Err(format!(
+                                "query-demand provider target has no registered provider: languageId={}",
+                                provider_target.language_id
+                            )),
+                            _ => return Err(format!(
+                                "query-demand provider target is ambiguous: languageId={}",
+                                provider_target.language_id
+                            )),
+                        }
+                    }
+                };
+                agent_semantic_client::source_index::SourceIndexCollectionScope::TargetProvider {
+                    language_id: agent_semantic_client_core::LanguageId::try_new(
+                        provider_target.language_id,
+                    )?,
+                    provider_id: agent_semantic_client_core::ProviderId::try_new(
+                        provider_id,
+                    )?,
+                }
+            } else if changed_paths.is_empty() {
                 agent_semantic_client::source_index::SourceIndexCollectionScope::CompleteGeneration
             } else {
                 let owner_paths = changed_paths
@@ -438,17 +524,6 @@ pub(super) async fn run_daemon() -> Result<(), String> {
                     owner_paths,
                 }
             };
-                let (registry, current_catalog_generation) =
-        crate::command::global_provider_catalog::runtime_provider_registry_snapshot(
-            &project_root,
-            &runtime_provider_catalog,
-        )?;
-                if current_catalog_generation != provider_catalog_generation {
-                    return Err(format!(
-                        "runtime provider catalog advanced after daemon admission: admitted={} current={}",
-                        provider_catalog_generation, current_catalog_generation
-                    ));
-                }
                 let mut build = agent_semantic_client::source_index::
                     prepare_runtime_server_workspace_generation_with_runtime_service_async(
                         runtime_search_service,
@@ -503,8 +578,11 @@ pub(super) async fn run_daemon() -> Result<(), String> {
                     )
                 })?;
     runtime_search_service
-                .provider_runtime_ready(project_root.clone(), language_id.clone())
-                .await?;
+        .provider_runtime(project_root.clone(), language_id.clone())
+        .await?;
+    runtime_search_service
+        .provider_runtime_await_ready(project_root.clone(), language_id.clone())
+        .await?;
             runtime_search_service
                 .provider_owner(
                     workspace_identity,

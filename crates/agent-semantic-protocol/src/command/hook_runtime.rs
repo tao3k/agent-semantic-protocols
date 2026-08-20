@@ -369,31 +369,27 @@ async fn run_hook_with_input(
         apply_verified_child_registration_context(&mut payload, receipt_json)?;
     }
     let workspace_micros = hook_started.elapsed().as_micros();
-    if let Some(mut decision) =
-        agent_semantic_hook::runtime_binary_policy_decision_v1(client, event, &payload)
-    {
-        annotate_hook_decision_budget(&mut decision, hook_started, hook_cpu_started_micros);
-        return emit_decision(emit, &decision);
-    }
-    hook_runtime_workspace_mutation::relay_post_tool_workspace_mutation(
-        event,
-        &payload,
-        &project_root,
-    )
-    .await?;
-    match hook_runtime_host_lifecycle::record_host_lifecycle_event(
-        client,
-        event,
-        &payload,
-        &project_root,
-    )
-    .await
-    {
-        Ok(hook_runtime_host_lifecycle::HostLifecycleDisposition::Recorded) => return Ok(()),
-        Ok(hook_runtime_host_lifecycle::HostLifecycleDisposition::NotLifecycle) => {}
-        Err(error) => {
-            emit_hook_runtime_failure(client, event, emit, &error)?;
-            return Ok(());
+    if event != "pre-tool" {
+        hook_runtime_workspace_mutation::relay_post_tool_workspace_mutation(
+            event,
+            &payload,
+            &project_root,
+        )
+        .await?;
+        match hook_runtime_host_lifecycle::record_host_lifecycle_event(
+            client,
+            event,
+            &payload,
+            &project_root,
+        )
+        .await
+        {
+            Ok(hook_runtime_host_lifecycle::HostLifecycleDisposition::Recorded) => return Ok(()),
+            Ok(hook_runtime_host_lifecycle::HostLifecycleDisposition::NotLifecycle) => {}
+            Err(error) => {
+                emit_hook_runtime_failure(client, event, emit, &error)?;
+                return Ok(());
+            }
         }
     }
     let local_event_micros = hook_started.elapsed().as_micros();
@@ -406,15 +402,10 @@ async fn run_hook_with_input(
     let config_path = flag_value(args, "--config")
         .map(PathBuf::from)
         .unwrap_or_else(|| default_client_config_path(&project_root.to_string_lossy()));
-    let direct_read_key = agent_semantic_hook::direct_read_source_key(&payload);
-    let shell_read_keys = direct_read_key
-        .is_none()
-        .then(|| agent_semantic_hook::shell_read_source_keys(&payload))
-        .unwrap_or_default();
-    let shell_command_key = direct_read_key
-        .is_none()
-        .then(|| agent_semantic_hook::shell_command_key(&payload))
-        .flatten();
+    let matcher_keys = agent_semantic_hook::hook_matcher_keys(&payload);
+    let direct_read_key = matcher_keys.direct_read;
+    let shell_read_keys = matcher_keys.shell_reads;
+    let shell_command_keys = matcher_keys.shell_commands;
     let (loaded_hook_config, hook_matcher_generation_status) =
         hook_runtime_config_recovery::load_fresh_hook_config(
             &config_path,
@@ -422,7 +413,7 @@ async fn run_hook_with_input(
             direct_read_key.as_ref().map(|key| key.extension.as_str()),
             direct_read_key.as_ref().map(|key| key.path.as_str()),
             &shell_read_keys,
-            shell_command_key.as_ref(),
+            &shell_command_keys,
         )?;
     let config_micros = hook_started.elapsed().as_micros();
     trace_stage("config-loaded");
@@ -433,8 +424,12 @@ async fn run_hook_with_input(
     } = loaded_hook_config;
     let matcher_projection = projection.unwrap_or("complete-policy-matcher");
     let mut decision = if let Some(decision) = decision {
-        if shell_command_key.is_some() {
-            agent_semantic_hook::rebind_command_decision_to_payload(decision, &payload)
+        if !shell_command_keys.is_empty() {
+            agent_semantic_hook::rebind_command_decision_to_payload_with_keys(
+                decision,
+                &payload,
+                &shell_command_keys,
+            )
         } else {
             decision
         }
@@ -455,6 +450,22 @@ async fn run_hook_with_input(
             payload: &payload,
         })
     };
+    // A terminal matcher deny already prevents execution, so it does not need
+    // a second shell parse solely to choose a stronger denial reason. Allow is
+    // the only decision that can cross the provider-binary authority boundary;
+    // preserve the config-independent registry policy there before emission.
+    if decision.decision == agent_semantic_hook::DecisionKind::Allow {
+        if let Some(mut runtime_binary_decision) =
+            agent_semantic_hook::runtime_binary_policy_decision_v1(client, event, &payload)
+        {
+            annotate_hook_decision_budget(
+                &mut runtime_binary_decision,
+                hook_started,
+                hook_cpu_started_micros,
+            );
+            return emit_decision(emit, &runtime_binary_decision);
+        }
+    }
     if let Some(key) = &direct_read_key {
         if decision.subject.tool_name.as_deref() != Some(key.tool_name.as_str()) {
             decision.subject.tool_name = Some(key.tool_name.clone());

@@ -129,6 +129,8 @@ import ASPProof.SearchRouteDominanceTransitiveShortcut
 import ASPProof.SearchRouteShortcutCommitmentReplay
 import ASPProof.SearchRouteShortcutEnvelopeAdmission
 import ASPProof.SearchRouteCanonicalPayloadDigestReplay
+import ASPProof.SemanticProjectionRuntimeWrapping
+import ASPProof.Audit.SemanticProjectionRuntimeWrapping
 import ASPProof.SearchRouteSafeReplayModeNegotiation
 import ASPProof.SearchRouteEndToEndReplayStateMachine
 import ASPProof.SearchRouteEvidenceGraphRouter
@@ -290,3 +292,4 @@ import ASPProof.Audit.HookMemoryInboxDeadlockFreedom
 import ASPProof.HookSourceAccessReplayIdentity
 import ASPProof.Audit.HookSourceAccessReplayIdentity
 import ASPProof.IncrementalCacheAuthority
+import ASPProof.RuntimeEndpointAuthority

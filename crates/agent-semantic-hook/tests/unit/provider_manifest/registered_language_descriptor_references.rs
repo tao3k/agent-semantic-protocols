@@ -35,13 +35,13 @@ fn semantic_language_registry_is_a_bounded_reference_index() {
             .expect("reference providerId");
         if matches!(language_id, "rust" | "python" | "gerbil-scheme") {
             let projection_binding =
-                agent_semantic_hook::registered_provider_projection_command_binding_v1(
+                agent_semantic_hook::registered_provider_projection_command_binding(
                     language_id,
                     provider_id,
                 )
                 .expect("projection binding lookup")
                 .unwrap_or_else(|| {
-                    panic!("exact language must declare languageProjection: {language_id}")
+                    panic!("exact language must declare the projection runtime operation: {language_id}")
                 });
             assert_eq!(projection_binding, "projection-batch-stdin");
         }

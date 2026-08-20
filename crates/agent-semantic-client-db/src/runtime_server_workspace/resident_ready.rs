@@ -18,9 +18,35 @@ impl RuntimeServerWorkspaceRegistry {
             super::workspace_generation_pointer_path(&self.root, workspace_identity, project_root)?;
         match super::WorkspaceGenerationDataPlaneClient::open_state(&pointer_path).await? {
             super::WorkspaceGenerationDataPlaneOpen::Ready(_client) => {
-                // The lease was opened from a BLAKE3-authenticated committed segment. Full typed-digest
-                // validation belongs to publication, not the resident readiness hot path.
-                Ok(super::PublishedWorkspaceGenerationState::Ready)
+                // Ready is a property of the complete immutable generation,
+                // not merely its owner/source segment. In particular, an old
+                // exact-projection mmap must force Runtime-owned republication
+                // instead of letting the query path fail after admission.
+                match super::WorkspaceExactProjectionDataPlaneClient::open_state(&pointer_path)
+                    .await?
+                {
+                    super::WorkspaceExactProjectionDataPlaneOpen::Ready(_client) => {
+                        match super::WorkspaceSearchGenerationDataPlaneClient::open(
+                            &pointer_path,
+                            project_root,
+                        )
+                        .await
+                        {
+                            Ok(_client) => Ok(super::PublishedWorkspaceGenerationState::Ready),
+                            Err(reason) => {
+                                Ok(super::PublishedWorkspaceGenerationState::RecoveryRequired {
+                                    reason,
+                                })
+                            }
+                        }
+                    }
+                    super::WorkspaceExactProjectionDataPlaneOpen::Missing => {
+                        Ok(super::PublishedWorkspaceGenerationState::Missing)
+                    }
+                    super::WorkspaceExactProjectionDataPlaneOpen::RecoveryRequired { reason } => {
+                        Ok(super::PublishedWorkspaceGenerationState::RecoveryRequired { reason })
+                    }
+                }
             }
             super::WorkspaceGenerationDataPlaneOpen::Missing => {
                 Ok(super::PublishedWorkspaceGenerationState::Missing)

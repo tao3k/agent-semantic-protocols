@@ -11,7 +11,7 @@ const MATRIX_SCHEMA: &str =
     include_str!("../../../../schemas/semantic-hook-blackbox-test.v1.schema.json");
 
 #[test]
-fn process_environment_no_agent_cannot_bypass_local_policy_authority() {
+fn process_environment_no_agent_bypasses_before_local_policy_authority() {
     let root = fixture_root();
     let state_home = root.join("state-home-that-does-not-exist");
     let mut child = Command::new(env!("CARGO_BIN_EXE_asp"))
@@ -45,20 +45,71 @@ fn process_environment_no_agent_cannot_bypass_local_policy_authority() {
         String::from_utf8_lossy(&output.stderr)
     );
     let decision: Value = serde_json::from_slice(&output.stdout).expect("decode Hook decision");
-    assert_eq!(
-        decision["hookSpecificOutput"]["permissionDecision"], "deny",
-        "{decision}"
-    );
-    assert_eq!(
-        decision["systemMessage"],
-        "ASP local Hook policy authority is unavailable; the enforcing event is denied until canonical recovery completes.",
-        "{decision}"
-    );
+    assert_eq!(decision, json!({}), "{decision}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("route=bootstrap-no-agent-bypass"));
     assert!(
         !state_home.exists(),
         "highest-priority bypass must not materialize Hook or Runtime state"
     );
     std::fs::remove_dir_all(root).expect("remove Hook recovery fixture");
+}
+
+#[test]
+fn command_environment_no_agent_bypasses_shell_read_matcher() {
+    let root = fixture_root();
+    let state_home = root.join(".agent-semantic-protocols");
+    write_fixture(&root, &state_home);
+    let activation = crate::state_home_fixture::canonical_activation_path(&root, &state_home);
+    let decision = run_hook(
+        &root,
+        &state_home,
+        &activation,
+        json!({
+            "tool_name": "exec_command",
+            "tool_input": {
+                "cmd": "ASP_NO_AGENT=1 sed -n '1,20p' src/lib.rs"
+            }
+        }),
+    );
+    assert_eq!(decision["decision"], "allow", "{decision}");
+    assert_eq!(
+        decision["fields"]["configRuleId"], "allow-explicit-no-agent-host-bypass",
+        "{decision}"
+    );
+    assert_eq!(
+        decision["fields"]["hookMatcherProjection"], "shell-read-decision-shard",
+        "{decision}"
+    );
+    std::fs::remove_dir_all(root).expect("remove command environment Hook fixture");
+}
+
+#[test]
+fn command_environment_no_agent_precedes_structured_projection_shard() {
+    let root = fixture_root();
+    let state_home = root.join(".agent-semantic-protocols");
+    write_fixture(&root, &state_home);
+    let activation = crate::state_home_fixture::canonical_activation_path(&root, &state_home);
+    let decision = run_hook(
+        &root,
+        &state_home,
+        &activation,
+        json!({
+            "tool_name": "exec_command",
+            "tool_input": {
+                "cmd": "ASP_NO_AGENT=1 yq eval '.package.name' Cargo.toml"
+            }
+        }),
+    );
+    assert_eq!(decision["decision"], "allow", "{decision}");
+    assert_eq!(
+        decision["fields"]["configRuleId"], "allow-explicit-no-agent-host-bypass",
+        "{decision}"
+    );
+    assert_eq!(
+        decision["fields"]["hookMatcherProjection"], "leading-environment-decision-shard",
+        "{decision}"
+    );
+    std::fs::remove_dir_all(root).expect("remove structured no-agent Hook fixture");
 }
 
 #[test]

@@ -194,3 +194,58 @@ async fn cache_source_index_refresh_invalidates_when_empty_source_root_gains_fil
     server.shutdown().await;
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cold_changed_path_without_an_active_generation_publishes_the_baseline() {
+    let _guard = crate::test_support::CACHE_TEST_LOCK
+        .lock()
+        .expect("cache test lock");
+    let root = temp_root("source-index-cold-changed-path-baseline");
+    let _home_env = isolate_home(&root);
+    let source_dir = root.join("src");
+    std::fs::create_dir_all(&source_dir).expect("create source dir");
+    std::fs::write(
+        root.join("gerbil.pkg"),
+        "(package source-index-cold-baseline)\n",
+    )
+    .expect("write gerbil package anchor");
+    let changed_path = source_dir.join("cold_usage.ss");
+    std::fs::write(
+        &changed_path,
+        "(def (cold-baseline-symbol input)\n  input)\n",
+    )
+    .expect("write cold baseline source");
+    let activation_path = write_gerbil_activation_with_command_prefix(
+        &root,
+        super::fixtures::noop_provider_command_prefix(),
+        &["src"],
+    );
+    let _activation_env = EnvVarGuard::set(
+        ASP_PROVIDER_ACTIVATION_PATH_ENV,
+        activation_path.as_os_str(),
+    );
+
+    let server = RuntimeServerFixture::start(&root).await;
+    server
+        .admit_changed_paths(&root, vec![changed_path.display().to_string()])
+        .await;
+    let lookup_root = root.clone();
+    let result = server
+        .operation(move || async move {
+            crate::test_support::lookup_current_source_index_for_language(
+                &lookup_root,
+                Some(&LanguageId::from("gerbil-scheme")),
+                "cold-baseline-symbol",
+                8,
+            )
+            .await
+            .expect("lookup cold baseline source index")
+        })
+        .await;
+
+    assert_eq!(result.state.as_str(), "hit");
+    assert_eq!(result.candidates.len(), 1);
+    assert_eq!(result.candidates[0].path, "src/cold_usage.ss");
+    server.shutdown().await;
+    let _ = std::fs::remove_dir_all(root);
+}

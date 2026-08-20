@@ -87,7 +87,7 @@ pub(super) fn builtin_provider_manifest(language_id: &str, provider_id: &str) ->
 }
 
 pub(super) fn typescript_provider() -> ActivatedProvider {
-    let manifest = builtin_provider_manifest("typescript", "ts-harness");
+    let manifest = builtin_provider_manifest("typescript", "asp-typescript");
     let routes =
         agent_semantic_hook::materialize_provider_routes(&manifest).expect("TypeScript routes");
     provider(
@@ -101,7 +101,7 @@ pub(super) fn typescript_provider() -> ActivatedProvider {
 }
 
 fn rust_provider() -> ActivatedProvider {
-    let manifest = builtin_provider_manifest("rust", "rs-harness");
+    let manifest = builtin_provider_manifest("rust", "asp-rust");
     let routes = agent_semantic_hook::materialize_provider_routes(&manifest).expect("Rust routes");
     provider(
         &manifest,

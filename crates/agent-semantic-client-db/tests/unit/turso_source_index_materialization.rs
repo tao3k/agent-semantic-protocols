@@ -60,7 +60,6 @@ fn generation_fixture(
             query_keys: vec![ClientDbSourceIndexQueryKey::from("materialized")],
             derived_projections: vec![
                 crate::projection_fixture::callable_skeleton_projection_fixture(
-                    owner_path,
                     selector,
                     "materialized",
                 ),
@@ -90,7 +89,7 @@ fn generation_fixture(
     )])
     .evidence(
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-        "materialization-fixture-provider",
+        "sha256:0000000000000000000000000000000000000000000000000000000000000000",
     );
     (
         ClientDbSourceIndexRefreshRequest {

@@ -1,6 +1,11 @@
 {
   "schemaId": "agent.semantic-protocols.runtime-server-workspace-generation-admission.v1",
   "schemaVersion": "1",
+  "trigger": "query-demand",
+  "admissionMode": "cold-targeted",
+  "buildOwner": "runtime-server",
+  "cancellationAuthority": "runtime-server",
+  "requestLifetimeIndependent": true,
   "workspaceIdentity": "workspace-fixture",
   "candidateGeneration": {
     "algorithm": "blake3-worktree-state-v1",

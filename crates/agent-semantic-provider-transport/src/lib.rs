@@ -2,14 +2,15 @@
 
 //! Process transport for external ASP language providers.
 
+mod asp_client_server;
+mod asp_client_server_host;
+mod asp_client_server_lifecycle;
 pub mod byte_text;
 mod capture;
 mod process_contract;
 pub mod projection_batch;
 mod resident_runtime;
-mod runtime_authority;
 mod runtime_contract;
-mod runtime_http_server;
 mod runtime_process;
 mod runtime_wire;
 pub use projection_batch::{
@@ -19,6 +20,14 @@ pub use projection_batch::{
 };
 mod transport;
 
+pub use asp_client_server::{AspClientServerPeer, AspClientServerSpec};
+pub use asp_client_server_host::{
+    AspClientServerRequest, AspClientServerResponse, run_asp_client_server, serve_asp_client_server,
+};
+pub use asp_client_server_lifecycle::{
+    ASP_CLIENT_SERVER_LIFECYCLE_RECEIPT_SCHEMA_ID, AspClientServerLifecycleReceipt,
+    AspClientServerLifecycleState,
+};
 pub use process_contract::{
     DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES, OutputFraming, OutputMode, ProviderProcessError,
     ProviderProcessFraming, ProviderProcessLimits, ProviderProcessReceipt, ProviderProcessSpec,
@@ -26,17 +35,13 @@ pub use process_contract::{
 };
 pub use resident_runtime::{
     ProviderRuntimeActorAuthority, ProviderRuntimeActorClient, ProviderRuntimeActorState,
-    ProviderRuntimePeer, spawn_provider_runtime_actor, spawn_provider_runtime_peer_actor,
-};
-pub use runtime_authority::{
-    PROVIDER_RUNTIME_AUTHORITY_RECEIPT_SCHEMA_ID, ProviderRuntimeAuthorityReceipt,
-    ProviderRuntimeAuthorityState,
+    ProviderRuntimePeer, spawn_in_process_provider_runtime_actor,
+    spawn_provider_runtime_peer_actor,
 };
 pub use runtime_contract::{
     ProviderRuntimeContractOperation, ProviderRuntimeContractReceipt,
     ProviderRuntimeContractTransport,
 };
-pub use runtime_http_server::{ProviderHttpServerPeer, ProviderHttpServerSpec};
 pub use runtime_process::{ProviderRuntimeProcessPeer, ProviderRuntimeProcessSpec};
 pub use runtime_wire::{
     PROVIDER_RUNTIME_FRAME_SCHEMA_VERSION, PROVIDER_RUNTIME_REQUEST_FRAME_SCHEMA_ID,

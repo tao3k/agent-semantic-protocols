@@ -21,6 +21,68 @@ use crate::workspace_db_ipc::{
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeResidentReadWorkCounters {
+    pub database_opens: u64,
+    pub filesystem_reads: u64,
+    pub provider_spawns: u64,
+    pub control_socket_roundtrips: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeResidentReadEvidence {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub operation_id: String,
+    pub workspace_identity: String,
+    pub generation_digest: String,
+    pub root_digest: String,
+    pub read_state: String,
+    pub elapsed_micros: u64,
+    pub work_counters: RuntimeResidentReadWorkCounters,
+    pub terminal_state: String,
+    pub telemetry_digest: String,
+}
+
+pub fn resident_read_terminal_digest(
+    operation_id: &str,
+    surface: &str,
+    workspace_identity: &str,
+    generation_digest: &str,
+    root_digest: &str,
+    read_state: &str,
+    elapsed_micros: u64,
+    terminal_state: &str,
+) -> String {
+    use sha2::Digest;
+    let canonical = format!(
+        "{operation_id}|{surface}|{workspace_identity}|{generation_digest}|{root_digest}|{read_state}|{elapsed_micros}|{terminal_state}"
+    );
+    format!("sha256:{:x}", sha2::Sha256::digest(canonical.as_bytes()))
+}
+
+impl RuntimeResidentReadEvidence {
+    pub fn validate(&self) -> Result<(), String> {
+        let valid = self.telemetry_digest.len() == 71
+            && self.telemetry_digest.starts_with("sha256:")
+            && self.telemetry_digest[7..]
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit());
+        if !valid {
+            return Err("runtime resident read telemetryDigest is invalid".to_owned());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RuntimeResidentReadResult<T> {
+    pub value: T,
+    pub evidence: RuntimeResidentReadEvidence,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(
     tag = "action",
     rename_all = "kebab-case",
@@ -182,6 +244,9 @@ pub enum WorkspaceDbIpcOperation {
     ReadSourceIndex {
         request: WorkspaceDbSourceIndexLookupRequest,
     },
+    ReadRuntimeSourceIndex {
+        request: WorkspaceDbSourceIndexLookupRequest,
+    },
     ReadTreeSitterInventory {
         request: WorkspaceDbSourceIndexLookupRequest,
     },
@@ -190,6 +255,12 @@ pub enum WorkspaceDbIpcOperation {
         sources: Vec<RuntimeGraphFactSource>,
     },
     ReadRuntimeSelector {
+        project_root: String,
+        language_id: LanguageId,
+        projection_kind: crate::runtime_server_workspace::ExactProjectionKind,
+        structural_selector: String,
+    },
+    ReadRuntimeExactProjection {
         project_root: String,
         language_id: LanguageId,
         projection_kind: crate::runtime_server_workspace::ExactProjectionKind,
@@ -235,6 +306,11 @@ pub enum WorkspaceDbIpcOperation {
     },
     RequireRuntimeGeneration {
         project_root: String,
+    },
+    AdmitRuntimeGenerationForRead {
+        project_root: String,
+        language_id: String,
+        provider_id: String,
     },
     AdmitRuntimeGeneration {
         #[serde(deserialize_with = "deserialize_mutation_id")]
@@ -347,6 +423,7 @@ pub enum WorkspaceDbIpcResult {
     },
     SourceIndex {
         lookup: ClientDbSourceIndexLookupResult,
+        evidence: RuntimeResidentReadEvidence,
     },
     RuntimeGraphFacts {
         read: RuntimeGraphFactsRead,
@@ -385,8 +462,8 @@ pub enum WorkspaceDbIpcResult {
     RuntimeGeneration {
         receipt: crate::runtime_server_workspace::WorkspaceRecoveryReceipt,
     },
-    RuntimeGenerationReady {
-        receipt: crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt,
+    RuntimeGenerationResidentReady {
+        receipt: crate::runtime_server_workspace::WorkspaceRecoveryReceipt,
     },
     RuntimeGenerationDurability {
         receipt: Option<crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt>,
@@ -413,12 +490,14 @@ pub enum WorkspaceDbIpcResult {
     },
     RuntimeSelector {
         read: crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead,
+        evidence: RuntimeResidentReadEvidence,
     },
     RuntimeOwner {
         read: crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead,
     },
     RuntimeMerkleOwner {
         read: crate::runtime_server_workspace::WorkspaceRuntimeMerkleOwnerRead,
+        evidence: RuntimeResidentReadEvidence,
     },
     ProviderOwnerProjection {
         owner: crate::runtime_server_workspace::WorkspaceOwnerSnapshot,

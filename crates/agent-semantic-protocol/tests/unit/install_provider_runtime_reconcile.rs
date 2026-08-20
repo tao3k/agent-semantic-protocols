@@ -76,6 +76,31 @@ fn canonical_digest_lattice_symlink_is_current_without_rewrite() {
     std::fs::write(&artifact, b"canonical-provider-binary").expect("write artifact");
     let profile = runtime_bin.join(registration.binary());
     std::os::unix::fs::symlink(&artifact, &profile).expect("link canonical provider binary");
+    std::fs::create_dir_all(&provider_lock_dir).expect("temporary provider receipts");
+    let content_digest =
+        agent_semantic_content_identity::file_content_digest_v1(&profile).expect("content digest");
+    let metadata_digest =
+        agent_semantic_content_identity::file_artifact_metadata_digest_v1(&profile)
+            .expect("metadata digest");
+    let execution_digest = agent_semantic_hook::provider_execution_command_digest(
+        &[profile.to_string_lossy().to_string()],
+        &content_digest,
+    )
+    .expect("execution digest");
+    let lock_path =
+        provider_lock_dir.join(format!("{}.lock.toml", registration.language_id().as_str()));
+    std::fs::write(
+        &lock_path,
+        format!(
+            "schemaId = \"asp.provider-install-lock.v1\"\nlanguage = \"{}\"\nprovider = \"legacy-provider-id\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{}\"\ninstalledEntrypointMetadataDigest = \"{}\"\nexecutionCommandDigest = \"{}\"\n",
+            registration.language_id().as_str(),
+            profile.display(),
+            content_digest,
+            metadata_digest,
+            execution_digest,
+        ),
+    )
+    .expect("write legacy identity provider receipt");
 
     let reconciliation = reconcile_registered_provider_runtime_binaries_from(
         std::slice::from_ref(registration),
@@ -87,7 +112,14 @@ fn canonical_digest_lattice_symlink_is_current_without_rewrite() {
 
     assert_eq!(reconciliation.reconciled_count, 1);
     assert_eq!(reconciliation.changed_count, 0);
-    assert_eq!(reconciliation.binary_byte_reads, 0);
+    assert_eq!(reconciliation.receipt_changed_count, 1);
+    assert_eq!(reconciliation.binary_byte_reads, 1);
+    let receipt = super::super::install_provider_reconcile::read_provider_install_receipt(
+        registration.language_id().as_str(),
+        &provider_lock_dir,
+    )
+    .expect("read migrated provider receipt");
+    assert_eq!(receipt.provider_id, registration.provider_id().as_str());
     assert_eq!(
         std::fs::read_link(&profile).expect("canonical symlink remains unchanged"),
         artifact

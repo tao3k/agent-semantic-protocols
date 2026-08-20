@@ -271,6 +271,7 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
         let negative_commands = rule.get("negativeCommands").and_then(toml::Value::as_array);
         let positive_tools = rule.get("positiveTools").and_then(toml::Value::as_array);
         let negative_tools = rule.get("negativeTools").and_then(toml::Value::as_array);
+        let wrapper_exemption = rule.get("wrapperExemption").and_then(toml::Value::as_str);
         assert!(
             positive_commands.is_some() || positive_tools.is_some(),
             "{rule_id} has no positive cases"
@@ -411,23 +412,23 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
                     &format!("{rule_id}:positive"),
                 );
                 assert_positive!(&decision, command, Some(command));
-                for wrapper in wrapper_templates {
-                    let wrapped =
-                        render_wrapper(wrapper.as_str().expect("wrapper template"), command);
-                    let decision = run_case(
-                        "Bash",
-                        json!({"command": wrapped}),
-                        &format!("{rule_id}:wrapper:{wrapped}"),
-                    );
-                    assert_positive!(&decision, &wrapped, Some(&wrapped));
+                if wrapper_exemption.is_none() {
+                    for wrapper in wrapper_templates {
+                        let wrapped =
+                            render_wrapper(wrapper.as_str().expect("wrapper template"), command);
+                        let decision = run_case(
+                            "Bash",
+                            json!({"command": wrapped}),
+                            &format!("{rule_id}:wrapper:{wrapped}"),
+                        );
+                        assert_positive!(&decision, &wrapped, Some(&wrapped));
+                    }
                 }
             }
         }
         if positive_commands.is_none() {
             assert!(
-                rule.get("wrapperExemption")
-                    .and_then(toml::Value::as_str)
-                    .is_some(),
+                wrapper_exemption.is_some(),
                 "{rule_id} must explain why wrappers do not apply"
             );
         }

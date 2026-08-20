@@ -154,6 +154,7 @@ pub struct RuntimeServerWorkspaceRegistry {
     blocking_lane_ready: tokio::sync::OnceCell<()>,
     counters: Arc<RuntimeDataPlaneCounterState>,
     workspace_count: watch::Sender<usize>,
+    pub(super) sparse_provider_owners: super::sparse_provider_owner_cache::SparseProviderOwnerCache,
 }
 
 #[derive(Debug, Default)]
@@ -181,6 +182,8 @@ impl RuntimeServerWorkspaceRegistry {
             blocking_lane_ready: tokio::sync::OnceCell::new(),
             counters: Arc::new(RuntimeDataPlaneCounterState::default()),
             workspace_count,
+            sparse_provider_owners:
+                super::sparse_provider_owner_cache::SparseProviderOwnerCache::new(4_096),
         })
     }
 
@@ -548,13 +551,18 @@ impl RuntimeServerWorkspaceRegistry {
                 }
                 let publisher = WorkspaceGenerationPublisher::new(directory).await?;
                 if let Some(backend) = restored.as_ref() {
-                    publisher
+                    // Projection segments are reconstructible from the
+                    // canonical materialization. Preserve the generic backend
+                    // and its epoch when projection authority is incompatible
+                    // so the canonical writer can atomically republish the
+                    // complete generation instead of failing entry bootstrap.
+                    let _projection_restore = publisher
                         .restore_search_generation_authority(
                             workspace_identity,
                             project_root.to_string_lossy().as_ref(),
                             backend.generation().active_epoch,
                         )
-                        .await?;
+                        .await;
                 }
                 let overlays = Arc::new(ResidentOverlayStore::new(
                     restored

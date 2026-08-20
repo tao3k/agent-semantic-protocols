@@ -9,6 +9,8 @@ use super::{
 };
 #[path = "exact_segment_encoding.rs"]
 mod encoding;
+#[path = "exact_segment_evidence_context.rs"]
+mod evidence_context;
 #[path = "exact_segment_format.rs"]
 mod format;
 use format::{
@@ -16,8 +18,12 @@ use format::{
     write_range_header, write_u64, write_usize,
 };
 
-const MAGIC: &[u8; 16] = b"ASPEXACTMMAPV1__";
-const HEADER_LEN: usize = 144;
+// This is an internal mmap layout identity, not a protocol schema version.
+// Layout 0002 adds the same-segment projection evidence-context catalog.
+// Keeping the old magic would make a 144-byte layout look structurally valid
+// to the 160-byte decoder and reinterpret owner-table bytes as context offsets.
+const MAGIC: &[u8; 16] = b"ASPEXACTMMAP0002";
+const HEADER_LEN: usize = 160;
 const OWNER_ENTRY_LEN: usize = 112;
 const SELECTOR_ENTRY_LEN: usize = 104;
 const RELOCATION_ENTRY_LEN: usize = 40;
@@ -38,6 +44,8 @@ const WORKSPACE_ID_OFFSET: usize = 112;
 const WORKSPACE_ID_LEN_OFFSET: usize = 120;
 const RELOCATION_TABLE_OFFSET: usize = 128;
 const RELOCATION_COUNT_OFFSET: usize = 136;
+const CONTEXT_TABLE_OFFSET: usize = 144;
+const CONTEXT_COUNT_OFFSET: usize = 152;
 
 #[derive(Clone, Debug)]
 pub struct WorkspaceExactProjectionDataPlaneClient {
@@ -145,6 +153,17 @@ impl WorkspaceExactProjectionDataPlaneClient {
             .read_runtime_selector(projection_kind, structural_selector)
     }
 
+    /// Resolve a projection evidence context from the same immutable mmap.
+    pub fn projection_evidence_context(
+        &self,
+        evidence_context_ref: &str,
+    ) -> Result<Option<Vec<u8>>, String> {
+        self.inner
+            .current
+            .read()
+            .projection_evidence_context(evidence_context_ref)
+    }
+
     /// Return the resident content identity for one exact owner without
     /// opening the workspace database or contacting the control plane.
     pub fn owner_content_digest(&self, owner_path: &str) -> Result<Option<String>, String> {
@@ -201,10 +220,13 @@ struct MappedWorkspaceExactProjection {
     epoch: u64,
     owner_count: usize,
     selector_count: usize,
+    selector_indices_by_owner: Vec<Vec<usize>>,
     owner_table_offset: usize,
     selector_table_offset: usize,
     relocation_table_offset: usize,
     relocation_count: usize,
+    context_table_offset: usize,
+    context_count: usize,
     generation_digest: String,
     root_digest: String,
 }
@@ -254,18 +276,30 @@ impl MappedWorkspaceExactProjection {
             "root digest",
         )?
         .to_owned();
-        Ok(Self {
+        let mut mapped = Self {
             mapping,
             epoch: header.epoch,
             owner_count: header.owner_count,
             selector_count: header.selector_count,
+            selector_indices_by_owner: vec![Vec::new(); header.owner_count],
             owner_table_offset: header.owner_table_offset,
             selector_table_offset: header.selector_table_offset,
             relocation_table_offset: header.relocation_table_offset,
             relocation_count: header.relocation_count,
+            context_table_offset: header.context_table_offset,
+            context_count: header.context_count,
             generation_digest,
             root_digest,
-        })
+        };
+        for selector_index in 0..mapped.selector_count {
+            let owner_index = mapped.selector_entry(selector_index)?.owner_index;
+            mapped
+                .selector_indices_by_owner
+                .get_mut(owner_index)
+                .ok_or_else(|| "workspace exact selector owner index is out of range".to_owned())?
+                .push(selector_index);
+        }
+        Ok(mapped)
     }
 
     fn read_runtime_selector(
@@ -381,44 +415,61 @@ impl MappedWorkspaceExactProjection {
         &self,
         owner_index: usize,
     ) -> Result<Vec<WorkspaceSelectorSnapshot>, String> {
-        let mut selectors = Vec::new();
-        for index in 0..self.selector_count {
+        let owner_selector_indices = self
+            .selector_indices_by_owner
+            .get(owner_index)
+            .ok_or_else(|| "workspace exact projection owner index is out of range".to_owned())?;
+        let mut selector_groups: std::collections::BTreeMap<
+            String,
+            (
+                Option<(usize, usize)>,
+                Vec<super::WorkspaceDerivedProjectionSnapshot>,
+            ),
+        > = std::collections::BTreeMap::new();
+        for &index in owner_selector_indices {
             let entry = self.selector_entry(index)?;
-            if entry.owner_index == owner_index
-                && self.selector_kind(&entry)? == super::model::ExactProjectionKind::Source
-            {
-                let selector_text = self.selector_text(&entry)?;
-                let mut derived_projections = Vec::new();
-                for derived_index in 0..self.selector_count {
-                    let derived = self.selector_entry(derived_index)?;
-                    if derived.owner_index == owner_index
-                        && self.selector_text(&derived)? == selector_text
-                        && self.selector_kind(&derived)?
-                            != super::model::ExactProjectionKind::Source
-                    {
-                        derived_projections.push(super::WorkspaceDerivedProjectionSnapshot {
-                            projection_kind: self.selector_kind(&derived)?,
-                            bytes: read_slice(
-                                &self.mapping,
-                                derived.projection_blob_offset,
-                                derived.projection_blob_len,
-                                "derived projection bytes",
-                            )?
-                            .to_vec(),
-                        });
-                    }
+            let selector_text = self.selector_text(&entry)?.to_owned();
+            let projection_kind = self.selector_kind(&entry)?;
+            let group = selector_groups.entry(selector_text.clone()).or_default();
+            if projection_kind == super::model::ExactProjectionKind::Source {
+                if group
+                    .0
+                    .replace((entry.byte_start, entry.byte_end))
+                    .is_some()
+                {
+                    return Err(format!(
+                        "workspace exact projection contains duplicate source selector `{selector_text}`"
+                    ));
                 }
-                derived_projections
-                    .sort_by(|left, right| left.projection_kind.cmp(&right.projection_kind));
-                selectors.push(WorkspaceSelectorSnapshot {
-                    selector: selector_text.to_owned(),
-                    byte_start: entry.byte_start,
-                    byte_end: entry.byte_end,
-                    derived_projections,
+            } else {
+                group.1.push(super::WorkspaceDerivedProjectionSnapshot {
+                    projection_kind,
+                    bytes: read_slice(
+                        &self.mapping,
+                        entry.projection_blob_offset,
+                        entry.projection_blob_len,
+                        "derived projection bytes",
+                    )?
+                    .to_vec(),
+                    evidence_context: self.evidence_context_for_projection(&entry)?,
                 });
             }
         }
-        selectors.sort_by(|left, right| left.selector.cmp(&right.selector));
+
+        let mut selectors = Vec::with_capacity(selector_groups.len());
+        for (selector, (source_range, mut derived_projections)) in selector_groups {
+            let Some((byte_start, byte_end)) = source_range else {
+                continue;
+            };
+            derived_projections
+                .sort_by(|left, right| left.projection_kind.cmp(&right.projection_kind));
+            selectors.push(WorkspaceSelectorSnapshot {
+                selector,
+                byte_start,
+                byte_end,
+                derived_projections,
+            });
+        }
         Ok(selectors)
     }
 
@@ -694,6 +745,8 @@ struct Header {
     selector_table_offset: usize,
     relocation_table_offset: usize,
     relocation_count: usize,
+    context_table_offset: usize,
+    context_count: usize,
     string_table_offset: usize,
     blob_offset: usize,
     generation_digest_offset: usize,

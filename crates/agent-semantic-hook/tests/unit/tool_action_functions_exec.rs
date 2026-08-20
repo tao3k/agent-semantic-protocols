@@ -1,4 +1,4 @@
-use super::workspace_mutation_paths;
+use super::{collect_tool_actions, workspace_mutation_paths};
 use serde_json::json;
 
 #[test]
@@ -45,5 +45,29 @@ fn functions_exec_freeform_input_projects_apply_patch_mutation_paths() {
     assert_eq!(
         workspace_mutation_paths("functions.exec", &payload),
         ["src/freeform.rs"]
+    );
+}
+
+#[test]
+fn compound_shell_commands_preserve_one_normalized_action_per_stage() {
+    let actions = collect_tool_actions(
+        "functions.exec_command",
+        &json!({
+            "cmd": "asp server status && ASP_NO_AGENT=1 shasum -a 256 target/release/asp .bin/asp && ASP_NO_AGENT=1 git diff --check"
+        }),
+    );
+    assert_eq!(actions.len(), 3);
+    assert_eq!(
+        actions[0].command_tokens.as_deref().unwrap()[..3],
+        ["asp", "server", "status"]
+    );
+    assert_eq!(
+        actions[1].command_tokens.as_deref().unwrap()[0],
+        "ASP_NO_AGENT=1"
+    );
+    assert_eq!(actions[1].command_tokens.as_deref().unwrap()[1], "shasum");
+    assert_eq!(
+        actions[2].command_tokens.as_deref().unwrap()[1..],
+        ["git", "diff", "--check"]
     );
 }

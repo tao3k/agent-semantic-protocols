@@ -23,6 +23,67 @@
 
 ** Runtime cache ownership
 
+Each language/provider identity owns one resident entry and one bounded
+mailbox.  Concurrent admissions observe that entry's published lifecycle state
+and enqueue through the same mailbox.  A separate single-flight map, waiter
+registry, or query-owned lazy-start state machine is prohibited; this rule
+supersedes older single-flight wording in this section.
+
+ASP Server is the sole Tokio-owned =asp-client-server= lifecycle
+authority.  Hook demand may request a language runtime only through the server
+admission operation; extension identity MUST map to exactly one registered
+language/provider identity before admission.  Concurrent requests for the same
+identity MUST share one single-flight lazy start.  The server MUST retain a
+reference-counted lease while demand exists and MUST close an idle runtime
+after the lease/idle policy expires; close and restart are server-owned
+terminal operations.
+
+Lean owns the architecture-level counterexample model for this boundary.  The
+model MUST prove that two admitted operations cannot observe one another's
+overlay or cancellation state, that a cache hit implies equality of every
+authority component, that partial publication is never readable, and that each
+admitted or cancelled operation reaches at most one terminal receipt.  Schema
+validation and Tokio scenario tests provide the concrete identity and event
+witnesses consumed by those refinement claims.
+
+Every admitted provider identity MUST equal =asp-= concatenated with the
+request's canonical =languageId=.  Implementation artifact identity is carried
+separately and cannot influence provider routing or cache equality.  A receipt
+whose =providerId= does not derive from =languageId= is identity-invalid before
+Runtime dispatch, even when the referenced binary or package exists.
+
+Concurrent agent reads share immutable resident segments, never mutable
+request state.  Each Tokio task owns its operation-local cancellation token,
+deadline, result channel, telemetry span, and optional overlay identity.  Cache
+keys include workspace identity, generation digest, source-root digest,
+provider-catalog digest, language/provider identity, selector or query digest,
+and projection kind.  A cache entry missing any authority component is invalid,
+not a weak hit.  Publication is atomic; partial parser or graph generations are
+not visible to query tasks.
+
+Project understanding is syntax-granular and graph-complete rather than
+document-oriented.  Owner/item selectors, exact source scopes, project
+resolution, imports, calls, types, tests, and provider-owned relations retain
+their provenance and completeness independently.  A client can fan out many
+bounded reads against one generation and fan them into one evidence receipt;
+it cannot infer whole-project absence from a partial parser, resolver, or
+provider projection.
+
+LSP-style capability negotiation is accepted only as an immutable admission
+comparison between the client request and the catalog-published provider
+contract.  Runtime clients cannot dynamically register methods or mutate a
+Ready actor's capability set.  Cancellation is cooperative and operation
+scoped, but it never abandons a response: the Tokio owner must publish exactly
+one cancelled or completed terminal receipt.  Progress tokens belong to the
+control and observability planes; they never reopen admission, extend a query
+deadline, or enter ranking and result identity.
+
+Every start, ready, query, failure, close, and restart emits one terminal
+OpenTelemetry receipt carrying =operationId=, =extensionId=, =languageId=,
+=providerId=, =workspaceIdentity=, =generationDigest=, =rootDigest=,
+=transport=, and terminal status.  The CLI is an adapter and MUST NOT expose
+provider process creation or transport details to the Hook.
+
 *** Cold client first-result gate
 
 Lifecycle, publication, and cancellation are Tokio-owned.  Once admission has
@@ -168,18 +229,48 @@ search packet.  Raw provider stdout is transport evidence only and is never a
 successful public response.  There is no local-backend compatibility mode.
 
 
-Public exact query and derived search projection are separate protocols, not
-output modes of one command.  A public exact query has one meaning: resolve one
-parser-owned selector and return its source bytes with typed source authority.
-It has no projection flag, JSON flag, callable-skeleton fallback, or provider
-packet output.
+Public exact-source query and derived search projection are separate typed
+operations, even when one language facade dispatches both.  A
+=--projection source= request resolves one parser-owned selector and returns
+source bytes with typed source authority.  A =--projection callable-skeleton=
+request selects the derived-projection contract directly; it is never a
+fallback for unavailable source and cannot widen its admitted generation.
 
-Callable skeletons belong exclusively to the Runtime Server's internal search
-derived-projection API.  Search may consume that typed projection while ranking
-or refining evidence, but neither CLI nor Hook may expose its machine envelope
-as code.  Exact-source requests and derived-projection requests use disjoint
-request and response schemas; a component receiving the wrong schema fails
-closed before rendering or caching the payload.
+Providers produce the complete inline callable-skeleton authority envelope.
+Runtime validates that envelope before generation publication, interns its
+generation, parser, query-pack, provider, and language identity into one
+immutable evidence context, and publishes the compact projection plus the
+evidence context in the same generation mmap.  Agent-facing clients receive
+one canonical root selector and an =evidenceContextRef=; they do not receive
+per-node authority copies or repeat the complete selector identity AST.
+
+Both inline and referenced encodings remain schema version =1=.  Inline is the
+provider-to-Runtime admission encoding.  Referenced is the Runtime-to-agent
+resident encoding.  The reference is content-addressed and resolves only
+inside the same admitted immutable generation.  A missing, mismatched, or
+cross-generation reference is typed generation corruption and MUST NOT fall
+back to a client database, provider execution, source read, or identity
+reconstruction.
+
+The protocol remains schema version =1= while Runtime-internal mmap layouts
+carry their own independently evolving layout identity.  Adding the evidence
+context catalog changes that internal identity.  Runtime MUST classify an
+older exact-projection layout as =RecoveryRequired= before reporting the
+workspace generation Ready, then republish the complete generation from its
+canonical durable materialization.  A decoder MUST NOT infer layout
+compatibility from the public schema version or reinterpret table bytes added
+by a later layout.
+
+The root node inherits =rootSelector=.  A descendant node may carry a
+packet-local selector reference beginning with =$root=; clients resolve it by
+concatenation with the canonical root selector.  The full selector string MUST
+appear only once in a root-only packet.  Runtime publication, not presentation
+rendering, removes redundant authority data, so JSON and compact text views
+consume the same referenced resident payload.
+
+Exact-source requests and derived-projection requests use disjoint request and
+response schemas; a component receiving the wrong schema fails closed before
+rendering or caching the payload.
 
 Recommended next work is a typed action owned by the Runtime Server.  Free-form
 command strings are not protocol authority and must not cross the Runtime,
@@ -249,11 +340,11 @@ Turso connections, MVCC publication, and the resident writer queue.  Agent-facin
 bootstrap or migrate a client database, publish a second local-cache generation, or
 take ownership from the resident server.
 
-=source-index refresh= is a warm validation request against the server-owned admitted
-generation.  =source-index rebuild= is the explicit cold construction request.  Both
-requests MUST enter the same RuntimeServer data-plane admission and writer queue, and
-both return one typed receipt containing the admitted generation identity and cache
-provenance.  Neither command owns an alternate CLI-side lifecycle.
+Warm validation and cold construction are internal Runtime writer-lane actions.
+They enter the same RuntimeServer admission and atomic publication queue and
+return typed internal receipts containing admitted generation identity and cache
+provenance.  They are not public Agent-facing cache commands and do not create
+an alternate CLI-side lifecycle.
 
 When RuntimeServer admission =Failed= is projected as =Stale=, the typed cache-control
 receipt MUST carry non-empty failure provenance owned by RuntimeServer.  Client code
@@ -274,10 +365,10 @@ It MUST NOT unlink a live singleton socket.  Stale socket recovery is permitted 
 while holding the election guard and after a kernel connection probe proves that no
 listener owns the socket.
 
-=status= remains read-only.  =source-index refresh= is the warm recovery operation: it
-MUST re-admit a compatible durable canonical generation as an active lease without a
-cold rebuild.  Only incompatible cache identity, absent canonical materialization, or
-explicit =rebuild-source-index= permits cold construction.
+=status= remains read-only.  Runtime recovery may re-admit a compatible durable
+canonical generation as an active lease without a cold rebuild.  Only incompatible
+cache identity, absent canonical materialization, or a Runtime-owned query-demand
+admission permits cold construction.
 
 Incremental cache work is internal to the resident server.  Changed and removed owner
 sets are coalesced by the existing writer queue under one stable =mutationId=, applied
@@ -288,14 +379,13 @@ When an incremental delta cannot preserve cache identity or atomic publication, 
 server MUST fail closed or perform an explicit full-generation fallback and expose
 that fallback in its typed receipt.
 
-The sole v1 cache-control action set is =status=, =refresh-source-index=,
-=rebuild-source-index=, and explicitly scoped =invalidate=.  =status= is read-only.
-Every mutating action carries a stable =mutationId= and is serialized by the resident
-writer queue.  The legacy =asp cache import= path is superseded by
-=rebuild-source-index= and MUST NOT open or migrate Turso from the CLI.  A legacy
-=flush syntax-rows= request, while it remains accepted by an adapter, is represented as
-=invalidate(scope=syntax-rows)= inside the server contract rather than as a separate
-cache owner or lifecycle.
+The public v1 cache-control action set is =status= and explicitly scoped
+=invalidate=; source-index lookup remains a read projection.  =status= is
+read-only.  Every mutation carries a stable =mutationId= and is serialized by
+the resident writer queue.  Import, refresh, rebuild, and flush aliases are not
+public recovery routes.  Runtime may retain private writer commands for the
+same work, but they cannot be emitted as an Agent next action or parsed as a
+client-owned cache lifecycle.
 
 A direct CLI database open that fails because the RuntimeServer holds the Turso lock is
 not a recoverable operating mode; it is a conformance counterexample proving that cache
@@ -372,17 +462,17 @@ generation.  A generation or root mismatch is a typed =stale-generation=
 terminal result with =candidates=[]=.  The consumer MUST NOT refresh or repair
 authority, invoke a provider, reopen a database, or wait on a timeout.
 
-Hook lifecycle events use the typed, non-blocking
-=admit-runtime-generation= operation so PreToolUse never waits for project
-resolution.  Search and exact-query consumers only open an already published
-generation.  Absence returns the typed
-=active-workspace-generation-required= state immediately; it never grants the
-consumer an =ensure-runtime-generation= writer capability.  The lifecycle
-supervisor or an explicit mutation command may join the workspace-and-project
-single flight and publish its terminal receipt.  A failed build is returned as
-typed generation evidence; Search MUST NOT bypass it with a filesystem scan,
-direct database open, stale generation pointer, query-time repair, or manual
-=asp sync= requirement.
+Search and exact-query consumers first attempt the immutable published
+generation.  Missing or failed generation authority submits one non-blocking
+=query-demand= command to the Runtime Server's workspace admission coordinator
+and returns =workspace-generation-required.v1= with =state=in-progress=.  The
+consumer never receives a builder, database, provider, source-index, or
+cancellation capability.  Concurrent requests join the Runtime-owned
+single-flight, request loss does not cancel it, and a failed attempt is eligible
+for the next query-triggered Runtime retry.  Hook and Agent lifecycle are not
+admission owners.  Search MUST NOT bypass this path with a filesystem scan,
+direct database open, stale generation pointer, manual =asp sync=, cache import,
+source-index refresh, or ChoicePlane recovery.
 
 For an unchanged explicit owner, the receipt MUST report
 =decision=unchanged= and all mutation/process counters as zero.  For a changed
@@ -501,6 +591,23 @@ owner content digest, and selector identity.  They also assert zero provider,
 scheduler, filesystem, database, and socket operations on the warm read path.
 A timeout, cancellation, or elapsed-budget failure is evidence of an invalid
 architecture, not a successful bounded fallback.
+
+The fast scenario suite MUST adversarially exercise the lifecycle contract
+before Live Corpus qualification: concurrent demand for one identity proves a
+single start; distinct overlay identities prove result isolation; cancellation
+proves exactly one terminal response; bounded-mailbox saturation proves typed
+backpressure; a capability mutation after Ready is rejected; and stale
+generation/root identities fail before provider dispatch.  These scenarios use
+native Tokio and HTTP, assert correlated terminal OpenTelemetry receipts, and
+contain no Python transport fixture or subprocess-per-query fallback.
+
+The Live Corpus suite repeats the same request, response, lifecycle, cache-key,
+and telemetry assertions for every language/provider resource in the canonical
+lock.  It additionally proves syntax-granular owner/item/exact-source and
+cross-file project-graph behavior on real large libraries.  Scenario success
+without Live Corpus evidence is implementation evidence only; Live Corpus
+success without the adversarial scenarios cannot prove concurrency isolation
+or lifecycle safety.  Both are required for qualification.
 
 Qualification consumes that receipt without mutation.  Any attempt to build,
 restore an unqualified materialization, invoke a provider, or repair a missing
@@ -4180,18 +4287,29 @@ A skeleton node declares =queryable=true= only when the provider can mint an
 exact structural selector for that node. The selector is carried as
 =asp.exact-structural-selector.v1=. Version =v1= preserves the root canonical
 item selector, binds the active generation, parser identity, and query-pack
-digests, and adds opaque, parser-owned semantic descent segments. Segment
-identity MUST NOT be a line number, display range, or byte offset.
+digests, and adds opaque, parser-owned semantic descent segments. The packet
+=rootSelector= owns that shared identity once. A queryable node carries only
+its executable structural =selector= string; the node selector is scoped by
+the packet =rootSelector=. Node-level =exactSelector= envelopes are not part of
+the v1 callable-skeleton contract because they duplicate generation, parser,
+query-pack, and root-item identity. Segment identity MUST NOT be a line number,
+display range, or byte offset.
 
 =sourceLocatorHint= remains display-only. Clients MUST execute the returned
 exact selector instead of reconstructing one from a hint. A non-queryable node
-MUST omit =exactSelector=. A selector whose bound generation or parser identity
+MUST omit =selector=. A selector whose bound generation or parser identity
 is stale fails closed with an actionable stale-selector receipt; it MUST NOT
 relocate to a nearby sibling or fall back to source slicing.
 
 Exact query remains exact. It consumes a selector returned by the provider and
 does not search for a child. Discovery happens in the skeleton projection; the
 subsequent query only materializes the selected descendant.
+
+Projection cost covers the complete serialized packet, including selectors,
+relations, language facts, and the cost envelope itself. It MUST NOT clamp
+=projectedBytes= to =sourceBytes= or report only the node fragment. When the
+packet is larger than the source, =omittedBytes= is zero and the larger
+=projectedBytes= remains visible.
 
 ** Breaking-change and provider admission
 

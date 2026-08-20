@@ -74,7 +74,7 @@ pub async fn read_runtime_merkle_owner_via_runtime_server(
         })
         .await?
     {
-        super::WorkspaceDbIpcResult::RuntimeMerkleOwner { read } => Ok(read),
+        super::WorkspaceDbIpcResult::RuntimeMerkleOwner { read, .. } => Ok(read),
         super::WorkspaceDbIpcResult::Failed { code, message } => Err(format!("{code}: {message}")),
         _ => Err("Runtime Server returned an unexpected Merkle owner response".to_owned()),
     }

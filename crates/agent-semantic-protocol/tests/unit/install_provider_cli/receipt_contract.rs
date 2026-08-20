@@ -8,7 +8,20 @@ use super::{make_executable, temp_project_root};
 fn default_develop_receipt_install_publishes_the_global_runtime_catalog_atomically() {
     let root = temp_project_root();
     let state_home = root.join("state");
-    let source = root.join("build/rs-harness");
+    let dev_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("canonical repository root");
+    let source = dev_root
+        .join("languages/rust-lang-project-harness/target")
+        .join(format!("asp-install-receipt-test-{}", std::process::id()))
+        .join("asp-rust");
+    fs::create_dir_all(&state_home).expect("create ASP State Home");
+    fs::write(
+        state_home.join("asp.toml"),
+        format!("[dev]\nenabled = true\nroot = {:?}\n", dev_root),
+    )
+    .expect("write development artifact authority");
     fs::create_dir_all(source.parent().expect("provider build parent"))
         .expect("create provider build parent");
     fs::write(&source, b"#!/bin/sh\nexit 0\n").expect("write provider fixture");
@@ -86,6 +99,10 @@ fn default_develop_receipt_install_publishes_the_global_runtime_catalog_atomical
         first_receipt.contains("globalProviderCatalogWrite=true"),
         "{first_receipt}"
     );
+    assert!(
+        first_receipt.contains("runtimeServerReconcile=not-running"),
+        "{first_receipt}"
+    );
 
     let catalog_path = state_home.join("runtime/provider-catalog.v1.json");
     let catalog: serde_json::Value =
@@ -133,8 +150,13 @@ fn default_develop_receipt_install_publishes_the_global_runtime_catalog_atomical
         second_receipt.contains("globalProviderCatalogWrite=false"),
         "{second_receipt}"
     );
+    assert!(
+        second_receipt.contains("runtimeServerReconcile=current"),
+        "{second_receipt}"
+    );
 
     let _ = fs::remove_dir_all(root);
+    let _ = fs::remove_dir_all(source.parent().expect("provider fixture parent"));
 }
 
 #[test]

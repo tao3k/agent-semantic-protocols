@@ -11,6 +11,25 @@ use crate::{
 
 pub const CAPACITY: usize = 1024;
 
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResidentReadTerminalContext {
+    pub operation_id: String,
+    pub surface: String,
+    pub workspace_identity: String,
+    pub generation_digest: String,
+    pub root_digest: String,
+    pub read_state: String,
+    pub elapsed_micros: u64,
+    pub work_counters: crate::workspace_db_ipc::RuntimeResidentReadWorkCounters,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResidentReadTerminalOutcome {
+    pub terminal_state: String,
+}
+
 #[derive(Clone)]
 pub struct RuntimeTelemetryBusSender {
     terminal: mpsc::Sender<RuntimeTelemetryEnvelope>,
@@ -18,6 +37,7 @@ pub struct RuntimeTelemetryBusSender {
     transition_permits: std::sync::Arc<tokio::sync::Semaphore>,
     pending_transitions: std::sync::Arc<dashmap::DashMap<String, usize>>,
     incidents: std::sync::Arc<dashmap::DashMap<(String, String), IncidentRecord>>,
+    resident_reads: std::sync::Arc<dashmap::DashMap<(String, String), ResidentReadTerminalOutcome>>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -56,6 +76,7 @@ impl RuntimeTelemetryBus {
         let (terminal, terminal_receiver) = mpsc::channel(CAPACITY);
         let (ordered, ordered_receiver) = mpsc::channel(CAPACITY * 2);
         let pending_transitions = std::sync::Arc::new(dashmap::DashMap::new());
+        let resident_reads = std::sync::Arc::new(dashmap::DashMap::new());
         Self {
             sender: RuntimeTelemetryBusSender {
                 terminal,
@@ -63,6 +84,7 @@ impl RuntimeTelemetryBus {
                 transition_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(CAPACITY)),
                 pending_transitions: std::sync::Arc::clone(&pending_transitions),
                 incidents: std::sync::Arc::new(dashmap::DashMap::new()),
+                resident_reads: std::sync::Arc::clone(&resident_reads),
             },
             receiver: RuntimeTelemetryBusReceiver {
                 terminal: terminal_receiver,
@@ -74,6 +96,37 @@ impl RuntimeTelemetryBus {
 }
 
 impl RuntimeTelemetryBusSender {
+    pub fn try_record_resident_read_terminal(
+        &self,
+        context: ResidentReadTerminalContext,
+        outcome: ResidentReadTerminalOutcome,
+    ) -> Result<String, String> {
+        if context.operation_id.trim().is_empty() || context.surface.trim().is_empty() {
+            return Err("resident read telemetry requires operationId and surface".to_owned());
+        }
+        if outcome.terminal_state.trim().is_empty() {
+            return Err("resident read telemetry requires terminalState".to_owned());
+        }
+        let digest = crate::workspace_db_ipc::resident_read_terminal_digest(
+            &context.operation_id,
+            &context.surface,
+            &context.workspace_identity,
+            &context.generation_digest,
+            &context.root_digest,
+            &context.read_state,
+            context.elapsed_micros,
+            &outcome.terminal_state,
+        );
+        self.resident_reads
+            .insert((context.operation_id, context.surface), outcome);
+        Ok(digest)
+    }
+
+    pub fn resident_read_terminal_exists(&self, operation_id: &str, surface: &str) -> bool {
+        self.resident_reads
+            .contains_key(&(operation_id.to_owned(), surface.to_owned()))
+    }
+
     pub fn try_record_search_terminal(
         &self,
         context: SearchIncidentTerminalContext,

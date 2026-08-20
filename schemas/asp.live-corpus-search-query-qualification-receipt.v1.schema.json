@@ -15,7 +15,7 @@
   ],
   "properties": {
     "schemaId": {
-      "const": "agent.semantic-protocols.live-corpus-search-query-qualification-receipt.v1"
+      "const": "agent.semantic-protocols.live-corpus-search-query-qualification-receipt"
     },
     "schemaVersion": { "const": "1" },
     "planDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
@@ -43,13 +43,26 @@
         "rootDigest",
         "searchOperationId",
         "searchElapsedMicros",
+        "residentSampleCount",
+        "searchResidentReadLatencyMicros",
+        "searchServiceLatencyMicros",
+        "searchTotalLatencyMicros",
         "candidateCount",
         "selector",
         "queryOperationId",
         "queryElapsedMicros",
+        "exactSourceLatencyMicros",
+        "callableSkeletonLatencyMicros",
         "zeroMatchOperationId",
         "telemetryEventDigests",
-        "status"
+        "sourceIndexTelemetryDigest",
+        "sourceExactTelemetryDigest",
+        "callableSkeletonTelemetryDigest",
+        "merkleTelemetryDigest",
+        "status",
+        "semanticProjectionSchemaId",
+        "payloadSchemaId",
+        "payloadDigest"
       ],
       "properties": {
         "caseId": { "type": "string", "minLength": 1 },
@@ -62,10 +75,16 @@
         "rootDigest": { "type": "string", "minLength": 1 },
         "searchOperationId": { "type": "string", "minLength": 1 },
         "searchElapsedMicros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "residentSampleCount": { "type": "integer", "minimum": 128 },
+        "searchResidentReadLatencyMicros": { "$ref": "#/$defs/latencyDistribution" },
+        "searchServiceLatencyMicros": { "$ref": "#/$defs/latencyDistribution" },
+        "searchTotalLatencyMicros": { "$ref": "#/$defs/latencyDistribution" },
         "candidateCount": { "type": "integer", "minimum": 1 },
         "selector": { "type": "string", "minLength": 1 },
         "queryOperationId": { "type": "string", "minLength": 1 },
         "queryElapsedMicros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "exactSourceLatencyMicros": { "$ref": "#/$defs/latencyDistribution" },
+        "callableSkeletonLatencyMicros": { "$ref": "#/$defs/latencyDistribution" },
         "zeroMatchOperationId": { "type": "string", "minLength": 1 },
         "telemetryEventDigests": {
           "type": "array",
@@ -73,7 +92,41 @@
           "uniqueItems": true,
           "items": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" }
         },
-        "status": { "const": "qualified" }
+        "sourceIndexTelemetryDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "sourceExactTelemetryDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "callableSkeletonTelemetryDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "merkleTelemetryDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "status": { "const": "qualified" },
+        "semanticProjectionSchemaId": {
+          "const": "agent.semantic-protocols.semantic-projection"
+        },
+        "payloadSchemaId": {
+          "const": "agent.semantic-protocols.callable-skeleton"
+        },
+        "payloadDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "latencyDistribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sampleCount",
+        "minMicros",
+        "p50Micros",
+        "p95Micros",
+        "p99Micros",
+        "maxMicros"
+      ],
+      "properties": {
+        "sampleCount": { "type": "integer", "minimum": 128 },
+        "minMicros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "p50Micros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "p95Micros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "p99Micros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "maxMicros": { "type": "integer", "minimum": 0, "maximum": 1000 }
       }
     }
   }

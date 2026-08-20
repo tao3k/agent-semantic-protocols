@@ -1,3 +1,5 @@
+use std::collections::{BTreeSet, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::runtime_server_admission::{
@@ -11,6 +13,16 @@ enum AdmissionRegistryCommand {
         receipt: WorkspaceGenerationAdmissionReceipt,
         active_mutation: Option<WorkspaceMutationIdentity>,
         completed: tokio::sync::oneshot::Sender<(Arc<AdmissionEntry>, bool)>,
+    },
+    ReserveQueryDemand {
+        key: WorkspaceGenerationAdmissionKey,
+        target_paths: BTreeSet<PathBuf>,
+        completed: tokio::sync::oneshot::Sender<bool>,
+    },
+    ReleaseQueryDemand {
+        key: WorkspaceGenerationAdmissionKey,
+        target_paths: BTreeSet<PathBuf>,
+        completed: tokio::sync::oneshot::Sender<()>,
     },
     Shutdown(tokio::sync::oneshot::Sender<usize>),
 }
@@ -31,6 +43,7 @@ impl AdmissionRegistry {
         let (commands, mut receiver) = tokio::sync::mpsc::channel(1);
         let task = dispatcher::spawn_admission_authority(async move {
             let mut entries = entries;
+            let mut query_demand_reservations = HashSet::new();
             while let Some(command) = receiver.recv().await {
                 let mut batch = vec![command];
                 while let Ok(command) = receiver.try_recv() {
@@ -57,6 +70,22 @@ impl AdmissionRegistry {
                                 inserted_replies.push((completed, proposed));
                             }
                         },
+                        AdmissionRegistryCommand::ReserveQueryDemand {
+                            key,
+                            target_paths,
+                            completed,
+                        } => {
+                            let _ = completed
+                                .send(query_demand_reservations.insert((key, target_paths)));
+                        }
+                        AdmissionRegistryCommand::ReleaseQueryDemand {
+                            key,
+                            target_paths,
+                            completed,
+                        } => {
+                            query_demand_reservations.remove(&(key, target_paths));
+                            let _ = completed.send(());
+                        }
                         AdmissionRegistryCommand::Shutdown(completed) => {
                             receiver.close();
                             shutdown = Some(completed);
@@ -94,41 +123,60 @@ impl AdmissionRegistry {
         receipt: WorkspaceGenerationAdmissionReceipt,
         active_mutation: Option<WorkspaceMutationIdentity>,
     ) -> Result<(Arc<AdmissionEntry>, bool), String> {
-        loop {
-            if let Some(entry) = self.get(&key) {
-                return Ok((entry, false));
-            }
-            let (completed, response) = tokio::sync::oneshot::channel();
-            match self
-                .commands
-                .try_send(AdmissionRegistryCommand::GetOrInsert {
-                    key: key.clone(),
-                    receipt: receipt.clone(),
-                    active_mutation: active_mutation.clone(),
-                    completed,
-                }) {
-                Ok(()) => {
-                    return response.await.map_err(|_| {
-                        "workspace generation admission authority closed without a receipt"
-                            .to_owned()
-                    });
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                    let mut snapshot = self.snapshot.clone();
-                    if snapshot.borrow().contains_key(&key) {
-                        continue;
-                    }
-                    snapshot.changed().await.map_err(|_| {
-                        "workspace generation admission authority closed while backpressured"
-                            .to_owned()
-                    })?;
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                    return Err(
-                        "workspace generation admission authority is unavailable".to_owned()
-                    );
-                }
-            }
+        if let Some(entry) = self.get(&key) {
+            return Ok((entry, false));
+        }
+        let (completed, response) = tokio::sync::oneshot::channel();
+        self.commands
+            .send(AdmissionRegistryCommand::GetOrInsert {
+                key,
+                receipt,
+                active_mutation,
+                completed,
+            })
+            .await
+            .map_err(|_| "workspace generation admission authority is unavailable".to_owned())?;
+        response.await.map_err(|_| {
+            "workspace generation admission authority closed without a receipt".to_owned()
+        })
+    }
+
+    pub(super) async fn reserve_query_demand(
+        &self,
+        key: WorkspaceGenerationAdmissionKey,
+        target_paths: BTreeSet<PathBuf>,
+    ) -> Result<bool, String> {
+        let (completed, response) = tokio::sync::oneshot::channel();
+        self.commands
+            .send(AdmissionRegistryCommand::ReserveQueryDemand {
+                key,
+                target_paths,
+                completed,
+            })
+            .await
+            .map_err(|_| "workspace generation admission authority is unavailable".to_owned())?;
+        response.await.map_err(|_| {
+            "workspace generation admission authority dropped a query-demand reservation".to_owned()
+        })
+    }
+
+    pub(super) async fn release_query_demand(
+        &self,
+        key: WorkspaceGenerationAdmissionKey,
+        target_paths: BTreeSet<PathBuf>,
+    ) {
+        let (completed, response) = tokio::sync::oneshot::channel();
+        if self
+            .commands
+            .send(AdmissionRegistryCommand::ReleaseQueryDemand {
+                key,
+                target_paths,
+                completed,
+            })
+            .await
+            .is_ok()
+        {
+            let _ = response.await;
         }
     }
 

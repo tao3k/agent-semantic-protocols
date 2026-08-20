@@ -42,6 +42,26 @@ query.
 * Atomic ready publication
 
 The endpoint receipt is a readiness boundary, not a startup intention.
+The public =asp server start= command MUST NOT project an owner-spawn receipt as
+terminal success.  Owner spawn is an internal transition.  The command returns
+success only after the endpoint receipt for that same owner epoch is readable,
+both transports accept their readiness probes, and the status snapshot reports
+=healthy=.  If the bounded readiness budget expires, the command returns a
+typed endpoint-publication or owner-exit failure and removes only artifacts
+still bound to the failed owner epoch.  It never reports success with a missing
+=endpoint.v1.json=, and it never retires a previous healthy endpoint before the
+replacement owner has committed its complete readiness receipt.
+
+Canonical binary publication and Runtime replacement are one durable two-phase
+handoff.  An install receipt MUST NOT return an unowned
+=runtimeServerReconcile= value such as =deferred= after switching the canonical
+artifact.  Publication first records a supervisor-owned reconciliation request
+binding the previous owner epoch, desired artifact digest, and transport
+contract digest.  The previous healthy endpoint remains readable until the
+replacement endpoint commits.  A failed replacement preserves that endpoint
+and publishes a typed reconciliation failure; it never leaves the canonical
+binary current while =endpoint.v1.json= is absent.
+
 Startup MUST complete these operations in order:
 
 1. acquire the single Runtime Server election;

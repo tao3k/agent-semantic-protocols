@@ -1,11 +1,50 @@
-use agent_semantic_runtime::LiveCorpusLanguageExtensionEvidenceV1;
+use agent_semantic_runtime::{
+    LiveCorpusGitCheckoutQualification, LiveCorpusLanguageExtensionEvidenceV1,
+};
 use std::path::Path;
 
 use super::{
     LiveCorpusExtensionAdmissionV1, LiveCorpusGitLockV1, LiveCorpusInputsV1, LiveCorpusLockEntryV1,
-    load_lock, parse_materialize_request, parse_resource_request, publish_immutable_json,
-    sync_usage, validate_extension_admission,
+    load_lock, materialized_source_identity, parse_materialize_request, parse_resource_request,
+    publish_immutable_json, sync_usage, validate_extension_admission,
 };
+
+#[test]
+fn materialized_source_identity_uses_the_runtime_content_root() {
+    let checkout = LiveCorpusGitCheckoutQualification {
+        canonical_remote_identity: "https://example.invalid/corpus".to_owned(),
+        head_revision: "revision-1".to_owned(),
+        git_tree: "tree-1".to_owned(),
+        checkout_identity_digest: "blake3-256:checkout-identity".to_owned(),
+    };
+
+    let identity = materialized_source_identity(
+        checkout,
+        "blake3-256:runtime-canonical-content-root".to_owned(),
+    )
+    .expect("Runtime canonical root must define the materialized source identity");
+
+    assert_eq!(identity.head_revision, "revision-1");
+    assert_eq!(identity.git_tree, "tree-1");
+    assert_eq!(
+        identity.source_merkle_root,
+        "blake3-256:runtime-canonical-content-root"
+    );
+}
+
+#[test]
+fn materialized_source_identity_rejects_an_empty_runtime_root() {
+    let checkout = LiveCorpusGitCheckoutQualification {
+        canonical_remote_identity: "https://example.invalid/corpus".to_owned(),
+        head_revision: "revision-1".to_owned(),
+        git_tree: "tree-1".to_owned(),
+        checkout_identity_digest: "blake3-256:checkout-identity".to_owned(),
+    };
+
+    let error = materialized_source_identity(checkout, "  ".to_owned())
+        .expect_err("empty Runtime canonical roots must fail closed");
+    assert!(error.contains("empty canonical source root digest"));
+}
 
 fn corpus(admission: Option<LiveCorpusExtensionAdmissionV1>) -> LiveCorpusLockEntryV1 {
     LiveCorpusLockEntryV1 {

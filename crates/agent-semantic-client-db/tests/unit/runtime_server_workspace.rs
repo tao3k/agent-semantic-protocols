@@ -2,6 +2,8 @@
 
 #[path = "runtime_server_workspace/overlay_projection.rs"]
 mod overlay_projection;
+#[path = "runtime_server_workspace/projection_evidence_context.rs"]
+mod projection_evidence_context;
 
 #[path = "runtime_server_workspace/durability.rs"]
 mod durability;

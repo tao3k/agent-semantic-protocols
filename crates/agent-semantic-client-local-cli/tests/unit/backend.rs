@@ -14,7 +14,10 @@ static ENV_LOCK: Mutex<()> = Mutex::new(());
 #[test]
 fn prepares_registry_owned_provider_command() {
     let home = install_home_provider("registry", "rs-harness", "");
-    let backend = LocalNativeCliBackend::new(snapshot(vec![provider("rust", "rs-harness")]));
+    let backend = LocalNativeCliBackend::new(
+        snapshot(vec![provider("rust", "rs-harness")]),
+        Default::default(),
+    );
     let request = ClientRequest::new(ClientMethod::Search, PathBuf::from("/repo"))
         .with_language("rust")
         .with_forwarded_args(vec![
@@ -33,7 +36,10 @@ fn prepares_registry_owned_provider_command() {
 #[test]
 fn project_resolution_method_is_not_a_positional_project_root() {
     let home = install_home_provider("project-resolution-method", "py-harness", "");
-    let backend = LocalNativeCliBackend::new(snapshot(vec![provider("python", "py-harness")]));
+    let backend = LocalNativeCliBackend::new(
+        snapshot(vec![provider("python", "py-harness")]),
+        Default::default(),
+    );
     let project_root = temp_project_root("project-resolution-method");
     let canonical_project_root =
         std::fs::canonicalize(&project_root).expect("canonical project root");
@@ -56,10 +62,13 @@ fn project_resolution_method_is_not_a_positional_project_root() {
 
 #[test]
 fn requires_language_for_multi_provider_route() {
-    let backend = LocalNativeCliBackend::new(snapshot(vec![
-        provider("rust", "rs-harness"),
-        provider("python", "py-harness"),
-    ]));
+    let backend = LocalNativeCliBackend::new(
+        snapshot(vec![
+            provider("rust", "rs-harness"),
+            provider("python", "py-harness"),
+        ]),
+        Default::default(),
+    );
     let request = ClientRequest::new(ClientMethod::Search, PathBuf::from("/repo"));
 
     let error = backend.prepare(&request).expect_err("requires language");
@@ -70,7 +79,10 @@ fn requires_language_for_multi_provider_route() {
 #[test]
 fn prepares_query_with_asp_compiled_syntax_plan() {
     let _home = install_home_provider("syntax-plan", "rs-harness", "");
-    let backend = LocalNativeCliBackend::new(snapshot(vec![provider("rust", "rs-harness")]));
+    let backend = LocalNativeCliBackend::new(
+        snapshot(vec![provider("rust", "rs-harness")]),
+        Default::default(),
+    );
     let request = ClientRequest::new(ClientMethod::Query, PathBuf::from("/repo"))
         .with_language("rust")
         .with_forwarded_args(vec![
@@ -101,7 +113,10 @@ fn prepares_query_with_asp_compiled_syntax_plan() {
 #[test]
 fn prepares_catalog_query_with_asp_compiled_syntax_plan() {
     let _home = install_home_provider("catalog-plan", "rs-harness", "");
-    let backend = LocalNativeCliBackend::new(snapshot(vec![provider("rust", "rs-harness")]));
+    let backend = LocalNativeCliBackend::new(
+        snapshot(vec![provider("rust", "rs-harness")]),
+        Default::default(),
+    );
     let request = ClientRequest::new(ClientMethod::Query, PathBuf::from("/repo"))
         .with_language("rust")
         .with_forwarded_args(vec![
@@ -132,7 +147,7 @@ fn missing_home_local_binary_reports_install_language_without_runtime_profile_fa
     let mut provider = provider("rust", "rs-harness");
     provider.provider_command_prefix.clear();
     provider.runtime_profile_status = Some(RuntimeProfileStatus::Missing);
-    let backend = LocalNativeCliBackend::new(snapshot(vec![provider]));
+    let backend = LocalNativeCliBackend::new(snapshot(vec![provider]), Default::default());
     let request = ClientRequest::new(ClientMethod::Search, PathBuf::from("/repo"))
         .with_language("rust")
         .with_forwarded_args(vec!["prime".to_string(), ".".to_string()]);
@@ -162,7 +177,7 @@ fn home_local_binary_is_canonical_for_every_external_provider() {
         let mut provider = provider(language_id, binary);
         provider.runtime_command_argv = Some(vec![format!("/opt/homebrew/bin/{binary}")]);
         provider.runtime_profile_status = Some(RuntimeProfileStatus::Available);
-        let backend = LocalNativeCliBackend::new(snapshot(vec![provider]));
+        let backend = LocalNativeCliBackend::new(snapshot(vec![provider]), Default::default());
         let request = ClientRequest::new(ClientMethod::Search, PathBuf::from("/repo"))
             .with_language(language_id)
             .with_forwarded_args(vec![
@@ -181,7 +196,10 @@ fn home_local_binary_is_canonical_for_every_external_provider() {
 #[test]
 fn relative_project_root_is_canonicalized_for_provider_cwd() {
     let _home = install_home_provider("relative-root", "rs-harness", "");
-    let backend = LocalNativeCliBackend::new(snapshot(vec![provider("rust", "rs-harness")]));
+    let backend = LocalNativeCliBackend::new(
+        snapshot(vec![provider("rust", "rs-harness")]),
+        Default::default(),
+    );
     let current_dir = std::env::current_dir().expect("current dir");
     let request = ClientRequest::new(ClientMethod::Search, PathBuf::from("."))
         .with_language("rust")
@@ -202,7 +220,7 @@ async fn execute_records_transport_receipt_fields() {
     );
     let provider = provider("rust", "fake-rust-provider");
     let root = temp_project_root("local-native-receipt");
-    let backend = LocalNativeCliBackend::new(snapshot(vec![provider]));
+    let backend = LocalNativeCliBackend::new(snapshot(vec![provider]), Default::default());
     let request = ClientRequest::new(ClientMethod::Search, root.clone())
         .with_language("rust")
         .with_forwarded_args(vec!["prime".to_string()]);

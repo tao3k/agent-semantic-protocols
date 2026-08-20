@@ -39,23 +39,41 @@ pub(super) fn validate_selector(
         if projection.bytes.is_empty() {
             return Err("workspace derived selector projection bytes are empty".to_owned());
         }
-        let callable_skeleton: agent_semantic_content_identity::callable_skeleton_projection::CallableSkeletonProjectionV1 =
+        let envelope: agent_semantic_content_identity::semantic_projection::SemanticProjection<agent_semantic_content_identity::callable_skeleton_projection::CallableSkeletonPayload> =
             serde_json::from_slice(&projection.bytes).map_err(|error| {
                 format!(
                     "workspace callable-skeleton projection is not shared-schema JSON: selector={} error={error}",
                     selector.selector
                 )
             })?;
-        callable_skeleton.validate().map_err(|error| {
+        envelope.validate().map_err(|error| {
             format!(
                 "workspace callable-skeleton projection failed shared validation: selector={} error={error}",
                 selector.selector
             )
         })?;
-        if callable_skeleton.root_selector.selector != selector.selector {
+        envelope.payload.validate().map_err(|error| {
+            format!("workspace callable-skeleton payload failed shared validation: selector={} error={error}", selector.selector)
+        })?;
+        envelope.payload.validate_scope(&envelope.root_selector).map_err(|error| {
+            format!("workspace callable-skeleton scope failed shared validation: selector={} error={error}", selector.selector)
+        })?;
+        let context = projection.evidence_context.as_ref().ok_or_else(|| {
+            "callable-skeleton projection is missing its evidence context".to_owned()
+        })?;
+        context.validate().map_err(|error| {
+            format!("workspace projection evidence context failed validation: {error}")
+        })?;
+        if context.evidence_context_ref != envelope.evidence_context_ref
+            || context.language_id != envelope.language_id
+            || context.provider_id != envelope.provider_id
+        {
+            return Err("workspace callable-skeleton evidence context identity drift".to_owned());
+        }
+        if envelope.root_selector != selector.selector {
             return Err(format!(
                 "workspace callable-skeleton root selector drift: expected={} actual={}",
-                selector.selector, callable_skeleton.root_selector.selector
+                selector.selector, envelope.root_selector
             ));
         }
         if !projection_kinds.insert(projection.projection_kind.as_str()) {

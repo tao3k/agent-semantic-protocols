@@ -195,7 +195,7 @@ async fn cache_source_index_refresh_uses_provider_project_resolution() {
     write_project_resolution_provider(
         &provider_bin,
         "gerbil-scheme",
-        "gerbil-scheme-harness",
+        "asp-gerbil-scheme",
         ".ss",
         &["src"],
         &[],

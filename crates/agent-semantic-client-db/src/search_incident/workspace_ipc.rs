@@ -97,6 +97,7 @@ pub(crate) fn record_workspace_ipc_terminal(
                     generation_digest,
                     ..
                 },
+            ..
         } => {
             context.generation_digest = Some(generation_digest.clone());
             "projection-scope-omitted".to_owned()

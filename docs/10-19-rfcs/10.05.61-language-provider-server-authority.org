@@ -1,4 +1,4 @@
-#+TITLE: Language Provider Server Authority
+#+TITLE: ASP Client Server Authority
 #+STATUS: accepted
 
 * Problem
@@ -11,11 +11,59 @@ unobservable.
 
 * Decision
 
-ASP Runtime Server owns one Tokio =ProviderServerAuthority= per activated server
+ASP Runtime Server owns one Tokio =AspClientServerAuthority= per activated server
 provider. The authority is a single-writer task. Commands enter through bounded
 =tokio::sync::mpsc=, replies use =oneshot=, and committed lifecycle state is
 published through =watch=. No synchronous lock or shared mutable map is part of
 the provider request path.
+
+** Rust client-server hard cut
+
+The public Rust provider lifecycle command is =asp-rust serve=.  Provider
+runtime transport namespaces are not public CLI subcommands.  The CLI keeps no
+alias parser, argument-shape guard, or command-specific diagnostic for removed
+commands.  This paragraph supersedes any older command spelling in this
+section.
+
+Rust follows the same HTTP-first =asp-client-server= contract as Julia.  The
+provider manifest declares =http-json= transport and the
+=asp-client-server serve= lifecycle command.  ASP Runtime Server is the only
+owner allowed to start, warm, health-check, drain, or stop the Rust client.
+
+The public =asp rust ...= command is a typed Runtime IPC facade only.  It never
+starts the Rust provider, resolves a workspace, opens a provider cache, or owns
+provider lifecycle state.  The former =asp-rust runtime serve= command is
+removed, not aliased.  Provider projection and project-resolution operations
+remain typed protocol operations behind the resident client-server; they are
+not permission to restore one-shot CLI execution.
+
+Rust admission is single-flight per provider artifact and manifest identity.
+Concurrent workspaces receive isolated request identities, cancellation tokens,
+and terminal responses while sharing only an immutable, committed warm client.
+Lazy load is driven by the activated language extension set before publication
+of =Ready=; an idle client may be drained only by the Runtime authority.  Every
+transition and request publishes the shared lifecycle/OpenTelemetry evidence
+required by native Scenario and Live Corpus qualification.
+
+** Development installation authority
+
+Provider source selection belongs to State Home, not to the install command's
+current directory.  =ASP_STATE_HOME= owns the committed development source
+registry.  An entry binds language ID, provider ID, absolute source root,
+provider manifest digest, and the provider-owned workspace-install descriptor.
+
+=asp install language <language>= MUST consult that registry before release
+resolution.  When a valid development entry exists it executes the declared
+provider-owned workspace install from that source root and atomically publishes
+the resulting artifact and activation receipts.  It MUST NOT contact a release
+registry, accept a path fallback, or fall through to a pinned release after a
+development build failure.
+
+Only a language without a committed development entry is eligible for the
+pinned-release path.  =--project= is not a provider source selector and MUST NOT
+participate in installation authority.  Project-local activation, when
+supported, consumes the already installed canonical provider artifact; it does
+not choose or rebuild provider source.
 
 The lifecycle is:
 
@@ -27,12 +75,20 @@ Declared -> Starting -> Warming -> Ready -> Draining -> Stopped
 =Ready= binds the installed artifact digest, manifest digest, runtime contract
 digest, endpoint identity, health generation, and supported operations. Queries
 subscribe to the committed receipt. Starting or warming returns a typed
-=provider-server-not-ready= result immediately; a query never starts or warms a
+=asp-client-server-not-ready= result immediately; a query never starts or warms a
 language runtime.
 
-* HTTP server transport
+* ASP Client Server contract
 
-Server providers use loopback HTTP/JSON with a persistent Tokio connection pool.
+Every server-capable implementation under =languages/*-harness= implements the
+same =agent.semantic-protocols.asp-client-server= schema family. Descriptor,
+bootstrap, lifecycle, request, response, error, and shutdown packets use the
+=asp-client-server= namespace; a language harness must not mint a private server
+schema family.
+
+* HTTP transport
+
+ASP Client Servers use loopback HTTP/JSON with a persistent Tokio connection pool.
 The ASP authority allocates the endpoint, starts the installed server artifact,
 polls its health route outside the query path, validates the returned contract,
 and atomically publishes =Ready=. Requests are admitted only when their operation

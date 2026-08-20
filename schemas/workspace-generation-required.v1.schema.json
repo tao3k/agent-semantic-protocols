@@ -9,8 +9,10 @@
     "schemaVersion",
     "state",
     "reasonKind",
+    "admissionTrigger",
+    "buildOwner",
+    "requestLifetimeIndependent",
     "retryPolicy",
-    "choicePlaneCommand",
     "argv",
     "nextAction",
     "cause"
@@ -20,10 +22,12 @@
       "const": "agent.semantic-protocols.workspace-generation-required"
     },
     "schemaVersion": { "const": "1" },
-    "state": { "const": "deferred" },
+    "state": { "const": "in-progress" },
     "reasonKind": { "const": "active-workspace-generation-required" },
-    "retryPolicy": { "const": "do-not-retry-in-current-generation" },
-    "choicePlaneCommand": { "const": "asp session --agents choice-plane" },
+    "admissionTrigger": { "const": "query-demand" },
+    "buildOwner": { "const": "runtime-server" },
+    "requestLifetimeIndependent": { "const": true },
+    "retryPolicy": { "const": "retry-after-runtime-progress" },
     "argv": {
       "type": "array",
       "minItems": 2,

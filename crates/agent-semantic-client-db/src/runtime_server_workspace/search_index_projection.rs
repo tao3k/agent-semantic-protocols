@@ -48,13 +48,6 @@ pub fn encode_workspace_search_generation_segment(
     generation: &WorkspaceMemoryGeneration,
 ) -> Result<Vec<u8>, String> {
     generation.validate()?;
-    let authority = WorkspaceSearchGenerationAuthority::from_generation(generation);
-    authority.validate_binding(&generation.workspace_identity, &generation.project_root)?;
-    let evidence = serde_json::to_vec(&authority)
-        .map_err(|error| format!("encode workspace search generation evidence: {error}"))?;
-    let project_resolutions = serde_json::to_vec(&generation.project_resolutions)
-        .map_err(|error| format!("encode workspace search project resolutions: {error}"))?;
-
     let mut owners = generation.owners.iter().collect::<Vec<_>>();
     owners.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
     let merkle_tree =
@@ -69,6 +62,16 @@ pub fn encode_workspace_search_generation_segment(
             }),
         )
         .map_err(|error| format!("build workspace search Merkle owner index: {error}"))?;
+    let authority =
+        WorkspaceSearchGenerationAuthority::from_generation_with_owner_merkle_root_digest(
+            generation,
+            format!("blake3-256:{}", merkle_tree.root_digest().as_str()),
+        );
+    authority.validate_binding(&generation.workspace_identity, &generation.project_root)?;
+    let evidence = serde_json::to_vec(&authority)
+        .map_err(|error| format!("encode workspace search generation evidence: {error}"))?;
+    let project_resolutions = serde_json::to_vec(&generation.project_resolutions)
+        .map_err(|error| format!("encode workspace search project resolutions: {error}"))?;
     let merkle_records = owners
         .iter()
         .map(|owner| {
@@ -353,7 +356,12 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             .collect::<Result<Vec<_>, String>>()?;
         Ok(crate::ClientDbSourceIndexLookupResult {
             db_path: PathBuf::new(),
-            state: if candidates.is_empty() {
+            state: if candidates.is_empty()
+                && self.authority.workspace_generation.owner_count == 0
+                && self.authority.workspace_generation.leaf_count == 0
+            {
+                crate::ClientDbSourceIndexLookupState::ColdRequired
+            } else if candidates.is_empty() {
                 crate::ClientDbSourceIndexLookupState::Miss
             } else {
                 crate::ClientDbSourceIndexLookupState::Hit

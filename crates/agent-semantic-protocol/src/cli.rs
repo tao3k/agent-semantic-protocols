@@ -37,12 +37,14 @@ fn render_cli_error(args: &[String], error: String) -> String {
         return serde_json::json!({
             "schemaId": "agent.semantic-protocols.workspace-generation-required",
             "schemaVersion": "1",
-            "state": "deferred",
+            "state": "in-progress",
             "reasonKind": "active-workspace-generation-required",
-            "retryPolicy": "do-not-retry-in-current-generation",
-            "choicePlaneCommand": "asp session --agents choice-plane",
+            "admissionTrigger": "query-demand",
+            "buildOwner": "runtime-server",
+            "requestLifetimeIndependent": true,
+            "retryPolicy": "retry-after-runtime-progress",
             "argv": argv,
-            "nextAction": "Run `asp session --agents choice-plane`, execute the Host create/register or Call/resume action it selects from this command's tags, require a nonzero generation bound to the same workspace, then retry the preserved argv. Do not retry in the current generation.",
+            "nextAction": "Runtime Server owns the detached cold admission. Retry the preserved argv after Runtime progress; no client-side recovery action is required.",
             "cause": error,
         })
         .to_string();

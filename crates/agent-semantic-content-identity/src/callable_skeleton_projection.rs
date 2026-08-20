@@ -1,15 +1,16 @@
 use crate::exact_structural_selector::{
     ExactStructuralSelectorV1, ExactStructuralSelectorValidationError,
 };
+use crate::projection_evidence_context::{
+    ExactStructuralSelectorReferenceV1, ProjectionEvidenceContextValidationError,
+};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
-pub const CALLABLE_SKELETON_PROJECTION_SCHEMA_ID: &str =
-    "agent.semantic-protocols.callable-skeleton-projection";
-pub const CALLABLE_SKELETON_PROJECTION_SCHEMA_VERSION: &str = "1";
+pub const CALLABLE_SKELETON_PAYLOAD_SCHEMA_ID: &str = "agent.semantic-protocols.callable-skeleton";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -58,11 +59,30 @@ pub struct CallableSkeletonNodeV1 {
     pub order: u64,
     pub queryable: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub exact_selector: Option<ExactStructuralSelectorV1>,
+    pub selector: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selector_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_locator_hint: Option<SourceLocatorHintV1>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub language_facts: BTreeMap<String, Value>,
+}
+
+/// Full provider admission identity or compact Runtime resident reference.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum CallableSkeletonRootSelectorV1 {
+    Inline(ExactStructuralSelectorV1),
+    Referenced(ExactStructuralSelectorReferenceV1),
+}
+
+impl CallableSkeletonRootSelectorV1 {
+    pub fn selector(&self) -> &str {
+        match self {
+            Self::Inline(selector) => &selector.selector,
+            Self::Referenced(selector) => &selector.selector,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -104,7 +124,7 @@ pub struct ProviderNativeExactProjection {
     pub structural_selector: String,
     pub projection_mode: String,
     pub normalized_parser_facts: Value,
-    pub projection_payload: CallableSkeletonProjectionV1,
+    pub projection_payload: CallableSkeletonPayload,
     pub source_content_digest: String,
     pub source_byte_start: u64,
     pub source_byte_end: u64,
@@ -169,13 +189,7 @@ impl ProviderNativeExactProjection {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CallableSkeletonProjectionV1 {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub projection_kind: String,
-    pub language_id: String,
-    pub provider_id: String,
-    pub root_selector: ExactStructuralSelectorV1,
+pub struct CallableSkeletonPayload {
     pub root_node_id: String,
     pub callable: CallableDescriptorV1,
     pub nodes: Vec<CallableSkeletonNodeV1>,
@@ -191,7 +205,7 @@ pub struct CallableSkeletonProjectionV1 {
 #[path = "../tests/unit/callable_skeleton_projection/provider_contract.rs"]
 mod provider_contract_tests;
 
-impl CallableSkeletonProjectionV1 {
+impl CallableSkeletonPayload {
     pub const fn projection_mode() -> &'static str {
         "skeleton"
     }
@@ -201,27 +215,8 @@ impl CallableSkeletonProjectionV1 {
     }
 
     pub fn validate(&self) -> Result<(), CallableSkeletonValidationError> {
-        if self.schema_id != CALLABLE_SKELETON_PROJECTION_SCHEMA_ID {
-            return Err(CallableSkeletonValidationError::SchemaId);
-        }
-        if self.schema_version != CALLABLE_SKELETON_PROJECTION_SCHEMA_VERSION {
-            return Err(CallableSkeletonValidationError::SchemaVersion);
-        }
-        if self.projection_kind != Self::projection_kind() {
-            return Err(CallableSkeletonValidationError::ProjectionKind);
-        }
-        if self.language_id.is_empty()
-            || self.provider_id.is_empty()
-            || self.root_node_id.is_empty()
-            || self.callable.kind.is_empty()
-        {
+        if self.root_node_id.is_empty() || self.callable.kind.is_empty() {
             return Err(CallableSkeletonValidationError::EmptyRequiredField);
-        }
-        self.root_selector
-            .validate()
-            .map_err(CallableSkeletonValidationError::RootSelector)?;
-        if self.root_selector.language_id != self.language_id {
-            return Err(CallableSkeletonValidationError::RootLanguage);
         }
         if self.nodes.is_empty() {
             return Err(CallableSkeletonValidationError::EmptyNodes);
@@ -234,28 +229,31 @@ impl CallableSkeletonProjectionV1 {
                     node.node_id.clone(),
                 ));
             }
-            match (node.queryable, node.exact_selector.as_ref()) {
-                (true, Some(selector)) => {
-                    selector
-                        .validate()
-                        .map_err(CallableSkeletonValidationError::ChildSelector)?;
-                    if !self.root_selector.shares_projection_identity_with(selector) {
-                        return Err(CallableSkeletonValidationError::ChildSelectorContext(
-                            node.node_id.clone(),
-                        ));
-                    }
+            match (
+                node.queryable,
+                node.selector.as_deref(),
+                node.selector_ref.as_deref(),
+            ) {
+                (true, Some(selector), None) => self.validate_child_selector(node, selector)?,
+                (true, None, Some(selector_ref)) => {
+                    self.validate_child_selector_ref(node, selector_ref)?
                 }
-                (true, None) => {
+                (true, None, None) => {
                     return Err(CallableSkeletonValidationError::MissingChildSelector(
                         node.node_id.clone(),
                     ));
                 }
-                (false, Some(_)) => {
+                (true, Some(_), Some(_)) => {
+                    return Err(CallableSkeletonValidationError::AmbiguousChildSelector(
+                        node.node_id.clone(),
+                    ));
+                }
+                (false, Some(_), _) | (false, _, Some(_)) => {
                     return Err(CallableSkeletonValidationError::UnexpectedChildSelector(
                         node.node_id.clone(),
                     ));
                 }
-                (false, None) => {}
+                (false, None, None) => {}
             }
         }
         if !node_ids.contains(self.root_node_id.as_str()) {
@@ -269,8 +267,11 @@ impl CallableSkeletonProjectionV1 {
                 return Err(CallableSkeletonValidationError::InvalidRelation);
             }
         }
-        if self.cost.projected_bytes > self.cost.source_bytes
-            || self.cost.source_bytes - self.cost.projected_bytes != self.cost.omitted_bytes
+        if self
+            .cost
+            .source_bytes
+            .saturating_sub(self.cost.projected_bytes)
+            != self.cost.omitted_bytes
         {
             return Err(CallableSkeletonValidationError::CostAccounting);
         }
@@ -282,6 +283,80 @@ impl CallableSkeletonProjectionV1 {
             (None, None, None) => {}
             (Some(_), Some(_), Some(estimator)) if !estimator.is_empty() => {}
             _ => return Err(CallableSkeletonValidationError::TokenEstimate),
+        }
+        Ok(())
+    }
+
+    pub fn validate_scope(
+        &self,
+        root_selector: &str,
+    ) -> Result<(), CallableSkeletonValidationError> {
+        if root_selector.trim().is_empty() {
+            return Err(CallableSkeletonValidationError::EmptyRequiredField);
+        }
+        let descendant_prefix = format!("{root_selector}/");
+        for node in &self.nodes {
+            if !node.queryable {
+                continue;
+            }
+            if let Some(selector) = node.selector.as_deref()
+                && selector != root_selector
+                && !selector.starts_with(&descendant_prefix)
+            {
+                return Err(CallableSkeletonValidationError::ChildSelectorContext(
+                    node.node_id.clone(),
+                ));
+            }
+            if let Some(selector_ref) = node.selector_ref.as_deref()
+                && selector_ref != "$root"
+                && !selector_ref.starts_with("$root/")
+            {
+                return Err(CallableSkeletonValidationError::ChildSelectorContext(
+                    node.node_id.clone(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_child_selector(
+        &self,
+        node: &CallableSkeletonNodeV1,
+        selector: &str,
+    ) -> Result<(), CallableSkeletonValidationError> {
+        if selector.is_empty() {
+            return Err(CallableSkeletonValidationError::ChildSelectorContext(
+                node.node_id.clone(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_child_selector_ref(
+        &self,
+        node: &CallableSkeletonNodeV1,
+        selector_ref: &str,
+    ) -> Result<(), CallableSkeletonValidationError> {
+        if selector_ref == "$root" {
+            return Ok(());
+        }
+        let Some(path) = selector_ref.strip_prefix("$root/segment/") else {
+            return Err(CallableSkeletonValidationError::ChildSelectorContext(
+                node.node_id.clone(),
+            ));
+        };
+        let mut components = path.split('/');
+        while let Some(kind) = components.next() {
+            let Some(identity) = components.next() else {
+                return Err(CallableSkeletonValidationError::ChildSelectorContext(
+                    node.node_id.clone(),
+                ));
+            };
+            if kind.is_empty() || identity.is_empty() {
+                return Err(CallableSkeletonValidationError::ChildSelectorContext(
+                    node.node_id.clone(),
+                ));
+            }
         }
         Ok(())
     }
@@ -301,17 +376,20 @@ pub enum CallableSkeletonValidationError {
     ProjectionKind,
     EmptyRequiredField,
     RootSelector(ExactStructuralSelectorValidationError),
-    ChildSelector(ExactStructuralSelectorValidationError),
+    EvidenceContext(ProjectionEvidenceContextValidationError),
     RootLanguage,
     EmptyNodes,
     DuplicateOrEmptyNodeId(String),
     MissingRootNode,
     MissingChildSelector(String),
+    AmbiguousChildSelector(String),
     UnexpectedChildSelector(String),
     ChildSelectorContext(String),
     InvalidRelation,
     CostAccounting,
     TokenEstimate,
+    AlreadyReferenced,
+    CostEncoding,
 }
 
 impl fmt::Display for CallableSkeletonValidationError {

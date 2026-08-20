@@ -46,10 +46,6 @@ pub(crate) fn runtime_server_command() -> Command {
 
 pub(crate) const RUNTIME_SERVER_SUPERVISOR_EXECUTION_BUDGET: std::time::Duration =
     std::time::Duration::from_millis(800);
-pub(crate) const OPERATOR_RUNTIME_SERVER_STARTUP_BUDGET: std::time::Duration =
-    std::time::Duration::from_secs(5);
-const OPERATOR_RUNTIME_SERVER_ACTIVE_STARTUP_BUDGET: std::time::Duration =
-    std::time::Duration::from_secs(30);
 
 pub(crate) async fn runtime_server_workspace_session_async(
     project_root: &Path,
@@ -161,7 +157,60 @@ async fn run_control_status() -> Result<(), String> {
     print_receipt(&receipt).await
 }
 
+async fn await_healthy_runtime_server_after_spawn() -> Result<(), String> {
+    const STARTUP_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
+    const PROBE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(10);
+
+    let executable = std::env::current_exe().map_err(|error| {
+        format!("failed to resolve ASP executable for Runtime Server readiness: {error}")
+    })?;
+    let deadline = tokio::time::Instant::now() + STARTUP_BUDGET;
+    let mut last_state = "endpoint-unpublished".to_owned();
+
+    loop {
+        let output = tokio::process::Command::new(&executable)
+            .args(["server", "status"])
+            .output()
+            .await
+            .map_err(|error| format!("failed to probe Runtime Server readiness: {error}"))?;
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines().rev() {
+                let Ok(receipt) = serde_json::from_str::<serde_json::Value>(line) else {
+                    continue;
+                };
+                if receipt.get("state").and_then(serde_json::Value::as_str) == Some("healthy") {
+                    return Ok(());
+                }
+                if let Some(state) = receipt.get("state").and_then(serde_json::Value::as_str) {
+                    last_state = state.to_owned();
+                } else if let Some(reason) =
+                    receipt.get("reason").and_then(serde_json::Value::as_str)
+                {
+                    last_state = reason.to_owned();
+                }
+                break;
+            }
+        } else {
+            last_state = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        }
+
+        if tokio::time::Instant::now() >= deadline {
+            return Err(format!(
+                "Runtime Server owner spawned without publishing a healthy endpoint within {}ms: state={last_state} reasonKind=runtime-server-endpoint-publication-timeout",
+                STARTUP_BUDGET.as_millis()
+            ));
+        }
+        tokio::time::sleep(PROBE_INTERVAL).await;
+    }
+}
+
 async fn run_start() -> Result<(), String> {
+    run_start_inner().await?;
+    await_healthy_runtime_server_after_spawn().await
+}
+
+async fn run_start_inner() -> Result<(), String> {
     let state_home = state_home()?;
     match super::runtime_server_supervisor::ensure_runtime_server(&state_home, true).await? {
         Some(receipt) => print_receipt(&receipt).await,
@@ -199,7 +248,21 @@ async fn run_status() -> Result<(), String> {
 }
 
 async fn run_restart() -> Result<(), String> {
+    run_restart_inner().await?;
+    await_healthy_runtime_server_after_spawn().await
+}
+
+async fn run_restart_inner() -> Result<(), String> {
     let state_home = state_home()?;
+    match restart_runtime_server_at(&state_home).await? {
+        Some(receipt) => print_receipt(&receipt).await,
+        None => run_status().await,
+    }
+}
+
+async fn restart_runtime_server_at(
+    state_home: &Path,
+) -> Result<Option<super::runtime_server_supervisor::RuntimeServerSpawnReceipt>, String> {
     let endpoint_path = runtime_server_endpoint_path(&state_home)?;
     if let Ok(endpoint) = read_supervisor_endpoint(&endpoint_path).await {
         crate::server::runtime_server_exit_receipt::remove_stale(&state_home).await?;
@@ -214,27 +277,38 @@ async fn run_restart() -> Result<(), String> {
         }
         cleanup_endpoint(&state_home, &endpoint).await?;
     }
-    super::runtime_server_supervisor::ensure_runtime_server(&state_home, true).await?;
-    let receipt = await_operator_runtime_server(&state_home).await?;
-    print_receipt(&receipt).await
+    super::runtime_server_supervisor::ensure_runtime_server(state_home, true).await
+}
+
+/// Reconcile a resident Runtime after its immutable provider catalog changed.
+///
+/// Provider installation never starts a Runtime that was not already running.
+/// When an owner is resident, however, it must not retain the superseded
+/// catalog digest: the Runtime control plane drains that owner and waits for a
+/// replacement to publish readiness before the install receipt is returned.
+pub(crate) async fn reconcile_runtime_server_after_provider_catalog_change(
+    state_home: &Path,
+    catalog_write: bool,
+) -> Result<&'static str, String> {
+    if !catalog_write {
+        return Ok("current");
+    }
+    let endpoint_path = runtime_server_endpoint_path(state_home)?;
+    if !tokio::fs::try_exists(&endpoint_path)
+        .await
+        .map_err(|error| format!("inspect Runtime Server endpoint after catalog write: {error}"))?
+    {
+        return Ok("not-running");
+    }
+    restart_runtime_server_at(state_home).await?;
+    await_healthy_runtime_server_after_spawn().await?;
+    Ok("restarted")
 }
 
 pub(crate) async fn reconcile_runtime_server_for_healthcheck(
     state_home: &Path,
 ) -> Result<RuntimeServerControlReceipt, String> {
     super::runtime_server_supervisor::reconcile_healthy_runtime_server(state_home).await
-}
-
-pub(crate) async fn await_healthy_runtime_server(
-    state_home: &Path,
-) -> Result<RuntimeServerControlReceipt, String> {
-    await_healthy_runtime_server_with_budget(
-        state_home,
-        RUNTIME_SERVER_SUPERVISOR_EXECUTION_BUDGET,
-        "detached lifecycle",
-        None,
-    )
-    .await
 }
 
 pub(crate) async fn observe_agent_facing_runtime_server(
@@ -252,117 +326,7 @@ pub(crate) async fn observe_agent_facing_runtime_server(
     .await
 }
 
-async fn await_operator_runtime_server(
-    state_home: &Path,
-) -> Result<RuntimeServerControlReceipt, String> {
-    await_healthy_runtime_server_with_budget(
-        state_home,
-        OPERATOR_RUNTIME_SERVER_STARTUP_BUDGET,
-        "operator lifecycle",
-        Some(OPERATOR_RUNTIME_SERVER_ACTIVE_STARTUP_BUDGET),
-    )
-    .await
-}
-
-async fn await_healthy_runtime_server_with_budget(
-    state_home: &Path,
-    budget: std::time::Duration,
-    surface: &'static str,
-    active_startup_budget: Option<std::time::Duration>,
-) -> Result<RuntimeServerControlReceipt, String> {
-    let started = tokio::time::Instant::now();
-    let mut deadline = started + budget;
-    let mut startup_progress_observed = false;
-    loop {
-        let observation = match observe_runtime_server_readiness(state_home).await {
-            Ok(receipt)
-                if receipt.state
-                    == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy =>
-            {
-                return Ok(receipt);
-            }
-            Ok(receipt) => format!("state={:?} reason={:?}", receipt.state, receipt.reason),
-            Err(error) => error,
-        };
-        let owner_exit =
-            crate::server::runtime_server_exit_receipt::read_latest_owner_exit(state_home)
-                .await
-                .map_err(|error| format!("read Runtime Server exit receipt: {error}"))?;
-        if let Some(exit) = owner_exit {
-            return Err(serde_json::json!({
-                "schemaId": "agent.semantic-protocols.runtime-server-supervisor-owner-exited",
-                "schemaVersion": "1",
-                "surface": surface,
-                "state": "unavailable",
-                "reasonKind": "runtime-server-owner-exited",
-                "observation": observation,
-                "ownerEpoch": exit.owner_epoch,
-                "cleanDrain": exit.clean_drain,
-                "errors": exit.errors,
-            })
-            .to_string());
-        }
-        if !startup_progress_observed
-            && let Some(active_budget) = active_startup_budget
-            && tokio::fs::metadata(state_home.join("runtime/server/daemon-startup.v1.json"))
-                .await
-                .is_ok()
-        {
-            startup_progress_observed = true;
-            deadline = started + active_budget;
-        }
-        if tokio::time::Instant::now() >= deadline {
-            let short_owner_stderr_path =
-                agent_semantic_client_db::runtime_server_runtime_base(state_home)?
-                    .join("owner-stderr.log");
-            let legacy_owner_stderr_path = state_home
-                .join("runtime")
-                .join("server")
-                .join("owner-stderr.log");
-            let owner_stderr = match tokio::fs::read_to_string(&short_owner_stderr_path).await {
-                Ok(stderr) => stderr,
-                Err(_) => tokio::fs::read_to_string(&legacy_owner_stderr_path)
-                    .await
-                    .unwrap_or_default(),
-            };
-            let owner_stderr = owner_stderr
-                .lines()
-                .rev()
-                .take(20)
-                .collect::<Vec<_>>()
-                .into_iter()
-                .rev()
-                .collect::<Vec<_>>()
-                .join(" | ");
-            let spawn_receipt =
-                crate::server::runtime_server_supervisor::read_runtime_server_spawn_receipt(
-                    state_home,
-                )
-                .await?
-                .and_then(|receipt| serde_json::to_string(&receipt).ok())
-                .unwrap_or_else(|| "unavailable".to_owned());
-            let startup_receipt =
-                tokio::fs::read_to_string(state_home.join("runtime/server/daemon-startup.v1.json"))
-                    .await
-                    .unwrap_or_else(|_| "unavailable".to_owned());
-            return Err(format!(
-                "{surface} did not publish a healthy Runtime Server within {}ms: {}; spawnReceipt={}; startupReceipt={}; ownerStderr={}",
-                started.elapsed().as_millis(),
-                observation,
-                spawn_receipt,
-                startup_receipt,
-                if owner_stderr.is_empty() {
-                    "unavailable"
-                } else {
-                    owner_stderr.as_str()
-                }
-            ));
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-    }
-}
-
-async fn observe_runtime_server_readiness(
+pub(super) async fn observe_runtime_server_readiness(
     state_home: &Path,
 ) -> Result<RuntimeServerControlReceipt, String> {
     let endpoint = read_supervisor_endpoint(&runtime_server_endpoint_path(state_home)?).await?;

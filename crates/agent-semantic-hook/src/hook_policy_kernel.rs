@@ -67,6 +67,22 @@ fn compile_language_provider_snapshot_inner(
         b"agent.semantic-protocols.hook-policy-language-providers.v1",
         &[HOOK_POLICY_KERNEL_VERSION.as_bytes(), canonical.as_slice()],
     );
+    let provider_projections = compile_provider_projections(&providers)?;
+    Ok(HookPolicySnapshot {
+        generation_digest: format!("blake3-256:{}", digest.as_str()),
+        provider_projections,
+    })
+}
+
+fn compile_provider_projections(
+    providers: &[HookClientLanguageProviderConfig],
+) -> Result<
+    Vec<crate::protocol_activation::protocol_activation_manifest::HookProviderProjection>,
+    String,
+> {
+    if providers.is_empty() {
+        return Ok(Vec::new());
+    }
     let manifests = crate::builtin_provider_manifests();
     let provider_projections = providers
         .iter()
@@ -117,10 +133,7 @@ fn compile_language_provider_snapshot_inner(
             )
         })
         .collect::<Result<Vec<_>, String>>()?;
-    Ok(HookPolicySnapshot {
-        generation_digest: format!("blake3-256:{}", digest.as_str()),
-        provider_projections,
-    })
+    Ok(provider_projections)
 }
 
 #[cfg(test)]

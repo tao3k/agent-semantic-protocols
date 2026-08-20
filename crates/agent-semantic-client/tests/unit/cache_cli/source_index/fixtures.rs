@@ -19,7 +19,7 @@ pub(crate) fn write_rust_activation(root: &Path) -> std::path::PathBuf {
     write_project_resolution_provider(
         &installed_provider,
         "rust",
-        "rs-harness",
+        "asp-rust",
         ".rs",
         &["."],
         &["vendor"],
@@ -114,7 +114,7 @@ pub(crate) fn write_gerbil_activation_with_command_prefix(
         write_project_resolution_provider(
             &installed_provider,
             "gerbil-scheme",
-            "gerbil-scheme-harness",
+            "asp-gerbil-scheme",
             ".ss",
             source_roots,
             &[],

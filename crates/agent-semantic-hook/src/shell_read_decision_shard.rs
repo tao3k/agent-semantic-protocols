@@ -7,7 +7,14 @@ use crate::HookDecision;
 #[derive(Serialize, Deserialize)]
 struct ShellReadDecisionEntry {
     argv_prefix: Vec<String>,
+    match_kind: CommandDecisionMatchKind,
     decision: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+enum CommandDecisionMatchKind {
+    Prefix,
+    LeadingEnvironmentAssignment,
 }
 
 /// Immutable decision table selected by normalized argv prefix.
@@ -19,16 +26,70 @@ pub struct CommandDecisionShard {
 impl CommandDecisionShard {
     /// Build a table from config-compiled winning decisions.
     pub fn new(entries: Vec<(Vec<String>, HookDecision)>) -> Result<Self, String> {
-        entries
+        Self::new_with_leading_environment_assignments(entries, Vec::new())
+    }
+
+    pub fn new_with_leading_environment_assignments(
+        prefix_entries: Vec<(Vec<String>, HookDecision)>,
+        environment_entries: Vec<(Vec<String>, HookDecision)>,
+    ) -> Result<Self, String> {
+        prefix_entries
             .into_iter()
-            .map(|(argv_prefix, decision)| {
+            .map(|entry| (entry, CommandDecisionMatchKind::Prefix))
+            .chain(environment_entries.into_iter().map(|entry| {
+                (
+                    entry,
+                    CommandDecisionMatchKind::LeadingEnvironmentAssignment,
+                )
+            }))
+            .map(|((argv_prefix, decision), match_kind)| {
                 Ok(ShellReadDecisionEntry {
                     argv_prefix,
+                    match_kind,
                     decision: decision.to_compact_binary()?,
                 })
             })
             .collect::<Result<Vec<_>, String>>()
             .map(|entries| Self { entries })
+    }
+
+    fn select_entry<'a>(
+        &'a self,
+        command_tokens: &[String],
+        command_stages: Option<&[agent_semantic_command_match::CommandStageV1]>,
+    ) -> Option<&'a ShellReadDecisionEntry> {
+        if let Some(stages) = command_stages
+            && let Some(selected) = self
+                .entries
+                .iter()
+                .filter(|entry| {
+                    matches!(
+                        entry.match_kind,
+                        CommandDecisionMatchKind::LeadingEnvironmentAssignment
+                    ) && agent_semantic_command_match::command_stages_match_leading_environment_assignment(
+                        stages,
+                        &entry.argv_prefix,
+                    )
+                })
+                .max_by_key(|entry| entry.argv_prefix.len())
+        {
+            return Some(selected);
+        }
+        self.entries
+            .iter()
+            .filter(|entry| matches!(entry.match_kind, CommandDecisionMatchKind::Prefix))
+            .filter(|entry| {
+                !entry.argv_prefix.is_empty()
+                    && command_tokens
+                        .windows(entry.argv_prefix.len())
+                        .any(|candidate| {
+                            agent_semantic_command_match::candidate_matches_prefix(
+                                candidate,
+                                &entry.argv_prefix,
+                            )
+                        })
+            })
+            .max_by_key(|entry| entry.argv_prefix.len())
     }
 
     /// Encode the compact table for atomic mmap publication.
@@ -41,22 +102,68 @@ impl CommandDecisionShard {
     pub fn select(bytes: &[u8], command_tokens: &[String]) -> Result<Option<HookDecision>, String> {
         let shard = postcard::from_bytes::<Self>(bytes)
             .map_err(|error| format!("decode shell-read decision shard: {error}"))?;
-        let selected = shard
+        let selected = shard.select_entry(command_tokens, None);
+        selected
+            .map(|entry| HookDecision::from_compact_binary(&entry.decision))
+            .transpose()
+    }
+
+    pub fn select_for_command(
+        bytes: &[u8],
+        command: &str,
+        command_tokens: &[String],
+    ) -> Result<Option<HookDecision>, String> {
+        let shard = postcard::from_bytes::<Self>(bytes)
+            .map_err(|error| format!("decode shell-read decision shard: {error}"))?;
+        // Prefix-only commands are the overwhelmingly common Hook path.  A
+        // leading environment assignment cannot exist without `=`, so avoid
+        // constructing the parser-owned command graph unless an environment
+        // matcher can possibly win.  The lexical check is only a negative
+        // performance gate; every positive match still belongs to the parser.
+        let has_environment_matcher = shard.entries.iter().any(|entry| {
+            matches!(
+                entry.match_kind,
+                CommandDecisionMatchKind::LeadingEnvironmentAssignment
+            )
+        });
+        let stages = (has_environment_matcher && command.contains('='))
+            .then(|| {
+                agent_semantic_command_match::parse_bash_command_candidates(command)
+                    .map_err(|error| format!("parse shell command decision key: {error}"))
+            })
+            .transpose()?;
+        shard
+            .select_entry(command_tokens, stages.as_deref())
+            .map(|entry| HookDecision::from_compact_binary(&entry.decision))
+            .transpose()
+    }
+
+    /// Select only a declarative leading-environment decision. This terminal
+    /// layer is evaluated before specialized structured-projector routing.
+    pub fn select_leading_environment_for_command(
+        bytes: &[u8],
+        command: &str,
+    ) -> Result<Option<HookDecision>, String> {
+        if !command.contains('=') {
+            return Ok(None);
+        }
+        let shard = postcard::from_bytes::<Self>(bytes)
+            .map_err(|error| format!("decode command decision shard: {error}"))?;
+        let stages = agent_semantic_command_match::parse_bash_command_candidates(command)
+            .map_err(|error| format!("parse leading environment decision key: {error}"))?;
+        shard
             .entries
             .iter()
             .filter(|entry| {
-                !entry.argv_prefix.is_empty()
-                    && command_tokens
-                        .windows(entry.argv_prefix.len())
-                        .any(|candidate| {
-                            agent_semantic_command_match::candidate_matches_prefix(
-                                candidate,
-                                &entry.argv_prefix,
-                            )
-                        })
+                matches!(
+                    entry.match_kind,
+                    CommandDecisionMatchKind::LeadingEnvironmentAssignment
+                ) && agent_semantic_command_match::command_stages_match_leading_environment_assignment(
+                    &stages,
+                    &entry.argv_prefix,
+                )
             })
-            .max_by_key(|entry| entry.argv_prefix.len());
-        selected
+            .max_by_key(|entry| entry.argv_prefix.len())
             .map(|entry| HookDecision::from_compact_binary(&entry.decision))
             .transpose()
     }

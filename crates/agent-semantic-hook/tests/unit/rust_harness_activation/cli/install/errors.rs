@@ -9,7 +9,7 @@ fn cli_install_refuses_protocol_bin_dir_outside_path() {
     let root = git_project_root("install-protocol-bin-path");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
-    write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
+    write_state_home_provider_binary(&asp_state_home, "rust", "asp-rust", "rs-harness");
     sync_test_state(&root, &asp_state_home);
     let unrelated_bin_dir = root.join(".unrelated-bin");
     std::fs::create_dir_all(&unrelated_bin_dir).expect("create unrelated bin dir");
@@ -38,7 +38,7 @@ fn cli_install_refuses_protocol_bin_dir_outside_path() {
 fn cli_install_refuses_to_overwrite_invalid_codex_toml() {
     let root = git_project_root("install-invalid-toml");
     let asp_state_home = root.join(".asp-state-home");
-    write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
+    write_state_home_provider_binary(&asp_state_home, "rust", "asp-rust", "rs-harness");
     sync_test_state(&root, &asp_state_home);
     let protocol_bin_dir = root.join(".agent-bin");
     write_real_asp_launcher(&protocol_bin_dir);

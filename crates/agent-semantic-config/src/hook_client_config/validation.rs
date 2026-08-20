@@ -336,6 +336,28 @@ fn validate_rule_schema_shape(
         validate_unique_values("rules[].languageIds", &rule.language_ids)?;
         validate_identifiers("rules[].languageIds[]", &rule.language_ids)?;
         validate_match_schema_shape(&rule.match_config, profiles, &action_policy_ids)?;
+        if rule.terminal
+            && !matches!(
+                rule.decision,
+                super::routing::HookClientConfigDecision::Allow
+            )
+        {
+            return Err(format!(
+                "terminal hook rule `{}` must use decision=allow",
+                rule.id
+            ));
+        }
+        if !rule
+            .match_config
+            .leading_environment_assignment_any
+            .is_empty()
+            && !rule.terminal
+        {
+            return Err(format!(
+                "hook rule `{}` using leadingEnvironmentAssignmentAny must be terminal",
+                rule.id
+            ));
+        }
         if rule.decision_materializer.is_some() && !rule.routes.is_empty() {
             return Err(format!(
                 "hook rule `{}` cannot combine decisionMaterializer with static routes",
@@ -391,6 +413,10 @@ fn validate_match_schema_shape(
     validate_non_empty_values("rules[].match.toolAny[]", &match_config.tool_any)?;
     validate_non_empty_values("rules[].match.commandAny[]", &match_config.command_any)?;
     validate_argv_prefix_patterns("rules[].match.argvPrefixAny", &match_config.argv_prefix_any)?;
+    validate_environment_assignments(
+        "rules[].match.leadingEnvironmentAssignmentAny",
+        &match_config.leading_environment_assignment_any,
+    )?;
     validate_argv_pattern_bindings(&match_config.argv_pattern_any)?;
     validate_non_empty_values(
         "rules[].match.commandContainsAny[]",
@@ -568,6 +594,25 @@ fn validate_non_empty_values(field: &str, values: &[String]) -> Result<(), Strin
         }
     }
     Ok(())
+}
+
+fn validate_environment_assignments(field: &str, values: &[String]) -> Result<(), String> {
+    for value in values {
+        let Some((name, _)) = value.split_once('=') else {
+            return Err(format!("{field} value `{value}` must be NAME=VALUE"));
+        };
+        let mut characters = name.chars();
+        let valid_name = characters
+            .next()
+            .is_some_and(|character| character == '_' || character.is_ascii_alphabetic())
+            && characters.all(|character| character == '_' || character.is_ascii_alphanumeric());
+        if !valid_name {
+            return Err(format!(
+                "{field} value `{value}` has an invalid environment name"
+            ));
+        }
+    }
+    validate_unique_values(field, values)
 }
 
 fn validate_argv_prefix_patterns(field: &str, patterns: &[Vec<String>]) -> Result<(), String> {

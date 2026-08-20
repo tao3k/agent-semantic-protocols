@@ -5,7 +5,7 @@ use agent_semantic_content_identity::WorkspaceSnapshot;
 
 use super::generation_commit::PreparedSourceIndexGeneration;
 
-pub(super) async fn complete_incremental_generation(
+pub(super) async fn complete_generation_from_optional_active_base(
     db_path: &Path,
     prepared: PreparedSourceIndexGeneration,
     changed_owner_paths: BTreeSet<String>,
@@ -32,16 +32,18 @@ pub(super) async fn complete_incremental_generation(
             materialization.project_resolutions.clone(),
         )
     };
-    let active = agent_semantic_client_db::active_turso_source_index_generation(
+    let Some(active) = agent_semantic_client_db::active_turso_source_index_generation(
         db_path,
         &project_root,
         &schema_id,
         &schema_version,
     )
     .await?
-    .ok_or_else(|| {
-        "incremental generation requires an admitted active source-index generation".to_string()
-    })?;
+    else {
+        // The first admitted generation is the baseline. Changed paths describe
+        // the targeted cold build; they do not imply that a Merkle base exists.
+        return Ok(prepared);
+    };
     let present_changed_owners = prepared
         .refresh_request()
         .import

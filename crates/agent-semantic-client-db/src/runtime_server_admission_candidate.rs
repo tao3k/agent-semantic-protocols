@@ -159,6 +159,15 @@ pub type WorkspaceGenerationBuildFuture = Pin<
     >,
 >;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkspaceGenerationProviderTarget {
+    pub language_id: String,
+    /// Artifact publication supplies the exact provider identity. Query-demand
+    /// reads may only know a language; the daemon resolves that against its
+    /// admitted provider registry before constructing the source-index scope.
+    pub provider_id: Option<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WorkspaceGenerationFailureStage {
@@ -222,6 +231,7 @@ pub type WorkspaceGenerationBuilder = Arc<
             WorkspaceGenerationCandidateIdentity,
             WorkspaceGenerationBuildMode,
             Arc<std::collections::BTreeSet<PathBuf>>,
+            Option<WorkspaceGenerationProviderTarget>,
             crate::runtime_generation_cancellation::GenerationCancellation,
         ) -> WorkspaceGenerationBuildFuture
         + Send
@@ -254,6 +264,7 @@ pub type WorkspaceGenerationCandidateBuilder = Arc<
             String,
             PathBuf,
             Arc<std::collections::BTreeSet<PathBuf>>,
+            Option<WorkspaceGenerationProviderTarget>,
         ) -> WorkspaceGenerationCandidateBuildFuture
         + Send
         + Sync

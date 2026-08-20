@@ -8,7 +8,7 @@ use agent_semantic_client_db::active_generation_projection_capability::{
 pub(crate) fn projection_capability_manifest_fixture()
 -> ActiveGenerationProjectionCapabilityManifest {
     ActiveGenerationProjectionCapabilityManifest::single_selector(
-        "blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
+        "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
         "rust://fixture/src/lib.rs#item/function/fixture".to_owned(),
         "src/lib.rs".to_owned(),
         std::collections::BTreeSet::from([ActiveGenerationProjectionMode::Source]),
@@ -54,4 +54,14 @@ pub(crate) fn ready_projection_capability_fixture(
             publication_epoch,
         )
         .expect("test projection capability receipt")
+}
+#[test]
+fn projection_capability_fixture_uses_a_v1_provider_catalog_digest() {
+    let manifest = projection_capability_manifest_fixture();
+    assert!(
+        manifest.provider_catalog_digest.starts_with("sha256:")
+            && manifest.provider_catalog_digest.len() == "sha256:".len() + 64,
+        "actual={}",
+        manifest.provider_catalog_digest
+    );
 }

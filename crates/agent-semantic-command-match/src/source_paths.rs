@@ -4,6 +4,14 @@ use std::collections::BTreeSet;
 
 use crate::parse_bash_command_candidates;
 
+/// Project path-like argv candidates from one already parsed command stage.
+/// This avoids reparsing the rendered stage on compound Hook hot paths.
+pub fn command_stage_source_paths(stage: &crate::CommandStageV1) -> Vec<String> {
+    let mut candidates = stage.words().iter().skip(1).cloned().collect::<Vec<_>>();
+    candidates.extend(embedded_literal_candidates(&candidates));
+    stable_unique(&candidates)
+}
+
 /// Returns stable, de-duplicated argv candidates from parsed command stages.
 ///
 /// `tokens` are accepted only as bounded evidence when the raw command is empty

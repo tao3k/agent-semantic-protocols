@@ -57,6 +57,17 @@ fn multi_agent_session_contract_owns_every_lifecycle_instruction() {
     assert_eq!(registered.len(), 1);
     assert_eq!(registered[0].id, "CALL_RESUME_REGISTERED");
     assert_eq!(registered[0].presentation, "action");
+    assert!(
+        registered[0]
+            .instruction
+            .contains("control-plane DB confirms")
+    );
+    assert!(registered[0].instruction.contains("This master authorizes"));
+    assert!(
+        registered[0]
+            .instruction
+            .contains("Call/resume `@asp_testing`")
+    );
 
     let missing = choice
         .admit_matching(&[
@@ -69,6 +80,17 @@ fn multi_agent_session_contract_owns_every_lifecycle_instruction() {
     assert_eq!(missing.len(), 1);
     assert_eq!(missing[0].id, "CREATE_AND_REGISTER");
     assert!(missing.iter().all(|entry| entry.presentation == "pane"));
+    assert!(
+        missing[0]
+            .instruction
+            .contains("has no resident-child registration")
+    );
+    assert!(missing[0].instruction.contains("First create and Call"));
+    assert!(
+        missing[0]
+            .instruction
+            .contains("re-enter the control plane")
+    );
     let blocked = choice
         .admit_matching(&[
             ("SESSION_STATE", "blocked"),
@@ -100,11 +122,19 @@ fn multi_agent_session_contract_owns_every_lifecycle_instruction() {
         "node=registration-required",
     );
     assert!(pane.contains("choice: CREATE_AND_REGISTER"));
+    assert!(!pane.contains("why:"));
     assert!(!pane.contains("\n2."));
     assert!(!pane.contains("choose exactly one"));
     assert!(!pane.contains("do not attach a task payload"));
     assert!(!pane.contains("status=interactive-required"));
     assert!(!pane.contains("entry=not-created"));
+    let action = choice.render_admitted_action(
+        "agent.multi-agent-session-control-plane.v1",
+        &registered[0],
+        "node=registered",
+    );
+    assert!(action.contains("action: The control-plane DB confirms"));
+    assert!(!action.contains("why:"));
     for admitted in registered
         .iter()
         .chain(missing.iter())
@@ -151,6 +181,7 @@ fn pane_schema_is_generic_and_does_not_reencode_org_choice_plan() {
         );
     }
     assert!(schema.contains("\"presentation\""));
+    assert!(!schema.contains("\"why\""));
 }
 
 #[test]

@@ -18,3 +18,11 @@ fn query_keys_include_snake_and_kebab_components() {
         assert!(keys.iter().any(|key| key == expected), "missing {expected}");
     }
 }
+
+#[test]
+fn gerbil_form_heads_are_resident_source_index_terms() {
+    let keys = source_query_keys("src/demo.ss", "(import :std/sugar)\n(def foo (x) x)");
+    for expected in ["import", "std", "sugar", "def", "foo"] {
+        assert!(keys.iter().any(|key| key == expected), "missing {expected}");
+    }
+}

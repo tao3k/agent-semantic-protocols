@@ -169,7 +169,7 @@ def main(argv: Sequence[str] | None = None, *, stdout: TextIO | None = None) -> 
                 "severity": "error",
                 "code": "family-local-reference-opportunity",
                 "message": "family-local reference opportunities remain",
-                "details": {"count": family_local_count},
+            "count": family_local_count,
             }
         )
     unclassified_count = report["summary"]["unclassifiedSchemaCount"]
@@ -179,7 +179,7 @@ def main(argv: Sequence[str] | None = None, *, stdout: TextIO | None = None) -> 
                 "severity": "error",
                 "code": "unclassified-schema",
                 "message": "unclassified schemas remain",
-                "details": {"count": unclassified_count},
+            "count": unclassified_count,
             }
         )
     mixed_family_count = report["summary"]["referenceOpportunityScopeCounts"]["mixed"]
@@ -189,7 +189,7 @@ def main(argv: Sequence[str] | None = None, *, stdout: TextIO | None = None) -> 
                 "severity": "error",
                 "code": "mixed-family-reference-opportunity",
                 "message": "mixed-family reference opportunities remain",
-                "details": {"count": mixed_family_count},
+            "count": mixed_family_count,
             }
         )
     reference_decision_drift_count = sum(
@@ -203,7 +203,7 @@ def main(argv: Sequence[str] | None = None, *, stdout: TextIO | None = None) -> 
                 "severity": "error",
                 "code": "reference-decision-drift",
                 "message": "cross-family reference decision registry has drifted",
-                "details": {"count": reference_decision_drift_count},
+            "count": reference_decision_drift_count,
             }
         )
     projection = _projection(report, args.command)

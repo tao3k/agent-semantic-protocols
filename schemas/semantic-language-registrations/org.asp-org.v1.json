@@ -1,0 +1,299 @@
+{
+    "binary": "asp",
+  "displayName": "Org Document Provider",
+    "execution": "embedded",
+  "languageId": "org",
+  "methodDescriptors": [
+    {
+      "acceptsStdin": false,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "asp",
+          "org",
+          "search",
+          "prime",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ]
+      },
+      "method": "search/prime",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-document-search-packet"
+      ],
+      "packetSchemas": [
+        "semantic-document-search-packet.v1"
+      ],
+      "requiresQuery": false,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "prime"
+    },
+    {
+      "acceptsStdin": false,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "asp",
+          "org",
+          "search",
+          "owner",
+          "{owner}",
+          "items",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ]
+      },
+      "method": "search/toc",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-document-search-packet"
+      ],
+      "packetSchemas": [
+        "semantic-document-search-packet.v1"
+      ],
+      "requiresQuery": false,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "toc"
+    },
+    {
+      "acceptsStdin": false,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "asp",
+          "org",
+          "search",
+          "lexical",
+          "{query}",
+          "owner",
+          "tests",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ]
+      },
+      "method": "search/lexical",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-document-search-packet"
+      ],
+      "packetSchemas": [
+        "semantic-document-search-packet.v1"
+      ],
+      "requiresQuery": true,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "lexical"
+    },
+    {
+      "command": "query",
+      "invocation": {
+        "argv": [
+          "asp",
+          "org",
+          "query",
+          "--selector",
+          "{selector}",
+          "--view",
+          "metadata",
+          "{workspace}"
+        ]
+      },
+      "method": "query/exact-selector",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-document-query-packet"
+      ],
+      "packetSchemas": [
+        "semantic-document-query-packet.v1"
+      ],
+      "queryInputForms": [
+        "selector",
+        "term",
+        "kind",
+        "field",
+        "metadata",
+        "content"
+      ],
+      "supportsCompact": true,
+      "supportsJson": true
+    },
+    {
+      "command": "guide",
+      "invocation": {
+        "argv": [
+          "asp",
+          "org",
+          "guide",
+          "{workspace}"
+        ]
+      },
+      "method": "guide",
+      "supportsCompact": true,
+      "supportsJson": false
+    },
+    {
+      "acceptsStdin": true,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "asp",
+          "org",
+          "search",
+          "prime",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ],
+        "stdinMode": "pipe-candidates"
+      },
+      "method": "search/ingest",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-search-packet"
+      ],
+      "requiresQuery": false,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "ingest"
+    }
+  ],
+  "methods": [
+    "search/prime",
+    "search/toc",
+    "search/lexical",
+    "query/exact-selector",
+    "guide",
+    "search/ingest"
+  ],
+  "namespace": "agent.semantic-protocols.languages.org.asp-org",
+  "providerId": "asp-org",
+  "queryPackDescriptor": {
+    "descriptorId": "org.query-pack",
+    "descriptorVersion": "1",
+    "languageId": "org",
+    "recipes": [
+      {
+        "clauses": [
+          {
+            "intentAxes": [],
+            "roles": [
+              "concept"
+            ],
+            "terms": [
+              "task",
+              "planning",
+              "scheduled",
+              "deadline",
+              "closed"
+            ]
+          }
+        ],
+        "recipeId": "org-task-planning",
+        "trigger": {
+          "match": "any",
+          "terms": [
+            "task",
+            "planning",
+            "scheduled",
+            "deadline",
+            "closed"
+          ]
+        }
+      },
+      {
+        "clauses": [
+          {
+            "intentAxes": [],
+            "roles": [
+              "concept"
+            ],
+            "terms": [
+              "heading",
+              "property",
+              "tag",
+              "title"
+            ]
+          }
+        ],
+        "recipeId": "org-document-structure",
+        "trigger": {
+          "match": "any",
+          "terms": [
+            "heading",
+            "property",
+            "tag",
+            "title"
+          ]
+        }
+      }
+    ],
+    "termRoleOverrides": [
+      {
+        "caseSensitive": false,
+        "role": "concept",
+        "term": "heading"
+      },
+      {
+        "caseSensitive": false,
+        "role": "concept",
+        "term": "task"
+      },
+      {
+        "caseSensitive": false,
+        "role": "concept",
+        "term": "property"
+      },
+      {
+        "caseSensitive": false,
+        "role": "concept",
+        "term": "planning"
+      },
+      {
+        "caseSensitive": false,
+        "role": "concept",
+        "term": "table"
+      },
+      {
+        "caseSensitive": false,
+        "role": "concept",
+        "term": "block"
+      },
+      {
+        "caseSensitive": false,
+        "role": "concept",
+        "term": "list"
+      },
+      {
+        "caseSensitive": false,
+        "role": "concept",
+        "term": "link"
+      },
+      {
+        "caseSensitive": false,
+        "role": "concept",
+        "term": "image"
+      }
+    ]
+  },
+  "schemas": [
+    {
+      "path": "schemas/semantic-document-search-packet.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.semantic-document-search-packet",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/semantic-document-query-packet.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.semantic-document-query-packet",
+      "schemaVersion": "1"
+    }
+  ]
+}

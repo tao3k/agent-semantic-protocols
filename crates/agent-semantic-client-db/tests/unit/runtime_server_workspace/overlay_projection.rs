@@ -856,7 +856,7 @@ async fn process_cold_exact_projection_has_sub_ms_p95_and_bounded_p99() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn process_cold_owner_identity_is_independent_of_unrelated_selector_volume() {
+async fn process_cold_owner_snapshot_is_independent_of_unrelated_selector_volume() {
     let _performance = crate::test_support::performance_lock();
     const UNRELATED_SELECTOR_COUNT: usize = 32_768;
     const SAMPLE_COUNT: usize = 128;
@@ -936,12 +936,11 @@ async fn process_cold_owner_identity_is_independent_of_unrelated_selector_volume
             .await
             .expect("open process-cold exact owner index");
         let opened = Instant::now();
-        assert!(
-            client
-                .contains_owner(&target)
-                .expect("compare target owner"),
-            "target owner identity must match"
-        );
+        let snapshot = client
+            .owner_snapshot(&target.owner_path)
+            .expect("read target owner snapshot")
+            .expect("target owner must exist");
+        assert_eq!(snapshot, target);
         let completed = Instant::now();
         open_samples.push(opened.duration_since(started).as_nanos());
         lookup_samples.push(completed.duration_since(opened).as_nanos());
@@ -955,10 +954,10 @@ async fn process_cold_owner_identity_is_independent_of_unrelated_selector_volume
     let lookup_p99 = lookup_samples[(SAMPLE_COUNT * 99).div_ceil(100) - 1];
     let max = *samples.last().expect("at least one owner identity sample");
     eprintln!(
-        "[workspace-owner-identity-performance] unrelatedSelectors={UNRELATED_SELECTOR_COUNT} samples={SAMPLE_COUNT} openP99Nanos={open_p99} lookupP99Nanos={lookup_p99} p99Nanos={p99} maxNanos={max} budgetNanos={P99_BUDGET_NANOS}"
+        "[workspace-owner-snapshot-performance] unrelatedSelectors={UNRELATED_SELECTOR_COUNT} samples={SAMPLE_COUNT} openP99Nanos={open_p99} lookupP99Nanos={lookup_p99} p99Nanos={p99} maxNanos={max} budgetNanos={P99_BUDGET_NANOS}"
     );
     assert!(
         p99 < P99_BUDGET_NANOS,
-        "process-cold owner identity p99 depends on unrelated selector volume: p99Nanos={p99}"
+        "process-cold owner snapshot p99 depends on unrelated selector volume: p99Nanos={p99}"
     );
 }

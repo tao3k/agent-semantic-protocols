@@ -360,7 +360,7 @@ impl ExactQueryRuntime {
         .await
         .expect("start exact-query Hook admission locator");
         let builder: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateBuilder = {
-            Arc::new(move |workspace_identity, project_root, _cancellation| {
+        Arc::new(move |workspace_identity, project_root, _cancellation, _provider_target| {
                 Box::pin(build_exact_query_generation(workspace_identity, project_root))
             })
         };
@@ -508,11 +508,11 @@ async fn build_exact_query_generation_owner(
         })
     };
     let projection = serde_json::json!({
-        "schemaId": "agent.semantic-protocols.callable-skeleton-projection",
+        "schemaId": "agent.semantic-protocols.semantic-projection",
         "schemaVersion": "1",
         "projectionKind": "callable-skeleton",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "rootSelector": exact_selector(),
         "rootNodeId": "callable:root",
         "callable": {
@@ -548,6 +548,7 @@ async fn build_exact_query_generation_owner(
                         agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::CallableSkeleton,
                     bytes: serde_json::to_vec(&projection)
                         .map_err(|error| format!("serialize callable skeleton fixture: {error}"))?,
+                    evidence_context: None,
                 },
             ],
         },

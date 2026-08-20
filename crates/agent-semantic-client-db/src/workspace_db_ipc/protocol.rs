@@ -34,10 +34,12 @@ pub use types::{
     WorkspaceDbIpcOperation, WorkspaceDbIpcRequest, WorkspaceDbIpcResponse, WorkspaceDbIpcResult,
     WorkspaceDbSourceIndexLookupRequest,
 };
-
-pub use crate::workspace_db_ipc_server::{
-    serve_one_workspace_db_ipc_request, serve_one_workspace_db_session_request,
+pub use types::{
+    RuntimeResidentReadEvidence, RuntimeResidentReadResult, RuntimeResidentReadWorkCounters,
+    resident_read_terminal_digest,
 };
+
+pub use crate::workspace_db_ipc_server::serve_one_workspace_db_session_request;
 
 static NEXT_WORKSPACE_DB_IPC_CLIENT_ID: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(1);

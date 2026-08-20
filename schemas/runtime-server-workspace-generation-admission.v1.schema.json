@@ -8,6 +8,11 @@
     "schemaId",
     "schemaVersion",
     "workspaceIdentity",
+    "trigger",
+    "admissionMode",
+    "buildOwner",
+    "cancellationAuthority",
+    "requestLifetimeIndependent",
     "candidateGeneration",
     "policyOverlayDigest",
     "state",
@@ -23,6 +28,25 @@
     },
     "schemaVersion": { "const": "1" },
     "workspaceIdentity": { "type": "string", "minLength": 1 },
+    "trigger": {
+      "enum": [
+        "query-demand",
+        "workspace-change",
+        "operator-mutation",
+        "artifact-publication",
+        "runtime-recovery"
+      ]
+    },
+    "admissionMode": {
+      "enum": [
+        "cold-targeted",
+        "incremental-overlay",
+        "full-recovery"
+      ]
+    },
+    "buildOwner": { "const": "runtime-server" },
+    "cancellationAuthority": { "const": "runtime-server" },
+    "requestLifetimeIndependent": { "const": true },
     "candidateGeneration": { "$ref": "https://schemas.agent-semantic-protocols.dev/repository-candidate-snapshot.v1.schema.json#/$defs/candidateGeneration" },
     "policyOverlayDigest": { "type": "string", "minLength": 1 },
     "state": { "enum": ["building", "ready", "failed", "cancelled"] },

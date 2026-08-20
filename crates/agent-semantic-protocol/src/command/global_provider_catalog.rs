@@ -214,8 +214,7 @@ pub(crate) struct RuntimeProviderLaunch {
 }
 
 pub(crate) enum RuntimeProviderLaunchSpec {
-    Process(agent_semantic_provider_transport::ProviderRuntimeProcessSpec),
-    HttpServer(agent_semantic_provider_transport::ProviderHttpServerSpec),
+    HttpServer(agent_semantic_provider_transport::AspClientServerSpec),
 }
 
 impl RuntimeProviderCatalog {
@@ -233,13 +232,13 @@ impl RuntimeProviderCatalog {
                 format!("Runtime search provider is not registered: languageId={language_id}")
             })?;
         let transport = match provider.runtime_contract.transport() {
-            agent_semantic_hook::ProviderRuntimeContractTransport::RuntimeIpcV1 => {
-                agent_semantic_provider_transport::ProviderRuntimeContractTransport::RuntimeIpcV1
+            agent_semantic_hook::ProviderRuntimeContractTransport::RuntimeIpc => {
+                agent_semantic_provider_transport::ProviderRuntimeContractTransport::RuntimeIpc
             }
-            agent_semantic_hook::ProviderRuntimeContractTransport::HttpJsonV1 => {
-                agent_semantic_provider_transport::ProviderRuntimeContractTransport::HttpJsonV1
+            agent_semantic_hook::ProviderRuntimeContractTransport::HttpJson => {
+                agent_semantic_provider_transport::ProviderRuntimeContractTransport::HttpJson
             }
-            agent_semantic_hook::ProviderRuntimeContractTransport::InProcessV1 => {
+            agent_semantic_hook::ProviderRuntimeContractTransport::InProcess => {
                 return Err(format!(
                     "provider-runtime-not-process-owned: languageId={language_id} providerId={}",
                     provider.provider_id
@@ -273,17 +272,22 @@ impl RuntimeProviderCatalog {
                 transport.clone(),
                 operations,
             )?;
-        let server_descriptor = provider.runtime_contract.server();
+        let asp_client_server = provider.runtime_contract.asp_client_server();
         let launch_args = match transport {
-            agent_semantic_provider_transport::ProviderRuntimeContractTransport::HttpJsonV1 => {
-                server_descriptor
-                    .ok_or_else(|| "provider HTTP server descriptor is absent".to_owned())?
+            agent_semantic_provider_transport::ProviderRuntimeContractTransport::HttpJson => {
+                asp_client_server
+                    .ok_or_else(|| "ASP Client Server descriptor is absent".to_owned())?
                     .command()
                     .to_vec()
             }
             _ => vec!["runtime".to_owned(), "serve".to_owned()],
         };
         let mut env = std::collections::BTreeMap::new();
+        env.insert("ASP_PROVIDER_ID".to_owned(), provider.provider_id.clone());
+        env.insert(
+            "ASP_PROVIDER_LANGUAGE_ID".to_owned(),
+            provider.language_id.clone(),
+        );
         env.insert(
             "ASP_PROVIDER_ARTIFACT_DIGEST".to_owned(),
             provider.artifact_digest.clone(),
@@ -297,13 +301,13 @@ impl RuntimeProviderCatalog {
             expected_receipt.contract_digest.clone(),
         );
         let spec = match transport {
-            agent_semantic_provider_transport::ProviderRuntimeContractTransport::HttpJsonV1 => {
-                let mut spec = agent_semantic_provider_transport::ProviderHttpServerSpec::new(
+            agent_semantic_provider_transport::ProviderRuntimeContractTransport::HttpJson => {
+                let mut spec = agent_semantic_provider_transport::AspClientServerSpec::new(
                     program.clone(),
                     project_root.to_path_buf(),
                 );
-                let server = server_descriptor
-                    .ok_or_else(|| "provider HTTP server descriptor is absent".to_owned())?;
+                let server = asp_client_server
+                    .ok_or_else(|| "ASP Client Server descriptor is absent".to_owned())?;
                 spec.args = prefix_args.iter().cloned().chain(launch_args).collect();
                 spec.env = env;
                 spec.health_path = server.health_path().to_owned();
@@ -311,15 +315,7 @@ impl RuntimeProviderCatalog {
                 spec.shutdown_path = server.shutdown_path().to_owned();
                 RuntimeProviderLaunchSpec::HttpServer(spec)
             }
-            _ => {
-                let mut spec = agent_semantic_provider_transport::ProviderRuntimeProcessSpec::new(
-                    program.clone(),
-                    project_root.to_path_buf(),
-                );
-                spec.args = prefix_args.iter().cloned().chain(launch_args).collect();
-                spec.env = env;
-                RuntimeProviderLaunchSpec::Process(spec)
-            }
+            _ => return Err("provider runtime transport must be `http-json`".to_owned()),
         };
         Ok(RuntimeProviderLaunch {
             key: format!(

@@ -1,0 +1,489 @@
+{
+  "binary": "asp-rust",
+  "displayName": "Rust Harness",
+  "execution": "external-process",
+  "languageId": "rust",
+  "methodDescriptors": [
+    {
+      "acceptsStdin": true,
+      "command": "owner-search-stdin",
+      "invocation": {
+        "argv": [
+          "asp-rust",
+          "owner-search-stdin",
+          "--asp-provider-id",
+          "asp-rust"
+        ]
+      },
+      "method": "search/owner-native",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.provider-native-owner-search-response"
+      ],
+      "packetSchemas": [
+        "provider-native-owner-search-request.v1",
+        "provider-native-owner-search-response.v1"
+      ],
+      "requiresQuery": false,
+      "supportsCompact": false,
+      "supportsJson": true,
+      "supportsPackageScope": false,
+      "view": "owner-items"
+    },
+    {
+      "acceptsStdin": true,
+      "command": "query",
+      "invocation": {
+        "argv": [
+          "asp-rust",
+          "query",
+          "--asp-exact-request-stdin",
+          "--json"
+        ]
+      },
+      "method": "query/exact-selector-native-v1",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.provider-native-exact-projection"
+      ],
+      "packetSchemas": [
+        "provider-native-exact-request.v1",
+        "provider-native-exact-response.v1"
+      ],
+      "requiresQuery": true,
+      "supportsCompact": false,
+      "supportsJson": true,
+      "supportsPackageScope": false,
+      "view": "exact-selector"
+    },
+    {
+      "acceptsStdin": false,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "asp-rust",
+          "search",
+          "prime",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ]
+      },
+      "method": "search/prime",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-search-packet"
+      ],
+      "packetSchemas": [
+        "semantic-search-packet.v1"
+      ],
+      "requiresQuery": false,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "prime"
+    },
+    {
+      "acceptsStdin": false,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "asp-rust",
+          "search",
+          "owner",
+          "{owner}",
+          "items",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ]
+      },
+      "method": "search/owner",
+      "argumentProjection": {
+        "schemaVersion": "1",
+        "tokens": [
+          {"kind": "literal", "value": "search"},
+          {"kind": "literal", "value": "owner"},
+          {"kind": "slot", "name": "owner", "valueType": "path"},
+          {"kind": "literal", "value": "items"},
+          {"kind": "literal", "value": "--workspace"},
+          {"kind": "slot", "name": "workspace", "valueType": "path"},
+          {"kind": "literal", "value": "--view"},
+          {"kind": "slot", "name": "presentation", "valueType": "presentation"}
+        ]
+      },
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-search-packet"
+      ],
+      "packetSchemas": [
+        "semantic-search-packet.v1"
+      ],
+      "requiresQuery": true,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "owner"
+    },
+    {
+      "acceptsStdin": false,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "asp-rust",
+          "search",
+          "lexical",
+          "{query}",
+          "owner",
+          "tests",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ]
+      },
+      "method": "search/lexical",
+      "argumentProjection": {
+        "schemaVersion": "1",
+        "tokens": [
+          {"kind": "literal", "value": "search"},
+          {"kind": "literal", "value": "lexical"},
+          {"kind": "slot", "name": "query", "valueType": "string"},
+          {"kind": "literal", "value": "owner"},
+          {"kind": "literal", "value": "tests"},
+          {"kind": "literal", "value": "--workspace"},
+          {"kind": "slot", "name": "workspace", "valueType": "path"},
+          {"kind": "literal", "value": "--view"},
+          {"kind": "slot", "name": "presentation", "valueType": "presentation"}
+        ]
+      },
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-search-packet"
+      ],
+      "packetSchemas": [
+        "semantic-search-packet.v1"
+      ],
+      "requiresQuery": true,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "lexical"
+    },
+    {
+      "codeOutput": {
+        "mode": "pure-code",
+        "multiMatch": "deny",
+        "requires": [
+          "exact-selector"
+        ]
+      },
+      "command": "query",
+      "invocation": {
+        "argv": [
+          "asp-rust",
+          "query",
+          "--selector",
+          "{owner}",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ]
+      },
+      "method": "query/exact-selector",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-query-packet"
+      ],
+      "packetSchemas": [
+        "semantic-query-packet.v1",
+        "semantic-read-packet.v1"
+      ],
+      "queryInputForms": [
+        "selector"
+      ],
+      "supportsCompact": true,
+      "supportsJson": true
+    },
+    {
+      "acceptsStdin": true,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "asp-rust",
+          "search",
+          "semantic-facts",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ],
+        "stdinMode": "pipe-candidates"
+      },
+      "method": "search/semantic-facts",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-fact-graph"
+      ],
+      "packetSchemas": [
+        "semantic-fact-graph.v1"
+      ],
+      "requiresQuery": true,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "semantic-facts"
+    },
+    {
+      "command": "check",
+      "invocation": {
+        "argv": [
+          "asp-rust",
+          "check",
+          "--changed",
+          "{workspace}"
+        ]
+      },
+      "method": "check/changed",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-verification-receipt"
+      ],
+      "supportsCompact": true,
+      "supportsJson": true
+    },
+    {
+      "command": "guide",
+      "invocation": {
+        "argv": [
+          "asp-rust",
+          "guide",
+          "{workspace}"
+        ]
+      },
+      "method": "guide",
+      "supportsCompact": true,
+      "supportsJson": false
+    },
+    {
+      "acceptsStdin": true,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "asp-rust",
+          "search",
+          "ingest",
+          "owner",
+          "tests",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ],
+        "stdinMode": "pipe-candidates"
+      },
+      "method": "search/ingest",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-search-packet"
+      ],
+      "requiresQuery": false,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "ingest"
+    },
+    {
+      "acceptsStdin": false,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "asp-rust",
+          "search",
+          "dependency-topology",
+          "--json",
+          "--workspace",
+          "{workspace}"
+        ]
+      },
+      "method": "search/dependency-topology",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-dependency-topology"
+      ],
+      "packetSchemas": [
+        "semantic-dependency-topology.v1"
+      ],
+      "requiresQuery": false,
+      "supportsCompact": false,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "dependency-topology"
+    },
+    {
+      "acceptsStdin": false,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "asp-rust",
+          "search",
+          "dependency-topology-metadata",
+          "--json",
+          "--workspace",
+          "{workspace}"
+        ]
+      },
+      "method": "search/dependency-topology-metadata",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-dependency-topology"
+      ],
+      "packetSchemas": [
+        "semantic-dependency-topology.v1"
+      ],
+      "requiresQuery": false,
+      "supportsCompact": false,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "dependency-topology-metadata"
+    }
+  ],
+  "methods": [
+    "search/owner-native",
+    "query/exact-selector-native-v1",
+    "search/prime",
+    "search/owner",
+    "search/lexical",
+    "search/ingest",
+    "search/semantic-facts",
+    "search/dependency-topology",
+    "search/dependency-topology-metadata",
+    "query/exact-selector",
+    "check/changed",
+    "guide"
+  ],
+  "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
+  "providerId": "asp-rust",
+  "queryPackDescriptor": {
+    "descriptorId": "rust.query-pack",
+    "descriptorVersion": "1",
+    "languageId": "rust",
+    "recipes": [
+      {
+        "clauses": [
+          {
+            "intentAxes": [
+              "concurrency"
+            ],
+            "roles": [
+              "concept"
+            ],
+            "terms": [
+              "concurrency",
+              "runtime",
+              "scheduling"
+            ]
+          }
+        ],
+        "recipeId": "rust-concurrency-runtime",
+        "trigger": {
+          "match": "any",
+          "terms": [
+            "concurrency",
+            "runtime",
+            "scheduling"
+          ]
+        }
+      },
+      {
+        "clauses": [
+          {
+            "intentAxes": [
+              "resource-lifecycle"
+            ],
+            "roles": [
+              "concept"
+            ],
+            "terms": [
+              "scope",
+              "lifecycle",
+              "drop"
+            ]
+          }
+        ],
+        "recipeId": "rust-resource-lifecycle",
+        "trigger": {
+          "match": "any",
+          "terms": [
+            "scope",
+            "lifecycle",
+            "drop"
+          ]
+        }
+      },
+      {
+        "clauses": [
+          {
+            "intentAxes": [
+              "collection",
+              "stream"
+            ],
+            "roles": [
+              "concept"
+            ],
+            "terms": [
+              "queue",
+              "stream",
+              "backpressure"
+            ]
+          }
+        ],
+        "recipeId": "rust-stream-backpressure",
+        "trigger": {
+          "match": "any",
+          "terms": [
+            "queue",
+            "stream",
+            "backpressure"
+          ]
+        }
+      }
+    ],
+    "semanticFactsDescriptorId": "rust.semantic-facts",
+    "termRoleOverrides": []
+  },
+  "schemas": [
+    {
+      "path": "schemas/semantic-search-packet.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.semantic-search-packet",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/semantic-query-packet.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.semantic-query-packet",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/semantic-read-packet.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.semantic-read-packet",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/software-criterion-catalog.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.software-criterion-catalog",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/software-criterion-extension-report.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.software-criterion-extension-report",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/semantic-fact-graph.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.semantic-fact-graph",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/semantic-fact-ontology.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.semantic-fact-ontology",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/semantic-dependency-topology.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.semantic-dependency-topology",
+      "schemaVersion": "1"
+    }
+  ]
+}

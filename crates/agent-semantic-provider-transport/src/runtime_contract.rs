@@ -9,9 +9,9 @@ const DIGEST_DOMAIN: &[u8] = b"asp.provider-runtime-contract-receipt.v1";
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProviderRuntimeContractTransport {
-    FramedStdinV1,
-    HttpJsonV1,
-    RuntimeIpcV1,
+    RuntimeIpc,
+    HttpJson,
+    InProcess,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -103,8 +103,22 @@ impl ProviderRuntimeContractReceipt {
                 ));
             }
         }
-        if self.contract_digest != self.expected_contract_digest()? {
-            return Err("provider runtime contract receipt digest mismatch".to_owned());
+        let expected_contract_digest = self.expected_contract_digest()?;
+        if self.contract_digest != expected_contract_digest {
+            return Err(format!(
+                "provider runtime contract receipt digest mismatch: expected={expected_contract_digest} actual={} providerId={} languageId={} artifactDigest={} manifestDigest={} transport={:?} operations={}",
+                self.contract_digest,
+                self.provider_id,
+                self.language_id,
+                self.artifact_digest,
+                self.manifest_digest,
+                self.transport,
+                self.operations
+                    .iter()
+                    .map(|operation| operation.operation.as_str())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ));
         }
         Ok(())
     }

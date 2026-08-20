@@ -61,7 +61,7 @@ async fn daemon_startup_does_not_eagerly_restore_registered_workspaces() {
     let build_count = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let builder_count = Arc::clone(&build_count);
     let admission = WorkspaceGenerationAdmission::new(Arc::new(
-        move |_, _, _, _, _changed_paths, _cancellation| {
+        move |_, _, _, _, _changed_paths, _provider_target, _cancellation| {
             builder_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Box::pin(async move {
                 Err(agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
@@ -85,11 +85,6 @@ async fn daemon_startup_does_not_eagerly_restore_registered_workspaces() {
     let shutdown = server.shutdown_handle();
     let server = tokio::spawn(server.serve());
 
-    assert_eq!(
-        build_count.load(std::sync::atomic::Ordering::SeqCst),
-        0,
-        "daemon startup must not restore or build catalog workspaces eagerly"
-    );
     let healthy = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Status,
@@ -99,6 +94,11 @@ async fn daemon_startup_does_not_eagerly_restore_registered_workspaces() {
     .await
     .expect("read Healthy status before on-demand workspace admission");
     assert_eq!(healthy.state, RuntimeServerState::Healthy);
+    assert_eq!(
+        build_count.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "daemon startup must not restore or build catalog workspaces eagerly"
+    );
 
     shutdown.shutdown();
     assert_eq!(

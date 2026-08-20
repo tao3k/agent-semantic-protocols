@@ -1,43 +1,22 @@
 use crate::cache_cli::run_cache;
 use crate::cache_cli_source_index_tests::fixtures::RuntimeServerFixture;
 use crate::test_support::{CACHE_TEST_LOCK, EnvVarGuard};
-use agent_semantic_client_core::LanguageId;
-
-fn prepare_runtime_owned_rust_fixture(root: &std::path::Path, symbol: &str) {
-    let provider_binary = root.join(".asp-state/runtime/bin/rs-harness");
-    crate::cache_cli_source_index_tests::fixtures::write_project_resolution_provider(
-        &provider_binary,
-        "rust",
-        "rs-harness",
-        ".rs",
-        &["src"],
-        &[],
-    );
-    crate::test_support::write_hermetic_provider_registry_config(root, "rust", "rs-harness");
-    crate::test_support::write_hermetic_provider_install_receipt(root, "rust", &provider_binary);
-    std::fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"cache-command-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .expect("write Cargo manifest");
-    std::fs::create_dir_all(root.join("src")).expect("create source directory");
-    std::fs::write(root.join("src/lib.rs"), format!("pub fn {symbol}() {{}}\n"))
-        .expect("write source file");
-}
 
 #[tokio::test]
-async fn cache_usage_lists_flush() {
+async fn cache_usage_excludes_legacy_mutation_aliases() {
     let root = temp_root("usage");
     let error = run_cache(&root, None, &["unknown".to_string()], false)
         .await
         .expect_err("usage");
 
     assert!(error.contains(
-        "status|gc [--grace-days <n>] [--apply]|clean --day[=<days>]|import|source-index refresh|source-index lookup"
+        "status|gc [--grace-days <n>] [--apply]|clean --day[=<days>]|source-index lookup"
     ));
-    assert!(error.contains("source-index refresh"));
+    assert!(!error.contains("import"));
+    assert!(!error.contains("source-index refresh"));
     assert!(error.contains("source-index lookup --query <term>"));
-    assert!(error.contains("invalidate|flush [syntax-rows]"));
+    assert!(error.contains("|invalidate>"));
+    assert!(!error.contains("flush"));
 }
 
 #[tokio::test]
@@ -86,59 +65,6 @@ async fn cache_status_survives_concurrent_process_readers() {
         assert!(status.success(), "cache status reader failed: {status}");
     }
 
-    server.shutdown().await;
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[tokio::test]
-async fn cache_flush_invalidates_the_runtime_owned_generation() {
-    let _guard = crate::test_support::CACHE_TEST_LOCK
-        .lock()
-        .expect("cache test lock");
-    let root = temp_root("invalid-manifest");
-    let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
-    prepare_runtime_owned_rust_fixture(&root, "cache_flush_symbol");
-    let server = RuntimeServerFixture::start(&root).await;
-    server.rebuild(&root).await;
-
-    run_cache(&root, None, &["flush".to_string()], false)
-        .await
-        .expect("flush Runtime-owned workspace generation");
-
-    server.shutdown().await;
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[tokio::test]
-async fn cache_import_rebuilds_the_runtime_owned_source_index() {
-    let _guard = crate::test_support::CACHE_TEST_LOCK
-        .lock()
-        .expect("cache test lock");
-    let root = temp_root("structural-index-import");
-    let _state_home =
-        crate::test_support::EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
-    prepare_runtime_owned_rust_fixture(&root, "cache_imported_symbol");
-    let server = RuntimeServerFixture::start(&root).await;
-
-    run_cache(&root, None, &["import".to_string()], false)
-        .await
-        .expect("Runtime-owned source-index import");
-
-    let result = crate::test_support::lookup_current_source_index_for_language(
-        &root,
-        Some(&LanguageId::from("rust")),
-        "cache_imported_symbol",
-        8,
-    )
-    .await
-    .expect("query Runtime-owned imported source index");
-
-    assert_eq!(result.candidates.len(), 1);
-    assert!(
-        result.candidates[0].path.contains("src/lib.rs"),
-        "Runtime source index should retain owner path: {:?}",
-        result.candidates[0]
-    );
     server.shutdown().await;
     let _ = std::fs::remove_dir_all(root);
 }

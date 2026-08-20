@@ -33,6 +33,7 @@ fn generic_runtime_hook_policy_plane_is_absent() {
 
     assert!(hook.contains("evaluate_hook_event_locally"));
     assert!(bootstrap.contains("codex_tool_event_requires_policy_evaluation"));
+    assert!(bootstrap.contains("bootstrap-no-agent-bypass"));
     for source in [hook, bootstrap, runtime, daemon, ipc, ipc_server] {
         assert!(!source.contains("EvaluateHook"));
         assert!(!source.contains("HookEvaluationBuilder"));
@@ -161,6 +162,34 @@ fn codex_wildcard_is_transport_coverage_not_runtime_routing() {
     assert!(bootstrap.contains("bootstrap-local-action-passthrough"));
     assert!(bootstrap.contains("local-policy-evaluator"));
     assert!(!bootstrap.contains("evaluate_hook_event_via_runtime"));
+}
+
+#[test]
+fn explicit_no_agent_environment_bypasses_host_hook_before_payload_evaluation() {
+    use std::process::{Command, Stdio};
+
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args(["hook", "pre-tool", "--client", "codex"])
+        .env_clear()
+        .env("ASP_NO_AGENT", "1")
+        .env("ASP_HOOK_BOOTSTRAP_TRACE", "1")
+        .stdin(Stdio::null())
+        .output()
+        .expect("spawn no-agent Hook bypass");
+    let stdout = String::from_utf8(output.stdout).expect("Hook bypass stdout UTF-8");
+    let stderr = String::from_utf8(output.stderr).expect("Hook bypass stderr UTF-8");
+
+    assert!(output.status.success(), "stdout={stdout} stderr={stderr}");
+    assert_eq!(stdout.trim(), "{}");
+    assert!(
+        stderr.contains("route=bootstrap-no-agent-bypass"),
+        "stderr={stderr}"
+    );
+    assert!(
+        !stderr.contains("local-policy-evaluator"),
+        "stderr={stderr}"
+    );
+    assert!(!stderr.contains("runtime-server"), "stderr={stderr}");
 }
 
 #[test]

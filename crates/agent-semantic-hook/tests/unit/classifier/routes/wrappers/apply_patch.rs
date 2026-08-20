@@ -31,7 +31,7 @@ PATCH"#;
     );
     assert_eq!(decision.subject.paths, ["src/cli/agent-hooks.ts"]);
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
-    assert_eq!(decision.routes[0].provider_id, "ts-harness");
+    assert_eq!(decision.routes[0].provider_id, "asp-typescript");
     assert!(decision.message.contains("Locator route:"));
     assert!(decision.message.contains("path-only locator output"));
     assert!(

@@ -45,39 +45,89 @@ pub(super) async fn run_search_owner_items_query_command(
         search_owner_items_workspace(args).as_deref(),
     );
     let owner_path = normalized_owner_key(&project_root, &owner_query_args.owner)?;
-    run_server_owner_items(&owner_query_args.query, &project_root, &owner_path).await
+    run_server_owner_items(
+        &owner_query_args.query,
+        &project_root,
+        &owner_path,
+        context.language_id,
+    )
+    .await
 }
 
 async fn run_server_owner_items(
     query: &str,
     project_root: &Path,
     owner_path: &str,
+    language_id: &str,
 ) -> Result<(), String> {
     let session =
         crate::server::runtime_server::runtime_server_stateless_search_session_async(project_root)
             .await?;
-    let (owner, generation_digest, root_digest) = match session
+    let (owner, generation_digest, root_digest, algorithm, reason, provider_invocations) = match session
         .read_runtime_owner(owner_path)
-        .await?
+    .await?
     {
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::SparseProviderOwner {
+            cache_digest,
+            root_digest,
+            owner,
+        } => (
+            owner,
+            cache_digest,
+            root_digest,
+            "asp-runtime-sparse-owner-items-v1",
+            "runtime-sparse-provider-owner-v1",
+            0,
+        ),
         agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::Owner {
             generation_digest,
             root_digest,
             owner,
-        } => (owner, generation_digest, root_digest),
-        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::OwnerMissing {
-            generation_digest,
-            root_digest,
         } => {
-            return Err(format!(
-                "item-not-in-live-owner: owner/items resident generation miss; generationDigest={generation_digest} rootDigest={root_digest} candidates=[]"
-            ));
+            if resident_owner_requires_provider_projection(owner.selectors.len()) {
+                let language_id = agent_semantic_client_core::LanguageId::try_from(language_id)
+                    .map_err(|error| format!("decode owner search language id: {error}"))?;
+                let owner = session
+                    .project_provider_owner(language_id, owner_path)
+                    .await?;
+                let root_digest = owner.content_digest.clone();
+                (
+                    owner,
+                    "provider-native".to_owned(),
+                    root_digest,
+                    "asp-provider-native-owner-items-v1",
+                    "provider-native-owner",
+                    1,
+                )
+            } else {
+                (
+                    owner,
+                    generation_digest,
+                    root_digest,
+                    "asp-runtime-resident-owner-items-v1",
+                    "runtime-resident-owner",
+                    0,
+                )
+            }
         }
-        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::GenerationMissing => {
-            return Err(
-                "active-workspace-generation-required: owner/items requires one admitted resident generation; candidates=[]"
-                    .to_owned(),
-            );
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::OwnerMissing {
+            ..
+        }
+        | agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::GenerationMissing => {
+            let language_id = agent_semantic_client_core::LanguageId::try_from(language_id)
+                .map_err(|error| format!("decode owner search language id: {error}"))?;
+            let owner = session
+                .project_provider_owner(language_id, owner_path)
+                .await?;
+            let root_digest = owner.content_digest.clone();
+            (
+                owner,
+                "provider-native".to_owned(),
+                root_digest,
+                "asp-provider-native-owner-items-v1",
+                "provider-native-owner",
+                1,
+            )
         }
     };
     let query_alternatives = query
@@ -120,24 +170,38 @@ async fn run_server_owner_items(
         })
         .collect::<Vec<_>>();
     println!(
-        "[search-owner] q={} owner={} selector=items alg=asp-runtime-resident-owner-items-v1",
-        query, owner_path
+        "[search-owner] q={} owner={} selector=items alg={}",
+        query, owner_path, algorithm
     );
     for (selector, identity) in &selectors {
         println!(
-            "|item symbol={} kind={} structuralSelector={} reason=runtime-resident-owner",
+            "|item symbol={} kind={} structuralSelector={} reason={}",
             identity.symbol.as_str(),
             identity.kind.as_str(),
-            selector.selector
+            selector.selector,
+            reason,
         );
     }
-    println!(
-        "entries={} generation={} rootDigest={} rootDepth=1,0 ownerChanged=false providerInvocations=0 databaseOpens=0 controlRoundtrips=0",
-        selectors.len(),
-        generation_digest,
-        root_digest,
-    );
+    if provider_invocations == 0 {
+        println!(
+            "entries={} generation={} rootDigest={} rootDepth=1,0 ownerChanged=false providerInvocations=0 databaseOpens=0 controlRoundtrips=0",
+            selectors.len(),
+            generation_digest,
+            root_digest,
+        );
+    } else {
+        println!(
+            "entries={} generation={} rootDigest={} rootDepth=1,0 ownerChanged=false providerInvocations=1 databaseOpens=0 controlRoundtrips=0",
+            selectors.len(),
+            generation_digest,
+            root_digest,
+        );
+    }
     Ok(())
+}
+
+fn resident_owner_requires_provider_projection(selector_count: usize) -> bool {
+    selector_count == 0
 }
 
 pub(super) fn is_search_owner_items_query(args: &[String]) -> bool {

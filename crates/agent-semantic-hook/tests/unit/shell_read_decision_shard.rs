@@ -56,6 +56,33 @@ fn unknown_or_corrupt_tables_fail_closed_without_inventing_a_winner() {
 }
 
 #[test]
+fn leading_environment_assignment_terminal_entry_precedes_longer_command_profile() {
+    let shard = CommandDecisionShard::new_with_leading_environment_assignments(
+        vec![(
+            vec!["cargo".to_owned(), "test".to_owned()],
+            decision("testing"),
+        )],
+        vec![(vec!["BYPASS=1".to_owned()], decision("terminal-bypass"))],
+    )
+    .expect("compile declarative environment matcher shard")
+    .to_binary_bytes()
+    .expect("encode declarative environment matcher shard");
+    let command = "TRACE=1 BYPASS=1 cargo test";
+    let tokens = ["TRACE=1", "BYPASS=1", "cargo", "test"].map(str::to_owned);
+    let selected = CommandDecisionShard::select_for_command(&shard, command, &tokens)
+        .expect("select declarative environment matcher")
+        .expect("terminal environment decision");
+    assert_eq!(selected.message, "terminal-bypass");
+
+    let nested = "env BYPASS=1 cargo test";
+    let nested_tokens = ["env", "BYPASS=1", "cargo", "test"].map(str::to_owned);
+    let selected = CommandDecisionShard::select_for_command(&shard, nested, &nested_tokens)
+        .expect("select nested command profile")
+        .expect("testing decision");
+    assert_eq!(selected.message, "testing");
+}
+
+#[test]
 fn wrapped_shell_source_candidates_do_not_depend_on_first_or_last_dotted_argument() {
     let payload = json!({
         "tool_name": "Bash",

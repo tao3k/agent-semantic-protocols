@@ -6,7 +6,18 @@ use crate::runtime_server_admission::{
     PendingWorkspaceMutation, WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID,
     WorkspaceGenerationAdmission, WorkspaceGenerationAdmissionKey,
     WorkspaceGenerationAdmissionReceipt, WorkspaceGenerationAdmissionState,
+    WorkspaceGenerationBuildMode,
 };
+
+pub(super) fn observed_mutation_build_mode(
+    receipt: &WorkspaceGenerationAdmissionReceipt,
+) -> WorkspaceGenerationBuildMode {
+    if receipt.state == WorkspaceGenerationAdmissionState::Ready && receipt.commit.is_some() {
+        WorkspaceGenerationBuildMode::RebuildAfterMutation
+    } else {
+        WorkspaceGenerationBuildMode::RestoreOrBuild
+    }
+}
 
 pub const WORKSPACE_GENERATION_MUTATION_ADMISSION_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.workspace-generation-mutation-admission-receipt";
@@ -458,6 +469,10 @@ impl WorkspaceGenerationAdmission {
                 candidate,
                 1,
                 super::WorkspaceGenerationBuildMode::RestoreOrBuild,
+                crate::runtime_server_admission::WorkspaceGenerationAdmissionTrigger::WorkspaceChange,
+                crate::runtime_server_admission::WorkspaceGenerationAdmissionMode::IncrementalOverlay,
+                None,
+                Arc::default(),
             );
             return Ok(receipt);
         }
@@ -542,7 +557,7 @@ impl WorkspaceGenerationAdmission {
             entry.lane.begin_claimed(claimed_attempt).await?;
             let attempt = claimed_attempt;
             let accepted = claimed_submission.clone();
-            let build_mode = super::observed_mutation_build_mode(&entry.observed());
+            let build_mode = observed_mutation_build_mode(&entry.observed());
             entry.receipt.send_replace(accepted.clone());
             entry
                 .active_mutation
@@ -560,6 +575,10 @@ impl WorkspaceGenerationAdmission {
                 candidate,
                 attempt,
                 build_mode,
+                crate::runtime_server_admission::WorkspaceGenerationAdmissionTrigger::WorkspaceChange,
+                crate::runtime_server_admission::WorkspaceGenerationAdmissionMode::IncrementalOverlay,
+                None,
+                Arc::default(),
             );
             return Ok(accepted);
         }
@@ -592,6 +611,13 @@ fn mutation_submission_receipt(
         schema_id: WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID.to_owned(),
         schema_version: "1".to_owned(),
         workspace_identity: workspace_identity.to_owned(),
+        trigger:
+            crate::runtime_server_admission::WorkspaceGenerationAdmissionTrigger::WorkspaceChange,
+        admission_mode:
+            crate::runtime_server_admission::WorkspaceGenerationAdmissionMode::IncrementalOverlay,
+        build_owner: "runtime-server".to_owned(),
+        cancellation_authority: "runtime-server".to_owned(),
+        request_lifetime_independent: true,
         candidate_generation: candidate.candidate_generation.clone(),
         policy_overlay_digest: candidate.policy_overlay_digest.clone(),
         state: WorkspaceGenerationAdmissionState::Building,

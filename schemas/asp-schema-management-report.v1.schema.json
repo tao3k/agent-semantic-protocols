@@ -83,7 +83,18 @@
         "code": {"$ref": "#/$defs/nonEmptyString"},
         "message": {"$ref": "#/$defs/nonEmptyString"},
         "schemaPath": {"$ref": "#/$defs/nonEmptyString"},
-        "jsonPointer": {"type": "string"}
+        "jsonPointer": {"type": "string"},
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "familyIds": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/nonEmptyString"}
+        },
+        "count": {"type": "integer", "minimum": 1}
       }
     },
     "occurrence": {

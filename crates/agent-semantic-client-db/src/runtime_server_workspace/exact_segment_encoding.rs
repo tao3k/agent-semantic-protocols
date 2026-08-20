@@ -1,15 +1,19 @@
 //! Immutable exact-projection segment encoding owned by the workspace publisher.
 
+use super::evidence_context::{CONTEXT_ENTRY_LEN, context_key_hash};
 use super::{
-    BLOB_OFFSET, EPOCH_OFFSET, GENERATION_DIGEST_LEN_OFFSET, GENERATION_DIGEST_OFFSET, HEADER_LEN,
-    MAGIC, OWNER_COUNT_OFFSET, OWNER_ENTRY_LEN, OWNER_TABLE_OFFSET, RELOCATION_COUNT_OFFSET,
-    RELOCATION_ENTRY_LEN, RELOCATION_TABLE_OFFSET, ROOT_DIGEST_LEN_OFFSET, ROOT_DIGEST_OFFSET,
-    SELECTOR_COUNT_OFFSET, SELECTOR_ENTRY_LEN, SELECTOR_TABLE_OFFSET, STRING_TABLE_OFFSET,
-    TOTAL_LEN_OFFSET, WORKSPACE_ID_LEN_OFFSET, WORKSPACE_ID_OFFSET, owner_projection_digest,
-    projection_key_hash, push_bytes, relocation_identity, relocation_key_hash, slice_from_range,
-    write_range_entry, write_range_header, write_u64, write_usize,
+    BLOB_OFFSET, CONTEXT_COUNT_OFFSET, CONTEXT_TABLE_OFFSET, EPOCH_OFFSET,
+    GENERATION_DIGEST_LEN_OFFSET, GENERATION_DIGEST_OFFSET, HEADER_LEN, MAGIC, OWNER_COUNT_OFFSET,
+    OWNER_ENTRY_LEN, OWNER_TABLE_OFFSET, RELOCATION_COUNT_OFFSET, RELOCATION_ENTRY_LEN,
+    RELOCATION_TABLE_OFFSET, ROOT_DIGEST_LEN_OFFSET, ROOT_DIGEST_OFFSET, SELECTOR_COUNT_OFFSET,
+    SELECTOR_ENTRY_LEN, SELECTOR_TABLE_OFFSET, STRING_TABLE_OFFSET, TOTAL_LEN_OFFSET,
+    WORKSPACE_ID_LEN_OFFSET, WORKSPACE_ID_OFFSET, owner_projection_digest, projection_key_hash,
+    push_bytes, relocation_identity, relocation_key_hash, slice_from_range, write_range_entry,
+    write_range_header, write_u64, write_usize,
 };
-use crate::runtime_server_workspace::WorkspaceMemoryGeneration;
+use crate::runtime_server_workspace::{
+    ExactProjectionKind, WorkspaceDerivedProjectionSnapshot, WorkspaceMemoryGeneration,
+};
 
 pub(crate) fn encode_exact_projection_segment(
     generation: &WorkspaceMemoryGeneration,
@@ -45,6 +49,7 @@ pub(crate) fn encode_exact_projection_segment(
     let mut owner_rows = Vec::with_capacity(owners.len());
     let mut selector_rows = Vec::with_capacity(selector_count);
     let mut blobs = Vec::new();
+    let mut evidence_contexts = std::collections::BTreeMap::new();
     for (owner_index, owner) in owners.iter().enumerate() {
         let path = push_bytes(&mut strings, owner.owner_path.as_bytes());
         let digest = push_bytes(&mut strings, owner.content_digest.as_bytes());
@@ -74,8 +79,22 @@ pub(crate) fn encode_exact_projection_segment(
             for projection in &selector.derived_projections {
                 let projection_kind =
                     push_bytes(&mut strings, projection.projection_kind.as_bytes());
+                let (projection_bytes, evidence_context) = resident_projection_payload(projection)?;
+                if let Some(context) = evidence_context {
+                    let context_bytes = serde_json::to_vec(&context)
+                        .map_err(|error| format!("encode projection evidence context: {error}"))?;
+                    if let Some(existing) = evidence_contexts
+                        .insert(context.evidence_context_ref.clone(), context_bytes.clone())
+                        && existing != context_bytes
+                    {
+                        return Err(
+                            "projection evidence context ref resolved to conflicting identity"
+                                .to_owned(),
+                        );
+                    }
+                }
                 let projection_blob_offset = blobs.len();
-                blobs.extend_from_slice(&projection.bytes);
+                blobs.extend_from_slice(&projection_bytes);
                 selector_rows.push((
                     projection_key_hash(projection.projection_kind.as_str(), &selector.selector),
                     text,
@@ -84,7 +103,7 @@ pub(crate) fn encode_exact_projection_segment(
                     selector.byte_start,
                     selector.byte_end,
                     projection_blob_offset,
-                    projection.bytes.len(),
+                    projection_bytes.len(),
                 ));
             }
         }
@@ -111,9 +130,31 @@ pub(crate) fn encode_exact_projection_segment(
         relocation_rows.push((relocation_key_hash(identity.as_str()), selector_index));
     }
     relocation_rows.sort_unstable();
-    let string_table_offset = relocation_table_offset
+    let context_table_offset = relocation_table_offset
         .checked_add(relocation_rows.len().saturating_mul(RELOCATION_ENTRY_LEN))
         .ok_or_else(|| "workspace exact relocation table length overflow".to_owned())?;
+    let string_table_offset = context_table_offset
+        .checked_add(evidence_contexts.len().saturating_mul(CONTEXT_ENTRY_LEN))
+        .ok_or_else(|| "workspace exact evidence context table length overflow".to_owned())?;
+    let mut context_rows = evidence_contexts
+        .into_iter()
+        .map(|(evidence_context_ref, context_bytes)| {
+            let reference = push_bytes(&mut strings, evidence_context_ref.as_bytes());
+            let context_blob_offset = blobs.len();
+            blobs.extend_from_slice(&context_bytes);
+            (
+                context_key_hash(&evidence_context_ref),
+                reference,
+                context_blob_offset,
+                context_bytes.len(),
+            )
+        })
+        .collect::<Vec<_>>();
+    context_rows.sort_by(|left, right| {
+        left.0.cmp(&right.0).then_with(|| {
+            slice_from_range(&strings, left.1).cmp(slice_from_range(&strings, right.1))
+        })
+    });
     let blob_offset = string_table_offset
         .checked_add(strings.len())
         .ok_or_else(|| "workspace exact string table length overflow".to_owned())?;
@@ -133,6 +174,8 @@ pub(crate) fn encode_exact_projection_segment(
         relocation_table_offset,
     )?;
     write_usize(&mut segment, RELOCATION_COUNT_OFFSET, relocation_rows.len())?;
+    write_usize(&mut segment, CONTEXT_TABLE_OFFSET, context_table_offset)?;
+    write_usize(&mut segment, CONTEXT_COUNT_OFFSET, context_rows.len())?;
     write_usize(&mut segment, STRING_TABLE_OFFSET, string_table_offset)?;
     write_usize(&mut segment, BLOB_OFFSET, blob_offset)?;
     write_usize(&mut segment, TOTAL_LEN_OFFSET, total_len)?;
@@ -206,7 +249,64 @@ pub(crate) fn encode_exact_projection_segment(
         segment[start..start + 32].copy_from_slice(&hash);
         write_usize(&mut segment, start + 32, selector_index)?;
     }
+    for (index, (hash, reference, context_blob_offset, context_blob_len)) in
+        context_rows.into_iter().enumerate()
+    {
+        let start = context_table_offset + index * CONTEXT_ENTRY_LEN;
+        segment[start..start + 32].copy_from_slice(&hash);
+        write_range_entry(&mut segment, start + 32, string_table_offset, reference)?;
+        write_usize(&mut segment, start + 48, blob_offset + context_blob_offset)?;
+        write_usize(&mut segment, start + 56, context_blob_len)?;
+    }
     segment[string_table_offset..blob_offset].copy_from_slice(&strings);
     segment[blob_offset..].copy_from_slice(&blobs);
     Ok(segment)
+}
+
+fn resident_projection_payload(
+    projection: &WorkspaceDerivedProjectionSnapshot,
+) -> Result<
+    (
+        Vec<u8>,
+        Option<
+            agent_semantic_content_identity::projection_evidence_context::ProjectionEvidenceContext,
+        >,
+    ),
+    String,
+> {
+    if projection.projection_kind != ExactProjectionKind::CallableSkeleton {
+        return Ok((
+            projection.bytes.clone(),
+            projection.evidence_context.clone(),
+        ));
+    }
+    let envelope: agent_semantic_content_identity::semantic_projection::SemanticProjection<
+        agent_semantic_content_identity::callable_skeleton_projection::CallableSkeletonPayload,
+    > = serde_json::from_slice(&projection.bytes)
+        .map_err(|error| format!("decode callable-skeleton projection for publication: {error}"))?;
+    envelope
+        .validate()
+        .map_err(|error| format!("validate semantic projection envelope: {error}"))?;
+    envelope
+        .payload
+        .validate()
+        .map_err(|error| format!("validate callable-skeleton payload: {error}"))?;
+    envelope
+        .payload
+        .validate_scope(&envelope.root_selector)
+        .map_err(|error| format!("validate callable-skeleton scope: {error}"))?;
+    let context = projection
+        .evidence_context
+        .clone()
+        .ok_or_else(|| "callable-skeleton projection is missing its evidence context".to_owned())?;
+    context
+        .validate()
+        .map_err(|error| format!("validate projection evidence context: {error}"))?;
+    if context.evidence_context_ref != envelope.evidence_context_ref
+        || context.language_id != envelope.language_id
+        || context.provider_id != envelope.provider_id
+    {
+        return Err("callable-skeleton projection evidence context drift".to_owned());
+    }
+    Ok((projection.bytes.clone(), Some(context)))
 }

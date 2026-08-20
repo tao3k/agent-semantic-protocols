@@ -47,18 +47,22 @@ fn query_scope_derives_identity_without_catalog_or_bootstrap() {
     assert_eq!(canonical_root, project_root);
 }
 
-#[test]
-fn operator_cold_start_budget_is_distinct_from_non_blocking_runtime_ensure() {
-    assert_eq!(
-        super::OPERATOR_RUNTIME_SERVER_STARTUP_BUDGET,
-        std::time::Duration::from_secs(5)
-    );
-    assert_eq!(
-        super::RUNTIME_SERVER_SUPERVISOR_EXECUTION_BUDGET,
-        std::time::Duration::from_millis(800)
-    );
-    assert!(
-        super::OPERATOR_RUNTIME_SERVER_STARTUP_BUDGET
-            > super::RUNTIME_SERVER_SUPERVISOR_EXECUTION_BUDGET
-    );
+#[tokio::test]
+async fn unchanged_provider_catalog_does_not_reconcile_runtime() {
+    let state_home = tempfile::tempdir().expect("isolated ASP State Home");
+    let disposition =
+        super::reconcile_runtime_server_after_provider_catalog_change(state_home.path(), false)
+            .await
+            .expect("unchanged catalog reconciliation");
+    assert_eq!(disposition, "current");
+}
+
+#[tokio::test]
+async fn provider_install_does_not_start_an_absent_runtime() {
+    let state_home = tempfile::tempdir().expect("isolated ASP State Home");
+    let disposition =
+        super::reconcile_runtime_server_after_provider_catalog_change(state_home.path(), true)
+            .await
+            .expect("absent Runtime reconciliation");
+    assert_eq!(disposition, "not-running");
 }

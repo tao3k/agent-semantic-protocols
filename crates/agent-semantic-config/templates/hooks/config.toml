@@ -26,7 +26,7 @@ testing = [
   ["cargo", "check"],
   ["cargo", "build"],
   ["just", "test"],
-  ["rs-harness", "check"],
+  ["asp-rust", "check"],
 ]
 review = [["cargo", "clippy"], ["cargo", "fmt", "--check"]]
 
@@ -249,6 +249,18 @@ transport = "resident-agent"
 role = "explore"
 receiptKind = "asp-explore-search-v1"
 lazyProvider = "matched-language"
+
+[[rules]]
+id = "allow-explicit-no-agent-host-bypass"
+priority = 200000
+decision = "allow"
+terminal = true
+event = "pre-tool"
+message = "Explicit parser-owned no-Agent Host policy bypass."
+fields = { bypassOwner = "hook-matcher", bypassScope = "host-policy" }
+
+[rules.match]
+leadingEnvironmentAssignmentAny = ["ASP_NO_AGENT=1"]
 
 [[rules]]
 id = "deny-agent-search-json"

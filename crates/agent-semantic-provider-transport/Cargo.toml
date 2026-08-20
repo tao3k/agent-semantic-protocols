@@ -22,5 +22,9 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 tracing = "0.1"
 
+http-body-util = "0.1"
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+
 [dev-dependencies]
 criterion = "0.8.2"

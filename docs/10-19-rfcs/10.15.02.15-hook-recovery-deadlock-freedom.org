@@ -21,22 +21,26 @@ typed target/lane, and scoped command that advances the state.
 
 * Architecture
 
-=ASP_NO_AGENT= is an entry-plane recovery override, not a configurable policy
-rule.  Its precedence is absolute:
+=ASP_NO_AGENT= has two explicit Host-Hook projections.  An inherited
+=ASP_NO_AGENT=1= is an entry-plane recovery override whose precedence is
+absolute:
 
 #+begin_example
 parse bounded Host envelope
-  -> detect process-environment or normalized command assignment ASP_NO_AGENT
+  -> detect process-environment ASP_NO_AGENT=1
   -> terminal allow receipt
   -> stop
 #+end_example
 
 The terminal branch MUST execute before workspace discovery, configuration or
 provider projection, mmap/file locks, Runtime or ASP Server access, lifecycle
-observation, and telemetry.  Presence of the variable is sufficient; the
-value is not interpreted.  Command-scoped assignments are recognized from the
-structured normalized shell-token projection, independent of the concrete
-shell or wrapper name. The complete recovery decision path, including bounded
+observation, and telemetry.  The inherited value must be exactly =1=.
+Command-scoped assignments are a separate declarative v1 Hook Matcher rule,
+recognized from the structured normalized shell-token projection by the
+generic matcher engine.  Its terminal allow decision may name
+=ASP_NO_AGENT=1= in configuration, but classifier orchestration MUST NOT contain
+that variable name or an equivalent special branch. The complete recovery
+decision path, including bounded
 payload parsing, MUST satisfy =hookDecisionCpuMicros < 1000=. This exclusive
 hard boundary measures work owned by Hook; =hookDecisionElapsedMicros= remains
 an observed wall receipt and MUST NOT be relabeled as deterministic algorithm

@@ -15,7 +15,7 @@ pub use catalog::{
     materialize_provider_routes, registered_language_descriptor_digest, registered_language_ids,
     registered_provider_catalog_identities, registered_provider_development_v1,
     registered_provider_id_v1, registered_provider_kind, registered_provider_method_invocation_v1,
-    registered_provider_projection_command_binding_v1, registered_query_pack_digest,
+    registered_provider_projection_command_binding, registered_query_pack_digest,
     schema_registry_provider_manifests, semantic_registry_digest,
 };
 #[cfg(test)]

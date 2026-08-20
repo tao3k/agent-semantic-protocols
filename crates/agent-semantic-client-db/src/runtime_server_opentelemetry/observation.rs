@@ -272,3 +272,25 @@ impl RuntimePerformanceObservation {
         self
     }
 }
+pub(super) fn push_optional(
+    attributes: &mut Vec<opentelemetry::KeyValue>,
+    key: &'static str,
+    value: Option<String>,
+) {
+    if let Some(value) = value.filter(|value| !value.is_empty()) {
+        attributes.push(opentelemetry::KeyValue::new(key, value));
+    }
+}
+
+pub(super) fn push_optional_u64(
+    attributes: &mut Vec<opentelemetry::KeyValue>,
+    key: &'static str,
+    value: Option<u64>,
+) {
+    if let Some(value) = value {
+        attributes.push(opentelemetry::KeyValue::new(
+            key,
+            i64::try_from(value).unwrap_or(i64::MAX),
+        ));
+    }
+}

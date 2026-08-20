@@ -23,7 +23,7 @@ fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
     )
     .expect("write cargo manifest");
     fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
-    super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
+    super::install_state_home_provider(&state_home, "rust", "asp-rust", "rs-harness");
 
     let activation_path = test_activation_path(&root, &state_parent);
     let mut activation =
@@ -110,7 +110,7 @@ fn missing_generated_activation_is_rebuilt_without_stale_fallback() {
     )
     .expect("write cargo manifest");
     fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
-    super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
+    super::install_state_home_provider(&state_home, "rust", "asp-rust", "rs-harness");
 
     let activation_path = test_activation_path(&root, &root);
     assert!(!activation_path.exists());
@@ -150,7 +150,7 @@ fn generated_activation_rebuild_failure_does_not_serve_old_activation() {
     .expect("write cargo manifest");
     fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
     let provider_bin =
-        super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
+        super::install_state_home_provider(&state_home, "rust", "asp-rust", "rs-harness");
 
     let activation_path = test_activation_path(&root, &root);
     load_or_sync_activation_with_state_home(&activation_path, &root, &state_home)
@@ -181,7 +181,7 @@ fn generated_activation_refreshes_a_new_digest_addressed_runtime_binary() {
     fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
     let state_parent = temp_root("runtime-binary-selection-drift-state");
     let state_home = state_parent.join(".agent-semantic-protocols");
-    super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
+    super::install_state_home_provider(&state_home, "rust", "asp-rust", "rs-harness");
 
     let first_digest = "a".repeat(64);
     let first_binary = state_home
@@ -273,7 +273,7 @@ fn generated_activation_sync_admits_a_newly_installed_nested_provider() {
         "def fixture():\n    return 1\n",
     )
     .expect("write Python candidate");
-    super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
+    super::install_state_home_provider(&state_home, "rust", "asp-rust", "rs-harness");
 
     let activation_path = test_activation_path(&root, &root);
     let initial = load_or_sync_activation_with_state_home(&activation_path, &root, &state_home)
@@ -285,7 +285,7 @@ fn generated_activation_sync_admits_a_newly_installed_nested_provider() {
             .all(|provider| provider.language_id != "python")
     );
 
-    super::install_state_home_provider(&state_home, "python", "py-harness", "py-harness");
+    super::install_state_home_provider(&state_home, "python", "asp-python", "py-harness");
     let refreshed = load_or_sync_activation_with_state_home(&activation_path, &root, &state_home)
         .expect("refresh provider generation");
     let python = refreshed
@@ -311,7 +311,7 @@ fn generated_activation_with_unknown_field_and_valid_receipt_rebuilds() {
     )
     .expect("write cargo manifest");
     fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
-    super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
+    super::install_state_home_provider(&state_home, "rust", "asp-rust", "rs-harness");
 
     let activation_path = test_activation_path(&root, &root);
     let runtime = load_or_sync_activation_with_state_home(&activation_path, &root, &state_home)
@@ -369,7 +369,7 @@ fn non_generated_activation_with_unknown_field_fails_closed() {
     )
     .expect("write cargo manifest");
     fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
-    super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
+    super::install_state_home_provider(&state_home, "rust", "asp-rust", "rs-harness");
     let activation_path = root.join("custom-activation.json");
     let activation =
         build_default_activation_with_state_home(&root, &state_home).expect("build activation");

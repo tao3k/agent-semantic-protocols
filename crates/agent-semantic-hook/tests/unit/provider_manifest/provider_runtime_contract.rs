@@ -60,22 +60,29 @@ fn julia_is_server_only_and_owns_one_http_runtime_contract() {
         .map(|manifest| serde_json::to_value(manifest).expect("serialize provider manifest"))
         .find(|manifest| manifest["languageId"] == "julia")
         .expect("Julia provider manifest");
-    assert_eq!(value["runtimeContract"]["transport"], "http-json-v1");
+    assert_eq!(value["runtimeContract"]["transport"], "http-json");
     assert_eq!(
-        value["runtimeContract"]["server"]["command"],
-        serde_json::json!(["server", "serve"])
+        value["runtimeContract"]["aspClientServer"]["command"],
+        serde_json::json!(["serve"])
     );
     assert_eq!(
-        value["runtimeContract"]["server"]["warmupPolicy"],
+        value["runtimeContract"]["aspClientServer"]["warmupPolicy"],
         "before-ready"
     );
     assert!(value.get("languageProjection").is_none());
     assert_eq!(
         value["runtimeContract"]["operations"],
-        serde_json::json!([{
-            "operation": "project-resolution-stdin",
-            "requestSchemaId": "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-request.v1.schema.json",
-            "responseSchemaId": "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-response.v1.schema.json"
-        }])
+        serde_json::json!([
+            {
+                "operation": "projection-batch-stdin",
+                "requestSchemaId": "https://schemas.agent-semantic-protocols.dev/provider-language-projection-batch-request.v1.schema.json",
+                "responseSchemaId": "https://schemas.agent-semantic-protocols.dev/provider-language-projection-batch-response.v1.schema.json"
+            },
+            {
+                "operation": "project-resolution-stdin",
+                "requestSchemaId": "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-request.v1.schema.json",
+                "responseSchemaId": "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-response.v1.schema.json"
+            }
+        ])
     );
 }

@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use agent_semantic_client_core::{ProviderRegistrySnapshot, ResolvedProvider};
+use agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind;
 use agent_semantic_client_db::{
     ClientDbSourceIndexPath, ClientDbSourceIndexProjectionCoverage, ClientDbSourceIndexQueryKey,
     ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector, ClientDbSourceIndexSelectorId,
@@ -19,6 +20,8 @@ use agent_semantic_content_identity::{
         build_exact_selector_projection_packet_v1, derive_parser_identity_digest_v1,
         derive_query_pack_identity_digest_v1,
     },
+    projection_evidence_context::ProjectionEvidenceContext,
+    semantic_projection::SemanticProjection,
     workspace_merkle_v1::WorkspacePathMerkleTreeV1,
 };
 use agent_semantic_provider_transport::ProviderRuntimeActorClient;
@@ -301,6 +304,52 @@ async fn project_provider(
     Ok(())
 }
 
+fn encode_semantic_projection(
+    projection_kind: ExactProjectionKind,
+    language_id: &str,
+    provider_id: &str,
+    selector: &str,
+    evidence_context_ref: &str,
+    payload: &serde_json::Value,
+) -> Result<Vec<u8>, String> {
+    match projection_kind {
+        ExactProjectionKind::CallableSkeleton => {
+            let payload = serde_json::from_value::<
+                agent_semantic_content_identity::callable_skeleton_projection::CallableSkeletonPayload,
+            >(payload.clone())
+            .map_err(|error| {
+                format!("decode provider callable-skeleton projection payload: {error}")
+            })?;
+            let envelope = SemanticProjection::new(
+                projection_kind.as_str(),
+                language_id,
+                provider_id,
+                selector,
+                evidence_context_ref,
+                "agent.semantic-protocols.callable-skeleton",
+                payload,
+            )
+            .map_err(|error| format!("build callable-skeleton projection envelope: {error}"))?;
+            serde_json::to_vec(&envelope)
+                .map_err(|error| format!("encode callable-skeleton projection envelope: {error}"))
+        }
+        ExactProjectionKind::Source => {
+            let envelope = SemanticProjection::new(
+                projection_kind.as_str(),
+                language_id,
+                provider_id,
+                selector,
+                evidence_context_ref,
+                "agent.semantic-protocols.exact-source",
+                payload.clone(),
+            )
+            .map_err(|error| format!("build source projection envelope: {error}"))?;
+            serde_json::to_vec(&envelope)
+                .map_err(|error| format!("encode source projection envelope: {error}"))
+        }
+    }
+}
+
 fn selector_receipts(
     provider: &ResolvedProvider,
     tree: &WorkspacePathMerkleTreeV1,
@@ -365,6 +414,14 @@ fn selector_receipts(
                     .iter()
                     .map(|scope| ClientDbSourceIndexQueryKey::from(scope.symbol.as_str())),
             );
+            let record_structural_selector = record.proof.structural_selector().to_owned();
+            if record_structural_selector != item.selector {
+                return Err("provider projection record selector drift".to_owned());
+            }
+            let evidence_context = ProjectionEvidenceContext::from_exact_selector_proof(
+                provider.provider_id.as_str(),
+                &record.proof,
+            );
             Ok(ClientDbSourceIndexSelector {
                 owner_path: ClientDbSourceIndexPath::new(&owner.owner_path),
                 provider_id: provider.provider_id.clone(),
@@ -382,16 +439,19 @@ fn selector_receipts(
                             projection.projection_kind.as_str(),
                         )
                         .map_err(|error| format!("decode provider projection kind: {error}"))?;
-                        serde_json::to_vec(&projection.payload)
-                            .map(|bytes| {
-                                agent_semantic_client_db::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot {
-                                    projection_kind,
-                                    bytes,
-                                }
-                            })
-                            .map_err(|error| {
-                                format!("encode provider derived projection payload: {error}")
-                            })
+                        let bytes = encode_semantic_projection(
+                            projection_kind,
+                            provider.language_id.as_str(),
+                            provider.provider_id.as_str(),
+                            item.selector.as_str(),
+                            evidence_context.evidence_context_ref.as_str(),
+                            &projection.payload,
+                        )?;
+                        Ok(agent_semantic_client_db::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot {
+                            projection_kind,
+                            bytes,
+                            evidence_context: Some(evidence_context.clone()),
+                        })
                     })
                     .collect::<Result<Vec<_>, String>>()?,
             })

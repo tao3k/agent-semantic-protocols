@@ -61,7 +61,7 @@ fn provider(
     let _runtime_catalog_loader = catalog::load_runtime_provider_catalog;
     catalog::GlobalProviderCatalogProvider {
         runtime_contract: serde_json::from_value(serde_json::json!({
-            "transport": "runtime-ipc-v1",
+            "transport": "runtime-ipc",
             "operations": [{
                 "operation": "project-resolution-stdin",
                 "requestSchemaId": "agent.semantic-protocols.provider-project-resolution-request.v1",
@@ -305,17 +305,28 @@ async fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
     let launch = runtime_catalog
         .runtime_launch(&state_home, "rust")
         .expect("repaired catalog must prepare the resident Rust provider runtime");
-    assert!(launch.key.contains("rust:rs-harness:"));
-    let spec = match launch.spec {
-        catalog::RuntimeProviderLaunchSpec::Process(spec) => spec,
-        catalog::RuntimeProviderLaunchSpec::HttpServer(spec) => {
-            let _ = spec.args.len();
-            panic!("Rust provider must remain a process runtime")
-        }
-    };
+    assert!(launch.key.contains("rust:asp-rust:"));
+    let catalog::RuntimeProviderLaunchSpec::HttpServer(spec) = launch.spec;
+    assert_eq!(spec.args.last().map(String::as_str), Some("serve"));
     assert_eq!(
-        spec.args[spec.args.len().saturating_sub(2)..],
-        ["runtime", "serve"]
+        spec.env.get("ASP_PROVIDER_ID").map(String::as_str),
+        Some("asp-rust")
+    );
+    assert_eq!(
+        spec.env.get("ASP_PROVIDER_LANGUAGE_ID").map(String::as_str),
+        Some("rust")
+    );
+    assert_eq!(
+        spec.env.get("ASP_PROVIDER_ARTIFACT_DIGEST"),
+        Some(&launch.expected_receipt.artifact_digest)
+    );
+    assert_eq!(
+        spec.env.get("ASP_PROVIDER_MANIFEST_DIGEST"),
+        Some(&launch.expected_receipt.manifest_digest)
+    );
+    assert_eq!(
+        spec.env.get("ASP_PROVIDER_RUNTIME_CONTRACT_DIGEST"),
+        Some(&launch.expected_receipt.contract_digest)
     );
     launch
         .expected_receipt
@@ -344,12 +355,21 @@ async fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
         "../../../../../schemas/provider-runtime-contract-descriptor.v1.schema.json"
     ))
     .expect("decode provider runtime contract schema");
+    let asp_client_server_schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../schemas/asp-client-server-descriptor.v1.schema.json"
+    ))
+    .expect("decode ASP client-server descriptor schema");
     let registry = referencing::Registry::new()
     .add(
         "https://schemas.agent-semantic-protocols.dev/provider-runtime-contract-descriptor.v1.schema.json",
         referencing::Resource::from_contents(runtime_contract_schema),
     )
     .expect("register provider runtime contract schema")
+    .add(
+        "https://schemas.agent-semantic-protocols.dev/asp-client-server-descriptor.v1.schema.json",
+        referencing::Resource::from_contents(asp_client_server_schema),
+    )
+    .expect("register ASP client-server descriptor schema")
     .prepare()
     .expect("prepare provider runtime contract schema registry");
     let catalog_validator = jsonschema::options()

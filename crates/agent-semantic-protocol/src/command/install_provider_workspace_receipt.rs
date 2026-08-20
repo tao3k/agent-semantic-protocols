@@ -5,7 +5,7 @@ use agent_semantic_runtime::{ensure_project_provider_lock_dir, project_runtime_s
 use super::BuiltProviderWorkspace;
 
 #[allow(clippy::too_many_arguments)]
-pub(in super::super) fn record_registered_provider_workspace_install(
+pub(in super::super) async fn record_registered_provider_workspace_install(
     language_id: &str,
     provider_id: &str,
     registered_binary: &str,
@@ -29,7 +29,7 @@ pub(in super::super) fn record_registered_provider_workspace_install(
         .canonicalize()
         .map_err(|error| format!("failed to canonicalize provider sourceRoot: {error}"))?;
     let runtime_state = project_runtime_state(project_root.unwrap_or(invocation_root))?;
-    let _reconciliation_guard =
+    let reconciliation_guard =
         super::super::super::protocol_binary::ProtocolBinaryReconciliationGuard::acquire(
             &runtime_state.protocol_home,
         )?;
@@ -105,8 +105,17 @@ pub(in super::super) fn record_registered_provider_workspace_install(
         &runtime_state.provider_lock_dir,
         &binary_artifact_root,
     )?;
+    drop(reconciliation_guard);
+    let runtime_server_reconcile =
+        crate::server::runtime_server::reconcile_runtime_server_after_provider_catalog_change(
+            &runtime_state.protocol_home,
+            global_provider_catalog
+                .as_ref()
+                .is_some_and(|publication| publication.catalog_write),
+        )
+        .await?;
     println!(
-        "[asp-install] provider={} language={} scope={} installMode=develop-workspace-tree sourceKind=develop-workspace-tree devRoot={} target={} binary={} artifactDigest={} artifactLeafCount={} artifactEntrypoint={} installedPath={} lock={} switch=atomic globalProviderCatalog={}",
+        "[asp-install] provider={} language={} scope={} installMode=develop-workspace-tree sourceKind=develop-workspace-tree devRoot={} target={} binary={} artifactDigest={} artifactLeafCount={} artifactEntrypoint={} installedPath={} lock={} switch=atomic globalProviderCatalog={} globalProviderCatalogWrite={} runtimeServerReconcile={}",
         provider_id,
         language_id,
         scope,
@@ -119,8 +128,13 @@ pub(in super::super) fn record_registered_provider_workspace_install(
         published.installed_path.display(),
         lock_path.display(),
         global_provider_catalog
-            .as_deref()
+            .as_ref()
+            .map(|publication| publication.catalog_generation.as_str())
             .unwrap_or("not-applicable"),
+        global_provider_catalog
+            .as_ref()
+            .is_some_and(|publication| publication.catalog_write),
+        runtime_server_reconcile,
     );
     Ok(())
 }
@@ -169,7 +183,8 @@ fn publish_global_catalog_if_needed(
     runtime_bin_dir: &Path,
     provider_lock_dir: &Path,
     binary_artifact_root: &Path,
-) -> Result<Option<String>, String> {
+) -> Result<Option<crate::command::global_provider_catalog::GlobalProviderCatalogPublication>, String>
+{
     if !matches!(install_scope, super::super::InstallScope::Global) {
         return Ok(None);
     }
@@ -182,5 +197,5 @@ fn publish_global_catalog_if_needed(
         state_home,
         &provider_binaries.provider_receipts,
     )
-    .map(|publication| Some(publication.catalog_generation))
+    .map(Some)
 }

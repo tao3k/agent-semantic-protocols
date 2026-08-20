@@ -35,6 +35,11 @@ fn candidate_identity_for(digest: &str) -> WorkspaceGenerationCandidateIdentity 
 
 fn ready_receipt(workspace_identity: &str) -> WorkspaceGenerationAdmissionReceipt {
     WorkspaceGenerationAdmissionReceipt {
+        trigger: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionTrigger::QueryDemand,
+        admission_mode: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionMode::ColdTargeted,
+        build_owner: "runtime-server".to_owned(),
+        cancellation_authority: "runtime-server".to_owned(),
+        request_lifetime_independent: true,
         schema_id: WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID.to_owned(),
         schema_version: "1".to_owned(),
         workspace_identity: workspace_identity.to_owned(),
@@ -102,6 +107,39 @@ fn ready_admission_requires_generation_commit_evidence() {
 }
 
 #[test]
+fn ready_admission_with_commit_but_missing_resident_is_rejected() {
+    let source = include_str!("../../src/workspace_db_ipc_server_generation.rs");
+    assert!(
+        source.contains(".lease(workspace_identity, project_root)") && source.contains(".is_ok()")
+    );
+    assert!(
+        source.contains("resident-publication-missing") || source.contains("generation-not-ready")
+    );
+    assert!(source.contains("resident_source_index_ready"));
+}
+
+#[test]
+fn ready_admission_with_commit_but_missing_source_index_is_rejected() {
+    let source = include_str!("../../src/workspace_db_ipc_server_generation.rs");
+    assert!(source.contains("resident_source_index_ready(workspace_identity, project_root)"));
+    let projection =
+        include_str!("../../src/runtime_server_workspace/registry/projection_slots.rs");
+    assert!(projection.contains("resident source-index generation is missing"));
+}
+
+#[test]
+fn empty_source_index_projection_cannot_publish_ready_generation() {
+    let writer = include_str!("../../src/runtime_server_workspace/registry/writer_publication.rs");
+    let canonical =
+        include_str!("../../src/runtime_server_workspace/registry/canonical_publication.rs");
+    for source in [writer, canonical] {
+        assert!(source.contains("source-index completeness gate rejected publication"));
+        assert!(source.contains("generation.owners.is_empty()"));
+        assert!(source.contains("reasonKind=source-index-resident-index-missing"));
+    }
+}
+
+#[test]
 fn cold_restore_publishes_committed_generation_without_live_checkout_probe() {
     let source = include_str!("../../src/runtime_server/core.rs");
     assert!(source.contains("canonical_materialization_matches_admitted_generation"));
@@ -123,6 +161,7 @@ async fn concurrent_256_admission_requests_are_single_flight() {
               candidate,
               _build_mode,
               _changed_paths,
+              _provider_target,
               _cancellation| {
             let build_count = Arc::clone(&build_count);
             let release = Arc::clone(&release);
@@ -195,6 +234,7 @@ async fn project_roots_have_independent_admission_flights() {
               candidate,
               _build_mode,
               _changed_paths,
+              _provider_target,
               _cancellation| {
             let roots = Arc::clone(&roots);
             Box::pin(async move {
@@ -266,7 +306,7 @@ async fn multi_workspace_multi_session_admission_is_in_process_single_flight_and
         let peak_builds = Arc::clone(&peak_builds);
         let build_count = Arc::clone(&build_count);
         let release = Arc::clone(&release);
-        move |_, _, candidate, _, _changed_paths, _cancellation| {
+        move |_, _, candidate, _, _changed_paths, _provider_target, _cancellation| {
             let active_builds = Arc::clone(&active_builds);
             let peak_builds = Arc::clone(&peak_builds);
             let build_count = Arc::clone(&build_count);
@@ -386,6 +426,7 @@ async fn ensure_observes_ready_attempt_without_starting_another_build() {
               candidate,
               _build_mode,
               _changed_paths,
+              _provider_target,
               _cancellation| {
             let build_count = Arc::clone(&build_count);
             Box::pin(async move {
@@ -434,6 +475,7 @@ async fn ensure_schedules_once_without_waiting_for_generation_build() {
               candidate,
               _build_mode,
               _changed_paths,
+              _provider_target,
               _cancellation| {
             let build_count = Arc::clone(&build_count);
             let release = Arc::clone(&release);
@@ -541,7 +583,7 @@ async fn supervisor_restores_registered_workspaces_before_live_git_reconciliatio
         let maximum_active = Arc::clone(&maximum_active);
         let build_count = Arc::clone(&build_count);
         let restore_only_build_count = Arc::clone(&restore_only_build_count);
-        move |_, _, candidate, build_mode, _changed_paths, _cancellation| {
+        move |_, _, candidate, build_mode, _changed_paths, _provider_target, _cancellation| {
             let active = Arc::clone(&active);
             let maximum_active = Arc::clone(&maximum_active);
             let build_count = Arc::clone(&build_count);
@@ -601,6 +643,7 @@ async fn failed_generation_build_retries_only_on_explicit_admission() {
               _candidate,
               _build_mode,
               _changed_paths,
+              _provider_target,
               _cancellation| {
             let build_count = Arc::clone(&build_count);
             let failed = Arc::clone(&failed);

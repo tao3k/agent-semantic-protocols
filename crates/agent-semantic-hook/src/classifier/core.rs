@@ -184,9 +184,12 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
     {
         decision
     } else if request.event == "pre-tool"
-        && let Some(decision) = classify_tool_actions(&request, &actions)
+        && let Some(candidate) = classify_tool_actions(&request, &actions)
     {
-        decision
+        if candidate.terminal {
+            return candidate.decision;
+        }
+        candidate.decision
     } else {
         let subject = actions.first().map(subject_for_action).unwrap_or_default();
         allow(request.platform, request.event, subject)
@@ -385,6 +388,12 @@ pub struct ShellReadSourceKey {
 /// no Host tool name is matched by the cache layer itself.
 pub fn direct_read_source_key(payload: &Value) -> Option<DirectReadSourceKey> {
     let actions = collect_payload_tool_actions(payload);
+    direct_read_source_key_from_actions(&actions)
+}
+
+pub(super) fn direct_read_source_key_from_actions(
+    actions: &[ToolAction],
+) -> Option<DirectReadSourceKey> {
     let mut relevant = actions
         .iter()
         .filter(|action| action.operation == crate::tool_action::OperationIntent::DirectRead);
@@ -416,6 +425,12 @@ pub fn direct_read_source_extension(payload: &Value) -> Option<String> {
 /// candidates.
 pub fn shell_read_source_keys(payload: &Value) -> Vec<ShellReadSourceKey> {
     let actions = collect_payload_tool_actions(payload);
+    shell_read_source_keys_from_actions(&actions)
+}
+
+pub(super) fn shell_read_source_keys_from_actions(
+    actions: &[ToolAction],
+) -> Vec<ShellReadSourceKey> {
     let mut relevant = actions.iter().filter(|action| {
         action.surface == crate::tool_action::ToolSurface::CodexShell
             && action.operation == crate::tool_action::OperationIntent::ShellCommand
@@ -586,6 +601,7 @@ fn classify_runtime_binary_action_v1(
     );
     Some(crate::hook_config::HookPolicyCandidate {
         priority: RUNTIME_BINARY_POLICY_PRIORITY,
+        terminal: false,
         decision,
     })
 }
@@ -598,7 +614,7 @@ pub fn runtime_binary_policy_decision_v1(
     event: &str,
     payload: &Value,
 ) -> Option<HookDecision> {
-    if event != "pre-tool" {
+    if event != "pre-tool" || !payload_may_target_runtime_binary_v1(payload) {
         return None;
     }
     let actions = collect_payload_tool_actions(payload);
@@ -620,10 +636,37 @@ pub fn runtime_binary_policy_decision_v1(
     None
 }
 
+/// Reject the common non-provider command path before constructing a second
+/// shell AST. The provider registry remains the identity authority; this is
+/// only a constant-time negative gate for the config-independent kernel.
+fn payload_may_target_runtime_binary_v1(payload: &Value) -> bool {
+    if !root_session_is_known_v1(payload) {
+        return false;
+    }
+    let tool_input = payload
+        .get("tool_input")
+        .or_else(|| payload.get("toolInput"))
+        .or_else(|| payload.get("parameters"))
+        .or_else(|| payload.get("input"))
+        .or_else(|| payload.get("arguments"))
+        .unwrap_or(payload);
+    let command = tool_input
+        .get("command")
+        .or_else(|| tool_input.get("cmd"))
+        .and_then(Value::as_str);
+    let Some(executable) = command.and_then(direct_executable_token_v1) else {
+        return false;
+    };
+    matches!(
+        crate::provider_registry::classify_runtime_executable_v1(executable),
+        crate::provider_registry::RuntimeBinaryClassificationV1::RegisteredProviderInternal(_)
+    )
+}
+
 fn classify_tool_actions(
     request: &HookClassificationRequest<'_>,
     actions: &[ToolAction],
-) -> Option<HookDecision> {
+) -> Option<crate::hook_config::HookPolicyCandidate> {
     let HookClassificationRequest {
         registry,
         config,
@@ -643,12 +686,14 @@ fn classify_tool_actions(
         let Some(candidate) = higher_priority_candidate(runtime_candidate, config_candidate) else {
             continue;
         };
-        let decision = candidate.decision;
-        match decision.decision {
+        match candidate.decision.decision {
             crate::DecisionKind::Allow => {
-                first_allow.get_or_insert(decision);
+                if candidate.terminal {
+                    return Some(candidate);
+                }
+                first_allow.get_or_insert(candidate);
             }
-            crate::DecisionKind::Block | crate::DecisionKind::Deny => return Some(decision),
+            crate::DecisionKind::Block | crate::DecisionKind::Deny => return Some(candidate),
         }
     }
     first_allow

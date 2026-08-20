@@ -51,7 +51,7 @@
     },
     "providerId": {
       "type": "string",
-      "minLength": 1
+      "pattern": "^asp-[a-z0-9][a-z0-9-]*$"
     },
     "namespace": {
       "type": "string",
@@ -92,6 +92,11 @@
       "$ref": "#/$defs/hookRouteBindings"
     }
   },
+  "allOf": [
+    {
+      "$ref": "#/$defs/canonicalProviderIdentity"
+    }
+  ],
   "oneOf": [
     {
       "required": [
@@ -115,6 +120,52 @@
     }
   ],
   "$defs": {
+    "canonicalProviderIdentity": {
+      "oneOf": [
+        {
+          "properties": {
+            "languageId": {"const": "gerbil-scheme"},
+            "providerId": {"const": "asp-gerbil-scheme"}
+          }
+        },
+        {
+          "properties": {
+            "languageId": {"const": "julia"},
+            "providerId": {"const": "asp-julia"}
+          }
+        },
+        {
+          "properties": {
+            "languageId": {"const": "md"},
+            "providerId": {"const": "asp-md"}
+          }
+        },
+        {
+          "properties": {
+            "languageId": {"const": "org"},
+            "providerId": {"const": "asp-org"}
+          }
+        },
+        {
+          "properties": {
+            "languageId": {"const": "python"},
+            "providerId": {"const": "asp-python"}
+          }
+        },
+        {
+          "properties": {
+            "languageId": {"const": "rust"},
+            "providerId": {"const": "asp-rust"}
+          }
+        },
+        {
+          "properties": {
+            "languageId": {"const": "typescript"},
+            "providerId": {"const": "asp-typescript"}
+          }
+        }
+      ]
+    },
     "stringArray": {
       "type": "array",
       "items": {

@@ -81,7 +81,13 @@ async fn generation_admission_disk_bytes_and_rss_stay_within_gate() {
     let build_count = Arc::new(AtomicUsize::new(0));
     let admission = Arc::new(WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
-        move |_workspace, _root, candidate, _mode, _changed_paths, _cancellation| {
+        move |_workspace,
+              _root,
+              candidate,
+              _mode,
+              _changed_paths,
+              _provider_target,
+              _cancellation| {
             build_count.fetch_add(1, Ordering::Relaxed);
             Box::pin(async move { completed_generation(candidate) })
         }

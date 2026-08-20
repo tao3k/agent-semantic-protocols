@@ -79,12 +79,11 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "instruction", "presentation", "why"],
+        "required": ["id", "instruction", "presentation"],
         "properties": {
           "id": {"type": "string", "minLength": 1},
           "instruction": {"type": "string", "minLength": 1},
-          "presentation": {"enum": ["action", "pane"]},
-          "why": {"type": "string", "minLength": 1}
+          "presentation": {"enum": ["action", "pane"]}
         }
       }
     }

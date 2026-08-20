@@ -112,7 +112,7 @@
       "type": "string"
     },
     "projectionPayload": {
-      "$ref": "https://agent-semantic-protocols.dev/schemas/callable-skeleton-projection.v1.schema.json"
+      "$ref": "https://agent-semantic-protocols.dev/schemas/callable-skeleton.schema.json"
     },
     "sourceContentDigest": {
       "type": "string",

@@ -386,6 +386,15 @@
       "allOf": [
         {
           "if": {
+            "required": ["terminal"],
+            "properties": { "terminal": { "const": true } }
+          },
+          "then": {
+            "properties": { "decision": { "const": "allow" } }
+          }
+        },
+        {
+          "if": {
             "required": ["decisionMaterializer"],
             "properties": {
               "decisionMaterializer": { "type": "string" }
@@ -408,6 +417,10 @@
         "priority": {
           "type": "integer"
         },
+        "terminal": {
+          "description": "When true, a winning allow rule terminates Hook policy evaluation.",
+          "type": "boolean"
+        },
         "intent": {
           "type": "string",
           "minLength": 1
@@ -422,7 +435,7 @@
           }
         },
         "decision": {
-          "enum": ["deny", "block"]
+          "enum": ["allow", "deny", "block"]
         },
         "decisionMaterializer": {
           "type": ["string", "null"],
@@ -549,6 +562,15 @@
               "type": "string",
               "minLength": 1
             }
+          }
+        },
+        "leadingEnvironmentAssignmentAny": {
+          "description": "Exact NAME=VALUE assignments matched only in the leading assignment block of the first parsed shell stage.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*=.*$"
           }
         },
         "commandContainsAny": {

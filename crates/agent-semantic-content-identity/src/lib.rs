@@ -95,7 +95,9 @@ pub mod exact_structural_selector;
 #[cfg(test)]
 #[path = "../tests/unit/overlay.rs"]
 mod overlay_tests;
+pub mod projection_evidence_context;
 pub mod provider_projection_relation;
+pub mod semantic_projection;
 pub mod workspace_generation_evidence;
 pub mod workspace_memory_generation_segment;
 pub mod workspace_merkle_v1;

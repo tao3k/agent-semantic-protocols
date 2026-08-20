@@ -248,30 +248,34 @@ agent-tools-install-jl:
 
 # Develop mode: build and install the Gerbil Scheme provider from this checkout.
 agent-tools-install-gerbil:
-    @just agent-tools-install-language gerbil-scheme
+    @env -u CC -u SDKROOT just agent-tools-install-language gerbil-scheme
 
 agent-tools-build-gerbil bin_dir="":
     @set -e; \
       repo_root="$PWD"; \
-      bin_dir="{{bin_dir}}"; \
-    if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-{{asp_runtime_bin}}}"; fi; \
-      mkdir -p "${bin_dir}"; \
+      package_dir="${repo_root}/{{gerbil_harness_project}}"; \
+      artifact_root="${package_dir}/build/workspace-provider"; \
+      cd "${package_dir}"; \
+      env -u CC -u SDKROOT \
+        GERBIL_PATH="${package_dir}/.gerbil" \
+        ASP_GERBIL_SCHEME_WORKSPACE_ARTIFACT_ROOT="${artifact_root}" \
+        gxi provider/workspace-build.ss; \
+      provider_binary="${artifact_root}/bin/asp-gerbil-scheme"; \
+      test -x "${provider_binary}"; \
+      if [ -n "{{bin_dir}}" ]; then \
+        mkdir -p "{{bin_dir}}"; \
+        cp "${provider_binary}" "{{bin_dir}}/asp-gerbil-scheme"; \
+      fi; \
+      echo "[agent-tools-build] provider=asp-gerbil-scheme artifactRoot=${artifact_root} binary=${provider_binary}"
+
+test-gerbil-provider-http-json: agent-tools-build-gerbil
+    @set -e; \
+      repo_root="$PWD"; \
       package_dir="${repo_root}/{{gerbil_harness_project}}"; \
       cd "${package_dir}"; \
-      if [ "$(uname -s)" = "Darwin" ]; then \
-        env SDKROOT= CC="$(xcrun --find clang)" GERBIL_PATH="${package_dir}/.gerbil" SEMANTIC_AGENT_BIN_DIR="${bin_dir}" gxi \
-          -e '(import :gslph/src/build-api/native-build)' \
-          -e '(gslph/src/build-api/native-build#install-target #f #f #f #f #f #t (quote asp))'; \
-      else \
-        env GERBIL_PATH="${package_dir}/.gerbil" SEMANTIC_AGENT_BIN_DIR="${bin_dir}" gxi \
-          -e '(import :gslph/src/build-api/native-build)' \
-          -e '(gslph/src/build-api/native-build#install-target #f #f #f #f #f #t (quote asp))'; \
-      fi; \
-    launcher="${bin_dir}/gslph"; \
-      test -x "${launcher}"; \
-      test -x "${bin_dir}/gslph"; \
-      "${bin_dir}/gslph" --help >/dev/null; \
-      echo "[agent-tools-install] provider=gslph installMode=develop-workspace source=justfile-native-build installedPath=${bin_dir}/gslph"
+      env -u CC -u SDKROOT GERBIL_PATH="${package_dir}/.gerbil" \
+        gxc -O src/runtime/provider-operation.ss; \
+      env -u CC -u SDKROOT gxtest t/provider-http-json-server-test.ss
 
 agent-tools-install-gx bin_dir="":
     @just agent-tools-build-gerbil "{{bin_dir}}"

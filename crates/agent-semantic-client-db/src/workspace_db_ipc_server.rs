@@ -13,44 +13,6 @@ use crate::workspace_db_ipc::{
 };
 use crate::{ProviderSearchWorkspaceSession, WorkspaceDbRegistry};
 
-/// Serve one framed health request, validating workspace, epoch, and binding token.
-pub async fn serve_one_workspace_db_ipc_request(
-    listener: &UnixListener,
-    endpoint: &WorkspaceDbOwnerEndpoint,
-) -> Result<(), String> {
-    let (mut stream, _) = listener
-        .accept()
-        .await
-        .map_err(|error| format!("failed to accept workspace owner request: {error}"))?;
-    let request: WorkspaceDbIpcRequest = read_frame(&mut stream).await?;
-    let result = if request.workspace_identity == endpoint.workspace_identity
-        && request.transport_contract_digest == endpoint.transport_contract_digest
-        && request.owner_epoch == endpoint.owner_epoch
-        && request.binding_token == endpoint.binding_token
-    {
-        WorkspaceDbIpcResult::Healthy
-    } else {
-        WorkspaceDbIpcResult::Failed {
-            code: "workspace-owner-binding-mismatch".to_owned(),
-            message: "request workspace, transport contract, epoch, or token does not match owner"
-                .to_owned(),
-        }
-    };
-    write_frame(
-        &mut stream,
-        &WorkspaceDbIpcResponse {
-            schema_id: WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID.to_owned(),
-            schema_version: WORKSPACE_DB_OWNER_SCHEMA_VERSION.to_owned(),
-            workspace_identity: endpoint.workspace_identity.clone(),
-            transport_contract_digest: endpoint.transport_contract_digest.clone(),
-            owner_epoch: endpoint.owner_epoch,
-            request_id: request.request_id,
-            result,
-        },
-    )
-    .await
-}
-
 /// Serve one real workspace-session operation through the unique owner registry.
 pub async fn serve_one_workspace_db_session_request(
     listener: &UnixListener,
@@ -241,7 +203,23 @@ mod dispatch;
 #[path = "workspace_db_ipc_server_exact_projection.rs"]
 mod exact_projection;
 #[path = "workspace_db_ipc_server_generation.rs"]
-mod generation;
+pub(crate) mod generation;
+#[cfg(test)]
+pub(crate) use generation::require_or_submit_terminal_generation_for_read;
+#[cfg(test)]
+pub(crate) fn resident_read_query_targets_for_test(
+    operation: &crate::workspace_db_ipc::WorkspaceDbIpcOperation,
+    project_root: &std::path::Path,
+) -> Result<Vec<std::path::PathBuf>, String> {
+    generation::resident_read_query_targets(operation, project_root)
+}
+
+#[cfg(test)]
+pub(crate) fn resident_read_query_provider_target_for_test(
+    operation: &crate::workspace_db_ipc::WorkspaceDbIpcOperation,
+) -> Option<crate::runtime_server_admission::WorkspaceGenerationProviderTarget> {
+    generation::resident_read_query_provider_target(operation)
+}
 #[path = "workspace_db_ipc_server_graph_turbo.rs"]
 mod graph_turbo;
 
@@ -340,11 +318,14 @@ pub async fn serve_runtime_server_workspace_stream(
             }
         } else if let Some(project_root) =
             generation::resident_read_project_root(&request.operation)
-            && let Err(message) = generation::require_terminal_generation_for_read(
-                generation_admission.map(std::sync::Arc::as_ref),
+            && let Err(message) = generation::require_or_submit_terminal_generation_for_operation(
+                memory_registry,
+                generation_admission,
                 &request.workspace_identity,
                 project_root,
+                &request.operation,
             )
+            .await
         {
             WorkspaceDbIpcResult::Failed {
                 code: "active-workspace-generation-required".to_owned(),
@@ -368,21 +349,50 @@ pub async fn serve_runtime_server_workspace_stream(
                     language_id: _,
                     projection_kind,
                     structural_selector,
-                } => match memory_registry
-                    .read_projection_selector(
-                        &request.workspace_identity,
-                        Path::new(&project_root),
-                        projection_kind,
-                        &structural_selector,
-                    )
-                    .await
-                {
-                    Ok(read) => WorkspaceDbIpcResult::RuntimeSelector { read },
-                    Err(message) => WorkspaceDbIpcResult::Failed {
-                        code: "runtime-server-selector-read-failed".to_owned(),
-                        message,
-                    },
-                },
+                } => {
+                    let evidence_started = tokio::time::Instant::now();
+                    let counters_before = memory_registry.data_plane_counters();
+                    match memory_registry
+                        .read_projection_selector(
+                            &request.workspace_identity,
+                            Path::new(&project_root),
+                            projection_kind,
+                            &structural_selector,
+                        )
+                        .await
+                    {
+                        Ok(read) => {
+                            let counters = memory_registry
+                                .data_plane_counters()
+                                .delta_since(&counters_before);
+                            let (generation_digest, root_digest, read_state) =
+                                resident_read::selector_identity(&read);
+                            let evidence = resident_read::evidence(
+                                request.request_id.clone(),
+                                request.workspace_identity.clone(),
+                                generation_digest,
+                                root_digest,
+                                read_state,
+                                evidence_started,
+                                resident_read::counters(counters),
+                            );
+                            if let Err(error) = resident_read::record_terminal(
+                                telemetry_sender,
+                                &evidence,
+                                "runtime-resident-runtime-selector",
+                            ) {
+                                return Err(format!(
+                                    "runtime-resident-read-telemetry-failed: {error}"
+                                ));
+                            }
+                            WorkspaceDbIpcResult::RuntimeSelector { read, evidence }
+                        }
+                        Err(message) => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-selector-read-failed".to_owned(),
+                            message,
+                        },
+                    }
+                }
                 WorkspaceDbIpcOperation::ProviderSearch {
                     operation_id,
                     project_root,
@@ -457,6 +467,59 @@ pub async fn serve_runtime_server_workspace_stream(
                         }
                     }
                 }
+                WorkspaceDbIpcOperation::ReadRuntimeExactProjection {
+                    project_root,
+                    language_id: _,
+                    projection_kind,
+                    structural_selector,
+                } => {
+                    let evidence_started = tokio::time::Instant::now();
+                    let counters_before = memory_registry.data_plane_counters();
+                    match memory_registry
+                        .read_projection_selector(
+                            &request.workspace_identity,
+                            Path::new(&project_root),
+                            projection_kind,
+                            &structural_selector,
+                        )
+                        .await
+                    {
+                        Ok(read) => {
+                            let counters = memory_registry
+                                .data_plane_counters()
+                                .delta_since(&counters_before);
+                            let (generation_digest, root_digest, read_state) = match &read {
+                            crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead::Projection { generation_digest, root_digest, .. } => (generation_digest.clone(), root_digest.clone(), "projection"),
+                            crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead::ProjectionMissing { generation_digest, root_digest, .. } => (generation_digest.clone(), root_digest.clone(), "projection-missing"),
+                            crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead::ProjectionScopeOmitted { generation_digest, root_digest, .. } => (generation_digest.clone(), root_digest.clone(), "projection-scope-omitted"),
+                            _ => (String::new(), String::new(), "other"),
+                        };
+                            let evidence = resident_read::evidence(
+                                request.request_id.clone(),
+                                request.workspace_identity.clone(),
+                                generation_digest,
+                                root_digest,
+                                read_state,
+                                evidence_started,
+                                resident_read::counters(counters),
+                            );
+                            if let Err(error) = resident_read::record_terminal(
+                                telemetry_sender,
+                                &evidence,
+                                "runtime-resident-exact-projection",
+                            ) {
+                                return Err(format!(
+                                    "runtime-resident-read-telemetry-failed: {error}"
+                                ));
+                            }
+                            WorkspaceDbIpcResult::RuntimeSelector { read, evidence }
+                        }
+                        Err(message) => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-exact-projection-read-failed".to_owned(),
+                            message,
+                        },
+                    }
+                }
                 WorkspaceDbIpcOperation::ReadRuntimeOwner {
                     project_root,
                     owner_path,
@@ -476,26 +539,16 @@ pub async fn serve_runtime_server_workspace_stream(
                 },
                 WorkspaceDbIpcOperation::ReadRuntimeMerkleOwner {
                     request: merkle_request,
-                } => match merkle_request.validate() {
-                    Ok(()) => match memory_registry
-                        .read_projection_merkle_owner(
-                            &request.workspace_identity,
-                            Path::new(&merkle_request.project_root),
-                            &merkle_request.owner_path,
-                        )
-                        .await
-                    {
-                        Ok(read) => WorkspaceDbIpcResult::RuntimeMerkleOwner { read },
-                        Err(message) => WorkspaceDbIpcResult::Failed {
-                            code: "runtime-server-merkle-owner-read-failed".to_owned(),
-                            message,
-                        },
-                    },
-                    Err(message) => WorkspaceDbIpcResult::Failed {
-                        code: "runtime-server-merkle-owner-request-invalid".to_owned(),
-                        message,
-                    },
-                },
+                } => {
+                    resident_read::read_merkle_owner(
+                        memory_registry,
+                        &request.workspace_identity,
+                        &request.request_id,
+                        merkle_request,
+                        telemetry_sender,
+                    )
+                    .await
+                }
                 WorkspaceDbIpcOperation::ProjectTreeSitterQuery {
                     project_root,
                     language_id,
@@ -517,6 +570,8 @@ pub async fn serve_runtime_server_workspace_stream(
                 } => {
                     exact_projection::provider_owner(
                         runtime_search_service,
+                        memory_registry.as_ref(),
+                        request.request_id.clone(),
                         &request.workspace_identity,
                         project_root,
                         language_id,
@@ -626,6 +681,21 @@ pub async fn serve_runtime_server_workspace_stream(
                         generation_admission,
                         &request.workspace_identity,
                         project_root,
+                    )
+                    .await
+                }
+                WorkspaceDbIpcOperation::AdmitRuntimeGenerationForRead {
+                    project_root,
+                    language_id,
+                    provider_id,
+                } => {
+                    generation::admit_generation_for_read(
+                        memory_registry,
+                        generation_admission,
+                        &request.workspace_identity,
+                        project_root,
+                        language_id,
+                        provider_id,
                     )
                     .await
                 }
@@ -744,9 +814,14 @@ pub async fn serve_runtime_server_workspace_stream(
                 WorkspaceDbIpcOperation::ReadSourceIndex {
                     request: lookup_request,
                 }
+                | WorkspaceDbIpcOperation::ReadRuntimeSourceIndex {
+                    request: lookup_request,
+                }
                 | WorkspaceDbIpcOperation::ReadTreeSitterInventory {
                     request: lookup_request,
                 } => {
+                    let evidence_started = tokio::time::Instant::now();
+                    let counters_before = memory_registry.data_plane_counters();
                     let lookup = memory_registry
                         .read_projection_source_index(
                             &request.workspace_identity,
@@ -757,7 +832,38 @@ pub async fn serve_runtime_server_workspace_stream(
                         )
                         .await;
                     match lookup {
-                        Ok(lookup) => WorkspaceDbIpcResult::SourceIndex { lookup },
+                        Ok(lookup) => {
+                            let counters = memory_registry
+                                .data_plane_counters()
+                                .delta_since(&counters_before);
+                            let authority = memory_registry
+                                .projection_search_generation_authority(
+                                    &request.workspace_identity,
+                                    Path::new(&lookup_request.project_root),
+                                )
+                                .await;
+                            let (generation_digest, root_digest) =
+                                resident_read::source_index_identity(&lookup, authority);
+                            let evidence = resident_read::evidence(
+                                request.request_id.clone(),
+                                request.workspace_identity.clone(),
+                                generation_digest,
+                                root_digest,
+                                "source-index",
+                                evidence_started,
+                                resident_read::counters(counters),
+                            );
+                            if let Err(error) = resident_read::record_terminal(
+                                telemetry_sender,
+                                &evidence,
+                                "runtime-resident-source-index",
+                            ) {
+                                return Err(format!(
+                                    "runtime-resident-read-telemetry-failed: {error}"
+                                ));
+                            }
+                            WorkspaceDbIpcResult::SourceIndex { lookup, evidence }
+                        }
                         Err(message) => WorkspaceDbIpcResult::Failed {
                             code: "runtime-server-source-index-read-failed".to_owned(),
                             message,
@@ -842,20 +948,18 @@ pub async fn serve_runtime_server_workspace_stream(
             &result,
             operation_started.elapsed(),
         );
-        write_frame(
+        resident_read::write_response(
             &mut stream,
-            &WorkspaceDbIpcResponse {
-                schema_id: WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID.to_owned(),
-                schema_version: WORKSPACE_DB_OWNER_SCHEMA_VERSION.to_owned(),
-                workspace_identity: request.workspace_identity,
-                transport_contract_digest: endpoint.transport_contract_digest.clone(),
-                owner_epoch: endpoint.owner_epoch,
-                request_id: request.request_id,
-                result,
-            },
+            endpoint,
+            request.workspace_identity,
+            request.request_id,
+            result,
         )
         .await?;
     }
 }
 
-use crate::workspace_db_ipc::{read_frame, read_optional_frame, write_frame};
+use crate::workspace_db_ipc::{read_optional_frame, write_frame};
+
+#[path = "workspace_db_ipc_server_resident_read.rs"]
+mod resident_read;

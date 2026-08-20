@@ -79,6 +79,49 @@ class SemanticAgentHookClientConfigSchemaTests(unittest.TestCase):
             [],
         )
 
+    def test_terminal_allow_with_leading_environment_assignment_is_valid(self) -> None:
+        self.assertEqual(
+            self.validation_errors(
+                {
+                    "rules": [
+                        {
+                            "id": "allow-no-agent",
+                            "decision": "allow",
+                            "terminal": True,
+                            "match": {
+                                "leadingEnvironmentAssignmentAny": ["ASP_NO_AGENT=1"]
+                            },
+                        }
+                    ]
+                }
+            ),
+            [],
+        )
+
+    def test_terminal_rule_rejects_non_allow_decision(self) -> None:
+        errors = self.validation_errors(
+            {
+                "rules": [
+                    {"id": "invalid-terminal", "decision": "deny", "terminal": True}
+                ]
+            }
+        )
+        self.assertTrue(any("'allow' was expected" in error for error in errors))
+
+    def test_leading_environment_assignment_rejects_non_assignment(self) -> None:
+        errors = self.validation_errors(
+            {
+                "rules": [
+                    {
+                        "id": "invalid-assignment",
+                        "decision": "allow",
+                        "match": {"leadingEnvironmentAssignmentAny": ["ASP_NO_AGENT"]},
+                    }
+                ]
+            }
+        )
+        self.assertTrue(any("does not match" in error for error in errors))
+
     def test_agent_org_artifacts_archive_warning_config_is_valid(self) -> None:
         config = {
             "agentOrgArtifacts": {

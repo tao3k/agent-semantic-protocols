@@ -3,11 +3,11 @@ use agent_semantic_hook::builtin_provider_manifests;
 #[test]
 fn registered_owner_routes_materialize_the_owner_items_contract() {
     for (language_id, provider_id) in [
-        ("rust", "rs-harness"),
-        ("typescript", "ts-harness"),
-        ("python", "py-harness"),
-        ("julia", "julia-lang-project-harness"),
-        ("gerbil-scheme", "gerbil-scheme-harness"),
+        ("rust", "asp-rust"),
+        ("typescript", "asp-typescript"),
+        ("python", "asp-python"),
+        ("julia", "asp-julia"),
+        ("gerbil-scheme", "asp-gerbil-scheme"),
     ] {
         let invocation = agent_semantic_hook::registered_provider_method_invocation_v1(
             language_id,
@@ -40,8 +40,8 @@ fn builtin_manifests_include_julia_juliac_provider() {
     let julia_routes =
         agent_semantic_hook::materialize_provider_routes(julia).expect("julia routes");
 
-    assert_eq!(julia.provider_id().as_str(), "julia-lang-project-harness");
-    assert_eq!(julia.binary(), "asp-julia-harness");
+    assert_eq!(julia.provider_id().as_str(), "asp-julia");
+    assert_eq!(julia.binary(), "asp-julia");
     let julia_project_resolution = julia.project_resolution().expect("Julia project scope");
     assert_eq!(julia_project_resolution.parser_id, "julia.pkg-project-toml");
     assert!(
@@ -51,12 +51,12 @@ fn builtin_manifests_include_julia_juliac_provider() {
     );
     assert_eq!(
         julia_routes.guide.as_ref().expect("guide route").argv,
-        ["asp-julia-harness", "guide", "{workspace}"]
+        ["asp-julia", "guide", "{workspace}"]
     );
     assert_eq!(
         julia_routes.query.as_ref().expect("query route").argv,
         [
-            "asp-julia-harness",
+            "asp-julia",
             "query",
             "--selector",
             "{owner}",
@@ -69,7 +69,7 @@ fn builtin_manifests_include_julia_juliac_provider() {
     assert_eq!(
         julia_routes.ingest.argv,
         [
-            "asp-julia-harness",
+            "asp-julia",
             "search",
             "ingest",
             "owner",
@@ -219,7 +219,7 @@ fn builtin_manifests_include_document_language_providers() {
     let org_routes = agent_semantic_hook::materialize_provider_routes(org).expect("org routes");
     let md_routes = agent_semantic_hook::materialize_provider_routes(md).expect("md routes");
 
-    assert_eq!(org.provider_id().as_str(), "orgize");
+    assert_eq!(org.provider_id().as_str(), "asp-org");
     assert_eq!(org.binary(), "asp");
     assert_eq!(org.execution().as_str(), "embedded");
     assert!(org.search_capabilities().owner_items);
@@ -274,7 +274,7 @@ fn builtin_manifests_include_document_language_providers() {
         ]
     );
 
-    assert_eq!(md.provider_id().as_str(), "orgize");
+    assert_eq!(md.provider_id().as_str(), "asp-md");
     assert_eq!(md.binary(), "asp");
     assert_eq!(md.execution().as_str(), "embedded");
     assert!(md.search_capabilities().owner_items);

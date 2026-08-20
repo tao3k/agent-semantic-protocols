@@ -186,6 +186,95 @@ the root development installer.
 
 **** All-provider Live Corpus search/query qualification
 
+Live Corpus performance qualification is part of the stable v1 contract.  Each
+case MUST use =schemaVersion: "1"= and MUST collect at least 128 samples from
+one already-published Runtime generation.  A qualification MUST NOT create a
+v2 schema, a compatibility alias, or a client-owned cache/rebuild path.
+
+Cold and warm cohorts are distinct.  Provider startup, workspace admission,
+generation construction, and atomic publication belong to the cold lifecycle
+receipt; they MUST NOT be charged to warm resident-read latency.  Warm samples
+MUST reuse the same Runtime-owned immutable generation and MUST NOT reopen a
+database, invoke a provider, refresh/import a source index, acquire a
+client-owned single-flight lock, or mutate cache state.
+
+Every warm search, exact-source, and callable-skeleton sample MUST report
+Runtime-owned elapsed microseconds.  The v1 aggregate receipt MUST include the
+sample count and p50, p95, p99, and maximum latency for each operation.  The
+resident-read gate fails when any sample exceeds 1000 microseconds; best-of,
+discarded outliers, and client-side stopwatch substitution are forbidden.
+
+The Runtime transport namespace is the unversioned value =runtime-ipc=.
+Transport compatibility is governed exclusively by the schema identity: every
+affected contract retains =schemaVersion: "1"= and its declared =schemaId=.
+Implementations, receipts, fixtures, and tests MUST NOT emit or accept a
+version-suffixed transport aliases; no alias or fallback is
+permitted.
+
+The architecture adopts the useful Language Server Protocol lessons without
+making LSP the runtime authority.  Every admitted request has an operation
+identity, supports cooperative cancellation, and must still publish exactly
+one terminal response after cancellation.  Long control-plane work may publish
+token-bound progress, but progress is never query completion and never extends
+the resident data-plane latency budget.  Capabilities are committed by the
+provider catalog and schema receipt before admission; per-client dynamic
+registration cannot mutate the active provider contract.
+
+The agent-first contract is developed as an RFC, Lean model, shared schema, and
+Tokio implementation together.  A normative concurrency, cache, lifecycle, or
+publication claim is not complete until the Lean model states the invariant and
+the executable receipts provide its witnesses.  Counterexamples found while
+formalizing are design feedback: the RFC and schema change before production
+code is widened.  Rust tests then check that concrete receipts refine the Lean
+state transition rather than merely reproducing an example JSON shape.
+
+The canonical provider identity is derived from the language identity as
+=asp-<languageId>= and is owned by
+=canonical-provider-identity.v1.schema.json=.  For example, Rust is
+=asp-rust=, TypeScript is
+=asp-typescript=, and Gerbil Scheme is =asp-gerbil-scheme=.  Harness, package,
+binary, and implementation names such as =rs-harness=, =py-harness=, or
+=orgize= are artifact metadata and MUST NOT appear as =providerId= in public
+requests, receipts, cache keys, telemetry, or routing authority.  One shared
+implementation MAY serve several languages, but each language retains its own
+canonical provider identity; therefore Org and Markdown are =asp-org= and
+=asp-md= even when both use the same Orgize artifact.  Legacy provider IDs have
+no alias or compatibility lookup.
+
+ASP is agent-first rather than editor-first.  Its unit of authority is not an
+open document or one interactive client session; it is an isolated semantic
+operation bound to a workspace identity, immutable generation, source root,
+provider catalog generation, and cancellation scope.  Many agents MAY query
+the same admitted generation concurrently, but no operation may observe
+another operation's mutable overlay, partial publication, cancellation, or
+ranking state.  Shared caches are content-addressed, immutable, generation
+bound, and safe for concurrent read reuse; mutable session caches and
+last-writer-wins document state are not public authority.
+
+Agent coding also requires finer semantic authority than an editor feature
+matrix.  Providers publish parser-owned owner, item, structural-selector,
+source-scope, relation, project-resolution, and exact-source evidence.  The
+Runtime composes those facts into a cross-file and cross-language project graph
+whose completeness and ambiguity are explicit.  Search, query, exact source,
+graph traversal, and scenario qualification must all preserve the same
+generation/root identity so an agent can prove what it saw before editing.
+
+The architecture rejects the failure modes common to editor-owned language
+servers.  A client cannot spawn or restart a provider, own mutable global
+workspace state, enqueue unbounded notifications, or silently reuse results
+across workspace-generation or source-root changes.  Every request is bound to
+one workspace identity, generation digest, root digest, provider identity, and
+catalog generation.  Tokio cancellation, bounded mailboxes, single-flight
+startup, reference-counted leases, and terminal OpenTelemetry receipts are the
+only lifecycle mechanisms; missing resident authority fails immediately and
+typed rather than triggering initialization or recovery inside a query.
+
+The =asp-client-server= transport is HTTP-first and uses the unversioned
+namespace =http-json=.  Schema identity remains authoritative: affected
+contracts retain =schemaVersion: "1"= and their declared =schemaId=.  No
+versioned transport alias, CLI subprocess transport, or compatibility fallback
+is permitted.
+
 Tokio is the sole Runtime execution ecosystem.  It owns lifecycle, generation
 publication, cancellation, background construction, and connection handling.
 That ownership does not turn a warm resident read into an asynchronous service
@@ -209,12 +298,71 @@ cancels, retries, or changes the query result.  Qualification validates the
 sealed operation identity and enqueue/drop evidence without polling a telemetry
 socket.
 
+The resident language-provider lifecycle is descriptor-driven and stable in
+schema v1.  Every registered implementation publishes exactly one public
+=asp-<language> serve= entrypoint implementing the shared HTTP-JSON provider
+runtime contract.  The command layer only validates =serve= and delegates;
+provider-native parsing and scheduling remain behind the common transport and
+must not add a language-specific Runtime RPC branch or dynamically mutate the
+Ready capability catalog.
+
+Each admitted provider request runs in an isolated provider-native lightweight
+task.  Admission is bounded by the resident listener and request budget,
+disconnect or deadline cancellation is cooperative, and each request publishes
+exactly one terminal response.  Backpressure fails fast with typed evidence;
+it must not create a second single-flight authority, unbounded queue, retry
+loop, or compatibility fallback.  Artifact publication, workspace generation,
+incremental cache mutation, filesystem discovery, and other heavy I/O remain
+owned by the sole ASP Server and never move into the language provider.
+
+A resident provider may keep a strictly bounded, non-authoritative memo for a
+pure language projection.  Its key covers the admitted operation and complete
+input bytes, its value is only the deterministic response payload, and eviction
+cannot change protocol truth.  Lookup and publication use a short local
+critical section while parsing remains outside the lock; concurrent misses may
+compute the same value and must not be serialized into a single-flight lane.
+The ASP Server still validates the response against the admitted generation
+before publication, so this memo is never a workspace cache or fallback
+authority.
+
+Qualification uses a pinned Live Corpus request through the real resident
+HTTP-JSON endpoint after bootstrap warmup.  For the v1 provider performance
+gate, every measured provider-service sample must complete below 1,000
+microseconds.  Same-host loopback p50, p95, p99, and maximum remain mandatory
+diagnostic evidence, but host scheduling is not provider execution.  The
+Agent-facing warm-search p99 has its own below-1,000-microsecond gate against
+the ASP Server immutable mmap generation with zero provider dispatch.  Process
+startup, workspace admission, and artifact construction are cold-path receipts
+and must never be hidden inside either warm measurement.
+
 Live Corpus artifact publication and qualification are separate authority
 boundaries.  The release pipeline owns pinned checkout synchronization,
 artifact materialization, complete parser projection, canonical generation
 publication, and the versioned Ready receipt.  No public Runtime command owns
-Code Prepare or indexing.  Publication must finish before Runtime admission and
-must emit stage progress plus terminal OpenTelemetry evidence.
+Code Prepare or indexing.  Checkout qualification must finish before Runtime
+admission.  The admitted Ready generation supplies the canonical content Merkle
+root; only then may the immutable artifact and current pointer be published.
+Every stage must emit progress plus terminal OpenTelemetry evidence.
+
+Cold materialization MUST use the stable v1 typed
+=AdmitRuntimeGenerationForRead= control operation before publishing the immutable
+artifact pointer.  ASP Server owns candidate discovery, provider execution,
+generation construction, atomic publication, and the terminal Ready or Failed
+receipt.  The materializer awaits that one terminal receipt; it MUST NOT submit
+a mutation-shaped cache request, poll generation state, open a workspace
+database, or build a client-side source index.  The materialize receipt is not
+successful until the admitted generation root matches the qualified source
+Merkle root.
+
+The same stable v1 request MUST carry the lock-qualified =languageId= and
+=providerId=.  This is an explicit provider target, not a path-discovery hint:
+ASP Server uses it to select exactly one registered provider, while the
+provider-owned =project-resolution-stdin= receipt remains the sole authority for
+package membership, nested projects, source roots, and exclusions.  The Server
+MUST NOT discard this binding and fall back to root-marker inference.  A Ready
+generation for a non-empty qualified corpus MUST contain a resident source
+index admitted by that provider; an empty generation fails closed and cannot
+publish the immutable artifact pointer.
 
 =live-corpus qualify= is a read-only resident consumer.  Before its first query
 it must validate the immutable artifact pointer and the matching active Ready
@@ -329,7 +477,7 @@ launch hidden inside a query.  The daemon validates the manifest's mandatory
 catalog generation, then publishes its immutable Ready receipt through Tokio
 =watch=.  Search requests use only the actor's bounded =mpsc= mailbox and
 =oneshot= response channel.  If that receipt is absent or terminal, the query
-fails immediately with typed =provider-runtime-not-ready= evidence.
+fails immediately with typed =asp-client-server-not-ready= evidence.
 
 Legacy =active-asp-artifact-receipt.v1.json= files are not an authority or a
 recovery input for provider queries.  Their digest failure MUST NOT be surfaced

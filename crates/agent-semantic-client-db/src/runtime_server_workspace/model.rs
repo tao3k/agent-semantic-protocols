@@ -146,6 +146,10 @@ pub struct WorkspaceSelectorSnapshot {
 pub struct WorkspaceDerivedProjectionSnapshot {
     pub projection_kind: ExactProjectionKind,
     pub bytes: Vec<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_context: Option<
+        agent_semantic_content_identity::projection_evidence_context::ProjectionEvidenceContext,
+    >,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -295,6 +299,11 @@ pub enum RuntimeProjectionScope {
 )]
 pub enum WorkspaceRuntimeOwnerRead {
     GenerationMissing,
+    SparseProviderOwner {
+        cache_digest: String,
+        root_digest: String,
+        owner: WorkspaceOwnerSnapshot,
+    },
     Owner {
         generation_digest: String,
         root_digest: String,

@@ -7,10 +7,10 @@
   "required": ["transport", "operations"],
   "properties": {
     "transport": {
-      "enum": ["runtime-ipc-v1", "http-json-v1", "in-process-v1"]
+      "enum": ["runtime-ipc", "http-json", "in-process"]
     },
-    "server": {
-      "$ref": "provider-server-descriptor.v1.schema.json"
+    "aspClientServer": {
+        "$ref": "asp-client-server-descriptor.v1.schema.json"
     },
     "operations": {
       "type": "array",
@@ -30,9 +30,9 @@
   },
   "allOf": [
     {
-      "if": { "properties": { "transport": { "const": "http-json-v1" } } },
-      "then": { "required": ["server"] },
-      "else": { "not": { "required": ["server"] } }
+      "if": { "properties": { "transport": { "const": "http-json" } } },
+      "then": { "required": ["aspClientServer"] },
+      "else": { "not": { "required": ["aspClientServer"] } }
     }
   ]
 }

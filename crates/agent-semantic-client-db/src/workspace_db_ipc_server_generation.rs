@@ -23,6 +23,7 @@ impl Drop for SubmittedMutationGuard {
 }
 
 pub(super) fn require_terminal_generation_for_read(
+    memory_registry: &RuntimeServerWorkspaceRegistry,
     generation_admission: Option<&WorkspaceGenerationAdmission>,
     workspace_identity: &str,
     project_root: &Path,
@@ -39,6 +40,12 @@ pub(super) fn require_terminal_generation_for_read(
     };
     if receipt.state == crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
         && receipt.commit.is_some()
+        && memory_registry
+            .lease(workspace_identity, project_root)
+            .is_ok()
+        && memory_registry
+            .resident_source_index_ready(workspace_identity, project_root)
+            .is_ok()
     {
         record_generation_read_terminal(workspace_identity, started, "ready", None);
         return Ok(());
@@ -50,6 +57,168 @@ pub(super) fn require_terminal_generation_for_read(
     );
     record_generation_read_terminal(workspace_identity, started, "not-ready", Some(&error));
     Err(error)
+}
+
+#[cfg(test)]
+pub(crate) async fn require_or_submit_terminal_generation_for_read(
+    memory_registry: &RuntimeServerWorkspaceRegistry,
+    generation_admission: Option<&std::sync::Arc<WorkspaceGenerationAdmission>>,
+    workspace_identity: &str,
+    project_root: &Path,
+    target_paths: Vec<PathBuf>,
+) -> Result<(), String> {
+    require_or_submit_terminal_generation_for_read_with_provider(
+        memory_registry,
+        generation_admission,
+        workspace_identity,
+        project_root,
+        target_paths,
+        None,
+    )
+    .await
+}
+
+async fn require_or_submit_terminal_generation_for_read_with_provider(
+    memory_registry: &RuntimeServerWorkspaceRegistry,
+    generation_admission: Option<&std::sync::Arc<WorkspaceGenerationAdmission>>,
+    workspace_identity: &str,
+    project_root: &Path,
+    target_paths: Vec<PathBuf>,
+    provider_target: Option<crate::runtime_server_admission::WorkspaceGenerationProviderTarget>,
+) -> Result<(), String> {
+    let admission = generation_admission.map(std::sync::Arc::as_ref);
+    let Err(message) = require_terminal_generation_for_read(
+        memory_registry,
+        admission,
+        workspace_identity,
+        project_root,
+    ) else {
+        return Ok(());
+    };
+    let query_demand = match generation_admission {
+        Some(admission) => Some(
+            admission
+                .submit_query_demand_with_provider(
+                    workspace_identity.to_owned(),
+                    project_root.to_path_buf(),
+                    target_paths,
+                    provider_target,
+                )
+                .await,
+        ),
+        None => None,
+    };
+    Err(match query_demand {
+        Some(Ok(true)) => format!(
+            "{message}; Runtime Server enqueued query-demand cold admission; retry the query"
+        ),
+        Some(Ok(false)) => message,
+        Some(Err(error)) => format!(
+            "Runtime Server query-demand admission failed: {error} reasonKind=runtime-generation-admission-failed"
+        ),
+        None => "Runtime Server query-demand admission authority is unavailable reasonKind=runtime-generation-admission-unavailable".to_owned(),
+    })
+}
+
+pub(super) async fn require_or_submit_terminal_generation_for_operation(
+    memory_registry: &RuntimeServerWorkspaceRegistry,
+    generation_admission: Option<&std::sync::Arc<WorkspaceGenerationAdmission>>,
+    workspace_identity: &str,
+    project_root: &Path,
+    operation: &crate::workspace_db_ipc::WorkspaceDbIpcOperation,
+) -> Result<(), String> {
+    let target_paths = resident_read_query_targets(operation, project_root).map_err(|error| {
+        format!(
+            "Runtime Server rejected query-demand target: {error} reasonKind=runtime-generation-admission-invalid-target"
+        )
+    })?;
+    let provider_target = resident_read_query_provider_target(operation);
+    require_or_submit_terminal_generation_for_read_with_provider(
+        memory_registry,
+        generation_admission,
+        workspace_identity,
+        project_root,
+        target_paths,
+        provider_target,
+    )
+    .await
+}
+
+pub(super) fn resident_read_query_provider_target(
+    operation: &crate::workspace_db_ipc::WorkspaceDbIpcOperation,
+) -> Option<crate::runtime_server_admission::WorkspaceGenerationProviderTarget> {
+    match operation {
+        crate::workspace_db_ipc::WorkspaceDbIpcOperation::ProviderSearch {
+            language_id, ..
+        } => Some(
+            crate::runtime_server_admission::WorkspaceGenerationProviderTarget {
+                language_id: language_id.as_str().to_owned(),
+                provider_id: None,
+            },
+        ),
+        _ => None,
+    }
+}
+
+pub(super) fn resident_read_query_targets(
+    operation: &crate::workspace_db_ipc::WorkspaceDbIpcOperation,
+    project_root: &Path,
+) -> Result<Vec<PathBuf>, String> {
+    let owner_path = match operation {
+        crate::workspace_db_ipc::WorkspaceDbIpcOperation::ReadRuntimeSelector {
+            language_id,
+            structural_selector,
+            ..
+        } => {
+            let selector = agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
+                structural_selector.clone(),
+            )?;
+            if selector.language_id.as_str() != language_id.as_str() {
+                return Err(
+                    "runtime selector language does not match the query-demand language".to_owned(),
+                );
+            }
+            Some(selector.owner_path()?.to_owned())
+        }
+        crate::workspace_db_ipc::WorkspaceDbIpcOperation::ReadRuntimeExactProjection {
+            language_id,
+            structural_selector,
+            ..
+        } => {
+            let selector = agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
+                structural_selector.clone(),
+            )?;
+            if selector.language_id.as_str() != language_id.as_str() {
+                return Err(
+                    "runtime selector language does not match query-demand language".to_owned(),
+                );
+            }
+            Some(selector.owner_path()?.to_owned())
+        }
+        crate::workspace_db_ipc::WorkspaceDbIpcOperation::ReadRuntimeOwner {
+            owner_path, ..
+        } => Some(owner_path.clone()),
+        crate::workspace_db_ipc::WorkspaceDbIpcOperation::ReadRuntimeMerkleOwner { request } => {
+            request.validate()?;
+            Some(request.owner_path.clone())
+        }
+        _ => None,
+    };
+    let Some(owner_path) = owner_path else {
+        return Ok(Vec::new());
+    };
+    let relative = Path::new(&owner_path);
+    if relative.is_absolute()
+        || relative.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::CurDir | std::path::Component::ParentDir
+            )
+        })
+    {
+        return Err("query-demand owner path must be normalized and relative".to_owned());
+    }
+    Ok(vec![project_root.join(relative)])
 }
 
 fn record_generation_read_terminal(
@@ -79,11 +248,11 @@ pub(super) fn resident_read_project_root(
             project_root,
             ..
         }
-        | crate::workspace_db_ipc::WorkspaceDbIpcOperation::ProviderSearch {
+        | crate::workspace_db_ipc::WorkspaceDbIpcOperation::ReadRuntimeExactProjection {
             project_root,
             ..
         }
-        | crate::workspace_db_ipc::WorkspaceDbIpcOperation::ReadRuntimeOwner {
+        | crate::workspace_db_ipc::WorkspaceDbIpcOperation::ProviderSearch {
             project_root,
             ..
         }
@@ -102,13 +271,18 @@ pub(super) fn resident_read_project_root(
             project_root,
             ..
         } => project_root,
-        crate::workspace_db_ipc::WorkspaceDbIpcOperation::ReadSourceIndex { request } => {
+        crate::workspace_db_ipc::WorkspaceDbIpcOperation::ReadSourceIndex { request }
+        | crate::workspace_db_ipc::WorkspaceDbIpcOperation::ReadRuntimeSourceIndex { request } => {
             return Some(request.project_root.as_path());
         }
         _ => return None,
     };
     Some(Path::new(project_root))
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/workspace_db_ipc_server_generation_read.rs"]
+mod resident_read_tests;
 
 #[cfg(test)]
 #[path = "../tests/unit/workspace_db_ipc_server_generation_mutation.rs"]
@@ -269,83 +443,44 @@ pub(super) async fn admit_mutation(
     }
 }
 
-pub(super) async fn require_lifecycle_generation(
-    _memory_registry: &RuntimeServerWorkspaceRegistry,
-    generation_admission: Option<&std::sync::Arc<WorkspaceGenerationAdmission>>,
+pub(crate) async fn require_lifecycle_generation(
+    memory_registry: &RuntimeServerWorkspaceRegistry,
+    _generation_admission: Option<&std::sync::Arc<WorkspaceGenerationAdmission>>,
     workspace_identity: &str,
     project_root: String,
 ) -> WorkspaceDbIpcResult {
     let require_started = std::time::Instant::now();
-    let Some(admission) = generation_admission else {
-        let mut observation =
-            crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
-                "workspace-generation-require",
-                "terminal",
-                u64::try_from(require_started.elapsed().as_micros()).unwrap_or(u64::MAX),
-                1_000,
-                "unavailable",
-            );
-        observation.workspace_identity = Some(workspace_identity.to_owned());
-        observation.failure_reason = Some("runtime-generation-authority-unavailable".to_owned());
-        observation.seal_budget_failure_identity();
-        let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
-        return WorkspaceDbIpcResult::Failed {
-            code: "runtime-server-generation-authority-unavailable".to_owned(),
-            message: "Runtime Server has no resident generation authority".to_owned(),
-        };
-    };
     let project_root_path = PathBuf::from(&project_root);
-    let Some(receipt) = admission.current(workspace_identity, &project_root_path) else {
-        let mut observation =
-            crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
-                "workspace-generation-require",
-                "terminal",
-                u64::try_from(require_started.elapsed().as_micros()).unwrap_or(u64::MAX),
-                1_000,
-                "not-ready",
-            );
-        observation.workspace_identity = Some(workspace_identity.to_owned());
-        observation.failure_reason = Some("runtime-generation-not-ready".to_owned());
-        observation.seal_budget_failure_identity();
-        let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
-        return WorkspaceDbIpcResult::Failed {
-            code: "runtime-server-generation-not-ready".to_owned(),
-            message: format!(
-                "Runtime Server has no prepublished resident generation: workspaceIdentity={workspace_identity} reasonKind=runtime-generation-not-ready"
-            ),
-        };
+    let recovery = match memory_registry.ready_recovery_receipt(
+        format!("require-runtime-generation:{workspace_identity}"),
+        workspace_identity,
+        &project_root_path,
+    ) {
+        Ok(recovery) => recovery,
+        Err(message) => {
+            let mut observation =
+                crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
+                    "workspace-generation-require",
+                    "terminal",
+                    u64::try_from(require_started.elapsed().as_micros()).unwrap_or(u64::MAX),
+                    1_000,
+                    "not-ready",
+                );
+            observation.workspace_identity = Some(workspace_identity.to_owned());
+            observation.failure_reason = Some("runtime-generation-not-ready".to_owned());
+            observation.seal_budget_failure_identity();
+            let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
+            return WorkspaceDbIpcResult::Failed {
+                code: "runtime-server-generation-not-ready".to_owned(),
+                message: format!(
+                    "Runtime Server resident generation is not Ready: workspaceIdentity={workspace_identity} error={message} reasonKind=runtime-generation-not-ready"
+                ),
+            };
+        }
     };
-    if receipt.state != crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
-        || receipt.commit.is_none()
-    {
-        let mut observation =
-            crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
-                "workspace-generation-require",
-                "terminal",
-                u64::try_from(require_started.elapsed().as_micros()).unwrap_or(u64::MAX),
-                1_000,
-                "not-ready",
-            );
-        observation.workspace_identity = Some(workspace_identity.to_owned());
-        observation.failure_reason = Some("runtime-generation-not-ready".to_owned());
-        observation.seal_budget_failure_identity();
-        let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
-        return WorkspaceDbIpcResult::Failed {
-            code: "runtime-server-generation-not-ready".to_owned(),
-            message: format!(
-                "Runtime Server generation is not Ready: workspaceIdentity={workspace_identity} state={:?} error={} reasonKind=runtime-generation-not-ready",
-                receipt.state,
-                receipt.error.as_deref().unwrap_or("none"),
-            ),
-        };
-    }
     let operation_id = format!(
         "require-runtime-generation:{workspace_identity}:{}",
-        receipt
-            .commit
-            .as_ref()
-            .map(|commit| commit.generation_digest.as_str())
-            .unwrap_or("missing")
+        recovery.generation_digest
     );
     let mut observation = crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
         "workspace-generation-require",
@@ -357,12 +492,61 @@ pub(super) async fn require_lifecycle_generation(
     .with_operation_id(operation_id);
     observation.workspace_identity = Some(workspace_identity.to_owned());
     observation.seal_budget_failure_identity();
-    if !crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation) {
-        WorkspaceDbIpcResult::Failed {
-            code: "runtime-server-generation-opentelemetry-unavailable".to_owned(),
-            message: "Runtime Server generation terminal OpenTelemetry is unavailable".to_owned(),
+    let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
+    WorkspaceDbIpcResult::RuntimeGenerationResidentReady { receipt: recovery }
+}
+
+pub(crate) async fn admit_generation_for_read(
+    memory_registry: &RuntimeServerWorkspaceRegistry,
+    generation_admission: Option<&std::sync::Arc<WorkspaceGenerationAdmission>>,
+    workspace_identity: &str,
+    project_root: String,
+    language_id: String,
+    provider_id: String,
+) -> WorkspaceDbIpcResult {
+    let project_root_path = PathBuf::from(&project_root);
+    let Some(generation_admission) = generation_admission else {
+        return WorkspaceDbIpcResult::Failed {
+            code: "runtime-server-generation-admission-unavailable".to_owned(),
+            message: format!(
+                "Runtime Server generation admission authority is unavailable: workspaceIdentity={workspace_identity} reasonKind=runtime-generation-admission-unavailable"
+            ),
+        };
+    };
+
+    match generation_admission
+        .admit_artifact_publication_and_wait(
+            workspace_identity.to_owned(),
+            project_root_path,
+            language_id,
+            provider_id,
+        )
+        .await
+    {
+        Ok(receipt)
+            if receipt.state
+                == crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready =>
+        {
+            require_lifecycle_generation(
+                memory_registry,
+                Some(generation_admission),
+                workspace_identity,
+                project_root,
+            )
+            .await
         }
-    } else {
-        WorkspaceDbIpcResult::RuntimeGenerationReady { receipt }
+        Ok(receipt) => WorkspaceDbIpcResult::Failed {
+            code: "runtime-server-generation-admission-failed".to_owned(),
+            message: format!(
+                "Runtime Server read admission did not reach Ready: workspaceIdentity={workspace_identity} state={:?} error={:?} reasonKind=runtime-generation-admission-failed",
+                receipt.state, receipt.error
+            ),
+        },
+        Err(error) => WorkspaceDbIpcResult::Failed {
+            code: "runtime-server-generation-admission-failed".to_owned(),
+            message: format!(
+                "Runtime Server read admission failed: workspaceIdentity={workspace_identity} error={error} reasonKind=runtime-generation-admission-failed"
+            ),
+        },
     }
 }

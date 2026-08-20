@@ -24,7 +24,9 @@ pub(super) async fn dispatch_workspace_db_session_operation(
             "agent-session registry operations are not admitted until the staged registry dispatcher is published"
                 .to_owned(),
         ),
-        WorkspaceDbIpcOperation::ReadSourceIndex { .. } => {
+        WorkspaceDbIpcOperation::ReadSourceIndex { .. }
+        | WorkspaceDbIpcOperation::ReadRuntimeSourceIndex { .. }
+        | WorkspaceDbIpcOperation::ReadRuntimeExactProjection { .. } => {
             Err("source-index reads are only accepted by the Runtime Server data plane".to_owned())
         }
         WorkspaceDbIpcOperation::ReadRuntimeSelector { .. }
@@ -44,6 +46,7 @@ pub(super) async fn dispatch_workspace_db_session_operation(
                 .to_owned(),
         ),
         WorkspaceDbIpcOperation::RequireRuntimeGeneration { .. }
+        | WorkspaceDbIpcOperation::AdmitRuntimeGenerationForRead { .. }
         | WorkspaceDbIpcOperation::AdmitRuntimeGeneration { .. }
         | WorkspaceDbIpcOperation::SubmitRuntimeGenerationMutation { .. }
         | WorkspaceDbIpcOperation::ReadRuntimeGenerationDurability { .. }

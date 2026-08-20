@@ -2,52 +2,52 @@
   "languages": [
     {
       "descriptor": {
-        "$ref": "semantic-language-registrations/rust.rs-harness.v1.json"
+        "$ref": "semantic-language-registrations/rust.asp-rust.v1.json"
       },
       "languageId": "rust",
-      "providerId": "rs-harness"
+      "providerId": "asp-rust"
     },
     {
       "descriptor": {
-        "$ref": "semantic-language-registrations/typescript.ts-harness.v1.json"
+        "$ref": "semantic-language-registrations/typescript.asp-typescript.v1.json"
       },
       "languageId": "typescript",
-      "providerId": "ts-harness"
+      "providerId": "asp-typescript"
     },
     {
       "descriptor": {
-        "$ref": "semantic-language-registrations/python.py-harness.v1.json"
+        "$ref": "semantic-language-registrations/python.asp-python.v1.json"
       },
       "languageId": "python",
-      "providerId": "py-harness"
+      "providerId": "asp-python"
     },
     {
       "descriptor": {
-        "$ref": "semantic-language-registrations/julia.julia-lang-project-harness.v1.json"
+        "$ref": "semantic-language-registrations/julia.asp-julia.v1.json"
       },
       "languageId": "julia",
-      "providerId": "julia-lang-project-harness"
+      "providerId": "asp-julia"
     },
     {
       "descriptor": {
-        "$ref": "semantic-language-registrations/gerbil-scheme.gerbil-scheme-harness.v1.json"
+        "$ref": "semantic-language-registrations/gerbil-scheme.asp-gerbil-scheme.v1.json"
       },
       "languageId": "gerbil-scheme",
-      "providerId": "gerbil-scheme-harness"
+      "providerId": "asp-gerbil-scheme"
     },
     {
       "descriptor": {
-        "$ref": "semantic-language-registrations/org.orgize.v1.json"
+        "$ref": "semantic-language-registrations/org.asp-org.v1.json"
       },
       "languageId": "org",
-      "providerId": "orgize"
+      "providerId": "asp-org"
     },
     {
       "descriptor": {
-        "$ref": "semantic-language-registrations/md.orgize.v1.json"
+        "$ref": "semantic-language-registrations/md.asp-md.v1.json"
       },
       "languageId": "md",
-      "providerId": "orgize"
+      "providerId": "asp-md"
     }
   ],
   "protocolId": "agent.semantic-protocols.semantic-language",

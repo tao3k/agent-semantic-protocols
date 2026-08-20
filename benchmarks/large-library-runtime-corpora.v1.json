@@ -5,7 +5,7 @@
     {
       "resourceId": "gerbil-scheme.gerbil",
       "scenarioId": "gerbil-scheme.gerbil-intent-matrix",
-      "providerId": "gerbil-scheme-harness",
+      "providerId": "asp-gerbil-scheme",
       "language": "gerbil-scheme",
       "repository": "mighty-gerbils/gerbil",
       "git": {
@@ -19,7 +19,7 @@
     {
       "resourceId": "julia.dataframes",
       "scenarioId": "julia.dataframes-intent-matrix",
-      "providerId": "julia-lang-project-harness",
+      "providerId": "asp-julia",
       "language": "julia",
       "repository": "JuliaData/DataFrames.jl",
       "git": {
@@ -33,7 +33,7 @@
     {
       "resourceId": "julia.flux",
       "scenarioId": "julia.flux-intent-matrix",
-      "providerId": "julia-lang-project-harness",
+      "providerId": "asp-julia",
       "language": "julia",
       "repository": "FluxML/Flux.jl",
       "git": {
@@ -47,7 +47,7 @@
     {
       "resourceId": "julia.makie",
       "scenarioId": "julia.makie-intent-matrix",
-      "providerId": "julia-lang-project-harness",
+      "providerId": "asp-julia",
       "language": "julia",
       "repository": "MakieOrg/Makie.jl",
       "git": {
@@ -61,7 +61,7 @@
     {
       "resourceId": "md.mdn-content",
       "scenarioId": "md.mdn-content-intent-matrix",
-      "providerId": "orgize",
+      "providerId": "asp-md",
       "language": "md",
       "repository": "mdn/content",
       "git": {
@@ -80,7 +80,7 @@
     {
       "resourceId": "org.worg",
       "scenarioId": "org.worg-intent-matrix",
-      "providerId": "orgize",
+      "providerId": "asp-org",
       "language": "org",
       "repository": "bzg/worg",
       "git": {
@@ -99,7 +99,7 @@
     {
       "resourceId": "python.fastapi",
       "scenarioId": "python.fastapi-intent-matrix",
-      "providerId": "py-harness",
+      "providerId": "asp-python",
       "language": "python",
       "repository": "fastapi/fastapi",
       "git": {
@@ -113,7 +113,7 @@
     {
       "resourceId": "python.pandas",
       "scenarioId": "python.pandas-intent-matrix",
-      "providerId": "py-harness",
+      "providerId": "asp-python",
       "language": "python",
       "repository": "pandas-dev/pandas",
       "git": {
@@ -127,7 +127,7 @@
     {
       "resourceId": "python.rich",
       "scenarioId": "python.rich-intent-matrix",
-      "providerId": "py-harness",
+      "providerId": "asp-python",
       "language": "python",
       "repository": "Textualize/rich",
       "git": {
@@ -141,7 +141,7 @@
     {
       "resourceId": "rust.tokio",
       "scenarioId": "rust.tokio-intent-matrix",
-      "providerId": "rs-harness",
+      "providerId": "asp-rust",
       "language": "rust",
       "repository": "tokio-rs/tokio",
       "git": {
@@ -155,7 +155,7 @@
     {
       "resourceId": "rust.bytes",
       "scenarioId": "rust.bytes-intent-matrix",
-      "providerId": "rs-harness",
+      "providerId": "asp-rust",
       "language": "rust",
       "repository": "tokio-rs/bytes",
       "git": {
@@ -169,7 +169,7 @@
     {
       "resourceId": "rust.ripgrep",
       "scenarioId": "rust.ignore-intent-matrix",
-      "providerId": "rs-harness",
+      "providerId": "asp-rust",
       "language": "rust",
       "repository": "BurntSushi/ripgrep",
       "git": {
@@ -183,7 +183,7 @@
     {
       "resourceId": "typescript.compiler",
       "scenarioId": "typescript.typescript-intent-matrix",
-      "providerId": "ts-harness",
+      "providerId": "asp-typescript",
       "language": "typescript",
       "repository": "microsoft/TypeScript",
       "git": {
@@ -197,7 +197,7 @@
     {
       "resourceId": "typescript.effect",
       "scenarioId": "typescript.effect-claude-concurrency-flow",
-      "providerId": "ts-harness",
+      "providerId": "asp-typescript",
       "language": "typescript",
       "repository": "Effect-TS/effect",
       "git": {
@@ -211,7 +211,7 @@
     {
       "resourceId": "typescript.playwright",
       "scenarioId": "typescript.playwright-intent-matrix",
-      "providerId": "ts-harness",
+      "providerId": "asp-typescript",
       "language": "typescript",
       "repository": "microsoft/playwright",
       "git": {
@@ -225,7 +225,7 @@
     {
       "resourceId": "typescript.vite",
       "scenarioId": "typescript.vite-intent-matrix",
-      "providerId": "ts-harness",
+      "providerId": "asp-typescript",
       "language": "typescript",
       "repository": "vitejs/vite",
       "git": {
@@ -239,7 +239,7 @@
     {
       "resourceId": "typescript.vue",
       "scenarioId": "typescript.vue-runtime-scheduler-real-trigger-flow",
-      "providerId": "ts-harness",
+      "providerId": "asp-typescript",
       "language": "typescript",
       "repository": "vuejs/core",
       "git": {

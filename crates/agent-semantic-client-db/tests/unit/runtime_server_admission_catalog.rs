@@ -406,7 +406,7 @@ async fn daemon_restore_replays_each_catalog_scope_once() {
         agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission::new(
             Arc::new({
                 let builds = Arc::clone(&builds);
-                move |_, _, candidate, _, _changed_paths, _| {
+                move |_, _, candidate, _, _changed_paths, _provider_target, _| {
                     let builds = Arc::clone(&builds);
                     Box::pin(async move {
                         builds.fetch_add(1, Ordering::Relaxed);
@@ -454,7 +454,7 @@ async fn typed_ipc_admission_publishes_initial_locator_and_reaches_ready() {
         agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission::new(
             Arc::new({
                 let builds = Arc::clone(&builds);
-                move |_, _, candidate, _, _changed_paths, _| {
+                move |_, _, candidate, _, _changed_paths, _provider_target, _| {
                     let builds = Arc::clone(&builds);
                     Box::pin(async move {
                         builds.fetch_add(1, Ordering::Relaxed);
@@ -537,7 +537,13 @@ async fn daemon_restore_isolates_failed_workspace_scopes() {
     let admission =
         agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission::new(
             Arc::new(
-                |workspace_identity, _, candidate, _build_mode, _changed_paths, _cancellation| {
+                |workspace_identity,
+                 _,
+                 candidate,
+                 _build_mode,
+                 _changed_paths,
+                 _provider_target,
+                 _cancellation| {
                     Box::pin(async move {
                         if workspace_identity == "workspace-failed" {
                             Err(WorkspaceGenerationBuildFailure::new(

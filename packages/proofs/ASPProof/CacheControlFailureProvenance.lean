@@ -118,7 +118,7 @@ def incrementalCacheMutationValid (mutation : IncrementalCacheMutation) : Bool :
     (mutation.atomicPublication || mutation.explicitFullFallback)
 
 def validIncrementalCacheMutation : IncrementalCacheMutation := {
-  mutationId := "cache-v1:incremental:owners-1"
+  mutationId := "cache:incremental:owners-1"
   writerQueueOwner := .runtimeServer
   changedOwnerCount := 2
   removedOwnerCount := 1

@@ -192,6 +192,28 @@ impl WorkspaceDbIpcSession {
         self.endpoint.generation_pointer_path.as_deref()
     }
 
+    pub async fn open_runtime_resident_read(
+        &self,
+        receipt: &crate::runtime_server_workspace::WorkspaceRecoveryReceipt,
+    ) -> Result<crate::runtime_resident_read::RuntimeResidentReadClient, String> {
+        receipt.validate()?;
+        let pointer = self.runtime_generation_pointer_path().ok_or_else(|| {
+            "Runtime Server resident generation locator is unavailable".to_owned()
+        })?;
+        let project_root = self.runtime_project_root()?;
+        let resident =
+            crate::runtime_resident_read::RuntimeResidentReadClient::open(pointer, project_root)
+                .await?;
+        if resident.generation_digest() != receipt.generation_digest
+            || resident.root_digest() != receipt.source_root_digest
+        {
+            return Err(
+                "Runtime resident read does not match the admitted recovery receipt".to_owned(),
+            );
+        }
+        Ok(resident)
+    }
+
     pub(in crate::workspace_db_ipc) async fn call_runtime_generation_admission(
         &self,
         mutation_id: String,
@@ -521,7 +543,10 @@ impl WorkspaceDbIpcSession {
     pub async fn read_tree_sitter_inventory(
         &self,
         request: &WorkspaceDbSourceIndexLookupRequest,
-    ) -> Result<ClientDbSourceIndexLookupResult, String> {
+    ) -> Result<
+        crate::workspace_db_ipc::RuntimeResidentReadResult<ClientDbSourceIndexLookupResult>,
+        String,
+    > {
         let mut request = request.clone();
         request.project_root = self.endpoint.project_root.clone().ok_or_else(|| {
             "Runtime Server endpoint is missing the resident project root".to_owned()
@@ -530,7 +555,12 @@ impl WorkspaceDbIpcSession {
             .call_operation(WorkspaceDbIpcOperation::ReadTreeSitterInventory { request })
             .await?
         {
-            WorkspaceDbIpcResult::SourceIndex { lookup } => Ok(lookup),
+            WorkspaceDbIpcResult::SourceIndex { lookup, evidence } => {
+                Ok(crate::workspace_db_ipc::RuntimeResidentReadResult {
+                    value: lookup,
+                    evidence,
+                })
+            }
             _ => Err(
                 "workspace owner IPC returned an unexpected Tree-sitter inventory result"
                     .to_owned(),
@@ -542,55 +572,19 @@ impl WorkspaceDbIpcSession {
         &self,
         request: &WorkspaceDbSourceIndexLookupRequest,
     ) -> Result<ClientDbSourceIndexLookupResult, String> {
-        let generation_pointer = self.runtime_generation_pointer_path().ok_or_else(|| {
-            "Runtime source-index read requires an admitted resident generation: reasonKind=runtime-generation-not-ready"
-                .to_owned()
-        })?;
-        let project_root = self.runtime_project_root()?.to_path_buf();
-        let resident_read = crate::runtime_resident_read::RuntimeResidentReadClient::open(
-            &generation_pointer,
-            &project_root,
-        )
-        .await?;
-        let started = std::time::Instant::now();
-        let lookup = resident_read.read_source_index(
-            &request.query,
-            request.language_id.as_ref(),
-            request.limit,
-        )?;
-        let elapsed_micros = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
-        if elapsed_micros >= 1_000 {
-            return Err(format!(
-                "Runtime source-index read exceeded the synchronous mmap budget: elapsedMicros={elapsed_micros} budgetExclusiveMicros=1000"
-            ));
-        }
-        let work = resident_read.work_counters();
-        if work.database_read_count != 0
-            || work.filesystem_read_count != 0
-            || work.provider_process_count != 0
-            || work.scheduler_task_count != 0
-            || work.socket_operation_count != 0
+        match self
+            .call_operation(WorkspaceDbIpcOperation::ReadRuntimeSourceIndex {
+                request: request.clone(),
+            })
+            .await?
         {
-            return Err(format!(
-                "Runtime source-index read violated synchronous mmap authority: databaseReads={} filesystemReads={} providerProcesses={} schedulerTasks={} socketOperations={}",
-                work.database_read_count,
-                work.filesystem_read_count,
-                work.provider_process_count,
-                work.scheduler_task_count,
-                work.socket_operation_count,
-            ));
+            WorkspaceDbIpcResult::SourceIndex { lookup, evidence } => {
+                evidence.validate()?;
+                Ok(lookup)
+            }
+            WorkspaceDbIpcResult::Failed { code, message } => Err(format!("{code}: {message}")),
+            _ => Err("Runtime Server returned an unexpected source-index result".to_owned()),
         }
-        resident_read.try_record_read_observation(
-            "runtime-source-index-read",
-            "qualified",
-            &request.query,
-            request.language_id.as_ref(),
-            "lexical-source-index",
-            elapsed_micros,
-            1_000,
-            "within-budget",
-        );
-        Ok(lookup)
     }
 
     pub async fn project_tree_sitter_query(
@@ -679,62 +673,68 @@ impl WorkspaceDbIpcSession {
         }
     }
 
+    pub async fn read_runtime_merkle_owner(
+        &self,
+        owner_path: impl Into<String>,
+    ) -> Result<
+        crate::workspace_db_ipc::RuntimeResidentReadResult<
+            crate::runtime_server_workspace::WorkspaceRuntimeMerkleOwnerRead,
+        >,
+        String,
+    > {
+        let project_root = self.runtime_project_root()?.display().to_string();
+        match self
+            .call_operation(WorkspaceDbIpcOperation::ReadRuntimeMerkleOwner {
+                request: crate::workspace_db_ipc::RuntimeMerkleOwnerReadRequest::new(
+                    project_root,
+                    owner_path,
+                ),
+            })
+            .await?
+        {
+            WorkspaceDbIpcResult::RuntimeMerkleOwner { read, evidence } => {
+                evidence.validate()?;
+                Ok(crate::workspace_db_ipc::RuntimeResidentReadResult {
+                    value: read,
+                    evidence,
+                })
+            }
+            WorkspaceDbIpcResult::Failed { code, message } => Err(format!("{code}: {message}")),
+            _ => Err("Runtime Server returned an unexpected Merkle owner response".to_owned()),
+        }
+    }
+
     pub async fn read_runtime_exact_projection(
         &self,
         language_id: agent_semantic_client_core::LanguageId,
         projection_kind: crate::runtime_server_workspace::ExactProjectionKind,
         _projection_scope: crate::runtime_server_workspace::RuntimeProjectionScope,
         structural_selector: impl Into<String>,
-    ) -> Result<crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead, String> {
-        let project_root =
-            self.endpoint.project_root.as_ref().ok_or_else(|| {
-                "Runtime exact projection requires a bound project root".to_owned()
-            })?;
-        let generation_pointer = self.runtime_generation_pointer_path().ok_or_else(|| {
-            "Runtime exact projection requires an admitted resident generation: reasonKind=runtime-generation-not-ready"
-                .to_owned()
-        })?;
-        let resident_read = crate::runtime_resident_read::RuntimeResidentReadClient::open(
-            &generation_pointer,
-            project_root,
-        )
-        .await?;
-        let structural_selector = structural_selector.into();
-        let started = std::time::Instant::now();
-        let read = resident_read.read_runtime_selector(projection_kind, &structural_selector)?;
-        let elapsed_micros = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
-        if elapsed_micros >= 1_000 {
-            return Err(format!(
-                "Runtime exact projection exceeded the synchronous mmap budget: elapsedMicros={elapsed_micros} budgetExclusiveMicros=1000"
-            ));
-        }
-        let work = resident_read.work_counters();
-        if work.database_read_count != 0
-            || work.filesystem_read_count != 0
-            || work.provider_process_count != 0
-            || work.scheduler_task_count != 0
-            || work.socket_operation_count != 0
+    ) -> Result<
+        crate::workspace_db_ipc::RuntimeResidentReadResult<
+            crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead,
+        >,
+        String,
+    > {
+        return match self
+            .call_operation(WorkspaceDbIpcOperation::ReadRuntimeExactProjection {
+                project_root: self.runtime_project_root()?.display().to_string(),
+                language_id,
+                projection_kind,
+                structural_selector: structural_selector.into(),
+            })
+            .await?
         {
-            return Err(format!(
-                "Runtime exact projection violated synchronous mmap authority: databaseReads={} filesystemReads={} providerProcesses={} schedulerTasks={} socketOperations={}",
-                work.database_read_count,
-                work.filesystem_read_count,
-                work.provider_process_count,
-                work.scheduler_task_count,
-                work.socket_operation_count,
-            ));
-        }
-        resident_read.try_record_read_observation(
-            "runtime-exact-projection",
-            "qualified",
-            &structural_selector,
-            Some(&language_id),
-            "exact-selector",
-            elapsed_micros,
-            1_000,
-            "within-budget",
-        );
-        Ok(read)
+            WorkspaceDbIpcResult::RuntimeSelector { read, evidence } => {
+                evidence.validate()?;
+                Ok(crate::workspace_db_ipc::RuntimeResidentReadResult {
+                    value: read,
+                    evidence,
+                })
+            }
+            WorkspaceDbIpcResult::Failed { code, message } => Err(format!("{code}: {message}")),
+            _ => Err("Runtime Server returned an unexpected exact projection result".to_owned()),
+        };
     }
 
     pub async fn write_provider_treesitter_owner_result(

@@ -165,7 +165,7 @@ fn assert_install_pinned_release_writes_runtime_bin_package_and_lock() {
     );
     assert!(lock_contents.contains("rev = \"v0.1.2\""));
     assert!(lock_contents.contains(
-        "source = \"https://github.com/tao3k/rust-lang-project-harness/releases/download/v0.1.2/rs-harness-x86_64-unknown-linux-gnu.tar.gz\""
+        "source = \"https://github.com/tao3k/rust-lang-project-harness/releases/download/v0.1.2/asp-rust-x86_64-unknown-linux-gnu.tar.gz\""
     ));
     assert!(lock_contents.contains("packagePath = "));
 

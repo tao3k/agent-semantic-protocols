@@ -67,6 +67,31 @@ fn probe_output(output: &str) -> serde_json::Value {
     })
 }
 
+fn custom_probe_call() -> serde_json::Value {
+    json!({
+        "type": "response_item",
+        "payload": {
+            "type": "custom_tool_call",
+            "name": "exec",
+            "call_id": "custom-probe-call",
+            "input": format!(
+                r#"const result = await tools.exec_command({{cmd: \"sed -n '1,5p' {PROBE_PATH}\"}});"#
+            )
+        }
+    })
+}
+
+fn custom_probe_output(call_id: &str, output: &str) -> serde_json::Value {
+    json!({
+        "type": "response_item",
+        "payload": {
+            "type": "custom_tool_call_output",
+            "call_id": call_id,
+            "output": [{"type": "input_text", "text": output}]
+        }
+    })
+}
+
 #[test]
 fn normal_task_deny_without_source_bytes_is_accepted() {
     let path = write_rollout(
@@ -81,6 +106,41 @@ fn normal_task_deny_without_source_bytes_is_accepted() {
     let receipt = inspect_host_rollout(&path, PROBE_PATH, SENTINEL).expect("inspect rollout");
     assert!(receipt.accepted(), "{receipt:?}");
     assert_eq!(receipt.reason_kind(), "normal-task-hook-deny-observed");
+    std::fs::remove_file(path).expect("remove rollout");
+}
+
+#[test]
+fn unified_exec_deny_without_source_bytes_is_accepted() {
+    let path = write_rollout(
+        "unified-exec-accepted",
+        &[
+            world_state(true),
+            custom_probe_call(),
+            hook_deny(),
+            custom_probe_output("unrelated-call", SENTINEL),
+            custom_probe_output("custom-probe-call", "Command blocked by PreToolUse hook"),
+        ],
+    );
+    let receipt = inspect_host_rollout(&path, PROBE_PATH, SENTINEL).expect("inspect rollout");
+    assert!(receipt.accepted(), "{receipt:?}");
+    assert_eq!(receipt.reason_kind(), "normal-task-hook-deny-observed");
+    std::fs::remove_file(path).expect("remove rollout");
+}
+
+#[test]
+fn unified_exec_source_bytes_leak_is_correlated_to_the_probe_call() {
+    let path = write_rollout(
+        "unified-exec-source-leak",
+        &[
+            world_state(true),
+            custom_probe_call(),
+            hook_deny(),
+            custom_probe_output("custom-probe-call", SENTINEL),
+        ],
+    );
+    let receipt = inspect_host_rollout(&path, PROBE_PATH, SENTINEL).expect("inspect rollout");
+    assert!(!receipt.accepted(), "{receipt:?}");
+    assert_eq!(receipt.reason_kind(), "source-bytes-leaked");
     std::fs::remove_file(path).expect("remove rollout");
 }
 

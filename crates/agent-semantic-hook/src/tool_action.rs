@@ -1,7 +1,5 @@
 //! Normalizes platform tool payloads into hook classifier actions.
 
-//! Converts client tool payloads into action-level source access intents.
-
 use std::borrow::Cow;
 
 use serde_json::Value;
@@ -11,6 +9,8 @@ use crate::protocol::DecisionSubject;
 
 #[path = "tool_action_exec/functions_exec.rs"]
 mod functions_exec;
+#[path = "shell_action_segments.rs"]
+mod shell_segments;
 
 const ACTION_SCAN_KEYS: &[&str] = &[
     "commandActions",
@@ -543,8 +543,7 @@ pub fn codex_tool_event_requires_policy_evaluation(payload: &Value) -> Option<bo
     Some(false)
 }
 
-/// Collects direct, shell, nested, and Codex `CommandAction` intents.
-/// Extract source read/search/list/write intents from a client tool payload.
+/// Collects source intents from direct, shell, nested, and Codex actions.
 pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolAction> {
     const CODEX_COMMAND_ACTION_KEYS: &[&str] = &["commandActions", "command_actions"];
     const CODEX_DIRECT_ACTION_KEYS: &[&str] = &["action", "toolAction", "tool_action"];
@@ -579,13 +578,8 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
             return;
         }
 
-        // Codex may project a CommandAction either as the compact
-        // `{ type: "read", path: ... }` shape above or as a nested native
-        // tool envelope such as
-        // `{ toolName: "Read", toolInput: { path: ... } }`.  The latter must
-        // re-enter the canonical tool normalizer; otherwise registered source
-        // extensions disappear before policy matching and the outer
-        // `functions.exec` envelope is incorrectly treated as unrelated.
+        // Nested native tool envelopes must re-enter canonical normalization;
+        // otherwise registered source extensions disappear before matching.
         if direct_action && let Some(nested) = nested_action_from_tool_use(value) {
             for action in collect_tool_actions(&nested.tool_name, &nested.input) {
                 push_unique_action(actions, action);
@@ -739,8 +733,24 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
     let tool_input = decoded_tool_input.as_ref().unwrap_or(tool_input);
     let surface = ToolSurface::from_tool_name(tool_name);
     let command = extract_command_direct(surface, tool_name, tool_input);
-    let command_tokens = command.as_deref().map(semantic_shell_tokens);
     let scans_nested_actions = tool_input_needs_action_scan(tool_name, tool_input);
+    if surface == ToolSurface::CodexShell
+        && let Some(command) = command.as_deref()
+        && let Some(compound_actions) = shell_segments::split_shell_command(tool_name, command)
+    {
+        let mut actions = Vec::new();
+        if scans_nested_actions {
+            actions.extend(codex_command_actions(tool_name, tool_input));
+            for nested in nested_tool_actions(tool_name, tool_input) {
+                actions.extend(collect_tool_actions(&nested.tool_name, &nested.input));
+            }
+        }
+        for action in compound_actions {
+            push_unique_action(&mut actions, action);
+        }
+        return actions;
+    }
+    let command_tokens = command.as_deref().map(semantic_shell_tokens);
     let mut paths = if scans_nested_actions && surface == ToolSurface::Unknown {
         Vec::new()
     } else if surface == ToolSurface::CodexApplyPatch {

@@ -1,8 +1,9 @@
 //! Qualify and atomically publish provider live-corpus artifacts.
 
 use agent_semantic_runtime::{
-    LiveCorpusArtifactIdentity, LiveCorpusLanguageExtensionEvidenceV1,
-    live_corpus_artifact_manifest, live_corpus_artifact_paths, live_corpus_git_checkout_is_clean,
+    LiveCorpusArtifactIdentity, LiveCorpusGitCheckoutQualification,
+    LiveCorpusLanguageExtensionEvidenceV1, live_corpus_artifact_manifest,
+    live_corpus_artifact_paths, live_corpus_git_checkout_is_clean,
     live_corpus_git_repository_paths, live_corpus_lock_digest, qualify_live_corpus_git_checkout,
     qualify_live_corpus_language_extensions, resolve_state_home, sync_live_corpus_git_checkout,
 };
@@ -16,6 +17,27 @@ use std::{
 use super::provider_activation::{load_activation_for_language, provider_activation_path};
 
 const DEFAULT_LOCK_PATH: &str = "benchmarks/large-library-runtime-corpora.v1.json";
+
+#[derive(Debug, Eq, PartialEq)]
+struct LiveCorpusMaterializedSourceIdentity {
+    head_revision: String,
+    git_tree: String,
+    source_merkle_root: String,
+}
+
+fn materialized_source_identity(
+    checkout: LiveCorpusGitCheckoutQualification,
+    runtime_source_root_digest: String,
+) -> Result<LiveCorpusMaterializedSourceIdentity, String> {
+    if runtime_source_root_digest.trim().is_empty() {
+        return Err("ASP Server returned an empty canonical source root digest".to_owned());
+    }
+    Ok(LiveCorpusMaterializedSourceIdentity {
+        head_revision: checkout.head_revision,
+        git_tree: checkout.git_tree,
+        source_merkle_root: runtime_source_root_digest,
+    })
+}
 #[path = "live_corpus_qualification.rs"]
 mod qualification;
 const BUILDER_ID: &str = "asp-live-corpus";
@@ -299,6 +321,27 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
     validate_extension_admission(corpus, &extension_evidence)?;
     emit_live_corpus_timing("extension-evidence", &mut step_started);
 
+    let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&state_home)?
+        .ok_or_else(|| {
+            "Live Corpus materialization requires a healthy Runtime Server".to_owned()
+        })?;
+    let workspace_identity =
+        agent_semantic_client_core::state_core::ResolvedState::resolve(&source)?
+            .workspace
+            .workspace_id
+            .to_string();
+    let session = agent_semantic_client_db::WorkspaceDbIpcSession::for_runtime_server_client(
+        &endpoint,
+        workspace_identity,
+        source.clone(),
+    );
+    let generation = session
+        .admit_runtime_generation_for_read(&corpus.language, &corpus.provider_id)
+        .await?;
+    let materialized_source =
+        materialized_source_identity(checkout, generation.source_root_digest)?;
+    emit_live_corpus_timing("runtime-generation", &mut step_started);
+
     let resource_lock =
         serde_json::to_vec(corpus).map_err(|error| format!("failed to encode lock: {error}"))?;
     let lock_digest = live_corpus_lock_digest(&resource_lock);
@@ -308,9 +351,9 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
         provider_id: &corpus.provider_id,
         language_id: &corpus.language,
         builder_id: BUILDER_ID,
-        revision: &checkout.head_revision,
-        git_tree: &checkout.git_tree,
-        source_merkle_root: &checkout.source_merkle_root,
+        revision: &materialized_source.head_revision,
+        git_tree: &materialized_source.git_tree,
+        source_merkle_root: &materialized_source.source_merkle_root,
     };
     let paths = live_corpus_artifact_paths(&state_home, &repository, &identity)?;
     let manifest =
@@ -321,9 +364,9 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
         artifact_digest: paths.artifact_digest.clone(),
         materialization_authority: "developer-gix".to_owned(),
         source_path: source.display().to_string(),
-        head_revision: checkout.head_revision,
-        git_tree: checkout.git_tree,
-        source_merkle_root: checkout.source_merkle_root,
+        head_revision: materialized_source.head_revision,
+        git_tree: materialized_source.git_tree,
+        source_merkle_root: materialized_source.source_merkle_root,
         language_extension_evidence: extension_evidence.clone(),
         clean: true,
         status: "qualified".to_owned(),

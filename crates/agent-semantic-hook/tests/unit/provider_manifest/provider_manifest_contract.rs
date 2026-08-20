@@ -155,3 +155,19 @@ fn assert_provider_sources_exclude_workspace_identity(root: &Path, forbidden: &[
         }
     }
 }
+
+#[test]
+fn owner_items_capability_requires_a_language_projection_descriptor() {
+    for manifest in builtin_provider_manifests() {
+        let value = serde_json::to_value(&manifest).expect("serialize provider manifest");
+        if value["execution"] == "external-process"
+            && value["searchCapabilities"]["ownerItems"] == true
+        {
+            assert!(
+                value.get("languageProjection").is_some(),
+                "{} ownerItems requires languageProjection",
+                value["languageId"]
+            );
+        }
+    }
+}

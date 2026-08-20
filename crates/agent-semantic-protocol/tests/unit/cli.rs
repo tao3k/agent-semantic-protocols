@@ -40,7 +40,7 @@ fn unrelated_cli_errors_are_not_rewritten() {
 }
 
 #[test]
-fn missing_generation_has_one_non_recursive_choice_plane_action() {
+fn missing_generation_has_one_runtime_owned_non_recursive_action() {
     let rendered = render_cli_error(
         &["rust".to_owned(), "search".to_owned(), "owner.rs".to_owned()],
         "state=source-unavailable reasonKind=active-workspace-generation-required: active workspace generation lease is required".to_owned(),
@@ -54,12 +54,12 @@ fn missing_generation_has_one_non_recursive_choice_plane_action() {
         .expect("compile workspace generation schema")
         .validate(&receipt)
         .expect("receipt satisfies workspace generation schema");
-    assert_eq!(receipt["state"], "deferred");
-    assert_eq!(
-        receipt["choicePlaneCommand"],
-        "asp session --agents choice-plane"
-    );
-    assert_eq!(receipt["retryPolicy"], "do-not-retry-in-current-generation");
+    assert_eq!(receipt["state"], "in-progress");
+    assert_eq!(receipt["admissionTrigger"], "query-demand");
+    assert_eq!(receipt["buildOwner"], "runtime-server");
+    assert_eq!(receipt["requestLifetimeIndependent"], true);
+    assert_eq!(receipt["retryPolicy"], "retry-after-runtime-progress");
+    assert!(receipt.get("choicePlaneCommand").is_none());
     assert_eq!(
         receipt["argv"],
         serde_json::json!(["asp", "rust", "search", "owner.rs"])
@@ -69,5 +69,23 @@ fn missing_generation_has_one_non_recursive_choice_plane_action() {
             .as_str()
             .expect("next action")
             .contains("@asp_")
+    );
+    assert!(
+        !receipt["nextAction"]
+            .as_str()
+            .unwrap()
+            .contains("cache import")
+    );
+    assert!(
+        !receipt["nextAction"]
+            .as_str()
+            .unwrap()
+            .contains("source-index refresh")
+    );
+    assert!(
+        !receipt["nextAction"]
+            .as_str()
+            .unwrap()
+            .contains("choice-plane")
     );
 }

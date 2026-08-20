@@ -14,6 +14,20 @@ wrapperTemplates = [
 maxMatcherMicros = 1000
 
 [[rules]]
+id = "allow-explicit-no-agent-host-bypass"
+positiveCommands = [
+  "ASP_NO_AGENT=1 rg -n owner src/lib.rs",
+  "TRACE=1 ASP_NO_AGENT=1 cargo test -p agent-semantic-hook",
+]
+negativeCommands = [
+  "NOT_ASP_NO_AGENT=1 rg -n owner src/lib.rs",
+  "env ASP_NO_AGENT=1 cargo test -p agent-semantic-hook",
+  "printf warmup && ASP_NO_AGENT=1 rg -n owner src/lib.rs",
+  "bash -lc 'ASP_NO_AGENT=1 rg -n owner src/lib.rs'",
+]
+wrapperExemption = "the bypass predicate is intentionally bounded to the first shell stage leading assignment block"
+
+[[rules]]
 id = "registered-asp-reasoning-search"
 positiveCommands = [
   "asp org search owner docs/design.org items --query capability --workspace . --view seeds",

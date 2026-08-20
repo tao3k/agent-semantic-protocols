@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/canonical-provider-identity.v1.schema.json",
+  "title": "Canonical Provider Identity v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "languageId", "providerId"],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.canonical-provider-identity"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "enum": [
+        "gerbil-scheme",
+        "julia",
+        "md",
+        "org",
+        "python",
+        "rust",
+        "typescript"
+      ]
+    },
+    "providerId": {
+      "pattern": "^asp-[a-z0-9][a-z0-9-]*$"
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "languageId": {"const": "gerbil-scheme"},
+        "providerId": {"const": "asp-gerbil-scheme"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "julia"},
+        "providerId": {"const": "asp-julia"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "md"},
+        "providerId": {"const": "asp-md"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "org"},
+        "providerId": {"const": "asp-org"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "python"},
+        "providerId": {"const": "asp-python"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "rust"},
+        "providerId": {"const": "asp-rust"}
+      }
+    },
+    {
+      "properties": {
+        "languageId": {"const": "typescript"},
+        "providerId": {"const": "asp-typescript"}
+      }
+    }
+  ]
+}

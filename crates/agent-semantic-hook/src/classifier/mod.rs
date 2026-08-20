@@ -23,7 +23,8 @@ pub(crate) use source_access_routes::{
 };
 
 pub use command_decision_rebind::{
-    ShellCommandKey, rebind_command_decision_to_payload, shell_command_key,
+    HookMatcherKeys, ShellCommandKey, hook_matcher_keys, rebind_command_decision_to_payload,
+    rebind_command_decision_to_payload_with_keys, shell_command_key, shell_command_keys,
 };
 pub use core::{
     DirectReadSourceKey, HookClassificationRequest, ShellReadSourceKey, classify_hook,

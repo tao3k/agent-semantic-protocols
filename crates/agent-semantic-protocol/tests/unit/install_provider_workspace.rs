@@ -1,6 +1,7 @@
 use super::{
-    WorkspaceLaunchDescriptor, WorkspaceRuntimeDependencyDescriptor, artifact_snapshot,
-    copy_artifact_root, materialize_runtime_dependencies, resolve_runtime_dependencies,
+    ProviderWorkspaceInstallDescriptor, WorkspaceLaunchDescriptor,
+    WorkspaceRuntimeDependencyDescriptor, artifact_snapshot, copy_artifact_root,
+    materialize_runtime_dependencies, resolve_runtime_dependencies,
 };
 use std::path::{Path, PathBuf};
 
@@ -33,6 +34,33 @@ fn write(path: &Path, bytes: &[u8]) {
     std::fs::create_dir_all(path.parent().expect("fixture file parent"))
         .expect("create fixture file parent");
     std::fs::write(path, bytes).expect("write fixture file");
+}
+
+#[test]
+fn workspace_install_v1_accepts_the_canonical_language_identity() {
+    let descriptor: ProviderWorkspaceInstallDescriptor = serde_json::from_str(
+        r#"{
+          "schemaId":"agent.semantic-protocols.provider-workspace-install",
+          "schemaVersion":"1",
+          "schemaAuthority":"https://tao3k.github.io/agent-semantic-protocols/schemas/",
+          "languageId":"julia",
+          "providerId":"asp-julia",
+          "binary":"asp-julia-harness",
+          "workspaceArtifact":{"root":"build/provider","entrypoint":"."},
+          "workspaceBuild":{
+            "program":"build.sh",
+            "args":[],
+            "workingDirectory":".",
+            "sourceSnapshotAnchors":["Project.toml"],
+            "derivedPaths":["build"],
+            "env":{}
+          }
+        }"#,
+    )
+    .expect("decode canonical v1 workspace install descriptor");
+
+    assert_eq!(descriptor.language_id, "julia");
+    assert_eq!(descriptor.provider_id, "asp-julia");
 }
 
 #[cfg(unix)]

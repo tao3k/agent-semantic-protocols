@@ -135,7 +135,7 @@ activation.
 * Resident Provider Runtime Contract
 
 Every activated provider manifest MUST declare a =runtimeContract=.  The
-contract binds the =runtime-ipc-v1= transport and the request and response
+contract binds the unversioned =runtime-ipc= transport and the request and response
 schema identity of every admitted provider operation.  Missing, empty,
 duplicate, or schema-incomplete contracts fail activation; route booleans and
 CLI command templates are not runtime capability evidence.
@@ -150,7 +150,7 @@ typed work through the actor's bounded Tokio =mpsc= mailbox and receive one
 
 No query, search, owner projection, exact projection, healthcheck, or workspace
 generation path may spawn a provider process.  A missing or stopped actor is a
-typed =provider-runtime-not-ready= state.  Shutdown closes admission, cancels
+typed =asp-client-server-not-ready= state.  Shutdown closes admission, cancels
 the actor, drains outstanding responses, reaps the child, and publishes a
 terminal receipt.  There is no request-time process fallback and no framed
 stdin compatibility transport in this architecture.

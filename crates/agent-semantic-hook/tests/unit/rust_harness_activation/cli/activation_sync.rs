@@ -14,7 +14,7 @@ fn cli_doctor_syncs_generated_activation_drift() {
     let state_home = root.join(".agent-semantic-protocols");
     super::super::support::write_default_client_hook_config(&root);
     let activation_path = write_invalid_generated_activation(&root);
-    write_state_home_provider_binary(&state_home, "rust", "rs-harness", "rs-harness");
+    write_state_home_provider_binary(&state_home, "rust", "asp-rust", "rs-harness");
     std::fs::create_dir_all(root.join("src")).expect("create Rust source fixture directory");
     std::fs::write(
         root.join("Cargo.toml"),
@@ -60,7 +60,7 @@ fn cli_doctor_syncs_generated_activation_drift() {
     let rust_provider = registry
         .providers
         .iter()
-        .find(|provider| provider.provider_id == "rs-harness")
+        .find(|provider| provider.provider_id == "asp-rust")
         .expect("synced rust provider");
     assert_eq!(
         rust_provider.routes.prime.argv,

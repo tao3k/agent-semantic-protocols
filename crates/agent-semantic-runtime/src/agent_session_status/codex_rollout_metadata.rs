@@ -173,31 +173,6 @@ impl TryFrom<RawCodexRolloutSessionMetadata> for CodexRolloutSessionMetadata {
 }
 
 impl CodexRolloutSessionMetadata {
-    pub(crate) fn apply_host_child_attribution(
-        &mut self,
-        child_session_id: RuntimeSessionId,
-        root_session_id: RuntimeSessionId,
-        agent_path: Option<String>,
-        agent_role: Option<String>,
-        spawn_depth: Option<i64>,
-    ) -> Result<(), String> {
-        let spawn_depth = spawn_depth
-            .map(|value| {
-                u32::try_from(value)
-                    .map(CodexSpawnDepth)
-                    .map_err(|_| format!("Codex spawn depth is outside the u32 domain: {value}"))
-            })
-            .transpose()?;
-        self.session_id = child_session_id;
-        self.root_session_id = Some(root_session_id.clone());
-        self.parent_thread_id = Some(root_session_id);
-        self.thread_source = Some(CodexThreadSource("subagent".to_owned()));
-        self.agent_path = agent_path.map(CodexAgentPath);
-        self.agent_role = agent_role.map(CodexAgentRole);
-        self.spawn_depth = spawn_depth;
-        Ok(())
-    }
-
     pub(crate) fn fill_discovered_child_attribution(
         &mut self,
         root_session_id: &RuntimeSessionId,
@@ -213,12 +188,6 @@ impl CodexRolloutSessionMetadata {
             self.thread_source
                 .get_or_insert_with(|| CodexThreadSource("subagent".to_owned()));
             self.spawn_depth.get_or_insert(CodexSpawnDepth(1));
-        }
-    }
-
-    pub(crate) fn override_model_if_observed(&mut self, model: Option<String>) {
-        if let Some(model) = model {
-            self.model = Some(CodexModel(model));
         }
     }
 

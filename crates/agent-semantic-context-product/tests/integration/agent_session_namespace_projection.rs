@@ -115,7 +115,11 @@ fn a_forged_action_cannot_override_durable_namespace_state() {
     projection.host_action = CodexHostAction::SpawnAgent;
 
     assert_eq!(
-        projection.validate().as_deref(),
+        projection
+            .validate()
+            .as_ref()
+            .map(|_| ())
+            .map_err(String::as_str),
         Err("agent session namespace transition does not match durable namespace state")
     );
 }

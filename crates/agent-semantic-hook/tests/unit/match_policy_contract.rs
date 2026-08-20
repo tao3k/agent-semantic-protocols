@@ -226,6 +226,13 @@ fn production_match_policy_contract() {
     runtime.project_root = root.to_string_lossy().into_owned();
     let cases = vec![
         MatchCase {
+            name: "explicit no-agent command bypass",
+            payload: shell("ASP_NO_AGENT=1 cargo test -p agent-semantic-hook"),
+            rule_id: "allow-explicit-no-agent-host-bypass",
+            decision: DecisionKind::Allow,
+            reason: ReasonKind::None,
+        },
+        MatchCase {
             name: "registered reasoning search",
             payload: shell("asp rust search lexical --query classify_hook --workspace ."),
             rule_id: "registered-asp-reasoning-search",

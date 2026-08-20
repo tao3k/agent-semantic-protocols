@@ -15,12 +15,14 @@ mod source_paths;
 mod structured_projection;
 pub use command_match::{
     BashCommandMatchV1, CommandStageV1, MAX_COMMAND_CANDIDATES, MAX_STAGE_TOKENS, PrefixMatch,
-    candidate_matches_prefix, command_stages_match_prefix, command_stages_match_wrapped_prefix,
-    match_bash_command_prefix, match_bash_wrapped_command_prefix, parse_bash_command_candidates,
+    candidate_matches_prefix, command_stages_match_leading_environment_assignment,
+    command_stages_match_prefix, command_stages_match_wrapped_prefix, match_bash_command_prefix,
+    match_bash_wrapped_command_prefix, parse_bash_command_candidates, render_bash_command_stage,
 };
 
 pub use source_paths::{
-    command_source_paths, embedded_literal_candidates, path_like_token_matches,
+    command_source_paths, command_stage_source_paths, embedded_literal_candidates,
+    path_like_token_matches,
 };
 
 pub mod structured;

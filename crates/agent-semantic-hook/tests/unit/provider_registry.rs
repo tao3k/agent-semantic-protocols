@@ -35,12 +35,12 @@ fn selected_registry_method_lookup_is_lazy_and_sub_millisecond_warm() {
     for _ in 0..100 {
         let invocation = crate::registered_provider_method_invocation_v1(
             "rust",
-            "rs-harness",
+            "asp-rust",
             "search/owner-native",
         )
         .expect("resolve selected provider method")
         .expect("selected provider method");
-        assert_eq!(invocation.argv[0], "rs-harness");
+        assert_eq!(invocation.argv[0], "asp-rust");
     }
     let elapsed = started.elapsed();
     println!(
@@ -57,11 +57,11 @@ fn selected_registry_method_lookup_is_lazy_and_sub_millisecond_warm() {
 fn dependency_topology_routes_are_registered_for_capable_languages() {
     let registry = schema_registry();
     for (language_id, provider_id) in [
-        ("rust", "rs-harness"),
-        ("typescript", "ts-harness"),
-        ("python", "py-harness"),
-        ("julia", "julia-lang-project-harness"),
-        ("gerbil-scheme", "gerbil-scheme-harness"),
+        ("rust", "asp-rust"),
+        ("typescript", "asp-typescript"),
+        ("python", "asp-python"),
+        ("julia", "asp-julia"),
+        ("gerbil-scheme", "asp-gerbil-scheme"),
     ] {
         let language = registry
             .languages
@@ -88,33 +88,30 @@ fn dependency_topology_routes_are_registered_for_capable_languages() {
 
 #[test]
 fn registry_method_inventory_is_explicit() {
-    let rust_native_owner = crate::registered_provider_method_invocation_v1(
-        "rust",
-        "rs-harness",
-        "search/owner-native",
-    )
-    .expect("resolve Rust native owner transport")
-    .expect("Rust native owner transport must be registered");
+    let rust_native_owner =
+        crate::registered_provider_method_invocation_v1("rust", "asp-rust", "search/owner-native")
+            .expect("resolve Rust native owner transport")
+            .expect("Rust native owner transport must be registered");
     assert_eq!(
         rust_native_owner.argv,
         [
-            "rs-harness",
+            "asp-rust",
             "owner-search-stdin",
             "--asp-provider-id",
-            "rs-harness",
+            "asp-rust",
         ]
     );
 
     let rust_native_exact = crate::registered_provider_method_invocation_v1(
         "rust",
-        "rs-harness",
+        "asp-rust",
         "query/exact-selector-native-v1",
     )
     .expect("resolve Rust native exact transport")
     .expect("Rust native exact transport must be registered");
     assert_eq!(
         rust_native_exact.argv,
-        ["rs-harness", "query", "--asp-exact-request-stdin", "--json"]
+        ["asp-rust", "query", "--asp-exact-request-stdin", "--json"]
     );
 
     let registry = super::schema_registry();
@@ -164,7 +161,7 @@ fn registry_method_inventory_is_explicit() {
     assert!(
         crate::registered_provider_method_invocation_v1(
             "rust",
-            "not-rs-harness",
+            "not-asp-rust",
             "search/owner-native",
         )
         .expect_err("provider identity drift must fail closed")
@@ -180,7 +177,7 @@ fn provider_native_argument_projections_are_closed_and_capability_truthful() {
         presentation: Some("seeds".to_string()),
         owner: Some("must-not-leak.rs".to_string()),
     };
-    for (language_id, provider_id) in [("rust", "rs-harness"), ("python", "py-harness")] {
+    for (language_id, provider_id) in [("rust", "asp-rust"), ("python", "asp-python")] {
         let argv = crate::registered_provider_method_projected_argv_v1(
             language_id,
             provider_id,
@@ -207,7 +204,7 @@ fn provider_native_argument_projections_are_closed_and_capability_truthful() {
 
     let gerbil_error = crate::registered_provider_method_projected_argv_v1(
         "gerbil-scheme",
-        "gerbil-scheme-harness",
+        "asp-gerbil-scheme",
         "search/lexical",
         &lexical_values,
     )
@@ -226,7 +223,7 @@ fn provider_native_argument_projections_are_closed_and_capability_truthful() {
     };
     let gerbil_owner = crate::registered_provider_method_projected_argv_v1(
         "gerbil-scheme",
-        "gerbil-scheme-harness",
+        "asp-gerbil-scheme",
         "search/owner",
         &owner_values,
     )
@@ -250,7 +247,7 @@ fn provider_native_argument_projections_are_closed_and_capability_truthful() {
 fn provider_native_argument_projection_missing_slot_fails_typed() {
     let error = crate::registered_provider_method_projected_argv_v1(
         "rust",
-        "rs-harness",
+        "asp-rust",
         "search/lexical",
         &crate::ProviderMethodArgumentValuesV1::default(),
     )

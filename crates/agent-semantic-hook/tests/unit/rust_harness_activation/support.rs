@@ -131,7 +131,7 @@ pub(super) fn root_owned_rust_activation_json() -> String {
             .as_nanos()
     ));
     let provider_executable =
-        write_state_home_provider_binary(&state_home, "rust", "rs-harness", "rs-harness");
+        write_state_home_provider_binary(&state_home, "rust", "asp-rust", "rs-harness");
     let resolved_execution_prefix = vec![provider_executable.display().to_string()];
     let provider_artifact = agent_semantic_hook::active_provider_artifact_input_with_state_home(
         std::path::Path::new("."),
@@ -263,7 +263,7 @@ fn write_state_home_provider_file(
         .to_string();
         let guide_marker = match binary {
             "rs-harness" => {
-                "[agent-guide] runtime=agent-semantic-hook language=rust provider=rs-harness"
+                "[agent-guide] runtime=agent-semantic-hook language=rust provider=asp-rust"
             }
             "ts-harness" => "[ts-harness-guide]",
             "py-harness" | "custom-py-harness" => "[py-harness-guide]",

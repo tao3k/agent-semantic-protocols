@@ -77,6 +77,7 @@ fn argument_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
 struct HostAcceptanceEvidence {
     plugin_loaded: bool,
     probe_call_observed: bool,
+    probe_call_ids: std::collections::HashSet<String>,
     hook_event_observed: bool,
     deny_observed: bool,
     source_bytes_returned: bool,
@@ -228,20 +229,35 @@ fn observe_rollout_item(
     evidence: &mut HostAcceptanceEvidence,
 ) {
     let payload_type = value.pointer("/payload/type").and_then(Value::as_str);
-    if payload_type == Some("function_call")
-        && value
-            .pointer("/payload/arguments")
-            .and_then(Value::as_str)
-            .is_some_and(|arguments| arguments.contains(probe_path))
-    {
-        evidence.probe_call_observed = true;
+    let probe_call = match payload_type {
+        Some("function_call") => value.pointer("/payload/arguments"),
+        Some("custom_tool_call") => value.pointer("/payload/input"),
+        _ => None,
     }
-    if payload_type == Some("function_call_output")
-        && value
-            .pointer("/payload/output")
+    .and_then(Value::as_str)
+    .is_some_and(|input| input.contains(probe_path));
+    if probe_call {
+        evidence.probe_call_observed = true;
+        if let Some(call_id) = value.pointer("/payload/call_id").and_then(Value::as_str) {
+            evidence.probe_call_ids.insert(call_id.to_owned());
+        }
+    }
+
+    let output = value.pointer("/payload/output");
+    let source_sentinel_observed = match payload_type {
+        Some("function_call_output") => output
             .and_then(Value::as_str)
-            .is_some_and(|output| output.contains(source_sentinel))
-    {
+            .is_some_and(|output| output.contains(source_sentinel)),
+        Some("custom_tool_call_output") => {
+            value
+                .pointer("/payload/call_id")
+                .and_then(Value::as_str)
+                .is_some_and(|call_id| evidence.probe_call_ids.contains(call_id))
+                && output.is_some_and(|output| value_contains_text(output, source_sentinel))
+        }
+        _ => false,
+    };
+    if source_sentinel_observed {
         evidence.source_bytes_returned = true;
     }
 
@@ -259,6 +275,19 @@ fn observe_rollout_item(
             || serialized.contains("permissionDecision=deny"))
     {
         evidence.deny_observed = true;
+    }
+}
+
+fn value_contains_text(value: &Value, needle: &str) -> bool {
+    match value {
+        Value::String(text) => text.contains(needle),
+        Value::Array(values) => values
+            .iter()
+            .any(|value| value_contains_text(value, needle)),
+        Value::Object(fields) => fields
+            .values()
+            .any(|value| value_contains_text(value, needle)),
+        Value::Null | Value::Bool(_) | Value::Number(_) => false,
     }
 }
 

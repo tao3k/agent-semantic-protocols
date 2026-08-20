@@ -19,7 +19,9 @@ use tokio::{
 
 use super::{
     exporter::TursoOpenTelemetrySpanExporter,
-    observation::{RuntimeLifecycleEvent, RuntimePerformanceObservation},
+    observation::{
+        RuntimeLifecycleEvent, RuntimePerformanceObservation, push_optional, push_optional_u64,
+    },
     semconv,
 };
 
@@ -392,7 +394,7 @@ async fn run_resident_telemetry_lane(
     let (memory_sender, mut memory_receiver) = watch::channel(initial_process_memory);
     let memory_sampler = task_scope.spawn(
         "runtime-server-process-memory-sampler",
-        run_process_memory_sampler(memory_sender, shutdown.clone()),
+        super::process_memory::run_sampler(memory_sender, shutdown.clone()),
     )?;
     let mut latest_process_memory = initial_process_memory;
     if let Some(memory) = initial_process_memory {
@@ -549,44 +551,6 @@ async fn run_resident_telemetry_lane(
         .join()
         .await?
         .map_err(|error| format!("OpenTelemetry provider shutdown failed: {error}"))
-}
-
-async fn run_process_memory_sampler(
-    memory: watch::Sender<Option<super::process_memory::ProcessMemoryObservation>>,
-    mut shutdown: watch::Receiver<bool>,
-) -> Result<(), String> {
-    let mut interval = tokio::time::interval(std::time::Duration::from_millis(250));
-    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    loop {
-        tokio::select! {
-            scheduled = interval.tick() => {
-                let event_loop_lag_micros = u64::try_from(
-                    tokio::time::Instant::now()
-                        .saturating_duration_since(scheduled)
-                        .as_micros(),
-                )
-                .unwrap_or(u64::MAX);
-                let scheduler = super::process_memory::observe_runtime_scheduler();
-                let observation = tokio::task::spawn_blocking(
-                    move || {
-                        super::process_memory::observe_process_memory(
-                            event_loop_lag_micros,
-                            scheduler,
-                        )
-                    },
-                )
-                .await
-                .map_err(|error| {
-                    format!("Runtime Server process-memory probe task failed: {error}")
-                })?;
-                memory.send_replace(observation);
-            }
-            changed = shutdown.changed() => {
-                let _ = changed;
-                return Ok(());
-            }
-        }
-    }
 }
 
 async fn remove_socket_if_present(path: &std::path::Path) -> Result<(), String> {
@@ -976,17 +940,5 @@ async fn read_ingress_frame(stream: &mut tokio::net::UnixStream) -> Result<Vec<u
         if newline.is_some() {
             return Ok(frame);
         }
-    }
-}
-
-fn push_optional(attributes: &mut Vec<KeyValue>, key: &'static str, value: Option<String>) {
-    if let Some(value) = value.filter(|value| !value.is_empty()) {
-        attributes.push(KeyValue::new(key, value));
-    }
-}
-
-fn push_optional_u64(attributes: &mut Vec<KeyValue>, key: &'static str, value: Option<u64>) {
-    if let Some(value) = value {
-        attributes.push(KeyValue::new(key, i64::try_from(value).unwrap_or(i64::MAX)));
     }
 }

@@ -1,0 +1,30 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-projection",
+  "schemaVersion": "1",
+  "projectionKind": "callable-skeleton",
+  "languageId": "rust",
+  "providerId": "asp-rust",
+  "rootSelector": "rust://crates/example/src/lib.rs#item/function/run",
+  "evidenceContextRef": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "payloadSchemaId": "agent.semantic-protocols.callable-skeleton",
+  "payloadDigest": "blake3-256:f7c1752a5bcf079001f519ac06ea05f84dad1f34c32eb74eb6bdae35957c106d",
+  "payload": {
+    "rootNodeId": "callable:root",
+    "callable": {
+      "kind": "function",
+      "displayName": "run",
+      "signature": "run"
+    },
+    "nodes": [],
+    "relations": [],
+    "cost": {
+      "sourceBytes": 0,
+      "projectedBytes": 0,
+      "omittedBytes": 0
+    },
+    "languageFacts": {
+      "parser": "syn",
+      "syntax": "rust"
+    }
+  }
+}

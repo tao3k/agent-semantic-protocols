@@ -7,9 +7,9 @@ use crate::protocol::{CommandTemplate, HookPolicy, HookRoutes};
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProviderRuntimeContractTransport {
-    RuntimeIpcV1,
-    HttpJsonV1,
-    InProcessV1,
+    RuntimeIpc,
+    HttpJson,
+    InProcess,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -38,13 +38,13 @@ impl ProviderRuntimeContractOperationDescriptor {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderRuntimeContractDescriptor {
     pub(crate) transport: ProviderRuntimeContractTransport,
-    pub(crate) server: Option<ProviderServerDescriptor>,
+    pub(crate) asp_client_server: Option<AspClientServerDescriptor>,
     pub(crate) operations: Vec<ProviderRuntimeContractOperationDescriptor>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ProviderServerDescriptor {
+pub struct AspClientServerDescriptor {
     pub(crate) schema_id: String,
     pub(crate) schema_version: String,
     pub(crate) transport: ProviderRuntimeContractTransport,
@@ -64,12 +64,12 @@ impl ProviderRuntimeContractDescriptor {
         &self.operations
     }
 
-    pub fn server(&self) -> Option<&ProviderServerDescriptor> {
-        self.server.as_ref()
+    pub fn asp_client_server(&self) -> Option<&AspClientServerDescriptor> {
+        self.asp_client_server.as_ref()
     }
 }
 
-impl ProviderServerDescriptor {
+impl AspClientServerDescriptor {
     pub fn command(&self) -> &[String] {
         &self.command
     }

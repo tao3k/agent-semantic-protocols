@@ -68,13 +68,14 @@ async fn mutation_admission_rejects_non_normalized_paths_and_workspace_identity_
         })
         .await
         .expect("record parent workspace");
-    let admission =
-        WorkspaceGenerationAdmission::new(Arc::new(|_, _, _, _, _changed_paths, _cancellation| {
+    let admission = WorkspaceGenerationAdmission::new(Arc::new(
+        |_, _, _, _, _changed_paths, _provider_target, _cancellation| {
             Box::pin(async {
                 panic!("invalid mutation admission must not start a generation build")
             })
-        }))
-        .with_catalog(catalog);
+        },
+    ))
+    .with_catalog(catalog);
 
     let path_error = admission
         .admit_observed_mutation(
@@ -109,7 +110,7 @@ async fn explicit_mutation_admission_returns_the_exact_attempt_terminal_receipt(
         .await
         .expect("create resident source root");
     let admission = WorkspaceGenerationAdmission::new(Arc::new(
-        |_, _, candidate, _, _changed_paths, _cancellation| {
+        |_, _, candidate, _, _changed_paths, _provider_target, _cancellation| {
             Box::pin(async move {
                 tokio::task::yield_now().await;
                 completed_generation(candidate)
@@ -175,6 +176,7 @@ async fn changed_paths_fan_out_to_each_workspace_resident_without_git_rediscover
               candidate,
               _build_mode,
               changed_paths,
+              _provider_target,
               _cancellation| {
             let builds = Arc::clone(&builds);
             Box::pin(async move {
@@ -290,6 +292,7 @@ async fn first_observed_mutation_admits_an_empty_workspace_catalog() {
               candidate,
               build_mode,
               changed_paths,
+              _provider_target,
               _cancellation| {
             let builds = Arc::clone(&builds);
             Box::pin(async move {
@@ -350,7 +353,7 @@ async fn failed_missing_base_retry_remains_a_full_generation_build() {
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
         let build_modes = Arc::clone(&build_modes);
-        move |_, _, candidate, build_mode, _changed_paths, _cancellation| {
+        move |_, _, candidate, build_mode, _changed_paths, _provider_target, _cancellation| {
             let build_count = Arc::clone(&build_count);
             let build_modes = Arc::clone(&build_modes);
             Box::pin(async move {
@@ -425,7 +428,7 @@ async fn mutation_queued_after_failed_base_rechecks_base_authority() {
         let build_count = Arc::clone(&build_count);
         let build_modes = Arc::clone(&build_modes);
         let release_first = Arc::clone(&release_first);
-        move |_, _, candidate, build_mode, _changed_paths, _cancellation| {
+        move |_, _, candidate, build_mode, _changed_paths, _provider_target, _cancellation| {
             let build_count = Arc::clone(&build_count);
             let build_modes = Arc::clone(&build_modes);
             let release_first = Arc::clone(&release_first);
@@ -502,7 +505,7 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
         let release = Arc::clone(&release);
-        move |_, _, candidate, _, _changed_paths, _cancellation| {
+        move |_, _, candidate, _, _changed_paths, _provider_target, _cancellation| {
             let build_count = Arc::clone(&build_count);
             let release = Arc::clone(&release);
             Box::pin(async move {

@@ -49,7 +49,7 @@ fn live_source_index_hit_does_not_create_or_open_client_db() {
         owners: vec![ClientDbSourceIndexOwner {
             owner_path: "src/lib.rs".into(),
             language_id: Some("rust".into()),
-            provider_id: Some("rs-harness".into()),
+            provider_id: Some("asp-rust".into()),
             source_kind: "file".into(),
             line_count: Some(1),
             query_keys: vec!["needle".into()],

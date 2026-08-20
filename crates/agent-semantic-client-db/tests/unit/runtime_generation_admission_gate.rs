@@ -29,7 +29,7 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_sub_millis
         let peak_builds = Arc::clone(&peak_builds);
         let build_count = Arc::clone(&build_count);
         let release = Arc::clone(&release);
-        move |_, _, candidate, _, _changed_paths, _cancellation| {
+        move |_, _, candidate, _, _changed_paths, _provider_target, _cancellation| {
             let active_builds = Arc::clone(&active_builds);
             let peak_builds = Arc::clone(&peak_builds);
             let build_count = Arc::clone(&build_count);

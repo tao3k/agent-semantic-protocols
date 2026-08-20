@@ -1,6 +1,6 @@
 use std::path::Path;
 
-/// Admits one Runtime generation, then reads its exact projection synchronously.
+/// Requires one admitted Runtime generation, then reads its exact projection synchronously.
 ///
 /// Runtime lifecycle and generation authority remain Tokio-owned. Once the
 /// generation pointer is admitted, the warm read is a synchronous mmap lookup
@@ -28,49 +28,32 @@ pub(crate) async fn runtime_server_workspace_exact_projection_async(
             project_root,
         )
         .await?;
-    let resident_generation_pointer = session.runtime_generation_pointer_path().ok_or_else(|| {
-        "Runtime exact projection requires an admitted resident generation: reasonKind=runtime-generation-not-ready"
-            .to_owned()
-    })?;
-    let resident_read =
-        agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadClient::open(
-            &resident_generation_pointer,
-            project_root,
+    // The exact-read operation is the single authority boundary.  Its Server
+    // dispatch either leases the resident Ready generation or submits the
+    // Runtime-owned cold admission before any mmap read.  A protocol-side
+    // generation preflight would reject Missing workspaces before that
+    // admission path can run and would introduce a TOCTOU check.
+    let read = session
+        .read_runtime_exact_projection(
+            language_id,
+            projection_kind,
+            agent_semantic_client_db::runtime_server_workspace::RuntimeProjectionScope::Production,
+            structural_selector,
         )
         .await?;
-    let read_started = std::time::Instant::now();
-    let read = resident_read.read_runtime_selector(projection_kind, structural_selector)?;
-    let read_elapsed_micros = u64::try_from(read_started.elapsed().as_micros()).unwrap_or(u64::MAX);
+    require_runtime_exact_projection_budget(read.evidence.elapsed_micros)?;
+    Ok(read.value)
+}
+
+fn require_runtime_exact_projection_budget(read_elapsed_micros: u64) -> Result<(), String> {
     if read_elapsed_micros >= 1_000 {
         return Err(format!(
             "Runtime exact projection exceeded the synchronous mmap budget: elapsedMicros={read_elapsed_micros} budgetExclusiveMicros=1000"
         ));
     }
-    let work = resident_read.work_counters();
-    if work.database_read_count != 0
-        || work.filesystem_read_count != 0
-        || work.provider_process_count != 0
-        || work.scheduler_task_count != 0
-        || work.socket_operation_count != 0
-    {
-        return Err(format!(
-            "Runtime exact projection violated synchronous mmap authority: databaseReads={} filesystemReads={} providerProcesses={} schedulerTasks={} socketOperations={}",
-            work.database_read_count,
-            work.filesystem_read_count,
-            work.provider_process_count,
-            work.scheduler_task_count,
-            work.socket_operation_count,
-        ));
-    }
-    resident_read.try_record_read_observation(
-        "runtime-exact-projection",
-        "qualified",
-        structural_selector,
-        Some(&language_id),
-        "exact-selector",
-        read_elapsed_micros,
-        1_000,
-        "within-budget",
-    );
-    Ok(read)
+    Ok(())
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/runtime_server_generation_data_plane.rs"]
+mod tests;

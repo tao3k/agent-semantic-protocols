@@ -4,10 +4,17 @@
   "title": "ASP Live Corpus Search Query Qualification Plan v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaId", "schemaVersion", "lockPath", "requiredLanguages", "cases"],
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "lockPath",
+    "requiredLanguages",
+    "residentSampleCount",
+    "cases"
+  ],
   "properties": {
     "schemaId": {
-      "const": "agent.semantic-protocols.live-corpus-search-query-qualification-plan.v1"
+      "const": "agent.semantic-protocols.live-corpus-search-query-qualification-plan"
     },
     "schemaVersion": { "const": "1" },
     "lockPath": { "type": "string", "minLength": 1 },
@@ -17,6 +24,7 @@
       "uniqueItems": true,
       "items": { "type": "string", "minLength": 1 }
     },
+    "residentSampleCount": { "type": "integer", "minimum": 128 },
     "cases": {
       "type": "array",
       "minItems": 1,

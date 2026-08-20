@@ -100,7 +100,7 @@ pub(super) fn reconcile_provider_install_receipt_in_lock_dir(
     let table = lock
         .as_table_mut()
         .ok_or_else(|| format!("provider lock is not a TOML table: {}", lock_path.display()))?;
-    let (provider_id, installed_path) = {
+    let (current_provider_id, installed_path) = {
         let field = |name: &str| -> Result<&str, String> {
             table
                 .get(name)
@@ -130,6 +130,8 @@ pub(super) fn reconcile_provider_install_receipt_in_lock_dir(
             PathBuf::from(field("installedPath")?),
         )
     };
+    let provider_id = agent_semantic_hook::registered_provider_id_v1(language_id)
+        .ok_or_else(|| format!("no registered provider identity for language `{language_id}`"))?;
     let installed_entrypoint_digest =
         agent_semantic_content_identity::file_content_digest_v1(&installed_path)?;
     let installed_entrypoint_metadata_digest =
@@ -146,10 +148,11 @@ pub(super) fn reconcile_provider_install_receipt_in_lock_dir(
             )
         })?
         .len();
-    let changed = table
-        .get("installedEntrypointDigest")
-        .and_then(toml::Value::as_str)
-        != Some(installed_entrypoint_digest.as_str())
+    let changed = current_provider_id != provider_id
+        || table
+            .get("installedEntrypointDigest")
+            .and_then(toml::Value::as_str)
+            != Some(installed_entrypoint_digest.as_str())
         || table
             .get("installedEntrypointMetadataDigest")
             .and_then(toml::Value::as_str)
@@ -158,6 +161,10 @@ pub(super) fn reconcile_provider_install_receipt_in_lock_dir(
             .get("executionCommandDigest")
             .and_then(toml::Value::as_str)
             != Some(execution_command_digest.as_str());
+    table.insert(
+        "provider".to_string(),
+        toml::Value::String(provider_id.clone()),
+    );
     table.insert(
         "installedEntrypointDigest".to_string(),
         toml::Value::String(installed_entrypoint_digest.clone()),

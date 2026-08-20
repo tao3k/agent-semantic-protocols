@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agent-semantic-protocols.local/schemas/exact-definitions.v1.schema.json",
+  "$id": "https://agent-semantic-protocols.dev/schemas/exact-definitions.v1.schema.json",
   "title": "Exact Shared Definitions v1",
   "type": "object",
   "$defs": {

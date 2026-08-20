@@ -10,6 +10,7 @@ use std::io::{Read, Write};
 
 const MAX_HOOK_INPUT_BYTES: usize = 1024 * 1024;
 const TRACE_ENV: &str = "ASP_HOOK_BOOTSTRAP_TRACE";
+const NO_AGENT_ENV: &str = "ASP_NO_AGENT";
 const HOOK_EVENTS: &[&str] = &[
     "pre-tool",
     "permission-request",
@@ -51,7 +52,11 @@ where
     S: Into<OsString>,
 {
     let args = args.into_iter().map(Into::into).collect::<Vec<_>>();
-    is_synchronous_hook_dispatch_with_override(&args, std::env::var_os("ASP_NO_AGENT").is_some())
+    is_synchronous_hook_dispatch_with_override(&args, no_agent_bypass_requested())
+}
+
+fn no_agent_bypass_requested() -> bool {
+    std::env::var_os(NO_AGENT_ENV).is_some_and(|value| value == "1")
 }
 
 fn is_synchronous_hook_dispatch_with_override(args: &[OsString], override_present: bool) -> bool {
@@ -120,6 +125,13 @@ pub fn terminate_hook_process(code: i32) -> ! {
 async fn run_hook_bootstrap(args: Vec<OsString>) -> Result<i32, String> {
     let started = std::time::Instant::now();
     validate_hook_args(&args)?;
+    if no_agent_bypass_requested() {
+        if std::env::var_os(TRACE_ENV).is_some() {
+            eprintln!("[asp-hook] route=bootstrap-no-agent-bypass");
+        }
+        emit_empty_success()?;
+        return Ok(0);
+    }
     let input = read_bounded_stdin()?;
     match crate::hook_break_glass::evaluate_hook_break_glass(&input) {
         crate::hook_break_glass::HookBreakGlassEvaluation::Authorized(capability) => {

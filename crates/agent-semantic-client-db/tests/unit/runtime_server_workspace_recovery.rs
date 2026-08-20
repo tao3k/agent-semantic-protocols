@@ -1,8 +1,9 @@
 use agent_semantic_client_db::runtime_server_workspace::{
-    RuntimeServerWorkspaceRegistry, WorkspaceExactProjectionDataPlaneClient,
-    WorkspaceExactProjectionDataPlaneOpen, WorkspaceGenerationDataPlaneClient,
-    WorkspaceGenerationDataPlaneOpen, WorkspaceGenerationPointerReader, WorkspaceMemoryGeneration,
-    WorkspaceOwnerSnapshot, WorkspaceRecoverySource,
+    RuntimeServerWorkspaceRegistry, WorkspaceCanonicalMaterialization,
+    WorkspaceExactProjectionDataPlaneClient, WorkspaceExactProjectionDataPlaneOpen,
+    WorkspaceGenerationDataPlaneClient, WorkspaceGenerationDataPlaneOpen,
+    WorkspaceGenerationPointerReader, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
+    WorkspaceRecoverySource,
 };
 
 fn project_root(workspace_identity: &str) -> std::path::PathBuf {
@@ -45,6 +46,61 @@ fn generation(workspace_identity: &str) -> WorkspaceMemoryGeneration {
         },
     )
     .expect("typed resident recovery generation")
+}
+
+fn canonical_materialization(
+    workspace_identity: &str,
+    project_root: &std::path::Path,
+) -> WorkspaceCanonicalMaterialization {
+    let bytes = b"pub fn recovered() {}\n";
+    let content_digest = format!("blake3-256:{}", blake3::hash(bytes).to_hex());
+    let source_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes([(
+        "src/lib.rs",
+        bytes.as_slice(),
+    )])
+    .evidence(
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        format!(
+            "blake3-256:{}",
+            blake3::hash(b"resident-recovery-fixture-provider").to_hex()
+        ),
+    );
+    let import = agent_semantic_client_db::ClientDbSourceIndexImport {
+        source_blobs: Default::default(),
+        relations: Vec::new(),
+        generation_id: agent_semantic_client_core::CacheGenerationId::from(
+            "resident-recovery-fixture",
+        ),
+        project_root: project_root.to_path_buf(),
+        schema_id: agent_semantic_client_core::SemanticSchemaId::from(
+            agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
+        ),
+        schema_version: agent_semantic_client_core::SemanticSchemaVersion::from(
+            agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION,
+        ),
+        file_hashes: vec![agent_semantic_client_core::ClientCacheFileHash {
+            path: "src/lib.rs".to_owned(),
+            sha256: "0".repeat(64),
+            byte_len: bytes.len() as u64,
+            mtime_ms: 1,
+        }],
+        owners: Vec::new(),
+        selectors: Vec::new(),
+    };
+    WorkspaceCanonicalMaterialization::new(
+        workspace_identity,
+        source_snapshot,
+        &import,
+        [1, 0],
+        vec![WorkspaceOwnerSnapshot {
+            owner_path: "src/lib.rs".to_owned(),
+            content_digest,
+            bytes: bytes.to_vec(),
+            selectors: Vec::new(),
+        }],
+        Vec::new(),
+    )
+    .expect("canonical recovery materialization")
 }
 
 #[tokio::test]
@@ -286,7 +342,7 @@ async fn obsolete_exact_segment_format_requires_typed_rebuild() {
     let mut bytes = tokio::fs::read(&exact_path)
         .await
         .expect("read exact segment");
-    bytes[..16].copy_from_slice(b"ASPEXACTMMAP0002");
+    bytes[..16].copy_from_slice(b"ASPEXACTMMAPV1__");
     tokio::fs::write(&exact_path, bytes)
         .await
         .expect("write obsolete exact segment identity");
@@ -298,5 +354,88 @@ async fn obsolete_exact_segment_format_requires_typed_rebuild() {
         panic!("obsolete exact segment format must require a typed rebuild");
     };
     assert!(reason.contains("header is invalid"), "reason={reason}");
+    let published = registry
+        .published_generation_state(workspace_identity, &project_root(workspace_identity))
+        .await
+        .expect("classify complete published generation");
+    let agent_semantic_client_db::runtime_server_workspace::PublishedWorkspaceGenerationState::RecoveryRequired {
+        reason,
+    } = published
+    else {
+        panic!("obsolete exact segment must make the complete generation recoverable");
+    };
+    assert!(reason.contains("header is invalid"), "reason={reason}");
+    registry.shutdown().await.expect("drain writer lane");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn canonical_ready_reuse_republishes_an_obsolete_exact_layout() {
+    let temporary = tempfile::tempdir().expect("temporary runtime root");
+    let workspace_identity = "workspace-obsolete-exact-republication";
+    let project_root = temporary.path().join("project");
+    std::fs::create_dir_all(&project_root).expect("create canonical project root");
+    let canonical_project_root =
+        std::fs::canonicalize(project_root).expect("canonicalize project root");
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let materialization = canonical_materialization(workspace_identity, &canonical_project_root);
+    registry
+        .ensure_canonical_generation(
+            "publish-current-layout",
+            workspace_identity,
+            materialization
+                .clone()
+                .into_validated(workspace_identity)
+                .expect("validate initial materialization"),
+        )
+        .await
+        .expect("publish initial generation");
+    let pointer =
+        agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
+            temporary.path(),
+            workspace_identity,
+            &canonical_project_root,
+        )
+        .expect("workspace generation pointer path");
+    let snapshot = WorkspaceGenerationPointerReader::open(&pointer)
+        .await
+        .expect("open generation pointer")
+        .read()
+        .expect("read generation pointer");
+    let exact_path = std::path::Path::new(&snapshot.mmap_segment_path).with_extension("exact.mmap");
+    let mut bytes = tokio::fs::read(&exact_path)
+        .await
+        .expect("read exact segment");
+    bytes[..16].copy_from_slice(b"ASPEXACTMMAPV1__");
+    tokio::fs::write(&exact_path, bytes)
+        .await
+        .expect("write obsolete exact segment identity");
+    registry
+        .ensure_canonical_generation(
+            "republish-obsolete-layout",
+            workspace_identity,
+            materialization
+                .into_validated(workspace_identity)
+                .expect("validate replay materialization"),
+        )
+        .await
+        .expect("Runtime republishes obsolete exact layout");
+    let snapshot = WorkspaceGenerationPointerReader::open(&pointer)
+        .await
+        .expect("reopen generation pointer")
+        .read()
+        .expect("read republished generation pointer");
+    let exact_path = std::path::Path::new(&snapshot.mmap_segment_path).with_extension("exact.mmap");
+    let bytes = tokio::fs::read(exact_path)
+        .await
+        .expect("read republished exact segment");
+    assert_eq!(&bytes[..16], b"ASPEXACTMMAP0002");
+    assert!(matches!(
+        registry
+            .published_generation_state(workspace_identity, &canonical_project_root)
+            .await
+            .expect("complete published generation state"),
+        agent_semantic_client_db::runtime_server_workspace::PublishedWorkspaceGenerationState::Ready
+    ));
     registry.shutdown().await.expect("drain writer lane");
 }

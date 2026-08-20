@@ -224,9 +224,7 @@ fn run_doctor(parsed: ParsedArgs) -> Result<(), String> {
             eprintln!("[asp-doctor] activation unavailable: {error}");
         }
     }
-    println!(
-        "|cache status=inspectable route=local-cache import=manual invalidate=manual replay=artifact-only"
-    );
+    println!("|cache status=inspectable authority=runtime-server mutations=explicit-only");
     println!("{}", crate::tools_cli::tools_summary_line());
     println!("|cloud status=disabled reason=local-default privateServer=optional");
     Ok(())

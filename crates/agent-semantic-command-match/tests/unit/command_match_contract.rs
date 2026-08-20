@@ -1,7 +1,33 @@
 use agent_semantic_command_match::{
     MAX_COMMAND_CANDIDATES, PrefixMatch, bash::parse_bash_command_candidates,
-    command_stages_match_wrapped_prefix,
+    command_stages_match_leading_environment_assignment, command_stages_match_wrapped_prefix,
 };
+
+#[test]
+fn leading_environment_assignment_is_parser_owned_and_stage_bounded() {
+    let expected = vec!["ASP_NO_AGENT=1".to_owned()];
+    for command in [
+        "ASP_NO_AGENT=1 cargo test",
+        "TRACE=1 ASP_NO_AGENT=1 cargo test",
+    ] {
+        let stages = parse_bash_command_candidates(command).expect("valid Bash command");
+        assert!(command_stages_match_leading_environment_assignment(
+            &stages, &expected
+        ));
+    }
+    for command in [
+        "NOT_ASP_NO_AGENT=1 cargo test",
+        "env ASP_NO_AGENT=1 cargo test",
+        "printf warmup && ASP_NO_AGENT=1 cargo test",
+        "bash -lc 'ASP_NO_AGENT=1 cargo test'",
+    ] {
+        let stages = parse_bash_command_candidates(command).expect("valid Bash command");
+        assert!(
+            !command_stages_match_leading_environment_assignment(&stages, &expected),
+            "{command}"
+        );
+    }
+}
 
 fn tokens(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| (*value).to_owned()).collect()

@@ -133,6 +133,21 @@ The planes are:
    process. Missing identity fails closed here; Runtime availability is not a
    prerequisite for a deny.
 
+An explicitly inherited =ASP_NO_AGENT=1= is the process-level emergency bypass
+for the Host Hook adapter.  For an actual Hook event, the bootstrap MUST return
+the empty Host success response before reading the action payload, loading
+matcher state, or evaluating policy.  The equivalent one-command form is a
+declarative v1 Hook Matcher rule.  Its parser-owned
+=leadingEnvironmentAssignmentAny= predicate matches the exact assignment only
+in the leading assignment block of the first shell AST stage, and its winning
+allow decision is terminal.  Classifier orchestration does not know the
+variable name.  Values other than the exact text =1=, similarly named
+variables, assignments passed to =env=, nested shell operands, later command
+stages, and lexical substring matches MUST NOT bypass policy.  This bypass does
+not change ASP command, Runtime Server, workspace-generation, provider, or
+schema semantics; callers MUST remove it when verifying the repaired normal
+path.
+
 There is no =stateful-runtime= Hook plane. A policy-bearing Hook event MUST NOT
 open Agent Session persistence, scan Codex rollout history, infer a current
 resident, or schedule a Codex Agent. Session lifecycle is a separate control
@@ -400,7 +415,7 @@ the local path because the Hook event plane has zero Runtime calls.
   host deadline, scans beyond the bounded tail, or exceeds the 4 MiB state cap;
 - the Runtime IPC schema exposes =EvaluateHook= or a final Hook response;
 - daemon startup materializes a resident Hook snapshot authority;
-- optional OpenTelemetry initialization precedes control endpoint publication;
+- control endpoint publication precedes optional OpenTelemetry initialization;
 - timeout cancellation leaves an active task or descriptor above baseline;
 - a response owner does not flush before immediate process termination;
 - plugin =*= coverage, local action classification, or provider language

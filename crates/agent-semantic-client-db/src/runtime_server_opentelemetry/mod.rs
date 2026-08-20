@@ -8,6 +8,7 @@ mod live_store;
 mod observation;
 mod process_memory;
 mod query;
+mod query_model;
 mod query_server;
 mod runtime;
 pub use runtime::admit_to_runtime;

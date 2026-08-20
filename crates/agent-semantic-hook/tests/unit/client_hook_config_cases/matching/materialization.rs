@@ -38,7 +38,7 @@ fn builtin_materialization_rule_is_permanent_and_source_scoped() {
         );
         assert_eq!(decision.language_ids, ["rust"]);
         assert_eq!(decision.routes.len(), 1);
-        assert_eq!(decision.routes[0].provider_id, "rs-harness");
+        assert_eq!(decision.routes[0].provider_id, "asp-rust");
         assert_eq!(
             &decision.routes[0].argv[..3],
             ["asp", "rust", "search"],

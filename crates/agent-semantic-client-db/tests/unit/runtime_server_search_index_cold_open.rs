@@ -100,7 +100,75 @@ fn memory_search_cost_receipt_is_opentelemetry_serializable() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn fresh_client_first_merkle_read_uses_the_published_generation() {
+async fn structurally_empty_generation_reenters_runtime_owned_admission() {
+    let temporary = tempfile::tempdir().expect("temporary generation directory");
+    let project_root = temporary.path().join("workspace");
+    tokio::fs::create_dir_all(&project_root)
+        .await
+        .expect("create workspace root");
+    let generation_directory = temporary.path().join("generation");
+    tokio::fs::create_dir_all(&generation_directory)
+        .await
+        .expect("create generation directory");
+    let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes(
+        std::iter::empty::<(&str, &[u8])>(),
+    );
+    let projection_capability = crate::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest::from_source_index(
+        format!(
+            "blake3-256:{}",
+            blake3::hash(b"empty-generation-provider-catalog").to_hex()
+        ),
+        &[],
+    )
+    .expect("empty projection capability manifest");
+    let source_snapshot = workspace_snapshot.evidence(
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        projection_capability.provider_catalog_digest.clone(),
+    );
+    let generation = crate::runtime_server_workspace::WorkspaceMemoryGeneration::try_from_build(
+        crate::runtime_server_workspace::WorkspaceGenerationBuild {
+            projection_capability,
+            workspace_identity: "workspace-empty-search-generation".to_owned(),
+            project_root: project_root.to_string_lossy().into_owned(),
+            active_epoch: 1,
+            workspace_snapshot,
+            source_snapshot,
+            module_graph_digest: format!(
+                "blake3-256:{}",
+                blake3::hash(b"empty-generation-module-graph").to_hex()
+            ),
+            project_resolutions: Vec::new(),
+            owners: Vec::new(),
+            relations: Vec::new(),
+        },
+    )
+    .expect("empty workspace generation");
+    let publisher =
+        crate::runtime_server_workspace::WorkspaceGenerationPublisher::new(generation_directory)
+            .await
+            .expect("generation publisher");
+    publisher
+        .publish(std::sync::Arc::new(generation), false)
+        .await
+        .expect("publish empty generation");
+    let client = crate::runtime_server_workspace::WorkspaceSearchGenerationDataPlaneClient::open(
+        publisher.pointer_path(),
+        &project_root,
+    )
+    .await
+    .expect("open empty published generation");
+    let lookup = client
+        .read_source_index("anything", None, 8)
+        .expect("read empty published generation");
+    assert_eq!(
+        lookup.state,
+        crate::ClientDbSourceIndexLookupState::ColdRequired,
+        "a structurally empty active generation must trigger Runtime-owned cold admission"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn resident_merkle_read_uses_the_published_generation_with_sub_millisecond_budget() {
     let temporary = tempfile::tempdir().expect("temporary generation directory");
     let project_root = temporary.path().join("workspace");
     tokio::fs::create_dir_all(&project_root)
@@ -163,16 +231,24 @@ async fn fresh_client_first_merkle_read_uses_the_published_generation() {
         .await
         .expect("publish generation before cold client starts");
 
-    let started = tokio::time::Instant::now();
     let client = crate::runtime_server_workspace::WorkspaceSearchGenerationDataPlaneClient::open(
         publisher.pointer_path(),
         &project_root,
     )
     .await
-    .expect("cold client opens published search generation");
+    .expect("resident client opens published search generation");
+    let lookup = client
+        .read_source_index("unmatched-query", None, 8)
+        .expect("read structurally empty selector index");
+    assert_eq!(
+        lookup.state,
+        crate::ClientDbSourceIndexLookupState::Miss,
+        "a nonempty generation with no selector records remains valid for free-text lookup"
+    );
+    let started = tokio::time::Instant::now();
     let read = client
         .read_merkle_owner("src/lib.rs")
-        .expect("cold client reads Merkle owner proof");
+        .expect("resident client reads Merkle owner proof");
     let elapsed = started.elapsed();
 
     let crate::runtime_server_workspace::WorkspaceRuntimeMerkleOwnerRead::Owner {
@@ -192,11 +268,11 @@ async fn fresh_client_first_merkle_read_uses_the_published_generation() {
     assert_eq!(owner_path, "src/lib.rs");
     assert!(!inclusion_proof.is_empty());
     eprintln!(
-        "search-published-generation-cold-first-read elapsedMicros={}",
+        "search-published-generation-resident-merkle-read elapsedMicros={}",
         elapsed.as_micros()
     );
     assert!(
-        elapsed < std::time::Duration::from_millis(25),
-        "published-generation cold first read must remain below 25ms: elapsed={elapsed:?}"
+        elapsed < std::time::Duration::from_millis(1),
+        "published-generation resident Merkle read must remain sub-millisecond: elapsed={elapsed:?}"
     );
 }

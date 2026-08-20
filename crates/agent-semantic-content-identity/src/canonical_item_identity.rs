@@ -150,6 +150,22 @@ pub struct CanonicalItemSelector {
 }
 
 impl CanonicalItemSelector {
+    pub fn identity(&self) -> CanonicalItemIdentity {
+        let mut identity = CanonicalItemIdentity::new(
+            self.language_id.clone(),
+            self.kind.clone(),
+            self.symbol.clone(),
+        );
+        for scope in &self.scopes {
+            identity = identity.with_scope(
+                scope.relation.clone(),
+                scope.kind.clone(),
+                scope.symbol.clone(),
+            );
+        }
+        identity
+    }
+
     pub fn parse(structural_selector: impl Into<String>) -> Result<Self, String> {
         let structural_selector = structural_selector.into();
         let (language_id, selector_body) =
@@ -219,6 +235,19 @@ impl CanonicalItemSelector {
 
     pub fn structural_selector(&self) -> &str {
         &self.structural_selector
+    }
+
+    /// Returns the parser-validated source owner carried by this selector.
+    pub fn owner_path(&self) -> Result<&str, String> {
+        self.validate()?;
+        self.structural_selector
+            .split_once("://")
+            .and_then(|(_, selector_body)| selector_body.split_once('#'))
+            .map(|(owner_path, _)| owner_path)
+            .ok_or_else(|| {
+                "canonical item structuralSelector must include an owner and item fragment"
+                    .to_owned()
+            })
     }
 
     pub fn validate(&self) -> Result<(), String> {

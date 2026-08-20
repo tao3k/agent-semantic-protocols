@@ -177,29 +177,34 @@ pub(crate) fn validate_registered_provider_projection_contracts(
     manifests: &[ProviderManifest],
 ) -> Result<(), String> {
     let mut canonical_projection_contract = None;
+    let mut programming_projection_contract_present = false;
     let mut capability_drift = Vec::new();
 
     for manifest in manifests {
-        match (
-        manifest.project_resolution(),
-        manifest.document_resolution(),
-        manifest.language_projection(),
-    ) {
-        (Some(_), None, None) => {}
-        (Some(_), None, Some(projection)) => {
+        let project_resolution = manifest.project_resolution();
+        let document_resolution = manifest.document_resolution();
+        let source_snapshot = manifest.search_capabilities().source_snapshot.as_ref();
+        match (project_resolution, document_resolution, source_snapshot) {
+            (Some(_), None, Some(projection)) | (None, Some(_), Some(projection)) => {
+                if project_resolution.is_some() {
+                    programming_projection_contract_present = true;
+                }
                 let contract = (
-                    projection.schema_id().to_owned(),
-                    projection.schema_version().to_owned(),
-                    projection.command_binding().to_owned(),
-                    projection.transport().to_owned(),
-                    projection.request_schema().to_owned(),
-                    projection.response_schema().to_owned(),
-                    projection.identity_schema().to_owned(),
+                    projection.descriptor_version().to_owned(),
+                    projection.packet_schema_id().to_owned(),
+                    projection.exact_source_packet_schema_id().to_owned(),
+                    projection.canonical_item_selector_schema_id().to_owned(),
+                    projection.source_snapshot_envelope_schema_id().to_owned(),
+                    projection.derived_artifact_evidence_schema_id().to_owned(),
+                    projection.algorithm().to_owned(),
+                    projection.authority().to_owned(),
+                    projection.exact_selector_resolution().to_owned(),
+                    projection.overlay_mode().to_owned(),
                 );
                 if let Some(expected) = canonical_projection_contract.as_ref() {
                     if &contract != expected {
                         capability_drift.push(format!(
-                            "language={} provider={} projectionContract={contract:?} expected={expected:?}",
+                            "language={} provider={} sourceSnapshotContract={contract:?} expected={expected:?}",
                             manifest.language_id(),
                             manifest.provider_id(),
                         ));
@@ -208,19 +213,18 @@ pub(crate) fn validate_registered_provider_projection_contracts(
                     canonical_projection_contract = Some(contract);
                 }
             }
-            (None, Some(_), None) => {}
             _ => capability_drift.push(format!(
-                "language={} provider={} projectResolution={} documentResolution={} languageProjection={}",
+                "language={} provider={} projectResolution={} documentResolution={} sourceSnapshot={}",
                 manifest.language_id(),
                 manifest.provider_id(),
                 manifest.project_resolution().is_some(),
                 manifest.document_resolution().is_some(),
-                manifest.language_projection().is_some(),
+                source_snapshot.is_some(),
             )),
         }
     }
 
-    if canonical_projection_contract.is_none() {
+    if !programming_projection_contract_present {
         capability_drift
             .push("registered catalog has no programming provider projection contract".to_owned());
     }
@@ -318,7 +322,7 @@ pub struct ProviderDevelopmentRegistrationV1 {
         crate::protocol_activation::protocol_activation_manifest::ProviderDevelopmentDescriptor,
 }
 
-pub fn registered_provider_projection_command_binding_v1(
+pub fn registered_provider_projection_command_binding(
     language_id: &str,
     provider_id: &str,
 ) -> Result<Option<String>, String> {
@@ -336,9 +340,11 @@ pub fn registered_provider_projection_command_binding_v1(
         ));
     }
     Ok(manifest
-        .language_projection
-        .as_ref()
-        .map(|descriptor| descriptor.command_binding().to_owned()))
+        .runtime_contract()
+        .operations()
+        .iter()
+        .find(|operation| operation.operation() == "projection-batch-stdin")
+        .map(|operation| operation.operation().to_owned()))
 }
 
 pub fn registered_provider_method_invocation_v1(
@@ -407,29 +413,6 @@ pub fn registered_provider_kind(language_id: &str) -> Result<RegisteredProviderK
     }
 }
 
-fn resolve_route_invocation(
-    language: &LanguageRegistration,
-    method: &str,
-) -> Result<crate::protocol::CommandTemplate, String> {
-    let mut matches = language
-        .method_descriptors
-        .iter()
-        .filter(|descriptor| descriptor.method == method);
-    let descriptor = matches.next().ok_or_else(|| {
-        format!(
-            "semantic registry has no method descriptor `{method}` for language `{}` provider `{}`",
-            language.language_id, language.provider_id
-        )
-    })?;
-    if matches.next().is_some() {
-        return Err(format!(
-            "semantic registry has duplicate method descriptor `{method}` for language `{}` provider `{}`",
-            language.language_id, language.provider_id
-        ));
-    }
-    Ok(descriptor.invocation.clone())
-}
-
 pub fn materialize_provider_routes(
     manifest: &ProviderManifest,
 ) -> Result<crate::protocol::HookRoutes, String> {
@@ -454,21 +437,40 @@ pub fn materialize_provider_routes(
         ));
     }
 
+    // A complete registry materialization resolves every route for every
+    // provider. Index once per provider rather than rescanning the descriptor
+    // list for each binding; this keeps the cold install-time path within its
+    // millisecond budget without changing method-admission semantics.
+    let mut invocations = std::collections::BTreeMap::new();
+    for descriptor in &language.method_descriptors {
+        if invocations
+            .insert(descriptor.method.as_str(), descriptor.invocation.clone())
+            .is_some()
+        {
+            return Err(format!(
+                "semantic registry has duplicate method descriptor `{}` for language `{}` provider `{}`",
+                descriptor.method, language.language_id, language.provider_id
+            ));
+        }
+    }
     let bindings = &manifest.route_bindings;
-    let optional = |method: &Option<String>| {
-        method
-            .as_deref()
-            .map(|method| resolve_route_invocation(language, method))
-            .transpose()
+    let resolve = |method: &str| {
+        invocations.get(method).cloned().ok_or_else(|| {
+            format!(
+                "semantic registry has no method descriptor `{method}` for language `{}` provider `{}`",
+                language.language_id, language.provider_id
+            )
+        })
     };
+    let optional = |method: &Option<String>| method.as_deref().map(resolve).transpose();
     Ok(crate::protocol::HookRoutes {
-        prime: resolve_route_invocation(language, &bindings.prime)?,
-        owner: resolve_route_invocation(language, &bindings.owner)?,
-        lexical: resolve_route_invocation(language, &bindings.lexical)?,
+        prime: resolve(&bindings.prime)?,
+        owner: resolve(&bindings.owner)?,
+        lexical: resolve(&bindings.lexical)?,
         query: optional(&bindings.query)?,
         exact_selector_native: optional(&bindings.exact_selector_native)?,
-        ingest: resolve_route_invocation(language, &bindings.ingest)?,
-        check_changed: resolve_route_invocation(language, &bindings.check_changed)?,
+        ingest: resolve(&bindings.ingest)?,
+        check_changed: resolve(&bindings.check_changed)?,
         dependency_topology: optional(&bindings.dependency_topology)?,
         dependency_topology_metadata: optional(&bindings.dependency_topology_metadata)?,
         export_index: optional(&bindings.export_index)?,

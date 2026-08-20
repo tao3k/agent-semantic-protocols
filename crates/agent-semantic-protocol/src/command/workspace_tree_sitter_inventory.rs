@@ -31,7 +31,8 @@ pub(super) async fn collect_runtime_inventory(
                 limit: u32::MAX,
             },
         )
-        .await?;
+        .await?
+        .value;
     let mut owners = Vec::new();
     for candidate in lookup.candidates {
         let relative_path = PathBuf::from(candidate.path.to_string());

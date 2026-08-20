@@ -4,11 +4,11 @@ use super::{activation_capability_coverage, provider_manifests};
 fn project_provider_activation_declares_provider_extensions_without_resolving_scope() {
     let manifests = provider_manifests();
     for (provider_id, extension, marker) in [
-        ("rs-harness", ".rs", "Cargo.toml"),
-        ("ts-harness", ".ts", "package.json"),
-        ("py-harness", ".py", "pyproject.toml"),
-        ("julia-lang-project-harness", ".jl", "Project.toml"),
-        ("gerbil-scheme-harness", ".ss", "gerbil.pkg"),
+        ("asp-rust", ".rs", "Cargo.toml"),
+        ("asp-typescript", ".ts", "package.json"),
+        ("asp-python", ".py", "pyproject.toml"),
+        ("asp-julia", ".jl", "Project.toml"),
+        ("asp-gerbil-scheme", ".ss", "gerbil.pkg"),
     ] {
         let manifest = manifests
             .iter()

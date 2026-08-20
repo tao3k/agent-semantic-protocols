@@ -1,9 +1,11 @@
 //! Durable workspace-generation restore and background live reconciliation.
 
 use super::{
-    WorkspaceGenerationAdmission, WorkspaceGenerationAdmissionState, WorkspaceGenerationBuildMode,
-    WorkspaceGenerationCandidateIdentity, WorkspaceGenerationRestoreFailure,
-    WorkspaceGenerationRestoreReport, discover_workspace_generation_candidate,
+    WorkspaceGenerationAdmission, WorkspaceGenerationAdmissionMode,
+    WorkspaceGenerationAdmissionState, WorkspaceGenerationAdmissionTrigger,
+    WorkspaceGenerationBuildMode, WorkspaceGenerationCandidateIdentity,
+    WorkspaceGenerationRestoreFailure, WorkspaceGenerationRestoreReport,
+    discover_workspace_generation_candidate,
 };
 
 fn durable_restore_candidate_identity() -> WorkspaceGenerationCandidateIdentity {
@@ -48,6 +50,10 @@ impl WorkspaceGenerationAdmission {
                             entry.project_root.clone(),
                             candidate,
                             WorkspaceGenerationBuildMode::RestoreOnly,
+                            WorkspaceGenerationAdmissionTrigger::RuntimeRecovery,
+                            WorkspaceGenerationAdmissionMode::FullRecovery,
+                            None,
+                            std::sync::Arc::default(),
                         )
                         .await?;
                     let receipt = if receipt.state == WorkspaceGenerationAdmissionState::Building {

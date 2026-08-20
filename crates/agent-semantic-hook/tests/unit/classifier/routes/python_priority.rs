@@ -126,7 +126,7 @@ fn namespaced_python_explicit_read_routes_to_owner_frontier() {
     assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
     assert_eq!(decision.language_ids, ["python"]);
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
-    assert_eq!(decision.routes[0].provider_id, "py-harness");
+    assert_eq!(decision.routes[0].provider_id, "asp-python");
     assert_eq!(
         decision.routes[0].argv,
         [
@@ -355,7 +355,7 @@ fn python_pattern_read_routes_to_lexical_discovery() {
     assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
     assert_eq!(decision.language_ids, ["python"]);
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Lexical);
-    assert_eq!(decision.routes[0].provider_id, "py-harness");
+    assert_eq!(decision.routes[0].provider_id, "asp-python");
     assert!(
         !decision.routes[0]
             .argv
@@ -390,7 +390,7 @@ fn python_embedded_read_text_routes_to_owner_frontier() {
         ["src/tools/semantic_sandtable/receipt_reports.py"]
     );
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
-    assert_eq!(decision.routes[0].provider_id, "py-harness");
+    assert_eq!(decision.routes[0].provider_id, "asp-python");
     assert_eq!(
         decision.routes[0].argv,
         [
@@ -437,7 +437,7 @@ fn python_nested_package_read_text_routes_to_provider_root() {
         ]
     );
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
-    assert_eq!(decision.routes[0].provider_id, "py-harness");
+    assert_eq!(decision.routes[0].provider_id, "asp-python");
     assert_eq!(
         decision.routes[0].argv,
         [

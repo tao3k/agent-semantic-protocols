@@ -23,6 +23,7 @@ struct ProviderWorkspaceInstallDescriptor {
     schema_id: String,
     schema_version: String,
     schema_authority: String,
+    language_id: String,
     provider_id: String,
     binary: String,
     workspace_artifact: WorkspaceArtifactDescriptor,
@@ -542,13 +543,16 @@ fn validate_descriptor(
     {
         return Err("provider workspace install schema identity must be version 1".to_string());
     }
-    if descriptor.provider_id != registration.provider_id.as_str()
+    if descriptor.language_id != registration.language_id.as_str()
+        || descriptor.provider_id != registration.provider_id.as_str()
         || descriptor.binary != registration.binary
     {
         return Err(format!(
-            "provider workspace install identity drift: provider={} binary={} expectedProvider={} expectedBinary={}",
+            "provider workspace install identity drift: language={} provider={} binary={} expectedLanguage={} expectedProvider={} expectedBinary={}",
+            descriptor.language_id,
             descriptor.provider_id,
             descriptor.binary,
+            registration.language_id.as_str(),
             registration.provider_id.as_str(),
             registration.binary
         ));

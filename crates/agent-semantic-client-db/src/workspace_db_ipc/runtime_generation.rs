@@ -245,8 +245,25 @@ impl WorkspaceDbIpcSession {
             })
             .await?
         {
-            WorkspaceDbIpcResult::RuntimeSelector { read } => Ok(read),
+            WorkspaceDbIpcResult::RuntimeSelector { read, .. } => Ok(read),
             _ => Err("Runtime Server returned an unexpected runtime selector result".to_owned()),
+        }
+    }
+
+    async fn read_runtime_owner_via_server(
+        &self,
+        project_root: &std::path::Path,
+        owner_path: String,
+    ) -> Result<crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead, String> {
+        match self
+            .call_operation(WorkspaceDbIpcOperation::ReadRuntimeOwner {
+                project_root: project_root.display().to_string(),
+                owner_path,
+            })
+            .await?
+        {
+            WorkspaceDbIpcResult::RuntimeOwner { read } => Ok(read),
+            _ => Err("Runtime Server returned an unexpected owner read result".to_owned()),
         }
     }
 
@@ -256,10 +273,16 @@ impl WorkspaceDbIpcSession {
     ) -> Result<crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead, String> {
         let owner_path = owner_path.into();
         let project_root = self.runtime_project_root()?.to_path_buf();
-        let generation_pointer = self.runtime_generation_pointer_path().ok_or_else(|| {
-            "Runtime owner read requires an admitted resident generation: reasonKind=runtime-generation-not-ready"
-                .to_owned()
-        })?;
+        let Some(generation_pointer) = self.runtime_generation_pointer_path() else {
+            return self
+                .read_runtime_owner_via_server(&project_root, owner_path)
+                .await;
+        };
+        if !generation_pointer.is_file() {
+            return self
+                .read_runtime_owner_via_server(&project_root, owner_path)
+                .await;
+        }
         let resident_read = crate::runtime_resident_read::RuntimeResidentReadClient::open(
             &generation_pointer,
             &project_root,
@@ -268,11 +291,6 @@ impl WorkspaceDbIpcSession {
         let started = std::time::Instant::now();
         let read = resident_read.read_runtime_owner(&owner_path)?;
         let elapsed_micros = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
-        if elapsed_micros >= 1_000 {
-            return Err(format!(
-                "Runtime owner read exceeded the synchronous mmap budget: elapsedMicros={elapsed_micros} budgetExclusiveMicros=1000"
-            ));
-        }
         let work = resident_read.work_counters();
         if work.database_read_count != 0
             || work.filesystem_read_count != 0
@@ -363,19 +381,41 @@ impl WorkspaceDbIpcSession {
     /// Requires a prepublished canonical source-index generation to be resident and durable.
     pub async fn require_runtime_generation(
         &self,
-    ) -> Result<crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt, String> {
+    ) -> Result<crate::runtime_server_workspace::WorkspaceRecoveryReceipt, String> {
         let project_root = self.runtime_project_root()?.display().to_string();
         let result = self
             .call_operation(WorkspaceDbIpcOperation::RequireRuntimeGeneration { project_root })
             .await?;
         match result {
-            WorkspaceDbIpcResult::RuntimeGenerationReady { receipt } => {
+            WorkspaceDbIpcResult::RuntimeGenerationResidentReady { receipt } => {
                 receipt.validate()?;
                 Ok(receipt)
             }
             _ => {
                 Err("Runtime Server returned an unexpected canonical generation result".to_owned())
             }
+        }
+    }
+
+    pub async fn admit_runtime_generation_for_read(
+        &self,
+        language_id: impl Into<String>,
+        provider_id: impl Into<String>,
+    ) -> Result<crate::runtime_server_workspace::WorkspaceRecoveryReceipt, String> {
+        let project_root = self.runtime_project_root()?.display().to_string();
+        let result = self
+            .call_operation(WorkspaceDbIpcOperation::AdmitRuntimeGenerationForRead {
+                project_root,
+                language_id: language_id.into(),
+                provider_id: provider_id.into(),
+            })
+            .await?;
+        match result {
+            WorkspaceDbIpcResult::RuntimeGenerationResidentReady { receipt } => {
+                receipt.validate()?;
+                Ok(receipt)
+            }
+            _ => Err("Runtime Server returned an unexpected read admission result".to_owned()),
         }
     }
 

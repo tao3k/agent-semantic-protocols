@@ -145,6 +145,28 @@ impl RuntimeServerWorkspaceRegistry {
             .map_err(|_| "runtime workspace writer lane dropped its receipt".to_owned())?
     }
 
+    pub async fn publish_provider_owner(
+        &self,
+        request_id: impl Into<String>,
+        workspace_identity: impl Into<String>,
+        project_root: &std::path::Path,
+        owner: WorkspaceOwnerSnapshot,
+    ) -> Result<(), String> {
+        let request_id = request_id.into();
+        let workspace_identity = workspace_identity.into();
+        if self
+            .ready_entry(&workspace_identity, project_root)?
+            .is_some()
+        {
+            self.publish_owner_overlay(request_id, workspace_identity, project_root, owner)
+                .await?;
+        } else {
+            self.sparse_provider_owners
+                .publish(&workspace_identity, project_root, owner)?;
+        }
+        Ok(())
+    }
+
     pub async fn publish_owner_overlay(
         &self,
         request_id: impl Into<String>,
@@ -312,6 +334,8 @@ impl RuntimeServerWorkspaceRegistry {
             receipt.validate()?;
             self.prepare_search_projection_client(&workspace_identity, project_root)
                 .await?;
+            self.sparse_provider_owners
+                .evict_scope(&workspace_identity, project_root);
             return Ok(receipt);
         }
         let (materialization, prepared_index) = materialization.into_parts();
@@ -344,6 +368,8 @@ impl RuntimeServerWorkspaceRegistry {
         .await?;
         self.prepare_search_projection_client(&workspace_identity, &project_root)
             .await?;
+        self.sparse_provider_owners
+            .evict_scope(&workspace_identity, &project_root);
         Ok(receipt)
     }
 
