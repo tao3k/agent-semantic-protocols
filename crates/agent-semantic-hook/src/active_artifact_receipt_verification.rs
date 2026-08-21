@@ -5,21 +5,21 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-use agent_semantic_content_identity::active_artifact_merkle_v1::{
-    ActiveArtifactKindV1, ActiveArtifactLeafV1, ActiveAspArtifactReceiptV1,
+use agent_semantic_content_identity::active_artifact_merkle::{
+    ActiveArtifactLeaf, ActiveAspArtifactReceipt,
 };
 use agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1;
 
 use super::{
     ActiveArtifactMetadataFingerprint, VERIFIED_ACTIVE_ASP_ARTIFACT_RECEIPT_CACHE,
     VerifiedActiveAspArtifactReceiptCacheEntry, active_asp_artifact_receipt_path,
-    canonical_regular_file, utf8_path, verify_activation_provider_artifact_coverage,
+    canonical_regular_file, utf8_path,
 };
 
 pub fn verify_active_asp_artifact_receipt(
     activation_path: &Path,
     asp_paths: &[&Path],
-) -> Result<ActiveAspArtifactReceiptV1, String> {
+) -> Result<ActiveAspArtifactReceipt, String> {
     let receipt_path = active_asp_artifact_receipt_path(activation_path)?;
     let receipt_metadata = fs::metadata(&receipt_path)
         .map_err(|error| format!("failed to inspect {}: {error}", receipt_path.display()))?;
@@ -34,7 +34,7 @@ pub fn verify_active_asp_artifact_receipt(
 
     let bytes = fs::read(&receipt_path)
         .map_err(|error| format!("failed to read {}: {error}", receipt_path.display()))?;
-    let receipt: ActiveAspArtifactReceiptV1 = serde_json::from_slice(&bytes)
+    let receipt: ActiveAspArtifactReceipt = serde_json::from_slice(&bytes)
         .map_err(|error| format!("failed to parse {}: {error}", receipt_path.display()))?;
     receipt
         .validate()
@@ -55,21 +55,6 @@ pub fn verify_active_asp_artifact_receipt(
             MaterializationMatchPolicy::ContentEquivalentAlias,
         )?);
     }
-    for leaf in receipt.leaves() {
-        if matches!(
-            leaf.artifact_kind(),
-            ActiveArtifactKindV1::AspBinary | ActiveArtifactKindV1::Activation
-        ) {
-            continue;
-        }
-        leaf_fingerprints.push(verify_materialized_leaf(
-            Path::new(leaf.materialized_path()),
-            leaf,
-            leaf.artifact_kind().canonical_name(),
-            MaterializationMatchPolicy::Exact,
-        )?);
-    }
-    verify_activation_provider_artifact_coverage(activation_path, &receipt)?;
     remember_verified_active_receipt(
         receipt_path,
         &receipt_metadata,
@@ -86,7 +71,7 @@ fn verified_active_receipt_cache_hit(
     receipt_metadata: &fs::Metadata,
     activation_path: &Path,
     asp_paths: &[&Path],
-) -> Result<Option<ActiveAspArtifactReceiptV1>, String> {
+) -> Result<Option<ActiveAspArtifactReceipt>, String> {
     let Some(cache) = VERIFIED_ACTIVE_ASP_ARTIFACT_RECEIPT_CACHE.get() else {
         return Ok(None);
     };
@@ -119,7 +104,7 @@ fn remember_verified_active_receipt(
     activation_path: &Path,
     asp_paths: &[&Path],
     leaf_fingerprints: Vec<ActiveArtifactMetadataFingerprint>,
-    receipt: ActiveAspArtifactReceiptV1,
+    receipt: ActiveAspArtifactReceipt,
 ) -> Result<(), String> {
     let cache = VERIFIED_ACTIVE_ASP_ARTIFACT_RECEIPT_CACHE.get_or_init(|| Mutex::new(None));
     let mut guard = cache
@@ -168,7 +153,7 @@ pub(super) enum MaterializationMatchPolicy {
 
 pub(super) fn verify_materialized_leaf(
     path: &Path,
-    leaf: &ActiveArtifactLeafV1,
+    leaf: &ActiveArtifactLeaf,
     label: &str,
     match_policy: MaterializationMatchPolicy,
 ) -> Result<ActiveArtifactMetadataFingerprint, String> {

@@ -7,13 +7,17 @@ mod protocol_binary_identity;
 ///
 /// Runtime startup accepts only artifacts installed through this identity contract; it never
 /// hashes an unregistered executable as a compatibility fallback.
-pub fn publish_runtime_server_artifact(source: &Path, state_home: &Path) -> Result<String, String> {
+pub async fn publish_runtime_server_artifact(
+    source: &Path,
+    state_home: &Path,
+) -> Result<String, String> {
     let installed = install_protocol_binary_target(
         source,
         &state_home.join("runtime/bin/asp"),
         &state_home.join("runtime/artifacts"),
         &RuntimeBinaryIdentityV1::asp_bootstrap(),
-    )?;
+    )
+    .await?;
     Ok(installed.artifact_digest)
 }
 
@@ -21,10 +25,6 @@ pub fn publish_runtime_server_artifact(source: &Path, state_home: &Path) -> Resu
 pub fn published_runtime_server_artifact_digest(state_home: &Path) -> Option<String> {
     protocol_binary_artifact_path_digest(&state_home.join("runtime/bin/asp"))
 }
-#[path = "protocol_binary_retention.rs"]
-mod protocol_binary_retention;
-
-pub(crate) use protocol_binary_retention::prune_runtime_binary_artifacts;
 
 use protocol_binary_identity::is_digest_addressed_protocol_binary;
 pub(crate) use protocol_binary_identity::protocol_binary_artifact_path_digest;
@@ -105,10 +105,27 @@ pub(crate) struct ProtocolBinaryPathProbe {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ProtocolBinaryInstallPlan {
     current_exe: PathBuf,
+    explicit_candidate_source: Option<PathBuf>,
     target: PathBuf,
     artifact_root: PathBuf,
     managed_path_aliases: Vec<PathBuf>,
     binary_identity: RuntimeBinaryIdentityV1,
+}
+
+impl ProtocolBinaryInstallPlan {
+    pub(crate) fn candidate_source(&self) -> &std::path::Path {
+        self.explicit_candidate_source
+            .as_deref()
+            .unwrap_or(&self.current_exe)
+    }
+
+    pub(crate) fn install_source_kind(&self) -> &'static str {
+        if self.explicit_candidate_source.is_some() {
+            "explicit-target"
+        } else {
+            "current-executable"
+        }
+    }
 }
 
 /// Process-wide guard for the mutable global binary pointer and its active
@@ -196,86 +213,32 @@ impl ProtocolBinaryInstallPlan {
             managed_protocol_binary_path_aliases(&artifact_root, &target, &path_dirs)?;
         Ok(Self {
             current_exe,
+            explicit_candidate_source: None,
             target,
             artifact_root,
             managed_path_aliases,
             binary_identity: RuntimeBinaryIdentityV1::asp_bootstrap(),
         })
     }
-
-    pub(crate) fn capture_for_target(
-        artifact_root: PathBuf,
-        target: PathBuf,
-    ) -> Result<Self, String> {
-        let current_exe = env::current_exe()
-            .map_err(|error| format!("failed to resolve current protocol binary: {error}"))?;
-        let current_name = current_exe
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or_default();
-        if current_name.trim_end_matches(".exe") != SEMANTIC_AGENT_PROTOCOL_BIN {
-            return Err(format!(
-                "semantic hook setup must run through `{SEMANTIC_AGENT_PROTOCOL_BIN}` so generated hooks can resolve the same binary on PATH"
-            ));
-        }
-        // The runtime target owns publication; an explicit install target is only a managed alias.
-        let canonical_target = resolve_protocol_binary_install_target(None, &artifact_root)?;
-        let mut managed_path_aliases =
-            managed_protocol_binary_path_aliases(&artifact_root, &canonical_target, &path_dirs())?;
-        if !same_protocol_binary_entry(&target, &canonical_target)
-            && !managed_path_aliases.contains(&target)
-        {
-            managed_path_aliases.push(target);
-        }
-        Ok(Self {
-            current_exe,
-            target: canonical_target,
-            artifact_root,
-            managed_path_aliases,
-            binary_identity: RuntimeBinaryIdentityV1::asp_bootstrap(),
-        })
-    }
 }
 
-pub(crate) fn ensure_protocol_binary_installed(
+pub(crate) async fn ensure_protocol_binary_installed(
     plan: &ProtocolBinaryInstallPlan,
 ) -> Result<ProtocolBinaryInstall, String> {
     for alias in &plan.managed_path_aliases {
         validate_protocol_entry_for_repair(alias, &plan.artifact_root)?;
     }
     let install = install_protocol_binary_target(
-        &plan.current_exe,
+        plan.candidate_source(),
         &plan.target,
         &plan.artifact_root,
         &plan.binary_identity,
-    )?;
+    )
+    .await?;
     for alias in &plan.managed_path_aliases {
         install_protocol_binary_alias(alias, &plan.target, &plan.artifact_root)?;
     }
     Ok(install)
-}
-
-pub(crate) fn protocol_binary_switch_required(
-    plan: &ProtocolBinaryInstallPlan,
-) -> Result<bool, String> {
-    if !plan.target.is_file() {
-        return Ok(true);
-    }
-    let source_digest = agent_semantic_content_identity::file_content_digest_v1(&plan.current_exe)
-        .map_err(|error| {
-            format!(
-                "failed to derive candidate ASP binary digest for {}: {error}",
-                plan.current_exe.display()
-            )
-        })?;
-    let target_digest = agent_semantic_content_identity::file_content_digest_v1(&plan.target)
-        .map_err(|error| {
-            format!(
-                "failed to derive installed ASP binary digest for {}: {error}",
-                plan.target.display()
-            )
-        })?;
-    Ok(source_digest != target_digest)
 }
 
 fn install_protocol_binary_alias(
@@ -568,13 +531,12 @@ fn managed_protocol_binary_path_aliases(
     Ok(aliases)
 }
 
-pub(crate) fn install_protocol_binary_target(
+pub(crate) async fn install_protocol_binary_target(
     source: &Path,
     target: &Path,
     artifact_root: &Path,
     binary_identity: &RuntimeBinaryIdentityV1,
 ) -> Result<ProtocolBinaryInstall, String> {
-    validate_protocol_entry_for_repair(target, artifact_root)?;
     let binary_name = binary_identity.name();
     if target.file_name() != Some(binary_name) {
         return Err(format!(
@@ -583,102 +545,60 @@ pub(crate) fn install_protocol_binary_target(
             binary_name.to_string_lossy()
         ));
     }
-    let artifact_digest =
-        agent_semantic_content_identity::file_content_digest_v1(source).map_err(|error| {
-            format!(
-                "failed to derive BLAKE3 protocol artifact digest for {}: {error}",
-                source.display()
-            )
-        })?;
-    let artifact_path = artifact_root
-        .join("blake3-256")
-        .join(&artifact_digest)
-        .join(binary_name);
-    if !artifact_path.is_file() {
-        let artifact_parent = artifact_path.parent().ok_or_else(|| {
-            format!(
-                "digest-addressed protocol artifact has no parent: {}",
-                artifact_path.display()
-            )
-        })?;
-        fs::create_dir_all(artifact_parent)
-            .map_err(|error| format!("failed to create {}: {error}", artifact_parent.display()))?;
-        let candidate = temporary_protocol_binary_path(&artifact_path);
-        if fs::symlink_metadata(&candidate).is_ok() {
-            fs::remove_file(&candidate).map_err(|error| {
-                format!("failed to remove stale {}: {error}", candidate.display())
-            })?;
-        }
-        fs::copy(source, &candidate).map_err(|error| {
-            format!(
-                "failed to stage digest-addressed runtime artifact {}: {error}",
-                candidate.display()
-            )
-        })?;
-        let permissions = fs::metadata(source)
-            .map_err(|error| format!("failed to inspect {}: {error}", source.display()))?
-            .permissions();
-        fs::set_permissions(&candidate, permissions)
-            .map_err(|error| format!("failed to chmod {}: {error}", candidate.display()))?;
-        let candidate_digest = agent_semantic_content_identity::file_content_digest_v1(&candidate)
-            .map_err(|error| {
-                format!(
-                    "failed to verify staged runtime artifact {}: {error}",
-                    candidate.display()
-                )
-            })?;
-        if candidate_digest != artifact_digest {
-            let _ = fs::remove_file(&candidate);
-            return Err(format!(
-                "digest-addressed runtime artifact drift: expected={artifact_digest} actual={candidate_digest}"
-            ));
-        }
-        atomic_replace_protocol_entry(&candidate, &artifact_path)?;
-    }
-    let artifact_identity = fs::canonicalize(&artifact_path).map_err(|error| {
+    let runtime_root = artifact_root.parent().ok_or_else(|| {
         format!(
-            "failed to resolve digest-addressed runtime artifact {}: {error}",
-            artifact_path.display()
+            "runtime artifact root has no runtime parent: {}",
+            artifact_root.display()
         )
     })?;
-    if protocol_binary_digest_from_canonical_artifact_path(&artifact_identity).as_deref()
-        != Some(artifact_digest.as_str())
-    {
+    let state_home = runtime_root.parent().ok_or_else(|| {
+        format!(
+            "runtime root has no state-home parent: {}",
+            runtime_root.display()
+        )
+    })?;
+    let expected_target = runtime_root.join("bin").join(binary_name);
+    if !same_protocol_binary_entry(target, &expected_target) {
         return Err(format!(
-            "runtime artifact path does not encode installed digest: path={} digest={artifact_digest}",
-            artifact_identity.display()
+            "runtime binary target must use the stable Runtime slot: expected={} actual={}",
+            expected_target.display(),
+            target.display()
         ));
     }
-    let target_is_current = fs::canonicalize(target)
+    let artifact_kind = binary_name.to_string_lossy().into_owned();
+    let previous_artifact_digest =
+        agent_semantic_runtime::runtime_artifact_identity::read_runtime_artifact_identity(
+            state_home,
+            &artifact_kind,
+        )
+        .await
         .ok()
-        .is_some_and(|current| current == artifact_identity);
-    let status = if target_is_current {
-        "already-present"
-    } else {
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-        }
-        let candidate = temporary_protocol_binary_path(target);
-        if fs::symlink_metadata(&candidate).is_ok() {
-            fs::remove_file(&candidate).map_err(|error| {
-                format!("failed to remove stale {}: {error}", candidate.display())
-            })?;
-        }
-        stage_active_protocol_entry(&artifact_identity, &candidate)?;
-        let status = if fs::symlink_metadata(target).is_ok() {
-            "updated"
+        .map(|receipt| receipt.artifact_digest().to_owned());
+    let publication = agent_semantic_runtime::runtime_artifact_catalog::publish_runtime_artifact(
+        state_home,
+        source,
+        target,
+        artifact_root,
+        &artifact_kind,
+    )
+    .await?;
+    agent_semantic_runtime::runtime_artifact_identity::publish_runtime_artifact_identity(
+        state_home,
+        target,
+        &publication,
+    )
+    .await?;
+    let status =
+        if previous_artifact_digest.as_deref() == Some(publication.artifact_digest.as_str()) {
+            publication.status
         } else {
-            "installed"
+            "updated"
         };
-        atomic_replace_protocol_entry(&candidate, target)?;
-        status
-    };
-    Ok(ProtocolBinaryInstall {
-        path: target.to_path_buf(),
+    return Ok(ProtocolBinaryInstall {
+        path: publication.path,
         status,
-        artifact_digest,
-    })
+        artifact_digest: publication.artifact_digest,
+    });
 }
 
 fn resolve_protocol_binary_artifact_entry(

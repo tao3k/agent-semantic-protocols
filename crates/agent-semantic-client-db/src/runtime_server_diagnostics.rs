@@ -9,6 +9,7 @@ const DIAGNOSTIC_SCHEMA_ID: &str = "agent.semantic-protocols.runtime-server-diag
 const DIAGNOSTIC_JOURNAL_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-diagnostic-journal";
 const DIAGNOSTIC_JOURNAL_CAPACITY: usize = 64;
+const DIAGNOSTIC_PERSIST_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -76,19 +77,33 @@ impl RuntimeServerDiagnostics {
         let task = tokio::spawn(async move {
             let mut sequence = initial_sequence;
             let mut journal = initial_journal;
-            while let Some(event) = receiver.recv().await {
-                let mut batch = Vec::with_capacity(64);
-                batch.push(event);
-                receiver.recv_many(&mut batch, 63).await;
-                for event in batch {
-                    sequence = sequence.saturating_add(1);
-                    append_journal_event(&mut journal, sequence, event)?;
+            let mut persist = tokio::time::interval(DIAGNOSTIC_PERSIST_INTERVAL);
+            persist.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            // Consume the immediate first tick: persistence is driven by a
+            // real interval or channel close, never by actor startup.
+            persist.tick().await;
+            let mut dirty = false;
+
+            loop {
+                tokio::select! {
+                    event = receiver.recv() => match event {
+                        Some(event) => {
+                            sequence = sequence.saturating_add(1);
+                            append_journal_event(&mut journal, sequence, event)?;
+                            dirty = true;
+                        }
+                        None => {
+                            if dirty {
+                                persist_diagnostics(&receipt_path, &journal).await?;
+                            }
+                            break;
+                        }
+                    },
+                    _ = persist.tick(), if dirty => {
+                        persist_diagnostics(&receipt_path, &journal).await?;
+                        dirty = false;
+                    }
                 }
-                let latest = journal.back().ok_or_else(|| {
-                    "Runtime Server diagnostic batch produced no event".to_owned()
-                })?;
-                write_latest_journal_event(&receipt_path, latest).await?;
-                write_journal(&journal_path, &journal).await?;
             }
             Ok(())
         });
@@ -100,6 +115,18 @@ impl RuntimeServerDiagnostics {
             .await
             .map_err(|error| format!("Runtime Server diagnostic lane failed: {error}"))?
     }
+}
+
+async fn persist_diagnostics(
+    receipt_path: &Path,
+    journal: &std::collections::VecDeque<RuntimeServerDiagnosticJournalEntry>,
+) -> Result<(), String> {
+    let latest = journal.back().ok_or_else(|| {
+        "Runtime Server diagnostic persistence requested without an event".to_owned()
+    })?;
+    let journal_path = receipt_path.with_file_name("runtime-server-diagnostic-journal.v1.json");
+    write_latest_journal_event(receipt_path, latest).await?;
+    write_journal(&journal_path, journal).await
 }
 
 fn append_journal_event(

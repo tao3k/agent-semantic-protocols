@@ -300,7 +300,7 @@ pub async fn refresh_turso_source_index_import_on_connection(
         }
     }
     source_index_db_trace("reuse-probe-missed", trace_started);
-    let write_stats = write_turso_source_index_rows(
+    let (write_stats, effective_materialization) = write_turso_source_index_rows(
         connection,
         &writer_import,
         &materialization,
@@ -310,6 +310,11 @@ pub async fn refresh_turso_source_index_import_on_connection(
         &source_snapshot_json,
     )
     .await?;
+    // The overlay writer expands the partial import into the full successor
+    // snapshot inside its transaction. Publish that exact materialization;
+    // retaining the pre-overlay input would split Turso, mmap, and the next
+    // generation validation across different source snapshots.
+    *materialization = effective_materialization;
     source_index_db_trace("rows-written", trace_started);
     let (owner_count, selector_count) = turso_source_index_scope_row_counts(
         connection,
@@ -340,7 +345,7 @@ pub async fn refresh_turso_source_index_import_on_connection(
         generation_id: write_stats.physical_generation_id.clone().into(),
         reused_generation: false,
         file_count: request.file_count,
-        source_snapshot,
+        source_snapshot: materialization.source_snapshot.clone(),
         owner_count,
         selector_count,
         changed_owner_count: write_stats.changed_owner_count,

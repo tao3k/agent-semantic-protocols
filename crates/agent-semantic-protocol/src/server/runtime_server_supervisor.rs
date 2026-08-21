@@ -5,35 +5,15 @@
 //! Singleton ownership remains daemon-owned through the global Unix socket;
 //! no platform service manager or workspace-scoped daemon participates.
 
-use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use agent_semantic_client_db::runtime_server_runtime::RUNTIME_SERVER_CONNECTION_IO_BUDGET;
 
-const OPERATOR_STOP_MARKER_FILE: &str = "operator-stop.v1.json";
-const RUN_INTENT_MARKER_FILE: &str = "run-intent.v1";
 const SPAWN_RECEIPT_FILE: &str = "owner-spawn.v1.json";
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct RuntimeServerSpawnReceipt {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub process_id: u32,
-    pub nonce: String,
-    pub state_home: String,
-    pub runtime_artifact_path: String,
-}
+pub(crate) use agent_semantic_client_db::RuntimeServerSpawnReceipt;
 
 fn server_dir(protocol_home: &Path) -> PathBuf {
     protocol_home.join("runtime").join("server")
-}
-
-fn run_intent_marker_path(protocol_home: &Path) -> PathBuf {
-    server_dir(protocol_home).join(RUN_INTENT_MARKER_FILE)
-}
-
-fn operator_stop_marker_path(protocol_home: &Path) -> PathBuf {
-    server_dir(protocol_home).join(OPERATOR_STOP_MARKER_FILE)
 }
 
 fn spawn_receipt_path(protocol_home: &Path) -> PathBuf {
@@ -41,68 +21,25 @@ fn spawn_receipt_path(protocol_home: &Path) -> PathBuf {
 }
 
 pub(crate) async fn create_runtime_server_run_intent(protocol_home: &Path) -> Result<(), String> {
-    let path = run_intent_marker_path(protocol_home);
-    let parent = path
-        .parent()
-        .ok_or_else(|| "run-intent marker has no parent".to_owned())?;
-    tokio::fs::create_dir_all(parent)
-        .await
-        .map_err(|error| format!("create run-intent parent: {error}"))?;
-    let staged = path.with_extension(format!("stage-{}", std::process::id()));
-    let file = tokio::fs::File::create(&staged)
-        .await
-        .map_err(|error| format!("create run-intent: {error}"))?;
-    file.sync_all()
-        .await
-        .map_err(|error| format!("sync run-intent: {error}"))?;
-    drop(file);
-    tokio::fs::rename(&staged, &path)
-        .await
-        .map_err(|error| format!("publish run-intent: {error}"))?;
-    Ok(())
+    agent_semantic_client_db::runtime_server_lifecycle::create_run_intent(protocol_home).await
 }
 
 pub(crate) async fn remove_runtime_server_run_intent(protocol_home: &Path) -> Result<(), String> {
-    remove_file_if_present(&run_intent_marker_path(protocol_home)).await
+    agent_semantic_client_db::runtime_server_lifecycle::remove_run_intent(protocol_home).await
 }
 
 pub(crate) async fn mark_runtime_server_operator_stopped(
     protocol_home: &Path,
 ) -> Result<(), String> {
-    let path = operator_stop_marker_path(protocol_home);
-    let parent = path
-        .parent()
-        .ok_or_else(|| "Runtime Server operator-stop marker has no parent".to_owned())?;
-    tokio::fs::create_dir_all(parent)
-        .await
-        .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    let staged = path.with_extension(format!("json.stage-{}", std::process::id()));
-    let marker = serde_json::json!({
-        "schemaId": "agent.semantic-protocols.runtime-server-operator-stop",
-        "schemaVersion": "1",
-        "state": "stopped",
-    });
-    tokio::fs::write(
-        &staged,
-        serde_json::to_vec(&marker)
-            .map_err(|error| format!("encode Runtime Server operator-stop marker: {error}"))?,
-    )
-    .await
-    .map_err(|error| format!("failed to write {}: {error}", staged.display()))?;
-    tokio::fs::rename(&staged, &path)
-        .await
-        .map_err(|error| format!("failed to publish {}: {error}", path.display()))
+    agent_semantic_client_db::runtime_server_lifecycle::mark_operator_stopped(protocol_home).await
 }
 
 async fn clear_runtime_server_operator_stop(protocol_home: &Path) -> Result<(), String> {
-    remove_file_if_present(&operator_stop_marker_path(protocol_home)).await
+    agent_semantic_client_db::runtime_server_lifecycle::clear_operator_stopped(protocol_home).await
 }
 
 async fn require_runtime_server_not_operator_stopped(protocol_home: &Path) -> Result<(), String> {
-    if tokio::fs::try_exists(operator_stop_marker_path(protocol_home))
-        .await
-        .map_err(|error| format!("inspect Runtime Server operator-stop marker: {error}"))?
-    {
+    if agent_semantic_client_db::runtime_server_lifecycle::operator_stopped(protocol_home).await? {
         return Err(serde_json::json!({
             "schemaId": "agent.semantic-protocols.runtime-server-operator-stop",
             "schemaVersion": "1",
@@ -127,24 +64,71 @@ pub(crate) async fn ensure_runtime_server(
         require_runtime_server_not_operator_stopped(protocol_home).await?;
     }
     create_runtime_server_run_intent(protocol_home).await?;
+    crate::prepare_runtime_server_provider_catalog(protocol_home).await?;
+    let desired_runtime_identity =
+        agent_semantic_runtime::runtime_artifact_identity::read_runtime_artifact_identity(
+            protocol_home,
+            "asp",
+        )
+        .await?;
     let endpoint_path = agent_semantic_client_db::runtime_server_endpoint_path(protocol_home)?;
-    if let Ok(endpoint) =
-        super::runtime_server_endpoint_io::read_supervisor_endpoint(&endpoint_path).await
-    {
+    match super::runtime_server_endpoint_io::read_supervisor_endpoint(&endpoint_path).await {
+        Ok(endpoint) => {
         let status = agent_semantic_client_db::call_runtime_server(
             &endpoint,
             agent_semantic_client_db::RuntimeServerOperation::Status,
-            endpoint.runtime_artifact_digest.clone(),
+            endpoint.runtime_binary_identity.clone(),
             spawn_nonce(),
         )
         .await;
-        if matches!(
-            status,
-            Ok(receipt)
-                if receipt.state
-                    == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
-        ) {
-            return Ok(None);
+        if let Ok(receipt) = status {
+            if receipt.state
+                == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
+            {
+                if endpoint.runtime_binary_identity == desired_runtime_identity.identity() {
+                    return Ok(None);
+                }
+                request_runtime_server_drain(protocol_home).await?;
+                agent_semantic_client_db::runtime_server_lifecycle::await_owner_exit(
+                    protocol_home,
+                    endpoint.owner_epoch,
+                )
+                .await?;
+                super::runtime_server_endpoint_io::cleanup_endpoint(protocol_home, &endpoint)
+                    .await?;
+            }
+        }
+        }
+        Err(_) => {
+            // A current-schema decode failure is a stale generation.  Preserve a
+            // live owner, but remove an owned dead endpoint so the next spawn can
+            // publish the current identity atomically.
+            let live_owner = read_runtime_server_spawn_receipt(protocol_home)
+                .await?
+                .is_some_and(|receipt| receipt.process_id > 0);
+            if !live_owner {
+                remove_file_if_present(&endpoint_path).await?;
+                remove_file_if_present(&spawn_receipt_path(protocol_home)).await?;
+            } else {
+                let bytes = tokio::fs::read(&endpoint_path).await.map_err(|e| format!("read stale endpoint: {e}"))?;
+                let envelope: serde_json::Value = serde_json::from_slice(&bytes).map_err(|e| format!("stale endpoint envelope mismatch: {e}"))?;
+                let socket = envelope.get("socketPath").and_then(|v|v.as_str()).ok_or_else(||"stale endpoint missing socketPath".to_owned())?;
+                let token = envelope.get("bindingToken").and_then(|v|v.as_str()).ok_or_else(||"stale endpoint missing bindingToken".to_owned())?;
+                let epoch = envelope.get("ownerEpoch").and_then(|v|v.as_u64()).ok_or_else(||"stale endpoint missing ownerEpoch".to_owned())?;
+                let transport = envelope.get("transportContractDigest").and_then(|v|v.as_str()).ok_or_else(||"stale endpoint missing transportContractDigest".to_owned())?;
+                let digest = envelope.get("runtimeArtifactDigest").and_then(|v|v.as_str()).ok_or_else(||"stale endpoint missing legacy runtimeArtifactDigest".to_owned())?;
+                tokio::time::timeout(
+                    RUNTIME_SERVER_CONNECTION_IO_BUDGET,
+                    agent_semantic_client_db::runtime_server_control::drain_previous_generation(
+                        std::path::Path::new(socket), token, epoch, transport, digest, spawn_nonce(),
+                    ),
+                )
+                .await
+                .map_err(|_| "previous generation drain timed out".to_owned())??;
+                agent_semantic_client_db::runtime_server_lifecycle::await_owner_exit(protocol_home, epoch).await?;
+                remove_file_if_present(&endpoint_path).await?;
+                remove_file_if_present(&spawn_receipt_path(protocol_home)).await?;
+            }
         }
     }
     // The endpoint is deliberately published only after the daemon has bound
@@ -154,78 +138,46 @@ pub(crate) async fn ensure_runtime_server(
     // daemon only contends for the election lock and creates avoidable I/O.
     // A terminal owner receipt invalidates that authority, so the next caller
     // can make exactly one replacement attempt.
-    if crate::server::runtime_server_exit_receipt::read_latest_owner_exit(protocol_home)
+    if agent_semantic_client_db::runtime_server_lifecycle::read_latest_owner_exit(protocol_home)
         .await?
         .is_none()
-        && read_runtime_server_spawn_receipt(protocol_home)
-            .await?
-            .is_some()
     {
-        return Ok(None);
+        if let Some(receipt) = read_runtime_server_spawn_receipt(protocol_home).await? {
+            if agent_semantic_runtime::runtime_process_lifecycle::process_id_is_alive(receipt.process_id).await {
+                return Ok(None);
+            }
+        }
     }
-    spawn_detached_runtime_server(protocol_home).map(Some)
+    spawn_detached_runtime_server(protocol_home).await.map(Some)
 }
 
-fn spawn_detached_runtime_server(
+pub(crate) async fn spawn_detached_runtime_server(
     protocol_home: &Path,
 ) -> Result<RuntimeServerSpawnReceipt, String> {
-    crate::server::runtime_server_exit_receipt::remove_stale_sync(protocol_home)?;
-    let runtime_artifact = canonical_supervisor_runtime_artifact_sync(protocol_home)?;
+    agent_semantic_client_db::runtime_server_lifecycle::remove_stale(protocol_home).await?;
+    let runtime_artifact = canonical_supervisor_runtime_artifact(protocol_home).await?;
     let nonce = spawn_nonce();
     let stderr_path = server_dir(protocol_home).join("owner-stderr.log");
-    let stderr = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&stderr_path)
-        .map_err(|error| {
-            format!(
-                "failed to open Runtime Server stderr receipt {}: {error}",
-                stderr_path.display()
-            )
-        })?;
-    let mut command = std::process::Command::new(&runtime_artifact);
-    command
-        .args(["server", "daemon"])
-        .env("ASP_STATE_HOME", protocol_home)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::from(stderr));
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
-    let child = command.spawn().map_err(|error| {
-        format!(
-            "failed to detach ASP Runtime Server {}: {error}",
-            runtime_artifact.display()
-        )
-    })?;
+    let child = agent_semantic_runtime::runtime_process_lifecycle::launch_detached(
+        agent_semantic_runtime::runtime_process_lifecycle::RuntimeProcessLaunchSpec {
+            program: runtime_artifact.clone(), args: vec!["server".to_owned(), "daemon".to_owned()], current_dir: None, environment: vec![("ASP_STATE_HOME".to_owned(), protocol_home.to_string_lossy().into_owned())], stderr: stderr_path,
+        }).await?;
     let receipt = RuntimeServerSpawnReceipt {
         schema_id: "agent.semantic-protocols.runtime-server-owner-spawn.v1".to_owned(),
         schema_version: "1".to_owned(),
-        process_id: child.id(),
+        process_id: child.process_id,
         nonce,
         state_home: protocol_home.to_string_lossy().into_owned(),
         runtime_artifact_path: runtime_artifact.to_string_lossy().into_owned(),
     };
-    let bytes = serde_json::to_vec(&receipt)
-        .map_err(|error| format!("encode Runtime Server spawn receipt: {error}"))?;
-    std::fs::write(spawn_receipt_path(protocol_home), bytes)
-        .map_err(|error| format!("publish Runtime Server spawn receipt: {error}"))?;
+    agent_semantic_client_db::runtime_server_lifecycle::write_owner_receipt(protocol_home, &receipt).await?;
     Ok(receipt)
 }
 
 pub(crate) async fn read_runtime_server_spawn_receipt(
     protocol_home: &Path,
 ) -> Result<Option<RuntimeServerSpawnReceipt>, String> {
-    match tokio::fs::read(spawn_receipt_path(protocol_home)).await {
-        Ok(bytes) => serde_json::from_slice(&bytes)
-            .map(Some)
-            .map_err(|error| format!("decode Runtime Server spawn receipt: {error}")),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(format!("read Runtime Server spawn receipt: {error}")),
-    }
+    agent_semantic_client_db::runtime_server_lifecycle::read_owner_receipt(protocol_home).await
 }
 
 pub(crate) async fn request_runtime_server_drain(protocol_home: &Path) -> Result<(), String> {
@@ -235,7 +187,7 @@ pub(crate) async fn request_runtime_server_drain(protocol_home: &Path) -> Result
     let receipt = agent_semantic_client_db::call_runtime_server(
         &endpoint,
         agent_semantic_client_db::RuntimeServerOperation::Restart,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.clone(),
         spawn_nonce(),
     )
     .await?;
@@ -247,47 +199,57 @@ pub(crate) async fn request_runtime_server_drain(protocol_home: &Path) -> Result
     Ok(())
 }
 
+pub(crate) async fn escalate_drained_owner(
+    protocol_home: &Path,
+    owner_epoch: u64,
+) -> Result<(), String> {
+    let receipt = read_runtime_server_spawn_receipt(protocol_home)
+        .await?
+        .ok_or_else(|| "graceful drain timeout has no owner receipt".to_owned())?;
+    let coordinator = agent_semantic_client_db::runtime_server_lifecycle_coordinator::RuntimeServerLifecycleCoordinator::new(protocol_home, &receipt.runtime_artifact_path);
+    if receipt.state_home != protocol_home.to_string_lossy()
+        || coordinator.classify(Some(receipt.process_id)).await? != agent_semantic_client_db::runtime_server_lifecycle_coordinator::OwnerClassification::Live
+    {
+        return Err("graceful drain timeout owner receipt no longer matches".to_owned());
+    }
+    coordinator.terminate_verified(receipt.process_id, false).await?;
+    let _ = owner_epoch;
+    Ok(())
+}
+
+pub(crate) async fn force_kill_previous_owner(
+    protocol_home: &Path,
+    owner_epoch: u64,
+) -> Result<(), String> {
+    let receipt = read_runtime_server_spawn_receipt(protocol_home)
+        .await?
+        .ok_or_else(|| "previous owner force-kill has no owner receipt".to_owned())?;
+    let coordinator = agent_semantic_client_db::runtime_server_lifecycle_coordinator::RuntimeServerLifecycleCoordinator::new(protocol_home, &receipt.runtime_artifact_path);
+    if receipt.state_home != protocol_home.to_string_lossy()
+        || coordinator.classify(Some(receipt.process_id)).await? != agent_semantic_client_db::runtime_server_lifecycle_coordinator::OwnerClassification::Live
+    {
+        return Err("previous owner force-kill owner identity mismatch".to_owned());
+    }
+    let _ = owner_epoch;
+    coordinator.terminate_verified(receipt.process_id, true).await?;
+    Ok(())
+}
+
 pub(crate) async fn unload_runtime_server_supervisor(protocol_home: &Path) -> Result<(), String> {
-    remove_file_if_present(&spawn_receipt_path(protocol_home)).await
+    agent_semantic_client_db::runtime_server_lifecycle::remove_owner_receipt(protocol_home).await
 }
 
 pub(crate) async fn reconcile_healthy_runtime_server(
     protocol_home: &Path,
 ) -> Result<agent_semantic_client_db::runtime_server_control::RuntimeServerControlReceipt, String> {
     ensure_runtime_server(protocol_home, false).await?;
+    super::runtime_server::await_healthy_runtime_server_after_spawn().await?;
     super::runtime_server::observe_runtime_server_readiness(protocol_home).await
 }
 
-pub(crate) async fn prepare_runtime_server_binary_switch(
-    protocol_home: &Path,
-) -> Result<bool, String> {
-    let endpoint_path = agent_semantic_client_db::runtime_server_endpoint_path(protocol_home)?;
-    let endpoint =
-        match super::runtime_server_endpoint_io::read_supervisor_endpoint(&endpoint_path).await {
-            Ok(endpoint) => Some(endpoint),
-            Err(_) => None,
-        };
-    let Some(endpoint) = endpoint else {
-        return Ok(false);
-    };
-
-    crate::server::runtime_server_exit_receipt::remove_stale(protocol_home).await?;
-    request_runtime_server_drain(protocol_home).await?;
-    let exit = crate::server::runtime_server_exit_receipt::await_owner_exit(
-        protocol_home,
-        endpoint.owner_epoch,
-    )
-    .await?;
-    if !exit.clean_drain {
-        return Err("ASP binary refresh stopped after a failed Runtime service drain".to_owned());
-    }
-    crate::server::runtime_server_endpoint_io::cleanup_endpoint(protocol_home, &endpoint).await?;
-    Ok(true)
-}
-
-fn canonical_supervisor_runtime_artifact_sync(protocol_home: &Path) -> Result<PathBuf, String> {
+async fn canonical_supervisor_runtime_artifact(protocol_home: &Path) -> Result<PathBuf, String> {
     let stable_entry = protocol_home.join("runtime").join("bin").join("asp");
-    let resolved = std::fs::canonicalize(&stable_entry).map_err(|error| {
+    let resolved = agent_semantic_runtime::runtime_process_lifecycle::canonicalize(&stable_entry).await.map_err(|error| {
         format!(
             "canonical ASP Runtime Server binary is unavailable at {}: {error}",
             stable_entry.display()
@@ -305,7 +267,7 @@ fn canonical_supervisor_runtime_artifact_sync(protocol_home: &Path) -> Result<Pa
 fn spawn_nonce() -> String {
     let seed = format!(
         "{}:{}:{:?}",
-        std::process::id(),
+        agent_semantic_runtime::runtime_process_lifecycle::current_process_id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |duration| duration.as_nanos()),

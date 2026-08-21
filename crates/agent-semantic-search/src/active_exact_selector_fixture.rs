@@ -1,21 +1,28 @@
-use agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1;
-use agent_semantic_content_identity::active_artifact_merkle_v1::ActiveAspArtifactReceiptV1;
-use agent_semantic_hook::ActiveAspArtifactInput;
+use agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactKind;
+use agent_semantic_content_identity::active_artifact_merkle::ActiveAspArtifactReceipt;
 
 use crate::exact_selector_fixture_memory::ExactSelectorFixtureFileBackendV1;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExactSelectorFixtureArtifactInput {
+    pub logical_path: String,
+    pub materialized_path: std::path::PathBuf,
+    pub artifact_kind: ActiveArtifactKind,
+    pub artifact_digest: String,
+}
+
 pub fn exact_selector_fixture_active_artifact_input_v1(
-    receipt: &ActiveAspArtifactReceiptV1,
-) -> Result<ActiveAspArtifactInput, String> {
+    receipt: &ActiveAspArtifactReceipt,
+) -> Result<ExactSelectorFixtureArtifactInput, String> {
     let leaf = receipt
         .leaves()
         .iter()
-        .find(|leaf| leaf.artifact_kind() == ActiveArtifactKindV1::ExactSelectorGenerationFixture)
+        .find(|leaf| leaf.artifact_kind() == ActiveArtifactKind::ExactSelectorGenerationFixture)
         .ok_or_else(|| {
             "exact selector generation state=cold-required reasonKind=active-fixture-missing"
                 .to_owned()
         })?;
-    Ok(ActiveAspArtifactInput {
+    Ok(ExactSelectorFixtureArtifactInput {
         logical_path: leaf.logical_path().to_owned(),
         materialized_path: std::path::PathBuf::from(leaf.materialized_path()),
         artifact_kind: leaf.artifact_kind(),
@@ -24,9 +31,9 @@ pub fn exact_selector_fixture_active_artifact_input_v1(
 }
 
 pub fn exact_selector_fixture_backend_from_active_artifact_v1(
-    artifact: &ActiveAspArtifactInput,
+    artifact: &ExactSelectorFixtureArtifactInput,
 ) -> Result<ExactSelectorFixtureFileBackendV1, String> {
-    if artifact.artifact_kind != ActiveArtifactKindV1::ExactSelectorGenerationFixture {
+    if artifact.artifact_kind != ActiveArtifactKind::ExactSelectorGenerationFixture {
         return Err(format!(
             "active artifact is not an exact selector generation fixture: kind={}",
             artifact.artifact_kind.canonical_name()

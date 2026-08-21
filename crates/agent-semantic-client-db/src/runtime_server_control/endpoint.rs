@@ -9,6 +9,7 @@ use super::model::{
     ENDPOINT_SCHEMA_ID, RuntimeServerEndpoint, SCHEMA_VERSION,
     runtime_server_transport_contract_digest,
 };
+use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
 
 const MAX_UNIX_SOCKET_PATH_BYTES: usize = 103;
 
@@ -100,7 +101,7 @@ pub fn validate_runtime_server_endpoint_for_state_home(
     let digest = blake3::hash(
         format!(
             "{}\0{}\0{}",
-            endpoint.owner_epoch, endpoint.binding_token, endpoint.runtime_artifact_digest
+            endpoint.owner_epoch, endpoint.binding_token, endpoint.runtime_binary_identity.value()
         )
         .as_bytes(),
     )
@@ -445,6 +446,29 @@ pub async fn prepare_runtime_server_endpoint_with_workspace_store(
     .await
 }
 
+pub async fn prepare_runtime_server_endpoint_with_workspace_store_and_identity(
+    state_home: &Path,
+    workspace_store_path: &Path,
+    runtime_artifact_path: &Path,
+    runtime_binary_identity: &RuntimeBinaryIdentity,
+    artifact_mode: &str,
+    artifact_catalog_digest: &str,
+    owner_epoch: u64,
+    binding_token: &str,
+) -> Result<RuntimeServerEndpoint, String> {
+    prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
+        &runtime_server_runtime_base(state_home)?,
+        workspace_store_path,
+        runtime_artifact_path,
+        runtime_binary_identity,
+        artifact_mode,
+        artifact_catalog_digest,
+        owner_epoch,
+        binding_token,
+    )
+    .await
+}
+
 pub async fn prepare_runtime_server_endpoint_in(
     runtime_base: &Path,
     runtime_artifact_path: &Path,
@@ -478,6 +502,28 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store(
     owner_epoch: u64,
     binding_token: &str,
 ) -> Result<RuntimeServerEndpoint, String> {
+    prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
+        runtime_base,
+        workspace_store_path,
+        runtime_artifact_path,
+        &RuntimeBinaryIdentity::Content { value: runtime_artifact_digest.to_owned(), algorithm: "blake3-256".to_owned() },
+        artifact_mode,
+        artifact_catalog_digest,
+        owner_epoch,
+        binding_token,
+    ).await
+}
+
+async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
+    runtime_base: &Path,
+    workspace_store_path: &Path,
+    runtime_artifact_path: &Path,
+    runtime_binary_identity: &RuntimeBinaryIdentity,
+    artifact_mode: &str,
+    artifact_catalog_digest: &str,
+    owner_epoch: u64,
+    binding_token: &str,
+) -> Result<RuntimeServerEndpoint, String> {
     let uid_root = runtime_base
         .parent()
         .ok_or_else(|| "Runtime Server directory has no UID root".to_owned())?;
@@ -487,7 +533,7 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store(
     }
     prepare_private_runtime_directory(runtime_base).await?;
     let digest = blake3::hash(
-        format!("{owner_epoch}\0{binding_token}\0{runtime_artifact_digest}").as_bytes(),
+        format!("{owner_epoch}\0{binding_token}\0{}", runtime_binary_identity.value()).as_bytes(),
     )
     .to_hex();
     let socket_path = runtime_base.join(format!("r-{}.sock", &digest[..16]));
@@ -511,7 +557,9 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store(
         transport_contract_digest: runtime_server_transport_contract_digest(),
         owner_epoch,
         runtime_artifact_path: runtime_artifact_path.to_string_lossy().into_owned(),
-        runtime_artifact_digest: runtime_artifact_digest.to_owned(),
+        runtime_binary_identity: runtime_binary_identity.clone(),
+        monitor_capability: true,
+        observed_runtime_binary_identity: runtime_binary_identity.clone(),
         artifact_mode: artifact_mode.to_owned(),
         artifact_catalog_digest: artifact_catalog_digest.to_owned(),
         binding_token: binding_token.to_owned(),

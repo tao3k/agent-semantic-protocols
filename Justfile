@@ -257,9 +257,8 @@ agent-tools-build-gerbil bin_dir="":
       artifact_root="${package_dir}/build/workspace-provider"; \
       cd "${package_dir}"; \
       env -u CC -u SDKROOT \
-        GERBIL_PATH="${package_dir}/.gerbil" \
         ASP_GERBIL_SCHEME_WORKSPACE_ARTIFACT_ROOT="${artifact_root}" \
-        gxi provider/workspace-build.ss; \
+        gxpkg env gxi provider/workspace-build.ss; \
       provider_binary="${artifact_root}/bin/asp-gerbil-scheme"; \
       test -x "${provider_binary}"; \
       if [ -n "{{bin_dir}}" ]; then \

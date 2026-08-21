@@ -137,7 +137,7 @@ pub(super) async fn connection_pool(
 ) -> Arc<RuntimeServerConnectionPool> {
     let key = format!(
         "{}\0{}\0{}",
-        endpoint.socket_path, endpoint.owner_epoch, endpoint.runtime_artifact_digest
+        endpoint.socket_path, endpoint.owner_epoch, endpoint.runtime_binary_identity.value()
     );
     let pools = RUNTIME_SERVER_CONNECTION_POOLS
         .get_or_init(|| async { RwLock::new(HashMap::new()) })

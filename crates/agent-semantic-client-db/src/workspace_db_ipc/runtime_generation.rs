@@ -262,7 +262,7 @@ impl WorkspaceDbIpcSession {
             })
             .await?
         {
-            WorkspaceDbIpcResult::RuntimeOwner { read } => Ok(read),
+            WorkspaceDbIpcResult::RuntimeOwner { read, .. } => Ok(read),
             _ => Err("Runtime Server returned an unexpected owner read result".to_owned()),
         }
     }

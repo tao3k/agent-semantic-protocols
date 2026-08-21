@@ -3,6 +3,7 @@ use crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEnt
 use crate::runtime_server_control::{
     RuntimeServerEndpoint, runtime_server_transport_contract_digest,
 };
+use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
 
 fn endpoint(root: &std::path::Path) -> RuntimeServerEndpoint {
     RuntimeServerEndpoint {
@@ -11,7 +12,9 @@ fn endpoint(root: &std::path::Path) -> RuntimeServerEndpoint {
         transport_contract_digest: runtime_server_transport_contract_digest(),
         owner_epoch: 7,
         runtime_artifact_path: root.join("runtime/bin/asp").display().to_string(),
-        runtime_artifact_digest: format!("blake3-256:{}", "2".repeat(64)),
+        runtime_binary_identity: RuntimeBinaryIdentity::DeveloperSourceGeneration { value: format!("blake3-256:{}", "2".repeat(64)), algorithm: "blake3-metadata-v1".to_owned() },
+        monitor_capability: true,
+        observed_runtime_binary_identity: RuntimeBinaryIdentity::DeveloperSourceGeneration { value: format!("blake3-256:{}", "2".repeat(64)), algorithm: "blake3-metadata-v1".to_owned() },
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "3".repeat(64)),
         binding_token: "binding-token".to_owned(),

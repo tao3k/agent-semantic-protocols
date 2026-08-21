@@ -385,9 +385,17 @@ pub fn project_resolution_from_stdout(
     expected_provider_id: &ProviderId,
     candidates: &ProviderProjectResolutionCandidates,
 ) -> Result<ProviderProjectResolution, String> {
-    let stdout = String::from_utf8_lossy(stdout);
-    let packet = serde_json::from_str::<RawProviderProjectResolutionResponse>(stdout.trim())
-        .map_err(|error| format!("decode provider project-resolution response: {error}"))?;
+let stdout = String::from_utf8_lossy(stdout);
+let trimmed = stdout.trim();
+let preview: String = trimmed.chars().take(256).collect();
+let packet = serde_json::from_str::<RawProviderProjectResolutionResponse>(trimmed).map_err(
+    |error| {
+        format!(
+            "decode provider project-resolution response: {error}; bytes={}; prefix={preview:?}",
+            stdout.len()
+        )
+    },
+)?;
     if packet.schema_id != PROVIDER_PROJECT_RESOLUTION_RESPONSE_SCHEMA_ID
         || packet.schema_version != "1"
     {

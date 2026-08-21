@@ -79,58 +79,24 @@ impl WorkspaceGenerationAdmission {
                 return Ok(false);
             }
         }
-        if !self
-            .entries
-            .reserve_query_demand(admission_key.clone(), target_paths.as_ref().clone())
-            .await?
-        {
-            return Ok(false);
-        }
-
-        let admission = self.clone();
-        let reservation_key = admission_key;
-        let reserved_target_paths = target_paths.as_ref().clone();
-        let task = tokio::spawn(async move {
-            let result = async {
-                if admission
-                    .current(&workspace_identity, &project_root)
-                    .is_some_and(|receipt| {
-                        receipt.state == WorkspaceGenerationAdmissionState::Building
-                    })
-                {
-                    let _ = admission
-                        .wait_terminal(&workspace_identity, &project_root)
-                        .await;
-                }
-                let candidate = discover_workspace_generation_candidate(&project_root).await?;
-                admission
-                    .admit_with_mode(
-                        workspace_identity,
-                        project_root,
-                        candidate,
-                        WorkspaceGenerationBuildMode::RestoreOrBuild,
-                        WorkspaceGenerationAdmissionTrigger::QueryDemand,
-                        WorkspaceGenerationAdmissionMode::ColdTargeted,
-                        provider_target,
-                        target_paths,
-                    )
-                    .await?;
-                Ok::<(), String>(())
-            }
-            .await;
-            admission
-                .entries
-                .release_query_demand(reservation_key, reserved_target_paths)
-                .await;
-            if let Err(error) = result {
-                tracing::warn!(
-                    event = "runtime_query_demand_admission_failed",
-                    error = %error,
-                );
-            }
-        });
-        self.track_submission_task(task);
-        Ok(true)
+        // Discover the candidate before returning so `admit_with_mode` can
+        // synchronously publish the Building entry and detach only the build
+        // itself. A waiter beginning immediately after this call therefore
+        // observes a real admission receipt rather than an unknown key.
+        let candidate = discover_workspace_generation_candidate(&project_root).await?;
+        let receipt = self
+            .admit_with_mode(
+                workspace_identity,
+                project_root,
+                candidate,
+                WorkspaceGenerationBuildMode::RestoreOrBuild,
+                WorkspaceGenerationAdmissionTrigger::QueryDemand,
+                WorkspaceGenerationAdmissionMode::ColdTargeted,
+                provider_target,
+                target_paths,
+            )
+            .await?;
+        Ok(receipt.accepted)
     }
 }
 

@@ -523,20 +523,21 @@ pub async fn serve_runtime_server_workspace_stream(
                 WorkspaceDbIpcOperation::ReadRuntimeOwner {
                     project_root,
                     owner_path,
-                } => match memory_registry
-                    .read_projection_owner(
+                } => {
+                    match resident_owner::read_runtime_owner(
+                        memory_registry,
                         &request.workspace_identity,
-                        Path::new(&project_root),
-                        &owner_path,
+                        request.request_id.clone(),
+                        project_root,
+                        owner_path,
+                        telemetry_sender,
                     )
                     .await
-                {
-                    Ok(read) => WorkspaceDbIpcResult::RuntimeOwner { read },
-                    Err(message) => WorkspaceDbIpcResult::Failed {
-                        code: "runtime-server-owner-read-failed".to_owned(),
-                        message,
-                    },
-                },
+                    {
+                        Ok(result) => result,
+                        Err(error) => return Err(error),
+                    }
+                }
                 WorkspaceDbIpcOperation::ReadRuntimeMerkleOwner {
                     request: merkle_request,
                 } => {
@@ -571,6 +572,7 @@ pub async fn serve_runtime_server_workspace_stream(
                     exact_projection::provider_owner(
                         runtime_search_service,
                         memory_registry.as_ref(),
+                        generation_admission,
                         request.request_id.clone(),
                         &request.workspace_identity,
                         project_root,
@@ -961,5 +963,7 @@ pub async fn serve_runtime_server_workspace_stream(
 
 use crate::workspace_db_ipc::{read_optional_frame, write_frame};
 
+#[path = "workspace_db_ipc_server_resident_owner.rs"]
+mod resident_owner;
 #[path = "workspace_db_ipc_server_resident_read.rs"]
 mod resident_read;

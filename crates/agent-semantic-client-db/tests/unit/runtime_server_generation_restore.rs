@@ -88,7 +88,7 @@ async fn daemon_startup_does_not_eagerly_restore_registered_workspaces() {
     let healthy = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Status,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.clone(),
         "status-with-on-demand-workspace-restore".to_owned(),
     )
     .await

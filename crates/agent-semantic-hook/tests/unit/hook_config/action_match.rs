@@ -166,6 +166,7 @@ fn structured_query_program_is_not_projected_as_a_shell_subject() {
         operation: crate::tool_action::OperationIntent::ShellCommand,
         command: Some(format!("jq '{filter}' {schema_path}")),
         command_tokens: None,
+        leading_shell_stage: true,
         paths: vec![filter, schema_path.clone()],
     };
     let structured_source_operands = [schema_path.clone()];
@@ -207,6 +208,7 @@ fn slash_operator_does_not_create_path_authority() {
         operation: crate::tool_action::OperationIntent::ShellCommand,
         command: Some(format!("jq '{filter}' {schema_path}")),
         command_tokens: None,
+        leading_shell_stage: true,
         paths: vec![filter, schema_path.clone()],
     };
 

@@ -15,7 +15,7 @@ mod source_snapshot;
 pub mod structural_selector;
 mod value;
 
-pub use active_artifact_merkle_v1::ActiveArtifactSetIdV1;
+pub use active_artifact_merkle::ActiveArtifactSetId;
 pub use canonical_item_identity::{
     CANONICAL_ITEM_SELECTOR_SCHEMA_ID, CANONICAL_ITEM_SELECTOR_SCHEMA_VERSION,
     CanonicalItemIdentity, CanonicalItemKind, CanonicalItemLanguageId, CanonicalItemScope,
@@ -75,7 +75,7 @@ mod store_tests;
 #[path = "../tests/unit/hashing.rs"]
 mod hashing_tests;
 
-pub mod active_artifact_merkle_v1;
+pub mod active_artifact_merkle;
 
 #[cfg(test)]
 #[path = "../tests/unit/canonical_item_identity.rs"]

@@ -55,7 +55,7 @@ async fn exercise_stable_supervisor_reconciliation(enforce_latency: bool) {
     let warm = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Reconcile,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.clone(),
         "prewarm-supervisor-control".to_owned(),
     )
     .await
@@ -69,7 +69,7 @@ async fn exercise_stable_supervisor_reconciliation(enforce_latency: bool) {
         let receipt = call_runtime_server(
             &endpoint,
             RuntimeServerOperation::Reconcile,
-            endpoint.runtime_artifact_digest.clone(),
+            endpoint.runtime_binary_identity.clone(),
             format!("warm-supervisor-control-{index}"),
         )
         .await
@@ -89,7 +89,7 @@ async fn exercise_stable_supervisor_reconciliation(enforce_latency: bool) {
     let started = tokio::time::Instant::now();
     let draining = reconcile_runtime_server(
         &endpoint,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.value().to_owned(),
         "blake3-256:next-data-plane-contract".to_owned(),
         "stale-data-contract-reconcile".to_owned(),
     )
@@ -175,13 +175,13 @@ async fn stale_generation_handoff_publishes_the_next_healthy_endpoint() {
     let healthy = call_runtime_server(
         &second_endpoint,
         RuntimeServerOperation::Status,
-        second_endpoint.runtime_artifact_digest.clone(),
+        second_endpoint.runtime_binary_identity.clone(),
         "generation-two-health".to_owned(),
     )
     .await
     .expect("observe second Runtime Server generation");
     assert_eq!(healthy.state, RuntimeServerState::Healthy);
-    assert_eq!(healthy.runtime_artifact_digest, "blake3-256:generation-two");
+    assert_eq!(healthy.runtime_binary_identity.value(), "blake3-256:generation-two");
     assert!(
         handoff_started.elapsed() < COMPLETE_HANDOFF_BOUNDARY,
         "complete in-process Tokio generation handoff exceeded the 500ms lifecycle boundary: {:?}",

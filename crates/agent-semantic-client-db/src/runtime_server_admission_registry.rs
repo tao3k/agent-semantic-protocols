@@ -1,5 +1,3 @@
-use std::collections::{BTreeSet, HashSet};
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::runtime_server_admission::{
@@ -8,27 +6,18 @@ use crate::runtime_server_admission::{
 };
 
 enum AdmissionRegistryCommand {
-    GetOrInsert {
-        key: WorkspaceGenerationAdmissionKey,
-        receipt: WorkspaceGenerationAdmissionReceipt,
-        active_mutation: Option<WorkspaceMutationIdentity>,
-        completed: tokio::sync::oneshot::Sender<(Arc<AdmissionEntry>, bool)>,
-    },
-    ReserveQueryDemand {
-        key: WorkspaceGenerationAdmissionKey,
-        target_paths: BTreeSet<PathBuf>,
-        completed: tokio::sync::oneshot::Sender<bool>,
-    },
-    ReleaseQueryDemand {
-        key: WorkspaceGenerationAdmissionKey,
-        target_paths: BTreeSet<PathBuf>,
-        completed: tokio::sync::oneshot::Sender<()>,
-    },
     Shutdown(tokio::sync::oneshot::Sender<usize>),
 }
 
 #[derive(Clone)]
 pub(super) struct AdmissionRegistry {
+    // Server-local generation leases are claimed synchronously in this map.
+    // The mailbox below is retained only for shutdown/reservation lifecycle;
+    // no client demand is allowed to queue behind it.
+    entries: Arc<dashmap::DashMap<WorkspaceGenerationAdmissionKey, Arc<AdmissionEntry>>>,
+    snapshot_sender: tokio::sync::watch::Sender<
+        Arc<std::collections::HashMap<WorkspaceGenerationAdmissionKey, Arc<AdmissionEntry>>>,
+    >,
     commands: tokio::sync::mpsc::Sender<AdmissionRegistryCommand>,
     snapshot: tokio::sync::watch::Receiver<
         Arc<std::collections::HashMap<WorkspaceGenerationAdmissionKey, Arc<AdmissionEntry>>>,
@@ -39,53 +28,25 @@ pub(super) struct AdmissionRegistry {
 impl AdmissionRegistry {
     pub(super) fn new(capacity: usize) -> Self {
         let entries = std::collections::HashMap::with_capacity(capacity);
-        let (snapshot_sender, snapshot) = tokio::sync::watch::channel(Arc::new(entries.clone()));
-        let (commands, mut receiver) = tokio::sync::mpsc::channel(1);
+        let (snapshot_sender, snapshot) = tokio::sync::watch::channel(Arc::new(entries));
+        let server_entries = Arc::new(dashmap::DashMap::with_capacity(capacity));
+        // Admission is single-owner, but it is not single-request.  A one-slot
+        // mailbox serialized a concurrent cold burst *before* the owner could
+        // coalesce it, inflating the request-path p99 even though only one
+        // generation was ever built.  Size the mailbox from the Runtime
+        // Server's host-adaptive control-plane capacity and publish one
+        // immutable snapshot per drained batch.
+        let (commands, mut receiver) = tokio::sync::mpsc::channel(capacity.max(1));
+        let server_entries_for_actor = Arc::clone(&server_entries);
         let task = dispatcher::spawn_admission_authority(async move {
-            let mut entries = entries;
-            let mut query_demand_reservations = HashSet::new();
             while let Some(command) = receiver.recv().await {
                 let mut batch = vec![command];
                 while let Ok(command) = receiver.try_recv() {
                     batch.push(command);
                 }
-                let mut inserted_replies = Vec::new();
                 let mut shutdown = None;
                 for command in batch {
                     match command {
-                        AdmissionRegistryCommand::GetOrInsert {
-                            key,
-                            receipt,
-                            active_mutation,
-                            completed,
-                        } => match entries.entry(key) {
-                            std::collections::hash_map::Entry::Occupied(existing) => {
-                                let _ = completed.send((Arc::clone(existing.get()), false));
-                            }
-                            std::collections::hash_map::Entry::Vacant(vacant) => {
-                                let proposed =
-                                    Arc::new(AdmissionEntry::new(receipt, active_mutation));
-                                vacant.insert(Arc::clone(&proposed));
-                                snapshot_sender.send_replace(Arc::new(entries.clone()));
-                                inserted_replies.push((completed, proposed));
-                            }
-                        },
-                        AdmissionRegistryCommand::ReserveQueryDemand {
-                            key,
-                            target_paths,
-                            completed,
-                        } => {
-                            let _ = completed
-                                .send(query_demand_reservations.insert((key, target_paths)));
-                        }
-                        AdmissionRegistryCommand::ReleaseQueryDemand {
-                            key,
-                            target_paths,
-                            completed,
-                        } => {
-                            query_demand_reservations.remove(&(key, target_paths));
-                            let _ = completed.send(());
-                        }
                         AdmissionRegistryCommand::Shutdown(completed) => {
                             receiver.close();
                             shutdown = Some(completed);
@@ -93,16 +54,16 @@ impl AdmissionRegistry {
                         }
                     }
                 }
-                for (completed, entry) in inserted_replies {
-                    let _ = completed.send((entry, true));
-                }
                 if let Some(completed) = shutdown {
-                    let _ = completed.send(entries.len());
+                    let entry_count = server_entries_for_actor.len();
+                    let _ = completed.send(entry_count);
                     break;
                 }
             }
         });
         Self {
+            entries: server_entries,
+            snapshot_sender,
             commands,
             snapshot,
             task: Arc::new(tokio::sync::Mutex::new(Some(task))),
@@ -110,7 +71,7 @@ impl AdmissionRegistry {
     }
 
     pub(super) fn get(&self, key: &WorkspaceGenerationAdmissionKey) -> Option<Arc<AdmissionEntry>> {
-        self.snapshot.borrow().get(key).cloned()
+        self.entries.get(key).map(|entry| Arc::clone(entry.value()))
     }
 
     pub(super) fn entries(&self) -> Vec<Arc<AdmissionEntry>> {
@@ -123,60 +84,21 @@ impl AdmissionRegistry {
         receipt: WorkspaceGenerationAdmissionReceipt,
         active_mutation: Option<WorkspaceMutationIdentity>,
     ) -> Result<(Arc<AdmissionEntry>, bool), String> {
-        if let Some(entry) = self.get(&key) {
-            return Ok((entry, false));
-        }
-        let (completed, response) = tokio::sync::oneshot::channel();
-        self.commands
-            .send(AdmissionRegistryCommand::GetOrInsert {
-                key,
-                receipt,
-                active_mutation,
-                completed,
-            })
-            .await
-            .map_err(|_| "workspace generation admission authority is unavailable".to_owned())?;
-        response.await.map_err(|_| {
-            "workspace generation admission authority closed without a receipt".to_owned()
-        })
-    }
-
-    pub(super) async fn reserve_query_demand(
-        &self,
-        key: WorkspaceGenerationAdmissionKey,
-        target_paths: BTreeSet<PathBuf>,
-    ) -> Result<bool, String> {
-        let (completed, response) = tokio::sync::oneshot::channel();
-        self.commands
-            .send(AdmissionRegistryCommand::ReserveQueryDemand {
-                key,
-                target_paths,
-                completed,
-            })
-            .await
-            .map_err(|_| "workspace generation admission authority is unavailable".to_owned())?;
-        response.await.map_err(|_| {
-            "workspace generation admission authority dropped a query-demand reservation".to_owned()
-        })
-    }
-
-    pub(super) async fn release_query_demand(
-        &self,
-        key: WorkspaceGenerationAdmissionKey,
-        target_paths: BTreeSet<PathBuf>,
-    ) {
-        let (completed, response) = tokio::sync::oneshot::channel();
-        if self
-            .commands
-            .send(AdmissionRegistryCommand::ReleaseQueryDemand {
-                key,
-                target_paths,
-                completed,
-            })
-            .await
-            .is_ok()
-        {
-            let _ = response.await;
+        match self.entries.entry(key) {
+            dashmap::mapref::entry::Entry::Occupied(existing) => {
+                Ok((Arc::clone(existing.get()), false))
+            }
+            dashmap::mapref::entry::Entry::Vacant(vacant) => {
+                let entry = Arc::new(AdmissionEntry::new(receipt, active_mutation));
+                vacant.insert(Arc::clone(&entry));
+                self.snapshot_sender.send_replace(Arc::new(
+                    self.entries
+                        .iter()
+                        .map(|entry| (entry.key().clone(), Arc::clone(entry.value())))
+                        .collect(),
+                ));
+                Ok((entry, true))
+            }
         }
     }
 
@@ -190,10 +112,10 @@ impl AdmissionRegistry {
         {
             return Ok(0);
         }
-        let entry_count = receipt.await.unwrap_or(0);
+        let _actor_entry_count = receipt.await.unwrap_or(0);
         if let Some(task) = self.task.lock().await.take() {
             let _ = task.await;
         }
-        Ok(entry_count)
+        Ok(self.entries.len())
     }
 }

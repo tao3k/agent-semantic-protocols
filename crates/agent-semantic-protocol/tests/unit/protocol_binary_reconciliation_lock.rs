@@ -37,8 +37,8 @@ fn global_reconciliation_lock_rejects_concurrent_writer_without_waiting() {
 }
 
 #[cfg(unix)]
-#[test]
-fn global_reconciliation_atomically_updates_every_managed_path_alias() {
+#[tokio::test]
+async fn global_reconciliation_atomically_updates_every_managed_path_alias() {
     use std::os::unix::fs::symlink;
 
     let root = std::env::temp_dir().join(format!(
@@ -90,10 +90,12 @@ fn global_reconciliation_atomically_updates_every_managed_path_alias() {
     super::ensure_protocol_binary_installed(&super::ProtocolBinaryInstallPlan {
         binary_identity: super::RuntimeBinaryIdentityV1::asp_bootstrap(),
         current_exe: source,
+        explicit_candidate_source: None,
         target: primary_target.clone(),
         artifact_root: artifact_root.clone(),
         managed_path_aliases: managed,
     })
+    .await
     .expect("reconcile managed aliases");
     assert!(
         started.elapsed() < std::time::Duration::from_millis(50),

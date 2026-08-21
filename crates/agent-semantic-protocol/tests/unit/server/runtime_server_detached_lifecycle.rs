@@ -18,7 +18,7 @@ async fn live_spawn_receipt_is_the_supervisor_single_flight_authority() {
     tokio::fs::create_dir_all(&server_dir)
         .await
         .expect("create lifecycle fixture");
-    let receipt = super::RuntimeServerSpawnReceipt {
+    let receipt = agent_semantic_client_db::RuntimeServerSpawnReceipt {
         schema_id: "agent.semantic-protocols.runtime-server-owner-spawn.v1".to_owned(),
         schema_version: "1".to_owned(),
         process_id: std::process::id(),
@@ -41,4 +41,14 @@ async fn live_spawn_receipt_is_the_supervisor_single_flight_authority() {
     tokio::fs::remove_dir_all(root)
         .await
         .expect("remove lifecycle fixture");
+}
+
+#[tokio::test]
+async fn current_process_is_a_live_supervisor_owner() {
+    assert!(agent_semantic_runtime::runtime_process_lifecycle::process_id_is_alive(std::process::id()).await);
+}
+
+#[tokio::test]
+async fn unrepresentable_process_id_is_not_a_live_supervisor_owner() {
+    assert!(!agent_semantic_runtime::runtime_process_lifecycle::process_id_is_alive(u32::MAX).await);
 }

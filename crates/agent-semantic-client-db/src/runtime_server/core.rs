@@ -430,33 +430,24 @@ impl RuntimeServer {
                         crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
                         error,
                     ))?;
-                    const SOURCE_BUILDER_BUDGET: std::time::Duration =
-                        std::time::Duration::from_millis(800);
                     let source_build_started = std::time::Instant::now();
                     let source_build = await_stage(
                         &workspace_identity,
                         &operation_id,
                         Stage::SourceBuilder,
                         async {
-                            tokio::time::timeout(
-                                SOURCE_BUILDER_BUDGET,
-                                source_builder(
-                                    workspace_for_build,
-                                    project_root.clone(),
-                                    changed_paths,
-                                    provider_target,
-                                ),
+                            // Cold source construction is owned by the Runtime
+                            // generation worker.  It must run to a concrete
+                            // publication or builder error; a client-era wall
+                            // clock budget both cancels useful I/O and leaves a
+                            // facade permanently without a resident generation.
+                            source_builder(
+                                workspace_for_build,
+                                project_root.clone(),
+                                changed_paths,
+                                provider_target,
                             )
                             .await
-                            .map_err(|_| {
-                                crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
-                                    crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
-                                    format!(
-                                        "workspace generation source builder exceeded budget: budgetMillis={}",
-                                        SOURCE_BUILDER_BUDGET.as_millis()
-                                    ),
-                                )
-                            })?
                             .map_err(|error| {
                                 crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
                                     crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
@@ -470,17 +461,12 @@ impl RuntimeServer {
                         .elapsed()
                         .as_micros()
                         .min(u128::from(u64::MAX)) as u64;
-                    let source_build_budget_micros = SOURCE_BUILDER_BUDGET.as_micros() as u64;
                     let mut source_build_observation = crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
                         "workspace-generation-admission",
                         "source-builder",
                         source_build_elapsed_micros,
-                        source_build_budget_micros,
-                        if source_build_elapsed_micros < source_build_budget_micros {
-                            "within-budget"
-                        } else {
-                            "budget-exceeded"
-                        },
+                        0,
+                        if source_build.is_ok() { "observed" } else { "failed" },
                     )
                         .with_operation_id(operation_id.clone());
                     source_build_observation.workspace_identity = Some(workspace_identity.clone());
@@ -641,9 +627,11 @@ impl RuntimeServer {
         let (_lifecycle_state, lifecycle) =
             watch::channel(crate::runtime_server_control::RuntimeServerState::Healthy);
         // Socket liveness is Global; generation readiness is workspace-keyed.
-        // Registered durable generations are restored on demand by the typed
-        // workspace admission path. Daemon startup must not materialize every
-        // catalog entry into resident memory.
+        // Restore the authoritative registered workspace catalog before
+        // publishing Healthy; genuinely new workspaces remain lazy.
+        if let Some(admission) = generation_admission.as_ref() {
+            admission.restore_registered().await?;
+        }
         let entry_counts = registry.workspace_entry_counts();
         let slot_count = entry_counts.slot_count;
         let loaded_entry_count = entry_counts.loaded_entry_count;

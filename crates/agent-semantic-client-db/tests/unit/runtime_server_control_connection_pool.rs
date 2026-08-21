@@ -5,6 +5,7 @@ use super::{
 use crate::runtime_server_control::{
     RuntimeServerOperation, runtime_server_transport_contract_digest,
 };
+use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
 
 #[tokio::test]
 async fn pooled_lane_discards_a_closed_previous_generation_before_write() {
@@ -46,7 +47,9 @@ async fn stalled_control_exchange_is_bounded_and_discards_the_lane() {
         transport_contract_digest: runtime_server_transport_contract_digest(),
         owner_epoch: 1,
         runtime_artifact_path: "/runtime/asp".to_owned(),
-        runtime_artifact_digest: "runtime-digest".to_owned(),
+        runtime_binary_identity: RuntimeBinaryIdentity::Content { value: "runtime-digest".to_owned(), algorithm: "blake3-256".to_owned() },
+        monitor_capability: true,
+        observed_runtime_binary_identity: RuntimeBinaryIdentity::Content { value: "runtime-digest".to_owned(), algorithm: "blake3-256".to_owned() },
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "0".repeat(64)),
         binding_token: "binding".to_owned(),
@@ -59,7 +62,7 @@ async fn stalled_control_exchange_is_bounded_and_discards_the_lane() {
         schema_id: "agent.semantic-protocols.runtime-server-control-request.v1".to_owned(),
         schema_version: "1".to_owned(),
         operation: RuntimeServerOperation::Restart,
-        expected_runtime_artifact_digest: "next-runtime-digest".to_owned(),
+        expected_runtime_binary_identity: agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content { value: "next-runtime-digest".to_owned(), algorithm: "blake3-256".to_owned() },
         request_id: "bounded-control-exchange".to_owned(),
         transport_contract_digest: endpoint.transport_contract_digest.clone(),
         owner_epoch: endpoint.owner_epoch,

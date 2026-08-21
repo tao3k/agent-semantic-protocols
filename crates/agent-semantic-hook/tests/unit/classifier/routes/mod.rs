@@ -21,7 +21,9 @@ fn registry_with_python() -> HookRuntime {
 }
 
 fn document_provider(language_id: &str, extension: &str) -> ActivatedProvider {
-    let manifest = builtin_provider_manifest(language_id, "orgize");
+    let provider_id = agent_semantic_hook::registered_provider_id_v1(language_id)
+        .expect("registered document provider identity");
+    let manifest = builtin_provider_manifest(language_id, provider_id.as_str());
     let routes =
         agent_semantic_hook::materialize_provider_routes(&manifest).expect("document routes");
     provider(
@@ -57,7 +59,7 @@ fn registry_with_rust_and_python() -> HookRuntime {
 
 fn rust_provider() -> ActivatedProvider {
     let mut routes = provider_routes(
-        "rs-harness",
+        "asp-rust",
         Some(command(&[
             "asp",
             "rust",

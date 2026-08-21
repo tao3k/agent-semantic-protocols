@@ -535,8 +535,7 @@ impl RuleMatch {
                 .argv_prefix_any
                 .iter()
                 .any(|prefix| matches_prefix(prefix).routes_protected());
-        let leading_environment_match =
-            environment_assignment::matches(command, &self.leading_environment_assignment_any);
+        let leading_environment_match = environment_assignment::matches(command, &self.leading_environment_assignment_any, action.leading_shell_stage);
         token_match && prefix_match && contains_match && leading_environment_match
     }
 

@@ -506,6 +506,7 @@ async fn start_fixture_resident(
     state_home: &std::path::Path,
 ) -> FixtureRuntimeServer {
     agent_semantic_protocol::prepare_runtime_server_provider_catalog(state_home)
+        .await
         .expect("reconcile fixture Runtime provider catalog");
     let runtime_artifact = state_home.join("runtime/bin/asp");
     assert!(

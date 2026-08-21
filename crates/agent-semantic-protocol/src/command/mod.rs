@@ -21,6 +21,8 @@ mod hook_break_glass;
 mod hook_enforcement;
 mod hook_host_acceptance;
 pub(crate) mod hook_runtime;
+#[cfg(test)]
+pub(crate) use hook_runtime::publish_hook_decision_before_emit;
 mod hook_runtime_context;
 mod install_binary_config_admission;
 mod install_provider;
@@ -30,7 +32,6 @@ mod install_provider_reconcile;
 mod install_provider_release;
 mod install_provider_runtime_reconcile;
 pub use install_provider_runtime_reconcile::prepare_runtime_server_provider_catalog;
-pub(crate) use install_provider_runtime_reconcile::reconcile_global_provider_catalog_for_runtime;
 
 mod install_provider_target;
 mod live_corpus;
@@ -78,4 +79,3 @@ mod workspace_tree_sitter_inventory;
 mod workspace_tree_sitter_query;
 pub(crate) use workspace_tree_sitter_query::run_runtime_server_tree_sitter_query;
 mod workspace_tree_sitter_query_trace;
-pub(crate) use agent_config_sync::synchronize_embedded_agent_config;

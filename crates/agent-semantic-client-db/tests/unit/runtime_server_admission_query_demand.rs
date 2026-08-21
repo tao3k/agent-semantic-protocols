@@ -204,6 +204,94 @@ async fn provider_targeted_query_demand_keeps_language_scoped_coverage() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn same_request_wait_allows_build_past_connection_budget_before_admission_deadline() {
+    let builds = Arc::new(AtomicUsize::new(0));
+    let admission = Arc::new(WorkspaceGenerationAdmission::new(Arc::new({
+        let builds = Arc::clone(&builds);
+        move |_, _, candidate, _, _, _, _| {
+            let builds = Arc::clone(&builds);
+            Box::pin(async move {
+                builds.fetch_add(1, Ordering::AcqRel);
+                tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+                completed(candidate)
+            })
+        }
+    })));
+    let registry = crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry::new(root(
+        "budget-under-deadline",
+    ))
+    .expect("create runtime workspace registry");
+    let project_root = root("budget-under-deadline-project");
+    let workspace_identity = "workspace-query-demand-budget-under-deadline";
+    record_workspace_generation_candidate(project_root.clone(), candidate())
+        .expect("record candidate");
+
+    let result = crate::workspace_db_ipc_server::require_or_submit_terminal_generation_for_read(
+        &registry,
+        Some(&admission),
+        workspace_identity,
+        &project_root,
+        Vec::new(),
+    )
+    .await
+    .expect_err("fixture has no resident publication");
+    assert!(result.contains("reasonKind=active-workspace-generation-required"));
+    assert!(!result.contains("exceeded the 800ms request budget"));
+    assert_eq!(builds.load(Ordering::Acquire), 1);
+    assert_eq!(
+        admission
+            .wait_terminal(workspace_identity, &project_root)
+            .await
+            .expect("wait for Ready receipt")
+            .state,
+        WorkspaceGenerationAdmissionState::Ready
+    );
+    admission.shutdown().await.expect("shutdown admission");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn same_request_wait_times_out_but_detached_build_reaches_ready() {
+    let builds = Arc::new(AtomicUsize::new(0));
+    let admission = Arc::new(WorkspaceGenerationAdmission::new(Arc::new({
+        let builds = Arc::clone(&builds);
+        move |_, _, candidate, _, _, _, _| {
+            let builds = Arc::clone(&builds);
+            Box::pin(async move {
+                builds.fetch_add(1, Ordering::AcqRel);
+                tokio::time::sleep(std::time::Duration::from_millis(900)).await;
+                completed(candidate)
+            })
+        }
+    })));
+    let registry = crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry::new(root(
+        "budget-timeout",
+    ))
+    .expect("create runtime workspace registry");
+    let project_root = root("budget-timeout-project");
+    let workspace_identity = "workspace-query-demand-budget-timeout";
+    record_workspace_generation_candidate(project_root.clone(), candidate())
+        .expect("record candidate");
+
+    let result = crate::workspace_db_ipc_server::require_or_submit_terminal_generation_for_read(
+        &registry,
+        Some(&admission),
+        workspace_identity,
+        &project_root,
+        Vec::new(),
+    )
+    .await
+    .expect_err("request exceeds admission deadline");
+    assert!(result.contains("exceeded the 800ms request budget"));
+    assert_eq!(builds.load(Ordering::Acquire), 1);
+    let ready = admission
+        .wait_terminal(workspace_identity, &project_root)
+        .await
+        .expect("detached build reaches terminal Ready");
+    assert_eq!(ready.state, WorkspaceGenerationAdmissionState::Ready);
+    admission.shutdown().await.expect("shutdown admission");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn missing_ipc_read_guard_submits_runtime_owned_cold_admission() {
     let builds = Arc::new(AtomicUsize::new(0));
     let observed_targets = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -231,28 +319,34 @@ async fn missing_ipc_read_guard_submits_runtime_owned_cold_admission() {
             })
         }
     })));
-    let registry = crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry::new(root(
-        "ipc-missing-runtime",
-    ))
-    .expect("create runtime workspace registry");
+    let registry = Arc::new(
+        crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry::new(root(
+            "ipc-missing-runtime",
+        ))
+        .expect("create runtime workspace registry"),
+    );
     let project_root = root("ipc-missing");
     let workspace_identity = "workspace-query-demand-ipc-missing";
     record_workspace_generation_candidate(project_root.clone(), candidate())
         .expect("record IPC cold candidate");
     let cold_target = project_root.join("src/lib.rs");
 
-    let in_progress =
-        crate::workspace_db_ipc_server::require_or_submit_terminal_generation_for_read(
-            &registry,
-            Some(&admission),
-            workspace_identity,
-            &project_root,
-            vec![cold_target.clone()],
-        )
-        .await
-        .expect_err("missing generation returns typed in-progress cause");
-    assert!(in_progress.contains("reasonKind=active-workspace-generation-required"));
-    assert!(in_progress.contains("enqueued query-demand cold admission"));
+    let request = tokio::spawn({
+        let admission = Arc::clone(&admission);
+        let registry = registry.clone();
+        let project_root = project_root.clone();
+        let cold_target = cold_target.clone();
+        async move {
+            crate::workspace_db_ipc_server::require_or_submit_terminal_generation_for_read(
+                &registry,
+                Some(&admission),
+                workspace_identity,
+                &project_root,
+                vec![cold_target.clone()],
+            )
+            .await
+        }
+    });
     started.notified().await;
     assert_eq!(builds.load(Ordering::Acquire), 1);
     assert_eq!(
@@ -263,19 +357,13 @@ async fn missing_ipc_read_guard_submits_runtime_owned_cold_admission() {
         [std::collections::BTreeSet::from([cold_target])]
     );
 
-    let joined = crate::workspace_db_ipc_server::require_or_submit_terminal_generation_for_read(
-        &registry,
-        Some(&admission),
-        workspace_identity,
-        &project_root,
-        Vec::new(),
-    )
-    .await
-    .expect_err("concurrent query joins Building admission");
-    assert!(joined.contains("state=Building"));
-    assert_eq!(builds.load(Ordering::Acquire), 1);
-
     release.notify_one();
+    let in_progress = request
+        .await
+        .expect("same-request admission task")
+        .expect_err("resident publication is intentionally absent in this fixture");
+    assert!(in_progress.contains("reasonKind=active-workspace-generation-required"));
+    assert!(!in_progress.contains("enqueued query-demand cold admission"));
     let ready = admission
         .wait_terminal(workspace_identity, &project_root)
         .await

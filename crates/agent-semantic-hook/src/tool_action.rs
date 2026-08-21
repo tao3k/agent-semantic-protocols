@@ -228,6 +228,8 @@ pub(crate) struct ToolAction {
     pub(crate) operation: OperationIntent,
     pub(crate) command: Option<String>,
     pub(crate) command_tokens: Option<Vec<String>>,
+    /// True only for the original shell envelope's first executable stage.
+    pub(crate) leading_shell_stage: bool,
     pub(crate) paths: Vec<String>,
 }
 
@@ -239,6 +241,7 @@ impl ToolAction {
             operation: OperationIntent::DirectRead,
             command: None,
             command_tokens: None,
+            leading_shell_stage: true,
             paths: vec![path],
         }
     }
@@ -251,6 +254,7 @@ impl ToolAction {
             operation: OperationIntent::ShellCommand,
             command: Some(command),
             command_tokens: Some(command_tokens),
+            leading_shell_stage: true,
             paths: vec![path],
         }
     }
@@ -263,6 +267,7 @@ impl ToolAction {
             operation: OperationIntent::ShellCommand,
             command: Some(command),
             command_tokens: Some(command_tokens),
+            leading_shell_stage: true,
             paths: Vec::new(),
         }
     }
@@ -471,19 +476,7 @@ pub fn direct_source_read_paths(tool_name: &str, tool_input: &Value) -> Option<V
 /// generator. Keeping these beside normalization prevents tests from copying a
 /// second, inevitably drifting list of Host tool spellings and input fields.
 pub(crate) fn direct_read_host_envelopes(path: &str) -> Vec<(String, Value)> {
-    [
-        ("Read", "file_path"),
-        ("functions.read", "path"),
-        ("fsReadFile", "fileName"),
-        ("mcp__filesystem__read_file", "uri"),
-    ]
-    .into_iter()
-    .map(|(tool_name, path_key)| {
-        let mut input = serde_json::Map::new();
-        input.insert(path_key.to_owned(), Value::String(path.to_owned()));
-        (tool_name.to_owned(), Value::Object(input))
-    })
-    .collect()
+    paths::direct_read_host_envelopes(path)
 }
 
 /// Parser-owned command-envelope projections paired with
@@ -713,6 +706,7 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
             operation,
             command,
             command_tokens,
+            leading_shell_stage: true,
             paths,
         })
     }
@@ -784,6 +778,7 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
         operation,
         command,
         command_tokens,
+        leading_shell_stage: true,
         paths,
     };
     let mut actions = Vec::new();

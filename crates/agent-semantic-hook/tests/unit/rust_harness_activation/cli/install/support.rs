@@ -47,6 +47,15 @@ pub(super) fn write_real_asp_launcher(bin_dir: &Path) {
     .expect("hard-link immutable test ASP launcher");
 }
 
+/// Materialize the protocol executable in the only Runtime location accepted
+/// by the installer.  Keeping this fixture separate from arbitrary PATH
+/// launchers makes the negative `SEMANTIC_AGENT_BIN_DIR` test meaningful.
+pub(super) fn write_stable_runtime_asp_launcher(state_home: &Path) -> PathBuf {
+    let bin_dir = state_home.join("runtime").join("bin");
+    write_real_asp_launcher(&bin_dir);
+    bin_dir
+}
+
 pub(super) fn protocol_command() -> Command {
     let org_repo = local_test_org_repo();
     let state_home = isolated_asp_state_home();

@@ -548,7 +548,7 @@ pub(crate) fn provider_command_selections_for_scope_with_paths(
                 )
             })
             .map(PathBuf::from)?;
-        let artifact_digest = crate::active_artifact_receipt::installed_provider_artifact_digest(
+        let artifact_digest = crate::provider_install_artifact::installed_provider_artifact_digest(
             &state_paths.provider_lock_dir,
             &manifest.language_id,
             &manifest.provider_id,

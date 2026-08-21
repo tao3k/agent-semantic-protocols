@@ -28,11 +28,11 @@ pub(super) async fn run_stop() -> Result<(), String> {
         crate::server::runtime_server_endpoint_io::read_supervisor_endpoint(&endpoint_path)
             .await
             .ok();
-    crate::server::runtime_server_exit_receipt::remove_stale(&state_home).await?;
+    agent_semantic_client_db::runtime_server_lifecycle::remove_stale(&state_home).await?;
     crate::server::runtime_server_supervisor::remove_runtime_server_run_intent(&state_home).await?;
     if let Some(endpoint) = &endpoint {
         crate::server::runtime_server_supervisor::request_runtime_server_drain(&state_home).await?;
-        let exit = crate::server::runtime_server_exit_receipt::await_owner_exit(
+        let exit = agent_semantic_client_db::runtime_server_lifecycle::await_owner_exit(
             &state_home,
             endpoint.owner_epoch,
         )

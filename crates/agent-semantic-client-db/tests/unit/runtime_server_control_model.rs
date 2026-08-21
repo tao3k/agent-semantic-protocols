@@ -2,6 +2,7 @@ use super::{
     ENDPOINT_SCHEMA_ID, REQUEST_SCHEMA_ID, RuntimeServerControlRequest, RuntimeServerEndpoint,
     RuntimeServerOperation, SCHEMA_VERSION,
 };
+use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
 
 fn endpoint() -> RuntimeServerEndpoint {
     RuntimeServerEndpoint {
@@ -10,7 +11,9 @@ fn endpoint() -> RuntimeServerEndpoint {
         transport_contract_digest: "blake3-256:running-transport".to_owned(),
         owner_epoch: 7,
         runtime_artifact_path: "/runtime/asp".to_owned(),
-        runtime_artifact_digest: "blake3-256:running-runtime".to_owned(),
+        runtime_binary_identity: RuntimeBinaryIdentity::Content { value: "blake3-256:running-runtime".to_owned(), algorithm: "blake3-256".to_owned() },
+        monitor_capability: true,
+        observed_runtime_binary_identity: RuntimeBinaryIdentity::Content { value: "blake3-256:running-runtime".to_owned(), algorithm: "blake3-256".to_owned() },
         artifact_mode: "release".to_owned(),
         artifact_catalog_digest:
             "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
@@ -28,7 +31,7 @@ fn request(operation: RuntimeServerOperation) -> RuntimeServerControlRequest {
         schema_version: SCHEMA_VERSION.to_owned(),
         operation,
         project_root: None,
-        expected_runtime_artifact_digest: "blake3-256:running-runtime".to_owned(),
+        expected_runtime_binary_identity: RuntimeBinaryIdentity::Content { value: "blake3-256:running-runtime".to_owned(), algorithm: "blake3-256".to_owned() },
         request_id: "supervisor-reconcile".to_owned(),
         transport_contract_digest: "blake3-256:running-transport".to_owned(),
         owner_epoch: 7,
@@ -66,13 +69,13 @@ fn matching_reconcile_is_noop_and_either_digest_drift_requests_restart() {
             .expect("matching reconcile")
     );
 
-    reconcile.expected_runtime_artifact_digest = "blake3-256:next-runtime".to_owned();
+    reconcile.expected_runtime_binary_identity = RuntimeBinaryIdentity::Content { value: "blake3-256:next-runtime".to_owned(), algorithm: "blake3-256".to_owned() };
     assert!(
         reconcile
             .requires_restart(&endpoint)
             .expect("runtime drift")
     );
-    reconcile.expected_runtime_artifact_digest = endpoint.runtime_artifact_digest.clone();
+    reconcile.expected_runtime_binary_identity = endpoint.runtime_binary_identity.clone();
     reconcile.transport_contract_digest = "blake3-256:next-transport".to_owned();
     assert!(
         reconcile

@@ -65,7 +65,7 @@ fn cli_doctor_syncs_generated_activation_drift() {
     assert_eq!(
         rust_provider.routes.prime.argv,
         vec![
-            "rs-harness",
+            "asp-rust",
             "search",
             "prime",
             "--workspace",

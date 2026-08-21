@@ -62,10 +62,6 @@ fn catalog_path(state_home: &Path) -> PathBuf {
         .join(GLOBAL_PROVIDER_CATALOG_FILE)
 }
 
-fn canonical_path(path: &Path) -> PathBuf {
-    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
-}
-
 fn generation_digest(providers: &[GlobalProviderCatalogProvider]) -> Result<String, String> {
     let bytes = serde_json::to_vec(providers)
         .map_err(|error| format!("failed to encode Global provider catalog generation: {error}"))?;
@@ -319,10 +315,12 @@ impl RuntimeProviderCatalog {
         };
         Ok(RuntimeProviderLaunch {
             key: format!(
-                "{}:{}:{}",
+                "{}:{}:{}:{}:{}",
+                self.catalog.catalog_generation,
                 provider.language_id,
                 provider.provider_id,
-                project_root.to_string_lossy()
+                provider.artifact_digest,
+                provider.manifest_digest
             ),
             spec,
             expected_receipt,
@@ -334,12 +332,29 @@ pub(crate) async fn load_runtime_provider_catalog(
     state_home: &Path,
 ) -> Result<RuntimeProviderCatalog, String> {
     let path = catalog_path(state_home);
-    let bytes = tokio::fs::read(&path).await.map_err(|error| {
-        format!(
-            "failed to read Global provider catalog {}: {error}",
-            path.display()
-        )
-    })?;
+    let bytes = match tokio::fs::read(&path).await {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // Installation owns catalog publication. A newly initialized State
+            // Home therefore has a canonical empty v1 runtime catalog until a
+            // provider is installed; daemon readiness must not turn that
+            // absence into a catalog-writing recovery path.
+            return Ok(RuntimeProviderCatalog {
+                catalog: Arc::new(GlobalProviderCatalog {
+                    schema_id: GLOBAL_PROVIDER_CATALOG_SCHEMA_ID.to_owned(),
+                    schema_version: GLOBAL_PROVIDER_CATALOG_SCHEMA_VERSION.to_owned(),
+                    catalog_generation: generation_digest(&[])?,
+                    providers: Vec::new(),
+                }),
+            });
+        }
+        Err(error) => {
+            return Err(format!(
+                "failed to read Global provider catalog {}: {error}",
+                path.display()
+            ));
+        }
+    };
     let catalog: GlobalProviderCatalog = serde_json::from_slice(&bytes).map_err(|error| {
         format!(
             "failed to parse Global provider catalog {}: {error}",
@@ -555,7 +570,7 @@ pub(super) fn publish_global_provider_catalog(
                     receipt.provider_id
                 ));
             }
-            let provider_path = canonical_path(&receipt.installed_path);
+        let provider_path = receipt.installed_path.clone();
             if provider_path.file_name().and_then(|name| name.to_str()) != Some(manifest.binary()) {
                 return Err(format!(
                     "provider install receipt binary mismatch: language={} expectedBinary={} actualPath={}",

@@ -3,14 +3,16 @@
 use agent_semantic_client_db::runtime_server::RuntimeServer;
 use agent_semantic_client_db::{
     WorkspaceDbRegistry, acquire_runtime_server_election,
-    prepare_runtime_server_endpoint_with_workspace_store, runtime_server_endpoint_path,
+    runtime_server_endpoint_path,
 };
 use std::path::PathBuf;
+
+use agent_semantic_runtime::runtime_identity_monitor::{MonitorAction, RuntimeIdentityMonitor};
 
 use super::{
     cleanup_endpoint, daemon_identity, remove_stale_socket,
     runtime_server_telemetry_query_socket_path, runtime_server_telemetry_socket_path,
-    singleton_socket, state_home,
+    state_home,
 };
 
 async fn serve_runtime_search_requests(
@@ -38,6 +40,7 @@ async fn serve_runtime_search_requests(
     }
 
     let mut runtimes = std::collections::BTreeMap::<String, ResidentProviderRuntime>::new();
+    let mut provider_backoff = std::collections::BTreeMap::<String, tokio::time::Instant>::new();
     let mut tasks = tokio::task::JoinSet::new();
     while let Some(request) = requests.recv().await {
         match request {
@@ -49,15 +52,27 @@ async fn serve_runtime_search_requests(
                 let result = async {
                     let launch =
                         runtime_provider_catalog.runtime_launch(&project_root, &language_id)?;
+                    if let Some(next_retry) = provider_backoff.get(&launch.key) {
+                        if *next_retry > tokio::time::Instant::now() {
+                            return Err(format!("provider-runtime-backoff: key={} nextRetryAt={:?}", launch.key, next_retry));
+                        }
+                        provider_backoff.remove(&launch.key);
+                    }
                     if let Some(runtime) = runtimes.get(&launch.key) {
                         return runtime_state_receipt(runtime);
                     }
+                    let launch_key = launch.key.clone();
                     let authority = match launch.spec {
             crate::command::global_provider_catalog::RuntimeProviderLaunchSpec::HttpServer(
                 spec,
             ) => {
-                let peer = agent_semantic_provider_transport::AspClientServerPeer::start(spec)
-                    .await?;
+                let peer = match agent_semantic_provider_transport::AspClientServerPeer::start(spec).await {
+                    Ok(peer) => peer,
+                    Err(error) => {
+                        provider_backoff.insert(launch_key.clone(), tokio::time::Instant::now() + std::time::Duration::from_secs(5));
+                        return Err(format!("provider-runtime-unavailable: {error}"));
+                    }
+                };
                 agent_semantic_provider_transport::spawn_provider_runtime_peer_actor(256, peer)
             }
         };
@@ -325,84 +340,230 @@ async fn serve_runtime_search_requests(
 pub(super) async fn run_daemon() -> Result<(), String> {
     agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
     let state_home = state_home()?;
-    crate::command::reconcile_global_provider_catalog_for_runtime(&state_home)?;
+    let result = run_daemon_at(&state_home).await;
+    if let Err(error) = &result {
+        // Endpoint publication happens after singleton election.  Failures before
+        // that point used to leave only stderr and forced the supervisor into a
+        // client-side timeout loop.  Project the daemon's own terminal state so
+        // the lifecycle owner can observe an immediate, typed failure instead.
+        let _ = agent_semantic_client_db::runtime_server_lifecycle::publish_with_errors(
+            &state_home,
+            0,
+            false,
+            vec![error.clone()],
+        )
+        .await;
+    }
+    result
+}
+
+async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
+    // Repair receipt publication is the first candidate lifecycle action so
+    // bootstrap failures remain diagnosable even when no candidate survives.
+    let _candidate_repair = agent_semantic_client_db::runtime_server_candidate_reconciliation::repair_canonical_owner_receipt(state_home).await?;
+    let _candidate_outcome = agent_semantic_client_db::runtime_server_candidate_reconciliation::reconcile_candidates(state_home).await?;
+    // Provider installation owns the mutable catalog publication path. The
+    // daemon only consumes the current immutable v1 snapshot, so startup can
+    // publish its endpoint without provider reconciliation I/O.
+    let candidate_path = agent_semantic_client_db::runtime_server_candidate_reconciliation::prepare_candidate_path(state_home).await?;
+    if let Some(candidate_path) = candidate_path.as_ref() {
+        let candidate_bytes = tokio::fs::read(candidate_path).await.map_err(|e| format!("read candidate receipt: {e}"))?;
+        let candidate: serde_json::Value = serde_json::from_slice(&candidate_bytes).map_err(|e| format!("decode candidate receipt: {e}"))?;
+        let desired = candidate.get("desiredIdentity").and_then(|v| v.as_str()).unwrap_or_default();
+        let desired_kind = candidate.get("desiredIdentityKind").and_then(|v| v.as_str()).unwrap_or("content");
+        let desired_algorithm = candidate.get("desiredIdentityAlgorithm").and_then(|v| v.as_str()).unwrap_or("blake3-256");
+        let desired_identity = match desired_kind {
+            "developer-source-generation" => agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::DeveloperSourceGeneration { value: desired.to_owned(), algorithm: desired_algorithm.to_owned() },
+            "content" => agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content { value: desired.to_owned(), algorithm: desired_algorithm.to_owned() },
+            _ => return Err(format!("candidate receipt has unsupported identity kind: {desired_kind}")),
+        };
+        let write_candidate_state = |state: &str| { let state = state.to_owned(); async {
+            let mut next = candidate.clone();
+            if let Some(object) = next.as_object_mut() {
+                object.insert("state".to_owned(), serde_json::Value::String(state));
+                object.insert("updatedAtMillis".to_owned(), serde_json::json!(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|duration| duration.as_millis()).unwrap_or_default()));
+            }
+            tokio::fs::write(candidate_path, serde_json::to_vec(&next).unwrap_or_default()).await
+        }};
+        let write_candidate_failure = |reason: &str, error: &str| { let reason = reason.to_owned(); let error = error.to_owned(); async {
+            let mut next = candidate.clone();
+            if let Some(object) = next.as_object_mut() {
+                object.insert("state".to_owned(), serde_json::Value::String("failed".to_owned()));
+                object.insert("reasonKind".to_owned(), serde_json::Value::String(reason));
+                object.insert("error".to_owned(), serde_json::Value::String(error));
+                object.insert("updatedAtMillis".to_owned(), serde_json::json!(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|duration| duration.as_millis()).unwrap_or_default()));
+            }
+            tokio::fs::write(candidate_path, serde_json::to_vec(&next).unwrap_or_default()).await
+        }};
+        if let Ok(Some(endpoint)) = agent_semantic_client_db::read_runtime_server_endpoint(state_home) {
+            if endpoint.monitor_capability && endpoint.runtime_binary_identity == desired_identity {
+                let _ = tokio::fs::remove_file(candidate_path).await;
+                return Ok(());
+            }
+            if endpoint.monitor_capability {
+                write_candidate_state("drain-requested").await.map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+                let drain = tokio::time::timeout(
+                    agent_semantic_client_db::runtime_server_runtime::RUNTIME_SERVER_CONNECTION_IO_BUDGET,
+                    crate::server::runtime_server_supervisor::request_runtime_server_drain(state_home),
+                ).await;
+                if drain.is_err() {
+                    let updated = tokio::fs::read(state_home.join("runtime/server/monitor-state.json"))
+                        .await.ok()
+                        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+                        .and_then(|value| value.get("updatedAtMillis").and_then(|value| value.as_u64()));
+                    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+                        .map(|duration| duration.as_millis() as u64).unwrap_or_default();
+                    if updated.is_some_and(|timestamp| now.saturating_sub(timestamp) <= 1_000) {
+                        write_candidate_state("failed-prepromotion").await
+                            .map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+                        return Err("monitored Runtime Server drain timed out".to_owned());
+                    }
+                    write_candidate_state("terminating-previous-unresponsive").await
+                        .map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+                    if let Err(error) = crate::server::runtime_server_supervisor::escalate_drained_owner(state_home, endpoint.owner_epoch).await {
+                        write_candidate_failure("owner-receipt-mismatch", &error).await
+                            .map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+                        return Err(error);
+                    }
+                } else if let Ok(Err(error)) = drain {
+                    write_candidate_failure("drain-timeout", &error).await
+                        .map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+                    return Err(error);
+                }
+                write_candidate_state("drain-confirmed").await.map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+                if tokio::time::timeout(std::time::Duration::from_secs(5), agent_semantic_client_db::runtime_server_lifecycle::await_owner_exit(state_home, endpoint.owner_epoch)).await.is_err() {
+                    write_candidate_state("terminating").await.map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+                    if let Err(error) = crate::server::runtime_server_supervisor::escalate_drained_owner(state_home, endpoint.owner_epoch).await {
+                        write_candidate_failure("owner-receipt-mismatch", &error).await
+                            .map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+                        return Err(error);
+                    }
+                }
+                let _ = tokio::fs::remove_file(agent_semantic_client_db::runtime_server_endpoint_path(state_home)?).await;
+                write_candidate_state("promoting").await.map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+            }
+        } else if let Ok(bytes) = tokio::fs::read(agent_semantic_client_db::runtime_server_endpoint_path(state_home)?).await {
+            write_candidate_state("drain-requested").await.map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+            let envelope: serde_json::Value = serde_json::from_slice(&bytes)
+                .map_err(|e| format!("previous endpoint envelope mismatch: {e}"))?;
+            let socket = envelope.get("socketPath").and_then(|v| v.as_str()).ok_or_else(|| "previous endpoint missing socketPath".to_owned())?;
+            let token = envelope.get("bindingToken").and_then(|v| v.as_str()).ok_or_else(|| "previous endpoint missing bindingToken".to_owned())?;
+            let epoch = envelope.get("ownerEpoch").and_then(|v| v.as_u64()).ok_or_else(|| "previous endpoint missing ownerEpoch".to_owned())?;
+            let transport = envelope.get("transportContractDigest").and_then(|v| v.as_str()).ok_or_else(|| "previous endpoint missing transportContractDigest".to_owned())?;
+            let digest = envelope.get("runtimeArtifactDigest").and_then(|v| v.as_str()).ok_or_else(|| "previous endpoint missing runtimeArtifactDigest".to_owned())?;
+            let drain_result = tokio::time::timeout(
+                agent_semantic_client_db::runtime_server_runtime::RUNTIME_SERVER_CONNECTION_IO_BUDGET,
+                agent_semantic_client_db::runtime_server_control::drain_previous_generation(
+                    std::path::Path::new(socket), token, epoch, transport, digest,
+                    format!("candidate-{}", std::process::id()),
+                ),
+            )
+            .await;
+            match drain_result {
+                Err(_) => {
+                    // This is the isolated previous-generation migration path.
+                    // A current monitored endpoint never reaches this branch.
+                    // Escalation remains capability-bound by the canonical
+                    // owner receipt and executable identity verifier.
+                    let old_identity = digest;
+                    let state_home_matches = candidate
+                        .get("stateHome")
+                        .and_then(|value| value.as_str())
+                        .is_some_and(|value| value == state_home.to_string_lossy());
+                    let endpoint_owned = tokio::fs::metadata(
+                        agent_semantic_client_db::runtime_server_endpoint_path(state_home)?,
+                    )
+                    .await
+                    .map(|metadata| metadata.is_file())
+                    .unwrap_or(false);
+                    if !state_home_matches || !endpoint_owned || old_identity == desired {
+                        write_candidate_state("failed-prepromotion").await
+                            .map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+                        return Err("previous-generation-drain-timeout".to_owned());
+                    }
+                    write_candidate_state("terminating-previous-unresponsive").await
+                        .map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+                    if let Err(error) = crate::server::runtime_server_supervisor::escalate_drained_owner(state_home, epoch).await {
+                        write_candidate_state("failed-prepromotion").await
+                            .map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+                        return Err(error);
+                    }
+                    let termination = tokio::time::timeout(
+                        std::time::Duration::from_secs(5),
+                        agent_semantic_client_db::runtime_server_lifecycle::await_owner_exit(state_home, epoch),
+                    ).await;
+                    if termination.is_err() {
+                        write_candidate_state("terminating-force").await
+                            .map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+                        if let Err(error) = crate::server::runtime_server_supervisor::force_kill_previous_owner(state_home, epoch).await {
+                            write_candidate_failure("sigkill-send-failed", &error).await
+                                .map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+                            return Err(error);
+                        }
+                        if tokio::time::timeout(
+                            std::time::Duration::from_secs(2),
+                            agent_semantic_client_db::runtime_server_lifecycle::await_owner_exit(state_home, epoch),
+                        ).await.is_err() {
+                            write_candidate_failure("sigkill-timeout", "previous-generation-sigterm-timeout").await
+                                .map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+                            return Err("previous-generation-sigterm-timeout".to_owned());
+                        }
+                    } else if let Ok(Err(error)) = termination {
+                        write_candidate_failure("drain-failed", &error).await
+                            .map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+                        return Err(error);
+                    }
+                    let _ = tokio::fs::remove_file(agent_semantic_client_db::runtime_server_endpoint_path(state_home)?).await;
+                    write_candidate_state("promoting").await
+                        .map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+                }
+                Ok(Err(error)) => {
+                    write_candidate_state("failed-prepromotion").await
+                        .map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+                    return Err(error);
+                }
+                Ok(Ok(())) => {}
+            }
+            write_candidate_state("drain-confirmed").await.map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+            agent_semantic_client_db::runtime_server_lifecycle::await_owner_exit(state_home, epoch).await?;
+            let _ = tokio::fs::remove_file(agent_semantic_client_db::runtime_server_endpoint_path(state_home)?).await;
+            write_candidate_state("promoting").await.map_err(|e| format!("candidate receipt heartbeat: {e}"))?;
+        }
+    }
     let runtime_provider_catalog =
         crate::command::global_provider_catalog::load_runtime_provider_catalog(&state_home).await?;
     let election = acquire_runtime_server_election(&state_home)
         .await
         .map_err(|error| format!("failed to acquire Runtime Server election: {error}"))?;
-    let singleton_socket_guard = match singleton_socket::acquire(&state_home).await? {
-        singleton_socket::SingletonSocketElection::Acquired(guard) => guard,
-        singleton_socket::SingletonSocketElection::ResidentExists => return Ok(()),
+    let singleton_socket_guard = match agent_semantic_client_db::runtime_server_singleton::acquire_election(&state_home).await? {
+        agent_semantic_client_db::runtime_server_singleton::RuntimeServerSingletonElection::Acquired(guard) => guard,
+        agent_semantic_client_db::runtime_server_singleton::RuntimeServerSingletonElection::ResidentExists => return Ok(()),
     };
     let (owner_epoch, binding_token) = daemon_identity().await?;
-    let startup_started = tokio::time::Instant::now();
-    crate::server::runtime_server_startup_receipt::publish(
-        &state_home,
-        owner_epoch,
-        "owner-election",
-        "ready",
-        startup_started,
-        None,
-    )
-    .await?;
     let workspace_store =
         agent_semantic_client_db::runtime_server_workspace::prepare_runtime_server_workspace_store(
             &state_home.join("runtime").join("server"),
         )
         .await
         .map_err(|error| format!("failed to prepare Runtime Server workspace store: {error}"))?;
-    crate::server::runtime_server_startup_receipt::publish(
-        &state_home,
-        owner_epoch,
-        "workspace-store",
-        "ready",
-        startup_started,
-        None,
-    )
-    .await?;
     let runtime_artifact_path = std::env::current_exe()
         .map_err(|error| format!("failed to resolve running ASP artifact: {error}"))?;
-    let runtime_artifact_digest =
-        crate::command::protocol_binary::protocol_binary_artifact_path_digest(
-            &runtime_artifact_path,
+    let runtime_artifact_identity =
+        agent_semantic_runtime::runtime_artifact_identity::read_runtime_artifact_identity(
+            state_home, "asp",
         )
-        .ok_or_else(|| {
-            format!(
-                "runtime-server-artifact-identity-missing: canonical Runtime artifact has no published digest: {}",
-                runtime_artifact_path.display()
-            )
-        })?;
-    crate::server::runtime_server_startup_receipt::publish(
-        &state_home,
-        owner_epoch,
-        "runtime-artifact-digest",
-        "ready",
-        startup_started,
-        None,
-    )
-    .await?;
+        .await?;
+    let runtime_binary_identity = runtime_artifact_identity.identity();
     let artifact_catalog =
         agent_semantic_runtime::runtime_artifact_catalog::load_runtime_artifact_catalog(
             &state_home,
         )
         .await?;
-    super::runtime_server_agent_config::synchronize_for_reconcile(&artifact_catalog, &state_home)
-        .await?;
-    crate::server::runtime_server_startup_receipt::publish(
-        &state_home,
-        owner_epoch,
-        "artifact-catalog",
-        "ready",
-        startup_started,
-        None,
-    )
-    .await?;
-    let endpoint = prepare_runtime_server_endpoint_with_workspace_store(
+    let endpoint = agent_semantic_client_db::prepare_runtime_server_endpoint_with_workspace_store_and_identity(
         &state_home,
         workspace_store.root(),
         &runtime_artifact_path,
-        &runtime_artifact_digest,
+        &runtime_binary_identity,
         artifact_catalog.mode_label(),
         &artifact_catalog.digest(),
         owner_epoch,
@@ -426,12 +587,12 @@ pub(super) async fn run_daemon() -> Result<(), String> {
                 .join("workspace-admissions.v1.json"),
         )
         .await?;
-    let agent_session_registry_owner = std::sync::Arc::new(
-        agent_semantic_client_db::AgentSessionRegistry::open_or_create_state_root_async(
-            &state_home,
-        )
-        .await?,
-    );
+    // Agent-session state is a host/Hook control-plane concern.  It may be
+    // contended by a live host process, so acquiring its Turso handle must
+    // never be a prerequisite for binding or publishing the global Runtime
+    // endpoint.  The Runtime remains the sole owner of workspace generations,
+    // incremental writes, and mmap reads; it deliberately does not take over
+    // the host's session-registry lock during daemon bootstrap.
     let (diagnostic_events, diagnostics) =
         agent_semantic_client_db::runtime_server_diagnostics::RuntimeServerDiagnostics::start(
             state_home
@@ -615,22 +776,15 @@ pub(super) async fn run_daemon() -> Result<(), String> {
         admission_catalog,
         provider_catalog_generation,
     )
-    .with_runtime_search_service(runtime_search_service)
-    .with_agent_session_registry_owner(agent_session_registry_owner);
-    crate::server::runtime_server_startup_receipt::publish(
-        &state_home,
-        owner_epoch,
-        "control-data-bind",
-        "ready",
-        startup_started,
-        None,
-    )
-    .await?;
-    // The control plane is already bound and published at this point.  Turso
-    // telemetry is intentionally initialized afterwards: an optional
-    // observability lane must never withhold the Runtime Server endpoint or
-    // become a readiness prerequisite.
-    let opentelemetry =
+    .with_runtime_search_service(runtime_search_service);
+    // The monitor owns the in-process cancellation capability.  It must never
+    // call the server's public IPC endpoint to control the same generation.
+    let monitor_shutdown = server.shutdown_handle();
+    // Telemetry initializes its Turso store in its own Tokio-owned lane.  It
+    // cannot delay the already bound control plane from accepting its first
+    // status request: endpoint readiness and observability are independent
+    // lifecycle concerns.
+    let telemetry_task = tokio::spawn(
         agent_semantic_client_db::runtime_server_opentelemetry::RuntimeServerOpenTelemetry::start_with_telemetry_receiver(
             state_home
                 .join("runtime")
@@ -639,22 +793,70 @@ pub(super) async fn run_daemon() -> Result<(), String> {
             telemetry_socket_path.clone(),
             telemetry_query_socket_path.clone(),
             lifecycle_bus.receiver,
-        )
-        .await?;
-    crate::server::runtime_server_startup_receipt::publish(
-        &state_home,
-        owner_epoch,
-        "opentelemetry",
-        "ready",
-        startup_started,
-        None,
-    )
-    .await?;
+        ),
+    );
+    let monitor_state_home = state_home.to_path_buf();
+    let monitor_owner_epoch = owner_epoch;
+    let monitor = tokio::spawn(async move {
+        let monitor_shutdown = monitor_shutdown;
+        let monitor_receipt = monitor_state_home.join("runtime/server/monitor-state.json");
+        let write_monitor = |phase: &str, running: &str, observed: &str| {
+            let monitor_receipt = monitor_receipt.clone();
+            let phase = phase.to_owned();
+            let running = running.to_owned();
+            let observed = observed.to_owned();
+            async move {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|duration| duration.as_millis())
+                    .unwrap_or_default();
+                let value = serde_json::json!({
+                    "schemaVersion": "1",
+                    "phase": phase,
+                    "runningIdentity": running,
+                    "observedIdentity": observed,
+                    "ownerEpoch": monitor_owner_epoch,
+                    "processId": std::process::id(),
+                    "updatedAtMillis": now,
+                    "heartbeat": true,
+                });
+                let _ = tokio::fs::write(monitor_receipt, value.to_string()).await;
+            }
+        };
+        let mut last = String::new();
+        let mut state = RuntimeIdentityMonitor::default();
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(5));
+        loop {
+            tick.tick().await;
+            let Ok(receipt) = agent_semantic_runtime::runtime_artifact_identity::read_runtime_artifact_identity(&monitor_state_home, "asp").await else { continue; };
+            let identity = format!("{}:{}:{}", receipt.identity_kind(), receipt.identity_value(), receipt.identity_algorithm());
+            write_monitor("watching", &identity, &identity).await;
+            if !last.is_empty() && last != identity {
+                if state.observe(identity.clone()) == MonitorAction::BeginDrain {
+                write_monitor("observed", &last, &identity).await;
+                monitor_shutdown.shutdown();
+                {
+                    write_monitor("draining", &last, &identity).await;
+                    let _ = agent_semantic_client_db::runtime_server_lifecycle::await_owner_exit(&monitor_state_home, monitor_owner_epoch).await;
+                    let _ = crate::server::runtime_server_supervisor::spawn_detached_runtime_server(&monitor_state_home);
+                    let _ = state.drain_completed();
+                    write_monitor("successor-started", &identity, &identity).await;
+                    break;
+                }
+                }
+            }
+            last = identity;
+        }
+    });
     let server_result = server.serve().await.map(|_| ());
+    monitor.abort();
     // Once the accept loop has stopped, all independent resident services are
     // drained concurrently. Serial draining made stop latency additive and
     // allowed one stuck read-only lane to postpone every other task owner.
     let drain_started = tokio::time::Instant::now();
+    let opentelemetry = telemetry_task
+        .await
+        .map_err(|error| format!("Runtime Server OpenTelemetry task failed: {error}"))??;
     let telemetry_handle = opentelemetry.handle();
     let telemetry_drain = async {
         let started = tokio::time::Instant::now();
@@ -718,9 +920,9 @@ pub(super) async fn run_daemon() -> Result<(), String> {
             "errors": &shutdown_errors,
         })
     );
-    let drain_receipt_result = crate::server::runtime_server_exit_receipt::publish_drain(
+    let drain_receipt_result = agent_semantic_client_db::runtime_server_lifecycle::publish_drain(
         &state_home,
-        crate::server::runtime_server_exit_receipt::RuntimeServerDrainReceipt {
+        agent_semantic_client_db::RuntimeServerDrainReceipt {
             owner_epoch,
             services: serde_json::json!({
                 "server": {"state": if shutdown_errors.is_empty() { "drained" } else { "failed" }},
@@ -745,7 +947,7 @@ pub(super) async fn run_daemon() -> Result<(), String> {
             shutdown_errors.join("; ")
         ))
     };
-    crate::server::runtime_server_exit_receipt::publish_with_errors(
+    agent_semantic_client_db::runtime_server_lifecycle::publish_with_errors(
         &state_home,
         owner_epoch,
         result.is_ok(),

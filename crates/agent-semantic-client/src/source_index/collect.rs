@@ -204,15 +204,21 @@ pub(crate) async fn collect_source_index_scope_async(
                 provider_id == &provider.provider_id
             }
         };
+        let explicit_target = matches!(
+            scope,
+            SourceIndexCollectionScope::TargetProvider { .. }
+                | SourceIndexCollectionScope::TargetProviderId { .. }
+        );
         if !selected
-            || !agent_semantic_hook::registered_provider_matches_candidate_paths(
+            || (!explicit_target
+                && !agent_semantic_hook::registered_provider_matches_candidate_paths(
                 provider.language_id.as_str(),
                 provider.provider_id.as_str(),
                 repository_candidates
                     .candidates
                     .iter()
                     .map(|candidate| candidate.path.as_path()),
-            )?
+            )?)
         {
             continue;
         }
@@ -363,15 +369,21 @@ async fn collect_source_index_scope_with_executor_async(
                 provider_id == &provider.provider_id
             }
         };
+        let explicit_target = matches!(
+            scope,
+            SourceIndexCollectionScope::TargetProvider { .. }
+                | SourceIndexCollectionScope::TargetProviderId { .. }
+        );
         if !selected
-            || !agent_semantic_hook::registered_provider_matches_candidate_paths(
+            || (!explicit_target
+                && !agent_semantic_hook::registered_provider_matches_candidate_paths(
                 provider.language_id.as_str(),
                 provider.provider_id.as_str(),
                 repository_candidates
                     .candidates
                     .iter()
                     .map(|candidate| candidate.path.as_path()),
-            )?
+            )?)
         {
             continue;
         }
@@ -548,8 +560,20 @@ fn append_provider_scope_files(
                 let agent_semantic_client_local_cli::ProviderProjectResolutionPathFile {
                     path,
                     language_id,
-                    provider_id,
+                    provider_id: reported_provider_id,
                 } = provider_file;
+                if language_id != provider.language_id {
+                    return Err(format!(
+                        "provider workspace scope language identity mismatch: admitted={} reported={} providerId={}",
+                        provider.language_id, language_id, provider.provider_id
+                    ));
+                }
+                // Project-resolution packets may retain an artifact-local alias.
+                // The Runtime registry is the canonical authority for the
+                // admitted provider identity; retaining the alias makes the
+                // projection pass silently skip every collected owner.
+                let provider_id = provider.provider_id.clone();
+                let _reported_provider_id = reported_provider_id;
                 files.push(agent_semantic_client_db::ClientDbSourceIndexScopeFile {
                     path,
                     language_id,

@@ -118,7 +118,7 @@ async fn control_request_nonce_is_single_use_for_the_owner_epoch() {
     call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Reconcile,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.clone(),
         "single-use-control-nonce".to_owned(),
     )
     .await
@@ -126,7 +126,7 @@ async fn control_request_nonce_is_single_use_for_the_owner_epoch() {
     let replay = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Reconcile,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.clone(),
         "single-use-control-nonce".to_owned(),
     )
     .await
@@ -135,7 +135,7 @@ async fn control_request_nonce_is_single_use_for_the_owner_epoch() {
     call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Restart,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.clone(),
         "replay-test-shutdown".to_owned(),
     )
     .await
@@ -221,7 +221,7 @@ async fn unauthenticated_control_connection_is_closed_at_first_frame_budget() {
     call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Restart,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.clone(),
         "slowloris-test-shutdown".to_owned(),
     )
     .await

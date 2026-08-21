@@ -15,7 +15,7 @@ pub(super) fn runtime_client_command(root: &Path) -> Command {
     command
 }
 
-pub(super) fn publish_runtime_server_artifact(root: &Path) {
+pub(super) async fn publish_runtime_server_artifact(root: &Path) {
     let state_home = super::support::state_home(root);
     let artifact_is_published =
         agent_semantic_protocol::published_runtime_server_artifact_digest(&state_home).is_some();
@@ -28,6 +28,7 @@ pub(super) fn publish_runtime_server_artifact(root: &Path) {
     }
     let _prepared_command = super::support::asp_command(root);
     agent_semantic_protocol::prepare_runtime_server_provider_catalog(&state_home)
+        .await
         .expect("publish Runtime Server provider catalog");
     if artifact_is_published {
         return;
@@ -36,6 +37,7 @@ pub(super) fn publish_runtime_server_artifact(root: &Path) {
         Path::new(env!("CARGO_BIN_EXE_asp")),
         &state_home,
     )
+    .await
     .expect("publish digest-addressed Runtime Server test artifact");
 }
 
@@ -108,8 +110,8 @@ pub(super) fn admit_runtime_resident_generation(root: &Path) {
     });
 }
 
-pub(super) fn run_runtime_server_start(root: &Path) -> std::io::Result<std::process::Output> {
-    publish_runtime_server_artifact(root);
+pub(super) async fn run_runtime_server_start(root: &Path) -> std::io::Result<std::process::Output> {
+    publish_runtime_server_artifact(root).await;
     use std::sync::{
         Arc,
         atomic::{AtomicBool, Ordering},

@@ -18,6 +18,7 @@ gix = { workspace = true, features = [
   "worktree-mutation",
 ] }
 gix-config.workspace = true
+libc.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

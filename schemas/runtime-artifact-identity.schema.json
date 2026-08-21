@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/runtime-artifact-identity.schema.json",
+  "title": "Runtime Artifact Identity",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "artifactKind",
+    "artifactMode",
+    "stablePath",
+    "sourcePath",
+    "artifactDigest",
+    "identityKind",
+    "identityValue",
+    "identityAlgorithm"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-artifact-identity"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "artifactKind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifactMode": {
+      "enum": ["dev", "release"]
+    },
+    "stablePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourcePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifactDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "identityKind": {
+      "enum": ["content", "developer-source-generation"]
+    },
+    "identityValue": {
+      "type": "string",
+      "minLength": 1
+    },
+    "identityAlgorithm": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

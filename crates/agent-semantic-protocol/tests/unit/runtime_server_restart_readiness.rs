@@ -1,7 +1,7 @@
 use std::process::Command;
 
 #[test]
-fn restart_fails_closed_when_the_replacement_never_publishes_an_endpoint() {
+fn restart_publishes_a_healthy_endpoint_from_a_clean_state_home() {
     let state_home = tempfile::tempdir().expect("isolated ASP State Home");
     let asp = env!("CARGO_BIN_EXE_asp");
     let installed_asp = state_home.path().join("runtime/bin/asp");
@@ -19,24 +19,25 @@ fn restart_fails_closed_when_the_replacement_never_publishes_an_endpoint() {
         String::from_utf8_lossy(&install.stderr)
     );
 
-    let restart = Command::new(asp)
+    let restart = Command::new(&installed_asp)
         .env("ASP_STATE_HOME", state_home.path())
         .args(["server", "restart"])
         .output()
         .expect("restart isolated Runtime Server");
     assert!(
-        !restart.status.success(),
-        "restart reported success before endpoint publication: stdout={} stderr={}",
+        restart.status.success(),
+        "restart must publish a healthy endpoint from a clean State Home: stdout={} stderr={}",
         String::from_utf8_lossy(&restart.stdout),
         String::from_utf8_lossy(&restart.stderr)
     );
-    let stderr = String::from_utf8_lossy(&restart.stderr);
     assert!(
-        stderr.contains("reasonKind=runtime-server-endpoint-publication-timeout"),
-        "restart failure did not preserve the typed readiness reason: {stderr}"
+        String::from_utf8_lossy(&restart.stdout).contains("\"state\":\"healthy\""),
+        "restart did not wait for the healthy endpoint receipt: stdout={} stderr={}",
+        String::from_utf8_lossy(&restart.stdout),
+        String::from_utf8_lossy(&restart.stderr)
     );
 
-    let stop = Command::new(asp)
+    let stop = Command::new(&installed_asp)
         .env("ASP_STATE_HOME", state_home.path())
         .args(["server", "stop"])
         .output()
@@ -44,6 +45,14 @@ fn restart_fails_closed_when_the_replacement_never_publishes_an_endpoint() {
     assert!(
         stop.status.success(),
         "isolated Runtime Server cleanup failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&stop.stdout),
+        String::from_utf8_lossy(&stop.stderr)
+    );
+    assert!(
+        !agent_semantic_client_db::runtime_server_endpoint_path(state_home.path())
+            .expect("resolve isolated endpoint")
+            .exists(),
+        "stop must clean the published endpoint: stdout={} stderr={}",
         String::from_utf8_lossy(&stop.stdout),
         String::from_utf8_lossy(&stop.stderr)
     );

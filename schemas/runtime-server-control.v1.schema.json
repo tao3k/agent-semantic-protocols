@@ -44,7 +44,7 @@
         "transportContractDigest",
         "ownerEpoch",
         "runtimeArtifactPath",
-        "runtimeArtifactDigest",
+        "runtimeBinaryIdentity",
         "artifactMode",
         "artifactCatalogDigest",
         "bindingToken",
@@ -72,7 +72,7 @@
           "type": "string",
           "minLength": 1
         },
-        "runtimeArtifactDigest": {
+        "runtimeBinaryIdentity": {
           "type": "string",
           "minLength": 1
         },
@@ -371,7 +371,7 @@
         "schemaVersion",
         "generation",
         "state",
-        "runtimeArtifactDigest",
+        "runtimeBinaryIdentity",
         "artifactMode",
         "artifactCatalogDigest",
         "transportContractDigest",
@@ -398,7 +398,7 @@
             "degraded"
           ]
         },
-        "runtimeArtifactDigest": {
+        "runtimeBinaryIdentity": {
           "type": "string",
           "minLength": 1
         },
@@ -471,7 +471,7 @@
         "schemaId",
         "schemaVersion",
         "operation",
-        "expectedRuntimeArtifactDigest",
+        "expectedRuntimeBinaryIdentity",
         "requestId",
         "transportContractDigest",
         "ownerEpoch",
@@ -491,7 +491,7 @@
             "restart"
           ]
         },
-        "expectedRuntimeArtifactDigest": {
+        "expectedRuntimeBinaryIdentity": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
         },
@@ -528,7 +528,7 @@
         "schemaVersion",
         "requestId",
         "state",
-        "runtimeArtifactDigest",
+        "runtimeBinaryIdentity",
         "artifactMode",
         "artifactCatalogDigest",
         "transportContractDigest",
@@ -553,7 +553,7 @@
             "degraded"
           ]
         },
-        "runtimeArtifactDigest": {
+        "runtimeBinaryIdentity": {
           "type": "string",
           "minLength": 1
         },

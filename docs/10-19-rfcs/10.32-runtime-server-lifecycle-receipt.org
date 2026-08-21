@@ -223,5 +223,22 @@ Ready, stopped, or clean drain merely because the initiating client exited.
 7. Restart never overlaps ownership generations.
 8. Runtime recovery does not mutate plugin trust or require a Codex restart.
 
+9. Registered workspace restore uses one bounded scheduler with a default
+   concurrency of two; restore and live reconciliation share that scheduler.
+10. A failed workspace/provider generation enters typed terminal Backoff with
+    =nextRetryAt=; no immediate retry is permitted until identity changes or
+    the bounded retry deadline is reached.
+11. HTTP-JSON provider processes are Runtime-Server-global by language,
+    provider, binary, manifest, and catalog identity; =projectRoot= is request
+    payload, never process ownership.
+12. Monitor heartbeats and process-memory telemetry are bounded/aggregated and
+    MUST NOT perform persistent file/DB writes at sub-second sampling cadence.
+13. Runtime active I/O and lifecycle ownership are Tokio-owned. Async server,
+    provider, admission, artifact, monitor, and telemetry paths MUST use
+    `tokio::fs`, `tokio::process`, and Tokio synchronization. CPU-heavy or
+    platform inspection work MUST cross a bounded `spawn_blocking` boundary;
+    synchronous process spawning and filesystem I/O are not valid lifecycle
+    owners.
+
 The executable Rust receipt and the Lean model
 ~ASPProof.RuntimeServerLifecycle~ are refinement witnesses for these claims.

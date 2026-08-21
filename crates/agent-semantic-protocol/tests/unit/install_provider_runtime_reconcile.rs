@@ -2,8 +2,8 @@ use super::reconcile_registered_provider_runtime_binaries_from;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(unix)]
-#[test]
-fn registered_scheme_and_python_dangling_runtime_links_are_missing() {
+#[tokio::test]
+async fn registered_scheme_and_python_dangling_runtime_links_are_missing() {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock")
@@ -38,6 +38,7 @@ fn registered_scheme_and_python_dangling_runtime_links_are_missing() {
             &artifact_root,
             &provider_lock_dir,
         )
+        .await
         .unwrap_or_else(|error| panic!("reconcile `{language_id}` / `{provider_id}`: {error}"));
         assert_eq!(reconciliation.registration_count, 1, "{provider_id}");
         assert_eq!(reconciliation.binary_identity_count, 1, "{provider_id}");
@@ -50,8 +51,8 @@ fn registered_scheme_and_python_dangling_runtime_links_are_missing() {
 }
 
 #[cfg(unix)]
-#[test]
-fn canonical_digest_lattice_symlink_is_current_without_rewrite() {
+#[tokio::test]
+async fn canonical_digest_lattice_symlink_is_current_without_rewrite() {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock")
@@ -108,6 +109,7 @@ fn canonical_digest_lattice_symlink_is_current_without_rewrite() {
         &artifact_root,
         &provider_lock_dir,
     )
+    .await
     .expect("accept canonical provider profile");
 
     assert_eq!(reconciliation.reconciled_count, 1);
@@ -129,8 +131,8 @@ fn canonical_digest_lattice_symlink_is_current_without_rewrite() {
 }
 
 #[cfg(unix)]
-#[test]
-fn registered_provider_file_is_atomically_migrated_to_the_digest_lattice() {
+#[tokio::test]
+async fn registered_provider_file_is_atomically_migrated_to_the_digest_lattice() {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock")
@@ -182,6 +184,7 @@ fn registered_provider_file_is_atomically_migrated_to_the_digest_lattice() {
         &artifact_root,
         &provider_lock_dir,
     )
+    .await
     .expect("migrate registered provider file");
 
     assert_eq!(reconciliation.reconciled_count, 1);
@@ -221,8 +224,109 @@ fn registered_provider_file_is_atomically_migrated_to_the_digest_lattice() {
 }
 
 #[cfg(unix)]
-#[test]
-fn unmanaged_provider_runtime_symlink_is_rejected_without_migration() {
+#[tokio::test]
+async fn stale_provider_generation_is_replaced_from_verified_developer_output() {
+    use std::os::unix::fs::symlink;
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "asp-provider-runtime-developer-reconcile-{}-{nonce}",
+        std::process::id()
+    ));
+    let developer_root = root.join("checkout");
+    let runtime_bin = root.join("runtime/bin");
+    let artifact_root = root.join("runtime/artifacts");
+    let provider_lock_dir = root.join("runtime/providers/receipts");
+    std::fs::create_dir_all(&runtime_bin).expect("temporary runtime bin");
+    std::fs::create_dir_all(&artifact_root).expect("temporary artifact root");
+    std::fs::create_dir_all(&provider_lock_dir).expect("temporary provider receipts");
+    std::fs::write(
+        root.join("asp.toml"),
+        format!(
+            "[dev]\nenabled = true\nroot = {:?}\n",
+            developer_root.display().to_string()
+        ),
+    )
+    .expect("write Developer Source config");
+
+    let registrations = agent_semantic_hook::registered_provider_binaries_v1();
+    let registration = registrations
+        .iter()
+        .find(|registration| registration.language_id().as_str() == "rust")
+        .expect("registered Rust provider");
+    let development = agent_semantic_hook::registered_provider_development_v1("rust")
+        .expect("registered Rust development descriptor");
+    let provider_source_root = developer_root.join(&development.development.source_root);
+    let descriptor_path = provider_source_root.join(
+        development
+            .development
+            .workspace_install
+            .as_deref()
+            .expect("Rust workspace install descriptor"),
+    );
+    let verified_output = provider_source_root.join("target/release/asp-rust");
+    std::fs::create_dir_all(descriptor_path.parent().expect("descriptor parent"))
+        .expect("create descriptor parent");
+    std::fs::create_dir_all(verified_output.parent().expect("output parent"))
+        .expect("create output parent");
+    std::fs::write(&verified_output, b"verified Developer Source provider")
+        .expect("write verified provider output");
+    std::fs::write(
+        &descriptor_path,
+        format!(
+            r#"{{
+                "schemaId":"agent.semantic-protocols.provider-workspace-install",
+                "schemaVersion":"1",
+                "schemaAuthority":"https://tao3k.github.io/agent-semantic-protocols/schemas/",
+                "languageId":"rust",
+                "providerId":"{}",
+                "binary":"{}",
+                "workspaceArtifact":{{
+                    "root":"{}/target/release/asp-rust",
+                    "entrypoint":"."
+                }},
+                "workspaceBuild":{{
+                    "derivedPaths":["{}/target/release"]
+                }}
+            }}"#,
+            registration.provider_id().as_str(),
+            registration.binary(),
+            development.development.source_root,
+            development.development.source_root,
+        ),
+    )
+    .expect("write workspace install descriptor");
+
+    let old_generation = artifact_root.join("blake3-256/old/asp-rust");
+    std::fs::create_dir_all(old_generation.parent().expect("old generation parent"))
+        .expect("create old generation");
+    std::fs::write(&old_generation, b"stale provider").expect("write stale provider");
+    symlink(&old_generation, runtime_bin.join("asp-rust")).expect("link stale provider");
+
+    let reconciliation = reconcile_registered_provider_runtime_binaries_from(
+        std::slice::from_ref(registration),
+        &runtime_bin,
+        &artifact_root,
+        &provider_lock_dir,
+    )
+    .await
+    .expect("auto-update stale provider generation");
+
+    assert_eq!(reconciliation.changed_count, 1);
+    assert_eq!(
+        std::fs::canonicalize(runtime_bin.join("asp-rust")).expect("canonical runtime provider"),
+        std::fs::canonicalize(&verified_output).expect("canonical Developer output")
+    );
+
+    std::fs::remove_dir_all(root).expect("remove Developer reconciliation fixture");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn unmanaged_provider_runtime_symlink_is_rejected_without_migration() {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock")
@@ -259,6 +363,7 @@ fn unmanaged_provider_runtime_symlink_is_rejected_without_migration() {
         &artifact_root,
         &provider_lock_dir,
     )
+    .await
     .expect_err("reject unmanaged provider runtime symlink");
 
     assert!(

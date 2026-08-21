@@ -21,7 +21,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-pub(super) fn run_install(args: &[String]) -> Result<(), String> {
+pub(super) async fn run_install(args: &[String]) -> Result<(), String> {
     let client = flag_value(args, "--client").unwrap_or("codex");
     if client == "codex" {
         return Err(
@@ -39,6 +39,7 @@ pub(super) fn run_install(args: &[String]) -> Result<(), String> {
         Some(subagent_model),
         "agent-install",
     )
+    .await
 }
 
 #[cfg(test)]
@@ -75,7 +76,9 @@ fn parse_codex_plugin_install_args(args: &[String]) -> Result<CodexPluginInstall
     })
 }
 
-pub(in crate::command) fn run_codex_plugin_install_args(args: &[String]) -> Result<(), String> {
+pub(in crate::command) async fn run_codex_plugin_install_args(
+    args: &[String],
+) -> Result<(), String> {
     let request = parse_codex_plugin_install_args(args)?;
     run_install_for_client(
         "codex",
@@ -84,9 +87,10 @@ pub(in crate::command) fn run_codex_plugin_install_args(args: &[String]) -> Resu
         None,
         "plugin-install",
     )
+    .await
 }
 
-fn run_install_for_client(
+async fn run_install_for_client(
     client: &str,
     project_root: PathBuf,
     codex_plugin_scope: CodexPluginScope,
@@ -107,14 +111,15 @@ fn run_install_for_client(
     let org_state_sync =
         crate::command::org_capture::require_materialized_org_state(&project_root)?;
     timings.mark("org-state");
-    let binary_install = ensure_protocol_binary_installed(&binary_install_plan)?;
+    let binary_install = ensure_protocol_binary_installed(&binary_install_plan).await?;
     timings.mark("binary");
     let provider_binary_reconciliation =
-        crate::command::install_provider_runtime_reconcile::reconcile_registered_provider_runtime_binaries(
-            &runtime_state.runtime_bin_dir,
-            &runtime_artifact_root,
-            &runtime_state.provider_lock_dir,
-        )?;
+    crate::command::install_provider_runtime_reconcile::reconcile_registered_provider_runtime_binaries(
+        &runtime_state.runtime_bin_dir,
+        &runtime_artifact_root,
+        &runtime_state.provider_lock_dir,
+    )
+    .await?;
     timings.mark("provider-binaries");
     let activation_path = runtime_state.activation_path.clone();
     let activation_sync = load_or_refresh_default_activation(&activation_path, &project_root)?;
@@ -140,45 +145,6 @@ fn run_install_for_client(
     let hook_matcher_generation =
         super::publish_hook_matcher_generation(&client_config_path, &project_root)?;
     timings.mark("user-config");
-    let mut provider_artifacts = runtime_profiles
-        .providers
-        .iter()
-        .map(|provider| {
-            let binary = provider.resolved_binary.as_ref().ok_or_else(|| {
-                format!(
-                    "active provider has no resolved binary: language={} provider={} \
-                     commandPrefix={:?} argv={:?} health={:?} reason={:?}",
-                    provider.language_id,
-                    provider.provider_id,
-                    provider.provider_command_prefix,
-                    provider.argv,
-                    provider.health.status,
-                    provider.health.reason,
-                )
-            })?;
-            agent_semantic_hook::active_provider_artifact_input(
-                &project_root,
-                &provider.language_id,
-                &provider.provider_id,
-                PathBuf::from(binary),
-            )
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-    let provider_profiles_are_lattice_current = provider_artifacts.iter().all(|artifact| {
-        artifact
-            .materialized_path
-            .starts_with(&runtime_state.runtime_bin_dir)
-            && std::fs::symlink_metadata(&artifact.materialized_path)
-                .is_ok_and(|metadata| metadata.file_type().is_file())
-    });
-    let client_config_digest =
-        agent_semantic_content_identity::file_content_digest_v1(&client_config_path)?;
-    provider_artifacts.push(agent_semantic_hook::ActiveAspArtifactInput {
-        logical_path: "runtime/hooks/config.toml".to_string(),
-        artifact_kind: agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1::RuntimeConfig,
-        materialized_path: client_config_path.clone(),
-        artifact_digest: client_config_digest,
-    });
     remove_incompatible_hook_event_state(&project_root)?;
     timings.mark("event-state");
     let (config_path, extra_config_receipt) = match client {
@@ -234,20 +200,8 @@ fn run_install_for_client(
         &binary_install.path,
         &binary_install.artifact_digest,
         &activation_path,
-        &provider_artifacts,
     )?;
     timings.mark("active-artifact-receipt");
-    let retired_artifact_cleanup = if provider_binary_reconciliation.missing_count == 0
-        && provider_profiles_are_lattice_current
-    {
-        Some(
-            crate::command::protocol_binary::prune_runtime_binary_artifacts(
-                &runtime_artifact_root,
-            )?,
-        )
-    } else {
-        None
-    };
     timings.mark("retired-artifact-cleanup");
     let project_skill_receipt = installed_skill
         .as_ref()
@@ -271,12 +225,11 @@ fn run_install_for_client(
         user_config_status.as_str()
     );
     println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} hookMatcherGeneration={} activeArtifactReceipt={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic providerBinariesMissing={} retiredArtifactCleanup={} retiredArtifactGenerationsRemoved={} mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} hookMatcherGeneration={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binarySourceGeneration={} generationAlgorithm=blake3-metadata-v1 binarySwitch=atomic providerBinariesMissing={} mode=updated",
         display_path(&project_root, &activation_path),
         activation_status,
         user_config_receipt,
         hook_matcher_generation,
-        display_path(&project_root, &active_artifact.receipt_path),
         active_artifact.receipt.artifact_root_digest().as_str(),
         active_artifact.artifact_byte_reads,
         active_artifact.artifact_bytes_read,
@@ -294,14 +247,6 @@ fn run_install_for_client(
         binary_install.status,
         binary_install.artifact_digest,
         provider_binary_reconciliation.missing_count,
-        if retired_artifact_cleanup.is_some() {
-            "complete"
-        } else {
-            "deferred"
-        },
-        retired_artifact_cleanup
-            .as_ref()
-            .map_or(0, |receipt| receipt.removed_generation_count),
     );
     Ok(())
 }

@@ -6,8 +6,7 @@ mod activation_store;
 pub use activation_store::registered_language_runtime;
 mod active_artifact_receipt;
 pub use active_artifact_receipt::{
-    ActiveAspArtifactReconciliationV1, rebind_active_asp_binary_receipt_if_present,
-    reconcile_active_asp_artifact_receipt_if_present,
+    ActiveAspArtifactReconciliation, rebind_active_asp_binary_receipt_if_present,
 };
 mod classifier;
 mod codex_config;
@@ -47,6 +46,8 @@ pub use protocol_activation::digest::provider_execution_command_digest;
 pub use protocol_activation::protocol_activation_manifest::{
     ProviderDevelopmentArtifactDomain, ProviderDevelopmentDescriptor,
 };
+mod provider_install_artifact;
+pub use provider_install_artifact::installed_provider_artifact_digest;
 mod provider_manifest;
 mod provider_registry;
 mod provider_runtime;
@@ -66,9 +67,6 @@ pub use provider_registry::{
 mod runtime_profile;
 pub mod source_access;
 mod source_selector;
-#[cfg(test)]
-#[path = "../tests/unit/test_process_env.rs"]
-mod test_process_env;
 mod tool_action;
 
 pub use crate::activation_store::{
@@ -80,12 +78,9 @@ pub use crate::activation_store::{
     load_or_sync_activation_with_state_home, parse_hook_activation, write_activation,
 };
 pub use crate::active_artifact_receipt::{
-    ActiveAspArtifactInput, ActiveAspArtifactMaterialization, active_asp_artifact_receipt_path,
-    active_exact_selector_fixture_artifact_input_v1, active_provider_artifact_input,
-    active_provider_artifact_input_with_state_home, materialize_active_asp_artifact_receipt,
+    ActiveAspArtifactMaterialization, active_asp_artifact_receipt_path,
+    materialize_active_asp_artifact_receipt,
     materialize_active_asp_artifact_receipt_for_current_process,
-    materialize_active_asp_artifact_receipt_for_current_process_with_state_home,
-    reconcile_active_asp_artifact_receipt_from_materialized_set,
     verify_active_asp_artifact_receipt,
 };
 pub use classifier::{

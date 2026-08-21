@@ -12,7 +12,7 @@ mod hook_runtime {
         Ok("{}".to_string())
     }
 
-    pub(crate) fn run_hook_runtime_args(_args: Vec<String>) -> Result<(), String> {
+    pub(crate) async fn run_hook_runtime_args(_args: Vec<String>) -> Result<(), String> {
         Ok(())
     }
 
@@ -29,8 +29,6 @@ mod hook_break_glass {
         Ok(())
     }
 }
-
-const _: fn(Vec<String>) -> Result<(), String> = hook_runtime::run_hook_runtime_args;
 
 fn assert_hook_command_future(
     future: impl std::future::Future<Output = Result<(), String>> + Send,

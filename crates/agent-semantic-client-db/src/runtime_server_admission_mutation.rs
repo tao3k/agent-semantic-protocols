@@ -454,14 +454,10 @@ impl WorkspaceGenerationAdmission {
             .await?;
         let inserted_receipt = inserted.then_some(receipt);
         if let Some(receipt) = inserted_receipt {
-            // The entry claim is the control-plane linearization point.  Candidate cache and
-            // catalog publication must only be performed by that single owner; doing either
-            // before `entries.entry` turns a cold workspace into an N-way global-cache write
-            // storm and makes the submission receipt depend on scheduler contention.
-            //
-            // `candidate` has already passed validation, so recording the fresh, private
-            // OnceCell cannot fail unless the cache implementation violates its own invariant.
-            super::record_workspace_generation_candidate(project_root.clone(), candidate.clone())?;
+            // The entry claim is the control-plane linearization point.  It is
+            // the only owner allowed to create the Server writer lease; do not
+            // touch a process-global candidate cache here.  Candidate discovery
+            // belongs to this generation's Server-owned build transaction.
             self.spawn_build(
                 entry,
                 workspace_identity,

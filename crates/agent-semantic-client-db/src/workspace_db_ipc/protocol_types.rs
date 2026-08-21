@@ -494,6 +494,7 @@ pub enum WorkspaceDbIpcResult {
     },
     RuntimeOwner {
         read: crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead,
+        evidence: RuntimeResidentReadEvidence,
     },
     RuntimeMerkleOwner {
         read: crate::runtime_server_workspace::WorkspaceRuntimeMerkleOwnerRead,

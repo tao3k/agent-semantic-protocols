@@ -33,6 +33,7 @@ impl WorkspaceGenerationAdmission {
         let restore_permits = std::sync::Arc::new(tokio::sync::Semaphore::new(
             super::registered_workspace_restore_concurrency(),
         ));
+        let reconciliation_permits = std::sync::Arc::clone(&restore_permits);
         for entry in entries.iter().cloned() {
             let admission = self.clone();
             let restore_permits = std::sync::Arc::clone(&restore_permits);
@@ -49,7 +50,10 @@ impl WorkspaceGenerationAdmission {
                             entry.workspace_identity.clone(),
                             entry.project_root.clone(),
                             candidate,
-                            WorkspaceGenerationBuildMode::RestoreOnly,
+                            // Startup owns registered workspace freshness:
+                            // restore when possible, then rebuild stale or
+                            // missing canonical materialization before Healthy.
+                            WorkspaceGenerationBuildMode::RestoreOrBuild,
                             WorkspaceGenerationAdmissionTrigger::RuntimeRecovery,
                             WorkspaceGenerationAdmissionMode::FullRecovery,
                             None,
@@ -63,26 +67,6 @@ impl WorkspaceGenerationAdmission {
                     } else {
                         Ok(receipt)
                     }?;
-                    if receipt.state == WorkspaceGenerationAdmissionState::Ready {
-                        let reconciliation_owner = admission.clone();
-                        let reconciliation_entry = entry.clone();
-                        admission.track_submission_task(tokio::spawn(async move {
-                            let Ok(candidate) = discover_workspace_generation_candidate(
-                                &reconciliation_entry.project_root,
-                            )
-                            .await
-                            else {
-                                return;
-                            };
-                            let _ = reconciliation_owner
-                                .ensure(
-                                    &reconciliation_entry.workspace_identity,
-                                    &reconciliation_entry.project_root,
-                                    candidate,
-                                )
-                                .await;
-                        }));
-                    }
                     Ok(receipt)
                 }
                 .await;
@@ -129,6 +113,32 @@ impl WorkspaceGenerationAdmission {
         report
             .failed
             .sort_by(|left, right| left.workspace_identity.cmp(&right.workspace_identity));
+        // Only after every registered workspace has a resident generation do
+        // we begin live Git reconciliation. Healthy status therefore describes
+        // the restored Server registry, not a partially restored catalog.
+        for entry in entries.iter().cloned() {
+            if report
+                .ready
+                .iter()
+                .any(|receipt| receipt.workspace_identity == entry.workspace_identity)
+            {
+                let reconciliation_owner = self.clone();
+                let reconciliation_permits = std::sync::Arc::clone(&reconciliation_permits);
+                self.track_submission_task(tokio::spawn(async move {
+                    let Ok(_permit) = reconciliation_permits.acquire_owned().await else {
+                        return;
+                    };
+                    let Ok(candidate) =
+                        discover_workspace_generation_candidate(&entry.project_root).await
+                    else {
+                        return;
+                    };
+                    let _ = reconciliation_owner
+                        .ensure(&entry.workspace_identity, &entry.project_root, candidate)
+                        .await;
+                }));
+            }
+        }
         Ok(report)
     }
 }

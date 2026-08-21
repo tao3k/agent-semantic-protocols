@@ -11,9 +11,9 @@ pub const ACTIVE_ASP_ARTIFACT_DIGEST_ALGORITHM: &str = "blake3-256";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ActiveArtifactSetIdV1(String);
+pub struct ActiveArtifactSetId(String);
 
-impl ActiveArtifactSetIdV1 {
+impl ActiveArtifactSetId {
     #[must_use]
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
@@ -25,13 +25,13 @@ impl ActiveArtifactSetIdV1 {
     }
 }
 
-impl From<String> for ActiveArtifactSetIdV1 {
+impl From<String> for ActiveArtifactSetId {
     fn from(value: String) -> Self {
         Self(value)
     }
 }
 
-impl From<&str> for ActiveArtifactSetIdV1 {
+impl From<&str> for ActiveArtifactSetId {
     fn from(value: &str) -> Self {
         Self(value.to_owned())
     }
@@ -39,7 +39,7 @@ impl From<&str> for ActiveArtifactSetIdV1 {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum ActiveArtifactKindV1 {
+pub enum ActiveArtifactKind {
     ExactSelectorGenerationFixture,
     ProviderRelationGeneration,
     AspBinary,
@@ -49,7 +49,7 @@ pub enum ActiveArtifactKindV1 {
     RuntimeConfig,
 }
 
-impl ActiveArtifactKindV1 {
+impl ActiveArtifactKind {
     pub fn canonical_name(self) -> &'static str {
         match self {
             Self::AspBinary => "asp-binary",
@@ -65,10 +65,10 @@ impl ActiveArtifactKindV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ActiveArtifactLeafV1 {
+pub struct ActiveArtifactLeaf {
     logical_path: ActiveArtifactLogicalPathV1,
     materialized_path: ActiveArtifactMaterializedPathV1,
-    artifact_kind: ActiveArtifactKindV1,
+    artifact_kind: ActiveArtifactKind,
     artifact_digest: ContentDigestV1,
     size_bytes: ActiveArtifactByteCountV1,
     #[serde(default)]
@@ -97,11 +97,11 @@ struct ActiveArtifactModifiedUnixNanosV1(u64);
 #[serde(transparent)]
 struct ActiveArtifactChangeTimeUnixNanosV1(i64);
 
-impl ActiveArtifactLeafV1 {
+impl ActiveArtifactLeaf {
     pub fn new(
         logical_path: impl Into<String>,
         materialized_path: impl Into<String>,
-        artifact_kind: ActiveArtifactKindV1,
+        artifact_kind: ActiveArtifactKind,
         artifact_digest: ContentDigestV1,
         size_bytes: u64,
         modified_unix_nanos: u64,
@@ -136,7 +136,7 @@ impl ActiveArtifactLeafV1 {
         &self.materialized_path.0
     }
 
-    pub fn artifact_kind(&self) -> ActiveArtifactKindV1 {
+    pub fn artifact_kind(&self) -> ActiveArtifactKind {
         self.artifact_kind
     }
 
@@ -159,14 +159,14 @@ impl ActiveArtifactLeafV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ActiveAspArtifactReceiptV1 {
+pub struct ActiveAspArtifactReceipt {
     schema_id: String,
     schema_version: String,
     digest_algorithm: String,
-    artifact_set_id: ActiveArtifactSetIdV1,
+    artifact_set_id: ActiveArtifactSetId,
     artifact_root_digest: ContentDigestV1,
     materialization_root_digest: ContentDigestV1,
-    leaves: Vec<ActiveArtifactLeafV1>,
+    leaves: Vec<ActiveArtifactLeaf>,
 }
 
 #[derive(Deserialize)]
@@ -175,14 +175,14 @@ struct ActiveAspArtifactReceiptWireV1 {
     schema_id: String,
     schema_version: String,
     digest_algorithm: String,
-    artifact_set_id: ActiveArtifactSetIdV1,
+    artifact_set_id: ActiveArtifactSetId,
     artifact_root_digest: ContentDigestV1,
     #[serde(default)]
     materialization_root_digest: Option<ContentDigestV1>,
-    leaves: Vec<ActiveArtifactLeafV1>,
+    leaves: Vec<ActiveArtifactLeaf>,
 }
 
-impl<'de> Deserialize<'de> for ActiveAspArtifactReceiptV1 {
+impl<'de> Deserialize<'de> for ActiveAspArtifactReceipt {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -208,7 +208,7 @@ impl<'de> Deserialize<'de> for ActiveAspArtifactReceiptV1 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ActiveAspArtifactReceiptV1Error {
+pub enum ActiveAspArtifactReceiptError {
     Identity,
     EmptyArtifactSetId,
     NonCanonicalPath(String),
@@ -221,7 +221,7 @@ pub enum ActiveAspArtifactReceiptV1Error {
     MaterializationRootDigestMismatch,
 }
 
-impl ActiveAspArtifactReceiptV1 {
+impl ActiveAspArtifactReceipt {
     pub fn artifact_root_digest(&self) -> &ContentDigestV1 {
         &self.artifact_root_digest
     }
@@ -230,15 +230,15 @@ impl ActiveAspArtifactReceiptV1 {
         &self.materialization_root_digest
     }
 
-    pub fn leaves(&self) -> &[ActiveArtifactLeafV1] {
+    pub fn leaves(&self) -> &[ActiveArtifactLeaf] {
         &self.leaves
     }
 
     pub fn build(
         artifact_set_id: impl Into<String>,
-        mut leaves: Vec<ActiveArtifactLeafV1>,
-    ) -> Result<Self, ActiveAspArtifactReceiptV1Error> {
-        let artifact_set_id = ActiveArtifactSetIdV1::from(artifact_set_id.into());
+        mut leaves: Vec<ActiveArtifactLeaf>,
+    ) -> Result<Self, ActiveAspArtifactReceiptError> {
+        let artifact_set_id = ActiveArtifactSetId::from(artifact_set_id.into());
         leaves.sort_by(|left, right| left.logical_path().cmp(right.logical_path()));
         let artifact_root_digest = active_artifact_root_digest_v1(&artifact_set_id, &leaves)?;
         let materialization_root_digest =
@@ -256,15 +256,15 @@ impl ActiveAspArtifactReceiptV1 {
         Ok(receipt)
     }
 
-    pub fn validate(&self) -> Result<(), ActiveAspArtifactReceiptV1Error> {
+    pub fn validate(&self) -> Result<(), ActiveAspArtifactReceiptError> {
         if self.schema_id != ACTIVE_ASP_ARTIFACT_RECEIPT_SCHEMA_ID
             || self.schema_version != ACTIVE_ASP_ARTIFACT_RECEIPT_SCHEMA_VERSION
             || self.digest_algorithm != ACTIVE_ASP_ARTIFACT_DIGEST_ALGORITHM
         {
-            return Err(ActiveAspArtifactReceiptV1Error::Identity);
+            return Err(ActiveAspArtifactReceiptError::Identity);
         }
         if self.artifact_set_id.as_str().is_empty() {
-            return Err(ActiveAspArtifactReceiptV1Error::EmptyArtifactSetId);
+            return Err(ActiveAspArtifactReceiptError::EmptyArtifactSetId);
         }
         let mut previous_path: Option<&str> = None;
         let mut asp_binary_count = 0;
@@ -272,68 +272,68 @@ impl ActiveAspArtifactReceiptV1 {
         for leaf in &self.leaves {
             validate_logical_path(leaf.logical_path())?;
             parse_content_digest_v1(leaf.artifact_digest.as_str()).map_err(|_| {
-                ActiveAspArtifactReceiptV1Error::NonCanonicalDigest(leaf.logical_path().to_string())
+                ActiveAspArtifactReceiptError::NonCanonicalDigest(leaf.logical_path().to_string())
             })?;
             if previous_path.is_some_and(|previous| previous >= leaf.logical_path()) {
-                return Err(ActiveAspArtifactReceiptV1Error::UnsortedOrDuplicateLeaves);
+                return Err(ActiveAspArtifactReceiptError::UnsortedOrDuplicateLeaves);
             }
             previous_path = Some(leaf.logical_path());
-            asp_binary_count += usize::from(leaf.artifact_kind == ActiveArtifactKindV1::AspBinary);
-            activation_count += usize::from(leaf.artifact_kind == ActiveArtifactKindV1::Activation);
+            asp_binary_count += usize::from(leaf.artifact_kind == ActiveArtifactKind::AspBinary);
+            activation_count += usize::from(leaf.artifact_kind == ActiveArtifactKind::Activation);
         }
         if asp_binary_count != 1 {
-            return Err(ActiveAspArtifactReceiptV1Error::AspBinaryLeafCount(
+            return Err(ActiveAspArtifactReceiptError::AspBinaryLeafCount(
                 asp_binary_count,
             ));
         }
         if activation_count != 1 {
-            return Err(ActiveAspArtifactReceiptV1Error::ActivationLeafCount(
+            return Err(ActiveAspArtifactReceiptError::ActivationLeafCount(
                 activation_count,
             ));
         }
         if active_artifact_root_digest_v1(&self.artifact_set_id, &self.leaves)?
             != self.artifact_root_digest
         {
-            return Err(ActiveAspArtifactReceiptV1Error::RootDigestMismatch);
+            return Err(ActiveAspArtifactReceiptError::RootDigestMismatch);
         }
         if active_artifact_materialization_root_digest_v1(&self.artifact_set_id, &self.leaves)?
             != self.materialization_root_digest
         {
-            return Err(ActiveAspArtifactReceiptV1Error::MaterializationRootDigestMismatch);
+            return Err(ActiveAspArtifactReceiptError::MaterializationRootDigestMismatch);
         }
         Ok(())
     }
 
-    pub fn asp_binary_leaf(&self) -> &ActiveArtifactLeafV1 {
+    pub fn asp_binary_leaf(&self) -> &ActiveArtifactLeaf {
         self.leaves
             .iter()
-            .find(|leaf| leaf.artifact_kind == ActiveArtifactKindV1::AspBinary)
+            .find(|leaf| leaf.artifact_kind == ActiveArtifactKind::AspBinary)
             .expect("validated active ASP receipt has one binary leaf")
     }
 
-    pub fn activation_leaf(&self) -> &ActiveArtifactLeafV1 {
+    pub fn activation_leaf(&self) -> &ActiveArtifactLeaf {
         self.leaves
             .iter()
-            .find(|leaf| leaf.artifact_kind == ActiveArtifactKindV1::Activation)
+            .find(|leaf| leaf.artifact_kind == ActiveArtifactKind::Activation)
             .expect("validated active ASP receipt has one activation leaf")
     }
 }
 
 pub fn active_artifact_root_digest_v1(
-    artifact_set_id: &ActiveArtifactSetIdV1,
-    leaves: &[ActiveArtifactLeafV1],
-) -> Result<ContentDigestV1, ActiveAspArtifactReceiptV1Error> {
+    artifact_set_id: &ActiveArtifactSetId,
+    leaves: &[ActiveArtifactLeaf],
+) -> Result<ContentDigestV1, ActiveAspArtifactReceiptError> {
     if artifact_set_id.as_str().is_empty() {
-        return Err(ActiveAspArtifactReceiptV1Error::EmptyArtifactSetId);
+        return Err(ActiveAspArtifactReceiptError::EmptyArtifactSetId);
     }
     let mut previous_path: Option<&str> = None;
     for leaf in leaves {
         validate_logical_path(leaf.logical_path())?;
         parse_content_digest_v1(leaf.artifact_digest.as_str()).map_err(|_| {
-            ActiveAspArtifactReceiptV1Error::NonCanonicalDigest(leaf.logical_path().to_string())
+            ActiveAspArtifactReceiptError::NonCanonicalDigest(leaf.logical_path().to_string())
         })?;
         if previous_path.is_some_and(|previous| previous >= leaf.logical_path()) {
-            return Err(ActiveAspArtifactReceiptV1Error::UnsortedOrDuplicateLeaves);
+            return Err(ActiveAspArtifactReceiptError::UnsortedOrDuplicateLeaves);
         }
         previous_path = Some(leaf.logical_path());
     }
@@ -376,11 +376,11 @@ pub fn active_artifact_root_digest_v1(
 }
 
 pub fn active_artifact_materialization_root_digest_v1(
-    artifact_set_id: &ActiveArtifactSetIdV1,
-    leaves: &[ActiveArtifactLeafV1],
-) -> Result<ContentDigestV1, ActiveAspArtifactReceiptV1Error> {
+    artifact_set_id: &ActiveArtifactSetId,
+    leaves: &[ActiveArtifactLeaf],
+) -> Result<ContentDigestV1, ActiveAspArtifactReceiptError> {
     if artifact_set_id.as_str().is_empty() {
-        return Err(ActiveAspArtifactReceiptV1Error::EmptyArtifactSetId);
+        return Err(ActiveAspArtifactReceiptError::EmptyArtifactSetId);
     }
     let mut previous_path: Option<&str> = None;
     let mut level = Vec::with_capacity(leaves.len());
@@ -388,7 +388,7 @@ pub fn active_artifact_materialization_root_digest_v1(
         validate_logical_path(leaf.logical_path())?;
         validate_materialized_path(leaf.materialized_path())?;
         if previous_path.is_some_and(|previous| previous >= leaf.logical_path()) {
-            return Err(ActiveAspArtifactReceiptV1Error::UnsortedOrDuplicateLeaves);
+            return Err(ActiveAspArtifactReceiptError::UnsortedOrDuplicateLeaves);
         }
         previous_path = Some(leaf.logical_path());
         level.push(canonical_content_digest_v1(
@@ -432,7 +432,7 @@ pub fn active_artifact_materialization_root_digest_v1(
     ))
 }
 
-fn validate_materialized_path(path: &str) -> Result<(), ActiveAspArtifactReceiptV1Error> {
+fn validate_materialized_path(path: &str) -> Result<(), ActiveAspArtifactReceiptError> {
     let materialized = std::path::Path::new(path);
     if path.is_empty()
         || !materialized.is_absolute()
@@ -443,14 +443,14 @@ fn validate_materialized_path(path: &str) -> Result<(), ActiveAspArtifactReceipt
             )
         })
     {
-        return Err(
-            ActiveAspArtifactReceiptV1Error::NonCanonicalMaterializedPath(path.to_string()),
-        );
+        return Err(ActiveAspArtifactReceiptError::NonCanonicalMaterializedPath(
+            path.to_string(),
+        ));
     }
     Ok(())
 }
 
-fn validate_logical_path(path: &str) -> Result<(), ActiveAspArtifactReceiptV1Error> {
+fn validate_logical_path(path: &str) -> Result<(), ActiveAspArtifactReceiptError> {
     if path.is_empty()
         || path.starts_with('/')
         || path.ends_with('/')
@@ -458,7 +458,7 @@ fn validate_logical_path(path: &str) -> Result<(), ActiveAspArtifactReceiptV1Err
             segment.is_empty() || segment == "." || segment == ".." || segment.contains('\\')
         })
     {
-        return Err(ActiveAspArtifactReceiptV1Error::NonCanonicalPath(
+        return Err(ActiveAspArtifactReceiptError::NonCanonicalPath(
             path.to_string(),
         ));
     }

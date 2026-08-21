@@ -83,51 +83,26 @@ async fn run_server_owner_items(
             generation_digest,
             root_digest,
             owner,
-        } => {
-            if resident_owner_requires_provider_projection(owner.selectors.len()) {
-                let language_id = agent_semantic_client_core::LanguageId::try_from(language_id)
-                    .map_err(|error| format!("decode owner search language id: {error}"))?;
-                let owner = session
-                    .project_provider_owner(language_id, owner_path)
-                    .await?;
-                let root_digest = owner.content_digest.clone();
-                (
-                    owner,
-                    "provider-native".to_owned(),
-                    root_digest,
-                    "asp-provider-native-owner-items-v1",
-                    "provider-native-owner",
-                    1,
-                )
-            } else {
-                (
-                    owner,
-                    generation_digest,
-                    root_digest,
-                    "asp-runtime-resident-owner-items-v1",
-                    "runtime-resident-owner",
-                    0,
-                )
-            }
-        }
+        } => (
+            owner,
+            generation_digest,
+            root_digest,
+            "asp-runtime-resident-owner-items-v1",
+            "runtime-resident-owner",
+            0,
+        ),
         agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::OwnerMissing {
-            ..
+            generation_digest,
+            root_digest,
+        } => {
+            return Err(format!(
+                "runtime-server-resident-owner-missing ownerPath={owner_path} generationDigest={generation_digest} rootDigest={root_digest}"
+            ));
         }
-        | agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::GenerationMissing => {
-            let language_id = agent_semantic_client_core::LanguageId::try_from(language_id)
-                .map_err(|error| format!("decode owner search language id: {error}"))?;
-            let owner = session
-                .project_provider_owner(language_id, owner_path)
-                .await?;
-            let root_digest = owner.content_digest.clone();
-            (
-                owner,
-                "provider-native".to_owned(),
-                root_digest,
-                "asp-provider-native-owner-items-v1",
-                "provider-native-owner",
-                1,
-            )
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::GenerationMissing => {
+            return Err(format!(
+                "active-workspace-generation-required ownerPath={owner_path} languageId={language_id}"
+            ));
         }
     };
     let query_alternatives = query
@@ -198,10 +173,6 @@ async fn run_server_owner_items(
         );
     }
     Ok(())
-}
-
-fn resident_owner_requires_provider_projection(selector_count: usize) -> bool {
-    selector_count == 0
 }
 
 pub(super) fn is_search_owner_items_query(args: &[String]) -> bool {

@@ -55,7 +55,7 @@ fn rust_harness_activation_uses_provider_identity() {
             .any(|extension| extension == ".rs")
     );
     let guide = provider.routes.guide.as_ref().expect("guide command");
-    assert_eq!(guide.argv, ["rs-harness", "guide", "{workspace}"]);
+    assert_eq!(guide.argv, ["asp-rust", "guide", "{workspace}"]);
 }
 
 #[test]

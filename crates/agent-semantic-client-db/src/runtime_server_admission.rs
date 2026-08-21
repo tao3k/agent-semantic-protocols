@@ -4,6 +4,12 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 
+/// Maximum time a request may wait for a Runtime-owned generation admission
+/// to reach a terminal receipt. The build itself remains Runtime-owned after
+/// this deadline and is never cancelled with the request.
+pub const RUNTIME_SERVER_GENERATION_ADMISSION_DEADLINE: std::time::Duration =
+    std::time::Duration::from_millis(800);
+
 pub use candidate::{
     WorkspaceGenerationBuild, WorkspaceGenerationBuildCompletion, WorkspaceGenerationBuildFailure,
     WorkspaceGenerationBuildFuture, WorkspaceGenerationBuildMode, WorkspaceGenerationBuilder,
@@ -156,7 +162,8 @@ fn registered_workspace_restore_concurrency() -> usize {
     std::thread::available_parallelism()
         .map(std::num::NonZeroUsize::get)
         .unwrap_or(2)
-        .max(2)
+        .min(2)
+        .max(1)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -518,7 +525,7 @@ impl WorkspaceGenerationAdmission {
             }
             if entry.lane.observed().building
                 && same_candidate(&observed)
-                && entry.building_covers(&cold_target_paths)
+                && (cold_target_paths.is_empty() || entry.building_covers(&cold_target_paths))
             {
                 return Ok(observed);
             }
@@ -550,7 +557,8 @@ impl WorkspaceGenerationAdmission {
                     let observed = entry.observed();
                     if reusable_ready(&observed, build_mode)
                         || (entry.lane.observed().building
-                            && entry.building_covers(&cold_target_paths))
+                            && (cold_target_paths.is_empty()
+                                || entry.building_covers(&cold_target_paths)))
                     {
                         return Ok(observed);
                     }

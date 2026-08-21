@@ -81,6 +81,68 @@ retired artifact.
 
 * Required invariants
 
+** RuntimeArtifactAuthority v1
+
+*** Tokio execution ownership
+
+Developer publication is also the migration boundary from historical digest
+storage.  After the stable slot has been atomically switched and verified, the
+Runtime owner MUST reclaim every digest generation that is no longer reachable
+from a stable Runtime slot.  It MUST remove the Release-only retention receipt
+and empty known artifact directories, while preserving any generation that is
+still reachable.  The command layer MUST NOT ask an Agent to run a separate
+cache refresh, import, or cleanup command.  A successful Developer publication
+therefore leaves no unreachable binary copies and, when no other stable slot
+depends on a digest generation, no =runtime/artifacts= directory.
+
+Protocol-binary publication owns only the ASP binary and its activation leaf.
+It MUST NOT validate, inherit, repair, or republish provider-binary generation
+leaves.  Provider artifact receipts belong to provider installation and Runtime
+provider reconciliation.  A stale provider generation therefore cannot block
+an atomic ASP binary switch, and the binary installer must not introduce a
+provider-path fallback to conceal that stale state.
+
+Rust namespace identifiers MUST remain version-neutral: for example,
+=ActiveArtifactLeaf= and =ActiveAspArtifactReceipt=.  Wire compatibility is
+owned by =schema_id= and =schema_version=, not by =V1= suffixes on Rust types
+or modules.  A schema-version change therefore does not create parallel Rust
+namespaces, compatibility aliases, or versioned implementation modules.
+
+Runtime artifact publication, activation, reachability collection, retention,
+and crash recovery are Runtime-owned asynchronous operations.  Their public
+Rust surface MUST be =async= and execute under the existing Tokio authority.
+Filesystem transactions that require blocking operating-system calls MUST run
+through Tokio's blocking pool; they MUST NOT block a Runtime executor worker.
+
+CLI command modules are thin adapters: they parse input, await one typed v1
+Runtime publication operation, and render its receipt.  They MUST NOT hash or
+copy artifacts, create digest directories, walk retention roots, publish
+symlinks, construct a private Tokio runtime, or provide a synchronous fallback.
+
+This is part of the existing v1 contract.  It does not introduce a v2 schema.
+
+Runtime artifact authority remains schemaVersion =1=.  A typed authority ref
+MUST carry mode, artifact kind and identity, verified executable path, source
+authority, and active generation; consumers MUST use that ref rather than a
+historical filesystem path.
+
+- =Developer= authority is the verified build output declared by Developer
+  Source.  Protocol and provider aliases MUST switch to that output atomically;
+  publication MUST add zero runtime/artifacts objects and retain no digest copy.
+  Digests are integrity receipts only.
+- =ManagedRelease= may stage one transient digest candidate, then atomically
+  switch current aliases.  Live aliases, provider catalog entries, and active
+  Runtime generation refs are the complete reachability roots.  Publish and
+  crash recovery MUST reclaim every unreachable binary directory immediately or
+  within the declared bounded GC interval.
+- Every active alias MUST resolve to a verified live authority and MUST never
+  dangle.  Non-managed files or symlinks fail closed.  Protocol install, runtime
+  artifact catalog, global provider catalog, Hook binary, and registered
+  provider runtimes MUST consume the same typed ref.
+- The old =old digest is current= rule, canonicalizing a requested alias through
+  an old symlink, historical fallback, per-consumer artifact paths, and
+  unbounded lattice retention are superseded and forbidden.
+
 For every runtime profile =p=:
 
 1. exactly one current executable is selectable while the profile is ready;
@@ -193,6 +255,26 @@ is bounded.
    report completion while leaving an unbounded retired set.
 6. Development checkout binaries remain a distinct admitted mode; they are not
    copied into a digest archive merely to obtain identity evidence.
+
+* Tokio-native Developer generation admission
+
+Runtime lifecycle code MUST use the Tokio ecosystem for filesystem and process
+coordination.  Provider descriptor reads, canonicalization, metadata checks,
+catalog reconciliation, stable-link publication, and owner readiness belong to
+the asynchronous Runtime admission path.  Synchronous filesystem I/O MUST NOT
+be introduced into the Runtime lifecycle owner.
+
+When Developer mode is active, the configured Developer Source and the
+provider workspace-install contract are the source authority.  Before reusing
+or spawning the ASP Server, the supervisor MUST resolve the registered
+workspace artifact, verify its schema identity and declared derived path, and
+atomically reconcile any stale Runtime generation.  =runtime/bin= and State
+Home launchers are activation targets, never Developer source authority.
+
+Missing Developer output is a typed repair-required state.  A stale generation
+MUST NOT remain active merely because its receipt or stable path still exists.
+Likewise, a stale owner-spawn receipt has authority only while its recorded
+process is alive; a dead PID cannot suppress a replacement owner.
 
 * Acceptance gates
 

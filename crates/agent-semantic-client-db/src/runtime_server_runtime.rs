@@ -1,27 +1,11 @@
 use std::future::Future;
-use std::sync::LazyLock;
 
 pub struct RuntimeServerRuntime {
     runtime: tokio::runtime::Runtime,
 }
 
-static CLIENT_RUNTIME: LazyLock<Result<RuntimeServerRuntime, String>> = LazyLock::new(|| {
-    RuntimeServerRuntimeBuilder::new_client()
-        .enable_all()
-        .build()
-        .map_err(|error| format!("failed to create Runtime Server client Tokio runtime: {error}"))
-});
 
-pub struct RuntimeServerClientExecutor;
 
-impl RuntimeServerClientExecutor {
-    pub fn get() -> Result<&'static RuntimeServerRuntime, String> {
-        match &*CLIENT_RUNTIME {
-            Ok(runtime) => Ok(runtime),
-            Err(error) => Err(error.clone()),
-        }
-    }
-}
 
 impl RuntimeServerRuntime {
     pub fn block_on<F>(&self, future: F) -> F::Output
@@ -36,8 +20,16 @@ pub struct RuntimeServerRuntimeBuilder {
     builder: tokio::runtime::Builder,
 }
 
-pub const RUNTIME_SERVER_CLIENT_WORKER_COUNT: usize = 2;
-pub const ASP_CLI_WORKER_COUNT: usize = 2;
+/// Effective CPU capacity exposed to this process. The OS value accounts for
+/// processor-set and cgroup limits, so CLI, client, and daemon Tokio runtimes
+/// share one host-authoritative capacity policy rather than fixed products
+/// defaults.
+pub fn adaptive_tokio_worker_count() -> usize {
+    std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1)
+}
+
 pub const RUNTIME_SERVER_CONNECTION_IO_BUDGET: std::time::Duration =
     std::time::Duration::from_millis(25);
 
@@ -178,26 +170,28 @@ impl RuntimeServerRuntimeBuilder {
     pub fn new_cli() -> Self {
         let mut builder = tokio::runtime::Builder::new_multi_thread();
         builder
-            .worker_threads(ASP_CLI_WORKER_COUNT)
+            .worker_threads(adaptive_tokio_worker_count())
             .thread_name("asp-cli");
         Self { builder }
     }
 
     pub fn new_daemon() -> Self {
+        // Tokio's runtime must reflect the host's effective CPU allocation
+        // (including cgroup / processor-set limits), not a repository-fixed
+        // worker ceiling. `available_parallelism` is that portable OS view.
         let worker_count = std::thread::available_parallelism()
             .map(std::num::NonZeroUsize::get)
-            .unwrap_or(2)
-            .max(2);
+            .unwrap_or(2);
         let mut builder = tokio::runtime::Builder::new_multi_thread();
-        builder.worker_threads(worker_count);
-        Self { builder }
-    }
-
-    pub fn new_client() -> Self {
-        let mut builder = tokio::runtime::Builder::new_multi_thread();
+        // The Runtime Server is the sole heavy-I/O authority.  Its blocking
+        // lane must therefore be bounded by the same scheduler budget as its
+        // async workers; Tokio's default (512) can otherwise turn a burst of
+        // workspace writes/provider process work into machine-wide I/O
+        // contention while the endpoint still appears healthy.
         builder
-            .worker_threads(RUNTIME_SERVER_CLIENT_WORKER_COUNT)
-            .thread_name("asp-runtime-client");
+            .worker_threads(worker_count)
+            .max_blocking_threads(worker_count)
+            .thread_name("asp-runtime-server");
         Self { builder }
     }
 
@@ -532,5 +526,26 @@ impl<T> Drop for RuntimeServerOwnedTask<T> {
             handle.abort();
             self.record_terminal(RuntimeServerTaskTerminalOutcome::Cancelled);
         }
+    }
+}
+/// Borrows the caller's Tokio runtime for the short-lived binary-install
+/// control path. It deliberately owns no runtime, threads, or global state.
+/// Runtime Server I/O remains server-owned; this only prevents a nested client
+/// runtime while legacy synchronous callers are migrated to async APIs.
+pub struct RuntimeServerClientExecutor(tokio::runtime::Handle);
+
+impl RuntimeServerClientExecutor {
+    pub fn get() -> Result<Self, String> {
+        tokio::runtime::Handle::try_current()
+            .map(Self)
+            .map_err(|error| format!("ASP caller Tokio runtime is unavailable: {error}"))
+    }
+
+    pub fn block_on<F>(&self, future: F) -> F::Output
+    where
+        F: Future,
+    {
+        let handle = self.0.clone();
+        tokio::task::block_in_place(move || handle.block_on(future))
     }
 }

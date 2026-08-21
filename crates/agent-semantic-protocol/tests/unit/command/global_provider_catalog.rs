@@ -464,8 +464,8 @@ async fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
     std::fs::remove_dir_all(root).expect("remove catalog contract root");
 }
 
-#[test]
-fn clean_state_home_admits_empty_runtime_catalog_without_weakening_strict_reads() {
+#[tokio::test]
+async fn clean_state_home_admits_empty_runtime_catalog_without_weakening_strict_reads() {
     let _environment_lock = ENVIRONMENT_LOCK
         .lock()
         .expect("global provider catalog environment lock");
@@ -486,6 +486,15 @@ fn clean_state_home_admits_empty_runtime_catalog_without_weakening_strict_reads(
         .expect("clean State Home must admit an empty runtime provider catalog");
     assert_eq!(readiness.provider_count, 0);
     assert!(readiness.catalog_generation.starts_with("blake3-256:"));
+
+    let runtime_catalog = catalog::load_runtime_provider_catalog(&state_home)
+        .await
+        .expect("Runtime daemon must consume the canonical empty catalog");
+    let no_provider = match runtime_catalog.runtime_launch(&state_home, "rust") {
+        Ok(_) => panic!("empty catalog must not dispatch a provider"),
+        Err(error) => error,
+    };
+    assert!(no_provider.contains("Runtime search provider is not registered"));
 
     let strict = catalog::read_global_provider_catalog_readiness(&state_home)
         .expect_err("provider dispatch must still reject a missing catalog");

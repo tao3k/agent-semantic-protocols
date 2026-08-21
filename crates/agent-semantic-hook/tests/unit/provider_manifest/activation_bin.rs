@@ -25,7 +25,7 @@ fn default_activation_uses_state_home_runtime_provider_receipt() {
         .find(|provider| provider.language_id == "rust")
         .expect("rust provider activated from State Home runtime bin");
 
-    assert_eq!(rust.binary, "rs-harness");
+    assert_eq!(rust.binary, "asp-rust");
     assert!(
         rust.provider_command_prefix.is_empty(),
         "State Home v1 activation must persist only the logical provider basename"
@@ -207,9 +207,13 @@ fn top_level_asp_toml_no_longer_configures_provider_activation() {
 pub(crate) fn install_state_home_provider(
     state_home: &std::path::Path,
     language_id: &str,
-    provider_id: &str,
-    binary: &str,
+    _provider_id: &str,
+    _binary: &str,
 ) -> std::path::PathBuf {
+    let registered = agent_semantic_hook::registered_provider_binary_v1(language_id)
+        .expect("registered provider fixture identity");
+    let provider_id = registered.provider_id().as_str();
+    let binary = registered.binary();
     let provider_bin = state_home.join("runtime").join("bin").join(binary);
     fs::create_dir_all(provider_bin.parent().expect("provider bin parent"))
         .expect("create State Home runtime bin");

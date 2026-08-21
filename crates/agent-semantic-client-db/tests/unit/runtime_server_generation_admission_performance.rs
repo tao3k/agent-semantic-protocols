@@ -9,18 +9,20 @@ use super::{candidate_identity, completed_generation};
 #[tokio::test(flavor = "multi_thread")]
 async fn unchanged_merkle_admission_performs_zero_owner_rescans() {
     let project_root = std::env::temp_dir().join("asp-unchanged-merkle-candidate-cache");
-    let candidate = candidate_identity();
-    agent_semantic_client_db::runtime_server_admission::record_workspace_generation_candidate(
-        project_root.clone(),
-        candidate.clone(),
-    )
-    .expect("seed resident candidate identity");
-
     let observed = agent_semantic_client_db::runtime_server_admission::
         discover_workspace_generation_candidate(&project_root)
         .await
         .expect("unchanged candidate resolves from resident identity");
-    assert_eq!(observed, candidate);
+    assert_eq!(
+        observed.candidate_generation.authorities,
+        vec![agent_semantic_runtime::git::RepositoryCandidateAuthority::ServerResident],
+        "unchanged non-Git workspace must retain the ServerResident identity"
+    );
+    let repeated = agent_semantic_client_db::runtime_server_admission::
+        discover_workspace_generation_candidate(&project_root)
+        .await
+        .expect("repeated unchanged candidate resolves from resident identity");
+    assert_eq!(repeated, observed, "unchanged Merkle identity must be stable");
 }
 
 #[tokio::test(flavor = "multi_thread")]

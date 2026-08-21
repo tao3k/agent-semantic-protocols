@@ -24,10 +24,15 @@ pub fn record_workspace_generation_candidate(
     candidate: WorkspaceGenerationCandidateIdentity,
 ) -> Result<(), String> {
     candidate.validate()?;
-    let cell = Arc::new(tokio::sync::OnceCell::new());
-    cell.set(Ok(candidate))
-        .map_err(|_| "workspace generation candidate cache was initialized twice".to_owned())?;
-    candidate_cache().insert(project_root, cell);
+    // A completed generation is immutable, but it is not a valid input cache
+    // for the next generation: the workspace may have changed before the next
+    // query-demand admission. Keeping it here made invalidate/rebuild reuse an
+    // obsolete canonical snapshot and fail with source-snapshot drift.
+    //
+    // Candidate discovery remains coalesced only while one discovery is in
+    // flight. The Runtime Server admission owns all subsequent generation
+    // serialization and publication.
+    candidate_cache().remove(&project_root);
     Ok(())
 }
 
@@ -104,10 +109,11 @@ pub async fn discover_workspace_generation_candidate_with_cancellation(
         .or_insert_with(|| Arc::new(tokio::sync::OnceCell::new()))
         .clone();
     let discovery_root = project_root.clone();
+    let resident_root = discovery_root.clone();
     let discovery_cancellation = cancellation.clone();
     let result = cell
         .get_or_init(|| async move {
-            tokio::task::spawn_blocking(move || {
+            Ok(tokio::task::spawn_blocking(move || {
                 agent_semantic_runtime::git::discover_repository_candidate_snapshot_cancellable(
                     &discovery_root,
                     &discovery_cancellation,
@@ -117,14 +123,39 @@ pub async fn discover_workspace_generation_candidate_with_cancellation(
             .map_err(|error| format!("workspace candidate discovery task failed: {error}"))?
             .map_err(|error| format!("discover workspace repository candidates: {error}"))?
             .map(|snapshot| WorkspaceGenerationCandidateIdentity::from_snapshot(&snapshot))
-            .ok_or_else(|| {
-                "workspace generation admission requires a Git candidate snapshot".to_owned()
-            })
+            .unwrap_or_else(|| resident_non_git_candidate(&resident_root)))
         })
         .await
         .clone();
     candidate_cache().remove_if(&project_root, |_, cached| Arc::ptr_eq(cached, &cell));
     result
+}
+
+fn resident_non_git_candidate(project_root: &std::path::Path) -> WorkspaceGenerationCandidateIdentity {
+    // This identity is deliberately path-scoped, not a filesystem owner scan.
+    // The Server-owned generation transaction supplies source/overlay evidence;
+    // a non-Git workspace must not be rejected or force owner rescans merely to
+    // manufacture a Git candidate.
+    let root = std::fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_path_buf());
+    let root_text = root.to_string_lossy();
+    let candidate_generation = format!(
+        "blake3:{}",
+        blake3::hash(format!("asp-runtime-server-resident-candidate-v1:{root_text}").as_bytes())
+            .to_hex()
+    );
+    let policy_overlay_digest = format!(
+        "blake3:{}",
+        blake3::hash(format!("asp-runtime-server-resident-policy-v1:{root_text}").as_bytes())
+            .to_hex()
+    );
+    WorkspaceGenerationCandidateIdentity {
+        candidate_generation: agent_semantic_runtime::git::RepositoryCandidateGeneration {
+            algorithm: "blake3-worktree-state-v1".to_owned(),
+            digest: candidate_generation,
+            authorities: vec![agent_semantic_runtime::git::RepositoryCandidateAuthority::ServerResident],
+        },
+        policy_overlay_digest,
+    }
 }
 
 pub struct WorkspaceGenerationBuild {

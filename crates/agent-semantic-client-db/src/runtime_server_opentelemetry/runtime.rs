@@ -75,6 +75,23 @@ pub struct RuntimeServerOpenTelemetry {
     query_socket_path: std::path::PathBuf,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RuntimePressurePersistenceState {
+    memory_budget_exceeded: bool,
+    event_loop_lag_budget_exceeded: bool,
+    open_descriptor_budget_exceeded: bool,
+}
+
+impl RuntimePressurePersistenceState {
+    fn from_observation(observation: super::process_memory::ProcessMemoryObservation) -> Self {
+        Self {
+            memory_budget_exceeded: observation.budget_exceeded(),
+            event_loop_lag_budget_exceeded: observation.event_loop_lag_budget_exceeded(),
+            open_descriptor_budget_exceeded: observation.open_descriptor_budget_exceeded(),
+        }
+    }
+}
+
 static ACTIVE_RUNTIME_TELEMETRY: std::sync::OnceLock<
     std::sync::Mutex<Option<(u64, RuntimeServerOpenTelemetryHandle)>>,
 > = std::sync::OnceLock::new();
@@ -408,7 +425,8 @@ async fn run_resident_telemetry_lane(
         observation.record_runtime_process_memory(memory);
         record_observation(&tracer, observation, &live_store);
     }
-    let mut memory_observation_ticks = 0_u64;
+    let mut persisted_pressure_state =
+        initial_process_memory.map(RuntimePressurePersistenceState::from_observation);
     let mut recorded_memory_watermarks = HashMap::<String, u64>::new();
     loop {
         tokio::select! {
@@ -480,20 +498,30 @@ async fn run_resident_telemetry_lane(
                     return Err("Runtime Server process-memory sampler closed unexpectedly".to_owned());
                 }
                 latest_process_memory = *memory_receiver.borrow_and_update();
-                memory_observation_ticks = memory_observation_ticks.saturating_add(1);
-                if memory_observation_ticks.is_multiple_of(4)
+                let next_pressure_state =
+                    latest_process_memory.map(RuntimePressurePersistenceState::from_observation);
+                if next_pressure_state != persisted_pressure_state
                     && let Some(memory) = latest_process_memory
                 {
                     let mut observation = RuntimePerformanceObservation::new(
                         "runtime-server",
-                        "process-memory-sample",
+                        "process-resource-state-transition",
                         0,
                         1,
-                        "within-budget",
+                        if next_pressure_state.is_some_and(|state| {
+                            state.memory_budget_exceeded
+                                || state.event_loop_lag_budget_exceeded
+                                || state.open_descriptor_budget_exceeded
+                        }) {
+                            "budget-exceeded"
+                        } else {
+                            "within-budget"
+                        },
                     );
                     observation.record_runtime_process_memory(memory);
                     record_observation(&tracer, observation, &live_store);
                 }
+                persisted_pressure_state = next_pressure_state;
                 let active_operations = active_memory_operations();
                 recorded_memory_watermarks.retain(|operation_id, _| {
                     active_operations.iter().any(|(active_id, _)| active_id == operation_id)

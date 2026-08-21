@@ -94,3 +94,23 @@ fn turso_round_trip_returns_only_a_validated_merkle_projection() {
 
     std::fs::remove_dir_all(root).expect("remove exact-selector test directory");
 }
+
+#[test]
+fn source_index_relation_publication_omits_unqueryable_owner_and_keeps_bound_relation() {
+    use agent_semantic_content_identity::provider_projection_relation::{
+        ProviderProjectedRelation, ProviderProjectedRelationEndpoint,
+        PROVIDER_RELATION_ITEM_ENDPOINT_KIND, PROVIDER_RELATION_OWNER_ENDPOINT_KIND,
+    };
+    let path = "benches/query_search_microbench.rs";
+    let source = b"fn bench() {}\n";
+    let endpoint = |kind: &str, id: &str| ProviderProjectedRelationEndpoint { kind: kind.to_owned(), id: id.to_owned() };
+    let relation = || ProviderProjectedRelation { from: endpoint(PROVIDER_RELATION_OWNER_ENDPOINT_KIND, &format!("owner:{path}")), kind: "references".to_owned(), to: endpoint(PROVIDER_RELATION_ITEM_ENDPOINT_KIND, "selector:target") };
+    let request = |selectors| super::ClientDbSourceIndexImportRequest { source_blobs: Default::default(), generation_id: super::CacheGenerationId::from("relation-publication"), project_root: super::temp_root("relation-publication"), schema_id: super::SemanticSchemaId::from(super::CLIENT_DB_SOURCE_INDEX_SCHEMA_ID), schema_version: super::SemanticSchemaVersion::from(super::CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION), selector_source: super::ClientDbSourceIndexSource::from(super::CLIENT_DB_SOURCE_INDEX_PROVIDER_ID), file_hashes: vec![super::ClientCacheFileHash { path: path.to_owned(), sha256: "0".repeat(64), byte_len: source.len() as u64, mtime_ms: 0 }], files: vec![super::ClientDbSourceIndexImportFile { relative_path: path.to_owned(), language_id: super::LanguageId::from("rust"), provider_id: super::ProviderId::from("rs-harness"), text: String::from_utf8_lossy(source).into_owned(), selectors, relations: vec![relation()] }] };
+    let omitted = crate::source_index_fixture::build_fixture_source_index_import(request(vec![])).expect("owner materializes");
+    assert_eq!(omitted.owners.len(), 1);
+    assert!(omitted.source_blobs.get(&super::ClientDbSourceIndexPath::from(path)).is_some());
+    assert!(omitted.relations.is_empty());
+    let selector = super::rust_selector_fixture(path, "rust://benches/query_search_microbench.rs#item/function/bench", "selector:target", source);
+    let retained = crate::source_index_fixture::build_fixture_source_index_import(request(vec![selector])).expect("bound relation materializes");
+    assert_eq!(retained.relations.len(), 1);
+}

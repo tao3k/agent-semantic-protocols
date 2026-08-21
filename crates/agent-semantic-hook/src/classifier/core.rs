@@ -256,6 +256,12 @@ fn with_hook_match_receipt(
     config: &ClientHookConfig,
 ) -> HookDecision {
     let mut decision = with_action_receipt_fields(decision, payload, actions);
+    if let Some(command) = payload_command(payload) {
+        // Compound commands are matched per parser-owned stage, but a Hook
+        // receipt must retain the exact Host envelope that was authorized or
+        // denied rather than a re-rendered inner stage.
+        decision.subject.command = Some(command);
+    }
     if decision.reason_kind == ReasonKind::SubagentReceiptRequired
         && let Some(command) = payload_command(payload)
         && !decision.message.contains(&command)
@@ -674,7 +680,8 @@ fn classify_tool_actions(
         event,
         payload: _,
     } = request;
-    let mut first_allow = None;
+    let mut highest_denial = None;
+    let mut highest_allow = None;
     for action in actions {
         let runtime_candidate = classify_runtime_binary_action_v1(
             request.platform,
@@ -686,17 +693,19 @@ fn classify_tool_actions(
         let Some(candidate) = higher_priority_candidate(runtime_candidate, config_candidate) else {
             continue;
         };
+        if candidate.decision.decision == crate::DecisionKind::Allow && candidate.terminal {
+            return Some(candidate);
+        }
         match candidate.decision.decision {
             crate::DecisionKind::Allow => {
-                if candidate.terminal {
-                    return Some(candidate);
-                }
-                first_allow.get_or_insert(candidate);
+                highest_allow = higher_priority_candidate(highest_allow, Some(candidate));
             }
-            crate::DecisionKind::Block | crate::DecisionKind::Deny => return Some(candidate),
+            crate::DecisionKind::Block | crate::DecisionKind::Deny => {
+                highest_denial = higher_priority_candidate(highest_denial, Some(candidate));
+            }
         }
     }
-    first_allow
+    highest_denial.or(highest_allow)
 }
 
 pub(crate) fn materialize_apply_patch_decision(

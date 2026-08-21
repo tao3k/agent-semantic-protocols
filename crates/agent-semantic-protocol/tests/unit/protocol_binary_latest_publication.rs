@@ -1,7 +1,7 @@
 use super::{
     ProtocolBinaryInstallPlan, SEMANTIC_AGENT_PROTOCOL_BIN, ensure_protocol_binary_installed,
     install_protocol_binary_target, next_protocol_binary_publish_sequence,
-    protocol_binary_artifact_path_digest, prune_runtime_binary_artifacts,
+    protocol_binary_artifact_path_digest,
 };
 use std::{
     env, fs,
@@ -31,6 +31,7 @@ async fn published_runtime_identity_lookup_never_reads_artifact_bytes() {
         &artifact_root,
         &RuntimeBinaryIdentityV1::asp_bootstrap(),
     )
+    .await
     .expect("publish digest-addressed ASP artifact");
 
     let mut samples = Vec::with_capacity(10_000);
@@ -64,8 +65,8 @@ fn fixture_source(root: &Path, name: &str, bytes: &[u8]) -> PathBuf {
 use super::RuntimeBinaryIdentityV1;
 use agent_semantic_hook::registered_provider_binaries_v1;
 
-#[test]
-fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
+#[tokio::test]
+async fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
     let root = fixture_root("latest-aliases");
     let runtime = root.join("runtime");
     let artifact_root = runtime.join("artifacts");
@@ -74,14 +75,16 @@ fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
     let source = fixture_source(&root, "source-asp", b"protocol-binary-v1");
     let plan = ProtocolBinaryInstallPlan {
         current_exe: source,
+        explicit_candidate_source: None,
         target: stable_entry.clone(),
         artifact_root: artifact_root.clone(),
         managed_path_aliases: vec![alias.clone()],
         binary_identity: RuntimeBinaryIdentityV1::asp_bootstrap(),
     };
 
-    let installed =
-        ensure_protocol_binary_installed(&plan).expect("install Lattice protocol binary");
+    let installed = ensure_protocol_binary_installed(&plan)
+        .await
+        .expect("install Lattice protocol binary");
     assert_eq!(installed.path, stable_entry);
     assert!(
         fs::symlink_metadata(&stable_entry)
@@ -117,6 +120,7 @@ fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
         &artifact_root,
         &harness_identity,
     )
+    .await
     .expect("install immutable harness binary");
     assert_eq!(harness_install.path, harness_stable);
     assert_eq!(
@@ -132,6 +136,7 @@ fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
         &artifact_root,
         &RuntimeBinaryIdentityV1::asp_bootstrap(),
     )
+    .await
     .expect("switch asp latest independently");
     assert_ne!(second_asp_install.artifact_digest, asp_digest);
     assert_eq!(
@@ -147,8 +152,8 @@ fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
     fs::remove_dir_all(&root).expect("remove protocol binary fixture");
 }
 
-#[test]
-fn runtime_publication_rejects_target_name_inference_and_path_shaped_identities() {
+#[tokio::test]
+async fn runtime_publication_rejects_target_name_inference_and_path_shaped_identities() {
     assert!(RuntimeBinaryIdentityV1::from_registered_provider("../rs-harness").is_err());
     assert!(RuntimeBinaryIdentityV1::from_registered_provider("bin/rs-harness").is_err());
 
@@ -160,14 +165,15 @@ fn runtime_publication_rejects_target_name_inference_and_path_shaped_identities(
         .expect("registered harness binary identity");
 
     let error = install_protocol_binary_target(&source, &wrong_target, &artifact_root, &identity)
+        .await
         .expect_err("target filename must not override ProviderRegistry identity");
     assert!(error.contains("does not match declared binary identity"));
 
     fs::remove_dir_all(&root).expect("remove protocol binary fixture");
 }
 
-#[test]
-fn registered_scheme_and_python_dangling_entries_are_atomically_republished() {
+#[tokio::test]
+async fn registered_scheme_and_python_dangling_entries_are_atomically_republished() {
     let registrations = registered_provider_binaries_v1();
     for language_id in ["gerbil-scheme", "python"] {
         let registration = registrations
@@ -193,6 +199,7 @@ fn registered_scheme_and_python_dangling_entries_are_atomically_republished() {
             .unwrap_or_else(|error| panic!("registered identity for `{provider_id}`: {error}"));
 
         let installed = install_protocol_binary_target(&source, &target, &artifact_root, &identity)
+            .await
             .unwrap_or_else(|error| panic!("publish `{language_id}` / `{provider_id}`: {error}"));
         assert_eq!(installed.status, "updated", "{provider_id}");
         assert_eq!(installed.path, target, "{provider_id}");
@@ -220,8 +227,8 @@ fn registered_scheme_and_python_dangling_entries_are_atomically_republished() {
     }
 }
 
-#[test]
-fn loop_or_escape_fails_before_lattice_profile_switch() {
+#[tokio::test]
+async fn loop_or_escape_fails_before_lattice_profile_switch() {
     let root = fixture_root("fail-closed");
     let runtime = root.join("runtime");
     let artifact_root = runtime.join("artifacts");
@@ -229,6 +236,7 @@ fn loop_or_escape_fails_before_lattice_profile_switch() {
     let identity = RuntimeBinaryIdentityV1::asp_bootstrap();
     let first = fixture_source(&root, "source-asp-v1", b"protocol-binary-v1");
     install_protocol_binary_target(&first, &stable_entry, &artifact_root, &identity)
+        .await
         .expect("install first Lattice protocol binary");
 
     fs::remove_file(&stable_entry).expect("remove stable entry");
@@ -237,6 +245,7 @@ fn loop_or_escape_fails_before_lattice_profile_switch() {
     let second = fixture_source(&root, "source-asp-v2", b"protocol-binary-v2");
     let escape_error =
         install_protocol_binary_target(&second, &stable_entry, &artifact_root, &identity)
+            .await
             .expect_err("escaped stable entry must fail closed");
     assert!(escape_error.contains("escapes immutable artifact root"));
     assert_eq!(
@@ -248,6 +257,7 @@ fn loop_or_escape_fails_before_lattice_profile_switch() {
     std::os::unix::fs::symlink(&stable_entry, &stable_entry).expect("stage looping stable entry");
     let loop_error =
         install_protocol_binary_target(&second, &stable_entry, &artifact_root, &identity)
+            .await
             .expect_err("looping stable entry must fail closed");
     assert!(loop_error.contains("symlink chain loops"));
     assert_eq!(
@@ -258,8 +268,8 @@ fn loop_or_escape_fails_before_lattice_profile_switch() {
     fs::remove_dir_all(&root).expect("remove protocol binary fixture");
 }
 
-#[test]
-fn lattice_reconciliation_retains_only_reachable_digest_generations() {
+#[tokio::test]
+async fn lattice_reconciliation_retains_only_reachable_digest_generations() {
     let root = fixture_root("retention");
     let runtime = root.join("runtime");
     let artifact_root = runtime.join("artifacts");
@@ -277,6 +287,7 @@ fn lattice_reconciliation_retains_only_reachable_digest_generations() {
             format!("protocol-binary-{version}").as_bytes(),
         );
         install_protocol_binary_target(&source, &asp_target, &artifact_root, &asp_identity)
+            .await
             .expect("publish ASP generation");
         let source = fixture_source(
             &root,
@@ -284,10 +295,16 @@ fn lattice_reconciliation_retains_only_reachable_digest_generations() {
             format!("harness-binary-{version}").as_bytes(),
         );
         install_protocol_binary_target(&source, &harness_target, &artifact_root, &harness_identity)
+            .await
             .expect("publish harness generation");
     }
 
-    let receipt = prune_runtime_binary_artifacts(&artifact_root).expect("prune artifact history");
+    let receipt =
+        agent_semantic_runtime::runtime_artifact_retention::prune_unreachable_runtime_artifacts(
+            &artifact_root,
+        )
+        .await
+        .expect("prune artifact history");
     assert_eq!(receipt.scanned_generation_count, 8);
     assert_eq!(receipt.retained_generation_count, 2);
     assert_eq!(receipt.removed_generation_count, 6);
@@ -300,4 +317,95 @@ fn lattice_reconciliation_retains_only_reachable_digest_generations() {
     assert!(artifact_root.join("retention-receipt.v1.json").is_file());
 
     fs::remove_dir_all(&root).expect("remove protocol binary fixture");
+}
+
+#[tokio::test]
+async fn developer_publication_links_verified_build_output_without_artifact_retention() {
+    let root = fixture_root("developer-direct-authority");
+    let state_home = root.join("state");
+    let runtime_root = state_home.join("runtime");
+    let artifact_root = runtime_root.join("artifacts");
+    let target = runtime_root.join("bin/asp");
+    let checkout = root.join("checkout");
+    let source = checkout.join("target/debug/asp");
+    fs::create_dir_all(source.parent().expect("developer build directory"))
+        .expect("create developer build directory");
+    fs::create_dir_all(&state_home).expect("create state home");
+    fs::write(
+        state_home.join("asp.toml"),
+        format!("[dev]\nenabled = true\nroot = {:?}\n", checkout),
+    )
+    .expect("write developer authority config");
+    fs::write(&source, b"developer-asp-v1").expect("write first developer binary");
+
+    install_protocol_binary_target(
+        &source,
+        &target,
+        &artifact_root,
+        &RuntimeBinaryIdentityV1::asp_bootstrap(),
+    )
+    .await
+    .expect("publish first developer binary");
+    assert_eq!(
+        fs::canonicalize(&target).expect("canonical developer target"),
+        fs::canonicalize(&source).expect("canonical developer source")
+    );
+    assert!(!artifact_root.join("blake3-256").exists());
+
+    fs::write(&source, b"developer-asp-v2").expect("write second developer binary");
+    install_protocol_binary_target(
+        &source,
+        &target,
+        &artifact_root,
+        &RuntimeBinaryIdentityV1::asp_bootstrap(),
+    )
+    .await
+    .expect("publish second developer binary");
+    assert_eq!(
+        fs::read(&target).expect("read active developer binary"),
+        b"developer-asp-v2"
+    );
+    assert!(!artifact_root.join("blake3-256").exists());
+
+    fs::remove_dir_all(root).expect("remove developer publication fixture");
+}
+
+#[tokio::test]
+async fn explicit_candidate_source_bytes_replace_existing_canonical_binary() {
+    let root = fixture_root("explicit-candidate-source");
+    let runtime = root.join("runtime");
+    let artifact_root = runtime.join("artifacts");
+    let target = runtime.join("bin").join(SEMANTIC_AGENT_PROTOCOL_BIN);
+    fs::create_dir_all(target.parent().expect("target parent")).expect("create target parent");
+
+    let old_source = fixture_source(&root, "old-source-asp", b"old-asp");
+    let candidate = fixture_source(&root, "candidate-asp", b"candidate-asp");
+    let old = install_protocol_binary_target(
+        &old_source,
+        &target,
+        &artifact_root,
+        &RuntimeBinaryIdentityV1::asp_bootstrap(),
+    )
+    .await
+    .expect("publish old canonical binary");
+
+    let plan = ProtocolBinaryInstallPlan {
+        current_exe: old_source,
+        explicit_candidate_source: Some(candidate),
+        target: target.clone(),
+        artifact_root: artifact_root.clone(),
+        managed_path_aliases: vec![],
+        binary_identity: RuntimeBinaryIdentityV1::asp_bootstrap(),
+    };
+
+    let installed = ensure_protocol_binary_installed(&plan)
+        .await
+        .expect("publish explicit candidate source");
+    assert_ne!(installed.artifact_digest, old.artifact_digest);
+    assert_eq!(
+        fs::read(&target).expect("read canonical target"),
+        b"candidate-asp"
+    );
+
+    fs::remove_dir_all(root).expect("remove explicit candidate fixture");
 }

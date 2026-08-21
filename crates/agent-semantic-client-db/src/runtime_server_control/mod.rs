@@ -5,11 +5,12 @@ mod frame;
 mod model;
 pub(crate) mod status_memory;
 
-pub use client::{call_runtime_server, ensure_runtime_server_workspace, reconcile_runtime_server};
+pub use client::{call_runtime_server, drain_previous_generation, ensure_runtime_server_workspace, reconcile_runtime_server};
 pub use endpoint::{
     RuntimeServerElection, acquire_runtime_server_election, bind_runtime_server_listener,
     prepare_runtime_server_endpoint, prepare_runtime_server_endpoint_in,
-    prepare_runtime_server_endpoint_with_workspace_store, publish_runtime_server_endpoint,
+    prepare_runtime_server_endpoint_with_workspace_store,
+    prepare_runtime_server_endpoint_with_workspace_store_and_identity, publish_runtime_server_endpoint,
     read_runtime_server_endpoint, runtime_server_connection_pool_capacity,
     runtime_server_connection_pool_size, runtime_server_endpoint_path,
     runtime_server_listener_backlog, runtime_server_runtime_base,

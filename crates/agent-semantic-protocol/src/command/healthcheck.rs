@@ -55,7 +55,7 @@ pub(super) async fn run_healthcheck_command(args: &[String]) -> Result<(), Strin
                 "degraded"
             },
             health.elapsed_micros,
-            health.resident.runtime_artifact_digest,
+            health.resident.runtime_binary_identity.value(),
             health.resident.transport_contract_digest,
             health.resident.workspace_entry_count,
         );

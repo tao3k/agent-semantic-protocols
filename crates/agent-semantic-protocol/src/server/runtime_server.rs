@@ -8,8 +8,6 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-#[path = "runtime_server_agent_config.rs"]
-mod runtime_server_agent_config;
 #[path = "runtime_server_daemon.rs"]
 mod runtime_server_daemon;
 #[path = "runtime_server_stop.rs"]
@@ -150,64 +148,73 @@ async fn run_control_status() -> Result<(), String> {
     let receipt = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Status,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.clone(),
         request_id,
     )
     .await?;
     print_receipt(&receipt).await
 }
 
-async fn await_healthy_runtime_server_after_spawn() -> Result<(), String> {
-    const STARTUP_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
+pub(super) async fn await_healthy_runtime_server_after_spawn() -> Result<(), String> {
+    const STARTUP_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
+    tokio::time::timeout(
+        STARTUP_DEADLINE,
+        await_healthy_runtime_server_after_spawn_inner(),
+    )
+    .await
+    .map_err(|_| {
+        serde_json::json!({
+            "schemaId": "agent.semantic-protocols.runtime-server-readiness",
+            "schemaVersion": "1",
+            "state": "failed",
+            "reasonKind": "runtime-server-readiness-deadline-exceeded",
+            "deadlineMillis": STARTUP_DEADLINE.as_millis(),
+        }).to_string()
+    })?
+}
+
+async fn await_healthy_runtime_server_after_spawn_inner() -> Result<(), String> {
     const PROBE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(10);
 
-    let executable = std::env::current_exe().map_err(|error| {
-        format!("failed to resolve ASP executable for Runtime Server readiness: {error}")
-    })?;
-    let deadline = tokio::time::Instant::now() + STARTUP_BUDGET;
-    let mut last_state = "endpoint-unpublished".to_owned();
-
+    let state_home = state_home()?;
     loop {
-        let output = tokio::process::Command::new(&executable)
-            .args(["server", "status"])
-            .output()
-            .await
-            .map_err(|error| format!("failed to probe Runtime Server readiness: {error}"))?;
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines().rev() {
-                let Ok(receipt) = serde_json::from_str::<serde_json::Value>(line) else {
-                    continue;
-                };
-                if receipt.get("state").and_then(serde_json::Value::as_str) == Some("healthy") {
-                    return Ok(());
-                }
-                if let Some(state) = receipt.get("state").and_then(serde_json::Value::as_str) {
-                    last_state = state.to_owned();
-                } else if let Some(reason) =
-                    receipt.get("reason").and_then(serde_json::Value::as_str)
-                {
-                    last_state = reason.to_owned();
-                }
-                break;
+        if let Some(exit) =
+            agent_semantic_client_db::runtime_server_lifecycle::read_latest_owner_exit(&state_home).await?
+        {
+            return Err(serde_json::json!({
+                "schemaId": "agent.semantic-protocols.runtime-server-daemon-exit",
+                "schemaVersion": "1",
+                "state": "failed",
+                "ownerEpoch": exit.owner_epoch,
+                "cleanDrain": exit.clean_drain,
+                "errors": exit.errors,
+                "reasonKind": "runtime-server-daemon-terminal-before-readiness",
+            })
+            .to_string());
+        }
+        let last_state = match observe_runtime_server_readiness(&state_home).await {
+            Ok(receipt)
+                if receipt.state
+                    == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy =>
+            {
+                return Ok(());
             }
-        } else {
-            last_state = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        }
-
-        if tokio::time::Instant::now() >= deadline {
-            return Err(format!(
-                "Runtime Server owner spawned without publishing a healthy endpoint within {}ms: state={last_state} reasonKind=runtime-server-endpoint-publication-timeout",
-                STARTUP_BUDGET.as_millis()
-            ));
-        }
+            Ok(receipt) => receipt.reason.unwrap_or_else(|| format!("{:?}", receipt.state)),
+            Err(error) => error,
+        };
+        // A detached Runtime owner owns readiness.  The client never expires a
+        // healthy-in-progress owner with an arbitrary wall-clock budget; it
+        // waits for either the immutable status-memory publication above or the
+        // daemon-owned terminal receipt checked before it.
+        let _ = last_state;
         tokio::time::sleep(PROBE_INTERVAL).await;
     }
 }
 
 async fn run_start() -> Result<(), String> {
     run_start_inner().await?;
-    await_healthy_runtime_server_after_spawn().await
+    await_healthy_runtime_server_after_spawn().await?;
+    run_status().await
 }
 
 async fn run_start_inner() -> Result<(), String> {
@@ -249,7 +256,8 @@ async fn run_status() -> Result<(), String> {
 
 async fn run_restart() -> Result<(), String> {
     run_restart_inner().await?;
-    await_healthy_runtime_server_after_spawn().await
+    await_healthy_runtime_server_after_spawn().await?;
+    run_status().await
 }
 
 async fn run_restart_inner() -> Result<(), String> {
@@ -265,9 +273,9 @@ async fn restart_runtime_server_at(
 ) -> Result<Option<super::runtime_server_supervisor::RuntimeServerSpawnReceipt>, String> {
     let endpoint_path = runtime_server_endpoint_path(&state_home)?;
     if let Ok(endpoint) = read_supervisor_endpoint(&endpoint_path).await {
-        crate::server::runtime_server_exit_receipt::remove_stale(&state_home).await?;
+        agent_semantic_client_db::runtime_server_lifecycle::remove_stale(&state_home).await?;
         super::runtime_server_supervisor::request_runtime_server_drain(&state_home).await?;
-        let exit = crate::server::runtime_server_exit_receipt::await_owner_exit(
+        let exit = agent_semantic_client_db::runtime_server_lifecycle::await_owner_exit(
             &state_home,
             endpoint.owner_epoch,
         )
@@ -320,7 +328,7 @@ pub(crate) async fn observe_agent_facing_runtime_server(
     call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Status,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.clone(),
         request_id,
     )
     .await
@@ -371,9 +379,6 @@ async fn print_receipt<T: serde::Serialize>(receipt: &T) -> Result<(), String> {
         .map_err(|error| format!("failed to flush Runtime Server receipt: {error}"))?;
     Ok(())
 }
-
-#[path = "runtime_server_singleton_socket.rs"]
-mod singleton_socket;
 
 pub(crate) fn state_home() -> Result<PathBuf, String> {
     if let Some(path) = std::env::var_os("ASP_STATE_HOME").filter(|value| !value.is_empty()) {

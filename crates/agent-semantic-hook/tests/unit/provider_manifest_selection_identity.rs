@@ -45,7 +45,7 @@ fn runtime_binary_identity_reuses_active_receipt_and_fails_closed_on_drift() {
     .expect("write activation");
     let digest = agent_semantic_content_identity::file_content_digest_v1(&binary)
         .expect("runtime binary digest");
-    crate::materialize_active_asp_artifact_receipt(&binary, &digest, &activation, &[])
+    crate::materialize_active_asp_artifact_receipt(&binary, &digest, &activation)
         .expect("materialize active artifact receipt");
     crate::verify_active_asp_artifact_receipt(&activation, &[&binary])
         .expect("verify active artifact receipt fixture");

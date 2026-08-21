@@ -98,7 +98,7 @@ negativeCommands = [
 
 [[rules]]
 id = "deny-agent-search-json"
-positiveCommands = ["rs-harness search pipe Effect --workspace . --json", "ts-harness search pipe Effect --workspace . --json"]
+positiveCommands = ["asp-rust search pipe Effect --workspace . --json", "ts-harness search pipe Effect --workspace . --json"]
 negativeCommands = ["asp healthcheck --json", "asp paths --json"]
 
 [[rules]]

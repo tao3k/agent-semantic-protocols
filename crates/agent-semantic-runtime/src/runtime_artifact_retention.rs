@@ -1,28 +1,24 @@
-//! Reachability-based retention for immutable runtime binary artifacts.
-
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-const SCHEMA_ID: &str = "agent.semantic-protocols.runtime-artifact-retention-receipt";
-const ROLLBACK_GENERATIONS_PER_BINARY: usize = 0;
+const SCHEMA_ID: &str = "agent.semantic-protocols.runtime-artifact-retention-receipt.v1";
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct RuntimeArtifactRetentionReceipt {
-    schema_id: String,
-    schema_version: String,
-    algorithm: String,
-    rollback_generations_per_binary: usize,
-    pub(crate) scanned_generation_count: usize,
-    pub(crate) retained_generation_count: usize,
-    pub(crate) removed_generation_count: usize,
-    pub(crate) ignored_entry_count: usize,
-    pub(crate) reclaimed_bytes: u64,
-    pub(crate) protected_digests: Vec<String>,
+pub struct RuntimeArtifactRetentionReceipt {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub algorithm: String,
+    pub rollback_generations_per_binary: usize,
+    pub scanned_generation_count: usize,
+    pub retained_generation_count: usize,
+    pub removed_generation_count: usize,
+    pub ignored_entry_count: usize,
+    pub reclaimed_bytes: u64,
+    pub protected_digests: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -30,14 +26,32 @@ struct ArtifactGeneration {
     bytes: u64,
 }
 
-pub(crate) fn prune_runtime_binary_artifacts(
+/// Removes every digest generation that is not reachable from a stable Runtime slot.
+///
+/// Runtime owns both publication roots. Protocol/provider clients must not add their
+/// own retention policy or retain rollback generations outside this reachability set.
+pub async fn prune_unreachable_runtime_artifacts(
+    artifact_root: &Path,
+) -> Result<RuntimeArtifactRetentionReceipt, String> {
+    let artifact_root = artifact_root.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        prune_unreachable_runtime_artifacts_blocking(&artifact_root)
+    })
+    .await
+    .map_err(|error| format!("runtime artifact retention task failed: {error}"))?
+}
+
+pub(crate) fn prune_unreachable_runtime_artifacts_blocking(
     artifact_root: &Path,
 ) -> Result<RuntimeArtifactRetentionReceipt, String> {
     let algorithm_root = artifact_root.join("blake3-256");
     let (generations, ignored_entry_count) = runtime_artifact_generations(&algorithm_root)?;
-    let protected = protected_runtime_artifact_digests(artifact_root)?;
+    let canonical_algorithm_root =
+        std::fs::canonicalize(&algorithm_root).unwrap_or_else(|_| algorithm_root.clone());
+    let protected = protected_runtime_artifact_digests(artifact_root, &canonical_algorithm_root)?;
     let mut reclaimed_bytes = 0_u64;
     let mut removed_generation_count = 0_usize;
+
     for (digest, generation) in &generations {
         if protected.contains(digest) {
             continue;
@@ -52,8 +66,8 @@ pub(crate) fn prune_runtime_binary_artifacts(
     let receipt = RuntimeArtifactRetentionReceipt {
         schema_id: SCHEMA_ID.to_owned(),
         schema_version: "1".to_owned(),
-        algorithm: "blake3-256".to_owned(),
-        rollback_generations_per_binary: ROLLBACK_GENERATIONS_PER_BINARY,
+        algorithm: "reachable-stable-runtime-slots-v1".to_owned(),
+        rollback_generations_per_binary: 0,
         scanned_generation_count: generations.len(),
         retained_generation_count: generations.len() - removed_generation_count,
         removed_generation_count,
@@ -63,34 +77,6 @@ pub(crate) fn prune_runtime_binary_artifacts(
     };
     publish_retention_receipt(artifact_root, &receipt)?;
     Ok(receipt)
-}
-
-fn protected_runtime_artifact_digests(artifact_root: &Path) -> Result<BTreeSet<String>, String> {
-    let runtime_root = artifact_root.parent().ok_or_else(|| {
-        format!(
-            "runtime artifact root has no runtime parent: {}",
-            artifact_root.display()
-        )
-    })?;
-    let bin_root = runtime_root.join("bin");
-    if !bin_root.is_dir() {
-        return Ok(BTreeSet::new());
-    }
-    let mut protected = BTreeSet::new();
-    for entry in fs::read_dir(&bin_root)
-        .map_err(|error| format!("failed to read {}: {error}", bin_root.display()))?
-    {
-        let entry = entry
-            .map_err(|error| format!("failed to read entry in {}: {error}", bin_root.display()))?;
-        let Ok(identity) = fs::canonicalize(entry.path()) else {
-            continue;
-        };
-        if let Some(digest) = super::protocol_binary_digest_from_canonical_artifact_path(&identity)
-        {
-            protected.insert(digest);
-        }
-    }
-    Ok(protected)
 }
 
 fn runtime_artifact_generations(
@@ -111,9 +97,6 @@ fn runtime_artifact_generations(
             )
         })?;
         let name = entry.file_name();
-        if name == "latest" {
-            continue;
-        }
         let Some(digest) = name.to_str().filter(|value| valid_digest(value)) else {
             ignored += 1;
             continue;
@@ -152,6 +135,64 @@ fn artifact_generation(path: PathBuf) -> Result<(ArtifactGeneration, usize), Str
     Ok((ArtifactGeneration { bytes }, ignored))
 }
 
+fn protected_runtime_artifact_digests(
+    artifact_root: &Path,
+    algorithm_root: &Path,
+) -> Result<BTreeSet<String>, String> {
+    let runtime_root = artifact_root.parent().ok_or_else(|| {
+        format!(
+            "runtime artifact root has no runtime parent: {}",
+            artifact_root.display()
+        )
+    })?;
+    let mut protected = BTreeSet::new();
+    for stable_root in [runtime_root.join("bin"), runtime_root.join("profiles")] {
+        collect_reachable_digests(&stable_root, algorithm_root, &mut protected)?;
+    }
+    Ok(protected)
+}
+
+fn collect_reachable_digests(
+    path: &Path,
+    algorithm_root: &Path,
+    protected: &mut BTreeSet<String>,
+) -> Result<(), String> {
+    if !path.is_dir() {
+        return Ok(());
+    }
+    for entry in
+        fs::read_dir(path).map_err(|error| format!("failed to read {}: {error}", path.display()))?
+    {
+        let entry = entry
+            .map_err(|error| format!("failed to read entry in {}: {error}", path.display()))?;
+        let entry_path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("failed to inspect {}: {error}", entry_path.display()))?;
+        if file_type.is_dir() && !file_type.is_symlink() {
+            collect_reachable_digests(&entry_path, algorithm_root, protected)?;
+            continue;
+        }
+        let Ok(identity) = fs::canonicalize(&entry_path) else {
+            continue;
+        };
+        let Ok(relative) = identity.strip_prefix(algorithm_root) else {
+            continue;
+        };
+        let Some(digest) = relative
+            .components()
+            .next()
+            .and_then(|part| part.as_os_str().to_str())
+        else {
+            continue;
+        };
+        if valid_digest(digest) {
+            protected.insert(digest.to_owned());
+        }
+    }
+    Ok(())
+}
+
 fn publish_retention_receipt(
     artifact_root: &Path,
     receipt: &RuntimeArtifactRetentionReceipt,
@@ -167,7 +208,8 @@ fn publish_retention_receipt(
         .map_err(|error| format!("failed to encode runtime artifact retention receipt: {error}"))?;
     fs::write(&staged, bytes)
         .map_err(|error| format!("failed to write {}: {error}", staged.display()))?;
-    super::atomic_replace_protocol_entry(&staged, &path)
+    fs::rename(&staged, &path)
+        .map_err(|error| format!("failed to publish {}: {error}", path.display()))
 }
 
 fn valid_digest(value: &str) -> bool {

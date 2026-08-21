@@ -317,10 +317,4 @@ fn install_binary_command() -> Command {
     Command::new("binary")
         .bin_name("asp install binary")
         .about("Install the ASP protocol binary")
-        .arg(
-            Arg::new("target")
-                .long("target")
-                .value_name("PATH")
-                .required(true),
-        )
 }

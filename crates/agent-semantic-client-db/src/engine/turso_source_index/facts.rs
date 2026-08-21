@@ -23,7 +23,10 @@ pub(super) async fn write_turso_source_index_rows(
     project_root: &str,
     file_hashes_json: &str,
     source_snapshot_json: &str,
-) -> Result<TursoSourceIndexWriteStats, String> {
+) -> Result<(
+    TursoSourceIndexWriteStats,
+    crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
+), String> {
     let cold_write_started = std::time::Instant::now();
     super::readiness::validate_turso_source_index_selector_projection_records(import)?;
     let imported_membership = turso_source_index_import_membership(import)?;
@@ -370,7 +373,7 @@ pub(super) async fn write_turso_source_index_rows(
             removed_owner_count: removed_owner_paths.len().min(u32::MAX as usize) as u32,
             posting_write_count: posting_count.min(u32::MAX as usize) as u32,
         };
-        Ok(stats)
+        Ok((stats, effective_materialization))
     }
     .await;
 

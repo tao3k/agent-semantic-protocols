@@ -22,7 +22,11 @@ impl RuntimeServer {
                 match signal {
                     Ok(()) => {
                         shutdown_handle.shutdown();
-                        serve.await
+                        // Startup restore may be waiting on a generation build.
+                        // Do not await that request-owned future during drain;
+                        // dropping `serve` lets the Server cleanup below cancel
+                        // admission builds and flush the exit receipt.
+                        Ok(RuntimeServerExit::ShutdownRequested)
                     }
                     Err(error) => Err(error),
                 }

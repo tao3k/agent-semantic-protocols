@@ -7,7 +7,6 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::hook_runtime::{run_codex_plugin_install_args, run_hook_runtime_args};
 use super::install_provider_archive::{
     asset_name, binary_file_name, checksum_for_archive, download_release_archive,
     install_archive_binary, path_segment, release_asset_url, sha256_file,
@@ -18,6 +17,8 @@ use super::install_provider_development::{
 };
 #[path = "install_provider_workspace.rs"]
 mod install_provider_workspace;
+#[path = "install_provider_binary.rs"]
+mod install_provider_binary;
 use super::install_provider_release::ProviderReleaseSpec;
 use super::install_provider_runtime_reconcile::reconcile_registered_provider_runtime_binaries;
 use super::install_provider_target::resolve_provider_binary_install_target;
@@ -26,7 +27,7 @@ use super::org_capture;
 #[path = "install_provider_cli_support.rs"]
 mod install_provider_cli_support;
 use install_provider_cli_support::{
-    absolute_project_root, has_help_flag, install_hook_usage, usage,
+    absolute_project_root, usage,
 };
 
 #[cfg(test)]
@@ -108,9 +109,9 @@ fn provider_artifact_authority<'a>(
 
 pub(crate) async fn run_install_command(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
-        Some("binary") => run_install_binary(&args[1..]).await,
-        Some("hook") => run_install_hook(&args[1..]),
-        Some("plugin") => run_install_plugin(&args[1..]),
+        Some("binary") => install_provider_binary::run_install_binary(&args[1..]).await,
+        Some("hook") => install_provider_binary::run_install_hook(&args[1..]).await,
+        Some("plugin") => install_provider_binary::run_install_plugin(&args[1..]).await,
         Some("language") => run_install_provider(&args[1..]).await,
         Some("help" | "--help" | "-h") => {
             println!("{}", usage());
@@ -119,108 +120,6 @@ pub(crate) async fn run_install_command(args: &[String]) -> Result<(), String> {
         None => Err(usage()),
         Some(_) => Err(usage()),
     }
-}
-
-async fn run_install_binary(args: &[String]) -> Result<(), String> {
-    let mut target = None;
-    let mut index = 0;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--target" => {
-                if target.is_some() {
-                    return Err(
-                        "asp install binary accepts exactly one --target install root".to_string(),
-                    );
-                }
-                target = Some(args.get(index + 1).ok_or_else(usage).map(PathBuf::from)?);
-                index += 2;
-            }
-            "help" | "--help" | "-h" => {
-                println!("{}", usage());
-                return Ok(());
-            }
-            _ => return Err(usage()),
-        }
-    }
-    let target = target.ok_or_else(usage)?;
-    let project_root = env::current_dir()
-        .map_err(|error| format!("failed to resolve current project root: {error}"))?;
-    let runtime_state = agent_semantic_runtime::project_runtime_state(&project_root)?;
-    super::install_binary_config_admission::admit_embedded_hook_config()?;
-    let artifact_root = runtime_state.protocol_home.join("runtime/artifacts");
-    let plan = super::protocol_binary::ProtocolBinaryInstallPlan::capture_for_target(
-        artifact_root.clone(),
-        target,
-    )?;
-    let reconciliation_guard = super::protocol_binary::ProtocolBinaryReconciliationGuard::acquire(
-        &runtime_state.protocol_home,
-    )?;
-    if super::protocol_binary::protocol_binary_switch_required(&plan)? {
-        crate::server::runtime_server_supervisor::prepare_runtime_server_binary_switch(
-            &runtime_state.protocol_home,
-        )
-        .await?;
-    }
-    let installed = super::protocol_binary::ensure_protocol_binary_installed(&plan)?;
-    let hook_config_publication =
-        super::install_binary_config_admission::publish_embedded_hook_config_for_project(
-            &runtime_state.protocol_home,
-            &project_root,
-        )?;
-    agent_semantic_hook::reconcile_active_asp_artifact_receipt_if_present(
-        &runtime_state.activation_path,
-    )?;
-    let active_artifact_receipt = agent_semantic_hook::rebind_active_asp_binary_receipt_if_present(
-        &installed.path,
-        &installed.artifact_digest,
-        &runtime_state.activation_path,
-    )?;
-    drop(reconciliation_guard);
-    let runtime_server_reconcile =
-        crate::server::runtime_server_supervisor::reconcile_healthy_runtime_server(
-            &runtime_state.protocol_home,
-        )
-        .await;
-    println!(
-        "[asp-install-binary] binaryPath={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic hookConfigPublication={} hookConfigCoupling=binary-generation runtimeServerReconcile={} providerReconciliation=not-on-binary-install globalProviderCatalog=not-on-binary-install activeArtifactReceipt={} installSource=current-executable",
-        installed.path.display(),
-        installed.status,
-        installed.artifact_digest,
-        installed.path.display(),
-        hook_config_publication,
-        if runtime_server_reconcile.is_ok() {
-            "complete"
-        } else {
-            "deferred"
-        },
-        active_artifact_receipt.as_str(),
-    );
-    Ok(())
-}
-
-fn run_install_hook(args: &[String]) -> Result<(), String> {
-    if args.is_empty() || has_help_flag(args) {
-        println!("{}", install_hook_usage());
-        return Ok(());
-    }
-
-    if args.iter().any(|arg| arg == "--codex") {
-        return Err(
-            "Codex plugin installation uses `asp install plugin --codex [PROJECT_ROOT]`"
-                .to_string(),
-        );
-    }
-
-    let mut forwarded = vec!["install".to_string()];
-    forwarded.extend(args.iter().cloned());
-    run_hook_runtime_args(forwarded)
-}
-
-fn run_install_plugin(args: &[String]) -> Result<(), String> {
-    if args.is_empty() || has_help_flag(args) {
-        return super::cli_help::print_install_plugin_help();
-    }
-    run_codex_plugin_install_args(args)
 }
 
 async fn run_install_provider(args: &[String]) -> Result<(), String> {
@@ -403,7 +302,8 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
         &stable_entry,
         &artifact_root,
         &runtime_binary_identity,
-    )?;
+    )
+    .await?;
     let installed = published.path.clone();
     let runtime_bin_dir = stable_entry
         .parent()
@@ -579,7 +479,8 @@ async fn record_development_provider_install(
         &stable_entry,
         &artifact_root,
         &runtime_binary_identity,
-    )?;
+    )
+    .await?;
     let installed_path = published.path;
     let package_path = installed_path.parent().ok_or_else(|| {
         format!(
@@ -647,7 +548,8 @@ async fn record_development_provider_install(
             &runtime_state.runtime_bin_dir,
             &artifact_root,
             &runtime_state.provider_lock_dir,
-        )?;
+        )
+        .await?;
         Some(
             super::global_provider_catalog::publish_global_provider_catalog(
                 &state_home,
@@ -947,7 +849,7 @@ fn write_provider_lock(path: &Path, lock: &ProviderInstallLock<'_>) -> Result<()
         contents.push_str(&format!("buildRecipeDigest = \"{}\"\n", toml_escape(value)));
     }
     if let Some(value) = lock.artifact_digest {
-        contents.push_str(&format!("artifactDigest = \"{}\"\n", toml_escape(value)));
+        contents.push_str(&format!("binarySourceGeneration = \"{}\"\n", toml_escape(value)));
     }
     if let Some(value) = lock.artifact_leaf_count {
         contents.push_str(&format!("artifactLeafCount = {value}\n"));

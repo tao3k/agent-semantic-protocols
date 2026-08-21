@@ -59,16 +59,9 @@ fn install_language_pinned_release_ignores_asp_toml_provider_bin() {
 fn install_binary_does_not_reconcile_language_providers_or_global_catalog() {
     let root = temp_project_root();
     let state_home = root.join("state");
-    let asp_source = root.join("source/asp");
-    std::fs::create_dir_all(asp_source.parent().expect("ASP source parent"))
-        .expect("create ASP source parent");
-    std::fs::copy(env!("CARGO_BIN_EXE_asp"), &asp_source).expect("copy ASP source artifact");
-    make_executable(&asp_source);
-
     let run = || {
         Command::new(env!("CARGO_BIN_EXE_asp"))
-            .args(["install", "binary", "--target"])
-            .arg(&asp_source)
+            .args(["install", "binary"])
             .env("ASP_STATE_HOME", &state_home)
             .env("HOME", root.join("home"))
             .env("ASP_NO_AGENT_PLATFORM", "1")

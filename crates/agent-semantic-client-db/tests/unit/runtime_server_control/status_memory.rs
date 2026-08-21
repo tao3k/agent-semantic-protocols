@@ -1,4 +1,5 @@
 use std::sync::{Arc, RwLock};
+use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
 
 use crate::{RuntimeServerAgentSessionLifecycleState, RuntimeServerAgentSessionStatus};
 
@@ -15,7 +16,9 @@ fn fixture_endpoint(root: &std::path::Path, owner_epoch: u64) -> RuntimeServerEn
         transport_contract_digest: super::super::runtime_server_transport_contract_digest(),
         owner_epoch,
         runtime_artifact_path: "/runtime/asp".to_owned(),
-        runtime_artifact_digest: format!("runtime-{owner_epoch}"),
+        runtime_binary_identity: RuntimeBinaryIdentity::DeveloperSourceGeneration { value: format!("runtime-{owner_epoch}"), algorithm: "blake3-metadata-v1".to_owned() },
+        monitor_capability: true,
+        observed_runtime_binary_identity: RuntimeBinaryIdentity::DeveloperSourceGeneration { value: format!("runtime-{owner_epoch}"), algorithm: "blake3-metadata-v1".to_owned() },
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "a".repeat(64)),
         binding_token: format!("binding-{owner_epoch}"),
@@ -351,7 +354,7 @@ async fn replacement_epoch_reopens_once_for_concurrent_sessions() {
                 )
                 .await?;
                 if receipt.state != RuntimeServerState::Healthy
-                    || receipt.runtime_artifact_digest != "runtime-2"
+                    || receipt.runtime_binary_identity.value() != "runtime-2"
                     || receipt.workspace_entry_count != 7
                 {
                     return Err(format!("stale replacement receipt: {receipt:?}"));

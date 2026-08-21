@@ -61,6 +61,7 @@ fn shell_action(command: &str) -> ToolAction {
         operation: OperationIntent::ShellCommand,
         command: Some(command.to_string()),
         command_tokens: None,
+        leading_shell_stage: true,
         paths: Vec::new(),
     }
 }

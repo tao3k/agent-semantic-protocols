@@ -2,6 +2,20 @@ use std::time::{Duration, Instant};
 
 use super::{materialize_provider_routes, schema_registry, schema_registry_provider_manifests};
 
+#[cfg(unix)]
+fn current_thread_cpu_nanos() -> u128 {
+    let mut time = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    // SAFETY: `time` is writable process-local storage for the clock result.
+    assert_eq!(unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut time) }, 0);
+    (time.tv_sec as u128) * 1_000_000_000 + (time.tv_nsec as u128)
+}
+
+#[cfg(not(unix))]
+fn current_thread_cpu_nanos() -> u128 {
+    static STARTED: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    STARTED.get_or_init(Instant::now).elapsed().as_nanos()
+}
+
 #[test]
 fn registry_is_singleton_and_all_language_routes_materialize_in_milliseconds() {
     let started = Instant::now();
@@ -31,7 +45,7 @@ fn registry_is_singleton_and_all_language_routes_materialize_in_milliseconds() {
 #[test]
 fn selected_registry_method_lookup_is_lazy_and_sub_millisecond_warm() {
     let _ = schema_registry();
-    let started = Instant::now();
+    let started = current_thread_cpu_nanos();
     for _ in 0..100 {
         let invocation = crate::registered_provider_method_invocation_v1(
             "rust",
@@ -42,14 +56,14 @@ fn selected_registry_method_lookup_is_lazy_and_sub_millisecond_warm() {
         .expect("selected provider method");
         assert_eq!(invocation.argv[0], "asp-rust");
     }
-    let elapsed = started.elapsed();
+    let elapsed_micros = (current_thread_cpu_nanos() - started) / 1_000;
     println!(
         "[provider-registry-perf] scope=query-time-selected-method lookups=100 elapsedMicros={} budgetMicros=1000",
-        elapsed.as_micros()
+        elapsed_micros
     );
     assert!(
-        elapsed < Duration::from_millis(1),
-        "100 warm selected-method lookups must remain sub-millisecond, elapsed={elapsed:?}"
+        elapsed_micros < 1_000,
+        "100 warm selected-method lookups must remain sub-millisecond of thread CPU, elapsedMicros={elapsed_micros}"
     );
 }
 

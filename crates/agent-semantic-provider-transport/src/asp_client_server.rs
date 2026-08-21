@@ -274,15 +274,29 @@ impl AspClientServerPeer {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             .saturating_add(1);
         let request_id = format!("provider-http-{request_id}");
-        let request = ProviderRuntimeRequestFrame::new(&request_id, operation, &payload)?;
-        let request = serde_json::to_vec(&request)
-            .map_err(|error| format!("encode provider HTTP server request: {error}"))?;
+    let request = ProviderRuntimeRequestFrame::new(&request_id, operation, &payload)?;
+    let request = serde_json::to_vec(&request)
+        .map_err(|error| format!("encode provider HTTP server request: {error}"))?;
+    let request_prefix = String::from_utf8_lossy(&request)
+        .chars()
+        .take(4096)
+        .collect::<String>();
         let request_path = self.request_path.clone();
         let response = self
             .http_json("POST", &request_path, Some(&request))
             .await?;
-        let response = serde_json::from_slice::<ProviderRuntimeResponseFrame>(&response)
-            .map_err(|error| format!("decode provider HTTP server response: {error}"))?;
+    let response = serde_json::from_slice::<ProviderRuntimeResponseFrame>(&response).map_err(
+        |error| {
+            let prefix = String::from_utf8_lossy(&response)
+                .chars()
+                .take(256)
+                .collect::<String>();
+            format!(
+                "decode provider HTTP server response: {error}; bytes={}; prefix={prefix:?}; requestPrefix={request_prefix:?}",
+                response.len(),
+            )
+        },
+    )?;
         response.validate()?;
         if response.request_id != request_id {
             return Err("provider HTTP server response requestId drift".to_owned());

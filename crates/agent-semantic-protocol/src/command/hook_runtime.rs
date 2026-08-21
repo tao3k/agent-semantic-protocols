@@ -123,19 +123,19 @@ use hook_runtime_workspace_candidate::hook_workspace_candidate;
 use std::fs;
 use std::path::PathBuf;
 
-pub(super) fn run_hook_runtime_args<I, S>(args: I) -> Result<(), String>
+pub(super) async fn run_hook_runtime_args<I, S>(args: I) -> Result<(), String>
 where
     I: IntoIterator<Item = S>,
     S: Into<String>,
 {
-    run(args.into_iter().map(Into::into).collect())
+    run(args.into_iter().map(Into::into).collect()).await
 }
 
-fn run(args: Vec<String>) -> Result<(), String> {
+async fn run(args: Vec<String>) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("accept-host") => super::hook_host_acceptance::run_accept_host(&args[1..]),
         Some("doctor") => run_doctor(&args[1..]),
-        Some("install") => run_install(&args[1..]),
+        Some("install") => run_install(&args[1..]).await,
         Some("paths") => run_paths(&args[1..]),
         _ => Err(
             "usage: asp hook <accept-host|install|doctor|paths|hook> --client codex".to_string(),
@@ -317,6 +317,59 @@ fn apply_verified_child_registration_context(
 #[path = "../../tests/unit/hook_runtime_registration_context.rs"]
 mod registration_context_tests;
 
+pub(crate) fn publish_hook_decision_before_emit(
+    project_root: &std::path::Path,
+    decision: &mut agent_semantic_hook::HookDecision,
+) {
+    let requires_choice_plane_route = decision
+        .fields
+        .get("agentWindowCommand")
+        .and_then(serde_json::Value::as_str)
+        == Some("asp session --agents choice-plane")
+        && decision
+            .fields
+            .get("choicePlaneOwner")
+            .and_then(serde_json::Value::as_str)
+            == Some("org-contract:agent-interactive");
+    let is_deny = decision.decision == agent_semantic_hook::DecisionKind::Deny;
+    if is_deny || requires_choice_plane_route {
+        decision.fields.insert(
+            "hookEventProjectionStatus".to_owned(),
+            serde_json::Value::String("project-ledger".to_owned()),
+        );
+        match agent_semantic_hook::try_append_hook_event_state(project_root, decision) {
+            Ok(path) => {
+                let evidence_ref = path.display().to_string();
+                decision.fields.insert(
+                    "hookEventProjectionPath".to_owned(),
+                    serde_json::Value::String(evidence_ref.clone()),
+                );
+                if is_deny {
+                    decision.fields.insert(
+                        "denyEvidenceRef".to_owned(),
+                        serde_json::Value::String(evidence_ref),
+                    );
+                }
+            }
+            Err(error) => {
+                decision.fields.insert(
+                    "hookEventProjectionStatus".to_owned(),
+                    serde_json::Value::String("failed".to_owned()),
+                );
+                decision.fields.insert(
+                    "hookEventProjectionFailure".to_owned(),
+                    serde_json::Value::String(error),
+                );
+            }
+        }
+    } else {
+        decision.fields.insert(
+            "hookEventProjectionStatus".to_owned(),
+            serde_json::Value::String("out-of-band".to_owned()),
+        );
+    }
+}
+
 async fn run_hook_with_input(
     args: &[String],
     client: &str,
@@ -463,6 +516,7 @@ async fn run_hook_with_input(
                 hook_started,
                 hook_cpu_started_micros,
             );
+            publish_hook_decision_before_emit(&project_root, &mut runtime_binary_decision);
             return emit_decision(emit, &runtime_binary_decision);
         }
     }
@@ -510,45 +564,7 @@ async fn run_hook_with_input(
         );
     }
     annotate_hook_decision_budget(&mut decision, hook_started, hook_cpu_started_micros);
-    let requires_choice_plane_route = decision
-        .fields
-        .get("agentWindowCommand")
-        .and_then(serde_json::Value::as_str)
-        == Some("asp session --agents choice-plane")
-        && decision
-            .fields
-            .get("choicePlaneOwner")
-            .and_then(serde_json::Value::as_str)
-            == Some("org-contract:agent-interactive");
-    if requires_choice_plane_route {
-        decision.fields.insert(
-            "hookEventProjectionStatus".to_owned(),
-            serde_json::Value::String("project-ledger".to_owned()),
-        );
-        match agent_semantic_hook::try_append_hook_event_state(&project_root, &decision) {
-            Ok(path) => {
-                decision.fields.insert(
-                    "hookEventProjectionPath".to_owned(),
-                    serde_json::Value::String(path.display().to_string()),
-                );
-            }
-            Err(error) => {
-                decision.fields.insert(
-                    "hookEventProjectionStatus".to_owned(),
-                    serde_json::Value::String("failed".to_owned()),
-                );
-                decision.fields.insert(
-                    "hookEventProjectionFailure".to_owned(),
-                    serde_json::Value::String(error),
-                );
-            }
-        }
-    } else {
-        decision.fields.insert(
-            "hookEventProjectionStatus".to_owned(),
-            serde_json::Value::String("out-of-band".to_owned()),
-        );
-    }
+    publish_hook_decision_before_emit(&project_root, &mut decision);
     trace_stage("complete");
     emit_decision(emit, &decision)
 }

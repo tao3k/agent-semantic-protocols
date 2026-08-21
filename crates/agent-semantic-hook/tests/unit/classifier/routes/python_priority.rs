@@ -212,7 +212,7 @@ fn known_root_session_denies_direct_registered_rust_provider_binary() {
         "pre-tool",
         &json!({
             "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": "rs-harness query --selector example"},
+            "tool_input": {"cmd": "asp-rust query --selector example"},
             "session_id": "root-session-known"
         }),
     );
@@ -241,7 +241,7 @@ fn known_root_session_denies_absolute_registered_runtime_artifact_path() {
         &json!({
             "tool_name": "functions.exec_command",
             "tool_input": {
-                "cmd": "/canonical/asp/runtime/bin/rs-harness query --selector example"
+                "cmd": "/canonical/asp/runtime/bin/asp-rust query --selector example"
             },
             "session_id": "root-session-known"
         }),
@@ -292,7 +292,7 @@ fn plain_environment_string_cannot_bypass_missing_dispatch_capability() {
         &json!({
             "tool_name": "functions.exec_command",
             "tool_input": {
-                "cmd": "rs-harness query --selector example",
+                "cmd": "asp-rust query --selector example",
                 "env": {
                     "ASP_RUNTIME_DISPATCH_CAPABILITY": "spoofed-unverified-string"
                 }
@@ -321,7 +321,7 @@ fn shell_environment_assignment_cannot_hide_registered_provider_binary() {
         &json!({
             "tool_name": "functions.exec_command",
             "tool_input": {
-                "cmd": "TRACE=1 MODE=audit rs-harness query --selector example"
+                "cmd": "TRACE=1 MODE=audit asp-rust query --selector example"
             },
             "session_id": "root-session-known"
         }),
@@ -332,7 +332,7 @@ fn shell_environment_assignment_cannot_hide_registered_provider_binary() {
         decision.reason_kind,
         ReasonKind::ProviderBinaryDirectExecution
     );
-    assert_eq!(decision.fields["runtimeBinary"], "rs-harness");
+    assert_eq!(decision.fields["runtimeBinary"], "asp-rust");
     assert_eq!(
         decision.fields["runtimeBinaryAdmissionDenial"],
         "missing-dispatch-capability"

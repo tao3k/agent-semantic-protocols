@@ -78,7 +78,7 @@ pub(crate) async fn require_or_submit_terminal_generation_for_read(
     .await
 }
 
-async fn require_or_submit_terminal_generation_for_read_with_provider(
+pub(crate) async fn require_or_submit_terminal_generation_for_read_with_provider(
     memory_registry: &RuntimeServerWorkspaceRegistry,
     generation_admission: Option<&std::sync::Arc<WorkspaceGenerationAdmission>>,
     workspace_identity: &str,
@@ -95,29 +95,57 @@ async fn require_or_submit_terminal_generation_for_read_with_provider(
     ) else {
         return Ok(());
     };
-    let query_demand = match generation_admission {
-        Some(admission) => Some(
-            admission
-                .submit_query_demand_with_provider(
-                    workspace_identity.to_owned(),
-                    project_root.to_path_buf(),
-                    target_paths,
-                    provider_target,
-                )
-                .await,
-        ),
-        None => None,
+    let Some(admission) = generation_admission else {
+        return Err(
+            "Runtime Server query-demand admission authority is unavailable reasonKind=runtime-generation-admission-unavailable"
+                .to_owned(),
+        );
     };
-    Err(match query_demand {
-        Some(Ok(true)) => format!(
-            "{message}; Runtime Server enqueued query-demand cold admission; retry the query"
-        ),
-        Some(Ok(false)) => message,
-        Some(Err(error)) => format!(
+    if let Err(error) = admission
+        .submit_query_demand_with_provider(
+            workspace_identity.to_owned(),
+            project_root.to_path_buf(),
+            target_paths,
+            provider_target,
+        )
+        .await
+    {
+        return Err(format!(
             "Runtime Server query-demand admission failed: {error} reasonKind=runtime-generation-admission-failed"
-        ),
-        None => "Runtime Server query-demand admission authority is unavailable reasonKind=runtime-generation-admission-unavailable".to_owned(),
-    })
+        ));
+    }
+    let terminal = tokio::time::timeout(
+        crate::runtime_server_admission::RUNTIME_SERVER_GENERATION_ADMISSION_DEADLINE,
+        admission.wait_terminal(workspace_identity, project_root),
+    )
+    .await
+    .map_err(|_| {
+        format!(
+            "{message}; Runtime Server query-demand admission exceeded the {}ms request budget reasonKind=active-workspace-generation-required",
+            crate::runtime_server_admission::RUNTIME_SERVER_GENERATION_ADMISSION_DEADLINE
+                .as_millis()
+        )
+    })?
+    .map_err(|error| {
+        format!(
+            "{message}; Runtime Server query-demand admission failed: {error} reasonKind=active-workspace-generation-required"
+        )
+    })?;
+    if terminal.state != crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
+        || terminal.commit.is_none()
+    {
+        return Err(format!(
+            "{message}; Runtime Server query-demand admission ended in state={:?} error={} reasonKind=active-workspace-generation-required",
+            terminal.state,
+            terminal.error.as_deref().unwrap_or("none")
+        ));
+    }
+    require_terminal_generation_for_read(
+        memory_registry,
+        Some(admission.as_ref()),
+        workspace_identity,
+        project_root,
+    )
 }
 
 pub(super) async fn require_or_submit_terminal_generation_for_operation(

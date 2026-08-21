@@ -120,7 +120,7 @@ async fn concurrent_runtime_status_wave(
             let receipt = call_runtime_server(
                 &endpoint,
                 RuntimeServerOperation::Status,
-                endpoint.runtime_artifact_digest.clone(),
+                endpoint.runtime_binary_identity.clone(),
                 format!("{request_prefix}-{index}"),
             )
             .await
@@ -202,7 +202,7 @@ async fn explicit_restart_is_not_downgraded_to_status_for_the_current_digest() {
         schema_version: "1".to_owned(),
         operation: RuntimeServerOperation::Restart,
         project_root: None,
-        expected_runtime_artifact_digest: endpoint.runtime_artifact_digest.clone(),
+        expected_runtime_binary_identity: endpoint.runtime_binary_identity.clone(),
         request_id: "restart-idempotency".to_owned(),
         transport_contract_digest: endpoint.transport_contract_digest.clone(),
         owner_epoch: endpoint.owner_epoch,
@@ -302,7 +302,7 @@ async fn typed_status_and_restart_use_the_real_runtime_server() {
     let prewarm = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Reconcile,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.clone(),
         "prewarm-control-lane".to_owned(),
     )
     .await
@@ -311,7 +311,7 @@ async fn typed_status_and_restart_use_the_real_runtime_server() {
     let prewarm_status = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Status,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.clone(),
         "prewarm-status-mmap".to_owned(),
     )
     .await
@@ -322,7 +322,7 @@ async fn typed_status_and_restart_use_the_real_runtime_server() {
     let status = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Status,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.clone(),
         "status-1".to_owned(),
     )
     .await
@@ -332,7 +332,7 @@ async fn typed_status_and_restart_use_the_real_runtime_server() {
     let restart = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Restart,
-        "next-runtime-digest".to_owned(),
+        agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content { value: "next-runtime-digest".to_owned(), algorithm: "blake3-256".to_owned() },
         "restart-1".to_owned(),
     )
     .await
@@ -350,7 +350,7 @@ async fn typed_status_and_restart_use_the_real_runtime_server() {
     let draining_status = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Status,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.clone(),
         "post-restart-status".to_owned(),
     )
     .await
@@ -520,7 +520,7 @@ async fn adaptive_concurrent_runtime_control_is_sub_millisecond_at_p99() {
     let restart = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Restart,
-        "next-runtime-digest".to_owned(),
+        agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content { value: "next-runtime-digest".to_owned(), algorithm: "blake3-256".to_owned() },
         "pressure-drain".to_owned(),
     )
     .await
@@ -533,7 +533,7 @@ async fn adaptive_concurrent_runtime_control_is_sub_millisecond_at_p99() {
     let draining_status = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Status,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.clone(),
         "post-restart-status".to_owned(),
     )
     .await
@@ -571,7 +571,7 @@ async fn adaptive_persistent_control_lanes_have_bounded_typical_and_hard_latency
     let prewarm = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Reconcile,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.clone(),
         "prewarm-persistent-control".to_owned(),
     )
     .await
@@ -586,7 +586,7 @@ async fn adaptive_persistent_control_lanes_have_bounded_typical_and_hard_latency
             let receipt = call_runtime_server(
                 &endpoint,
                 RuntimeServerOperation::Reconcile,
-                endpoint.runtime_artifact_digest.clone(),
+                endpoint.runtime_binary_identity.clone(),
                 format!("persistent-control-{request}"),
             )
             .await
@@ -619,7 +619,7 @@ async fn adaptive_persistent_control_lanes_have_bounded_typical_and_hard_latency
     let restart = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Restart,
-        "next-runtime-digest".to_owned(),
+        agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content { value: "next-runtime-digest".to_owned(), algorithm: "blake3-256".to_owned() },
         "persistent-control-drain".to_owned(),
     )
     .await
@@ -662,7 +662,7 @@ async fn concurrent_tokio_shutdown_drains_the_runtime_server_once() {
     let draining = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Status,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.clone(),
         "post-shutdown-status".to_owned(),
     )
     .await

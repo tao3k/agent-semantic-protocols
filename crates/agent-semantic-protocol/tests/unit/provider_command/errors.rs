@@ -122,8 +122,8 @@ fn non_agent_command_surface_is_rejected_without_provider_spawn() {
     assert!(!called.exists(), "provider should not have been spawned");
     std::fs::remove_dir_all(root).ok();
 }
-#[test]
-fn provider_language_facades_route_language_search_through_runtime_provider() {
+#[tokio::test]
+async fn provider_language_facades_route_language_search_through_runtime_provider() {
     let root = crate::workspace_tree_sitter_query_diagnostics::create_linked_fixture_workspace(
         "provider-dash-language-query",
     );
@@ -167,7 +167,7 @@ fn provider_language_facades_route_language_search_through_runtime_provider() {
         .expect("stage provider search linked fixture");
     assert!(staged.success(), "stage provider search linked fixture");
     crate::workspace_tree_sitter_query_diagnostics::commit_linked_fixture_workspace(&root);
-    super::runtime_support::publish_runtime_server_artifact(&root);
+    super::runtime_support::publish_runtime_server_artifact(&root).await;
     let runtime_start = std::time::Instant::now();
     let runtime_server = super::support::start_runtime_server(&root);
     let runtime_start_elapsed = runtime_start.elapsed();

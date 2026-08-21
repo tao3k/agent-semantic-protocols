@@ -1,5 +1,6 @@
 use super::{RuntimeServerStopReceipt, finalize_stopped_runtime_server};
 use agent_semantic_client_db::{RuntimeServerEndpoint, runtime_server_endpoint_path};
+use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
 
 fn fixture_endpoint(state_home: &std::path::Path, owner_epoch: u64) -> RuntimeServerEndpoint {
     let runtime_root = state_home.join("runtime").join("server");
@@ -10,7 +11,9 @@ fn fixture_endpoint(state_home: &std::path::Path, owner_epoch: u64) -> RuntimeSe
             agent_semantic_client_db::runtime_server_control::runtime_server_transport_contract_digest(),
         owner_epoch,
         runtime_artifact_path: "/runtime/asp".to_owned(),
-        runtime_artifact_digest: "runtime-digest".to_owned(),
+        runtime_binary_identity: RuntimeBinaryIdentity::DeveloperSourceGeneration { value: "runtime-digest".to_owned(), algorithm: "blake3-metadata-v1".to_owned() },
+        monitor_capability: true,
+        observed_runtime_binary_identity: RuntimeBinaryIdentity::DeveloperSourceGeneration { value: "runtime-digest".to_owned(), algorithm: "blake3-metadata-v1".to_owned() },
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "a".repeat(64)),
         binding_token: format!("binding-{owner_epoch}"),

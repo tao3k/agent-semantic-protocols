@@ -294,7 +294,7 @@ pub(super) async fn run_sampler(
     memory: tokio::sync::watch::Sender<Option<ProcessMemoryObservation>>,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> Result<(), String> {
-    let mut interval = tokio::time::interval(std::time::Duration::from_millis(250));
+    let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
         tokio::select! {

@@ -8,6 +8,12 @@ fn daemon_profile_owns_spawn_and_join_lifecycle() {
         .enable_all()
         .build()
         .expect("daemon runtime");
+    let workers =
+        runtime.block_on(async { tokio::runtime::Handle::current().metrics().num_workers() });
+    assert!(
+        workers == agent_semantic_client_db::runtime_server_runtime::adaptive_tokio_worker_count(),
+        "daemon worker pool must follow the host's effective CPU allocation: {workers}"
+    );
     let joined = runtime.block_on(async {
         let task = RuntimeServerOwnedTask::spawn("fixture-daemon-task", async { 42_u64 });
         task.join().await.expect("join daemon task")
@@ -98,85 +104,72 @@ async fn dropped_owned_tasks_are_accounted_as_cancelled() {
 
 #[test]
 fn client_profile_completes_bounded_control_work() {
-    assert!(
-        agent_semantic_client_db::runtime_server_runtime::RUNTIME_SERVER_CLIENT_WORKER_COUNT > 1,
-        "the Runtime Server control client must not collapse all Tokio work onto one worker"
-    );
-    let runtime = RuntimeServerRuntimeBuilder::new_client()
+    let runtime = RuntimeServerRuntimeBuilder::new_daemon()
         .enable_all()
         .build()
         .expect("client runtime");
+    let workers =
+        runtime.block_on(async { tokio::runtime::Handle::current().metrics().num_workers() });
+    assert_eq!(
+        workers,
+        agent_semantic_client_db::runtime_server_runtime::adaptive_tokio_worker_count()
+    );
     let value = runtime.block_on(async { 7_u64 });
     assert_eq!(value, 7);
 }
 
 #[test]
 fn cli_profile_never_collapses_hook_processes_onto_one_tokio_worker() {
-    assert!(
-        agent_semantic_client_db::runtime_server_runtime::ASP_CLI_WORKER_COUNT > 1,
-        "the ASP CLI and Hook bootstrap must not use a single-worker Tokio runtime"
-    );
+    let expected = agent_semantic_client_db::runtime_server_runtime::adaptive_tokio_worker_count();
     let runtime = RuntimeServerRuntimeBuilder::new_cli()
         .enable_all()
         .build()
         .expect("CLI runtime");
     let workers =
         runtime.block_on(async { tokio::runtime::Handle::current().metrics().num_workers() });
-    assert_eq!(
-        workers,
-        agent_semantic_client_db::runtime_server_runtime::ASP_CLI_WORKER_COUNT
+    assert_eq!(workers, expected);
+}
+
+#[test]
+fn client_control_path_requires_a_caller_runtime() {
+    assert!(
+        agent_semantic_client_db::runtime_server_runtime::RuntimeServerClientExecutor::get()
+            .is_err(),
+        "a client must not create a process-global Tokio runtime when none is active"
     );
 }
 
-#[test]
-fn client_executor_is_load_once() {
-    let first =
-        agent_semantic_client_db::runtime_server_runtime::RuntimeServerClientExecutor::get()
-            .expect("client executor should initialize");
-    let second =
-        agent_semantic_client_db::runtime_server_runtime::RuntimeServerClientExecutor::get()
-            .expect("client executor should be reused");
-
-    assert!(std::ptr::eq(first, second));
-}
-
-#[test]
-fn client_executor_is_shared_across_concurrent_sessions() {
-    let runtime_address =
-        agent_semantic_client_db::runtime_server_runtime::RuntimeServerClientExecutor::get()
-            .expect("client executor should initialize") as *const _ as usize;
-    let sessions = (0..32)
-        .map(|_| {
-            std::thread::spawn(|| {
-                agent_semantic_client_db::runtime_server_runtime::RuntimeServerClientExecutor::get()
-                    .expect("client executor should be shared") as *const _ as usize
-            })
-        })
-        .collect::<Vec<_>>();
-
-    for session in sessions {
-        assert_eq!(
-            session.join().expect("client session should join"),
-            runtime_address
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn client_control_path_uses_the_callers_runtime_under_concurrency() {
+    let mut tasks = tokio::task::JoinSet::new();
+    for _ in 0..256 {
+        tasks.spawn(async {
+            agent_semantic_client_db::runtime_server_runtime::RuntimeServerClientExecutor::get()
+                .is_ok()
+        });
+    }
+    while let Some(result) = tasks.join_next().await {
+        assert!(
+            result.expect("caller task should join"),
+            "client control work must borrow the active caller runtime"
         );
     }
 }
 
 #[test]
-fn client_executor_warm_lookup_is_sub_millisecond() {
+fn client_control_path_does_not_create_a_runtime_during_repeated_calls() {
     let _performance = crate::test_support::performance_lock();
     use std::time::Instant;
 
     let expected =
         agent_semantic_client_db::runtime_server_runtime::RuntimeServerClientExecutor::get()
-            .expect("client executor should initialize") as *const _ as usize;
+            .is_err();
     let mut samples = Vec::with_capacity(10_000);
     for _ in 0..10_000 {
         let started = Instant::now();
         let actual =
             agent_semantic_client_db::runtime_server_runtime::RuntimeServerClientExecutor::get()
-                .expect("warm client executor lookup should succeed") as *const _
-                as usize;
+                .is_err();
         samples.push(started.elapsed().as_micros() as u64);
         assert_eq!(actual, expected);
     }
@@ -185,7 +178,7 @@ fn client_executor_warm_lookup_is_sub_millisecond() {
     let max_micros = *samples.last().expect("performance samples");
 
     eprintln!(
-        "[runtime-server-client-executor-performance] sampleCount={} p99Micros={} maxMicros={}",
+        "[runtime-server-client-control-no-runtime-performance] sampleCount={} p99Micros={} maxMicros={}",
         samples.len(),
         p99_micros,
         max_micros

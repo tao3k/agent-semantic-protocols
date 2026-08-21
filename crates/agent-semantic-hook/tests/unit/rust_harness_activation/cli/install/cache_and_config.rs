@@ -1,8 +1,11 @@
 use sha2::{Digest, Sha256};
 
-use crate::rust_harness_activation::support::{asp_bin_dir, write_state_home_provider_binary};
+use crate::rust_harness_activation::support::write_state_home_provider_binary;
 
-use super::support::{codex_plugin_install_args, git_project_root, protocol_command};
+use super::support::{
+    codex_plugin_install_args, git_project_root, protocol_command, write_fake_codex_cli_in_dir,
+    write_stable_runtime_asp_launcher,
+};
 
 fn write_managed_config_sidecar(path: &std::path::Path, bytes: &[u8]) {
     let sidecar = path.with_file_name(format!(
@@ -50,8 +53,8 @@ enabled = false
 "#,
     )
     .expect("write .agents/asp.toml");
-    let protocol_bin_dir = root.join(".agent-bin");
-    write_real_asp_launcher(&protocol_bin_dir);
+    let protocol_bin_dir = write_stable_runtime_asp_launcher(&asp_state_home);
+    write_fake_codex_cli_in_dir(&protocol_bin_dir);
     let prj_cache_home = root.join(".project-cache");
     let output = protocol_command()
         .env("PATH", &protocol_bin_dir)
@@ -99,8 +102,8 @@ fn cli_install_refreshes_drifted_managed_client_hook_config() {
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
     write_state_home_provider_binary(&asp_state_home, "rust", "asp-rust", "rs-harness");
-    let protocol_bin_dir = root.join(".agent-bin");
-    write_real_asp_launcher(&protocol_bin_dir);
+    let protocol_bin_dir = write_stable_runtime_asp_launcher(&asp_state_home);
+    write_fake_codex_cli_in_dir(&protocol_bin_dir);
     let client_config_path = asp_state_home.join("hooks/config.toml");
     std::fs::create_dir_all(client_config_path.parent().expect("config parent"))
         .expect("create client config dir");
@@ -149,14 +152,14 @@ fn cli_install_refreshes_legacy_managed_hook_config() {
     write_state_home_provider_binary(
         &asp_state_home,
         "gerbil-scheme",
-        "gerbil-scheme-harness",
-        "gslph",
+        "asp-gerbil-scheme",
+        "asp-gerbil-scheme",
     );
-    let protocol_bin_dir = root.join(".agent-bin");
+    let protocol_bin_dir = write_stable_runtime_asp_launcher(&asp_state_home);
     let client_config_path = asp_state_home.join("hooks/config.toml");
     std::fs::create_dir_all(client_config_path.parent().expect("config parent"))
         .expect("create client config dir");
-    write_real_asp_launcher(&protocol_bin_dir);
+    write_fake_codex_cli_in_dir(&protocol_bin_dir);
     let legacy_config = r#"# Semantic agent client hook config.
 schemaId = "agent.semantic-protocols.hook.client-config"
 schemaVersion = "1"
@@ -212,11 +215,8 @@ fn cli_install_preserves_top_level_flags_without_forging_hook_trust() {
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
     write_state_home_provider_binary(&asp_state_home, "rust", "asp-rust", "rs-harness");
-    let asp_bin_dir = asp_bin_dir(&root);
-    let protocol_bin_dir = root.join(".agent-bin");
-    write_real_asp_launcher(&protocol_bin_dir);
-    let path = std::env::join_paths([protocol_bin_dir.as_path(), asp_bin_dir.as_path()])
-        .expect("protocol and ASP PATH");
+    let protocol_bin_dir = write_stable_runtime_asp_launcher(&asp_state_home);
+    write_fake_codex_cli_in_dir(&protocol_bin_dir);
     std::fs::create_dir_all(root.join(".codex")).expect("create .codex");
     let config_path = root.join(".codex/config.toml");
     std::fs::write(
@@ -232,8 +232,8 @@ fn cli_install_preserves_top_level_flags_without_forging_hook_trust() {
     .expect("write stale user trust state");
 
     let output = protocol_command()
-        .env("PATH", &path)
-        .env("SEMANTIC_AGENT_BIN_DIR", &asp_bin_dir)
+        .env("PATH", &protocol_bin_dir)
+        .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", &codex_home)
         .env("ASP_STATE_HOME", &asp_state_home)
         .args(codex_plugin_install_args(&root))
@@ -302,4 +302,3 @@ fn cli_install_preserves_top_level_flags_without_forging_hook_trust() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
-use crate::rust_harness_activation::cli::install::support::write_real_asp_launcher;

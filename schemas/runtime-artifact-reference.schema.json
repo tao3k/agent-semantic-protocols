@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/runtime-artifact-reference.schema.json",
+  "title": "Runtime Artifact Reference",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "artifactKind", "identityKind", "identityValue", "identityAlgorithm", "executablePath", "origin"],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.runtime-artifact-reference.v1"},
+    "schemaVersion": {"const": 1},
+    "artifactKind": {"type": "string", "minLength": 1},
+    "identityKind": {"enum": ["content", "developer-source-generation"]},
+    "identityValue": {"type": "string", "minLength": 1},
+    "identityAlgorithm": {"type": "string", "minLength": 1},
+    "executablePath": {"type": "string", "minLength": 1},
+    "origin": {"type": "string"}
+  }
+}

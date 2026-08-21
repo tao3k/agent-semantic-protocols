@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Output, Stdio};
 use std::time::Duration;
 
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// One bounded child-process request owned by the hook process runtime.
 pub struct HookProcessRequest<'a> {
@@ -25,7 +25,7 @@ pub struct HookProcessRequest<'a> {
     pub discard_stdout: bool,
 }
 
-/// Execute one child under a Tokio deadline with cancellation-safe ownership.
+/// Execute one child under a Tokio deadline, killing and reaping it on timeout.
 pub async fn run_hook_process(request: HookProcessRequest<'_>) -> Result<Output, String> {
     let mut command = tokio::process::Command::new(request.executable);
     command
@@ -50,22 +50,89 @@ pub async fn run_hook_process(request: HookProcessRequest<'_>) -> Result<Output,
             request.executable.display()
         )
     })?;
+    let stdout = child.stdout.take().map(drain_hook_process_pipe);
+    let stderr = child.stderr.take().map(drain_hook_process_pipe);
     if let Some(mut child_stdin) = child.stdin.take() {
-        child_stdin
-            .write_all(request.stdin)
-            .await
-            .map_err(|error| format!("forward bounded hook process stdin: {error}"))?;
+        if let Err(error) = child_stdin.write_all(request.stdin).await {
+            kill_reap_and_drain_hook_process(&mut child, stdout, stderr).await?;
+            return Err(format!("forward bounded hook process stdin: {error}"));
+        }
     }
-    tokio::time::timeout(request.timeout, child.wait_with_output())
-        .await
-        .map_err(|_| {
-            format!(
-                "bounded hook process exceeded {} milliseconds: {}",
+    let status = match tokio::time::timeout(request.timeout, child.wait()).await {
+        Ok(status) => status.map_err(|error| format!("wait for bounded hook process: {error}"))?,
+        Err(_) => {
+            kill_reap_and_drain_hook_process(&mut child, stdout, stderr).await?;
+            return Err(format!(
+                "bounded hook process exceeded {} milliseconds and was killed/reaped: {}",
                 request.timeout.as_millis(),
                 request.executable.display()
-            )
-        })?
-        .map_err(|error| format!("wait for bounded hook process: {error}"))
+            ));
+        }
+    };
+    let (stdout, stderr) = collect_hook_process_pipes(stdout, stderr).await?;
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+async fn kill_reap_and_drain_hook_process(
+    child: &mut tokio::process::Child,
+    stdout: Option<tokio::task::JoinHandle<Result<Vec<u8>, String>>>,
+    stderr: Option<tokio::task::JoinHandle<Result<Vec<u8>, String>>>,
+) -> Result<(), String> {
+    child
+        .start_kill()
+        .map_err(|error| format!("kill timed-out hook process: {error}"))?;
+    child
+        .wait()
+        .await
+        .map_err(|error| format!("reap timed-out hook process: {error}"))?;
+    drain_hook_process_pipes(stdout, stderr).await;
+    Ok(())
+}
+
+fn drain_hook_process_pipe<R>(mut pipe: R) -> tokio::task::JoinHandle<Result<Vec<u8>, String>>
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    tokio::spawn(async move {
+        let mut bytes = Vec::new();
+        pipe.read_to_end(&mut bytes)
+            .await
+            .map_err(|error| format!("drain bounded hook process output: {error}"))?;
+        Ok(bytes)
+    })
+}
+
+async fn drain_hook_process_pipes(
+    stdout: Option<tokio::task::JoinHandle<Result<Vec<u8>, String>>>,
+    stderr: Option<tokio::task::JoinHandle<Result<Vec<u8>, String>>>,
+) -> (Vec<u8>, Vec<u8>) {
+    async fn drain(pipe: Option<tokio::task::JoinHandle<Result<Vec<u8>, String>>>) -> Vec<u8> {
+        let Some(pipe) = pipe else {
+            return Vec::new();
+        };
+        pipe.await.ok().and_then(Result::ok).unwrap_or_default()
+    }
+    tokio::join!(drain(stdout), drain(stderr))
+}
+
+async fn collect_hook_process_pipes(
+    stdout: Option<tokio::task::JoinHandle<Result<Vec<u8>, String>>>,
+    stderr: Option<tokio::task::JoinHandle<Result<Vec<u8>, String>>>,
+) -> Result<(Vec<u8>, Vec<u8>), String> {
+    async fn collect(
+        pipe: Option<tokio::task::JoinHandle<Result<Vec<u8>, String>>>,
+    ) -> Result<Vec<u8>, String> {
+        let Some(pipe) = pipe else {
+            return Ok(Vec::new());
+        };
+        pipe.await
+            .map_err(|error| format!("join bounded hook process output drain: {error}"))?
+    }
+    tokio::try_join!(collect(stdout), collect(stderr))
 }
 
 /// Construct the argument vector for the canonical development installer.

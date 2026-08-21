@@ -26,8 +26,7 @@ fn lifecycle_failures_degrade_open_but_enforcement_failures_do_not() {
 }
 
 #[test]
-fn recovery_kernel_admits_only_the_exact_canonical_binary_install_target() {
-    let canonical = std::path::Path::new("/state/runtime/bin/asp");
+fn recovery_kernel_admits_only_the_binary_install_command() {
     let words = |command: &str| {
         agent_semantic_command_match::parse_bash_command_candidates(command)
             .expect("parse recovery command")[0]
@@ -35,20 +34,15 @@ fn recovery_kernel_admits_only_the_exact_canonical_binary_install_target() {
             .to_vec()
     };
     assert!(exact_canonical_binary_install(
-        &words("/tmp/candidate/asp install binary --target /state/runtime/bin/asp"),
+        &words("/tmp/candidate/asp install binary"),
         0,
-        canonical,
     ));
     for command in [
         "/tmp/candidate/asp install binary --target /tmp/asp",
         "/tmp/candidate/asp install binary /state/runtime/bin/asp",
-        "/tmp/candidate/asp install binary --target /state/runtime/bin/asp --force",
+        "/tmp/candidate/asp install binary --force",
     ] {
-        assert!(!exact_canonical_binary_install(
-            &words(command),
-            0,
-            canonical,
-        ));
+        assert!(!exact_canonical_binary_install(&words(command), 0,));
     }
 }
 

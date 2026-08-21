@@ -184,6 +184,12 @@ single-file installation.  Descriptor identity or path escape failures are
 typed provider-local admission failures; they never authorize falling back to
 the root development installer.
 
+**** Structural branch identity
+
+Exact structural selector v1 applies to every parser-published semantic node that can be a bounded responsibility boundary, including a match arm, conditional branch, and equivalent language-native dispatch alternative. A branch node MUST publish its stable structural selector, =nativeFactId=, =ownerPath=, byte range, and source-projection authority in the same admitted generation as its parent. The selector is an existing v1 selector with a branch-kind segment; it does not create a language-private protocol or a second selector version.
+
+Branch identity is structural rather than presentation-ordinal: it MUST remain stable across unrelated sibling edits, resolve to one bounded source segment, and retain a parent relation to its enclosing item. A provider that cannot publish the node returns a typed projection-scope omission; Runtime and CLI MUST NOT compensate with whole-function source reads, lexical reconstruction, or a provider execution during a Ready resident read. The parser/provider test suite MUST prove bounded branch-segment lookup below one millisecond from an already-published generation.
+
 **** All-provider Live Corpus search/query qualification
 
 Live Corpus performance qualification is part of the stable v1 contract.  Each

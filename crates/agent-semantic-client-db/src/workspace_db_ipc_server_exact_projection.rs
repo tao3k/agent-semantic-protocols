@@ -36,58 +36,66 @@ pub(super) async fn tree_sitter_query(
 }
 
 pub(super) async fn provider_owner(
-    runtime_search_service: Option<&RuntimeSearchServiceHandle>,
+    _runtime_search_service: Option<&RuntimeSearchServiceHandle>,
     memory_registry: &crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
+    generation_admission: Option<
+        &std::sync::Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>,
+    >,
     request_id: String,
     workspace_identity: &str,
     project_root: String,
     language_id: LanguageId,
     owner_path: String,
 ) -> WorkspaceDbIpcResult {
-    let Some(service) = runtime_search_service else {
-        return WorkspaceDbIpcResult::Failed {
-            code: "runtime-server-provider-owner-query-unavailable".to_owned(),
-            message: "Runtime Server provider owner query service is unavailable".to_owned(),
-        };
-    };
     let project_root = Path::new(&project_root).to_path_buf();
-    let publication_project_root = project_root.clone();
-    let language_id = language_id.to_string();
-    let result = async {
-        service
-            .provider_runtime(project_root.clone(), language_id.clone())
-            .await?;
-        service
-            .provider_runtime_await_ready(project_root.clone(), language_id.clone())
-            .await?;
-        service
-            .provider_owner(
-                workspace_identity.to_owned(),
-                project_root,
-                language_id,
-                owner_path,
-            )
-            .await
+    if let Err(message) = crate::workspace_db_ipc_server::generation::require_or_submit_terminal_generation_for_read_with_provider(
+        memory_registry,
+        generation_admission,
+        workspace_identity,
+        &project_root,
+        vec![Path::new(&owner_path).to_path_buf()],
+        Some(crate::runtime_server_admission::WorkspaceGenerationProviderTarget {
+            language_id: language_id.as_str().to_owned(),
+            provider_id: None,
+        }),
+    )
+    .await
+    {
+        return WorkspaceDbIpcResult::Failed {
+            code: "active-workspace-generation-required".to_owned(),
+            message,
+        };
     }
-    .await;
-    match result {
-        Ok(owner) => match memory_registry
-            .publish_provider_owner(
-                request_id,
-                workspace_identity.to_owned(),
-                &publication_project_root,
-                owner.clone(),
-            )
-            .await
-        {
-            Ok(_) => WorkspaceDbIpcResult::ProviderOwnerProjection { owner },
-            Err(message) => WorkspaceDbIpcResult::Failed {
-                code: "runtime-server-provider-owner-publication-failed".to_owned(),
-                message,
+    match memory_registry
+        .read_projection_owner(workspace_identity, &project_root, &owner_path)
+        .await
+    {
+        Ok(
+            crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead::Owner { owner, .. }
+            | crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead::SparseProviderOwner {
+                owner,
+                ..
             },
+        ) => WorkspaceDbIpcResult::ProviderOwnerProjection { owner },
+        Ok(crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead::GenerationMissing) => {
+            WorkspaceDbIpcResult::Failed {
+                code: "active-workspace-generation-required".to_owned(),
+                message: format!(
+                    "active workspace generation is required before resident owner read: workspaceIdentity={workspace_identity} languageId={language_id} requestId={request_id}"
+                ),
+            }
+        }
+        Ok(crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead::OwnerMissing {
+            generation_digest,
+            root_digest,
+        }) => WorkspaceDbIpcResult::Failed {
+            code: "runtime-server-resident-owner-missing".to_owned(),
+            message: format!(
+                "resident owner is absent from ready generation: ownerPath={owner_path} generationDigest={generation_digest} rootDigest={root_digest}"
+            ),
         },
         Err(message) => WorkspaceDbIpcResult::Failed {
-            code: "runtime-server-provider-owner-query-failed".to_owned(),
+            code: "runtime-server-resident-owner-read-failed".to_owned(),
             message,
         },
     }

@@ -47,7 +47,8 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
         &binary_artifact_root,
         registration,
         built,
-    )?;
+    )
+    .await?;
     let installed_entrypoint_digest =
         agent_semantic_content_identity::file_content_digest_v1(&published.installed_path)?;
     let installed_entrypoint_metadata_digest =
@@ -104,7 +105,8 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
         &runtime_state.runtime_bin_dir,
         &runtime_state.provider_lock_dir,
         &binary_artifact_root,
-    )?;
+    )
+    .await?;
     drop(reconciliation_guard);
     let runtime_server_reconcile =
         crate::server::runtime_server::reconcile_runtime_server_after_provider_catalog_change(
@@ -115,7 +117,7 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
         )
         .await?;
     println!(
-        "[asp-install] provider={} language={} scope={} installMode=develop-workspace-tree sourceKind=develop-workspace-tree devRoot={} target={} binary={} artifactDigest={} artifactLeafCount={} artifactEntrypoint={} installedPath={} lock={} switch=atomic globalProviderCatalog={} globalProviderCatalogWrite={} runtimeServerReconcile={}",
+        "[asp-install] provider={} language={} scope={} installMode=develop-workspace-tree sourceKind=develop-workspace-tree devRoot={} target={} binary={} binarySourceGeneration={} generationAlgorithm=blake3-metadata-v1 artifactLeafCount={} artifactEntrypoint={} installedPath={} lock={} switch=atomic globalProviderCatalog={} globalProviderCatalogWrite={} runtimeServerReconcile={}",
         provider_id,
         language_id,
         scope,
@@ -177,7 +179,7 @@ fn install_scope_and_lock<'a>(
     }
 }
 
-fn publish_global_catalog_if_needed(
+async fn publish_global_catalog_if_needed(
     state_home: &Path,
     install_scope: &super::super::InstallScope,
     runtime_bin_dir: &Path,
@@ -192,7 +194,8 @@ fn publish_global_catalog_if_needed(
         runtime_bin_dir,
         binary_artifact_root,
         provider_lock_dir,
-    )?;
+    )
+    .await?;
     super::super::super::global_provider_catalog::publish_global_provider_catalog(
         state_home,
         &provider_binaries.provider_receipts,

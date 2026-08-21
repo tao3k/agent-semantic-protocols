@@ -206,6 +206,21 @@ fn build_source_index_import_from_started(
         }
         relations.extend(file.relations.iter().cloned());
     }
+    let selector_owner_paths = selectors
+        .iter()
+        .map(|selector| selector.owner_path.as_str())
+        .collect::<BTreeSet<_>>();
+    let selector_ids = selectors
+        .iter()
+        .map(|selector| selector.selector_id.as_str())
+        .collect::<BTreeSet<_>>();
+    relations.retain(|relation| {
+        relation_endpoints_are_selector_bound(
+            relation,
+            &selector_owner_paths,
+            &selector_ids,
+        )
+    });
     relations.sort_by(|left, right| {
         (
             &left.from.kind,
@@ -235,6 +250,28 @@ fn build_source_index_import_from_started(
         relations,
     })
 }
+
+fn relation_endpoints_are_selector_bound(
+    relation: &agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
+    selector_owner_paths: &BTreeSet<&str>,
+    selector_ids: &BTreeSet<&str>,
+) -> bool {
+    use agent_semantic_content_identity::provider_projection_relation::{
+        PROVIDER_RELATION_ITEM_ENDPOINT_KIND, PROVIDER_RELATION_OWNER_ENDPOINT_KIND,
+    };
+
+    [&relation.from, &relation.to].into_iter().all(|endpoint| {
+        if endpoint.kind == PROVIDER_RELATION_ITEM_ENDPOINT_KIND {
+            return selector_ids.contains(endpoint.id.as_str());
+        }
+        if endpoint.kind == PROVIDER_RELATION_OWNER_ENDPOINT_KIND {
+            let owner_path = endpoint.id.strip_prefix("owner:").unwrap_or(&endpoint.id);
+            return selector_owner_paths.contains(owner_path);
+        }
+        false
+    })
+}
+
 
 fn ensure_source_index_cold_assembly_budget(
     started: std::time::Instant,

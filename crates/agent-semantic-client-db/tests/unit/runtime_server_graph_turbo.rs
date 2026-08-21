@@ -36,7 +36,7 @@ async fn runtime_status_reports_daemon_owned_graph_turbo_resident() {
     call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Reconcile,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.clone(),
         "graph-turbo-prewarm".to_owned(),
     )
     .await
@@ -45,7 +45,7 @@ async fn runtime_status_reports_daemon_owned_graph_turbo_resident() {
     let status = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Status,
-        endpoint.runtime_artifact_digest.clone(),
+        endpoint.runtime_binary_identity.clone(),
         "graph-turbo-status".to_owned(),
     )
     .await
@@ -62,7 +62,7 @@ async fn runtime_status_reports_daemon_owned_graph_turbo_resident() {
         let receipt = call_runtime_server(
             &endpoint,
             RuntimeServerOperation::Status,
-            endpoint.runtime_artifact_digest.clone(),
+            endpoint.runtime_binary_identity.clone(),
             "graph-turbo-failed-status".to_owned(),
         )
         .await
@@ -91,7 +91,7 @@ async fn runtime_status_reports_daemon_owned_graph_turbo_resident() {
     call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Restart,
-        "next-runtime-digest".to_owned(),
+        agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content { value: "next-runtime-digest".to_owned(), algorithm: "blake3-256".to_owned() },
         "graph-turbo-status-restart".to_owned(),
     )
     .await

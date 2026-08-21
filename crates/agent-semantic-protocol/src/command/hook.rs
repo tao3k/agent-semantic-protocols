@@ -27,7 +27,7 @@ pub(crate) async fn run_hook_command(args: &[String]) -> Result<(), String> {
         args.first().map(String::as_str),
         Some("accept-host" | "doctor" | "paths" | "refresh")
     ) {
-        return run_hook_runtime_args(forwarded);
+        return run_hook_runtime_args(forwarded).await;
     }
 
     let input = read_hook_input_bounded()

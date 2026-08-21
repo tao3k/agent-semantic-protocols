@@ -305,8 +305,9 @@ impl Drop for RuntimeServerGuard {
     }
 }
 
-pub(crate) fn start_runtime_server(root: &Path) -> RuntimeServerGuard {
+pub(crate) async fn start_runtime_server(root: &Path) -> RuntimeServerGuard {
     let output = super::runtime_support::run_runtime_server_start(root)
+        .await
         .expect("start isolated Runtime Server");
     assert!(
         output.status.success(),

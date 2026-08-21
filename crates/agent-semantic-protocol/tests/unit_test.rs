@@ -89,8 +89,6 @@ mod rs_harness_attribute;
 mod runtime_server_query_purity;
 #[path = "unit/runtime_server_restart_readiness.rs"]
 mod runtime_server_restart_readiness;
-#[path = "unit/runtime_server_singleton_socket.rs"]
-mod runtime_server_singleton_socket;
 #[path = "unit/runtime_server_start_readiness.rs"]
 mod runtime_server_start_readiness;
 #[path = "../../agent-semantic-hook/tests/unit/rust_harness_activation/mod.rs"]

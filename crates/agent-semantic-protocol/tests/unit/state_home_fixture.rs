@@ -4,9 +4,8 @@ use std::path::{Path, PathBuf};
 
 use agent_semantic_hook::{
     ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy, HookActivation,
-    active_provider_artifact_input_with_state_home, builtin_provider_manifests,
-    materialize_provider_routes, provider_execution_command_digest, provider_manifest_digest,
-    semantic_registry_digest,
+    builtin_provider_manifests, installed_provider_artifact_digest, materialize_provider_routes,
+    provider_execution_command_digest, provider_manifest_digest, semantic_registry_digest,
 };
 use agent_semantic_runtime::state_core::ResolvedState;
 
@@ -55,9 +54,13 @@ pub(crate) fn write_activation(root: &Path, state_home: &Path, language_ids: &[&
                 )
             });
             write_provider_lock(state_home, &manifest, &provider_path);
-            let artifact = active_provider_artifact_input_with_state_home(
+            let state_paths = agent_semantic_runtime::project_state_paths_with_state_home(
                 &canonical_root,
                 state_home,
+            )
+            .expect("resolve State Home provider paths");
+            let artifact_digest = installed_provider_artifact_digest(
+                &state_paths.provider_lock_dir,
                 manifest.language_id(),
                 manifest.provider_id(),
                 provider_path.clone(),
@@ -74,7 +77,7 @@ pub(crate) fn write_activation(root: &Path, state_home: &Path, language_ids: &[&
                 execution: manifest.execution(),
                 execution_command_digest: provider_execution_command_digest(
                     &resolved_execution_prefix,
-                    &artifact.artifact_digest,
+                    &artifact_digest,
                 )
                 .expect("provider execution command digest"),
                 provider_command_prefix: Vec::new(),

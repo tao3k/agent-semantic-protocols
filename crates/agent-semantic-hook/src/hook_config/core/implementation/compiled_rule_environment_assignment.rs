@@ -3,15 +3,16 @@
 use super::ClientHookConfig;
 use crate::{HookDecision, HookRuntime};
 
-pub(super) fn matches(command: &str, expected: &[String]) -> bool {
+pub(super) fn matches(command: &str, expected: &[String], leading_shell_stage: bool) -> bool {
     expected.is_empty()
-        || agent_semantic_command_match::parse_bash_command_candidates(command).is_ok_and(
+        || (leading_shell_stage
+            && agent_semantic_command_match::parse_bash_command_candidates(command).is_ok_and(
             |stages| {
                 agent_semantic_command_match::command_stages_match_leading_environment_assignment(
                     &stages, expected,
                 )
             },
-        )
+        ))
 }
 
 impl ClientHookConfig {

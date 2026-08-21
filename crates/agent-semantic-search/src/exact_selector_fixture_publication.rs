@@ -11,6 +11,8 @@ use agent_semantic_content_identity::exact_selector_generation_fixture::{
 };
 use agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1;
 
+use crate::active_exact_selector_fixture::ExactSelectorFixtureArtifactInput;
+
 pub const EXACT_SELECTOR_FIXTURE_ARTIFACT_KIND: &str = "exact-selector-generation-fixture";
 
 static PUBLICATION_NONCE: AtomicU64 = AtomicU64::new(0);
@@ -21,15 +23,12 @@ static PUBLICATION_SHARDS: LazyLock<[Mutex<std::collections::HashSet<String>>; 6
 pub struct ExactSelectorFixturePublicationReceiptV1 {
     pub logical_path: String,
     pub materialized_path: PathBuf,
-    pub artifact_kind:
-        agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1,
+    pub artifact_kind: agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactKind,
     pub artifact_digest: String,
     pub generation_digest: [u8; 32],
 }
 
-impl From<&ExactSelectorFixturePublicationReceiptV1>
-    for agent_semantic_hook::ActiveAspArtifactInput
-{
+impl From<&ExactSelectorFixturePublicationReceiptV1> for ExactSelectorFixtureArtifactInput {
     fn from(receipt: &ExactSelectorFixturePublicationReceiptV1) -> Self {
         Self {
             logical_path: receipt.logical_path.clone(),
@@ -134,7 +133,7 @@ fn publish_exact_selector_fixture_bytes_v1(
             "exact-selector-generation/{generation_digest_hex}/{artifact_digest}.fixture"
         ),
         materialized_path,
-        artifact_kind: agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1::ExactSelectorGenerationFixture,
+        artifact_kind: agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactKind::ExactSelectorGenerationFixture,
         artifact_digest,
         generation_digest,
     })

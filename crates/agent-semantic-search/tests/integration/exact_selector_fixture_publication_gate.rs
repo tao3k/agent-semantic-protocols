@@ -4,17 +4,18 @@ use agent_semantic_content_identity::exact_selector_generation_fixture::{
     ExactSelectorGenerationIdentityV1, ExactSelectorGenerationRecordV1,
     ExactSelectorProjectionModeV1,
 };
+use agent_semantic_search::active_exact_selector_fixture::ExactSelectorFixtureArtifactInput;
 use agent_semantic_search::active_exact_selector_fixture::exact_selector_fixture_active_artifact_input_v1;
 use agent_semantic_search::active_exact_selector_fixture::exact_selector_fixture_backend_from_active_artifact_v1;
 use agent_semantic_search::exact_selector_fixture_memory::ExactSelectorFixtureResidentV1;
 use agent_semantic_search::exact_selector_fixture_publication::publish_exact_selector_generation_records_v1;
 
 fn required_activation_leaf()
--> agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactLeafV1 {
-    agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactLeafV1::new(
+-> agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactLeaf {
+    agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactLeaf::new(
         "activation.json",
         "/tmp/activation.json",
-        agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1::Activation,
+        agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactKind::Activation,
         agent_semantic_content_identity::exact_selector_merkle::ContentDigestV1::parse(
             blake3::hash(b"activation").to_hex().to_string(),
         )
@@ -35,12 +36,12 @@ macro_rules! binary_with_required_activation {
 #[test]
 fn active_receipt_without_exact_fixture_is_typed_cold_required() {
     let receipt =
-        agent_semantic_content_identity::active_artifact_merkle_v1::ActiveAspArtifactReceiptV1::build(
+        agent_semantic_content_identity::active_artifact_merkle::ActiveAspArtifactReceipt::build(
             "empty-active-artifact-set",
-            binary_with_required_activation![agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactLeafV1::new(
+            binary_with_required_activation![agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactLeaf::new(
                 "bin/asp",
                 "/tmp/asp",
-                agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1::AspBinary,
+                agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactKind::AspBinary,
                 agent_semantic_content_identity::exact_selector_merkle::ContentDigestV1::parse(
                     blake3::hash(b"asp-binary").to_hex().to_string(),
                 )
@@ -117,7 +118,7 @@ fn concurrent_publication_commits_one_complete_generation() {
         .collect::<Vec<_>>();
 
     assert!(receipts.windows(2).all(|pair| pair[0] == pair[1]));
-    let active_artifact_input = agent_semantic_hook::ActiveAspArtifactInput::from(&receipts[0]);
+    let active_artifact_input = ExactSelectorFixtureArtifactInput::from(&receipts[0]);
     assert_eq!(active_artifact_input.logical_path, receipts[0].logical_path);
     assert_eq!(
         active_artifact_input.materialized_path,
@@ -125,7 +126,7 @@ fn concurrent_publication_commits_one_complete_generation() {
     );
     assert_eq!(
         active_artifact_input.artifact_kind,
-        agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1::ExactSelectorGenerationFixture
+        agent_semantic_content_identity::active_artifact_merkle::ActiveArtifactKind::ExactSelectorGenerationFixture
     );
     assert_eq!(
         active_artifact_input.artifact_digest,
@@ -172,13 +173,13 @@ fn concurrent_publication_commits_one_complete_generation() {
         warm_micros <= 100,
         "active artifact warm lookup exceeded 100us gate: {warm_micros}us"
     );
-    let mut malformed_locator = agent_semantic_hook::ActiveAspArtifactInput::from(&receipts[0]);
+    let mut malformed_locator = ExactSelectorFixtureArtifactInput::from(&receipts[0]);
     malformed_locator.logical_path = "exact-selector-generation/missing.fixture".to_owned();
     assert!(
         exact_selector_fixture_backend_from_active_artifact_v1(&malformed_locator).is_err(),
         "non-canonical exact selector locator must fail closed"
     );
-    let mut wrong_generation = agent_semantic_hook::ActiveAspArtifactInput::from(&receipts[0]);
+    let mut wrong_generation = ExactSelectorFixtureArtifactInput::from(&receipts[0]);
     wrong_generation.logical_path = format!(
         "exact-selector-generation/{}/{}.fixture",
         blake3::Hash::from_bytes([0; 32]).to_hex(),

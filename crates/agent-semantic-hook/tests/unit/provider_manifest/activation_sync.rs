@@ -3,7 +3,7 @@ use agent_semantic_hook::{
     build_default_activation_with_state_home, load_or_refresh_default_activation_with_state_home,
     load_or_refresh_default_activation_with_state_home_and_binary,
     load_or_sync_activation_with_state_home,
-    materialize_active_asp_artifact_receipt_for_current_process_with_state_home,
+    materialize_active_asp_artifact_receipt_for_current_process,
     verify_active_asp_artifact_receipt, write_activation,
 };
 use std::fs;
@@ -332,12 +332,8 @@ fn generated_activation_with_unknown_field_and_valid_receipt_rebuilds() {
         serde_json::to_string_pretty(&activation_json).expect("serialize future activation"),
     )
     .expect("write future generated activation");
-    materialize_active_asp_artifact_receipt_for_current_process_with_state_home(
-        &activation_path,
-        &runtime,
-        &state_home,
-    )
-    .expect("materialize valid receipt for future generated activation");
+    materialize_active_asp_artifact_receipt_for_current_process(&activation_path, &runtime)
+        .expect("materialize valid receipt for future generated activation");
     let current_exe = std::env::current_exe().expect("current test executable");
     verify_active_asp_artifact_receipt(&activation_path, &[&current_exe])
         .expect("future generated activation receipt should be valid");

@@ -2,6 +2,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
+use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
 
 pub(super) const SCHEMA_VERSION: &str = "1";
 pub(super) const ENDPOINT_SCHEMA_ID: &str = "agent.semantic-protocols.runtime-server-endpoint.v1";
@@ -32,7 +33,9 @@ pub struct RuntimeServerEndpoint {
     pub transport_contract_digest: String,
     pub owner_epoch: u64,
     pub runtime_artifact_path: String,
-    pub runtime_artifact_digest: String,
+    pub runtime_binary_identity: RuntimeBinaryIdentity,
+    pub monitor_capability: bool,
+    pub observed_runtime_binary_identity: RuntimeBinaryIdentity,
     pub artifact_mode: String,
     pub artifact_catalog_digest: String,
     pub binding_token: String,
@@ -62,7 +65,7 @@ impl RuntimeServerEndpoint {
         if self.owner_epoch == 0
             || self.transport_contract_digest.is_empty()
             || self.runtime_artifact_path.is_empty()
-            || self.runtime_artifact_digest.is_empty()
+            || self.runtime_binary_identity.value().is_empty()
             || !matches!(self.artifact_mode.as_str(), "dev" | "release")
             || !is_blake3_digest(&self.artifact_catalog_digest)
             || self.binding_token.is_empty()
@@ -104,7 +107,7 @@ pub struct RuntimeServerControlRequest {
     pub schema_id: String,
     pub schema_version: String,
     pub operation: RuntimeServerOperation,
-    pub expected_runtime_artifact_digest: String,
+    pub expected_runtime_binary_identity: RuntimeBinaryIdentity,
     pub request_id: String,
     pub transport_contract_digest: String,
     pub owner_epoch: u64,
@@ -132,7 +135,7 @@ impl RuntimeServerControlRequest {
             return Err("Runtime Server control request schema identity mismatch".to_owned());
         }
         if self.request_id.is_empty()
-            || self.expected_runtime_artifact_digest.is_empty()
+            || self.expected_runtime_binary_identity.value().is_empty()
             || self.transport_contract_digest.is_empty()
             || self.owner_epoch != endpoint.owner_epoch
             || self.binding_token != endpoint.binding_token
@@ -162,8 +165,8 @@ impl RuntimeServerControlRequest {
                 }
                 Ok(false)
             }
-            RuntimeServerOperation::Reconcile => Ok(self.expected_runtime_artifact_digest
-                != endpoint.runtime_artifact_digest
+            RuntimeServerOperation::Reconcile => Ok(self.expected_runtime_binary_identity
+                != endpoint.runtime_binary_identity
                 || self.transport_contract_digest != endpoint.transport_contract_digest),
             RuntimeServerOperation::Restart => Ok(true),
         }
@@ -186,7 +189,7 @@ pub struct RuntimeServerStatusSnapshot {
     pub schema_version: String,
     pub generation: u64,
     pub state: RuntimeServerState,
-    pub runtime_artifact_digest: String,
+    pub runtime_binary_identity: RuntimeBinaryIdentity,
     pub artifact_mode: String,
     pub artifact_catalog_digest: String,
     pub transport_contract_digest: String,
@@ -245,7 +248,7 @@ impl RuntimeServerStatusSnapshot {
             schema_version: SCHEMA_VERSION.to_owned(),
             generation,
             state,
-            runtime_artifact_digest: endpoint.runtime_artifact_digest.clone(),
+            runtime_binary_identity: endpoint.runtime_binary_identity.clone(),
             artifact_mode: endpoint.artifact_mode.clone(),
             artifact_catalog_digest: endpoint.artifact_catalog_digest.clone(),
             transport_contract_digest: endpoint.transport_contract_digest.clone(),
@@ -274,7 +277,7 @@ impl RuntimeServerStatusSnapshot {
         endpoint: &RuntimeServerEndpoint,
     ) -> Result<RuntimeServerControlReceipt, String> {
         if self.owner_epoch != endpoint.owner_epoch
-            || self.runtime_artifact_digest != endpoint.runtime_artifact_digest
+            || self.runtime_binary_identity != endpoint.runtime_binary_identity
             || self.artifact_mode != endpoint.artifact_mode
             || self.artifact_catalog_digest != endpoint.artifact_catalog_digest
             || self.transport_contract_digest != endpoint.transport_contract_digest
@@ -286,7 +289,7 @@ impl RuntimeServerStatusSnapshot {
             schema_version: SCHEMA_VERSION.to_owned(),
             request_id,
             state: self.state,
-            runtime_artifact_digest: self.runtime_artifact_digest.clone(),
+            runtime_binary_identity: self.runtime_binary_identity.clone(),
             artifact_mode: self.artifact_mode.clone(),
             artifact_catalog_digest: self.artifact_catalog_digest.clone(),
             transport_contract_digest: self.transport_contract_digest.clone(),
@@ -302,7 +305,7 @@ impl RuntimeServerStatusSnapshot {
             schema_version: SCHEMA_VERSION.to_owned(),
             request_id,
             state: self.state,
-            runtime_artifact_digest: self.runtime_artifact_digest.clone(),
+            runtime_binary_identity: self.runtime_binary_identity.clone(),
             artifact_mode: self.artifact_mode.clone(),
             artifact_catalog_digest: self.artifact_catalog_digest.clone(),
             transport_contract_digest: self.transport_contract_digest.clone(),
@@ -320,7 +323,7 @@ pub struct RuntimeServerControlReceipt {
     pub schema_version: String,
     pub request_id: String,
     pub state: RuntimeServerState,
-    pub runtime_artifact_digest: String,
+    pub runtime_binary_identity: RuntimeBinaryIdentity,
     pub artifact_mode: String,
     pub artifact_catalog_digest: String,
     pub transport_contract_digest: String,
@@ -361,7 +364,7 @@ impl RuntimeServerControlReceipt {
             schema_version: SCHEMA_VERSION.to_owned(),
             request_id,
             state: RuntimeServerState::Healthy,
-            runtime_artifact_digest: endpoint.runtime_artifact_digest.clone(),
+            runtime_binary_identity: endpoint.runtime_binary_identity.clone(),
             artifact_mode: endpoint.artifact_mode.clone(),
             artifact_catalog_digest: endpoint.artifact_catalog_digest.clone(),
             transport_contract_digest: endpoint.transport_contract_digest.clone(),
@@ -384,7 +387,7 @@ impl RuntimeServerControlReceipt {
 
     pub fn starting(
         request_id: String,
-        runtime_artifact_digest: String,
+        runtime_binary_identity: RuntimeBinaryIdentity,
         artifact_mode: String,
         artifact_catalog_digest: String,
         reason: String,
@@ -394,7 +397,7 @@ impl RuntimeServerControlReceipt {
             schema_version: SCHEMA_VERSION.to_owned(),
             request_id,
             state: RuntimeServerState::Starting,
-            runtime_artifact_digest,
+            runtime_binary_identity,
             artifact_mode,
             artifact_catalog_digest,
             transport_contract_digest: runtime_server_transport_contract_digest(),

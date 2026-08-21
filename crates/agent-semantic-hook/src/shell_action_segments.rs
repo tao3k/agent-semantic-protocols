@@ -18,7 +18,8 @@ pub(super) fn split_shell_command(tool_name: &str, command: &str) -> Option<Vec<
     Some(
         stages
             .into_iter()
-            .map(|stage| {
+            .enumerate()
+            .map(|(index, stage)| {
                 let command_tokens = stage.words().to_vec();
                 let command = agent_semantic_command_match::render_bash_command_stage(&stage);
                 let mut paths = agent_semantic_command_match::command_stage_source_paths(&stage);
@@ -33,6 +34,7 @@ pub(super) fn split_shell_command(tool_name: &str, command: &str) -> Option<Vec<
                     operation: OperationIntent::ShellCommand,
                     command: Some(command),
                     command_tokens: Some(command_tokens),
+                    leading_shell_stage: index == 0,
                     paths,
                 }
             })

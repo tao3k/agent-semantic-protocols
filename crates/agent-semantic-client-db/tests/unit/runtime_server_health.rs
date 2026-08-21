@@ -43,7 +43,7 @@ async fn concurrent_cached_health_is_sub_millisecond_at_p99() {
     let serving = call_runtime_server(
         &health_endpoint,
         RuntimeServerOperation::Status,
-        health_endpoint.runtime_artifact_digest.clone(),
+        health_endpoint.runtime_binary_identity.clone(),
         "cached-health-serving-barrier".to_owned(),
     )
     .await

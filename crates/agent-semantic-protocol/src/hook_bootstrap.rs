@@ -230,21 +230,7 @@ fn hook_event_requires_policy_evaluation(event: &str, input: &[u8]) -> Result<bo
 }
 
 fn local_hook_policy_unavailable(event: &str, error: &str) -> String {
-    let canonical_install_target = agent_semantic_runtime::resolve_state_home()
-        .ok()
-        .map(|state_home| state_home.join("runtime/bin/asp"));
-    let canonical_install_command = canonical_install_target
-        .as_ref()
-        .map(|target| {
-            format!(
-                "<validated-candidate-asp> install binary --target {}",
-                target.display()
-            )
-        })
-        .unwrap_or_else(|| {
-            "<validated-candidate-asp> install binary --target <canonicalBinaryInstallTarget>"
-                .to_owned()
-        });
+    let canonical_install_command = "<validated-candidate-asp> install binary";
     serde_json::json!({
         "schemaId": "agent.semantic-protocols.hook-local-policy-unavailable.v1",
         "schemaVersion": "1",
@@ -258,7 +244,7 @@ fn local_hook_policy_unavailable(event: &str, error: &str) -> String {
             "asp hook doctor --client codex",
             canonical_install_command
         ],
-        "canonicalBinaryInstallTarget": canonical_install_target,
+        "canonicalBinaryInstallTarget": canonical_install_command,
         "error": single_line(error),
     })
     .to_string()
@@ -353,24 +339,16 @@ fn hook_event_is_canonical_recovery(args: &[OsString], input: &[u8]) -> bool {
     if exact_hook_doctor {
         return true;
     }
-    let Ok(state_home) = agent_semantic_runtime::resolve_state_home() else {
+    if agent_semantic_runtime::resolve_state_home().is_err() {
         return false;
-    };
-    exact_canonical_binary_install(words, asp_index, &state_home.join("runtime/bin/asp"))
+    }
+    exact_canonical_binary_install(words, asp_index)
 }
 
-fn exact_canonical_binary_install(
-    words: &[String],
-    asp_index: usize,
-    canonical_target: &std::path::Path,
-) -> bool {
+fn exact_canonical_binary_install(words: &[String], asp_index: usize) -> bool {
     words.get(asp_index + 1).map(String::as_str) == Some("install")
         && words.get(asp_index + 2).map(String::as_str) == Some("binary")
-        && words.get(asp_index + 3).map(String::as_str) == Some("--target")
-        && words
-            .get(asp_index + 4)
-            .is_some_and(|target| std::path::Path::new(target) == canonical_target)
-        && words.len() == asp_index + 5
+        && words.len() == asp_index + 3
 }
 
 fn hook_payload_command(payload: &serde_json::Value) -> Option<&str> {

@@ -285,6 +285,10 @@ inline next actions, exact locators, and explicit omission/avoidance facts.
 
 *** Exact projection scope and observability
 
+Exact structural selector v1 already carries generic path segments. Providers MUST use the existing segment =kind= field for =match-arm= and =branch= identities, and MUST preserve the ordinary v1 envelope fields for owner path, parser identity, generation identity, native fact identity, byte range, and source authority. Runtime publication stores those nodes in the same immutable evidence context as their enclosing item; no v2 schema, language-private side packet, or renderer reconstruction is permitted.
+
+An exact branch selector is a bounded Runtime read: it resolves one branch source segment and its parent relation from the Ready generation. A missing branch entry is a typed projection-scope omission or generation corruption according to the admitted context, never permission to read the enclosing dispatch function, invoke a provider, open a client database, or rebuild a generation during the agent-facing query.
+
 Exact selector resolution MUST execute inside the Runtime Server data plane as
 one typed operation: generation read, cache lookup, provider-owner repair,
 selector relocation, overlay rebind, and terminal receipt publication.  The

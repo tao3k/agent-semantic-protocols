@@ -270,6 +270,12 @@ fn append_hook_event_state_with_lock_timeout(
     let state_dir = ensure_project_hook_state_dir(project_root)?;
     let state_path = state_dir.join(HOOK_EVENT_STATE_FILE);
     let writer_lock = acquire_event_state_writer(&state_dir, lock_timeout)?;
+    let mut fields = decision.fields.clone();
+    if decision.decision == crate::DecisionKind::Deny {
+        fields
+            .entry("denyEvidenceRef".to_owned())
+            .or_insert_with(|| Value::String(state_path.display().to_string()));
+    }
     let event = json!({
         "schemaId": HOOK_EVENT_SCHEMA_ID,
         "schemaVersion": "1",
@@ -283,7 +289,7 @@ fn append_hook_event_state_with_lock_timeout(
         "languageIds": decision.language_ids,
         "subject": decision.subject,
         "routeKinds": decision.routes.iter().map(|route| route.kind).collect::<Vec<_>>(),
-        "fields": decision.fields,
+        "fields": fields,
         "denyReplayKey": decision.fields.get("denyReplayKey"),
     });
     let mut line = event.to_string();

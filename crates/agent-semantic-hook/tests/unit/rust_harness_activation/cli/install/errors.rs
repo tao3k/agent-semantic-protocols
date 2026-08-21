@@ -2,6 +2,7 @@ use crate::rust_harness_activation::support::write_state_home_provider_binary;
 
 use super::support::{
     codex_plugin_install_args, git_project_root, protocol_command, sync_test_state,
+    write_fake_codex_cli_in_dir, write_stable_runtime_asp_launcher,
 };
 
 #[test]
@@ -40,8 +41,8 @@ fn cli_install_refuses_to_overwrite_invalid_codex_toml() {
     let asp_state_home = root.join(".asp-state-home");
     write_state_home_provider_binary(&asp_state_home, "rust", "asp-rust", "rs-harness");
     sync_test_state(&root, &asp_state_home);
-    let protocol_bin_dir = root.join(".agent-bin");
-    write_real_asp_launcher(&protocol_bin_dir);
+    let protocol_bin_dir = write_stable_runtime_asp_launcher(&asp_state_home);
+    write_fake_codex_cli_in_dir(&protocol_bin_dir);
     std::fs::create_dir_all(root.join(".codex")).expect("create .codex");
     let config_path = root.join(".codex/config.toml");
     std::fs::write(&config_path, "unified_exec = \"unterminated\n").expect("write invalid config");
@@ -67,5 +68,5 @@ fn cli_install_refuses_to_overwrite_invalid_codex_toml() {
     let _ = std::fs::remove_dir_all(&root);
 }
 use crate::rust_harness_activation::cli::install::support::{
-    write_fake_codex_cli_in_dir, write_real_asp_launcher,
+    write_real_asp_launcher,
 };

@@ -103,7 +103,7 @@ pub(super) async fn serve_connection(
             } else if *lifecycle.borrow() == RuntimeServerState::Starting {
                 let mut receipt = RuntimeServerControlReceipt::starting(
                     request.request_id,
-                    endpoint.runtime_artifact_digest.clone(),
+                    endpoint.runtime_binary_identity.clone(),
                     endpoint.artifact_mode.clone(),
                     endpoint.artifact_catalog_digest.clone(),
                     "workspace-generation-restore".to_owned(),

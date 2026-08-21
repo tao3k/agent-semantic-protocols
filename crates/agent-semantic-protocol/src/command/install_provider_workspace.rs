@@ -366,7 +366,7 @@ async fn run_workspace_command(
     Ok(())
 }
 
-pub(super) fn publish_provider_workspace(
+pub(super) async fn publish_provider_workspace(
     protocol_home: &Path,
     stable_entry: &Path,
     binary_artifact_root: &Path,
@@ -460,7 +460,8 @@ pub(super) fn publish_provider_workspace(
         stable_entry,
         binary_artifact_root,
         &binary_identity,
-    )?;
+    )
+    .await?;
     Ok(PublishedProviderWorkspace {
         source_root: built.source_root,
         artifact_root,

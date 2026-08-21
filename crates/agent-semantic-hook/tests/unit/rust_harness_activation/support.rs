@@ -22,17 +22,6 @@ fn target_debug_asp() -> Option<PathBuf> {
     Some(asp)
 }
 
-pub(super) fn asp_bin_dir(root: &Path) -> PathBuf {
-    let bin_dir = root.join(".asp-test-bin");
-    std::fs::create_dir_all(&bin_dir).expect("create isolated ASP bin dir");
-    std::fs::copy(
-        asp_binary_path(),
-        bin_dir.join(format!("asp{}", std::env::consts::EXE_SUFFIX)),
-    )
-    .expect("copy isolated ASP bin");
-    bin_dir
-}
-
 pub(super) fn asp_binary_path() -> PathBuf {
     if let Ok(path) = std::env::var("ASP_TEST_ASP_BIN") {
         return checked_asp_path(PathBuf::from(path), "ASP_TEST_ASP_BIN");
@@ -133,9 +122,13 @@ pub(super) fn root_owned_rust_activation_json() -> String {
     let provider_executable =
         write_state_home_provider_binary(&state_home, "rust", "asp-rust", "rs-harness");
     let resolved_execution_prefix = vec![provider_executable.display().to_string()];
-    let provider_artifact = agent_semantic_hook::active_provider_artifact_input_with_state_home(
+    let state_paths = agent_semantic_runtime::project_state_paths_with_state_home(
         std::path::Path::new("."),
         &state_home,
+    )
+    .expect("resolve provider state paths");
+    let provider_artifact_digest = agent_semantic_hook::installed_provider_artifact_digest(
+        &state_paths.provider_lock_dir,
         manifest.language_id(),
         manifest.provider_id(),
         provider_executable,
@@ -143,7 +136,7 @@ pub(super) fn root_owned_rust_activation_json() -> String {
     .expect("validate provider test executable against its install receipt");
     let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
         &resolved_execution_prefix,
-        &provider_artifact.artifact_digest,
+        &provider_artifact_digest,
     )
     .expect("digest provider execution command");
     let activation = agent_semantic_hook::HookActivation {
@@ -211,7 +204,24 @@ pub(super) fn write_state_home_provider_binary(
     provider_id: &str,
     binary: &str,
 ) -> PathBuf {
-    write_state_home_provider_file(state_home, language_id, provider_id, binary, 0o755, false)
+    let registered = agent_semantic_hook::registered_provider_binary_v1(language_id);
+    let (provider_id, binary) = match registered {
+        Ok(registered) if registered.provider_id().as_str() == provider_id => {
+            (
+                registered.provider_id().as_str().to_owned(),
+                registered.binary().to_owned(),
+            )
+        }
+        _ => (provider_id.to_owned(), binary.to_owned()),
+    };
+    write_state_home_provider_file(
+        state_home,
+        language_id,
+        &provider_id,
+        &binary,
+        0o755,
+        false,
+    )
 }
 
 fn write_state_home_provider_file(
@@ -262,7 +272,7 @@ fn write_state_home_provider_file(
         })
         .to_string();
         let guide_marker = match binary {
-            "rs-harness" => {
+            "asp-rust" => {
                 "[agent-guide] runtime=agent-semantic-hook language=rust provider=asp-rust"
             }
             "ts-harness" => "[ts-harness-guide]",

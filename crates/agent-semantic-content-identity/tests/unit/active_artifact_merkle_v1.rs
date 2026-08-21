@@ -1,15 +1,10 @@
 use super::{
-    ActiveArtifactKindV1, ActiveArtifactLeafV1, ActiveAspArtifactReceiptV1,
-    ActiveAspArtifactReceiptV1Error,
+    ActiveArtifactKind, ActiveArtifactLeaf, ActiveAspArtifactReceipt, ActiveAspArtifactReceiptError,
 };
 use crate::exact_selector_merkle::blake3_content_digest_v1;
 
-fn leaf(
-    logical_path: &str,
-    artifact_kind: ActiveArtifactKindV1,
-    bytes: &[u8],
-) -> ActiveArtifactLeafV1 {
-    ActiveArtifactLeafV1::new(
+fn leaf(logical_path: &str, artifact_kind: ActiveArtifactKind, bytes: &[u8]) -> ActiveArtifactLeaf {
+    ActiveArtifactLeaf::new(
         logical_path,
         format!("/active/{logical_path}"),
         artifact_kind,
@@ -23,17 +18,17 @@ fn leaf(
 
 #[test]
 fn receipt_is_sorted_and_binds_every_leaf() {
-    let receipt = ActiveAspArtifactReceiptV1::build(
+    let receipt = ActiveAspArtifactReceipt::build(
         "asp-runtime",
         vec![
             leaf(
                 "state/activation.json",
-                ActiveArtifactKindV1::Activation,
+                ActiveArtifactKind::Activation,
                 b"activation",
             ),
             leaf(
                 "runtime/bin/by-digest/abc/asp",
-                ActiveArtifactKindV1::AspBinary,
+                ActiveArtifactKind::AspBinary,
                 b"asp",
             ),
         ],
@@ -45,7 +40,7 @@ fn receipt_is_sorted_and_binds_every_leaf() {
 
     let mut changed = receipt.clone();
     let original = &changed.leaves[0];
-    changed.leaves[0] = ActiveArtifactLeafV1::new(
+    changed.leaves[0] = ActiveArtifactLeaf::new(
         original.logical_path(),
         original.materialized_path(),
         original.artifact_kind(),
@@ -57,23 +52,23 @@ fn receipt_is_sorted_and_binds_every_leaf() {
     .expect("changed active artifact leaf");
     assert_eq!(
         changed.validate(),
-        Err(ActiveAspArtifactReceiptV1Error::RootDigestMismatch)
+        Err(ActiveAspArtifactReceiptError::RootDigestMismatch)
     );
 }
 
 #[test]
 fn legacy_v1_receipt_without_materialization_digest_is_normalized_on_decode() {
-    let receipt = ActiveAspArtifactReceiptV1::build(
+    let receipt = ActiveAspArtifactReceipt::build(
         "asp-runtime",
         vec![
             leaf(
                 "state/activation.json",
-                ActiveArtifactKindV1::Activation,
+                ActiveArtifactKind::Activation,
                 b"activation",
             ),
             leaf(
                 "runtime/bin/by-digest/abc/asp",
-                ActiveArtifactKindV1::AspBinary,
+                ActiveArtifactKind::AspBinary,
                 b"asp",
             ),
         ],
@@ -86,7 +81,7 @@ fn legacy_v1_receipt_without_materialization_digest_is_normalized_on_decode() {
         .expect("receipt object")
         .remove("materializationRootDigest");
 
-    let decoded: ActiveAspArtifactReceiptV1 =
+    let decoded: ActiveAspArtifactReceipt =
         serde_json::from_value(legacy).expect("decode legacy v1 receipt");
 
     assert_eq!(
@@ -100,19 +95,19 @@ fn legacy_v1_receipt_without_materialization_digest_is_normalized_on_decode() {
 fn content_root_is_stable_across_materialization_roots() {
     let activation = leaf(
         "state/activation.json",
-        ActiveArtifactKindV1::Activation,
+        ActiveArtifactKind::Activation,
         b"activation",
     );
     let binary = leaf(
         "runtime/bin/by-digest/abc/asp",
-        ActiveArtifactKindV1::AspBinary,
+        ActiveArtifactKind::AspBinary,
         b"asp",
     );
     let receipt =
-        ActiveAspArtifactReceiptV1::build("asp-runtime", vec![activation.clone(), binary.clone()])
+        ActiveAspArtifactReceipt::build("asp-runtime", vec![activation.clone(), binary.clone()])
             .expect("canonical receipt");
 
-    let alias = ActiveArtifactLeafV1::new(
+    let alias = ActiveArtifactLeaf::new(
         binary.logical_path(),
         "/workspace/.bin/.asp-artifacts/blake3-256/abc/asp",
         binary.artifact_kind(),
@@ -122,7 +117,7 @@ fn content_root_is_stable_across_materialization_roots() {
         binary.change_time_unix_nanos(),
     )
     .expect("aliased active artifact leaf");
-    let aliased = ActiveAspArtifactReceiptV1::build("asp-runtime", vec![activation, alias])
+    let aliased = ActiveAspArtifactReceipt::build("asp-runtime", vec![activation, alias])
         .expect("aliased receipt");
 
     assert_eq!(receipt.artifact_root_digest, aliased.artifact_root_digest);
@@ -136,11 +131,11 @@ fn content_root_is_stable_across_materialization_roots() {
 fn receipt_rejects_duplicate_or_missing_required_leaves() {
     let binary = leaf(
         "runtime/bin/by-digest/abc/asp",
-        ActiveArtifactKindV1::AspBinary,
+        ActiveArtifactKind::AspBinary,
         b"asp",
     );
     assert!(matches!(
-        ActiveAspArtifactReceiptV1::build("asp-runtime", vec![binary]),
-        Err(ActiveAspArtifactReceiptV1Error::ActivationLeafCount(0))
+        ActiveAspArtifactReceipt::build("asp-runtime", vec![binary]),
+        Err(ActiveAspArtifactReceiptError::ActivationLeafCount(0))
     ));
 }

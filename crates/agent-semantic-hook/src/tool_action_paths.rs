@@ -56,6 +56,22 @@ pub(super) fn extract_paths_direct(tool_input: &Value) -> Vec<String> {
     paths
 }
 
+pub(super) fn direct_read_host_envelopes(path: &str) -> Vec<(String, Value)> {
+    [
+        ("Read", "file_path"),
+        ("functions.read", "path"),
+        ("fsReadFile", "fileName"),
+        ("mcp__filesystem__read_file", "uri"),
+    ]
+    .into_iter()
+    .map(|(tool_name, path_key)| {
+        let mut input = serde_json::Map::new();
+        input.insert(path_key.to_owned(), Value::String(path.to_owned()));
+        (tool_name.to_owned(), Value::Object(input))
+    })
+    .collect()
+}
+
 pub(super) fn extract_apply_patch_paths_direct(tool_input: &Value) -> Vec<String> {
     let Some(patch) = extract_apply_patch_text_direct(tool_input) else {
         return extract_paths_direct(tool_input);

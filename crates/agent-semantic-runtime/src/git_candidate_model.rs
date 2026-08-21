@@ -107,6 +107,9 @@ pub enum RepositoryCandidateState {
 pub enum RepositoryCandidateAuthority {
     GitIndex,
     GitWorktree,
+    /// Runtime Server-owned identity for a workspace that is intentionally
+    /// outside a Git checkout. It never represents a Git-derived snapshot.
+    ServerResident,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
