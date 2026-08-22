@@ -91,7 +91,10 @@ async fn runtime_status_reports_daemon_owned_graph_turbo_resident() {
     call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Restart,
-        agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content { value: "next-runtime-digest".to_owned(), algorithm: "blake3-256".to_owned() },
+        agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+            value: "next-runtime-digest".to_owned(),
+            algorithm: "blake3-256".to_owned(),
+        },
         "graph-turbo-status-restart".to_owned(),
     )
     .await

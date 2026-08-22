@@ -122,7 +122,7 @@ agent-tools-install-languages:
     @just agent-tools-install-py
     @just agent-tools-install-julia
     @just agent-tools-install-gerbil
-    @echo "[agent-tools-install-languages] installed rs-harness, ts-harness, py-harness, asp-julia-harness, and gslph into {{asp_runtime_bin}}"
+    @echo "[agent-tools-install-languages] installed asp-rust, asp-typescript, asp-python, asp-julia, and asp-gerbil-scheme into {{asp_runtime_bin}}"
 
 # Develop mode: build and install the shared asp binary from this checkout.
 agent-tools-install-asp bin_dir="":
@@ -285,7 +285,7 @@ agent-hooks-doctor-rs:
     rs-harness agent doctor {{repo}}
 
 agent-hooks-doctor-ts:
-    ts-harness agent doctor {{repo}}
+    asp-typescript agent doctor {{repo}}
 
 agent-hooks-doctor-py:
     py-harness agent doctor {{repo}}
@@ -397,7 +397,7 @@ provider-gate-root: check-language-evidence-smoke
     uv run --project packages/python --frozen python -m pytest \
       tests/unit/test_semantic_*_schema.py \
       tests/unit/semantic_tree_sitter_query_rfc \
-      tests/unit/test_cli_first_harness_ux_rfc.py \
+      tests/unit/test_asp_server_first_architecture_rfc.py \
       tests/unit/test_agent_hook_interception_protocol_rfc.py \
       tests/unit/test_docs_rfc_skill_contracts.py \
       tests/unit/test_python_package_dependency_boundary.py \
@@ -565,7 +565,7 @@ provider-gate-semantic-facts:
     required_bins = [
         root / ".bin" / "asp",
         root / ".bin" / "rs-harness",
-        root / ".bin" / "ts-harness",
+        root / ".bin" / "asp-typescript",
         root / ".bin" / "py-harness",
         root / "{{julia_compiled_harness}}",
     ]
@@ -594,7 +594,7 @@ provider-gate-semantic-facts:
         ),
         (
             "typescript",
-            [str(root / ".bin" / "ts-harness"), "search", "semantic-facts", "array collection fields", "--json", "{{typescript_harness_project}}"],
+            [str(root / ".bin" / "asp-typescript"), "search", "semantic-facts", "array collection fields", "--json", "{{typescript_harness_project}}"],
             "src/cli/dev-command-log.ts:70:1:pipes: readonly string[]\n",
         ),
         (

@@ -2,7 +2,6 @@
 # Hook defaults are compiled into the runtime; this file exposes the user-level
 # overrides that should be easy to audit.
 schemaId = "@CLIENT_HOOK_CONFIG_SCHEMA_ID@"
-wrapper_match = "enable"
 schemaVersion = "@CLIENT_HOOK_CONFIG_SCHEMA_VERSION@"
 protocolId = "@HOOK_PROTOCOL_ID@"
 protocolVersion = "@HOOK_PROTOCOL_VERSION@"
@@ -11,6 +10,31 @@ contractFingerprint = "@HOOK_CLIENT_CONTRACT_FINGERPRINT@"
 # ASP replaces this marker with a provider-manifest-derived [[languageProviders]]
 # projection when materializing the managed config. Do not maintain extensions here.
 # @REGISTERED_LANGUAGE_PROVIDERS@
+
+[profiles.rust]
+languageId = "rust"
+providerId = "asp-rust"
+extensionAny = ["rs", "rsx"]
+
+[profiles.typescript]
+languageId = "typescript"
+providerId = "asp-typescript"
+extensionAny = ["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs"]
+
+[profiles.python]
+languageId = "python"
+providerId = "asp-python"
+extensionAny = ["py", "pyi"]
+
+[profiles.julia]
+languageId = "julia"
+providerId = "asp-julia"
+extensionAny = ["jl"]
+
+[profiles.gerbil-scheme]
+languageId = "gerbil-scheme"
+providerId = "asp-gerbil-scheme"
+extensionAny = ["ss", "ssi", "scm", "sld"]
 
 [agents]
 
@@ -113,11 +137,12 @@ authorityAny = ["raw-shell"]
 # match, intent, decision, and resident dispatch policy.
 [[rules]]
 id = "registered-asp-reasoning-search"
+matcherPolicies = ["wrapped_command"]
 priority = 100000
 intent = "reasoning-search"
 decision = "deny"
 reasonKind = "subagent-receipt-required"
-message = "Raw search over registered source is denied only in the current Agent; registered source belong in `asp <language> search`. ASP remains available. {{agentSessionInstruction}}"
+message = "Raw search over registered source is denied only in the current Agent. This policy is owned by Config TOML: delegate it to the registered ASP Explorer, which uses the compact `asp <language> search ...` route without `--json`. The `--json` flag is reserved for explicit debug or programmatic automation, not normal Explorer search. {{agentSessionInstruction}}"
 event = "pre-tool"
 
 [rules.match]
@@ -133,6 +158,7 @@ lazyProvider = "matched-language"
 
 [[rules]]
 id = "resident-testing-dispatch"
+matcherPolicies = ["wrapped_command"]
 priority = 90000
 intent = "test-build-command"
 decision = "deny"
@@ -264,6 +290,7 @@ leadingEnvironmentAssignmentAny = ["ASP_NO_AGENT=1"]
 
 [[rules]]
 id = "deny-agent-search-json"
+matcherPolicies = ["wrapped_command"]
 priority = 110000
 decision = "deny"
 reasonKind = "agent-search-json"
@@ -281,21 +308,19 @@ decisionMaterializer = "apply-patch"
 message = "Apply-patch policy is derived by the configured hook materializer."
 
 [[rules]]
-id = "materialize-registered-source-read-action"
+id = "route-read-to-asp-languages"
 priority = 40000
+actions = ["read"]
+profilesList = ["rust", "typescript", "python", "julia", "gerbil-scheme"]
 decision = "deny"
-decisionMaterializer = "source-access"
 message = "Registered {{languageId}} source reads are denied. Use the parser-owned ASP route below instead of raw Read."
-
-[rules.match]
-actionPolicyAll = ["raw-host-read", "registered-language-source"]
 
 [[rules]]
 id = "materialize-structured-document-read-action"
 priority = 40010
 decision = "deny"
 reasonKind = "structured-source-read"
-message = "Structured documents require the configured bounded projector: use jq for JSON and yq for TOML."
+message = "Raw structured-document Read is denied only in the current Agent. Delegate the native JSON/TOML file read to the registered ASP Explorer, then use the configured bounded projector there: jq for JSON and yq for TOML."
 fields = { capabilityActivation = "lazy-executable", filterGrammar = "bounded-path-v1", jsonBinary = "jq", tomlBinary = "yq", sourceAccessCompactRepeatedMessage = "ASP denied structured source access again. Continue with the configured bounded structured reader (`jq` for JSON, `yq` for TOML); do not retry raw Read." }
 
 [rules.match]
@@ -304,8 +329,14 @@ effectAny = ["read"]
 authorityAny = ["raw-host-action"]
 pathGlobAny = ["*.json", "**/*.json", "*.toml", "**/*.toml"]
 
+[rules.dispatch]
+transport = "resident-agent"
+role = "explore"
+receiptKind = "asp-explore-search-v1"
+
 [[rules]]
 id = "materialize-source-access-policy"
+matcherPolicies = ["wrapped_command"]
 priority = 30000
 decision = "deny"
 decisionMaterializer = "source-access"
@@ -326,6 +357,7 @@ effect = "read"
 
 [[rules]]
 id = "deny-uncontrolled-source-search-commands"
+matcherPolicies = ["wrapped_command"]
 priority = 10000
 decision = "deny"
 reasonKind = "raw-broad-search"
@@ -342,6 +374,7 @@ argvPrefixAny = [["rg"], ["ag"], ["grep"], ["fd"], ["find"], ["git", "grep"], ["
 
 [[rules]]
 id = "allow-bounded-json-projection"
+matcherPolicies = ["wrapped_command"]
 priority = 20020
 decision = "allow"
 fields = { projectionGrammar = "bounded-path-v1", capabilityActivation = "lazy-executable" }
@@ -359,6 +392,7 @@ optionValueArity = { "--arg" = 2, "--argjson" = 2, "--slurpfile" = 2, "--rawfile
 
 [[rules]]
 id = "allow-bounded-toml-projection"
+matcherPolicies = ["wrapped_command"]
 priority = 20010
 decision = "allow"
 fields = { projectionGrammar = "bounded-path-v1", capabilityActivation = "lazy-executable" }
@@ -376,6 +410,7 @@ optionAny = ["-p=toml"]
 
 [[rules]]
 id = "deny-unbounded-structured-projection"
+matcherPolicies = ["wrapped_command"]
 priority = 20000
 decision = "deny"
 reasonKind = "bulk-source-dump"
@@ -387,6 +422,7 @@ argvStructuredDocumentFile = true
 
 [[rules]]
 id = "deny-uncontrolled-source-materialization-commands"
+matcherPolicies = ["wrapped_command"]
 priority = 10001
 decision = "deny"
 decisionMaterializer = "source-access"
@@ -505,6 +541,7 @@ effect = "read"
 
 [[rules]]
 id = "deny-uncontrolled-git-metadata-reads"
+matcherPolicies = ["wrapped_command"]
 priority = 10002
 decision = "deny"
 reasonKind = "raw-broad-search"
@@ -520,6 +557,7 @@ argvPrefixAny = [["git", "show", "--stat"], ["git", "diff", "--stat"], ["git", "
 
 [[rules]]
 id = "deny-uncontrolled-git-source-reads"
+matcherPolicies = ["wrapped_command"]
 priority = 10000
 decision = "deny"
 reasonKind = "bulk-source-dump"

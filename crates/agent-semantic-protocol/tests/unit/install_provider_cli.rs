@@ -92,6 +92,18 @@ fn install_binary_does_not_reconcile_language_providers_or_global_catalog() {
         stdout.contains("globalProviderCatalog=not-on-binary-install"),
         "{stdout}"
     );
+    assert!(
+        stdout.contains("runtimeServerReconcile=not-on-binary-install"),
+        "{stdout}"
+    );
+    assert!(
+        !state_home.join("runtime/server/candidates").exists(),
+        "binary installation must not publish a Runtime Server candidate"
+    );
+    assert!(
+        !state_home.join("runtime/server/endpoint.v1.json").exists(),
+        "binary installation must not start or publish a Runtime Server"
+    );
 
     std::fs::remove_dir_all(root).expect("remove install binary fixture");
 }
@@ -424,7 +436,7 @@ fn sorted_file_names(path: &Path) -> Vec<String> {
 
 fn temp_project_root() -> PathBuf {
     let unique = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
-    let root = std::env::temp_dir().join(format!(
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!(
         "asp-install-provider-{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()

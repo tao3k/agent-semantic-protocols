@@ -111,10 +111,7 @@ pub struct ActivatedRankerConfig {
     pub ranker_id: String,
     pub capability_id: String,
     pub protocol_version: String,
-    pub binary: String,
     pub argv_prefix: Vec<String>,
-    pub content_digest: String,
-    pub artifact_metadata_digest: String,
 }
 
 /// Runtime and version that generated a project activation.
@@ -130,21 +127,13 @@ pub struct ActivationGeneratedBy {
 /// Repository-local provider activation without provider routes or policies.
 ///
 /// Serialized hook activation DTO. Semantic identities remain typed while
-/// transparent serialization preserves the v1 wire representation.
+/// transparent serialization preserves the static activation wire representation.
 pub struct ActivatedProviderConfig {
     pub manifest_id: String,
     pub manifest_digest: String,
     pub language_id: agent_semantic_config::LanguageId,
     pub provider_id: agent_semantic_config::ProviderId,
-    pub binary: String,
-    #[serde(default)]
-    pub execution: ProviderExecution,
-    #[serde(default)]
-    pub provider_command_prefix: Vec<String>,
-    pub execution_command_digest: String,
     pub search_capabilities: ProviderSearchCapabilities,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub language_projection: Option<ProviderLanguageProjectionDescriptor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub semantic_facts_descriptor: Option<ProviderSemanticFactsDescriptor>,
     pub query_pack_descriptor: ProviderQueryPackDescriptor,
@@ -214,8 +203,6 @@ pub struct ProviderManifest {
     pub(crate) project_resolution: Option<ProviderProjectResolutionDescriptor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) document_resolution: Option<ProviderDocumentResolutionDescriptor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) language_projection: Option<ProviderLanguageProjectionDescriptor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) semantic_facts_descriptor: Option<ProviderSemanticFactsDescriptor>,
     pub(crate) query_pack_descriptor: ProviderQueryPackDescriptor,
@@ -288,10 +275,6 @@ impl ProviderManifest {
         self.document_resolution.as_ref()
     }
 
-    pub fn language_projection(&self) -> Option<&ProviderLanguageProjectionDescriptor> {
-        self.language_projection.as_ref()
-    }
-
     pub fn semantic_facts_descriptor(&self) -> Option<&ProviderSemanticFactsDescriptor> {
         self.semantic_facts_descriptor.as_ref()
     }
@@ -338,48 +321,6 @@ pub struct ProviderSearchCapabilities {
     pub dependency_topology_metadata: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_snapshot: Option<ProviderSourceSnapshotDescriptor>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ProviderLanguageProjectionDescriptor {
-    schema_id: String,
-    schema_version: String,
-    command_binding: String,
-    transport: String,
-    request_schema: String,
-    response_schema: String,
-    identity_schema: String,
-}
-
-impl ProviderLanguageProjectionDescriptor {
-    pub fn schema_id(&self) -> &str {
-        &self.schema_id
-    }
-
-    pub fn schema_version(&self) -> &str {
-        &self.schema_version
-    }
-
-    pub fn command_binding(&self) -> &str {
-        &self.command_binding
-    }
-
-    pub fn transport(&self) -> &str {
-        &self.transport
-    }
-
-    pub fn request_schema(&self) -> &str {
-        &self.request_schema
-    }
-
-    pub fn response_schema(&self) -> &str {
-        &self.response_schema
-    }
-
-    pub fn identity_schema(&self) -> &str {
-        &self.identity_schema
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -487,8 +428,6 @@ pub struct ProviderSemanticFactsDescriptor {
     pub intent_axes: Vec<ProviderSemanticFactsIntentAxis>,
 }
 
-/// Provider-owned package-manager parser capability.
-///
 /// Repository/worktree discovery belongs to ASP. The provider receives only
 /// an already-rebased candidate scope and returns parser-owned project facts.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -504,9 +443,6 @@ pub struct ProviderProjectResolutionDescriptor {
     pub manifest_kinds: Vec<String>,
     pub lockfile_kinds: Vec<String>,
     pub parser_id: String,
-    pub command_binding: String,
-    pub request_schema: String,
-    pub response_schema: String,
     pub package_graph_schema: String,
     pub project_resolution_schema: String,
 }
@@ -696,16 +632,11 @@ pub struct ActivatedProvider {
     pub manifest_digest: String,
     pub language_id: agent_semantic_config::LanguageId,
     pub provider_id: agent_semantic_config::ProviderId,
-    pub binary: String,
-    pub execution: ProviderExecution,
-    pub provider_command_prefix: Vec<String>,
-    pub execution_command_digest: String,
     pub namespace: String,
     pub package_roots: Vec<String>,
     pub source_extensions: Vec<String>,
     pub config_files: Vec<String>,
     pub search_capabilities: ProviderSearchCapabilities,
-    pub language_projection: Option<ProviderLanguageProjectionDescriptor>,
     pub project_resolution: Option<ProviderProjectResolutionDescriptor>,
     pub document_resolution: Option<ProviderDocumentResolutionDescriptor>,
     pub semantic_facts_descriptor: Option<ProviderSemanticFactsDescriptor>,
@@ -724,8 +655,6 @@ pub struct ActivatedProvider {
 pub struct HookProviderProjection {
     pub language_id: agent_semantic_config::LanguageId,
     pub provider_id: agent_semantic_config::ProviderId,
-    pub binary: String,
-    pub provider_command_prefix: Vec<String>,
     pub package_roots: Vec<String>,
     pub source_extensions: Vec<String>,
     pub config_files: Vec<String>,

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/provider-runtime-contract-descriptor.schema.json",
+  "title": "ASP Provider Runtime Contract Descriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["transport", "aspClientServer", "operations"],
+  "properties": {
+    "transport": { "const": "http-json" },
+    "aspClientServer": {
+"$ref": "asp-client-server-descriptor.schema.json"
+    },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["operation", "requestSchemaId", "responseSchemaId"],
+        "properties": {
+          "operation": { "type": "string", "minLength": 1 },
+          "requestSchemaId": { "type": "string", "minLength": 1 },
+          "responseSchemaId": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

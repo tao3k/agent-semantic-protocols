@@ -185,7 +185,7 @@ fn search_pipe_file_range_selector_seed_does_not_materialize_query_code() {
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
     write_marker_provider(&bin_dir, "rs-harness", &marker);
-    write_marker_provider(&bin_dir, "ts-harness", &marker);
+    write_marker_provider(&bin_dir, "asp-typescript", &marker);
     let language_cases = [
         ("rust", "src/lib.rs:1:5"),
         ("typescript", "src/index.ts:1:5"),
@@ -427,7 +427,7 @@ fn search_pipe_package_option_scopes_search_overlay_frontier_without_provider_sp
     let root = temp_project_root("search-pipe-package-option");
     let bin_dir = root.join(".bin");
     let marker = root.join("provider-called");
-    write_marker_provider(&bin_dir, "ts-harness", &marker);
+    write_marker_provider(&bin_dir, "asp-typescript", &marker);
     write_activation(&root, &[provider("typescript", Vec::new())]);
     std::fs::create_dir_all(root.join("src/compiler")).expect("create scoped source");
     std::fs::create_dir_all(root.join("src/server")).expect("create out-of-scope source");

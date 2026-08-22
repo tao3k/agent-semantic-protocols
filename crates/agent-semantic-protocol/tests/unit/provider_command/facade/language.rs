@@ -193,7 +193,7 @@ fn language_facade_selects_matching_provider_from_activation() {
     let bin_dir = root.join(".bin");
     let cache_home = root.join(".cache");
     write_echo_provider(&bin_dir, "rs-harness", "rs");
-    write_echo_provider(&bin_dir, "ts-harness", "ts");
+    write_echo_provider(&bin_dir, "asp-typescript", "ts");
     write_activation(
         &root,
         &[
@@ -228,7 +228,7 @@ fn registered_language_search_pipe_non_executable_selectors_do_not_emit_actions(
     let cache_home = root.join(".cache");
     let marker = root.join("provider-called");
     crate::provider_command::support::write_marker_provider(&bin_dir, "rs-harness", &marker);
-    crate::provider_command::support::write_marker_provider(&bin_dir, "ts-harness", &marker);
+    crate::provider_command::support::write_marker_provider(&bin_dir, "asp-typescript", &marker);
     let language_cases = [
         (
             "rust",

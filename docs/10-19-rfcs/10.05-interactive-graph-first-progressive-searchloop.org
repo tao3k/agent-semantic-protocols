@@ -1,27 +1,64 @@
-#+title: Interactive Graph-First Progressive SearchLoop
-#+subtitle: Canonical agent search, reasoning, and evidence-navigation architecture
+#+title: ASP Server-First Agent Search Architecture
+#+subtitle: Resident client-server lifecycle, graph reasoning, and progressive evidence navigation
 #+options: toc:3 num:t
 
 * Status
 
 This document is the canonical architectural root for RFC 10.05.
 
-It replaces the conceptual =CLI-first= framing with three coequal principles:
+The four governing principles are:
 
-- interactive-first;
+- server-first;
+- agent-first;
 - graph-first; and
 - progressive-first.
 
-The historical =10.05-cli-first-harness-ux= paths remain compatibility
-locators during reference migration. Their location does not make CLI behavior
-architecturally primary.
+Git history is the only historical record; the working tree contains only this
+architecture and exposes no alternate execution model to Agent context.
+
+* Server-first decision
+
+The executable architecture is:
+
+#+begin_example
+agent or human
+  -> ASP client surface (CLI, hook, or future typed client)
+  -> Runtime IPC
+  -> ASP Server
+  -> resident asp-client-server
+  -> provider-native parser/compiler facts
+#+end_example
+
+The CLI is a first-class typed client of ASP Server.  It is not a fallback,
+degraded mode, compatibility executor, provider process launcher, cache owner,
+or lifecycle owner.  Server absence returns typed unavailable evidence; it
+never authorizes a one-shot provider command or local semantic execution.
+
+ASP Server owns workspace identity, provider admission, lazy activation,
+lifecycle, bounded concurrency, cancellation, immutable generation publication,
+cache identity, and OpenTelemetry receipts.  Each language client-server owns
+its native parser/compiler, language project model, provider-native facts, and
+execution of admitted typed operations.  Request clients own none of that
+mutable state.
+
+Provider activation is extension- and capability-driven.  ASP Server starts and
+warms only the selected language client-server, publishes Ready only after the
+declared operation catalog and health receipt match, and drains idle clients
+under the same lifecycle authority.  Query handling never starts, repairs, or
+restarts a provider.
+
+SCM support follows the same boundary.  ASP loads the provider-owned =.scm= and
+compiles its S-expression surface into a grammarless typed plan.  The resident
+language client-server executes that plan against its superior native facts.
+No Tree-sitter grammar crate, parser C source, scanner, QueryCursor, or second
+source parser belongs in ASP Server.
 
 * Naming decision
 
 The canonical short name is:
 
 #+begin_example
-Interactive Graph-First Progressive SearchLoop
+ASP Server-First Agent Search Architecture
 #+end_example
 
 The three adjectives describe different protocol dimensions.
@@ -117,14 +154,14 @@ therefore report no commands or processes for unrelated providers; a missing
 runtime for the selected provider is a typed provider-local failure, not a
 reason to prepare a shared runtime such as Node.
 
-*** Provider execution gate and memory evidence
+*** Resident provider authority and memory evidence
 
-Every external provider process started by an ASP language facade MUST run
-through the shared Provider Execution Gate.  The gate owns process-group
-creation, timeout and cancellation, bounded output capture, memory admission,
-termination, and the =provider-process-termination-receipt.v1= evidence.  A
-language provider MUST NOT implement a private substitute, and the CLI remains
-an adapter over this gate.
+Every language provider is admitted as a resident =asp-client-server= owned by
+ASP Server.  ASP Server owns process-group creation, warmup, health admission,
+cancellation, bounded concurrency, memory admission, drain, termination, and
+lifecycle evidence.  A language provider MUST NOT implement a private
+lifecycle authority, and the CLI is a typed Runtime IPC client rather than an
+adapter over process execution.
 
 The default provider memory ceiling is 2 GiB (=2147483648= bytes).  The ceiling
 applies to the combined resident memory of the complete provider process group,
@@ -146,16 +183,12 @@ time, and termination action without recording provider stdin or source
 content.  A timeout, cancellation, signal, ordinary exit code, and memory-limit
 termination remain distinct outcomes.
 
-Provider invocations are not resident services.  Once the process-group leader
-for one search, query, check, or cache operation exits, ASP MUST terminate and
-reap every remaining descendant in that process group before returning the
-facade result.  A descendant that outlives the invocation is an orphan even
-when its RSS is below the memory ceiling.  The workspace ASP Server MAY retain
-the invocation lease as a crash-recovery backstop, but Server availability MUST
-NOT replace transport-owned descendant closure.  The termination receipt MUST
-state whether process-group isolation was enforced and whether descendant
-cleanup was required, so a successful provider leader cannot hide an orphan
-binary that ASP had to terminate.
+Provider requests are isolated tasks inside a resident service.  Request
+completion never terminates the admitted provider process.  Provider drain and
+shutdown are lifecycle transitions owned only by ASP Server; they close
+admission, cancel or finish accepted work, stop the complete process group, and
+prove zero residual descendants.  A client disconnect cancels only its request
+scope and cannot restart, drain, or stop the provider.
 
 *** Provider workspace artifact admission
 
@@ -203,6 +236,19 @@ receipt; they MUST NOT be charged to warm resident-read latency.  Warm samples
 MUST reuse the same Runtime-owned immutable generation and MUST NOT reopen a
 database, invoke a provider, refresh/import a source index, acquire a
 client-owned single-flight lock, or mutate cache state.
+
+Generation admission validates the mmap segment once and installs immutable,
+generation-owned lexical and owner-directory tables.  A new query reads those
+resident tables; it does not reparse the segment or its sorted-record tables.
+Owner records may be decoded on first demand into a bounded generation-owned
+cache, but client-owned caches and query-triggered source preparation remain
+forbidden.  Search returns a stable parser-owned callable selector paired with
+its owner path; it never derives that selector from query text or a path.
+
+The source snapshot root and the resident owner Merkle root are independent
+authorities.  =sourceRootDigest= names only the source snapshot root, while an
+owner-proof =rootDigest= names the owner Merkle root.  Qualification binds both
+to the same generation but MUST NOT compare the two roots for equality.
 
 Every warm search, exact-source, and callable-skeleton sample MUST report
 Runtime-owned elapsed microseconds.  The v1 aggregate receipt MUST include the
@@ -270,8 +316,8 @@ servers.  A client cannot spawn or restart a provider, own mutable global
 workspace state, enqueue unbounded notifications, or silently reuse results
 across workspace-generation or source-root changes.  Every request is bound to
 one workspace identity, generation digest, root digest, provider identity, and
-catalog generation.  Tokio cancellation, bounded mailboxes, single-flight
-startup, reference-counted leases, and terminal OpenTelemetry receipts are the
+catalog generation.  Tokio cancellation, bounded mailboxes, generation-scoped
+publication leases, reference-counted leases, and terminal OpenTelemetry receipts are the
 only lifecycle mechanisms; missing resident authority fails immediately and
 typed rather than triggering initialization or recovery inside a query.
 
@@ -311,6 +357,32 @@ runtime contract.  The command layer only validates =serve= and delegates;
 provider-native parsing and scheduling remain behind the common transport and
 must not add a language-specific Runtime RPC branch or dynamically mutate the
 Ready capability catalog.
+
+The shared provider-runtime request frame, response frame, contract receipt,
+bootstrap receipt, and client-server descriptor are the only wire authorities.
+Their filenames are unversioned; =schemaVersion: "1"= carries version identity.
+Bootstrap MUST publish =providerId=, =transport: "http-json"=, =state: "ready"=,
+and a loopback endpoint only after warmup and route admission are complete.  A
+provider exposes exactly =GET /health=, =POST /v1/provider-runtime=, and
+=POST /shutdown=.  The request operation is a non-empty registered operation
+name admitted against the immutable descriptor catalog; the shared frame MUST
+NOT encode a closed language-operation enum.  The projection and resolution
+operations are named =projection-batch= and =project-resolution=.
+
+The HTTP-JSON request and response frames carry a structured JSON =payload=
+validated by the operation's registered schema.  They MUST NOT Base64-wrap a
+CLI stdin frame, retain a length-prefixed subprocess envelope, or dispatch back
+through the command parser.  Provider Server handlers call the provider-native
+operation interface directly; the CLI and HTTP adapters are equally thin
+consumers of that interface.  Binary source content, when required, is encoded
+only at the operation field that owns those bytes rather than wrapping the
+entire request or response a second time.
+
+LSP-style initialization is an ASP Server admission comparison, not a mutable
+provider RPC.  =/health= returns the immutable contract receipt used for that
+comparison.  A client cannot send =initialize=, dynamically register a
+capability, or trigger provider recovery.  Unknown operations and schema drift
+fail with typed response frames before provider work begins.
 
 Each admitted provider request runs in an isolated provider-native lightweight
 task.  Admission is bounded by the resident listener and request budget,
@@ -730,22 +802,9 @@ the control/write plane and is never a prerequisite for immutable exact
 projection.  Raw platform =Operation not permitted= text MUST NOT escape as the
 semantic result of a read-only search/query operation.
 
-The degraded provider-native invocation MUST be materialized from the selected
-method descriptor's =provider-method-argument-projection.v1= contract.  The
-projection is a closed token AST: each output token is either a literal or one
-of the named, typed facade slots =query=, =workspace=, =presentation=, and
-=owner=.  It MUST NOT contain shell source, evaluation, arbitrary formatting,
-or provider/language-specific dispatch branches.  Lexical projections may map
-only =query=, =workspace=, and =presentation=; =owner= is admissible only for
-owner-scoped methods.  Token order is registry order and therefore produces
-deterministic argv.  A missing projection, an undeclared field, a missing slot
-value, an unsupported schema version, or an invalid method/slot combination
-MUST fail closed as
-=provider-native-argument-projection-unavailable= before provider execution.
-
 Owns:
 
-- CLI adapter behavior;
+- typed ASP client behavior;
 - plugin and tool-call adapters;
 - API and host integration;
 - human debugging surfaces; and
@@ -764,7 +823,7 @@ Owns:
 - counterexamples; and
 - proof-discovered RFC corrections.
 
-** 10.05.70 Migration and compatibility
+** 10.05.70 Hard-cut contract removal
 - V1 is the only active contract generation. Migration MUST erase a superseded
   command, receipt decoder, renderer, recovery action, matcher branch, test
   fixture, and agent guidance together; it MUST NOT retain an alias or derive
@@ -789,11 +848,9 @@ Owns:
 
 Owns:
 
-- legacy CLI facade removal;
-- compatibility locators;
-- reference migration;
+- superseded surface removal;
 - schema transition; and
-- removal criteria for historical paths.
+- zero-reference verification after deletion.
 
 * Canonical ownership and write policy
 
@@ -801,12 +858,7 @@ This RFC tree is now the canonical owner for all new SearchLoop, evidence
 graph, router, progressive projection, search-cost, receipt, cache-identity,
 Lean, Typst, and proof-audit work.
 
-The =10.05-cli-first-harness-ux= tree is not a competing search architecture.
-It owns CLI adapters, harness compatibility, diagnostics, installation and
-activation behavior, plus historical locators that have not yet completed
-semantic classification.  New search semantics MUST NOT be added there.
-
-Physical migration is semantic rather than chronological:
+Layer ownership is semantic rather than chronological:
 
 - forecast-bound plan cost and Pareto scheduling belong to
   =10.05.30-progressive-projection-cost=;
@@ -814,8 +866,8 @@ Physical migration is semantic rather than chronological:
   belong to =10.05.40-receipts-cache-identity=;
 - proof methodology and cross-RFC audit infrastructure belong to
   =10.05.60-lean-typst-audit=;
-- CLI spelling remains in =10.05.70-migration-compatibility= only when it is
-  necessary to specify an adapter acceptance boundary.
+- client spelling remains in =10.05.70-hard-cut-removal= only when it is
+  necessary to specify an active typed-client acceptance boundary.
 
 The first physical migration batch is:
 
@@ -823,52 +875,19 @@ The first physical migration batch is:
 - [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.40-receipts-cache-identity/00.80-append-only-forecast-calibration.org][00.80 Append-only forecast calibration]];
 - [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.40-receipts-cache-identity/00.81-robust-windowed-calibration-hysteresis.org][00.81 Robust windowed calibration and hysteresis]].
 
-Later batches MUST use parser-owned inbound-link receipts and MUST preserve
-relative links or rewrite them atomically.
+* Typed client boundary
 
-The second physical migration batch moves the SearchLoop foundations out of
-the CLI compatibility tree:
-
-- =10.05.00-foundations-invariants= owns =00.03=, =00.07=, and =00.09=;
-- =10.05.10-interactive-searchloop= owns =00.01=, =00.06=, and =00.13=;
-- =10.05.20-evidence-graph-routing= owns =00.08=;
-- =10.05.40-receipts-cache-identity= owns =00.04=, =00.05=, =00.14=, and
-  =00.15=;
-- =10.05.60-lean-typst-audit= owns =00.02=, =00.10=, =00.11=, and =00.12=.
-
-The old =10.05-cli-first-harness-ux/10.05.10-search-query-surface= copies are
-thin compatibility locators. They MUST NOT receive new normative semantics.
-
-* Existing RFC migration map
-
-The existing tree is reclassified as follows:
-
-- =10.05.10-search-query-surface= is no longer a command-surface root. Its
-  SearchLoop, router, projection, cache, and proof documents migrate logically
-  into layers 10.05.10 through 10.05.60.
-- =10.05.20-prime-search-flow= becomes an interactive bootstrap policy under
-  10.05.10.
-- evidence-graph router and graph-action-frontier documents belong to 10.05.20.
-- cache, replay, receipt identity, and rejoin safety proofs belong to 10.05.40
-  and 10.05.60.
-- legacy facade removal belongs to 10.05.70.
-
-Physical path migration occurs only after parser-owned Org reference discovery
-can produce a complete owner and inbound-link receipt.
-
-* CLI adapter boundary
-
-CLI remains useful for:
+The CLI is a formal ASP client surface useful for:
 
 - human inspection;
 - deterministic debugging;
 - CI and shell composition;
 - provider conformance tests; and
-- environments without a native agent tool transport.
+- every environment that selects the command-line ASP client.
 
-The CLI SHOULD expose a small stable adapter over graph actions. It SHOULD NOT
-require an agent to synthesize a large command grammar before it can navigate
-evidence.
+The CLI MUST encode the same typed operations as every other ASP client and
+send them through Runtime IPC.  It MUST NOT expose provider execution,
+lifecycle, cache, parser, or fallback branches.
 
 A complex CLI command is justified only when it represents a stable human or
 automation workflow that cannot be expressed as a bounded SearchLoop action.
@@ -922,28 +941,6 @@ Search/evidence caching and model prefix caching are separate:
 A model cache hit does not validate evidence. An evidence cache miss does not
 imply a model cache miss.
 
-* Structural migration policy
-
-The migration has two phases.
-
-** Phase one: canonical semantic root
-
-- this document becomes the normative 10.05 root;
-- new RFCs use interactive, graph, progressive, receipt, or adapter vocabulary;
-- CLI-first terminology is retained only when describing legacy behavior; and
-- historical paths receive compatibility bridges.
-
-** Phase two: physical tree migration
-
-After parser-owned reference discovery is restored:
-
-1. enumerate every inbound link and Org owner;
-2. move documents into the new layer directories;
-3. update links through parser-owned patches;
-4. retain explicit compatibility redirects where required;
-5. lint the complete Org corpus; and
-6. remove legacy paths only after zero unresolved inbound references.
-
 * Proof obligation
 
 ** Exact-selector active-generation admission
@@ -953,13 +950,6 @@ closure.  For an ordinary language =search=, language-scoped source-index
 lookup, or exact =query=, that closure contains only the selected provider and
 its explicitly declared provider dependencies.  Installed receipts, registry
 membership, or workspace file extensions MUST NOT widen the closure.
-
-The detailed provider-publication and native-owner transport obligations remain
-at the historical compatibility locators below until phase-two physical tree
-migration.  Their normative owner is this graph-first RFC:
-
-- [[file:10.05-cli-first-harness-ux/10.05.62-provider-scoped-lazy-activation-and-runtime-publication.org][10.05.62 Provider-scoped lazy activation and runtime publication]]
-- [[file:10.05-cli-first-harness-ux/10.05.63-native-incremental-owner-capability-admission-v1.org][10.05.63 Native incremental owner capability admission]]
 
 Admission MUST prove both provider-closure isolation and schema/transport
 congruence.  A successful provider process invocation is not sufficient when

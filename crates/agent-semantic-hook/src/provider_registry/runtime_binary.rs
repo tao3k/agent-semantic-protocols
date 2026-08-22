@@ -1,7 +1,7 @@
 //! Runtime binary identities and admission requirements derived from the provider registry.
 
 use super::catalog::{
-    RegisteredProviderKind, registered_provider_kind, schema_registry,
+    RegisteredProviderKind, provider_register, registered_provider_kind,
     schema_registry_provider_manifests,
 };
 
@@ -232,8 +232,8 @@ pub fn registered_provider_binaries_v1() -> Vec<RegisteredProviderBinaryV1> {
 }
 
 fn all_registered_provider_binaries_v1() -> Vec<RegisteredProviderBinaryV1> {
-    schema_registry()
-        .languages
+    provider_register()
+        .providers
         .iter()
         .map(|registration| RegisteredProviderBinaryV1 {
             language_id: agent_semantic_config::LanguageId::new(registration.language_id.clone()),

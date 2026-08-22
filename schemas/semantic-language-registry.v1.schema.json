@@ -213,7 +213,7 @@
           }
         },
         "queryPackDescriptor": {
-          "$ref": "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-query-pack-descriptor.v1.schema.json"
+      "$ref": "https://schemas.agent-semantic-protocols.dev/provider-query-pack-descriptor.schema.json"
         }
       }
     },

@@ -3,7 +3,7 @@
 #+DATE: 2026-01-18
 #+RFC: 003
 #+DEPENDS: docs/10-19-rfcs/10.01-cargo-execution-lanes.org (001), docs/10-19-rfcs/10.02-evidence-layer-architecture.org (002)
-#+SEE_ALSO: docs/10-19-rfcs/10.05-cli-first-harness-ux.org (005) — the public CLI protocol.  RFC 003
+#+SEE_ALSO: docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org (005) — the public CLI protocol.  RFC 003
 #+  describes /what/ routes a code-intel service exposes; RFC 005 describes
 #+  /how/ agents invoke them — through stable CLI commands, not MCP.
 

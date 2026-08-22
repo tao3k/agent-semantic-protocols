@@ -1,9 +1,6 @@
 #![recursion_limit = "256"]
 #![deny(dead_code)]
 
-#[path = "unit/runtime_server_operator_stop.rs"]
-mod runtime_server_operator_stop;
-
 #[path = "unit/command/build_profile.rs"]
 mod command_build_profile;
 

@@ -47,9 +47,10 @@
         "runtimeBinaryIdentity",
         "artifactMode",
         "artifactCatalogDigest",
-        "bindingToken",
-        "dataPlaneSocketPath",
-        "socketPath",
+      "bindingToken",
+      "dataPlaneSocketPath",
+      "providerPlaneSocketPath",
+      "socketPath",
         "workspaceStorePath"
         ,"statusMemoryPath"
       ],
@@ -67,6 +68,11 @@
         "ownerEpoch": {
           "type": "integer",
           "minimum": 1
+        },
+        "ownerProcessId": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Daemon process identity bound to ownerEpoch. Zero is accepted only when decoding legacy endpoint publications."
         },
         "runtimeArtifactPath": {
           "type": "string",
@@ -91,11 +97,15 @@
           "type": "string",
           "minLength": 1
         },
-        "dataPlaneSocketPath": {
-          "type": "string",
-          "minLength": 1
-        },
-        "workspaceStorePath": {
+      "dataPlaneSocketPath": {
+        "type": "string",
+        "minLength": 1
+      },
+      "providerPlaneSocketPath": {
+        "type": "string",
+        "minLength": 1
+      },
+      "workspaceStorePath": {
           "type": "string",
           "minLength": 1
         },

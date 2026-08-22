@@ -1,4 +1,3 @@
-use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 
 pub const PROVIDER_RUNTIME_REQUEST_FRAME_SCHEMA_ID: &str =
@@ -14,7 +13,7 @@ pub struct ProviderRuntimeRequestFrame {
     pub schema_version: String,
     pub request_id: String,
     pub operation: String,
-    pub payload: String,
+    pub payload: serde_json::Value,
 }
 
 impl ProviderRuntimeRequestFrame {
@@ -23,12 +22,15 @@ impl ProviderRuntimeRequestFrame {
         operation: impl Into<String>,
         payload: impl AsRef<[u8]>,
     ) -> Result<Self, String> {
+        let payload = serde_json::from_slice(payload.as_ref()).map_err(|error| {
+            format!("provider runtime request payload must be structured JSON: {error}")
+        })?;
         let frame = Self {
             schema_id: PROVIDER_RUNTIME_REQUEST_FRAME_SCHEMA_ID.to_owned(),
             schema_version: PROVIDER_RUNTIME_FRAME_SCHEMA_VERSION.to_owned(),
             request_id: request_id.into(),
             operation: operation.into(),
-            payload: base64::engine::general_purpose::STANDARD.encode(payload),
+            payload,
         };
         frame.validate()?;
         Ok(frame)
@@ -45,14 +47,15 @@ impl ProviderRuntimeRequestFrame {
                 "provider runtime request frame requires requestId and operation".to_owned(),
             );
         }
-        self.payload_bytes()?;
+        if !self.payload.is_object() {
+            return Err("provider runtime request payload must be a JSON object".to_owned());
+        }
         Ok(())
     }
 
     pub fn payload_bytes(&self) -> Result<Vec<u8>, String> {
-        base64::engine::general_purpose::STANDARD
-            .decode(&self.payload)
-            .map_err(|error| format!("provider runtime request payload is not base64: {error}"))
+        serde_json::to_vec(&self.payload)
+            .map_err(|error| format!("encode provider runtime request payload: {error}"))
     }
 }
 
@@ -71,19 +74,19 @@ pub struct ProviderRuntimeResponseFrame {
     pub request_id: String,
     pub outcome: ProviderRuntimeResponseOutcome,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub payload: Option<String>,
+    pub payload: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
 impl ProviderRuntimeResponseFrame {
-    pub fn ready(request_id: impl Into<String>, payload: impl AsRef<[u8]>) -> Self {
+    pub fn ready(request_id: impl Into<String>, payload: serde_json::Value) -> Self {
         Self {
             schema_id: PROVIDER_RUNTIME_RESPONSE_FRAME_SCHEMA_ID.to_owned(),
             schema_version: PROVIDER_RUNTIME_FRAME_SCHEMA_VERSION.to_owned(),
             request_id: request_id.into(),
             outcome: ProviderRuntimeResponseOutcome::Ready,
-            payload: Some(base64::engine::general_purpose::STANDARD.encode(payload)),
+            payload: Some(payload),
             error: None,
         }
     }
@@ -109,13 +112,8 @@ impl ProviderRuntimeResponseFrame {
             return Err("provider runtime response frame requires requestId".to_owned());
         }
         match (&self.outcome, &self.payload, &self.error) {
-            (ProviderRuntimeResponseOutcome::Ready, Some(payload), None) => {
-                base64::engine::general_purpose::STANDARD
-                    .decode(payload)
-                    .map(|_| ())
-                    .map_err(|error| {
-                        format!("provider runtime response payload is not base64: {error}")
-                    })
+            (ProviderRuntimeResponseOutcome::Ready, Some(payload), None) if payload.is_object() => {
+                Ok(())
             }
             (ProviderRuntimeResponseOutcome::Error, None, Some(error))
                 if !error.trim().is_empty() =>
@@ -130,11 +128,8 @@ impl ProviderRuntimeResponseFrame {
         self.payload
             .as_ref()
             .map(|payload| {
-                base64::engine::general_purpose::STANDARD
-                    .decode(payload)
-                    .map_err(|error| {
-                        format!("provider runtime response payload is not base64: {error}")
-                    })
+                serde_json::to_vec(payload)
+                    .map_err(|error| format!("encode provider runtime response payload: {error}"))
             })
             .transpose()
     }

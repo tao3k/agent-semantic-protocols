@@ -143,7 +143,7 @@ async fn provider_language_facades_route_language_search_through_runtime_provide
         ("julia", "asp-julia-harness"),
         ("python", "py-harness"),
         ("rust", "rs-harness"),
-        ("typescript", "ts-harness"),
+        ("typescript", "asp-typescript"),
     ];
     let providers = languages
         .iter()

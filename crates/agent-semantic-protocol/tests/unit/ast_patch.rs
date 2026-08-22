@@ -32,8 +32,8 @@ fn template_command_builds_valid_packet_shape_from_exact_read_locator() {
         "agent.semantic-protocols.semantic-ast-patch"
     );
     assert_eq!(packet["languageId"], "typescript");
-    assert_eq!(packet["providerId"], "ts-harness");
-    assert_eq!(packet["binary"], "ts-harness");
+    assert_eq!(packet["providerId"], "asp-typescript");
+    assert_eq!(packet["binary"], "asp-typescript");
     assert_eq!(packet["projectRoot"], ".");
     assert_eq!(packet["target"]["ownerPath"], "src/render.ts");
     assert_eq!(packet["target"]["locator"], "src/render.ts:10:20");

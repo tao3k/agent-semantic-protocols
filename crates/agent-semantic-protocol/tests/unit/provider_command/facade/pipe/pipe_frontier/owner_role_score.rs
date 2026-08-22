@@ -20,7 +20,7 @@ fn source_owner_beats_test_corpus_when_query_has_no_test_intent() {
         "compiler trace module resolution project references compiler trace module resolution\n",
     )
     .expect("write test corpus owner");
-    write_marker_provider(&bin_dir, "ts-harness", &marker);
+    write_marker_provider(&bin_dir, "asp-typescript", &marker);
     write_activation(&root, &[provider("typescript", Vec::new())]);
 
     let output = asp_command(&root)
@@ -76,7 +76,7 @@ fn source_owner_beats_unittests_corpus_when_query_has_no_test_intent() {
         "compiler trace module resolution project references compiler trace module resolution\n",
     )
     .expect("write unittests owner");
-    write_marker_provider(&bin_dir, "ts-harness", &marker);
+    write_marker_provider(&bin_dir, "asp-typescript", &marker);
     write_activation(&root, &[provider("typescript", Vec::new())]);
 
     let output = asp_command(&root)
@@ -132,7 +132,7 @@ fn test_intent_keeps_test_corpus_owner_eligible() {
         "compiler trace module resolution project references tests cases compiler trace module resolution\n",
     )
     .expect("write test corpus owner");
-    write_marker_provider(&bin_dir, "ts-harness", &marker);
+    write_marker_provider(&bin_dir, "asp-typescript", &marker);
     write_activation(&root, &[provider("typescript", Vec::new())]);
 
     let output = asp_command(&root)
@@ -199,7 +199,7 @@ fn low_cohesion_secondary_artifact_does_not_fallback_to_owner_items_first() {
         "export const server = true\n",
     )
     .expect("write source owner");
-    write_marker_provider(&bin_dir, "ts-harness", &marker);
+    write_marker_provider(&bin_dir, "asp-typescript", &marker);
     write_activation(&root, &[provider("typescript", Vec::new())]);
 
     let output = asp_command(&root)
@@ -275,7 +275,7 @@ fn low_cohesion_source_owner_with_weak_axis_coverage_does_not_fallback_first() {
         "export const server = true\n",
     )
     .expect("write server owner");
-    write_marker_provider(&bin_dir, "ts-harness", &marker);
+    write_marker_provider(&bin_dir, "asp-typescript", &marker);
     write_activation(&root, &[provider("typescript", Vec::new())]);
 
     let output = asp_command(&root)

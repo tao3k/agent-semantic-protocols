@@ -8,7 +8,7 @@ use crate::hook_config::core::match_types::{
 
 pub(super) const DURABLE_HOOK_MATCHER_SCHEMA_ID: &str =
     "agent.semantic-protocols.hook-matcher-artifact";
-pub(super) const DURABLE_HOOK_MATCHER_SCHEMA_VERSION: &str = "1";
+pub(super) const DURABLE_HOOK_MATCHER_SCHEMA_VERSION: &str = "2";
 
 /// Normalized Hook config plus parser-compiled matcher automata.
 #[derive(Clone, Debug)]
@@ -28,6 +28,10 @@ pub(super) struct DurableRuleMatcherArtifact {
     pub(super) command_contains: DurableCommandContainsMatcher,
     pub(super) path_glob: DurablePathGlobMatcher,
     pub(super) argv_source_glob: DurablePathGlobMatcher,
+    #[serde(default)]
+    pub(super) profile_extension_any: Vec<String>,
+    #[serde(default)]
+    pub(super) profile_any: Vec<agent_semantic_config::HookClientProfileConfig>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -50,8 +54,6 @@ struct DurableCommandTemplate {
 struct DurableHookProviderProjection {
     language_id: agent_semantic_config::LanguageId,
     provider_id: agent_semantic_config::ProviderId,
-    binary: String,
-    provider_command_prefix: Vec<String>,
     package_roots: Vec<String>,
     source_extensions: Vec<String>,
     config_files: Vec<String>,
@@ -88,8 +90,6 @@ impl From<&crate::protocol_activation::protocol_activation_manifest::HookProvide
         Self {
             language_id: value.language_id.clone(),
             provider_id: value.provider_id.clone(),
-            binary: value.binary.clone(),
-            provider_command_prefix: value.provider_command_prefix.clone(),
             package_roots: value.package_roots.clone(),
             source_extensions: value.source_extensions.clone(),
             config_files: value.config_files.clone(),
@@ -108,8 +108,6 @@ impl From<DurableHookProviderProjection>
         Self {
             language_id: value.language_id,
             provider_id: value.provider_id,
-            binary: value.binary,
-            provider_command_prefix: value.provider_command_prefix,
             package_roots: value.package_roots,
             source_extensions: value.source_extensions,
             config_files: value.config_files,

@@ -524,6 +524,30 @@ pub(crate) async fn require_lifecycle_generation(
     WorkspaceDbIpcResult::RuntimeGenerationResidentReady { receipt: recovery }
 }
 
+pub(crate) async fn restore_lifecycle_generation_from_pointer(
+    memory_registry: &RuntimeServerWorkspaceRegistry,
+    workspace_identity: &str,
+    project_root: String,
+) -> WorkspaceDbIpcResult {
+    let project_root = PathBuf::from(project_root);
+    match memory_registry
+        .restore_published_generation(
+            format!("restore-runtime-generation:{workspace_identity}"),
+            workspace_identity,
+            &project_root,
+        )
+        .await
+    {
+        Ok(receipt) => WorkspaceDbIpcResult::RuntimeGenerationResidentReady { receipt },
+        Err(message) => WorkspaceDbIpcResult::Failed {
+            code: "runtime-server-generation-pointer-restore-failed".to_owned(),
+            message: format!(
+                "Runtime Server generation pointer restore failed: workspaceIdentity={workspace_identity} error={message} reasonKind=runtime-generation-pointer-restore-failed"
+            ),
+        },
+    }
+}
+
 pub(crate) async fn admit_generation_for_read(
     memory_registry: &RuntimeServerWorkspaceRegistry,
     generation_admission: Option<&std::sync::Arc<WorkspaceGenerationAdmission>>,
@@ -542,12 +566,36 @@ pub(crate) async fn admit_generation_for_read(
         };
     };
 
+    let admission_build_mode = match memory_registry
+        .published_generation_state(workspace_identity, &project_root_path)
+        .await
+    {
+        Ok(crate::runtime_server_workspace::PublishedWorkspaceGenerationState::Ready)
+        | Ok(crate::runtime_server_workspace::PublishedWorkspaceGenerationState::Missing) => {
+            crate::runtime_server_admission::WorkspaceGenerationBuildMode::RestoreOrBuild
+        }
+        Ok(
+            crate::runtime_server_workspace::PublishedWorkspaceGenerationState::RecoveryRequired {
+                ..
+            },
+        ) => crate::runtime_server_admission::WorkspaceGenerationBuildMode::RebuildAfterMutation,
+        Err(error) => {
+            return WorkspaceDbIpcResult::Failed {
+                code: "runtime-server-generation-completeness-read-failed".to_owned(),
+                message: format!(
+                    "Runtime Server generation completeness read failed: workspaceIdentity={workspace_identity} error={error} reasonKind=runtime-generation-completeness-read-failed"
+                ),
+            };
+        }
+    };
+
     match generation_admission
-        .admit_artifact_publication_and_wait(
+        .admit_artifact_publication_with_mode_and_wait(
             workspace_identity.to_owned(),
             project_root_path,
             language_id,
             provider_id,
+            admission_build_mode,
         )
         .await
     {
@@ -555,13 +603,32 @@ pub(crate) async fn admit_generation_for_read(
             if receipt.state
                 == crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready =>
         {
-            require_lifecycle_generation(
-                memory_registry,
-                Some(generation_admission),
-                workspace_identity,
-                project_root,
-            )
-            .await
+            match memory_registry
+                .published_generation_state(workspace_identity, Path::new(&project_root))
+                .await
+            {
+                Ok(crate::runtime_server_workspace::PublishedWorkspaceGenerationState::Ready) => {
+                    require_lifecycle_generation(
+                        memory_registry,
+                        Some(generation_admission),
+                        workspace_identity,
+                        project_root,
+                    )
+                    .await
+                }
+                Ok(state) => WorkspaceDbIpcResult::Failed {
+                    code: "runtime-server-generation-not-search-ready".to_owned(),
+                    message: format!(
+                        "Runtime Server generation admission completed without a complete search publication: workspaceIdentity={workspace_identity} state={state:?} reasonKind=runtime-generation-not-search-ready"
+                    ),
+                },
+                Err(error) => WorkspaceDbIpcResult::Failed {
+                    code: "runtime-server-generation-completeness-read-failed".to_owned(),
+                    message: format!(
+                        "Runtime Server generation completeness read failed after admission: workspaceIdentity={workspace_identity} error={error} reasonKind=runtime-generation-completeness-read-failed"
+                    ),
+                },
+            }
         }
         Ok(receipt) => WorkspaceDbIpcResult::Failed {
             code: "runtime-server-generation-admission-failed".to_owned(),

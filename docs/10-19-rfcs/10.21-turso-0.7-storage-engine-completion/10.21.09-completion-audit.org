@@ -57,7 +57,7 @@ scenario has an executed receipt in this RFC directory.
 * Repository-wide documentation gate
 
 =just check-rfc-docs= currently fails six assertions owned by
-=tests/unit/test_cli_first_harness_ux_rfc.py= for the separate 10.05 CLI-first
+=docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org= for the 10.05 ASP Server-first
 RFC language.  Those failures are outside the Turso 10.21 owner and were not
 rewritten here.
 

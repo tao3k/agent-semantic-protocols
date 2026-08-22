@@ -38,12 +38,10 @@ pub(crate) fn build_provider_runtime_for_scope(
                     )
                 })?;
             let coverage = activation_capability_coverage(manifest)?;
-            activate_provider(
-                manifest,
-                selection.manifest_digest.clone(),
-                selection.execution_command_digest.clone(),
-                selection.binary.clone(),
-                coverage,
+    activate_provider(
+        manifest,
+        selection.manifest_digest.clone(),
+        coverage,
                 &semantic_registry_digest,
             )
         })

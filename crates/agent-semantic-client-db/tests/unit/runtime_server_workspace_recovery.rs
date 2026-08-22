@@ -169,6 +169,7 @@ async fn resident_writer_replaces_a_corrupt_pointer_with_one_complete_generation
         .await
         .expect("resident writer should replace stale generation");
     assert_eq!(receipt.target_epoch, 1);
+    let expected_generation_digest = receipt.generation_digest.clone();
 
     let state = WorkspaceGenerationDataPlaneClient::open_state(&pointer)
         .await
@@ -232,6 +233,29 @@ async fn resident_writer_replaces_a_corrupt_pointer_with_one_complete_generation
     assert_eq!(counters.provider_spawns, 0);
     assert_eq!(counters.control_socket_roundtrips, 0);
     registry.shutdown().await.expect("drain writer lane");
+    drop(registry);
+
+    let restarted =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let restored = restarted
+        .restore_published_generation(
+            "restore-without-turso-materialization",
+            workspace_identity.to_owned(),
+            &project_root(workspace_identity),
+        )
+        .await
+        .expect("active generation pointer and checkpoint are the restore authority");
+    assert_eq!(restored.source, WorkspaceRecoverySource::MmapCheckpoint);
+    assert_eq!(restored.target_epoch, 1);
+    assert_eq!(restored.generation_digest, expected_generation_digest);
+    let counters = restarted.data_plane_counters();
+    assert_eq!(counters.database_opens, 0);
+    assert_eq!(counters.provider_spawns, 0);
+    assert_eq!(counters.control_socket_roundtrips, 0);
+    restarted
+        .shutdown()
+        .await
+        .expect("drain restored writer lane");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

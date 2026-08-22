@@ -16,6 +16,16 @@ host matcher is transport coverage, not ASP policy. The ASP binary MUST decode
 the typed action envelope and select an execution plane before socket,
 filesystem, supervisor, or durable-state I/O.
 
+Hook matcher compilation and publication are client-neutral control-plane
+operations.  The running ASP binary's embedded provider registry owns the
+managed =languageProviders= projection and its contract fingerprint; the disk
+Hook document contributes user policy and project overlays but MUST NOT replace
+that provider authority.  Matcher publication therefore self-recovers stale
+generated provider digests without consulting installed provider executables.
+Codex and other clients own only their Host adapter and Plugin transport.  A
+client-specific Plugin install, Hook doctor, or provider install MUST NOT be
+presented as matcher refresh or matcher recovery.
+
 The installed Codex production transport is exactly one enabled ASP plugin Hook
 bundle using canonical event table names such as =PreToolUse=. The plugin
 manifest owns its =hooks= entry, =hooks/hooks.json=, and executable Hook adapter.
@@ -284,7 +294,7 @@ so an unavailable Runtime cannot block its own repair, but recovery execution
 is an explicit user/tool action outside Hook evaluation.
 
 A local matcher/configuration failure is not a Runtime Server failure. Its
-typed failure is =hook-local-policy-unavailable.v1= with
+typed failure is =hook-local-policy-unavailable= with =schemaVersion: "1"= and
 =reasonKind=local-hook-policy-authority-unavailable=. It MUST NOT recommend
 =asp server reconcile=. The exact =asp hook doctor --client codex= command is
 admitted by the configuration-independent bootstrap, as is the digest-targeted

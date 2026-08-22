@@ -186,7 +186,7 @@ def test_runtime_corpus_manifest_has_all_unique_real_library_targets() -> None:
         "orgize",
         "py-harness",
         "rs-harness",
-        "ts-harness",
+        "asp-typescript",
     }
     assert {entry["repository"] for entry in corpora} == {
         "JuliaData/DataFrames.jl",

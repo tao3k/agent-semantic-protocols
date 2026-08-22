@@ -10,18 +10,18 @@ current outputs.
 
 ## CLI Contract
 
-`ts-harness` is the TypeScript provider binary name. The primary public
+`asp-typescript` is the TypeScript provider binary name. The primary public
 protocol becomes:
 
 ```shell
-ts-harness search <view> ... [--json] [--package PATH] [PROJECT_ROOT]
-ts-harness check [--changed | --full] [--json] [PROJECT_ROOT]
-ts-harness agent doctor [--json] [PROJECT_ROOT]
+asp-typescript search <view> ... [--json] [--package PATH] [PROJECT_ROOT]
+asp-typescript check [--changed | --full] [--json] [PROJECT_ROOT]
+asp-typescript agent doctor [--json] [PROJECT_ROOT]
 ```
 
 The protocol identity is the semantic language registry, not the binary:
-`languageId=typescript`, `providerId=ts-harness`, `binary=ts-harness`, and
-`namespace=agent.semantic-protocols.languages.typescript.ts-harness`.
+`languageId=typescript`, `providerId=asp-typescript`, `binary=asp-typescript`, and
+`namespace=agent.semantic-protocols.languages.typescript.asp-typescript`.
 Agent-facing commands use the generic `agent` command namespace rather than
 naming one agent platform.
 

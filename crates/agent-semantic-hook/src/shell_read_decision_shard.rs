@@ -56,7 +56,7 @@ impl CommandDecisionShard {
     fn select_entry<'a>(
         &'a self,
         command_tokens: &[String],
-        command_stages: Option<&[agent_semantic_command_match::CommandStageV1]>,
+    command_stages: Option<&[agent_semantic_shell_parser::CommandStage]>,
     ) -> Option<&'a ShellReadDecisionEntry> {
         if let Some(stages) = command_stages
             && let Some(selected) = self
@@ -66,7 +66,7 @@ impl CommandDecisionShard {
                     matches!(
                         entry.match_kind,
                         CommandDecisionMatchKind::LeadingEnvironmentAssignment
-                    ) && agent_semantic_command_match::command_stages_match_leading_environment_assignment(
+                    ) && agent_semantic_shell_parser::command_stages_match_leading_environment_assignment(
                         stages,
                         &entry.argv_prefix,
                     )
@@ -83,7 +83,7 @@ impl CommandDecisionShard {
                     && command_tokens
                         .windows(entry.argv_prefix.len())
                         .any(|candidate| {
-                            agent_semantic_command_match::candidate_matches_prefix(
+                            agent_semantic_shell_parser::candidate_matches_prefix(
                                 candidate,
                                 &entry.argv_prefix,
                             )
@@ -128,7 +128,7 @@ impl CommandDecisionShard {
         });
         let stages = (has_environment_matcher && command.contains('='))
             .then(|| {
-                agent_semantic_command_match::parse_bash_command_candidates(command)
+                agent_semantic_shell_parser::parse_bash_command_candidates(command)
                     .map_err(|error| format!("parse shell command decision key: {error}"))
             })
             .transpose()?;
@@ -149,7 +149,7 @@ impl CommandDecisionShard {
         }
         let shard = postcard::from_bytes::<Self>(bytes)
             .map_err(|error| format!("decode command decision shard: {error}"))?;
-        let stages = agent_semantic_command_match::parse_bash_command_candidates(command)
+        let stages = agent_semantic_shell_parser::parse_bash_command_candidates(command)
             .map_err(|error| format!("parse leading environment decision key: {error}"))?;
         shard
             .entries
@@ -158,7 +158,7 @@ impl CommandDecisionShard {
                 matches!(
                     entry.match_kind,
                     CommandDecisionMatchKind::LeadingEnvironmentAssignment
-                ) && agent_semantic_command_match::command_stages_match_leading_environment_assignment(
+                ) && agent_semantic_shell_parser::command_stages_match_leading_environment_assignment(
                     &stages,
                     &entry.argv_prefix,
                 )

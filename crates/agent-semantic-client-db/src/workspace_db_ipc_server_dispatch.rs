@@ -46,6 +46,7 @@ pub(super) async fn dispatch_workspace_db_session_operation(
                 .to_owned(),
         ),
         WorkspaceDbIpcOperation::RequireRuntimeGeneration { .. }
+        | WorkspaceDbIpcOperation::RestoreRuntimeGenerationFromPointer { .. }
         | WorkspaceDbIpcOperation::AdmitRuntimeGenerationForRead { .. }
         | WorkspaceDbIpcOperation::AdmitRuntimeGeneration { .. }
         | WorkspaceDbIpcOperation::SubmitRuntimeGenerationMutation { .. }

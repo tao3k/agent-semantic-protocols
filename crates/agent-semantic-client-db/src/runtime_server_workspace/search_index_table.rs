@@ -146,6 +146,20 @@ impl<'a> ValidatedSortedRecordTable<'a> {
         Ok(None)
     }
 
+    pub fn owned_records(&self) -> Result<Vec<(Vec<u8>, Vec<u8>)>, String> {
+        let mut records = Vec::with_capacity(self.entry_count);
+        for index in 0..self.entry_count {
+            let entry = self.entry(index)?;
+            let key = self.payload_slice(entry.key_offset, entry.key_len, "key")?;
+            let value = self.payload_slice(entry.value_offset, entry.value_len, "value")?;
+            if record_digest(key, value).as_bytes() != &entry.record_digest {
+                return Err("sorted record table record digest mismatch".to_owned());
+            }
+            records.push((key.to_vec(), value.to_vec()));
+        }
+        Ok(records)
+    }
+
     fn entry(&self, index: usize) -> Result<SortedRecordEntry, String> {
         let start = SORTED_RECORD_TABLE_HEADER_LEN
             .checked_add(

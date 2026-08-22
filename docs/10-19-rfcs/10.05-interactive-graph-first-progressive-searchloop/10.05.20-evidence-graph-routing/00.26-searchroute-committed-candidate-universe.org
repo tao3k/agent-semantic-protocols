@@ -404,7 +404,7 @@ Expected evaluation:
 #+begin_example
 orgize eval plan --json \
   searchroute-committed-candidate-universe-model \
-  docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.26-searchroute-committed-candidate-universe.org
+  docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00.26-searchroute-committed-candidate-universe.org
 
 typst eval --in - '"ok"'
 #+end_example

@@ -21,7 +21,7 @@ That split allows production routing and scenario tests to disagree.
 The managed hook config owns one top-level mode:
 
 #+begin_src toml
-wrapper_match = "enable"
+matcherPolicies = ["wrapped_command"]
 #+end_src
 
 When enabled, the Bash parser produces bounded command stages and recursively
@@ -78,7 +78,7 @@ separate measurements and must not be charged to this matcher gate.
 
 * Quoted-literal boundary
 
-=wrapper_match= scans only Bash AST command stages and their argv tokens.
+=matcherPolicies = ["wrapped_command"]` scans only Bash AST command stages and their argv tokens.
 Quoted data carried by an argv token MUST NOT be recursively promoted into a
 new executable command stage. Therefore =echo 'asp rust search ...'= and
 =bash -lc 'cargo test ...'= do not match the protected inner prefix merely

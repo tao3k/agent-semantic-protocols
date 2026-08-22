@@ -16,7 +16,7 @@
     {
       "id": "workspace",
       "kind": "search",
-      "argv": ["ts-harness", "search", "workspace", "."],
+      "argv": ["asp-typescript", "search", "workspace", "."],
       "stdinShape": "none",
       "outputMode": "compact",
       "metrics": {
@@ -37,7 +37,7 @@
     {
       "id": "prime-root",
       "kind": "search",
-      "argv": ["ts-harness", "search", "prime", "--view", "seeds", "."],
+      "argv": ["asp-typescript", "search", "prime", "--view", "seeds", "."],
       "stdinShape": "none",
       "outputMode": "compact",
       "metrics": {
@@ -60,7 +60,7 @@
       "id": "text-api-request-query-set",
       "kind": "search",
       "argv": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "text",
         "--query-set",
@@ -97,7 +97,7 @@
       "id": "owner-fetch-items",
       "kind": "search",
       "argv": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "owner",
         "packages/playwright-core/src/server/fetch.ts",
@@ -128,7 +128,7 @@
       "id": "tests-fetch-missing",
       "kind": "search",
       "argv": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "tests",
         "packages/playwright-core/src/server/fetch.ts",
@@ -157,7 +157,7 @@
     {
       "id": "rg-api-request-tests-ingest",
       "kind": "external-ingest",
-      "argv": ["ts-harness", "search", "ingest", "--view", "seeds", "."],
+      "argv": ["asp-typescript", "search", "ingest", "--view", "seeds", "."],
       "stdinShape": "candidate-pipe",
       "outputMode": "compact",
       "metrics": {
@@ -204,7 +204,7 @@
       },
       "beforeCommandIds": ["text-api-request-query-set"],
       "recommendedCommand": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "text",
         "--query-set",

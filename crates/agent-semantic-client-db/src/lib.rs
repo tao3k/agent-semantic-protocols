@@ -25,6 +25,9 @@ pub mod parser_read_authority;
 mod runtime_concurrency;
 pub mod runtime_generation_cancellation;
 pub mod runtime_merkle_owner_proof_qualification;
+pub mod runtime_provider_register;
+pub mod runtime_provider_register_client;
+mod runtime_provider_register_ipc;
 pub mod runtime_resident_read;
 pub mod runtime_search_service;
 pub mod runtime_server;
@@ -36,13 +39,13 @@ mod runtime_server_admission_registry;
 mod runtime_server_agent_control_plane;
 mod runtime_server_agent_session_status;
 pub mod runtime_server_control;
-pub mod runtime_server_owner_receipt;
 pub mod runtime_server_lifecycle;
 pub mod runtime_server_lifecycle_coordinator;
-pub mod runtime_server_candidate_reconciliation;
-pub mod runtime_server_singleton;
+pub mod runtime_server_owner_receipt;
 pub mod runtime_server_supervisor;
-pub use runtime_server_owner_receipt::{RuntimeServerDrainReceipt, RuntimeServerExitReceipt, RuntimeServerSpawnReceipt};
+pub use runtime_server_owner_receipt::{
+    RuntimeServerDrainReceipt, RuntimeServerExitReceipt, RuntimeServerSpawnReceipt,
+};
 pub mod runtime_server_diagnostics;
 mod runtime_server_generation_admission;
 mod runtime_server_graph_turbo_status;
@@ -73,7 +76,7 @@ pub use runtime_server_control::{
     prepare_runtime_server_endpoint_with_workspace_store_and_identity,
     publish_runtime_server_endpoint, read_runtime_server_agent_sessions,
     read_runtime_server_endpoint, resolve_runtime_server_agent_session_status,
-    runtime_server_endpoint_path, runtime_server_runtime_base,
+    runtime_server_endpoint_path, runtime_server_runtime_base, wait_for_runtime_server_election,
 };
 pub use turso_mvcc_keyset::{
     TursoMvccEventId, TursoMvccPageCursor, TursoMvccPageLimit, TursoMvccPartitionKey,

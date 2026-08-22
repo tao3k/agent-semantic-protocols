@@ -63,7 +63,7 @@
           "reasonKind": "raw-broad-search",
           "languageIds.0": "typescript",
           "routes.0.kind": "lexical",
-          "routes.0.providerId": "ts-harness"
+          "routes.0.providerId": "asp-typescript"
         },
         "maxElapsedMsWarn": 9000
       }
@@ -115,7 +115,7 @@
           "subject.toolName": "functions.read_file",
           "subject.paths.0": "languages/typescript-lang-project-harness/src/cli/semantic-search/types.ts",
           "routes.0.kind": "query",
-          "routes.0.providerId": "ts-harness"
+          "routes.0.providerId": "asp-typescript"
         },
         "maxElapsedMsWarn": 9000
       }
@@ -165,7 +165,7 @@
           "reasonKind": "raw-broad-search",
           "languageIds.0": "typescript",
           "routes.0.kind": "ingest",
-          "routes.0.providerId": "ts-harness"
+          "routes.0.providerId": "asp-typescript"
         },
         "maxElapsedMsWarn": 6000
       }

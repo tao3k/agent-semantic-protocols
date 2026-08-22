@@ -41,6 +41,8 @@ fn canonical_config_covers_builtin_programming_native_read_matrix() {
     fs::create_dir_all(&root).expect("matrix root");
     let config_path = root.join("config.toml");
     fs::write(&config_path, default_client_config_template()).expect("write config");
+    fs::write(root.join("package.json"), r#"{"name":"fixture"}"#)
+        .expect("write structured projection fixture");
     let config = agent_semantic_hook::load_client_config_for_project(&config_path, &root)
         .expect("compile config");
     let mut runtime = builtin_programming_runtime();
@@ -78,7 +80,7 @@ fn canonical_config_covers_builtin_programming_native_read_matrix() {
                 });
                 assert_eq!(
                     decision.fields.get("configRuleId").and_then(Value::as_str),
-                    Some("materialize-registered-source-read-action"),
+                    Some("route-read-to-asp-languages"),
                     "{payload}"
                 );
                 assert_eq!(decision.decision, DecisionKind::Deny);
@@ -195,6 +197,81 @@ fn classify<'a>(
     })
 }
 
+#[cfg(unix)]
+fn current_thread_cpu_nanos() -> u128 {
+    let mut timespec = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    let result = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut timespec) };
+    assert_eq!(result, 0, "read current thread CPU clock");
+    (timespec.tv_sec as u128) * 1_000_000_000 + (timespec.tv_nsec as u128)
+}
+
+#[cfg(not(unix))]
+fn current_thread_cpu_nanos() -> u128 {
+    static STARTED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    STARTED
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_nanos()
+}
+
+#[test]
+fn configured_matcher_typical_same_process_classification_stays_below_one_millisecond() {
+    const SAMPLES: usize = 128;
+    const TYPICAL_QUORUM: usize = 96;
+    const TYPICAL_BUDGET_MICROS: u128 = 1_000;
+
+    let root = temp_project_root();
+    fs::create_dir_all(&root).expect("matcher latency root");
+    let config_path = root.join("config.toml");
+    fs::write(&config_path, default_client_config_template()).expect("write config");
+    fs::write(root.join("package.json"), r#"{"name":"fixture"}"#)
+        .expect("write structured projection fixture");
+    let config = agent_semantic_hook::load_client_config_for_project(&config_path, &root)
+        .expect("compile config");
+    let mut runtime = builtin_programming_runtime();
+    runtime.project_root = root.to_string_lossy().into_owned();
+    let payload = json!({
+        "cwd": root.to_string_lossy(),
+        "tool_name": "functions.exec_command",
+        "tool_input": {"cmd": "jq -c '.package.name' package.json"},
+    });
+
+    for _ in 0..8 {
+        let decision = classify(&runtime, &config, &payload);
+        assert_eq!(decision.decision, DecisionKind::Allow, "{decision:?}");
+    }
+
+    let mut samples = Vec::with_capacity(SAMPLES);
+    for _ in 0..SAMPLES {
+        let started = current_thread_cpu_nanos();
+        let decision = classify(&runtime, &config, &payload);
+        samples.push((current_thread_cpu_nanos() - started) / 1_000);
+        assert_eq!(decision.decision, DecisionKind::Allow, "{decision:?}");
+        assert_eq!(
+            decision.fields.get("configRuleId").and_then(Value::as_str),
+            Some("allow-bounded-json-projection")
+        );
+    }
+    samples.sort_unstable();
+    eprintln!(
+        "[hook-matcher-cpu] samples={} p50Micros={} p75Micros={} maxMicros={} targetMicros={}",
+        SAMPLES,
+        samples[SAMPLES / 2],
+        samples[TYPICAL_QUORUM - 1],
+        samples[SAMPLES - 1],
+        TYPICAL_BUDGET_MICROS,
+    );
+    assert!(
+        samples[TYPICAL_QUORUM - 1] <= TYPICAL_BUDGET_MICROS,
+        "fewer than {TYPICAL_QUORUM}/{SAMPLES} same-process decisions met the typical \
+         {TYPICAL_BUDGET_MICROS}us target: {samples:?}"
+    );
+    fs::remove_dir_all(root).expect("cleanup matcher latency root");
+}
+
 struct MatchCase {
     name: &'static str,
     payload: Value,
@@ -205,6 +282,11 @@ struct MatchCase {
 
 #[test]
 fn production_match_policy_contract() {
+    let typescript_provider = agent_semantic_hook::registered_provider_binary_v1("typescript")
+        .expect("registered TypeScript provider binary");
+    assert_eq!(typescript_provider.provider_id().as_str(), "asp-typescript");
+    assert_eq!(typescript_provider.binary(), "asp-typescript");
+
     let root = temp_project_root();
     fs::create_dir_all(&root).expect("create match-policy contract root");
     let config_path = root.join("config.toml");
@@ -224,6 +306,53 @@ fn production_match_policy_contract() {
 
     let mut runtime = registry();
     runtime.project_root = root.to_string_lossy().into_owned();
+    let direct_config =
+        agent_semantic_hook::load_client_config(&config_path).expect("load direct policy");
+    let direct_json_probe = classify(
+        &runtime,
+        &direct_config,
+        &shell("asp-typescript search lexical projectRoot owner tests --json ."),
+    );
+    assert_eq!(
+        direct_json_probe
+            .fields
+            .get("configRuleId")
+            .and_then(Value::as_str),
+        Some("deny-agent-search-json"),
+        "direct config load must preserve the AgentSearchJson materializer"
+    );
+    let capability_json_probe = classify(
+        &runtime,
+        &config,
+        &shell("asp-typescript search lexical projectRoot owner tests --json ."),
+    );
+    assert_eq!(
+        capability_json_probe
+            .fields
+            .get("configRuleId")
+            .and_then(Value::as_str),
+        Some("deny-agent-search-json"),
+        "capability-aware config loading must preserve the AgentSearchJson materializer"
+    );
+    let syntax_only_config = load_client_config_for_project_with_executable_capabilities(
+        &config_path,
+        &root,
+        BTreeSet::<String>::new(),
+    )
+    .expect("compile policy without projector executables");
+    let bounded_json_probe = classify(
+        &runtime,
+        &syntax_only_config,
+        &shell("jq -c '.package.name' package.json"),
+    );
+    assert_eq!(
+        bounded_json_probe
+            .fields
+            .get("configRuleId")
+            .and_then(Value::as_str),
+        Some("allow-bounded-json-projection"),
+        "bounded projection authorization must not depend on the pre-hook PATH snapshot"
+    );
     let cases = vec![
         MatchCase {
             name: "explicit no-agent command bypass",
@@ -314,7 +443,7 @@ fn production_match_policy_contract() {
                 "tool_name": "Read",
                 "tool_input": {"file_path": "src/app.ts"},
             }),
-            rule_id: "materialize-registered-source-read-action",
+            rule_id: "route-read-to-asp-languages",
             decision: DecisionKind::Deny,
             reason: ReasonKind::DirectSourceRead,
         },
@@ -351,7 +480,7 @@ fn production_match_policy_contract() {
         },
         MatchCase {
             name: "agent search JSON",
-            payload: shell("ts-harness search lexical projectRoot owner tests --json ."),
+            payload: shell("asp-typescript search lexical projectRoot owner tests --json ."),
             rule_id: "deny-agent-search-json",
             decision: DecisionKind::Deny,
             reason: ReasonKind::AgentSearchJson,
@@ -407,8 +536,9 @@ fn production_match_policy_contract() {
             || decision.reason_kind != case.reason
         {
             failures.push(format!(
-                "{}: expected rule={} decision={:?} reason={:?}; actual rule={} decision={:?} reason={:?}; normalizedActions={} hookMatchReceipt={}; expected rule is unreachable or shadowed",
+                "{}: payload={}; expected rule={} decision={:?} reason={:?}; actual rule={} decision={:?} reason={:?}; normalizedActions={} hookMatchReceipt={}; expected rule is unreachable or shadowed",
                 case.name,
+                case.payload,
                 case.rule_id,
                 case.decision,
                 case.reason,

@@ -5,7 +5,7 @@
 #+PROPERTY: RFC 10.06
 #+RFC: 006
 #+STATUS: active-implementation
-#+DEPENDS: docs/10-19-rfcs/10.05-cli-first-harness-ux.org (005), schemas/semantic-graph.v1.schema.json, schemas/semantic-search-packet.v1.schema.json, schemas/semantic-compact-graph-render.v1.schema.json
+#+DEPENDS: docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org (005), schemas/semantic-graph.v1.schema.json, schemas/semantic-search-packet.v1.schema.json, schemas/semantic-compact-graph-render.v1.schema.json
 #+SEE_ALSO: docs/10-19-rfcs/10.08-agent-semantic-client-backend-protocol.org (008) — ASP response normalization and shared renderer hot path.
 #+SEE_ALSO: docs/10-19-rfcs/10.09-graph-reasoning-code-research.org (009) — search guide,
 #+  prime frontier, and typed reasoning profiles that feed this render surface.
@@ -33,10 +33,18 @@ ASP Server is the sole Tokio-owned =asp-client-server= lifecycle
 authority.  Hook demand may request a language runtime only through the server
 admission operation; extension identity MUST map to exactly one registered
 language/provider identity before admission.  Concurrent requests for the same
-identity MUST share one single-flight lazy start.  The server MUST retain a
+identity MUST enqueue through the resident entry's bounded mailbox and observe
+one published lifecycle transition.  The server MUST retain a
 reference-counted lease while demand exists and MUST close an idle runtime
 after the lease/idle policy expires; close and restart are server-owned
 terminal operations.
+
+Each admitted workspace generation owns immutable typed lexical and
+owner-directory tables.  Table validation and indexing occur once at generation
+admission; distinct warm queries MUST NOT reparse the mmap segment.  Heavy owner
+projection records are decoded only for demanded owners and retained in a
+bounded cache owned by that generation, which is discarded atomically when the
+generation changes.
 
 Lean owns the architecture-level counterexample model for this boundary.  The
 model MUST prove that two admitted operations cannot observe one another's
@@ -523,7 +531,7 @@ resolution remains an explicit unscoped control-plane operation.
 
 Project, package, target, dependency, and source-scope facts are projections of
 the Level 0
-[[file:10.05-cli-first-harness-ux/10.05.11.04-project-semantic-guidance-v1.org][Project Semantic Guidance v1]]
+[[file:10.05-interactive-graph-first-progressive-searchloop.org][Project Semantic Guidance v1]]
 receipt. Search MUST consume those digest-bound facts and MUST NOT infer
 project boundaries from source-envelope contents, indexed paths, or database
 state.
@@ -590,8 +598,11 @@ Merkle owner-proof changes require two independent qualifications over the
 same versioned receipt.  Scenarios exercise Ready, missing, stale, tampered,
 and generation-transition states.  Live Corpus exercises every locked resource
 and every registered provider language against real owner/selector sets.  Both
-validate the proof against the same generation digest, root digest, owner path,
-owner content digest, and selector identity.  They also assert zero provider,
+validate the proof against the same generation digest, owner Merkle root, owner
+path, owner content digest, and selector identity.  The source snapshot root is
+validated independently and MUST NOT be compared with the owner Merkle root.
+The selected callable selector and owner path are one parser-owned pair; neither
+may be independently inferred or reordered.  They also assert zero provider,
 scheduler, filesystem, database, and socket operations on the warm read path.
 A timeout, cancellation, or elapsed-budget failure is evidence of an invalid
 architecture, not a successful bounded fallback.
@@ -3725,7 +3736,7 @@ Completed:
 - [X] Python =py-harness= constructs canonical search packets and shells out to
   =asp graph render=; its previous local graph
   action/template renderer modules were removed rather than kept as fallback.
-- [X] TypeScript =ts-harness= constructs canonical search packets and shells
+- [X] TypeScript =asp-typescript= constructs canonical search packets and shells
   out to =asp graph render=; its previous local graph
   renderer was replaced by a thin adapter with no fallback path.
 - [X] ASP local-native packet-first miss can render a validated

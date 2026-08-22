@@ -348,7 +348,7 @@ TypeScript and Python now both expose =query/owner-items= through
 retaining parser-owned item locations:
 
 #+begin_src shell
-ts-harness query src/cli/semantic-language.ts \
+asp-typescript query src/cli/semantic-language.ts \
   --term semanticLanguageRegistryDocument \
   --names-only .
 

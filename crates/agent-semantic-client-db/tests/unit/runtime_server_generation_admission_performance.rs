@@ -22,7 +22,10 @@ async fn unchanged_merkle_admission_performs_zero_owner_rescans() {
         discover_workspace_generation_candidate(&project_root)
         .await
         .expect("repeated unchanged candidate resolves from resident identity");
-    assert_eq!(repeated, observed, "unchanged Merkle identity must be stable");
+    assert_eq!(
+        repeated, observed,
+        "unchanged Merkle identity must be stable"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

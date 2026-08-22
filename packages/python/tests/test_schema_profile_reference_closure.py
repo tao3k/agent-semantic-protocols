@@ -81,7 +81,7 @@ def test_schema_profile_contract_closure_seeds_provider_manifest(
     schema_dir = tmp_path / "schemas"
     _write_schema(
         schema_dir,
-        "provider-manifest.v1.schema.json",
+        "provider-manifest.schema.json",
         {"$ref": "provider-project-resolution-descriptor.v1.schema.json"},
     )
     _write_schema(
@@ -93,6 +93,6 @@ def test_schema_profile_contract_closure_seeds_provider_manifest(
         tmp_path,
         (),
     ) == {
-        "provider-manifest.v1.schema.json",
+        "provider-manifest.schema.json",
         "provider-project-resolution-descriptor.v1.schema.json",
     }

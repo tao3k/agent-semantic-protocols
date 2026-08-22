@@ -23,14 +23,14 @@ fn target_debug_asp() -> Option<PathBuf> {
 }
 
 pub(super) fn asp_binary_path() -> PathBuf {
-    if let Ok(path) = std::env::var("ASP_TEST_ASP_BIN") {
-        return checked_asp_path(PathBuf::from(path), "ASP_TEST_ASP_BIN");
-    }
     if let Some(path) = option_env!("CARGO_BIN_EXE_asp") {
         return checked_asp_path(PathBuf::from(path), "CARGO_BIN_EXE_asp");
     }
     if let Ok(path) = std::env::var("CARGO_BIN_EXE_asp") {
         return checked_asp_path(PathBuf::from(path), "CARGO_BIN_EXE_asp");
+    }
+    if let Ok(path) = std::env::var("ASP_TEST_ASP_BIN") {
+        return checked_asp_path(PathBuf::from(path), "ASP_TEST_ASP_BIN");
     }
     if let Some(path) = target_debug_asp() {
         return path;
@@ -60,6 +60,19 @@ fn assert_asp_binary_compatible(binary: &Path) {
     assert!(
         output.status.success() && actual == expected,
         "asp binary {} has incompatible Hook contract: expected={expected} actual={actual} stderr={}",
+        binary.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let output = Command::new(binary)
+        .arg("--hook-artifact-fingerprint")
+        .output()
+        .unwrap_or_else(|error| panic!("execute ASP Hook artifact fingerprint probe: {error}"));
+    let actual = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    let expected = agent_semantic_hook::hook_runtime_artifact_fingerprint();
+    assert!(
+        output.status.success() && actual == expected,
+        "asp binary {} has incompatible Hook artifacts: expected={expected} actual={actual} stderr={}",
         binary.display(),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -162,7 +175,6 @@ pub(super) fn root_owned_rust_activation_json() -> String {
             provider_command_prefix: Vec::new(),
             execution_command_digest,
             search_capabilities: manifest.search_capabilities().clone(),
-            language_projection: manifest.language_projection().cloned(),
             semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
             query_pack_descriptor: manifest.query_pack_descriptor().clone(),
             semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
@@ -206,22 +218,13 @@ pub(super) fn write_state_home_provider_binary(
 ) -> PathBuf {
     let registered = agent_semantic_hook::registered_provider_binary_v1(language_id);
     let (provider_id, binary) = match registered {
-        Ok(registered) if registered.provider_id().as_str() == provider_id => {
-            (
-                registered.provider_id().as_str().to_owned(),
-                registered.binary().to_owned(),
-            )
-        }
+        Ok(registered) if registered.provider_id().as_str() == provider_id => (
+            registered.provider_id().as_str().to_owned(),
+            registered.binary().to_owned(),
+        ),
         _ => (provider_id.to_owned(), binary.to_owned()),
     };
-    write_state_home_provider_file(
-        state_home,
-        language_id,
-        &provider_id,
-        &binary,
-        0o755,
-        false,
-    )
+    write_state_home_provider_file(state_home, language_id, &provider_id, &binary, 0o755, false)
 }
 
 fn write_state_home_provider_file(
@@ -275,12 +278,12 @@ fn write_state_home_provider_file(
             "asp-rust" => {
                 "[agent-guide] runtime=agent-semantic-hook language=rust provider=asp-rust"
             }
-            "ts-harness" => "[ts-harness-guide]",
+            "asp-typescript" => "[asp-typescript-guide]",
             "py-harness" | "custom-py-harness" => "[py-harness-guide]",
             _ => "[agent-guide]",
         };
         format!(
-            "#!/bin/sh\nif [ \"$1\" = \"guide\" ]; then\n  printf '%s\\n' '{}'\n  exit 0\nfi\nif [ \"$1\" = \"project-resolution-stdin\" ]; then\n  printf '%s\\n' '{}'\n  exit 0\nfi\nexit 0\n",
+            "#!/bin/sh\nif [ \"$1\" = \"guide\" ]; then\n  printf '%s\\n' '{}'\n  exit 0\nfi\nif [ \"$1\" = \"project-resolution\" ]; then\n  printf '%s\\n' '{}'\n  exit 0\nfi\nexit 0\n",
             guide_marker, project_resolution
         )
     };

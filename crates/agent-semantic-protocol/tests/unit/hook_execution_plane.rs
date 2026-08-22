@@ -678,7 +678,7 @@ fn control_plane_refresh_repairs_managed_config_before_hook_evaluation() {
             .as_str()
             .expect("registered document Hook context");
         assert!(
-            context.contains("\"configRuleId\":\"materialize-registered-source-read-action\""),
+            context.contains("\"configRuleId\":\"route-read-to-asp-languages\""),
             "{language}: {context}"
         );
         assert!(

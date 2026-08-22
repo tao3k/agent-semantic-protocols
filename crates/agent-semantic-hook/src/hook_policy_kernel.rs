@@ -120,8 +120,6 @@ fn compile_provider_projections(
                 crate::protocol_activation::protocol_activation_manifest::HookProviderProjection {
                     language_id: manifest.language_id().clone(),
                     provider_id: manifest.provider_id().clone(),
-                    binary: manifest.binary().to_owned(),
-                    provider_command_prefix: Vec::new(),
                     package_roots: vec![".".to_owned()],
                     source_extensions: provider.source_extensions.clone(),
                     config_files,

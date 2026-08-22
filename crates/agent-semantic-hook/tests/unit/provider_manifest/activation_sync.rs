@@ -3,7 +3,6 @@ use agent_semantic_hook::{
     build_default_activation_with_state_home, load_or_refresh_default_activation_with_state_home,
     load_or_refresh_default_activation_with_state_home_and_binary,
     load_or_sync_activation_with_state_home,
-    materialize_active_asp_artifact_receipt_for_current_process,
     verify_active_asp_artifact_receipt, write_activation,
 };
 use std::fs;
@@ -169,7 +168,7 @@ fn generated_activation_rebuild_failure_does_not_serve_old_activation() {
 }
 
 #[test]
-fn generated_activation_refreshes_a_new_digest_addressed_runtime_binary() {
+fn generated_activation_ignores_runtime_binary_drift() {
     let root = temp_root("runtime-binary-selection-drift");
     super::git_init(&root);
     fs::create_dir_all(root.join("src")).expect("create Rust source root");
@@ -215,27 +214,16 @@ fn generated_activation_refreshes_a_new_digest_addressed_runtime_binary() {
         &state_home,
         &second_binary,
     )
-    .expect("refresh runtime binary selection");
-    assert_eq!(refreshed.status, "refreshed");
-    assert_eq!(
-        refreshed.admission.reason,
-        ActivationAdmissionReason::ProviderSelectionDrift
-    );
+    .expect("reuse static activation across runtime binary drift");
+    assert_eq!(refreshed.status, "reused");
     let ranker = refreshed
         .activation
         .rankers
         .iter()
         .find(|ranker| ranker.ranker_id == "asp-graph-turbo")
         .expect("Graph Turbo ranker");
-    assert_eq!(
-        ranker.binary,
-        second_binary
-            .canonicalize()
-            .expect("canonical second runtime")
-            .display()
-            .to_string()
-    );
-    assert_eq!(ranker.content_digest, second_digest);
+    assert_eq!(ranker.capability_id, "graph-turbo");
+    assert_eq!(ranker.argv_prefix, ["graph", "render"]);
     let unchanged = load_or_refresh_default_activation_with_state_home_and_binary(
         &activation_path,
         &root,
@@ -314,7 +302,7 @@ fn generated_activation_with_unknown_field_and_valid_receipt_rebuilds() {
     super::install_state_home_provider(&state_home, "rust", "asp-rust", "rs-harness");
 
     let activation_path = test_activation_path(&root, &root);
-    let runtime = load_or_sync_activation_with_state_home(&activation_path, &root, &state_home)
+    load_or_sync_activation_with_state_home(&activation_path, &root, &state_home)
         .expect("create generated activation");
     let mut activation_json: serde_json::Value = serde_json::from_str(
         &fs::read_to_string(&activation_path).expect("read generated activation"),
@@ -332,8 +320,6 @@ fn generated_activation_with_unknown_field_and_valid_receipt_rebuilds() {
         serde_json::to_string_pretty(&activation_json).expect("serialize future activation"),
     )
     .expect("write future generated activation");
-    materialize_active_asp_artifact_receipt_for_current_process(&activation_path, &runtime)
-        .expect("materialize valid receipt for future generated activation");
     let current_exe = std::env::current_exe().expect("current test executable");
     verify_active_asp_artifact_receipt(&activation_path, &[&current_exe])
         .expect("future generated activation receipt should be valid");

@@ -64,8 +64,8 @@ fn provider(
             "transport": "runtime-ipc",
             "operations": [{
                 "operation": "project-resolution-stdin",
-                "requestSchemaId": "agent.semantic-protocols.provider-project-resolution-request.v1",
-                "responseSchemaId": "agent.semantic-protocols.provider-project-resolution-response.v1"
+                "requestSchemaId": "agent.semantic-protocols.provider-project-resolution-request",
+                "responseSchemaId": "agent.semantic-protocols.provider-project-resolution-response"
             }]
         }))
             .expect("canonical Tokio provider runtime contract"),
@@ -151,7 +151,7 @@ async fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
         catalog::RuntimeProviderCatalog::runtime_launch;
     let _publication_entrypoint: fn(
         &std::path::Path,
-        &[install_provider_reconcile::ProviderInstallReceipt],
+        &[agent_semantic_runtime::ProviderInstallReceipt],
     )
         -> Result<catalog::GlobalProviderCatalogPublication, String> =
         catalog::publish_global_provider_catalog;
@@ -192,7 +192,7 @@ async fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
     assert!(malformed.contains("failed to parse Global provider catalog"));
 
     let rust_path = runtime.join("rs-harness");
-    let typescript_path = runtime.join("ts-harness");
+    let typescript_path = runtime.join("asp-typescript");
     std::fs::write(&rust_path, b"rust-provider").expect("write Rust provider artifact");
     std::fs::write(&typescript_path, b"typescript-provider")
         .expect("write TypeScript provider artifact");
@@ -352,12 +352,13 @@ async fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
     ))
     .expect("decode Global provider catalog schema");
     let runtime_contract_schema: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../../schemas/provider-runtime-contract-descriptor.v1.schema.json"
+        "../../../../../schemas/provider-runtime-contract-descriptor.schema.json"
     ))
     .expect("decode provider runtime contract schema");
-    let asp_client_server_schema: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../../schemas/asp-client-server-descriptor.v1.schema.json"
-    ))
+    let asp_client_server_schema: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../schemas/asp-client-server-descriptor.schema.json"
+    )))
     .expect("decode ASP client-server descriptor schema");
     let registry = referencing::Registry::new()
     .add(
@@ -366,7 +367,7 @@ async fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
     )
     .expect("register provider runtime contract schema")
     .add(
-        "https://schemas.agent-semantic-protocols.dev/asp-client-server-descriptor.v1.schema.json",
+        "https://schemas.agent-semantic-protocols.dev/asp-client-server-descriptor.schema.json",
         referencing::Resource::from_contents(asp_client_server_schema),
     )
     .expect("register ASP client-server descriptor schema")

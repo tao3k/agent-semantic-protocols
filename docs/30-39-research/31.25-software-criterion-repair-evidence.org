@@ -16,7 +16,7 @@ not enough to promote the whole signal catalog to blocking severity.
 * Evidence record
 
 #+begin_example
-[software-criterion-repair-evidence] language=typescript provider=ts-harness project=languages/typescript-lang-project-harness
+[software-criterion-repair-evidence] language=typescript provider=asp-typescript project=languages/typescript-lang-project-harness
 start=compact-signal-line
 signal=native-idiom.manual-transform-loop
 target=src/cli/semantic-search/owners.ts ownersForHits,uniqueOwners

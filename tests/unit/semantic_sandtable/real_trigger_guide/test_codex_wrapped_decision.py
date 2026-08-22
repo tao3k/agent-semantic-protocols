@@ -96,7 +96,7 @@ class RealTriggerCodexWrappedGuideTests(unittest.TestCase):
                                         "'routes': [{"
                                         "'kind': 'query',"
                                         "'argv': ["
-                                        "'ts-harness', 'search', 'query',"
+                                        "'asp-typescript', 'search', 'query',"
                                         "'--from-hook', 'direct-source-read',"
                                         "'--selector', '**/*.ts',"
                                         "'--term', 'GuideQuality',"
@@ -104,7 +104,7 @@ class RealTriggerCodexWrappedGuideTests(unittest.TestCase):
                                         "'--view', 'seeds', '.'"
                                         "]"
                                         "}],"
-                                        "'message': 'Use ts-harness query --from-hook direct-source-read.'"
+                                        "'message': 'Use asp-typescript query --from-hook direct-source-read.'"
                                         "}; "
                                         "print(json.dumps({"
                                         "'hookSpecificOutput': {"
@@ -119,7 +119,7 @@ class RealTriggerCodexWrappedGuideTests(unittest.TestCase):
                                         "languageId": "typescript",
                                         "routeKind": "query",
                                         "routeCommandContains": [
-                                            "ts-harness query --from-hook",
+                                            "asp-typescript query --from-hook",
                                             "--surface owners,tests",
                                         ],
                                         "routeCommandNotContains": [
@@ -140,7 +140,7 @@ class RealTriggerCodexWrappedGuideTests(unittest.TestCase):
         self.assertEqual("fail", result.status)
         self.assertTrue(
             any(
-                "guide missing route command text 'ts-harness query --from-hook'"
+                "guide missing route command text 'asp-typescript query --from-hook'"
                 in error
                 for step in result.steps
                 for error in step.errors

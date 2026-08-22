@@ -16,7 +16,7 @@
     {
       "id": "workspace",
       "kind": "search",
-      "argv": ["ts-harness", "search", "workspace", "."],
+      "argv": ["asp-typescript", "search", "workspace", "."],
       "stdinShape": "none",
       "outputMode": "compact",
       "metrics": {
@@ -37,7 +37,7 @@
     {
       "id": "prime-vite-package",
       "kind": "search",
-      "argv": ["ts-harness", "search", "prime", "--view", "seeds", "packages/vite"],
+      "argv": ["asp-typescript", "search", "prime", "--view", "seeds", "packages/vite"],
       "stdinShape": "none",
       "outputMode": "compact",
       "metrics": {
@@ -60,7 +60,7 @@
       "id": "text-plugin-query-set",
       "kind": "search",
       "argv": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "text",
         "--query-set",
@@ -94,7 +94,7 @@
       "id": "owner-plugin-container-not-visible",
       "kind": "search",
       "argv": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "owner",
         "src/node/server/pluginContainer.ts",
@@ -123,7 +123,7 @@
     {
       "id": "rg-plugin-container-ingest",
       "kind": "external-ingest",
-      "argv": ["ts-harness", "search", "ingest", "--view", "seeds", "packages/vite"],
+      "argv": ["asp-typescript", "search", "ingest", "--view", "seeds", "packages/vite"],
       "stdinShape": "candidate-pipe",
       "outputMode": "compact",
       "metrics": {
@@ -170,7 +170,7 @@
       },
       "beforeCommandIds": ["text-plugin-query-set"],
       "recommendedCommand": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "text",
         "--query-set",

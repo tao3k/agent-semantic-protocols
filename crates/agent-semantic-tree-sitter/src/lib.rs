@@ -1,40 +1,23 @@
 #![deny(dead_code)]
 
-//! Shared tree-sitter-compatible query catalog utilities for ASP.
+//! Shared S-expression syntax-query catalog utilities for ASP.
 //!
-//! This crate owns ASP-side catalog loading, fingerprinting, and runtime query
-//! compilation. Language providers keep native parser authority and maintain
-//! `.scm` catalogs; they do not need to link tree-sitter runtime or grammar
-//! crates for this ABI.
+//! This crate only loads `.scm` catalogs and compiles their Tree-sitter-compatible
+//! S-expression surface into a grammarless typed plan. Language providers retain
+//! parser authority and execute that plan against richer native syntax facts.
 
 pub mod builtin_catalog;
 pub mod catalog;
-mod language_registry;
 pub mod query_syntax;
-pub mod runtime;
-
-pub use agent_semantic_tree_sitter_runtime::{
-    CompiledSyntaxQuery as CompiledNativeSyntaxQuery, NativeQueryCapture, NativeQueryExecution,
-    NativeQueryMatch, NativeQueryNode, compile_query_source as compile_native_query_source,
-    execute_query as execute_native_query,
-};
 pub use builtin_catalog::{BuiltinCatalogId, BuiltinCatalogLanguageId, builtin_catalog_source};
 pub use catalog::{
     LoadedGrammarProfile, LoadedSyntaxCatalog, SyntaxCatalogDescriptor, extract_capture_names,
     fingerprint_catalog, fingerprint_grammar_profile, load_grammar_profile, load_syntax_catalog,
     normalize_capture_names,
 };
-pub use language_registry::registered_language_grammar;
-
-#[cfg(test)]
-#[path = "../tests/unit/workspace_runtime.rs"]
-mod workspace_runtime_tests;
 pub use query_syntax::{
     SyntaxQueryAbiError, SyntaxQueryAbiPattern, SyntaxQueryAbiPlan, SyntaxQueryAbiPredicate,
     SyntaxQueryPredicateOp, SyntaxQueryPredicateValue, compile_query_abi_source,
-};
-pub use runtime::{
-    CompiledSyntaxQuery, SyntaxQueryCompileError, compile_catalog_query, compile_query_source,
 };
 
 #[cfg(test)]

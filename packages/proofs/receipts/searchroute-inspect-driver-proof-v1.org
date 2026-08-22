@@ -4,7 +4,7 @@
 * Owners
 
 - RFC owner:
-  =docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.22-searchroute-total-inspect-driver.org=
+  =docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.10-interactive-searchloop/00.22-searchroute-total-inspect-driver.org=
 - Lean owner:
   =packages/proofs/ASPProof/SearchRouteInspectDriver.lean=
 - Lean audit:
@@ -83,7 +83,7 @@ standalone =.typ= source, =:file= header argument, or PDF compilation was used.
 #+begin_src sh
 orgize eval plan --json \
   searchroute-total-inspect-driver-model \
-  docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.22-searchroute-total-inspect-driver.org
+  docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.10-interactive-searchloop/00.22-searchroute-total-inspect-driver.org
 
 typst eval --in - '"ok"'
 #+end_src

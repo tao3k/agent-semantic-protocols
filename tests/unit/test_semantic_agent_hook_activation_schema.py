@@ -13,7 +13,7 @@ class SemanticAgentHookActivationSchemaTests(unittest.TestCase):
         schema_path = (
             Path(__file__).resolve().parents[2]
             / "schemas"
-            / "semantic-agent-hook-activation.v1.schema.json"
+            / "hook-activation.v2.schema.json"
         )
         with open(schema_path, "r", encoding="utf-8") as handle:
             self.validator = Draft202012Validator(json.load(handle))

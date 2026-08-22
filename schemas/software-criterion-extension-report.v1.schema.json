@@ -92,7 +92,7 @@
     "providerId": {
       "enum": [
         "rs-harness",
-        "ts-harness",
+        "asp-typescript",
         "py-harness",
         "julia-lang-project-harness"
       ]

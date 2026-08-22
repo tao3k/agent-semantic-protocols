@@ -12,8 +12,8 @@ RUST_PROVIDER_MANIFEST = (
     ROOT
     / "languages"
     / "rust-lang-project-harness"
-    / "provider"
-    / "asp-provider-manifest.json"
+    / "schemas"
+    / "asp-provider.json"
 )
 
 
@@ -22,10 +22,13 @@ def load_json(path: Path) -> dict[str, object]:
 
 
 def test_shared_provider_manifest_schemas_reference_project_resolution() -> None:
-    expected_ref = "provider-project-resolution-descriptor.v1.schema.json"
+    expected_ref = (
+        "https://schemas.agent-semantic-protocols.dev/"
+        "provider-project-resolution-descriptor.schema.json"
+    )
     for schema_name in (
-        "provider-manifest.v1.schema.json",
-        "semantic-agent-hook-provider-manifest.v1.schema.json",
+        "provider-manifest.schema.json",
+        "semantic-agent-hook-provider-manifest.schema.json",
     ):
         schema = load_json(SCHEMAS / schema_name)
         properties = schema["properties"]
@@ -35,7 +38,7 @@ def test_shared_provider_manifest_schemas_reference_project_resolution() -> None
 
 def test_rust_provider_manifest_declares_typed_project_resolution() -> None:
     project_resolution_schema = load_json(
-        SCHEMAS / "provider-project-resolution-descriptor.v1.schema.json"
+        SCHEMAS / "provider-project-resolution-descriptor.schema.json"
     )
     manifest = load_json(RUST_PROVIDER_MANIFEST)
 
@@ -44,6 +47,6 @@ def test_rust_provider_manifest_declares_typed_project_resolution() -> None:
     Draft202012Validator(project_resolution_schema).validate(descriptor)
     assert descriptor["capabilityId"] == "project-resolution"
     assert descriptor["parserId"] == "rust.cargo-toml"
-    assert descriptor["commandBinding"] == "project-resolution-stdin"
-    assert descriptor["supportsGitCandidates"] is True
-    assert descriptor["supportsProviderOnly"] is False
+    assert "project-resolution" in {
+        operation["operation"] for operation in manifest["runtimeContract"]["operations"]
+    }

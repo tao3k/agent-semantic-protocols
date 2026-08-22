@@ -385,7 +385,7 @@
     {
       "fixtureId": "typescript.sequence.array",
       "languageId": "typescript",
-      "providerId": "ts-harness",
+      "providerId": "asp-typescript",
       "collectionFamily": "sequence",
       "collectionImpl": "Array",
       "queryIntent": "sequence collection field",
@@ -472,7 +472,7 @@
     {
       "fixtureId": "typescript.map.map",
       "languageId": "typescript",
-      "providerId": "ts-harness",
+      "providerId": "asp-typescript",
       "collectionFamily": "map",
       "collectionImpl": "Map",
       "queryIntent": "map collection field",

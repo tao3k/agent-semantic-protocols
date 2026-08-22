@@ -41,6 +41,8 @@ mod provider_treesitter_read;
 mod runtime_cache_control;
 #[path = "unit/runtime_generation_admission_gate.rs"]
 mod runtime_generation_admission_gate;
+#[path = "unit/runtime_provider_register.rs"]
+mod runtime_provider_register;
 #[path = "unit/runtime_search_authority_fixture.rs"]
 mod runtime_search_authority_fixture;
 #[path = "unit/runtime_server_admission_catalog.rs"]
@@ -61,6 +63,8 @@ mod runtime_server_generation_restore;
 mod runtime_server_graph_turbo;
 #[path = "unit/runtime_server_health.rs"]
 mod runtime_server_health;
+#[path = "unit/runtime_server_lifecycle_coordinator.rs"]
+mod runtime_server_lifecycle_coordinator;
 #[path = "unit/runtime_server_overlay_admission.rs"]
 mod runtime_server_overlay_admission;
 #[path = "unit/runtime_server_runtime.rs"]

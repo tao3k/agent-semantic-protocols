@@ -1,7 +1,0 @@
-#+title: Compatibility locator: orthogonal cache credit ledger
-
-* Canonical RFC
-
-This historical CLI-first path is retained only as a compatibility locator.
-The canonical RFC is
-[[file:../../10.05-interactive-graph-first-progressive-searchloop/10.05.40-receipts-cache-identity/00.63-orthogonal-cache-credit-ledger.org][Orthogonal cache credit ledger]].

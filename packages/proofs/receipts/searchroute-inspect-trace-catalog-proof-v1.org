@@ -85,7 +85,7 @@ The executor obtains the block through:
 #+begin_src sh
 orgize eval plan --json \
   searchroute-realized-trace-catalog-global-driver-model \
-  docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.24-searchroute-realized-trace-catalog-global-driver.org
+  docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00.24-searchroute-realized-trace-catalog-global-driver.org
 #+end_src
 
 It passes the returned =.body= to:

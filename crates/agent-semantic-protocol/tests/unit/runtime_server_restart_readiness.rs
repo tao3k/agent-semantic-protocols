@@ -3,13 +3,14 @@ use std::process::Command;
 #[test]
 fn restart_publishes_a_healthy_endpoint_from_a_clean_state_home() {
     let state_home = tempfile::tempdir().expect("isolated ASP State Home");
+    let state_home_path =
+        std::fs::canonicalize(state_home.path()).expect("canonical ASP State Home");
     let asp = env!("CARGO_BIN_EXE_asp");
-    let installed_asp = state_home.path().join("runtime/bin/asp");
+    let installed_asp = state_home_path.join("runtime/bin/asp");
 
     let install = Command::new(asp)
-        .env("ASP_STATE_HOME", state_home.path())
-        .args(["install", "binary", "--target"])
-        .arg(&installed_asp)
+        .env("ASP_STATE_HOME", &state_home_path)
+        .args(["install", "binary"])
         .output()
         .expect("install isolated ASP binary");
     assert!(
@@ -20,7 +21,7 @@ fn restart_publishes_a_healthy_endpoint_from_a_clean_state_home() {
     );
 
     let restart = Command::new(&installed_asp)
-        .env("ASP_STATE_HOME", state_home.path())
+        .env("ASP_STATE_HOME", &state_home_path)
         .args(["server", "restart"])
         .output()
         .expect("restart isolated Runtime Server");
@@ -38,7 +39,7 @@ fn restart_publishes_a_healthy_endpoint_from_a_clean_state_home() {
     );
 
     let stop = Command::new(&installed_asp)
-        .env("ASP_STATE_HOME", state_home.path())
+        .env("ASP_STATE_HOME", &state_home_path)
         .args(["server", "stop"])
         .output()
         .expect("stop isolated Runtime Server");
@@ -49,7 +50,7 @@ fn restart_publishes_a_healthy_endpoint_from_a_clean_state_home() {
         String::from_utf8_lossy(&stop.stderr)
     );
     assert!(
-        !agent_semantic_client_db::runtime_server_endpoint_path(state_home.path())
+        !agent_semantic_client_db::runtime_server_endpoint_path(&state_home_path)
             .expect("resolve isolated endpoint")
             .exists(),
         "stop must clean the published endpoint: stdout={} stderr={}",

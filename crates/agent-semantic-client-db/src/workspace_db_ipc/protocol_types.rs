@@ -307,6 +307,9 @@ pub enum WorkspaceDbIpcOperation {
     RequireRuntimeGeneration {
         project_root: String,
     },
+    RestoreRuntimeGenerationFromPointer {
+        project_root: String,
+    },
     AdmitRuntimeGenerationForRead {
         project_root: String,
         language_id: String,

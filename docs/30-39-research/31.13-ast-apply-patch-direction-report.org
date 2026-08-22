@@ -29,7 +29,7 @@ boundaries, and post-edit checks.  The edit protocol should use that authority.
 The concrete TypeScript command was:
 
 #+begin_src shell
-ts-harness query src/cli/semantic-search/render.ts \
+asp-typescript query src/cli/semantic-search/render.ts \
   --term renderSemanticSearchSeedPacket \
   --code languages/typescript-lang-project-harness
 #+end_src

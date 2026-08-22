@@ -51,7 +51,7 @@ def test_projection_navigation_rejects_materialized_exact_read_argv() -> None:
             "target": "build:ret",
             "read": "src/chain.ts:2:7",
             "argv": [
-                "ts-harness",
+                "asp-typescript",
                 "query",
                 "--from-hook",
                 "direct-source-read",

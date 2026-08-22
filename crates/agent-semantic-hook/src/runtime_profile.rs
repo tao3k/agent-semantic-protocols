@@ -220,14 +220,29 @@ fn runtime_provider_profile_for_provider(
     provider: &ActivatedProvider,
     runtime_bin_dir: Option<&Path>,
 ) -> RuntimeProviderProfile {
-    let program = provider
-        .provider_command_prefix
+    let manifest = crate::provider_manifest::builtin_provider_manifests()
+        .into_iter()
+        .find(|manifest| {
+            manifest.manifest_id() == provider.manifest_id
+                && manifest.language_id() == &provider.language_id
+                && manifest.provider_id() == &provider.provider_id
+        });
+    let binary = manifest
+        .as_ref()
+        .map(|manifest| manifest.binary().to_owned())
+        .unwrap_or_default();
+    let execution = manifest
+        .as_ref()
+        .map(|manifest| manifest.execution())
+        .unwrap_or(crate::ProviderExecution::ExternalProcess);
+    let provider_command_prefix = Vec::new();
+    let program = provider_command_prefix
         .first()
         .map(PathBuf::from)
-        .or_else(|| runtime_bin_dir.map(|dir| dir.join(&provider.binary)))
-        .unwrap_or_else(|| PathBuf::from(&provider.binary));
+        .or_else(|| runtime_bin_dir.map(|dir| dir.join(&binary)))
+        .unwrap_or_else(|| PathBuf::from(&binary));
     let binary_resolution = resolve_executable_with_status(&program.display().to_string());
-    let command = runtime_provider_command(&provider.provider_command_prefix, &binary_resolution);
+    let command = runtime_provider_command(&provider_command_prefix, &binary_resolution);
     let resolved_binary = binary_resolution
         .path
         .as_ref()
@@ -244,9 +259,9 @@ fn runtime_provider_profile_for_provider(
         manifest_digest: provider.manifest_digest.clone(),
         language_id: provider.language_id.clone(),
         provider_id: provider.provider_id.clone(),
-        binary: provider.binary.clone(),
-        execution: provider.execution,
-        provider_command_prefix: provider.provider_command_prefix.clone(),
+        binary,
+        execution,
+        provider_command_prefix,
         resolved_binary,
         argv: command.argv,
         health,
@@ -291,7 +306,6 @@ fn runtime_provider_profile<'a>(
         profile.manifest_id == provider.manifest_id
             && profile.language_id == provider.language_id
             && profile.provider_id == provider.provider_id
-            && profile.binary == provider.binary
     })
 }
 

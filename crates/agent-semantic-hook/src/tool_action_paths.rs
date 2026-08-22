@@ -76,7 +76,7 @@ pub(super) fn extract_apply_patch_paths_direct(tool_input: &Value) -> Vec<String
     let Some(patch) = extract_apply_patch_text_direct(tool_input) else {
         return extract_paths_direct(tool_input);
     };
-    agent_semantic_command_match::apply_patch_header_paths(patch)
+    agent_semantic_shell_parser::apply_patch_header_paths(patch)
 }
 
 pub(super) fn extract_apply_patch_text_direct(value: &Value) -> Option<&str> {

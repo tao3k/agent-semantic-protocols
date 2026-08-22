@@ -1,6 +1,0 @@
-#+title: Compatibility locator: SearchRoute realized trace catalog
-
-* Canonical RFC
-
-The canonical RFC is
-[[file:../../10.05-interactive-graph-first-progressive-searchloop/10.05.30-progressive-projection-cost/00.24-searchroute-realized-trace-catalog-global-driver.org][SearchRoute realized trace catalog and global driver]].

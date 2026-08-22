@@ -1,13 +1,15 @@
-use asp_rust_project_harness_policy::{
-    assert_asp_rust_project_harness_member_policy_from_env,
-    generate_agent_semantic_hook_registry_from_env,
-};
+use asp_rust_project_harness_policy::assert_asp_rust_project_harness_member_policy_from_env;
 use std::path::PathBuf;
 
 fn main() {
     assert_asp_rust_project_harness_member_policy_from_env(env!("CARGO_PKG_NAME"));
-    generate_agent_semantic_hook_registry_from_env();
     let manifest_dir = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("manifest dir"));
+    let resolved =
+        asp_provider_registry_build::resolve_provider_register(manifest_dir.join("../.."))
+            .expect("resolve provider register");
+    for path in resolved.input_paths {
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
     let agents_root = manifest_dir.join("../../agents");
     println!("cargo:rerun-if-changed={}", agents_root.display());
     let projection =

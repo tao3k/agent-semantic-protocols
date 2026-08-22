@@ -332,7 +332,7 @@ can compile the exact same bytes:
 #+begin_src shell
 asp org query \
   --field lang=typst \
-  --workspace docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.14-searchloop-cache-invalidation-identity.org \
+  --workspace docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.40-receipts-cache-identity/00.14-searchloop-cache-invalidation-identity.org \
   --content |
   typst compile - /tmp/searchloop-cache-invalidation-model.pdf
 #+end_src

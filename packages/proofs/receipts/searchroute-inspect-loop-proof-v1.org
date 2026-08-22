@@ -4,7 +4,7 @@
 * Owners
 
 - RFC owner:
-  =docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.21-searchroute-repeated-inspect-loop.org=
+  =docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.10-interactive-searchloop/00.21-searchroute-repeated-inspect-loop.org=
 - Lean owner:
   =packages/proofs/ASPProof/SearchRouteInspectLoop.lean=
 - Lean audit:
@@ -88,7 +88,7 @@ RFC. No standalone =.typ= source and no =:file= header argument were used.
 #+begin_src sh
 orgize eval plan --json \
   searchroute-repeated-inspect-loop-model \
-  docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.21-searchroute-repeated-inspect-loop.org
+  docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.10-interactive-searchloop/00.21-searchroute-repeated-inspect-loop.org
 
 typst eval --in - '"ok"'
 #+end_src

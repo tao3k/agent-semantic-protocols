@@ -43,7 +43,8 @@ fn builtin_manifest_rejects_invalid_query_pack_descriptor_version() {
 }
 
 #[test]
-fn programming_providers_expose_only_project_resolution_without_workspace_identity() {
+fn programming_providers_expose_declared_source_inventory_capabilities_without_workspace_identity()
+{
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace = manifest_dir
         .parent()
@@ -53,35 +54,35 @@ fn programming_providers_expose_only_project_resolution_without_workspace_identi
     let providers = [
         (
             "languages/rust-lang-project-harness",
-            "provider/asp-provider-manifest.json",
+            "schemas/asp-provider.json",
             &["src"] as &[&str],
             "Cargo.toml",
             "rust.cargo-toml",
         ),
         (
             "languages/python-lang-project-harness",
-            "provider/asp-provider-manifest.json",
+            "schemas/asp-provider.json",
             &["src"],
             "pyproject.toml",
             "python.pyproject-toml",
         ),
         (
             "languages/typescript-lang-project-harness",
-            "provider/asp-provider-manifest.json",
+            "schemas/asp-provider.json",
             &["src"],
             "package.json",
             "typescript.package-json",
         ),
         (
             "languages/JuliaLangProjectHarness.jl",
-            "juliac/asp-provider-manifest.json",
+            "schemas/asp-provider.json",
             &["src", "juliac"],
             "Project.toml",
             "julia.pkg-project-toml",
         ),
         (
             "languages/gerbil-scheme-language-project-harness",
-            "provider/asp-provider-manifest.json",
+            "schemas/asp-provider.json",
             &["src"],
             "gerbil.pkg",
             "gerbil.package-spec",
@@ -103,20 +104,31 @@ fn programming_providers_expose_only_project_resolution_without_workspace_identi
             .get("projectResolution")
             .expect("programming provider owns ProjectResolution");
         assert_eq!(scope["capabilityId"], "project-resolution");
-        assert_eq!(scope["commandBinding"], "project-resolution-stdin");
         assert_eq!(scope["entryMarkers"], serde_json::json!([project_entry]));
         assert_eq!(scope["parserId"], parser_id);
-        assert!(manifest.get("documentResolution").is_none());
+        if provider_root == "languages/gerbil-scheme-language-project-harness" {
+            let document = manifest
+                .get("documentResolution")
+                .expect("repository/document corpus capability");
+            assert_eq!(document["capabilityId"], "document-resolution");
+            assert_eq!(document["supportsGitCandidates"], true);
+            assert_eq!(
+                document["extensions"],
+                serde_json::json!([".ss", ".ssi", ".scm", ".sld"])
+            );
+        } else {
+            assert!(manifest.get("documentResolution").is_none());
+        }
 
         for required_schema in [
-            "provider-project-resolution-descriptor.v1.schema.json",
-            "provider-project-resolution-request.v1.schema.json",
-            "provider-project-resolution-response.v1.schema.json",
-            "project-resolution.v1.schema.json",
+            "provider-project-resolution-descriptor.schema.json",
+            "provider-project-resolution-request.schema.json",
+            "provider-project-resolution-response.schema.json",
+            "project-resolution.schema.json",
         ] {
             assert!(
-                root.join("schemas").join(required_schema).is_file(),
-                "provider schema boundary is missing {provider_root}/schemas/{required_schema}"
+                workspace.join("schemas").join(required_schema).is_file(),
+                "shared provider schema boundary is missing schemas/{required_schema}"
             );
         }
         assert!(
@@ -151,22 +163,6 @@ fn assert_provider_sources_exclude_workspace_identity(root: &Path, forbidden: &[
                 !source.contains(term),
                 "provider source retained ASP-owned workspace identity term {term}: {}",
                 path.display()
-            );
-        }
-    }
-}
-
-#[test]
-fn owner_items_capability_requires_a_language_projection_descriptor() {
-    for manifest in builtin_provider_manifests() {
-        let value = serde_json::to_value(&manifest).expect("serialize provider manifest");
-        if value["execution"] == "external-process"
-            && value["searchCapabilities"]["ownerItems"] == true
-        {
-            assert!(
-                value.get("languageProjection").is_some(),
-                "{} ownerItems requires languageProjection",
-                value["languageId"]
             );
         }
     }

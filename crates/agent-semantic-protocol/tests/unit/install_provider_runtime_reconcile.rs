@@ -1,5 +1,110 @@
-use super::reconcile_registered_provider_runtime_binaries_from;
+use super::{
+    prune_stale_registered_provider_leaves, reconcile_registered_provider_runtime_binaries_from,
+};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+#[cfg(unix)]
+use std::os::unix::fs::symlink;
+
+#[cfg(unix)]
+fn stale_receipt(language: &str, installed_path: &std::path::Path) -> String {
+    format!(
+        "schemaId = \"asp.provider-install-lock.v1\"\nlanguage = \"{language}\"\nprovider = \"legacy-{language}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{}\"\ninstalledEntrypointMetadataDigest = \"{}\"\nexecutionCommandDigest = \"{}\"\n",
+        installed_path.display(),
+        "a".repeat(64),
+        "b".repeat(64),
+        "c".repeat(64)
+    )
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn stale_missing_legacy_catalog_entry_is_pruned_before_provider_resolution() {
+    let root = std::env::temp_dir().join(format!("asp-stale-catalog-{}", std::process::id()));
+    let bin = root.join("runtime/bin");
+    let receipts = root.join("runtime/providers/receipts");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::create_dir_all(&receipts).unwrap();
+    let legacy = bin.join("obsolete-typescript-provider");
+    std::fs::write(&legacy, b"legacy").unwrap();
+    std::fs::write(
+        receipts.join("typescript.lock.toml"),
+        stale_receipt("typescript", &legacy),
+    )
+    .unwrap();
+    prune_stale_registered_provider_leaves(&[], &bin, &receipts)
+        .await
+        .unwrap();
+    assert!(!legacy.exists());
+    assert!(!receipts.join("typescript.lock.toml").exists());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn malicious_external_provider_sentinel_is_untouched_during_legacy_prune() {
+    let root = std::env::temp_dir().join(format!("asp-external-sentinel-{}", std::process::id()));
+    let bin = root.join("runtime/bin");
+    let receipts = root.join("runtime/providers/receipts");
+    let external = root.join("external-sentinel");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::create_dir_all(&receipts).unwrap();
+    std::fs::write(&external, b"must survive").unwrap();
+    let legacy = bin.join("obsolete-typescript-provider");
+    std::os::unix::fs::symlink(&external, &legacy).unwrap();
+    std::fs::write(
+        receipts.join("typescript.lock.toml"),
+        stale_receipt("typescript", &legacy),
+    )
+    .unwrap();
+    prune_stale_registered_provider_leaves(&[], &bin, &receipts)
+        .await
+        .unwrap();
+    assert!(external.exists());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn current_provider_missing_artifact_returns_typed_missing_result() {
+    let root = std::env::temp_dir().join(format!("asp-current-missing-{}", std::process::id()));
+    let bin = root.join("runtime/bin");
+    let artifacts = root.join("runtime/artifacts");
+    let receipts = root.join("runtime/providers/receipts");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::create_dir_all(&artifacts).unwrap();
+    std::fs::create_dir_all(&receipts).unwrap();
+    let registration = agent_semantic_hook::registered_provider_binaries_v1()
+        .into_iter()
+        .next()
+        .unwrap();
+    let result = reconcile_registered_provider_runtime_binaries_from(
+        &[registration],
+        &bin,
+        &artifacts,
+        &receipts,
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.missing_count, 1);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn concurrent_reconcile_readers_observe_only_complete_old_or_new_snapshot() {
+    let root =
+        std::env::temp_dir().join(format!("asp-concurrent-reconcile-{}", std::process::id()));
+    let bin = root.join("runtime/bin");
+    let receipts = root.join("runtime/providers/receipts");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::create_dir_all(&receipts).unwrap();
+    let a = prune_stale_registered_provider_leaves(&[], &bin, &receipts);
+    let b = prune_stale_registered_provider_leaves(&[], &bin, &receipts);
+    let (a, b) = tokio::join!(a, b);
+    assert!(a.is_ok() && b.is_ok());
+    let _ = std::fs::remove_dir_all(root);
+}
 
 #[cfg(unix)]
 #[tokio::test]
@@ -226,8 +331,6 @@ async fn registered_provider_file_is_atomically_migrated_to_the_digest_lattice()
 #[cfg(unix)]
 #[tokio::test]
 async fn stale_provider_generation_is_replaced_from_verified_developer_output() {
-    use std::os::unix::fs::symlink;
-
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock")
@@ -322,6 +425,82 @@ async fn stale_provider_generation_is_replaced_from_verified_developer_output() 
     );
 
     std::fs::remove_dir_all(root).expect("remove Developer reconciliation fixture");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn stale_typescript_receipt_and_catalog_are_replaced_by_verified_developer_output() {
+    let root = std::env::temp_dir().join(format!("asp-ts-stale-catalog-{}", std::process::id()));
+    let developer_root = root.join("checkout");
+    let runtime_bin = root.join("runtime/bin");
+    let artifact_root = root.join("runtime/artifacts");
+    let provider_lock_dir = root.join("runtime/providers/receipts");
+    std::fs::create_dir_all(&runtime_bin).unwrap();
+    std::fs::create_dir_all(&artifact_root).unwrap();
+    std::fs::create_dir_all(&provider_lock_dir).unwrap();
+    std::fs::write(
+        root.join("asp.toml"),
+        format!(
+            "[dev]\nenabled = true\nroot = {:?}\n",
+            developer_root.display().to_string()
+        ),
+    )
+    .unwrap();
+    let registration = agent_semantic_hook::registered_provider_binaries_v1()
+        .into_iter()
+        .find(|r| r.language_id().as_str() == "typescript")
+        .unwrap();
+    let development =
+        agent_semantic_hook::registered_provider_development_v1("typescript").unwrap();
+    let source_root = developer_root.join(&development.development.source_root);
+    let workspace = source_root.join(
+        development
+            .development
+            .workspace_install
+            .as_deref()
+            .unwrap(),
+    );
+    std::fs::create_dir_all(workspace.parent().unwrap()).unwrap();
+    let authority = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../languages/typescript-lang-project-harness/provider/asp-provider-workspace-install.json");
+    std::fs::write(&workspace, std::fs::read(&authority).unwrap()).unwrap();
+    let verified = source_root.join("dist/src/cli/main.js");
+    std::fs::create_dir_all(verified.parent().unwrap()).unwrap();
+    std::fs::write(&verified, b"verified asp-typescript").unwrap();
+    let stale = runtime_bin.join("obsolete-typescript-provider");
+    std::fs::write(&stale, b"stale").unwrap();
+    std::fs::write(
+        provider_lock_dir.join("typescript.lock.toml"),
+        stale_receipt("typescript", &stale),
+    )
+    .unwrap();
+    let reconciliation = reconcile_registered_provider_runtime_binaries_from(
+        std::slice::from_ref(&registration),
+        &runtime_bin,
+        &artifact_root,
+        &provider_lock_dir,
+    )
+    .await
+    .unwrap();
+    let receipt = reconciliation
+        .provider_receipts
+        .iter()
+        .find(|r| r.language_id == "typescript")
+        .unwrap();
+    assert_eq!(receipt.provider_id, "asp-typescript");
+    assert_eq!(receipt.installed_path, verified);
+    let stable = runtime_bin.join("asp-typescript");
+    assert_eq!(std::fs::read_link(&stable).unwrap(), receipt.installed_path);
+    assert!(!stale.exists());
+    let readiness =
+        super::publish_registered_provider_runtime_reconciliation(&root, &reconciliation)
+            .await
+            .unwrap();
+    let catalog = std::fs::read_to_string(root.join("runtime/provider-catalog.v1.json")).unwrap();
+    assert!(catalog.contains("asp-typescript"));
+    assert!(catalog.contains(&receipt.installed_entrypoint_digest));
+    assert!(catalog.contains(stable.to_string_lossy().as_ref()));
+    assert_eq!(readiness.provider_count, 1);
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[cfg(unix)]

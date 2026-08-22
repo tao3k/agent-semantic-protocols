@@ -3,26 +3,8 @@ use super::model::{
     RECEIPT_SCHEMA_ID, REQUEST_SCHEMA_ID, RuntimeServerControlReceipt, RuntimeServerControlRequest,
     RuntimeServerEndpoint, RuntimeServerOperation, SCHEMA_VERSION,
 };
-use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
 use super::status_memory::read_runtime_server_status;
-use super::frame::{read_frame, write_frame};
-use serde::{Deserialize, Serialize};
-#[derive(Serialize)]
-#[serde(rename_all="camelCase")]
-struct PreviousRestartRequest { schema_id:String, schema_version:String, operation:String, expected_runtime_artifact_digest:String, request_id:String, transport_contract_digest:String, owner_epoch:u64, binding_token:String }
-#[derive(Deserialize)]
-#[serde(rename_all="camelCase")]
-struct PreviousRestartReceipt { schema_id:String, schema_version:String, request_id:String, state:String, owner_epoch:u64 }
-pub async fn drain_previous_generation(socket_path:&std::path::Path,binding_token:&str,owner_epoch:u64,transport_contract_digest:&str,previous_runtime_artifact_digest:&str,request_id:String)->Result<(),String>{
- let mut stream=tokio::net::UnixStream::connect(socket_path).await.map_err(|e|format!("previous Runtime Server connect failed: {e}"))?;
- let req=PreviousRestartRequest{schema_id:"agent.semantic-protocols.runtime-server-control-request.v1".into(),schema_version:"1".into(),operation:"restart".into(),expected_runtime_artifact_digest:previous_runtime_artifact_digest.into(),request_id:request_id.clone(),transport_contract_digest:transport_contract_digest.into(),owner_epoch,binding_token:binding_token.into()};
- write_frame(&mut stream,&[req]).await?;
- let receipts:Vec<PreviousRestartReceipt>=read_frame(&mut stream).await?;
- let r=receipts.into_iter().next().ok_or_else(||"previous Runtime Server returned no receipt".to_owned())?;
- if r.schema_id!="agent.semantic-protocols.runtime-server-control-receipt.v1"||r.schema_version!="1"||r.request_id!=request_id||r.owner_epoch!=owner_epoch||r.state!="draining" { return Err("previous Runtime Server drain receipt identity mismatch".into()); }
- Ok(())
-}
-
+use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
 pub async fn call_runtime_server(
     endpoint: &RuntimeServerEndpoint,
     operation: RuntimeServerOperation,
@@ -91,7 +73,7 @@ pub async fn ensure_runtime_server_workspace(
         format!(
             "runtime-server-ensure-workspace-exchange-v1\0{}\0{}\0{}\0{}",
             request_id,
-            std::process::id(),
+            agent_semantic_runtime::runtime_process_lifecycle::current_process_id(),
             started_at,
             sequence,
         )
@@ -141,7 +123,11 @@ pub async fn reconcile_runtime_server(
         schema_id: REQUEST_SCHEMA_ID.to_owned(),
         schema_version: SCHEMA_VERSION.to_owned(),
         operation: RuntimeServerOperation::Reconcile,
-        expected_runtime_binary_identity: agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content { value: expected_runtime_artifact_digest, algorithm: "blake3-256".to_owned() },
+        expected_runtime_binary_identity:
+            agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+                value: expected_runtime_artifact_digest,
+                algorithm: "blake3-256".to_owned(),
+            },
         request_id: request_id.clone(),
         transport_contract_digest: expected_transport_contract_digest,
         owner_epoch: endpoint.owner_epoch,

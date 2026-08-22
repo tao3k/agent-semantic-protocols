@@ -41,6 +41,10 @@ pub(crate) async fn run_protocol_command_started(
             println!("{}", agent_semantic_config::hook_client_contract_fingerprint());
             Ok(())
         }
+        Some("--hook-artifact-fingerprint") => {
+            println!("{}", agent_semantic_hook::hook_runtime_artifact_fingerprint());
+            Ok(())
+        }
         Some("providers" | "doctor" | "cache" | "cloud" | "tools" | "wrap" | "fd" | "rg") => {
             run_client_command(args).await
         }
@@ -87,7 +91,7 @@ fn reject_agent_platform_json_output(args: &[String]) -> Result<(), String> {
     {
         return Ok(());
     }
-    Err("warning: --json output is disabled inside agent platform sessions; JSON is for debug or programmatic use only, not normal agent workflow, because it wastes tokens. Use the default compact output, or set ASP_NO_AGENT_PLATFORM=1 only for non-agent/debug automation."
+    Err("warning: --json output is disabled inside agent platform sessions because it is a debug/programmatic format. Normal ASP Explorer search uses compact output without `--json`. For explicit non-agent debug automation only, set ASP_NO_AGENT_PLATFORM=1 and filter the JSON with jq; this switch must not be used to bypass Hook policy."
         .to_string())
 }
 

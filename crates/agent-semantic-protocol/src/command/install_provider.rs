@@ -15,10 +15,10 @@ use super::install_provider_development::{
     capture_development_artifact_provenance, development_artifact_is_authorized,
     run_development_provider_installer,
 };
-#[path = "install_provider_workspace.rs"]
-mod install_provider_workspace;
 #[path = "install_provider_binary.rs"]
 mod install_provider_binary;
+#[path = "install_provider_workspace.rs"]
+mod install_provider_workspace;
 use super::install_provider_release::ProviderReleaseSpec;
 use super::install_provider_runtime_reconcile::reconcile_registered_provider_runtime_binaries;
 use super::install_provider_target::resolve_provider_binary_install_target;
@@ -26,9 +26,7 @@ use super::org_capture;
 
 #[path = "install_provider_cli_support.rs"]
 mod install_provider_cli_support;
-use install_provider_cli_support::{
-    absolute_project_root, usage,
-};
+use install_provider_cli_support::{absolute_project_root, usage};
 
 #[cfg(test)]
 use super::install_provider_archive::{checksum_name, parse_sha256_checksum};
@@ -43,11 +41,9 @@ struct PinnedLanguageReleaseManifest {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PinnedLanguageReleaseEntry {
-    provider: String,
     repo: String,
     version: String,
     download_base_url: String,
-    binary: String,
     archive_prefix: Option<String>,
     archive_binary: Option<String>,
     require_native_binary: Option<bool>,
@@ -211,20 +207,6 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
         ProviderArtifactAuthority::LockedRelease => {}
     }
     let spec = provider_release(language_id)?;
-    if registered_binary.provider_id().as_str() != spec.provider_id {
-        return Err(format!(
-            "ProviderRegistry provider drift for language `{language_id}`: registry={} release={}",
-            registered_binary.provider_id().as_str(),
-            spec.provider_id
-        ));
-    }
-    if registered_binary.binary() != spec.binary {
-        return Err(format!(
-            "ProviderRegistry binary drift for language `{language_id}`: registry={} release={}",
-            registered_binary.binary(),
-            spec.binary
-        ));
-    }
     let rev = spec.release_version.as_str();
     validate_target(&spec, &target)?;
     let provider_binary = binary_file_name(registered_binary.binary(), &target);
@@ -675,6 +657,9 @@ fn canonical_global_provider_state_root_from(state_home: &Path) -> Result<PathBu
 }
 
 fn provider_release(language_id: &str) -> Result<ProviderReleaseSpec, String> {
+    let registrations = agent_semantic_provider_protocol::builtin_provider_registrations()?;
+    let (canonical_provider_id, canonical_binary) =
+        canonical_provider_identity(language_id, &registrations)?;
     let mut manifest = pinned_language_release_manifest()?;
     let Some(entry) = manifest.languages.remove(language_id) else {
         let supported = manifest
@@ -689,17 +674,45 @@ fn provider_release(language_id: &str) -> Result<ProviderReleaseSpec, String> {
     };
     Ok(ProviderReleaseSpec {
         language_id: language_id.to_string(),
-        provider_id: entry.provider,
+        provider_id: canonical_provider_id,
         repo: entry.repo,
         release_version: entry.version,
         download_base_url: entry.download_base_url,
-        archive_prefix: entry.archive_prefix.unwrap_or_else(|| entry.binary.clone()),
-        archive_binary: entry.archive_binary.unwrap_or_else(|| entry.binary.clone()),
+        archive_prefix: entry
+            .archive_prefix
+            .unwrap_or_else(|| canonical_binary.clone()),
+        archive_binary: entry.archive_binary.unwrap_or(canonical_binary),
         require_native_binary: entry.require_native_binary.unwrap_or(false),
-        binary: entry.binary,
         supported_targets: entry.supported_targets,
         sha256_by_target: entry.sha256_by_target,
     })
+}
+
+fn canonical_provider_identity(
+    language_id: &str,
+    registrations: &[agent_semantic_provider_protocol::ProviderRegistrationDocument],
+) -> Result<(String, String), String> {
+    let matching = registrations
+        .iter()
+        .filter(|registration| registration.language_id == language_id)
+        .collect::<Vec<_>>();
+    let registration = match matching.as_slice() {
+        [registration] => registration,
+        [] => {
+            return Err(format!(
+                "no provider registration for language {language_id}"
+            ));
+        }
+        _ => {
+            return Err(format!(
+                "multiple provider registrations for language {language_id}"
+            ));
+        }
+    };
+    let binary = agent_semantic_hook::registered_provider_binary_v1(language_id)?
+        .binary()
+        .to_owned();
+    Ok((registration.provider_id.clone(), binary))
 }
 
 fn pinned_release_sha256<'a>(
@@ -849,7 +862,10 @@ fn write_provider_lock(path: &Path, lock: &ProviderInstallLock<'_>) -> Result<()
         contents.push_str(&format!("buildRecipeDigest = \"{}\"\n", toml_escape(value)));
     }
     if let Some(value) = lock.artifact_digest {
-        contents.push_str(&format!("binarySourceGeneration = \"{}\"\n", toml_escape(value)));
+        contents.push_str(&format!(
+            "binarySourceGeneration = \"{}\"\n",
+            toml_escape(value)
+        ));
     }
     if let Some(value) = lock.artifact_leaf_count {
         contents.push_str(&format!("artifactLeafCount = {value}\n"));

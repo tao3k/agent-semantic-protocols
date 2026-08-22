@@ -1,6 +1,6 @@
 //! Validation rules for hook client config files.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use super::agent_runtime::{HookClientAgentsConfig, HookClientResidentAgentConfig};
 use super::document::{
@@ -21,6 +21,8 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
     validate_recovery_prompt(&config.recovery_prompt)?;
     validate_agent_session_messages(&config.agent_session_messages)?;
     validate_language_providers(&config.language_providers)?;
+    validate_profiles(&config.profiles, &config.language_providers)?;
+    validate_rule_profile_references(&config.rules, &config.profiles)?;
     validate_resident_agents(&config.agents.resident_agents)?;
     validate_agent_placeholders(&config.agents)?;
     validate_command_profiles(&config.command_profiles)?;
@@ -32,6 +34,64 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
         &config.command_profiles,
         &config.action_policies,
     )
+}
+
+fn validate_rule_profile_references(
+    rules: &[HookClientRuleConfig],
+    profiles: &BTreeMap<String, super::document::HookClientProfileConfig>,
+) -> Result<(), String> {
+    for rule in rules {
+        let mut actions = HashSet::new();
+        for action in &rule.actions {
+            if !actions.insert(*action) {
+                return Err(format!(
+                    "rule {} actions contains duplicate action {action:?}",
+                    rule.id
+                ));
+            }
+        }
+        let mut profile_ids = HashSet::new();
+        let mut extension_targets = BTreeMap::<String, (&str, &str)>::new();
+        for profile_id in &rule.profiles_list {
+            if !profile_ids.insert(profile_id) {
+                return Err(format!(
+                    "rule {} profilesList contains duplicate profile {profile_id:?}",
+                    rule.id
+                ));
+            }
+            if !profiles.contains_key(profile_id) {
+                return Err(format!(
+                    "rule {} profilesList references unknown profile {profile_id:?}",
+                    rule.id
+                ));
+            }
+            let profile = &profiles[profile_id];
+            for extension in &profile.extension_any {
+                let extension = extension.trim().to_ascii_lowercase();
+                if let Some((language_id, provider_id)) = extension_targets.get(&extension) {
+                    if *language_id != profile.language_id || *provider_id != profile.provider_id {
+                        return Err(format!(
+                            "rule {} profilesList maps extension {extension:?} to both {language_id}/{provider_id} and {}/{}",
+                            rule.id, profile.language_id, profile.provider_id
+                        ));
+                    }
+                } else {
+                    extension_targets
+                        .insert(extension, (&profile.language_id, &profile.provider_id));
+                }
+            }
+        }
+        let mut matcher_policies = HashSet::new();
+        for matcher_policy in &rule.matcher_policies {
+            if !matcher_policies.insert(matcher_policy) {
+                return Err(format!(
+                    "rule {} matcherPolicies contains duplicate policy {matcher_policy:?}",
+                    rule.id
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_action_policies(
@@ -54,6 +114,52 @@ fn validate_action_policies(
                 policy.id
             ));
         }
+    }
+    Ok(())
+}
+
+fn validate_profiles(
+    profiles: &BTreeMap<String, super::document::HookClientProfileConfig>,
+    language_providers: &[super::document::HookClientLanguageProviderConfig],
+) -> Result<(), String> {
+    for (profile_id, profile) in profiles {
+        validate_non_empty(
+            &format!("profiles.{profile_id}.languageId"),
+            &profile.language_id,
+        )?;
+        validate_non_empty(
+            &format!("profiles.{profile_id}.providerId"),
+            &profile.provider_id,
+        )?;
+        if profile.extension_any.is_empty() {
+            return Err(format!(
+                "profiles.{profile_id}.extensionAny must contain at least one extension"
+            ));
+        }
+        let mut extensions = HashSet::new();
+        for extension in &profile.extension_any {
+            let canonical = extension.trim().to_ascii_lowercase();
+            if canonical.is_empty()
+                || canonical.starts_with('.')
+                || !canonical.chars().all(|ch| ch.is_ascii_alphanumeric())
+            {
+                return Err(format!(
+                    "profiles.{profile_id}.extensionAny entries must be bare alphanumeric extensions, got {extension:?}"
+                ));
+            }
+            if !extensions.insert(canonical) {
+                return Err(format!(
+                    "profiles.{profile_id}.extensionAny contains duplicate extension {extension:?}"
+                ));
+            }
+        }
+        // Profiles form the declarative language catalog. Provider installation is
+        // optional, so an unavailable profile remains valid and is inactive until
+        // its matching language/provider descriptor is registered.
+        let _is_currently_registered = language_providers.iter().any(|provider| {
+            provider.language_id == profile.language_id
+                && provider.provider_id == profile.provider_id
+        });
     }
     Ok(())
 }

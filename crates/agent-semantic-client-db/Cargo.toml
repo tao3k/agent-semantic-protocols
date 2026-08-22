@@ -11,6 +11,7 @@ turso-sync-server-e2e = []
 
 [dependencies]
 arc-swap.workspace = true
+agent-semantic-provider-protocol.workspace = true
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
 memmap2.workspace = true
 postcard.workspace = true

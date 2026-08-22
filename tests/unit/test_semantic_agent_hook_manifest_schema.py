@@ -7,24 +7,33 @@ import json
 import unittest
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from tests.unit.schema_validator_support import local_schema_validator
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def minimal_provider_manifest() -> dict[str, object]:
+    provider_manifest_path = (
+        _REPO_ROOT
+        / "languages"
+        / "typescript-lang-project-harness"
+        / "schemas"
+        / "asp-provider.json"
+    )
+    with provider_manifest_path.open("r", encoding="utf-8") as handle:
+        project_resolution = json.load(handle)["projectResolution"]
     return {
         "schemaId": "agent.semantic-protocols.hook.provider-manifest",
         "schemaVersion": "1",
         "protocolId": "agent.semantic-protocols.hook",
         "protocolVersion": "1",
-        "manifestId": "agent.semantic-protocols.languages.typescript.ts-harness",
+        "manifestId": "agent.semantic-protocols.languages.typescript.asp-typescript",
         "manifestVersion": "v1",
         "languageId": "typescript",
-        "providerId": "ts-harness",
-        "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
-        "binary": "ts-harness",
+        "providerId": "asp-typescript",
+        "namespace": "agent.semantic-protocols.languages.typescript.asp-typescript",
+        "binary": "asp-typescript",
         "source": {
             "defaultExtensions": [".ts", ".tsx"],
             "defaultConfigFiles": ["package.json", "tsconfig.json"],
@@ -35,13 +44,14 @@ def minimal_provider_manifest() -> dict[str, object]:
             "rawSourceSearch": "block",
             "agentSearchJson": "block",
         },
+        "projectResolution": project_resolution,
         "routes": {
             "prime": {
-                "argv": ["ts-harness", "search", "prime", "--view", "seeds", "."]
+                "argv": ["asp-typescript", "search", "prime", "--view", "seeds", "."]
             },
             "owner": {
                 "argv": [
-                    "ts-harness",
+                    "asp-typescript",
                     "search",
                     "owner",
                     "{path}",
@@ -53,7 +63,7 @@ def minimal_provider_manifest() -> dict[str, object]:
             },
             "lexical": {
                 "argv": [
-                    "ts-harness",
+                    "asp-typescript",
                     "search",
                     "lexical",
                     "{query}",
@@ -67,7 +77,7 @@ def minimal_provider_manifest() -> dict[str, object]:
             },
             "ingest": {
                 "argv": [
-                    "ts-harness",
+                    "asp-typescript",
                     "search",
                     "ingest",
                     "owner",
@@ -79,7 +89,7 @@ def minimal_provider_manifest() -> dict[str, object]:
                 ],
                 "stdinMode": "pipe-candidates",
             },
-            "checkChanged": {"argv": ["ts-harness", "check", "--changed", "."]},
+            "checkChanged": {"argv": ["asp-typescript", "check", "--changed", "."]},
         },
     }
 
@@ -97,13 +107,13 @@ def minimal_activation() -> dict[str, object]:
         },
         "providers": [
             {
-                "manifestId": "agent.semantic-protocols.languages.typescript.ts-harness",
+                "manifestId": "agent.semantic-protocols.languages.typescript.asp-typescript",
                 "manifestDigest": "sha256:"
                 "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
                 "languageId": "typescript",
-                "providerId": "ts-harness",
-                "binary": "ts-harness",
-                "providerCommandPrefix": ["ts-harness"],
+                "providerId": "asp-typescript",
+                "binary": "asp-typescript",
+                "providerCommandPrefix": ["asp-typescript"],
                 "coverage": {
                     "packageRoots": ["."],
                     "sourceRoots": ["src", "tests"],
@@ -118,16 +128,15 @@ def minimal_activation() -> dict[str, object]:
 
 class SemanticAgentHookManifestSchemaTests(unittest.TestCase):
     def setUp(self) -> None:
-        manifest_schema_path = (
-            _REPO_ROOT / "schemas" / "semantic-agent-hook-provider-manifest.v1.schema.json"
+        schemas = _REPO_ROOT / "schemas"
+        self.manifest_validator = local_schema_validator(
+            schemas / "semantic-agent-hook-provider-manifest.schema.json",
+            schemas / "provider-project-resolution-descriptor.schema.json",
         )
-        activation_schema_path = (
-            _REPO_ROOT / "schemas" / "semantic-agent-hook-activation.v1.schema.json"
+        self.activation_validator = local_schema_validator(
+            schemas / "semantic-agent-hook-activation.schema.json",
+            schemas / "semantic-agent-definitions.schema.json",
         )
-        with manifest_schema_path.open("r", encoding="utf-8") as handle:
-            self.manifest_validator = Draft202012Validator(json.load(handle))
-        with activation_schema_path.open("r", encoding="utf-8") as handle:
-            self.activation_validator = Draft202012Validator(json.load(handle))
 
     def manifest_errors(self, manifest: dict[str, object]) -> list[str]:
         return [error.message for error in self.manifest_validator.iter_errors(manifest)]
@@ -160,7 +169,7 @@ class SemanticAgentHookManifestSchemaTests(unittest.TestCase):
     def test_provider_manifest_accepts_export_index_route(self) -> None:
         manifest = minimal_provider_manifest()
         routes = copy.deepcopy(manifest["routes"])
-        routes["exportIndex"] = {"argv": ["ts-harness", "export", "index", "."]}
+        routes["exportIndex"] = {"argv": ["asp-typescript", "export", "index", "."]}
         manifest["routes"] = routes
 
         self.assertEqual([], self.manifest_errors(manifest))
@@ -218,7 +227,7 @@ class SemanticAgentHookManifestSchemaTests(unittest.TestCase):
     def test_provider_manifest_routes_require_argv_not_text(self) -> None:
         manifest = minimal_provider_manifest()
         routes = copy.deepcopy(manifest["routes"])
-        routes["prime"] = {"text": "ts-harness search prime --workspace . --view seeds"}
+        routes["prime"] = {"text": "asp-typescript search prime --workspace . --view seeds"}
         manifest["routes"] = routes
 
         errors = self.manifest_errors(manifest)

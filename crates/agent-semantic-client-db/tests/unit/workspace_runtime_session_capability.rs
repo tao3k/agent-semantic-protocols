@@ -10,13 +10,23 @@ async fn read_only_runtime_session_rejects_selector_mutation_before_io() {
         schema_id: "agent.semantic-protocols.runtime-server-endpoint.v1".to_owned(),
         schema_version: "1".to_owned(),
         owner_epoch: 1,
+        owner_process_id: 0,
         binding_token: "fixture-binding".to_owned(),
         socket_path: "/tmp/unused-control.sock".to_owned(),
         data_plane_socket_path: "/tmp/unused-data.sock".to_owned(),
+        provider_plane_socket_path: "/tmp/unused-providers.sock".to_owned(),
         runtime_artifact_path: "/tmp/asp".to_owned(),
-        runtime_binary_identity: agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content { value: "fixture-runtime-digest".to_owned(), algorithm: "blake3-256".to_owned() },
+        runtime_binary_identity:
+            agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+                value: "fixture-runtime-digest".to_owned(),
+                algorithm: "blake3-256".to_owned(),
+            },
         monitor_capability: true,
-        observed_runtime_binary_identity: agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content { value: "fixture-runtime-digest".to_owned(), algorithm: "blake3-256".to_owned() },
+        observed_runtime_binary_identity:
+            agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+                value: "fixture-runtime-digest".to_owned(),
+                algorithm: "blake3-256".to_owned(),
+            },
         artifact_mode: "fixture".to_owned(),
         artifact_catalog_digest: "fixture-catalog-digest".to_owned(),
         workspace_store_path: "/tmp/unused-workspace-store".to_owned(),

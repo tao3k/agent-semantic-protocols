@@ -18,7 +18,7 @@ pub(super) fn match_registered_asp_command<'a>(
         return None;
     }
     let stages =
-        crate::command_match::bash::parse_bash_command_candidates(action.command.as_deref()?)
+        crate::shell_parser::bash::parse_bash_command_candidates(action.command.as_deref()?)
             .ok()?;
     for language_id in crate::provider_registry::registered_language_ids() {
         for pattern in patterns {
@@ -32,7 +32,7 @@ pub(super) fn match_registered_asp_command<'a>(
                     }
                 })
                 .collect::<Vec<_>>();
-            if agent_semantic_command_match::command_stages_match_wrapped_prefix(
+            if agent_semantic_shell_parser::command_stages_match_wrapped_prefix(
                 &stages,
                 &concrete_prefix,
             )
@@ -85,11 +85,7 @@ pub(super) fn append_materialization_fields(
         serde_json::Value::String(provider.provider_id.as_str().to_owned()),
     );
     fields.insert(
-        "providerBinary".to_string(),
-        serde_json::Value::String(provider.binary.clone()),
-    );
-    fields.insert(
         "providerMaterialization".to_string(),
-        serde_json::Value::String("activated".to_string()),
+        serde_json::Value::String("static-route".to_string()),
     );
 }

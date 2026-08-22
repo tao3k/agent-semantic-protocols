@@ -21,6 +21,7 @@ pub(super) fn classify_direct_read_action(
     event: &str,
     action: &ToolAction,
     agent_action: Option<&crate::tool_action::AgentAction>,
+    profile: Option<&agent_semantic_config::HookClientProfileConfig>,
     semantic_ast_patch_enabled: bool,
     recovery_prompt: &CompiledRecoveryPromptConfig,
 ) -> Option<HookDecision> {
@@ -183,9 +184,85 @@ pub(super) fn classify_direct_read_action(
         return None;
     }
 
-    let matches =
+    let mut matches =
         collect_direct_source_read_matches(registry, action.paths.iter().map(String::as_str));
+    if let Some(profile) = profile {
+        matches.retain(|matched| {
+            matched.provider.language_id.as_str() == profile.language_id
+                && matched.provider.provider_id.as_str() == profile.provider_id
+        });
+    }
     if matches.is_empty() {
+        if let Some(profile) = profile {
+            let projections =
+                crate::protocol_activation::provider_routing::hook_provider_projections(registry);
+            let provider = projections.iter().find(|provider| {
+                provider.language_id.as_str() == profile.language_id
+                    && provider.provider_id.as_str() == profile.provider_id
+            });
+            let routes = provider
+                .zip(action.paths.first())
+                .map(|(provider, path)| {
+                    direct_read_route(provider, path, SourceSelectorKind::ExactPath)
+                })
+                .into_iter()
+                .collect::<Vec<_>>();
+            let providers = provider.into_iter().collect::<Vec<_>>();
+            let unavailable = provider.is_none();
+            let reason_kind = if unavailable {
+                ReasonKind::ActivationUnavailable
+            } else if inferred_execute_read {
+                ReasonKind::BulkSourceDump
+            } else {
+                ReasonKind::DirectSourceRead
+            };
+            let message = if unavailable {
+                format!(
+                    "Direct source access for language {} requires provider {} activation; the Hook denied the read because no typed provider route is available.",
+                    profile.language_id, profile.provider_id
+                )
+            } else {
+                source_access_recovery_message(
+                    platform,
+                    if inferred_execute_read {
+                        "bulk-source-dump"
+                    } else {
+                        "direct-source-read"
+                    },
+                    &providers,
+                    &routes,
+                    semantic_ast_patch_enabled,
+                    recovery_prompt,
+                )
+            };
+            let mut decision = deny_for_action(
+                platform,
+                event,
+                super::decision::DenyForActionRequest {
+                    reason_kind,
+                    action,
+                    language_ids: vec![profile.language_id.clone().into()],
+                    subject: subject_for_action(action),
+                    routes,
+                    message,
+                },
+            );
+            if unavailable {
+                decision.fields.insert(
+                    "providerAvailability".to_string(),
+                    serde_json::Value::String("unavailable".to_string()),
+                );
+                decision.fields.insert(
+                    "providerId".to_string(),
+                    serde_json::Value::String(profile.provider_id.clone()),
+                );
+                decision.fields.insert(
+                    "routeStatus".to_string(),
+                    serde_json::Value::String("unavailable".to_string()),
+                );
+            }
+            return Some(decision);
+        }
         return None;
     }
 
@@ -216,6 +293,7 @@ pub(crate) fn materialize_source_access_decision(
     event: &str,
     action: &ToolAction,
     agent_action: Option<&crate::tool_action::AgentAction>,
+    profile: Option<&agent_semantic_config::HookClientProfileConfig>,
     semantic_ast_patch_enabled: bool,
     recovery_prompt: &CompiledRecoveryPromptConfig,
 ) -> Option<HookDecision> {
@@ -225,6 +303,7 @@ pub(crate) fn materialize_source_access_decision(
         event,
         action,
         agent_action,
+        profile,
         semantic_ast_patch_enabled,
         recovery_prompt,
     )

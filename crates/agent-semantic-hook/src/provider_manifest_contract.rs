@@ -36,44 +36,22 @@ pub fn validate_provider_manifest_contract(manifest: &ProviderManifest) -> Vec<S
     if let Err(error) = validate_project_resolution_descriptor(manifest) {
         errors.push(error);
     }
-    if let Some(descriptor) = manifest.language_projection()
-        && let Err(error) = validate_language_projection_descriptor(descriptor)
-    {
+    if let Err(error) = validate_document_resolution_descriptor(manifest) {
         errors.push(error);
     }
-
-    errors
-}
-
-fn validate_language_projection_descriptor(
-    descriptor: &crate::protocol_activation::protocol_activation_manifest::ProviderLanguageProjectionDescriptor,
-) -> Result<(), String> {
-    if descriptor.schema_id() != "agent.semantic-protocols.provider-language-projection-descriptor"
-        || descriptor.schema_version() != "1"
-        || descriptor.command_binding() != "projection-batch-stdin"
-        || descriptor.transport() != "framed-stdin-v1"
-        || descriptor.request_schema()
-            != "https://schemas.agent-semantic-protocols.dev/provider-language-projection-batch-request.v1.schema.json"
-        || descriptor.response_schema()
-            != "https://schemas.agent-semantic-protocols.dev/provider-language-projection-batch-response.v1.schema.json"
-        || descriptor.identity_schema()
-            != "https://schemas.agent-semantic-protocols.dev/canonical-language-item-identity.v1.schema.json"
-    {
-        return Err("provider languageProjection descriptor contract mismatch".to_string());
+    if manifest.project_resolution().is_none() && manifest.document_resolution().is_none() {
+        errors.push(format!(
+            "provider {} must declare at least one source inventory capability",
+            manifest.provider_id()
+        ));
     }
-    Ok(())
+    errors
 }
 
 fn validate_project_resolution_descriptor(manifest: &ProviderManifest) -> Result<(), String> {
     let Some(descriptor) = manifest.project_resolution() else {
-        return validate_document_resolution_descriptor(manifest);
+        return Ok(());
     };
-    if manifest.document_resolution().is_some() {
-        return Err(format!(
-            "provider {} must declare exactly one of projectResolution or documentResolution",
-            manifest.provider_id()
-        ));
-    }
     if descriptor.schema_id != "agent.semantic-protocols.provider-project-resolution-descriptor"
         || descriptor.schema_version != "1"
     {
@@ -99,32 +77,22 @@ fn validate_project_resolution_descriptor(manifest: &ProviderManifest) -> Result
             manifest.provider_id()
         ));
     }
-    if descriptor.parser_id.is_empty() || descriptor.command_binding != "project-resolution-stdin" {
+    if descriptor.parser_id.is_empty() {
         return Err(format!(
-            "provider {} projectResolution requires a non-empty parserId and commandBinding=project-resolution-stdin",
+            "provider {} projectResolution requires a non-empty parserId",
             manifest.provider_id()
         ));
     }
     for (field, actual, expected) in [
         (
-            "requestSchema",
-            descriptor.request_schema.as_str(),
-            "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-request.v1.schema.json",
-        ),
-        (
-            "responseSchema",
-            descriptor.response_schema.as_str(),
-            "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-response.v1.schema.json",
-        ),
-        (
             "packageGraphSchema",
             descriptor.package_graph_schema.as_str(),
-            "https://schemas.agent-semantic-protocols.dev/language-package-graph.v1.schema.json",
+            "https://schemas.agent-semantic-protocols.dev/language-package-graph.schema.json",
         ),
         (
             "projectResolutionSchema",
             descriptor.project_resolution_schema.as_str(),
-            "https://schemas.agent-semantic-protocols.dev/project-resolution.v1.schema.json",
+            "https://schemas.agent-semantic-protocols.dev/project-resolution.schema.json",
         ),
     ] {
         if actual != expected {
@@ -138,12 +106,9 @@ fn validate_project_resolution_descriptor(manifest: &ProviderManifest) -> Result
 }
 
 fn validate_document_resolution_descriptor(manifest: &ProviderManifest) -> Result<(), String> {
-    let descriptor = manifest.document_resolution().ok_or_else(|| {
-        format!(
-            "provider {} must declare exactly one of projectResolution or documentResolution",
-            manifest.provider_id()
-        )
-    })?;
+    let Some(descriptor) = manifest.document_resolution() else {
+        return Ok(());
+    };
     if descriptor.schema_id != "agent.semantic-protocols.provider-document-resolution-descriptor"
         || descriptor.schema_version != "1"
         || descriptor.capability_id != "document-resolution"

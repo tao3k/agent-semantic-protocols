@@ -62,7 +62,12 @@ pub fn evaluate_match_policy_conformance(
     config: &ClientHookConfig,
     platform: &str,
 ) -> MatchPolicyConformanceReport {
-    let cases = production_cases();
+    let agent_search_binary = runtime
+        .providers
+        .iter()
+        .find(|provider| provider.language_id.as_str() == "typescript")
+        .map(|_| "asp");
+    let cases = production_cases(agent_search_binary);
     let config = match config.match_policy_conformance_config() {
         Ok(config) => config,
         Err(error) => {
@@ -151,7 +156,7 @@ pub fn validate_match_policy_rule_coverage(config: &ClientHookConfig) -> Result<
         .rule_ids()
         .map(str::to_owned)
         .collect::<BTreeSet<_>>();
-    let witnessed = production_cases()
+    let witnessed = production_cases(None)
         .into_iter()
         .map(|case| case.rule_id.to_owned())
         .collect::<BTreeSet<_>>();
@@ -176,7 +181,7 @@ fn validate_match_policy_rule_sets(
 #[path = "../tests/unit/match_policy_conformance.rs"]
 mod tests;
 
-fn production_cases() -> Vec<MatchPolicyCase> {
+fn production_cases(agent_search_binary: Option<&str>) -> Vec<MatchPolicyCase> {
     vec![
         MatchPolicyCase {
             name: "explicit no-agent command bypass",
@@ -265,7 +270,7 @@ fn production_cases() -> Vec<MatchPolicyCase> {
         MatchPolicyCase {
             name: "registered source read materializer",
             payload: json!({"tool_name":"Read","tool_input":{"file_path":"src/app.ts"}}),
-            rule_id: "materialize-registered-source-read-action",
+            rule_id: "route-read-to-asp-languages",
             decision: DecisionKind::Deny,
             reason: ReasonKind::DirectSourceRead,
         },
@@ -292,7 +297,13 @@ fn production_cases() -> Vec<MatchPolicyCase> {
         },
         MatchPolicyCase {
             name: "agent search JSON",
-            payload: shell("ts-harness search lexical projectRoot owner tests --json ."),
+            payload: agent_search_binary
+                .map(|binary| {
+                    shell(&format!(
+                        "{binary} search lexical projectRoot owner tests --json ."
+                    ))
+                })
+                .unwrap_or(serde_json::Value::Null),
             rule_id: "deny-agent-search-json",
             decision: DecisionKind::Deny,
             reason: ReasonKind::AgentSearchJson,

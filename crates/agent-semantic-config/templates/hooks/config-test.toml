@@ -98,7 +98,7 @@ negativeCommands = [
 
 [[rules]]
 id = "deny-agent-search-json"
-positiveCommands = ["asp-rust search pipe Effect --workspace . --json", "ts-harness search pipe Effect --workspace . --json"]
+positiveCommands = ["asp-rust search pipe Effect --workspace . --json", "asp-typescript search pipe Effect --workspace . --json"]
 negativeCommands = ["asp healthcheck --json", "asp paths --json"]
 
 [[rules]]
@@ -112,12 +112,17 @@ negativeTools = [
 wrapperExemption = "apply-patch is a typed host action, not a shell command"
 
 [[rules]]
-id = "materialize-registered-source-read-action"
+id = "route-read-to-asp-languages"
 positiveTools = [
   { name = "Read", input = { file_path = "crates/agent-semantic-hook/src/lib.rs" } },
+  { name = "Read", input = { file_path = "languages/python-lang-project-harness/src/python_lang_parser/_native_numeric_loops.py" } },
+  { name = "Read", input = { file_path = "languages/typescript-lang-project-harness/src/reasoning-tree/owner-dependency.ts" } },
+  { name = "Read", input = { file_path = "languages/JuliaLangProjectHarness.jl/src/runner.jl" } },
+  { name = "Read", input = { file_path = "languages/gerbil-scheme-language-project-harness/src/building/observability.ss" } },
 ]
 negativeTools = [
   { name = "Read", input = { file_path = "Cargo.lock" } },
+  { name = "Read", input = { file_path = "schemas/provider-register.json" } },
 ]
 wrapperExemption = "host read is a typed action, not a shell command"
 
@@ -154,13 +159,13 @@ id = "allow-bounded-json-projection"
 positiveCommands = [
   "jq -r '.properties.expected' schemas/semantic-hook-match-scenario.v1.schema.json",
   "jq -c '.properties.expected' schemas/semantic-hook-match-scenario.v1.schema.json",
-  "jq '.languages[0:16]' schemas/semantic-language-registry.providers.v1.json",
+  "jq '.providers[0:16]' schemas/provider-register.json",
 ]
 negativeCommands = [
   "jq . schemas/semantic-hook-match-scenario.v1.schema.json",
   "jq '..' schemas/semantic-hook-match-scenario.v1.schema.json",
-  "jq '.languages[0:]' schemas/semantic-language-registry.providers.v1.json",
-  "jq '.languages[0:65]' schemas/semantic-language-registry.providers.v1.json",
+  "jq '.providers[0:]' schemas/provider-register.json",
+  "jq '.providers[0:65]' schemas/provider-register.json",
 ]
 
 [[rules]]

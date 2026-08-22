@@ -294,6 +294,18 @@ impl<'a> ValidatedSearchGenerationSegment<'a> {
             descriptor.record_count,
         )
     }
+
+    pub(crate) fn section_range(
+        &self,
+        kind: SearchGenerationSectionKind,
+    ) -> std::ops::Range<usize> {
+        let descriptor = self
+            .sections
+            .iter()
+            .find(|section| section.kind == kind)
+            .expect("validated v1 search generation contains every required section");
+        descriptor.offset..descriptor.offset + descriptor.len
+    }
 }
 
 fn section_commitment(representation: u8, bytes: &[u8]) -> Result<blake3::Hash, String> {

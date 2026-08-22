@@ -3,15 +3,25 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from tests.unit.schema_validator_support import local_schema_validator
 
 
 _ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_registry_schema_accepts_owner_item_query_fallback_descriptor() -> None:
-    schema = json.loads(
-        (_ROOT / "schemas" / "semantic-language-registry.v1.schema.json").read_text()
+    validator = local_schema_validator(
+        _ROOT / "schemas" / "semantic-language-registry.v1.schema.json",
+        _ROOT / "schemas" / "provider-query-pack-descriptor.schema.json",
+    )
+    provider = json.loads(
+        (
+            _ROOT
+            / "languages"
+            / "typescript-lang-project-harness"
+            / "schemas"
+            / "asp-provider.json"
+        ).read_text()
     )
     registry = {
         "registryId": "agent.semantic-protocols.semantic-language-registry",
@@ -21,15 +31,18 @@ def test_registry_schema_accepts_owner_item_query_fallback_descriptor() -> None:
         "languages": [
             {
                 "languageId": "typescript",
-                "providerId": "ts-harness",
-                "binary": "ts-harness",
+                "providerId": "asp-typescript",
+                "binary": "asp-typescript",
                 "execution": "external-process",
-                "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
+                "namespace": "agent.semantic-protocols.languages.typescript.asp-typescript",
                 "methods": ["search/owner"],
                 "methodDescriptors": [
                     {
                         "method": "search/owner",
                         "command": "search",
+                        "invocation": {
+                            "argv": ["asp-typescript", "search", "owner"]
+                        },
                         "view": "owner",
                         "outputSchemaIds": [
                             "agent.semantic-protocols.semantic-search-packet"
@@ -64,7 +77,8 @@ def test_registry_schema_accepts_owner_item_query_fallback_descriptor() -> None:
                         "path": "schemas/semantic-language-registry.v1.schema.json",
                     }
                 ],
+                "queryPackDescriptor": provider["queryPackDescriptor"],
             }
         ],
     }
-    Draft202012Validator(schema).validate(registry)
+    validator.validate(registry)

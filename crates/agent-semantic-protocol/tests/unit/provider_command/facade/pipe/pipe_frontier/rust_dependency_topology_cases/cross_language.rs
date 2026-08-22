@@ -22,13 +22,13 @@ fn search_pipe_graph_request_uses_typescript_manifest_dependency_versions() {
     .expect("write source");
     write_dependency_topology_provider(
         &bin_dir,
-        ".ts-harness-delegate",
+        ".asp-typescript-delegate",
         &marker,
         "react",
         "18.2.0",
         "package.json",
     );
-    support::write_marker_provider(&bin_dir, "ts-harness", &marker);
+    support::write_marker_provider(&bin_dir, "asp-typescript", &marker);
     support::write_activation(
         &root,
         &[support::provider_with_dependency_topology(

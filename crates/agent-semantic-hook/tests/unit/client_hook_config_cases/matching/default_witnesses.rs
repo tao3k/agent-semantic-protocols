@@ -54,10 +54,7 @@ fn builtin_inline_materialization_rules_use_config_and_source_paths() {
 #[test]
 fn default_config_deny_rules_have_end_to_end_match_witnesses() {
     let config = ClientHookConfig::default();
-    let mut registry = crate::classifier::rust_registry();
-    registry
-        .providers
-        .push(crate::classifier::typescript_provider());
+    let mut registry = crate::classifier::builtin_programming_runtime();
     registry.project_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
@@ -122,7 +119,7 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
             json!({
                 "tool_name": "Bash",
                 "tool_input": {
-                    "command": "ts-harness search lexical HookDecision owner tests --json ."
+                "command": "asp-typescript search lexical HookDecision owner tests --json ."
                 }
             }),
             DecisionKind::Deny,
@@ -148,7 +145,7 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
                 "tool_input": {"file_path": source}
             }),
             DecisionKind::Deny,
-            "materialize-registered-source-read-action",
+            "route-read-to-asp-languages",
         ),
         (
             "native registered source pattern read",
@@ -157,7 +154,43 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
                 "tool_input": {"path": "*.rs"}
             }),
             DecisionKind::Deny,
-            "materialize-registered-source-read-action",
+            "route-read-to-asp-languages",
+        ),
+        (
+            "native Python source pattern read",
+            json!({
+                "tool_name": "Read",
+                "tool_input": {"path": "*.py"}
+            }),
+            DecisionKind::Deny,
+            "route-read-to-asp-languages",
+        ),
+        (
+            "native TypeScript source pattern read",
+            json!({
+                "tool_name": "Read",
+                "tool_input": {"path": "*.ts"}
+            }),
+            DecisionKind::Deny,
+            "route-read-to-asp-languages",
+        ),
+        (
+            "native Julia source pattern read",
+            json!({
+                "tool_name": "Read",
+                "tool_input": {"path": "*.jl"}
+            }),
+            DecisionKind::Deny,
+            "route-read-to-asp-languages",
+        ),
+        (
+            "native Gerbil source pattern read",
+            json!({
+                "tool_name": "Read",
+                "tool_input": {"path": "*.ss"}
+            }),
+            DecisionKind::Deny,
+            "route-read-to-asp-languages",
         ),
         (
             "native structured document read",
@@ -180,7 +213,7 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
                 }
             }),
             DecisionKind::Deny,
-            "materialize-registered-source-read-action",
+            "route-read-to-asp-languages",
         ),
         (
             "generic configured source access",
@@ -325,6 +358,20 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
                     }),
                 Some(vec![json_document]),
                 "{label}: filter program must not become a path subject: {decision:?}"
+            );
+        }
+        if label == "native structured document read" {
+            assert_eq!(
+                decision
+                    .fields
+                    .get("targetAgentRole")
+                    .and_then(serde_json::Value::as_str),
+                Some("asp_explorer"),
+                "{label}: native JSON/TOML Read must dispatch to the registered Explorer: {decision:?}"
+            );
+            assert!(
+                decision.message.contains("jq for JSON and yq for TOML"),
+                "{label}: bounded structured-reader guidance is missing: {decision:?}"
             );
         }
     }

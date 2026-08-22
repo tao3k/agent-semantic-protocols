@@ -1,10 +1,13 @@
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use fs4::AsyncFileExt;
-use tokio::net::{UnixListener, UnixSocket};
 
+use super::endpoint_identity::{
+    runtime_server_endpoint_path, runtime_server_endpoint_path_async,
+    runtime_server_runtime_base_async,
+};
 use super::model::{
     ENDPOINT_SCHEMA_ID, RuntimeServerEndpoint, SCHEMA_VERSION,
     runtime_server_transport_contract_digest,
@@ -21,24 +24,9 @@ pub struct RuntimeServerElection {
     _file: tokio::fs::File,
 }
 
-pub fn runtime_server_runtime_base(state_home: &Path) -> Result<PathBuf, String> {
-    let canonical_state_home = std::fs::canonicalize(state_home).map_err(|error| {
-        format!(
-            "failed to canonicalize ASP State Home {} for Runtime Server identity: {error}",
-            state_home.display()
-        )
-    })?;
-    let mut identity = blake3::Hasher::new();
-    identity.update(b"agent.semantic-protocols.runtime-server-state-home.v1\0");
-    identity.update(canonical_state_home.as_os_str().as_bytes());
-    let identity = identity.finalize().to_hex();
-    Ok(PathBuf::from("/tmp")
-        .join(format!("asp-runtime-server-{}", unsafe { getuid() }))
-        .join(format!("state-{}", &identity[..24])))
-}
-
-pub fn runtime_server_endpoint_path(state_home: &Path) -> Result<PathBuf, String> {
-    Ok(runtime_server_runtime_base(state_home)?.join("endpoint.v1.json"))
+pub enum RuntimeServerElectionAttempt {
+    Acquired(RuntimeServerElection),
+    Contended,
 }
 
 pub fn read_runtime_server_endpoint(
@@ -90,36 +78,47 @@ pub fn read_runtime_server_endpoint(
     Ok(Some(endpoint))
 }
 
-/// Validates that endpoint transport paths are derived from this State Home
-/// and from the advertised owner epoch, binding token, and artifact digest.
-pub fn validate_runtime_server_endpoint_for_state_home(
+pub async fn read_runtime_server_supervisor_endpoint(
     state_home: &Path,
-    endpoint: &RuntimeServerEndpoint,
-) -> Result<(), String> {
-    endpoint.validate()?;
-    let runtime_base = runtime_server_runtime_base(state_home)?;
-    let digest = blake3::hash(
-        format!(
-            "{}\0{}\0{}",
-            endpoint.owner_epoch, endpoint.binding_token, endpoint.runtime_binary_identity.value()
-        )
-        .as_bytes(),
-    )
-    .to_hex();
-    let expected_socket = runtime_base.join(format!("r-{}.sock", &digest[..16]));
-    let expected_data_socket = runtime_base.join(format!("r-{}.data.sock", &digest[..16]));
-    let expected_status_memory = runtime_base.join("status.v1.memory");
-    if Path::new(&endpoint.socket_path) != expected_socket
-        || Path::new(&endpoint.data_plane_socket_path) != expected_data_socket
-        || Path::new(&endpoint.status_memory_path) != expected_status_memory
+) -> Result<Option<RuntimeServerEndpoint>, String> {
+    let endpoint_path = runtime_server_endpoint_path_async(state_home).await?;
+    let metadata = match tokio::fs::symlink_metadata(&endpoint_path).await {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "failed to inspect Runtime Server endpoint {}: {error}",
+                endpoint_path.display()
+            ));
+        }
+    };
+    if !metadata.file_type().is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.uid() != unsafe { getuid() }
+        || metadata.mode() & 0o777 != 0o600
     {
         return Err(format!(
-            "Runtime Server endpoint State Home or binding identity mismatch: stateHome={} ownerEpoch={}",
-            state_home.display(),
-            endpoint.owner_epoch
+            "Runtime Server endpoint is not a private, non-symlink current-UID file: {}",
+            endpoint_path.display()
         ));
     }
-    Ok(())
+    let bytes = tokio::fs::read(&endpoint_path).await.map_err(|error| {
+        format!(
+            "failed to read Runtime Server endpoint {}: {error}",
+            endpoint_path.display()
+        )
+    })?;
+    let endpoint: RuntimeServerEndpoint = serde_json::from_slice(&bytes).map_err(|error| {
+        format!(
+            "failed to decode Runtime Server endpoint {}: {error}",
+            endpoint_path.display()
+        )
+    })?;
+    endpoint.validate_supervisor_control()?;
+    super::endpoint_validation::validate_runtime_server_endpoint_for_state_home(
+        state_home, &endpoint,
+    )?;
+    Ok(Some(endpoint))
 }
 
 pub async fn publish_runtime_server_endpoint(
@@ -196,179 +195,21 @@ pub async fn publish_runtime_server_endpoint(
     Ok(())
 }
 
-pub fn runtime_server_listener_backlog() -> u32 {
-    crate::runtime_concurrency::RuntimeConcurrencyPlan::current()
-        .reader_limit()
-        .saturating_mul(64) as u32
-}
-
-pub fn runtime_server_connection_pool_size() -> usize {
-    crate::runtime_concurrency::RuntimeConcurrencyPlan::current().reader_limit()
-}
-
-pub fn runtime_server_connection_pool_capacity() -> usize {
-    runtime_server_connection_pool_size()
-        .saturating_mul(4)
-        .clamp(8, 128)
-}
-
-pub fn bind_runtime_server_listener(socket_path: &Path) -> Result<UnixListener, String> {
-    validate_private_runtime_directory(
-        socket_path
-            .parent()
-            .ok_or_else(|| "Runtime Server socket path has no parent".to_owned())?,
-    )?;
-    let socket = UnixSocket::new_stream()
-        .map_err(|error| format!("failed to create Runtime Server socket: {error}"))?;
-    socket.bind(socket_path).map_err(|error| {
-        format!(
-            "failed to bind Runtime Server socket {}: {error}",
-            socket_path.display()
-        )
-    })?;
-    let mut permissions = std::fs::symlink_metadata(socket_path)
-        .map_err(|error| format!("failed to inspect bound Runtime Server socket: {error}"))?
-        .permissions();
-    permissions.set_mode(0o600);
-    std::fs::set_permissions(socket_path, permissions)
-        .map_err(|error| format!("failed to protect Runtime Server socket: {error}"))?;
-    let metadata = std::fs::symlink_metadata(socket_path)
-        .map_err(|error| format!("failed to verify bound Runtime Server socket: {error}"))?;
-    if !std::os::unix::fs::FileTypeExt::is_socket(&metadata.file_type())
-        || metadata.uid() != unsafe { getuid() }
-        || metadata.mode() & 0o777 != 0o600
-    {
-        return Err("Runtime Server socket is not a private current-UID Unix socket".to_owned());
-    }
-    socket
-        .listen(runtime_server_listener_backlog())
-        .map_err(|error| {
-            format!(
-                "failed to listen on Runtime Server socket {}: {error}",
-                socket_path.display()
-            )
-        })
-}
-
-fn validate_private_runtime_directory(path: &Path) -> Result<(), String> {
-    let metadata = std::fs::symlink_metadata(path).map_err(|error| {
-        format!(
-            "failed to inspect Runtime Server private directory {}: {error}",
-            path.display()
-        )
-    })?;
-    if !metadata.file_type().is_dir()
-        || metadata.file_type().is_symlink()
-        || metadata.uid() != unsafe { getuid() }
-        || metadata.mode() & 0o777 != 0o700
-    {
-        return Err(format!(
-            "Runtime Server directory is not a private, non-symlink current-UID directory: {}",
-            path.display()
-        ));
-    }
-    Ok(())
-}
-
-async fn prepare_private_runtime_directory(directory: &Path) -> Result<(), String> {
-    match tokio::fs::create_dir(directory).await {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-        Err(error) => {
-            return Err(format!(
-                "failed to create Runtime Server directory {}: {error}",
-                directory.display()
-            ));
-        }
-    }
-    let metadata = tokio::fs::symlink_metadata(directory)
-        .await
-        .map_err(|error| format!("failed to inspect Runtime Server directory: {error}"))?;
-    if !metadata.file_type().is_dir()
-        || metadata.file_type().is_symlink()
-        || metadata.uid() != unsafe { getuid() }
-    {
-        return Err(format!(
-            "Runtime Server directory is not a non-symlink current-UID directory: {}",
-            directory.display()
-        ));
-    }
-    let mut permissions = metadata.permissions();
-    permissions.set_mode(0o700);
-    tokio::fs::set_permissions(directory, permissions)
-        .await
-        .map_err(|error| format!("failed to protect Runtime Server directory: {error}"))?;
-    validate_private_runtime_directory(directory)
-}
-
-/// Authenticates a connected Unix peer against the effective ASP owner UID.
-/// Path ownership is discovery authority only; the kernel credential is the
-/// connection authority and cannot be forged by replacing an endpoint file.
-pub fn validate_runtime_server_peer_fd(fd: std::os::fd::RawFd) -> Result<(), String> {
-    #[cfg(target_os = "linux")]
-    {
-        let mut credential: libc::ucred = unsafe { std::mem::zeroed() };
-        let mut length = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
-        let result = unsafe {
-            libc::getsockopt(
-                fd,
-                libc::SOL_SOCKET,
-                libc::SO_PEERCRED,
-                (&mut credential as *mut libc::ucred).cast(),
-                &mut length,
-            )
-        };
-        if result != 0 {
-            return Err(format!(
-                "failed to authenticate Runtime Server Unix peer: {}",
-                std::io::Error::last_os_error()
-            ));
-        }
-        if credential.uid != unsafe { libc::geteuid() } {
-            return Err("Runtime Server Unix peer UID mismatch".to_owned());
-        }
-        return Ok(());
-    }
-    #[cfg(any(
-        target_os = "macos",
-        target_os = "freebsd",
-        target_os = "dragonfly",
-        target_os = "netbsd",
-        target_os = "openbsd"
-    ))]
-    {
-        let mut effective_uid: libc::uid_t = 0;
-        let mut effective_gid: libc::gid_t = 0;
-        let result = unsafe { libc::getpeereid(fd, &mut effective_uid, &mut effective_gid) };
-        if result != 0 {
-            return Err(format!(
-                "failed to authenticate Runtime Server Unix peer: {}",
-                std::io::Error::last_os_error()
-            ));
-        }
-        if effective_uid != unsafe { libc::geteuid() } {
-            return Err("Runtime Server Unix peer UID mismatch".to_owned());
-        }
-        return Ok(());
-    }
-    #[cfg(not(any(
-        target_os = "linux",
-        target_os = "macos",
-        target_os = "freebsd",
-        target_os = "dragonfly",
-        target_os = "netbsd",
-        target_os = "openbsd"
-    )))]
-    {
-        let _ = fd;
-        Err("Runtime Server Unix peer authentication is unsupported on this platform".to_owned())
-    }
-}
-
 pub async fn acquire_runtime_server_election(
     state_home: &Path,
 ) -> Result<RuntimeServerElection, String> {
-    let runtime_base = runtime_server_runtime_base(state_home)?;
+    match try_acquire_runtime_server_election(state_home).await? {
+        RuntimeServerElectionAttempt::Acquired(election) => Ok(election),
+        RuntimeServerElectionAttempt::Contended => {
+            Err("Runtime Server election is already held".to_owned())
+        }
+    }
+}
+
+pub async fn try_acquire_runtime_server_election(
+    state_home: &Path,
+) -> Result<RuntimeServerElectionAttempt, String> {
+    let runtime_base = runtime_server_runtime_base_async(state_home).await?;
     tokio::fs::create_dir_all(&runtime_base)
         .await
         .map_err(|error| {
@@ -390,13 +231,33 @@ pub async fn acquire_runtime_server_election(
                 lock_path.display()
             )
         })?;
-    file.try_lock().map_err(|error| {
-        format!(
-            "Runtime Server election is already held or unavailable at {}: {error}",
+    match file.try_lock() {
+        Ok(()) => Ok(RuntimeServerElectionAttempt::Acquired(
+            RuntimeServerElection { _file: file },
+        )),
+        Err(fs4::TryLockError::WouldBlock) => Ok(RuntimeServerElectionAttempt::Contended),
+        Err(fs4::TryLockError::Error(error)) => Err(format!(
+            "failed to acquire Runtime Server election at {}: {error}",
             lock_path.display()
-        )
-    })?;
-    Ok(RuntimeServerElection { _file: file })
+        )),
+    }
+}
+
+pub async fn wait_for_runtime_server_election(
+    state_home: &Path,
+) -> Result<RuntimeServerElection, String> {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        match try_acquire_runtime_server_election(state_home).await? {
+            RuntimeServerElectionAttempt::Acquired(election) => return Ok(election),
+            RuntimeServerElectionAttempt::Contended if tokio::time::Instant::now() < deadline => {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+            RuntimeServerElectionAttempt::Contended => {
+                return Err("timed out waiting for Runtime Server election handoff".to_owned());
+            }
+        }
+    }
 }
 
 pub async fn prepare_runtime_server_endpoint(
@@ -408,7 +269,7 @@ pub async fn prepare_runtime_server_endpoint(
     owner_epoch: u64,
     binding_token: &str,
 ) -> Result<RuntimeServerEndpoint, String> {
-    let runtime_base = runtime_server_runtime_base(state_home)?;
+    let runtime_base = runtime_server_runtime_base_async(state_home).await?;
     let workspace_store_path = runtime_base.join("workspaces");
     prepare_runtime_server_endpoint_in_with_workspace_store(
         &runtime_base,
@@ -433,8 +294,9 @@ pub async fn prepare_runtime_server_endpoint_with_workspace_store(
     owner_epoch: u64,
     binding_token: &str,
 ) -> Result<RuntimeServerEndpoint, String> {
+    let runtime_base = runtime_server_runtime_base_async(state_home).await?;
     prepare_runtime_server_endpoint_in_with_workspace_store(
-        &runtime_server_runtime_base(state_home)?,
+        &runtime_base,
         workspace_store_path,
         runtime_artifact_path,
         runtime_artifact_digest,
@@ -456,8 +318,9 @@ pub async fn prepare_runtime_server_endpoint_with_workspace_store_and_identity(
     owner_epoch: u64,
     binding_token: &str,
 ) -> Result<RuntimeServerEndpoint, String> {
+    let runtime_base = runtime_server_runtime_base_async(state_home).await?;
     prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
-        &runtime_server_runtime_base(state_home)?,
+        &runtime_base,
         workspace_store_path,
         runtime_artifact_path,
         runtime_binary_identity,
@@ -506,12 +369,16 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store(
         runtime_base,
         workspace_store_path,
         runtime_artifact_path,
-        &RuntimeBinaryIdentity::Content { value: runtime_artifact_digest.to_owned(), algorithm: "blake3-256".to_owned() },
+        &RuntimeBinaryIdentity::Content {
+            value: runtime_artifact_digest.to_owned(),
+            algorithm: "blake3-256".to_owned(),
+        },
         artifact_mode,
         artifact_catalog_digest,
         owner_epoch,
         binding_token,
-    ).await
+    )
+    .await
 }
 
 async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
@@ -529,15 +396,24 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
         .ok_or_else(|| "Runtime Server directory has no UID root".to_owned())?;
     let canonical_uid_root_name = format!("asp-runtime-server-{}", unsafe { getuid() });
     if uid_root.file_name().and_then(|name| name.to_str()) == Some(&canonical_uid_root_name) {
-        prepare_private_runtime_directory(uid_root).await?;
+        super::listener::prepare_private_runtime_directory(uid_root).await?;
     }
-    prepare_private_runtime_directory(runtime_base).await?;
+    super::listener::prepare_private_runtime_directory(runtime_base).await?;
     let digest = blake3::hash(
-        format!("{owner_epoch}\0{binding_token}\0{}", runtime_binary_identity.value()).as_bytes(),
+        format!(
+            "{owner_epoch}\0{binding_token}\0{}",
+            runtime_binary_identity.value()
+        )
+        .as_bytes(),
     )
     .to_hex();
     let socket_path = runtime_base.join(format!("r-{}.sock", &digest[..16]));
     let data_plane_socket_path = runtime_base.join(format!("r-{}.data.sock", &digest[..16]));
+    let provider_plane_socket_path = super::provider_endpoint::provider_plane_socket_path(
+        &runtime_base,
+        &digest,
+        MAX_UNIX_SOCKET_PATH_BYTES,
+    )?;
     let status_memory_path = runtime_base.join("status.v1.memory");
     if socket_path.as_os_str().as_bytes().len() > MAX_UNIX_SOCKET_PATH_BYTES {
         return Err(format!(
@@ -556,6 +432,7 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
         schema_version: SCHEMA_VERSION.to_owned(),
         transport_contract_digest: runtime_server_transport_contract_digest(),
         owner_epoch,
+        owner_process_id: agent_semantic_runtime::runtime_process_lifecycle::current_process_id(),
         runtime_artifact_path: runtime_artifact_path.to_string_lossy().into_owned(),
         runtime_binary_identity: runtime_binary_identity.clone(),
         monitor_capability: true,
@@ -565,6 +442,7 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
         binding_token: binding_token.to_owned(),
         socket_path: socket_path.to_string_lossy().into_owned(),
         data_plane_socket_path: data_plane_socket_path.to_string_lossy().into_owned(),
+        provider_plane_socket_path: provider_plane_socket_path.to_string_lossy().into_owned(),
         workspace_store_path: workspace_store_path.to_string_lossy().into_owned(),
         status_memory_path: status_memory_path.to_string_lossy().into_owned(),
     })

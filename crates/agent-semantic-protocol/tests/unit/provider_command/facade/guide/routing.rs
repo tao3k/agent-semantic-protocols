@@ -111,7 +111,7 @@ fn language_facade_cache_source_index_lookup_routes_to_client_backend() {
 #[test]
 fn typescript_language_facade_guide_routes_to_agent_guide() {
     let root = temp_project_root("provider-typescript-guide-facade");
-    write_echo_provider(&state_runtime_bin(&root), "ts-harness", "state-home");
+    write_echo_provider(&state_runtime_bin(&root), "asp-typescript", "state-home");
     write_activation(&root, &[provider("typescript", Vec::new())]);
 
     let output = asp_command(&root)

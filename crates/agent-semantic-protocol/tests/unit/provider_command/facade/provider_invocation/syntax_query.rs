@@ -8,7 +8,7 @@ fn language_facade_query_passes_tree_sitter_query_and_exact_selector_to_each_pro
     let root = temp_project_root("provider-syntax-query-plan-facade");
     let bin_dir = root.join(".bin");
     write_echo_provider(&bin_dir, "rs-harness", "rust-provider");
-    write_echo_provider(&bin_dir, "ts-harness", "typescript-provider");
+    write_echo_provider(&bin_dir, "asp-typescript", "typescript-provider");
     write_echo_provider(&bin_dir, "py-harness", "python-provider");
     write_activation(
         &root,

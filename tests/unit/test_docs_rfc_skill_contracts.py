@@ -23,7 +23,7 @@ _ACTIVE_DOC_PATHS = [
     _README_PATH,
     _ASP_SKILL_CONTRACT_PATH,
     _REPO_ROOT / "docs" / "10-19-rfcs" / "10.15-agent-hook-interception-protocol.org",
-    _REPO_ROOT / "docs" / "10-19-rfcs" / "10.05-cli-first-harness-ux.org",
+    _REPO_ROOT / "docs" / "10-19-rfcs" / "10.05-interactive-graph-first-progressive-searchloop.org",
     _REPO_ROOT
     / "docs"
     / "10-19-rfcs"
@@ -39,8 +39,8 @@ def test_readme_points_to_rfc_and_docs_owners() -> None:
         "## Documentation Map",
         "docs/10-19-rfcs/10.11-semantic-tree-sitter-query-protocol.org",
         "tree-sitter-compatible syntax ABI",
-        "docs/10-19-rfcs/10.05-cli-first-harness-ux.org",
-        "asp <language> guide",
+        "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org",
+        "typed ASP Server client surface",
         "docs/10-19-rfcs/10.15-agent-hook-interception-protocol.org",
         "Detected Binaries",
         "schemas/README.md",
@@ -112,7 +112,7 @@ def test_rfc_docs_contracts_are_in_local_and_ci_gates() -> None:
     required_ci_terms = [
         "Root schema gates",
         "tests/unit/semantic_tree_sitter_query_rfc",
-        "tests/unit/test_cli_first_harness_ux_rfc.py",
+        "tests/unit/test_asp_server_first_architecture_rfc.py",
         "tests/unit/test_agent_hook_interception_protocol_rfc.py",
         "tests/unit/test_docs_rfc_skill_contracts.py",
     ]

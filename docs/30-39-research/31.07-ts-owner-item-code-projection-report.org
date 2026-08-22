@@ -17,7 +17,7 @@ when the agent only needs the selected code.
 The concrete command was:
 
 #+begin_src shell
-ts-harness search owner languages/typescript-lang-project-harness/src/cli/semantic-search/types.ts items --query SemanticSearchPacket .
+asp-typescript search owner languages/typescript-lang-project-harness/src/cli/semantic-search/types.ts items --query SemanticSearchPacket .
 #+end_src
 
 It correctly selected =SemanticSearchPacket=, but the output still included:
@@ -45,7 +45,7 @@ metadata-bearing output is still the accuracy contract during exploration:
 Add an explicit =--code= projection for selected owner item queries:
 
 #+begin_src shell
-ts-harness search owner <path> items --query 'fun1|fun2|fun3' --code .
+asp-typescript search owner <path> items --query 'fun1|fun2|fun3' --code .
 #+end_src
 
 The projection emits only compact parser-owned code.  It strips blank lines and

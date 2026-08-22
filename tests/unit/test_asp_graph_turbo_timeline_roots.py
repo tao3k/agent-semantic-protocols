@@ -58,7 +58,7 @@ def _write_owner_commands(prompt_dir, owner_path: str) -> None:
     for index, mtime in enumerate((1000, 1010), start=1):
         write_timeline_json(
             prompt_dir / f"typescript-search-owner-{index}.command.json",
-            _command_packet(["ts-harness", "search", "owner", owner_path]),
+            _command_packet(["asp-typescript", "search", "owner", owner_path]),
             mtime=mtime,
         )
 
@@ -69,7 +69,7 @@ def _write_typed_frontier_commands(prompt_dir, owner_path: str) -> None:
             prompt_dir / f"typescript-search-typed-frontier-{index}.command.json",
             _command_packet(
                 [
-                    "ts-harness",
+                    "asp-typescript",
                     "search",
                     "typed-frontier",
                     owner_path,

@@ -62,7 +62,10 @@ provider-owned parser facts -> ASP DB Engine read-model ->
 search/query/recall/writing commands -> stable receipts -> agent action
 #+end_src
 
-That difference matters. ASP already has a protocol-first, CLI-first, provider-neutral shape. The opportunity is to absorb the search-substrate lessons without inheriting MCP-server identity, session coupling, or tool-list-driven architecture.
+That difference matters. ASP already has a protocol-first, ASP Server-first,
+provider-neutral shape. The opportunity is to absorb the search-substrate
+lessons without inheriting MCP-server identity, session coupling, or
+tool-list-driven architecture.
 
 The stronger ASP opportunity is native language analysis. =codebase-memory-mcp=
 builds one broad code graph from vendored parsers, LSP enrichment, Turso,

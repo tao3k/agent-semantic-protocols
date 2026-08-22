@@ -2,6 +2,7 @@
 
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock};
 
 use agent_semantic_config::runtime_dev::{
     ArtifactOrigin, RuntimeArtifactMode, parse_runtime_artifact_mode,
@@ -39,8 +40,9 @@ impl RuntimeBinaryIdentity {
 
     pub fn algorithm(&self) -> &str {
         match self {
-            Self::Content { algorithm, .. }
-            | Self::DeveloperSourceGeneration { algorithm, .. } => algorithm,
+            Self::Content { algorithm, .. } | Self::DeveloperSourceGeneration { algorithm, .. } => {
+                algorithm
+            }
         }
     }
 
@@ -116,7 +118,9 @@ impl RuntimeArtifactReference {
                 return Err("runtime artifact content digest must use blake3-256".to_owned());
             };
             if digest_hex.len() != 64 || !digest_hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-                return Err("runtime artifact content digest must contain 64 hexadecimal digits".to_owned());
+                return Err(
+                    "runtime artifact content digest must contain 64 hexadecimal digits".to_owned(),
+                );
             }
         }
         Ok(())
@@ -187,12 +191,18 @@ pub async fn publish_runtime_artifact(
     artifact_root: &Path,
     artifact_kind: impl Into<String>,
 ) -> Result<RuntimeArtifactPublication, String> {
+    let permit = artifact_publication_semaphore()
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|_| "Runtime artifact publication scheduler closed".to_owned())?;
     let state_home = state_home.to_path_buf();
     let source = source.to_path_buf();
     let target = target.to_path_buf();
     let artifact_root = artifact_root.to_path_buf();
     let artifact_kind = artifact_kind.into();
     tokio::task::spawn_blocking(move || {
+        let _permit = permit;
         publish_runtime_artifact_blocking(
             &state_home,
             &source,
@@ -203,6 +213,11 @@ pub async fn publish_runtime_artifact(
     })
     .await
     .map_err(|error| format!("runtime artifact publication task failed: {error}"))?
+}
+
+fn artifact_publication_semaphore() -> &'static Arc<tokio::sync::Semaphore> {
+    static SEMAPHORE: OnceLock<Arc<tokio::sync::Semaphore>> = OnceLock::new();
+    SEMAPHORE.get_or_init(|| Arc::new(tokio::sync::Semaphore::new(2)))
 }
 
 fn publish_runtime_artifact_blocking(
@@ -407,7 +422,7 @@ fn temporary_runtime_artifact_path(target: &Path) -> PathBuf {
         .unwrap_or("runtime-artifact");
     target.with_file_name(format!(
         ".{file_name}.{}.{}.tmp",
-        std::process::id(),
+        crate::runtime_process_lifecycle::current_process_id(),
         SEQUENCE.fetch_add(1, Ordering::Relaxed)
     ))
 }
@@ -497,15 +512,25 @@ fn prepare_developer_artifact_publication_blocking(
         ));
     }
     let metadata = std::fs::metadata(&source_identity).map_err(|error| {
-        format!("inspect development artifact {}: {error}", source_identity.display())
+        format!(
+            "inspect development artifact {}: {error}",
+            source_identity.display()
+        )
     })?;
     let modified_ns = metadata
         .modified()
         .ok()
         .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
         .map_or(0, |duration| duration.as_nanos());
-    let generation_input = format!("{}:{}:{}", source_identity.display(), metadata.len(), modified_ns);
-    let artifact_digest = blake3::hash(generation_input.as_bytes()).to_hex().to_string();
+    let generation_input = format!(
+        "{}:{}:{}",
+        source_identity.display(),
+        metadata.len(),
+        modified_ns
+    );
+    let artifact_digest = blake3::hash(generation_input.as_bytes())
+        .to_hex()
+        .to_string();
     let reference = RuntimeArtifactReference::new(
         artifact_kind,
         ArtifactOrigin::DevelopWorkspace,

@@ -56,7 +56,7 @@ mod unix {
             response["hookSpecificOutput"]["additionalContext"]
                 .as_str()
                 .is_some_and(|context| context
-                    .contains("agent.semantic-protocols.hook-local-policy-unavailable.v1")),
+                    .contains("agent.semantic-protocols.hook-local-policy-unavailable")),
             "{}",
             String::from_utf8_lossy(&output.stdout)
         );

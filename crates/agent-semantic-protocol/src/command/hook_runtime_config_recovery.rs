@@ -68,8 +68,7 @@ fn matcher_cache_dir(project_root: &Path) -> Result<PathBuf, String> {
     // cache must not pay Runtime/checkout identity discovery on every Host
     // action. The canonical workspace path is sufficient cache identity; the
     // generation content still binds the complete config and agent owners.
-    let normalized_project_root =
-        super::hook_runtime_workspace_candidate::normalize_workspace_path(project_root);
+    let normalized_project_root = agent_semantic_hook::normalize_workspace_path(project_root);
     let workspace_key = format!(
         "{:x}",
         Sha256::digest(normalized_project_root.as_os_str().as_encoded_bytes())
@@ -242,10 +241,10 @@ fn load_active_matcher(
         ));
     }
     let mut offset = 8;
-    let _published_config_byte_len = take_u64(&mapped, &mut offset)?;
-    let _published_config_modified_nanos = take_u128(&mapped, &mut offset)?;
-    let _published_agents_byte_len = take_u64(&mapped, &mut offset)?;
-    let _published_agents_modified_nanos = take_u128(&mapped, &mut offset)?;
+    let published_config_byte_len = take_u64(&mapped, &mut offset)?;
+    let published_config_modified_nanos = take_u128(&mapped, &mut offset)?;
+    let published_agents_byte_len = take_u64(&mapped, &mut offset)?;
+    let published_agents_modified_nanos = take_u128(&mapped, &mut offset)?;
     let generation = mapped
         .get(offset..offset + 64)
         .ok_or_else(|| "Hook active matcher generation is truncated".to_owned())?;
@@ -259,7 +258,17 @@ fn load_active_matcher(
     // stat/canonicalization would turn every Host action into hidden workspace
     // discovery and reintroduce the deadlock/performance failure this cache
     // exists to prevent.
-    let _ = (config_path, project_root);
+    let config_stamp = source_stamp(config_path)?;
+    let agents_stamp = source_stamp(&agent_semantic_hook::project_agent_config_path(
+        project_root,
+    ))?;
+    if published_config_byte_len != config_stamp.byte_len
+        || published_config_modified_nanos != config_stamp.modified_nanos
+        || published_agents_byte_len != agents_stamp.byte_len
+        || published_agents_modified_nanos != agents_stamp.modified_nanos
+    {
+        return Ok(None);
+    }
     let bundle = &mapped[offset..];
     let mut shell_read_allow: Option<HookDecision> = None;
     for key in shell_read_keys {
@@ -304,55 +313,12 @@ fn load_active_matcher(
         }));
     }
     if !shell_command_keys.is_empty() {
-        let shell_command_shard =
-            select_matcher_section(bundle, MatcherSectionKind::ShellCommand, [0; 8])?;
-        let structured_projection_shard =
-            select_matcher_section(bundle, MatcherSectionKind::StructuredProjection, [0; 8])?;
-        let mut first_allow = None;
-        let mut unmatched = false;
-        for key in shell_command_keys {
-            let selected = if let Some(table) = shell_command_shard
-                && let Some(decision) = agent_semantic_hook::CommandDecisionShard::select_leading_environment_for_command(table, &key.command)?
-            {
-                Some((decision, "leading-environment-decision-shard"))
-            } else if let Some(shard) = structured_projection_shard
-                && let Some(decision) = agent_semantic_hook::StructuredProjectionDecisionShard::select(shard, key)?
-            {
-                Some((decision, "structured-projection-decision-shard"))
-            } else if let Some(table) = shell_command_shard
-                && let Some(decision) = agent_semantic_hook::CommandDecisionShard::select_for_command(table, &key.command, &key.command_tokens)?
-            {
-                Some((decision, "shell-command-decision-shard"))
-            } else {
-                None
-            };
-            let Some((mut decision, projection)) = selected else {
-                unmatched = true;
-                continue;
-            };
-            decision.subject.command = Some(key.command.clone());
-            decision.subject.tool_name = Some(key.tool_name.clone());
-            if decision.decision != DecisionKind::Allow {
-                trace(projection);
-                return Ok(Some(LoadedHookConfig {
-                    config: None,
-                    decision: Some(decision),
-                    projection: Some(projection),
-                }));
-            }
-            first_allow.get_or_insert((decision, projection));
-        }
-        if unmatched {
-            return Ok(None);
-        }
-        if let Some((decision, projection)) = first_allow {
-            trace(projection);
-            return Ok(Some(LoadedHookConfig {
-                config: None,
-                decision: Some(decision),
-                projection: Some(projection),
-            }));
-        }
+        // Shell shards cache parser-owned action facts only. Finalizing an
+        // allow or deny here would bypass the complete Config Rule DSL and
+        // its cross-rule dominance (for example registered provider search
+        // plus the higher-priority `--json` deny). Hydrate the complete
+        // matcher below and make exactly one policy decision there.
+        return Ok(None);
     }
     if let (Some(extension), Some(source_path)) = (direct_read_extension, direct_read_path) {
         let Some(template) = select_matcher_section(
@@ -592,11 +558,24 @@ fn append_file_identity(hasher: &mut Sha256, path: &Path) -> Result<(), String> 
 }
 
 fn compiled_generation_key(config_path: &Path, project_root: &Path) -> Result<String, String> {
+    compiled_generation_key_with_artifact_fingerprint(
+        config_path,
+        project_root,
+        &agent_semantic_hook::hook_runtime_artifact_fingerprint(),
+    )
+}
+
+fn compiled_generation_key_with_artifact_fingerprint(
+    config_path: &Path,
+    project_root: &Path,
+    artifact_fingerprint: &str,
+) -> Result<String, String> {
     let mut hasher = Sha256::new();
-    hasher.update(b"asp-hook-compiled-mmap-generation-v1\0");
-    hasher.update(b"hook-matcher-compiler-v1-prefix-complete\0");
+    hasher.update(b"asp-hook-compiled-mmap-generation-v2\0");
+    hasher.update(b"hook-matcher-compiler-v2-action-rule-dominance\0");
     hasher.update(project_root.as_os_str().as_encoded_bytes());
     hasher.update(agent_semantic_config::hook_client_contract_fingerprint().as_bytes());
+    hasher.update(artifact_fingerprint.as_bytes());
     append_file_identity(&mut hasher, config_path)?;
     append_file_identity(
         &mut hasher,
@@ -682,7 +661,8 @@ pub(crate) fn publish_hook_matcher_generation(
     project_root: &Path,
 ) -> Result<String, String> {
     let generation = compiled_generation_key(config_path, project_root)?;
-    let config = agent_semantic_hook::load_client_config_for_project(config_path, project_root)
+    let config =
+        agent_semantic_hook::load_client_config_for_matcher_publication(config_path, project_root)
         .map_err(|error| {
             format!(
                 "Hook matcher snapshot source is invalid for {}: {error}; {}",

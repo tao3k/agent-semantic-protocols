@@ -8,7 +8,7 @@
 * Purpose
 
 This report records the observed TypeScript search-loop failure where an agent
-expanded into many sequential =ts-harness search lexical= calls while trying to
+expanded into many sequential =asp-typescript search lexical= calls while trying to
 understand the semantic-search packet implementation.
 
 The goal is to preserve the problem evidence and define a small fix sequence
@@ -20,7 +20,7 @@ shared protocol too early.
 The trace began with a composed command:
 
 #+begin_src shell
-ts-harness search owner src/cli/semantic-search/types.ts items --workspace . --view seeds
+asp-typescript search owner src/cli/semantic-search/types.ts items --workspace . --view seeds
 #+end_src
 
 The command failed:
@@ -32,14 +32,14 @@ expected at most one PROJECT_ROOT argument
 The agent then expanded into many narrower searches:
 
 #+begin_src shell
-ts-harness search owner src/cli/semantic-search/types.ts .
-ts-harness search lexical "SemanticSearchPacket" owner .
-ts-harness search lexical "readonly owners" owner .
-ts-harness search lexical "interface SemanticSearch" owner .
-ts-harness search lexical "SemanticSearchOwner" owner .
-ts-harness search lexical "searchSynthesis" owner .
-ts-harness search lexical "buildPrimePacket" owner .
-ts-harness search api basePacket .
+asp-typescript search owner src/cli/semantic-search/types.ts .
+asp-typescript search lexical "SemanticSearchPacket" owner .
+asp-typescript search lexical "readonly owners" owner .
+asp-typescript search lexical "interface SemanticSearch" owner .
+asp-typescript search lexical "SemanticSearchOwner" owner .
+asp-typescript search lexical "searchSynthesis" owner .
+asp-typescript search lexical "buildPrimePacket" owner .
+asp-typescript search api basePacket .
 #+end_src
 
 * Observed Problems
@@ -98,9 +98,9 @@ it does not show the return object shape or spread sources.
 The agent then searches for implementation fragments:
 
 #+begin_src shell
-ts-harness search lexical "return basePacket" owner .
-ts-harness search lexical "...payload" owner .
-ts-harness search lexical "packages: payload" owner .
+asp-typescript search lexical "return basePacket" owner .
+asp-typescript search lexical "...payload" owner .
+asp-typescript search lexical "packages: payload" owner .
 #+end_src
 
 For exported packet builders, the return object shape is part of the semantic
@@ -175,7 +175,7 @@ The following should update the root protocol schema before provider adoption:
 Make this command valid:
 
 #+begin_src shell
-ts-harness search owner src/cli/semantic-search/types.ts items --workspace . --view seeds
+asp-typescript search owner src/cli/semantic-search/types.ts items --workspace . --view seeds
 #+end_src
 
 Expected behavior:
@@ -234,7 +234,7 @@ JSON should carry the richer form:
   "target": "SemanticSearchPacket",
   "ownerPath": "src/cli/semantic-search/types.ts",
   "fields": {
-    "command": "ts-harness search lexical --query-set SemanticSearchPacket --query-set SemanticSearchPacketPayload --query-set SemanticSearchOwner --owner src/cli/semantic-search/types.ts owner --workspace . --view seeds",
+    "command": "asp-typescript search lexical --query-set SemanticSearchPacket --query-set SemanticSearchPacketPayload --query-set SemanticSearchOwner --owner src/cli/semantic-search/types.ts owner --workspace . --view seeds",
     "composition": "query-set",
     "reason": "co-located-owner-items"
   }
@@ -308,7 +308,7 @@ Implemented behavior:
 - compact and seed renderers emit bounded =|item= rows for owner items.
 - item ordering prefers interfaces, types, classes, functions, enums, namespaces, and variables, using source order inside the same declaration class.
 - =items= pipe suppresses stale single-token owner hints such as =MAX_FINDINGS=.
-- the provider emits a composed =|next-run ts-harness search lexical --query-set ...= hint for co-located owner items.
+- the provider emits a composed =|next-run asp-typescript search lexical --query-set ...= hint for co-located owner items.
 
 Validated commands:
 
@@ -322,7 +322,7 @@ node --test dist/tests/unit/cli.test.js dist/tests/unit/semantic_search_schema.t
 Replay result:
 
 #+begin_src shell
-ts-harness search owner src/cli/semantic-search/types.ts items --workspace . --view seeds
+asp-typescript search owner src/cli/semantic-search/types.ts items --workspace . --view seeds
 #+end_src
 
 The command now exits successfully and surfaces =SemanticSearchPacket=,
@@ -347,7 +347,7 @@ Implemented behavior:
 Replay result:
 
 #+begin_src shell
-ts-harness search api basePacket .
+asp-typescript search api basePacket .
 #+end_src
 
 The command now surfaces:
@@ -386,7 +386,7 @@ Implemented behavior:
 Replay result:
 
 #+begin_src shell
-ts-harness search docs searchSynthesis .
+asp-typescript search docs searchSynthesis .
 #+end_src
 
 The command now surfaces schema-owned evidence for =searchSynthesis= from

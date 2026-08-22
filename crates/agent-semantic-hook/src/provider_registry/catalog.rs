@@ -12,14 +12,12 @@ use crate::protocol::{
 };
 use crate::protocol_activation::protocol_activation_manifest::ProviderManifest;
 
-// The embedded registry is the admission authority for provider-native routes.
-const SCHEMA_REGISTRY_JSON: &str = include_str!(concat!(
-    env!("OUT_DIR"),
-    "/semantic-language-registry.providers.resolved.v1.json"
-));
+fn provider_register_json() -> &'static str {
+    agent_semantic_provider_protocol::builtin_provider_register_json()
+}
 
 pub fn semantic_registry_digest() -> String {
-    let digest = <sha2::Sha256 as sha2::Digest>::digest(SCHEMA_REGISTRY_JSON.as_bytes());
+    let digest = <sha2::Sha256 as sha2::Digest>::digest(provider_register_json().as_bytes());
     format!("sha256:{digest:x}")
 }
 
@@ -38,12 +36,12 @@ pub fn registered_provider_catalog_identities() -> &'static [RegisteredProviderC
     IDENTITIES
         .get_or_init(|| {
             let manifests = schema_registry_provider_manifests();
-            let registry: serde_json::Value = serde_json::from_str(SCHEMA_REGISTRY_JSON)
-                .expect("embedded semantic language registry must be valid JSON");
+            let registry: serde_json::Value = serde_json::from_str(provider_register_json())
+                .expect("embedded provider register must be valid JSON");
             registry
-                .get("languages")
+                .get("providers")
                 .and_then(serde_json::Value::as_array)
-                .expect("embedded semantic language registry must declare languages")
+                .expect("embedded provider register must declare providers")
                 .iter()
                 .map(|descriptor| {
                     let language_id = descriptor
@@ -105,50 +103,18 @@ pub fn registered_query_pack_digest(language_id: &str) -> Option<String> {
         .map(|identity| identity.query_pack_digest.clone())
 }
 
-const LANGUAGE_PROVIDER_MANIFEST_JSON: &[&str] = &[
-    include_str!(
-        "../../../../languages/rust-lang-project-harness/provider/asp-provider-manifest.json"
-    ),
-    include_str!(
-        "../../../../languages/typescript-lang-project-harness/provider/asp-provider-manifest.json"
-    ),
-    include_str!(
-        "../../../../languages/python-lang-project-harness/provider/asp-provider-manifest.json"
-    ),
-    include_str!(
-        "../../../../languages/gerbil-scheme-language-project-harness/provider/asp-provider-manifest.json"
-    ),
-    include_str!(
-        "../../../../languages/JuliaLangProjectHarness.jl/juliac/asp-provider-manifest.json"
-    ),
-    include_str!("../../../../languages/orgize/provider/asp-org-provider-manifest.json"),
-    include_str!("../../../../languages/orgize/provider/asp-md-provider-manifest.json"),
-];
-
 pub fn schema_registry_provider_manifests() -> Vec<ProviderManifest> {
     static MANIFESTS: std::sync::OnceLock<Vec<ProviderManifest>> = std::sync::OnceLock::new();
     MANIFESTS.get_or_init(build_provider_manifests).clone()
 }
 
 fn build_provider_manifests() -> Vec<ProviderManifest> {
-    let language_manifests = language_provider_manifests();
-    let manifests = schema_registry()
-        .languages
+    let manifests = provider_register()
+        .providers
         .iter()
         .map(|language| {
-            let manifest = language_manifests
-                .iter()
-                .find(|manifest| {
-                    manifest.language_id.as_str() == language.language_id
-                        && manifest.provider_id.as_str() == language.provider_id
-                })
-                .cloned()
-                .unwrap_or_else(|| {
-                    panic!(
-                        "missing language provider manifest for registry language `{}` provider `{}`",
-                        language.language_id, language.provider_id
-                    )
-                });
+            let mut manifest = language.provider.clone();
+            normalize_language_provider_manifest(&mut manifest);
             assert_eq!(
                 language.query_pack_descriptor, manifest.query_pack_descriptor,
                 "registry queryPackDescriptor drift for language `{}` provider `{}`",
@@ -185,7 +151,9 @@ pub(crate) fn validate_registered_provider_projection_contracts(
         let document_resolution = manifest.document_resolution();
         let source_snapshot = manifest.search_capabilities().source_snapshot.as_ref();
         match (project_resolution, document_resolution, source_snapshot) {
-            (Some(_), None, Some(projection)) | (None, Some(_), Some(projection)) => {
+            (Some(_), Some(_), Some(projection))
+            | (Some(_), None, Some(projection))
+            | (None, Some(_), Some(projection)) => {
                 if project_resolution.is_some() {
                     programming_projection_contract_present = true;
                 }
@@ -322,17 +290,18 @@ pub struct ProviderDevelopmentRegistrationV1 {
         crate::protocol_activation::protocol_activation_manifest::ProviderDevelopmentDescriptor,
 }
 
-pub fn registered_provider_projection_command_binding(
+pub fn registered_provider_projection_operation(
     language_id: &str,
     provider_id: &str,
 ) -> Result<Option<String>, String> {
-    let manifests = language_provider_manifests();
-    let Some(manifest) = manifests
+    let Some(registration) = provider_register()
+        .providers
         .iter()
-        .find(|manifest| manifest.language_id.as_str() == language_id)
+        .find(|registration| registration.language_id == language_id)
     else {
         return Ok(None);
     };
+    let manifest = &registration.provider;
     if manifest.provider_id.as_str() != provider_id {
         return Err(format!(
             "ProviderRegistry provider drift for language `{language_id}`: expected {}, got {provider_id}",
@@ -343,7 +312,7 @@ pub fn registered_provider_projection_command_binding(
         .runtime_contract()
         .operations()
         .iter()
-        .find(|operation| operation.operation() == "projection-batch-stdin")
+        .find(|operation| operation.operation() == "projection-batch")
         .map(|operation| operation.operation().to_owned()))
 }
 
@@ -352,9 +321,9 @@ pub fn registered_provider_method_invocation_v1(
     provider_id: &str,
     method: &str,
 ) -> Result<Option<crate::protocol::CommandTemplate>, String> {
-    let registry = schema_registry();
-    let Some(language) = registry
-        .languages
+    let register = provider_register();
+    let Some(language) = register
+        .providers
         .iter()
         .find(|language| language.language_id == language_id)
     else {
@@ -374,8 +343,8 @@ pub fn registered_provider_method_invocation_v1(
 }
 
 pub fn registered_provider_id_v1(language_id: &str) -> Option<String> {
-    schema_registry()
-        .languages
+    provider_register()
+        .providers
         .iter()
         .find(|language| language.language_id == language_id)
         .map(|language| language.provider_id.clone())
@@ -394,31 +363,25 @@ pub enum RegisteredProviderKind {
 /// installed independently. Document providers are compiled into the ASP
 /// runtime and must never enter the external language-provider installer.
 pub fn registered_provider_kind(language_id: &str) -> Result<RegisteredProviderKind, String> {
-    let manifests = language_provider_manifests();
-    let manifest = manifests
+    let registration = provider_register()
+        .providers
         .iter()
-        .find(|manifest| manifest.language_id().as_str() == language_id)
+        .find(|registration| registration.language_id == language_id)
         .ok_or_else(|| format!("no registered provider for language `{language_id}`"))?;
-    match (
-        manifest.project_resolution().is_some(),
-        manifest.document_resolution().is_some(),
-    ) {
-        (true, false) => Ok(RegisteredProviderKind::ProgrammingLanguage),
-        (false, true) => Ok(RegisteredProviderKind::Document),
-        _ => Err(format!(
-            "registered provider kind is ambiguous: languageId={} providerId={}",
-            manifest.language_id(),
-            manifest.provider_id(),
-        )),
+    match registration.provider.execution() {
+        crate::ProviderExecution::ExternalProcess => {
+            Ok(RegisteredProviderKind::ProgrammingLanguage)
+        }
+        crate::ProviderExecution::Embedded => Ok(RegisteredProviderKind::Document),
     }
 }
 
 pub fn materialize_provider_routes(
     manifest: &ProviderManifest,
 ) -> Result<crate::protocol::HookRoutes, String> {
-    let registry = schema_registry();
-    let language = registry
-        .languages
+    let register = provider_register();
+    let language = register
+        .providers
         .iter()
         .find(|language| {
             language.language_id == manifest.language_id.as_str()
@@ -478,27 +441,14 @@ pub fn materialize_provider_routes(
     })
 }
 
-pub(crate) fn language_provider_manifests() -> Vec<ProviderManifest> {
-    LANGUAGE_PROVIDER_MANIFEST_JSON
-        .iter()
-        .map(|json| {
-            let mut manifest =
-                serde_json::from_str::<ProviderManifest>(json).unwrap_or_else(|error| {
-                    panic!("embedded language provider manifest must be valid JSON: {error}")
-                });
-            normalize_language_provider_manifest(&mut manifest);
-            manifest
-        })
-        .collect()
-}
-
-include!(concat!(env!("OUT_DIR"), "/registered_language_ids.rs"));
-
 /// Return registered ASP language ids from the provider registry schema.
 pub fn registered_language_ids() -> Vec<agent_semantic_config::LanguageId> {
-    REGISTERED_LANGUAGE_ID_STRINGS
+    provider_register()
+        .providers
         .iter()
-        .map(|language_id| agent_semantic_config::LanguageId::new(*language_id))
+        .map(|registration| {
+            agent_semantic_config::LanguageId::new(registration.language_id.as_str())
+        })
         .collect()
 }
 
@@ -510,14 +460,14 @@ fn normalize_language_provider_manifest(manifest: &mut ProviderManifest) {
     manifest.manifest_version = env!("CARGO_PKG_VERSION").to_string();
 }
 
-pub(crate) fn schema_registry() -> &'static SemanticLanguageRegistry {
-    static REGISTRY: std::sync::OnceLock<SemanticLanguageRegistry> = std::sync::OnceLock::new();
-    REGISTRY.get_or_init(|| {
-        let registry: SemanticLanguageRegistry = serde_json::from_str(SCHEMA_REGISTRY_JSON)
-            .expect("embedded semantic language registry must be valid JSON");
-        validate_schema_registry_v1(&registry)
-            .expect("embedded semantic language registry must be internally consistent");
-        registry
+pub(crate) fn provider_register() -> &'static ProviderRegister {
+    static REGISTER: std::sync::OnceLock<ProviderRegister> = std::sync::OnceLock::new();
+    REGISTER.get_or_init(|| {
+        let register: ProviderRegister = serde_json::from_str(provider_register_json())
+            .expect("embedded provider register must be valid JSON");
+        validate_provider_register(&register)
+            .expect("embedded provider register must be internally consistent");
+        register
     })
 }
 
@@ -538,8 +488,8 @@ pub fn registered_provider_method_projected_argv_v1(
             "reasonKind=provider-native-argument-projection-unavailable languageId={language_id} providerId={provider_id} method={method} detail={detail}"
         )
     };
-    let language = schema_registry()
-        .languages
+    let language = provider_register()
+        .providers
         .iter()
         .find(|language| language.language_id == language_id)
         .ok_or_else(|| unavailable("language-not-registered"))?;
@@ -592,9 +542,9 @@ pub fn registered_provider_method_projected_argv_v1(
         .collect()
 }
 
-fn validate_schema_registry_v1(registry: &SemanticLanguageRegistry) -> Result<(), String> {
+fn validate_provider_register(register: &ProviderRegister) -> Result<(), String> {
     let mut language_ids = std::collections::BTreeSet::new();
-    for language in &registry.languages {
+    for language in &register.providers {
         if !language_ids.insert(language.language_id.as_str()) {
             return Err(format!(
                 "duplicate ProviderRegistry languageId `{}`",
@@ -665,15 +615,16 @@ fn validate_schema_registry_v1(registry: &SemanticLanguageRegistry) -> Result<()
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct SemanticLanguageRegistry {
-    pub(crate) languages: Vec<LanguageRegistration>,
+pub(crate) struct ProviderRegister {
+    pub(crate) providers: Vec<ProviderRegistration>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct LanguageRegistration {
+pub(crate) struct ProviderRegistration {
     pub(crate) language_id: String,
     pub(crate) provider_id: String,
+    pub(crate) provider: ProviderManifest,
     pub(crate) binary: String,
     methods: Vec<String>,
     pub(crate) method_descriptors: Vec<SemanticMethodDescriptor>,

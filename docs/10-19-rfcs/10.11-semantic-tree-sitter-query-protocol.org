@@ -3,7 +3,7 @@
 #+DATE: 2026-06-04
 #+RFC: 011
 #+STATUS: native-projection-v1-closure
-#+DEPENDS: docs/10-19-rfcs/10.05-cli-first-harness-ux.org (005), docs/10-19-rfcs/10.06-agent-compact-graph-feature.org (006), docs/10-19-rfcs/10.08-agent-semantic-client-backend-protocol.org (008), docs/10-19-rfcs/10.10-semantic-query-projection-protocol.org (010)
+#+DEPENDS: docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org (005), docs/10-19-rfcs/10.06-agent-compact-graph-feature.org (006), docs/10-19-rfcs/10.08-agent-semantic-client-backend-protocol.org (008), docs/10-19-rfcs/10.10-semantic-query-projection-protocol.org (010)
 #+SEE_ALSO: schemas/semantic-native-syntax-fact-index.v1.schema.json
 #+SEE_ALSO: schemas/semantic-search-packet.v1.schema.json
 #+SEE_ALSO: schemas/semantic-query-packet.v1.schema.json
@@ -410,7 +410,7 @@ The core packet shape is:
   "protocolId": "agent.semantic-protocols.semantic-language",
   "protocolVersion": "1",
   "languageId": "typescript",
-  "providerId": "ts-harness",
+  "providerId": "asp-typescript",
   "projectRoot": ".",
   "grammarId": "tree-sitter-typescript",
   "grammarProfileVersion": "typescript-compiler-api-2026-06",
@@ -992,12 +992,12 @@ CLI startup when validated captures and native fact refs are fresh.
 ** Phase 3: TypeScript provider
 
 1. Add TypeScript =tree-sitter/tree-sitter-typescript/queries/*.scm= catalogs.
-2. Implement =ts-harness= native projection through the TypeScript Compiler API.
+2. Implement =asp-typescript= native projection through the TypeScript Compiler API.
 3. Project TypeScript declarations, imports, exports, calls, classes,
    interfaces, type aliases, and type-only import/export facts into captures.
 4. Use =tsconfig= and project references in native fields and cache digests.
 5. Route =asp typescript query "xx"= through ASP cache first, then
-   =ts-harness= on miss.
+   =asp-typescript= on miss.
 6. Prove repeated query speedup on a real TypeScript workspace.
 
 ** Phase 4: Python provider
@@ -1116,6 +1116,29 @@ Descriptor consistency rules:
 7. Registry descriptor examples must not include provider package source paths
    as downstream runtime requirements.
    Catalog delivery: provider/ASP binary embedding or provider exports.
+
+** Grammar execution ownership
+
+Each language client-server owns the language parser, native syntax facts,
+declarative =.scm= catalogs, grammar profile, and corpus evidence under the
+language package's =tree-sitter/= tree.  The =tree-sitter= directory name and
+node vocabulary are compatibility surfaces for the SCM query language; they do
+not assign parser ownership to a Tree-sitter runtime.
+
+ASP Server loads the selected SCM source and compiles its S-expression surface
+into a grammarless typed plan: patterns, captures, node types, fields, and
+predicates.  ASP then sends the typed plan through the resident
+=asp-client-server= operation.  The language provider executes that plan
+against its native parser/compiler facts and returns typed capture spans and
+native fact references.  The provider MAY expose richer facts than the
+Tree-sitter-compatible vocabulary; the SCM layer is a portable query adapter,
+not the upper bound of provider semantics.
+
+ASP Server MUST NOT compile or load =parser.c=, =scanner.c=, dynamic grammar
+libraries, or a second source parser for this flow.  No ASP crate or language
+provider may link =tree-sitter-rust=, =tree-sitter-typescript=, or another
+concrete grammar crate merely to execute SCM.  Adding a language adds a native
+provider adapter and SCM catalogs, not a grammar dependency or grammar bundle.
 
 * Validation
 
@@ -1275,7 +1298,7 @@ Required claims:
 
 #+begin_example
 languageId=typescript
-providerId=ts-harness
+providerId=asp-typescript
 executionBackends=native-parser
 adapterModes=native-projection
 sourceAuthorities=native-parser-adapter,native-parser
@@ -1411,7 +1434,7 @@ evidence=docs/30-39-research/31.19-rfc011-rust-syntax-real-evidence.org
 review=docs/30-39-research/31.21-rfc011-native-projection-benchmark-review.org
 status=native-projection-v1-reviewed
 
-[syntax-lane] language=typescript provider=ts-harness lane=T
+[syntax-lane] language=typescript provider=asp-typescript lane=T
 adapterModes=native-projection
 executionBackends=native-parser
 queryInputForms=selector,code-shaped,catalog-id

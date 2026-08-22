@@ -1,6 +1,0 @@
-#+title: Compatibility locator: SearchRoute certified search ledger
-
-* Canonical RFC
-
-The canonical RFC is
-[[file:../../10.05-interactive-graph-first-progressive-searchloop/10.05.40-receipts-cache-identity/00.25-searchroute-certified-search-ledger.org][SearchRoute certified search ledger]].

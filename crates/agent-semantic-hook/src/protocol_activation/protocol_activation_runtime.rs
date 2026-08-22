@@ -9,7 +9,7 @@ use crate::protocol::{
 
 use super::digest::provider_manifest_digest;
 use super::protocol_activation_manifest::{
-    ActivatedProvider, ActivatedProviderConfig, HookActivation, HookRuntime, ProviderExecution,
+    ActivatedProvider, HookActivation, HookRuntime, ProviderExecution,
     ProviderManifest, ProviderRuntimeContractDescriptor, ProviderRuntimeContractTransport,
 };
 use super::provider_query_pack::{
@@ -105,17 +105,17 @@ pub(crate) fn validate_runtime_contract(manifest: &ProviderManifest) -> Result<(
     {
         require_runtime_operation(
             contract,
-            "projection-batch-stdin",
-            "https://schemas.agent-semantic-protocols.dev/provider-language-projection-batch-request.v1.schema.json",
-            "https://schemas.agent-semantic-protocols.dev/provider-language-projection-batch-response.v1.schema.json",
+            "projection-batch",
+            "https://schemas.agent-semantic-protocols.dev/provider-language-projection-batch-request.schema.json",
+            "https://schemas.agent-semantic-protocols.dev/provider-language-projection-batch-response.schema.json",
         )?;
     }
-    if let Some(descriptor) = manifest.project_resolution() {
+    if manifest.project_resolution().is_some() {
         require_runtime_operation(
             contract,
-            &descriptor.command_binding,
-            &descriptor.request_schema,
-            &descriptor.response_schema,
+            "project-resolution",
+            "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-request.schema.json",
+            "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-response.schema.json",
         )?;
     }
     Ok(())
@@ -231,12 +231,9 @@ fn resolve_activation(
                 activated.manifest_id
             )));
         }
-        validate_selected_provider_binary(activated)?;
         if activated.language_id != manifest.language_id
             || activated.provider_id != manifest.provider_id
-            || activated.execution != manifest.execution
             || activated.search_capabilities != manifest.search_capabilities
-            || activated.language_projection != manifest.language_projection
             || activated.semantic_facts_descriptor != manifest.semantic_facts_descriptor
             || activated.query_pack_descriptor != manifest.query_pack_descriptor
         {
@@ -250,16 +247,11 @@ fn resolve_activation(
             manifest_digest: activated.manifest_digest.clone(),
             language_id: activated.language_id.clone(),
             provider_id: activated.provider_id.clone(),
-            binary: activated.binary.clone(),
-            execution: activated.execution,
-            provider_command_prefix: activated.provider_command_prefix.clone(),
-            execution_command_digest: activated.execution_command_digest.clone(),
             namespace: manifest.namespace.clone(),
             package_roots: activated.coverage.package_roots.clone(),
             source_extensions: activated.coverage.source_extensions.clone(),
             config_files: activated.coverage.config_files.clone(),
             search_capabilities: activated.search_capabilities.clone(),
-            language_projection: activated.language_projection.clone(),
             project_resolution: manifest.project_resolution.clone(),
             document_resolution: manifest.document_resolution.clone(),
             semantic_facts_descriptor: activated.semantic_facts_descriptor.clone(),
@@ -275,27 +267,6 @@ fn resolve_activation(
         providers,
         policy_providers: Vec::new(),
     })
-}
-
-fn validate_selected_provider_binary(
-    activated: &ActivatedProviderConfig,
-) -> Result<(), AgentHookError> {
-    let selected = std::path::Path::new(&activated.binary);
-    let is_logical_basename = selected.components().count() == 1
-        && selected.file_name().and_then(|name| name.to_str()) == Some(activated.binary.as_str());
-    if !is_logical_basename {
-        return Err(AgentHookError::InvalidActivationConfig(format!(
-            "provider activation binary must be a logical basename: manifestId={} binary={}",
-            activated.manifest_id, activated.binary
-        )));
-    }
-    if !activated.provider_command_prefix.is_empty() {
-        return Err(AgentHookError::InvalidActivationConfig(format!(
-            "State Home v1 provider activation command prefix must be empty: manifestId={} binary={}",
-            activated.manifest_id, activated.binary
-        )));
-    }
-    Ok(())
 }
 
 impl HookActivation {

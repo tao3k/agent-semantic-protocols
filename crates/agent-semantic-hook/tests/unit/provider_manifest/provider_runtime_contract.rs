@@ -44,12 +44,12 @@ fn provider_runtime_contract_requires_all_resident_operations() {
     value["runtimeContract"]["operations"]
         .as_array_mut()
         .expect("runtime operations")
-        .retain(|operation| operation["operation"] != "projection-batch-stdin");
+        .retain(|operation| operation["operation"] != "projection-batch");
     let manifest = serde_json::from_value(value).expect("deserialize incomplete operation fixture");
     assert!(
         validate_provider_manifest_contract(&manifest)
             .iter()
-            .any(|error| error.contains("projection-batch-stdin"))
+            .any(|error| error.contains("projection-batch"))
     );
 }
 
@@ -74,14 +74,14 @@ fn julia_is_server_only_and_owns_one_http_runtime_contract() {
         value["runtimeContract"]["operations"],
         serde_json::json!([
             {
-                "operation": "projection-batch-stdin",
-                "requestSchemaId": "https://schemas.agent-semantic-protocols.dev/provider-language-projection-batch-request.v1.schema.json",
-                "responseSchemaId": "https://schemas.agent-semantic-protocols.dev/provider-language-projection-batch-response.v1.schema.json"
+                "operation": "projection-batch",
+                "requestSchemaId": "https://schemas.agent-semantic-protocols.dev/provider-language-projection-batch-request.schema.json",
+                "responseSchemaId": "https://schemas.agent-semantic-protocols.dev/provider-language-projection-batch-response.schema.json"
             },
             {
-                "operation": "project-resolution-stdin",
-                "requestSchemaId": "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-request.v1.schema.json",
-                "responseSchemaId": "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-response.v1.schema.json"
+                "operation": "project-resolution",
+                "requestSchemaId": "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-request.schema.json",
+                "responseSchemaId": "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-response.schema.json"
             }
         ])
     );

@@ -54,7 +54,7 @@ fn language_facade_regular_commands_finish_inside_performance_gate() {
         },
         FacadePerformanceProvider {
             language: "typescript",
-            binary: "ts-harness",
+            binary: "asp-typescript",
             label: "ts",
             owner: "src/index.ts",
             query: "typescriptGate",
@@ -716,7 +716,7 @@ fn dependency_manifest_graph_requests_finish_inside_performance_gate() {
     let cache_home = root.join(".cache");
     let providers = [
         ("rust", "rs-harness", "rs"),
-        ("typescript", "ts-harness", "ts"),
+        ("typescript", "asp-typescript", "ts"),
         ("python", "py-harness", "py"),
         ("julia", "asp-julia-harness", "julia"),
         ("gerbil-scheme", "gslph", "gerbil"),

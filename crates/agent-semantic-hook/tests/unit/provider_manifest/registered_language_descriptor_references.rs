@@ -4,8 +4,9 @@ use std::path::{Component, Path, PathBuf};
 
 #[test]
 fn semantic_language_registry_is_a_bounded_reference_index() {
-    let schema_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../schemas");
-    let registry_path = schema_dir.join("semantic-language-registry.providers.v1.json");
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let schema_dir = workspace_root.join("schemas");
+    let registry_path = schema_dir.join("provider-register.json");
     let registry_source = fs::read_to_string(&registry_path).expect("read registry index");
     assert!(
         registry_source.lines().count() <= 80,
@@ -13,9 +14,9 @@ fn semantic_language_registry_is_a_bounded_reference_index() {
     );
     let registry: serde_json::Value =
         serde_json::from_str(&registry_source).expect("parse registry index");
-    let registrations = registry["languages"]
+    let registrations = registry["providers"]
         .as_array()
-        .expect("registry index languages");
+        .expect("provider register providers");
     let mut references = BTreeSet::new();
 
     for registration in registrations {
@@ -34,16 +35,16 @@ fn semantic_language_registry_is_a_bounded_reference_index() {
             .as_str()
             .expect("reference providerId");
         if matches!(language_id, "rust" | "python" | "gerbil-scheme") {
-            let projection_binding =
-                agent_semantic_hook::registered_provider_projection_command_binding(
+            let projection_operation =
+                agent_semantic_hook::registered_provider_projection_operation(
                     language_id,
                     provider_id,
                 )
-                .expect("projection binding lookup")
+                .expect("projection operation lookup")
                 .unwrap_or_else(|| {
                     panic!("exact language must declare the projection runtime operation: {language_id}")
                 });
-            assert_eq!(projection_binding, "projection-batch-stdin");
+            assert_eq!(projection_operation, "projection-batch");
         }
         let reference = registration["descriptor"]["$ref"]
             .as_str()
@@ -61,7 +62,7 @@ fn semantic_language_registry_is_a_bounded_reference_index() {
             "duplicate descriptor reference"
         );
 
-        let descriptor_source = fs::read_to_string(schema_dir.join(relative))
+        let descriptor_source = fs::read_to_string(workspace_root.join(relative))
             .unwrap_or_else(|error| panic!("read descriptor {reference}: {error}"));
         let descriptor: serde_json::Value = serde_json::from_str(&descriptor_source)
             .unwrap_or_else(|error| panic!("parse descriptor {reference}: {error}"));

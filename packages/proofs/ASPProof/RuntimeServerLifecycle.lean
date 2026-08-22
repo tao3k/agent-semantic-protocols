@@ -15,6 +15,40 @@ structure Receipt where
   drainPublished : Bool
   deriving DecidableEq, Repr
 
+structure OwnerBinding where
+  ownerEpoch : Nat
+  processId : Nat
+  executableIdentity : String
+  deriving DecidableEq, Repr
+
+def verifiedOwner (expected observed : OwnerBinding) : Bool :=
+  expected.ownerEpoch == observed.ownerEpoch &&
+    expected.processId == observed.processId &&
+    expected.executableIdentity == observed.executableIdentity
+
+def fallbackMayTerminate (expected observed : OwnerBinding) : Bool :=
+  verifiedOwner expected observed
+
+theorem owner_binding_mismatch_fails_closed (expected observed : OwnerBinding)
+    (h : verifiedOwner expected observed = false) :
+    fallbackMayTerminate expected observed = false := by
+  exact h
+
+theorem stale_epoch_cannot_terminate (expected observed : OwnerBinding)
+    (h : expected.ownerEpoch ≠ observed.ownerEpoch) :
+    fallbackMayTerminate expected observed = false := by
+  simp [fallbackMayTerminate, verifiedOwner, h]
+
+theorem pid_mismatch_cannot_terminate (expected observed : OwnerBinding)
+    (h : expected.processId ≠ observed.processId) :
+    fallbackMayTerminate expected observed = false := by
+  simp [fallbackMayTerminate, verifiedOwner, h]
+
+theorem executable_mismatch_cannot_terminate (expected observed : OwnerBinding)
+    (h : expected.executableIdentity ≠ observed.executableIdentity) :
+    fallbackMayTerminate expected observed = false := by
+  simp [fallbackMayTerminate, verifiedOwner, h]
+
 def admitted (r : Receipt) : Prop := r.state != .draining ∧ r.state != .exited
 
 def daemonMayShutdown (workspaceCount : Nat) (hadWorkspace : Bool)

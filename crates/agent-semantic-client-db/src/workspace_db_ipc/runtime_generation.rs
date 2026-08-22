@@ -397,6 +397,24 @@ impl WorkspaceDbIpcSession {
         }
     }
 
+    pub async fn restore_runtime_generation_from_pointer(
+        &self,
+    ) -> Result<crate::runtime_server_workspace::WorkspaceRecoveryReceipt, String> {
+        let project_root = self.runtime_project_root()?.display().to_string();
+        let result = self
+            .call_operation(
+                WorkspaceDbIpcOperation::RestoreRuntimeGenerationFromPointer { project_root },
+            )
+            .await?;
+        match result {
+            WorkspaceDbIpcResult::RuntimeGenerationResidentReady { receipt } => {
+                receipt.validate()?;
+                Ok(receipt)
+            }
+            _ => Err("Runtime Server returned an unexpected pointer restoration result".to_owned()),
+        }
+    }
+
     pub async fn admit_runtime_generation_for_read(
         &self,
         language_id: impl Into<String>,

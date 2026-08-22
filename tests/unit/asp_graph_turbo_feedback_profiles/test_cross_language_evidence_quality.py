@@ -27,8 +27,8 @@ from ._language_evidence_packet import language_evidence_graph_turbo_request
         ),
         (
             "typescript",
-            "ts-harness",
-            "agent.semantic-protocols.languages.typescript.ts-harness",
+            "asp-typescript",
+            "agent.semantic-protocols.languages.typescript.asp-typescript",
             "src/service.ts",
         ),
         (

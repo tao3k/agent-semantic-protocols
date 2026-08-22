@@ -61,7 +61,7 @@ fn provider_identity_never_changes_the_subagent_message_grammar() {
 
     for (provider_id, language_id) in [
         ("rs-harness", "rust"),
-        ("ts-harness", "typescript"),
+        ("asp-typescript", "typescript"),
         ("py-harness", "python"),
         ("julia-lang-project-harness", "julia"),
         ("gslph", "gerbil-scheme"),

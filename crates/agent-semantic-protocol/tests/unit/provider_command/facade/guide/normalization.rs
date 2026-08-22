@@ -8,10 +8,10 @@ fn language_facade_guide_normalizes_provider_specific_header() {
     let root = temp_project_root("provider-specific-guide-header-facade");
     let profile_bin_dir = root.join(".profile-bin");
     std::fs::create_dir_all(&profile_bin_dir).expect("create profile bin dir");
-    let provider_path = profile_bin_dir.join("ts-harness");
+    let provider_path = profile_bin_dir.join("asp-typescript");
     std::fs::write(
         &provider_path,
-        "#!/bin/sh\nprintf '[ts-harness-guide] project=/tmp/project\\n'\nprintf '|cmd lexical=ts-harness search lexical --query <seed> --query <seed> owner tests --workspace . --view seeds\\n'\n",
+        "#!/bin/sh\nprintf '[asp-typescript-guide] project=/tmp/project\\n'\nprintf '|cmd lexical=asp-typescript search lexical --query <seed> --query <seed> owner tests --workspace . --view seeds\\n'\n",
     )
     .expect("write provider");
     make_executable(&provider_path);
@@ -32,10 +32,10 @@ fn language_facade_guide_normalizes_provider_specific_header() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("[guide] lang=typescript provider=ts-harness protocol=guide.v1 root=."),
+        stdout.contains("[guide] lang=typescript provider=asp-typescript protocol=guide.v1 root=."),
         "{stdout}"
     );
-    assert!(!stdout.contains("[ts-harness-guide]"), "{stdout}");
+    assert!(!stdout.contains("[asp-typescript-guide]"), "{stdout}");
     assert!(
         stdout.contains(
             "|cmd lexical=asp typescript search lexical --query <seed> --query <seed> owner tests --workspace . --view seeds"

@@ -60,7 +60,7 @@ registry row alone cannot discharge command execution.
 
 * Rust conformance obligations
 
-The CLI adapter must:
+The ASP CLI client must:
 
 1. decode the Runtime Server terminal result;
 2. render a non-empty compact receipt;

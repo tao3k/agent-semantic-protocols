@@ -6,16 +6,16 @@ from jsonschema import Draft202012Validator, ValidationError
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCHEMA_PATH = ROOT / "schemas" / "provider-manifest.v1.schema.json"
+SCHEMA_PATH = ROOT / "schemas" / "provider-manifest.schema.json"
 MANIFESTS = (
-    ROOT / "languages/rust-lang-project-harness/provider/asp-provider-manifest.json",
-    ROOT / "languages/typescript-lang-project-harness/provider/asp-provider-manifest.json",
-    ROOT / "languages/python-lang-project-harness/provider/asp-provider-manifest.json",
+    ROOT / "languages/rust-lang-project-harness/schemas/asp-provider.json",
+    ROOT / "languages/typescript-lang-project-harness/schemas/asp-provider.json",
+    ROOT / "languages/python-lang-project-harness/schemas/asp-provider.json",
     ROOT
-    / "languages/gerbil-scheme-language-project-harness/provider/asp-provider-manifest.json",
-    ROOT / "languages/JuliaLangProjectHarness.jl/juliac/asp-provider-manifest.json",
-    ROOT / "languages/orgize/provider/asp-org-provider-manifest.json",
-    ROOT / "languages/orgize/provider/asp-md-provider-manifest.json",
+    / "languages/gerbil-scheme-language-project-harness/schemas/asp-provider.json",
+    ROOT / "languages/JuliaLangProjectHarness.jl/schemas/asp-provider.json",
+    ROOT / "languages/orgize/schemas/asp-org-provider.json",
+    ROOT / "languages/orgize/schemas/asp-md-provider.json",
 )
 
 

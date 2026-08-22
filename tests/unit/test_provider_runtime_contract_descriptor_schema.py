@@ -7,10 +7,10 @@ from .schema_validation import schema_validator_for
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCHEMA_PATH = ROOT / "schemas" / "provider-runtime-contract-descriptor.v1.schema.json"
+SCHEMA_PATH = ROOT / "schemas" / "provider-runtime-contract-descriptor.schema.json"
 CLIENT_SERVER_SCHEMA_PATHS = (
-    ROOT / "schemas" / "asp-client-server-bootstrap.v1.schema.json",
-    ROOT / "schemas" / "asp-client-server-descriptor.v1.schema.json",
+    ROOT / "schemas" / "asp-client-server-bootstrap.schema.json",
+    ROOT / "schemas" / "asp-client-server-descriptor.schema.json",
 )
 
 
@@ -34,7 +34,7 @@ def contract(transport: str) -> dict[str, object]:
             "schemaId": "agent.semantic-protocols.asp-client-server-descriptor",
             "schemaVersion": "1",
             "transport": "http-json",
-            "command": ["asp-client-server", "serve"],
+        "command": ["serve"],
             "healthPath": "/health",
             "requestPath": "/v1/provider-runtime",
             "shutdownPath": "/shutdown",
@@ -43,12 +43,12 @@ def contract(transport: str) -> dict[str, object]:
     return value
 
 
-def test_runtime_transport_namespace_is_unversioned() -> None:
+def test_runtime_transport_is_http_json_only() -> None:
     schema_validator = validator()
 
-    schema_validator.validate(contract("runtime-ipc"))
+    assert not schema_validator.is_valid(contract("runtime-ipc"))
     schema_validator.validate(contract("http-json"))
-    schema_validator.validate(contract("in-process"))
+    assert not schema_validator.is_valid(contract("in-process"))
 
 
 def test_versioned_and_legacy_runtime_transport_names_are_rejected() -> None:
@@ -62,14 +62,16 @@ def test_versioned_and_legacy_runtime_transport_names_are_rejected() -> None:
 def test_runtime_contract_schema_remains_v1_owned() -> None:
     schema = json.loads(SCHEMA_PATH.read_text())
 
-    assert SCHEMA_PATH.name.endswith(".v1.schema.json")
-    assert schema["$id"].endswith("provider-runtime-contract-descriptor.v1.schema.json")
+    assert SCHEMA_PATH.name == "provider-runtime-contract-descriptor.schema.json"
+    assert schema["$id"].endswith("provider-runtime-contract-descriptor.schema.json")
 
 
 def test_language_client_server_http_namespace_is_unversioned() -> None:
     for schema_path in CLIENT_SERVER_SCHEMA_PATHS:
         schema = json.loads(schema_path.read_text())
         Draft202012Validator.check_schema(schema)
-        assert schema_path.name.endswith(".v1.schema.json")
+        assert schema_path.name.endswith(".schema.json")
+        assert ".v1.schema.json" not in schema_path.name
+        assert ".v1.schema.json" not in schema["$id"]
         assert schema["properties"]["schemaVersion"]["const"] == "1"
         assert schema["properties"]["transport"]["const"] == "http-json"

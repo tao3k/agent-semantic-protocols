@@ -1,9 +1,7 @@
 [languages.rust]
-provider = "asp-rust"
 repo = "tao3k/rust-lang-project-harness"
 version = "v0.1.2"
 downloadBaseUrl = "https://github.com/tao3k/rust-lang-project-harness/releases/download/v0.1.2"
-binary = "asp-rust"
 supportedTargets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-apple-darwin",
@@ -11,44 +9,36 @@ supportedTargets = [
 ]
 
 [languages.typescript]
-provider = "ts-harness"
 repo = "tao3k/typescript-lang-project-harness"
 version = "v0.1.0"
 downloadBaseUrl = "https://github.com/tao3k/typescript-lang-project-harness/releases/download/v0.1.0"
-binary = "ts-harness"
 supportedTargets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-apple-darwin",
 ]
 
 [languages.python]
-provider = "asp-python"
 repo = "tao3k/python-lang-project-harness"
 version = "v0.1.0"
 downloadBaseUrl = "https://github.com/tao3k/python-lang-project-harness/releases/download/v0.1.0"
-binary = "asp-python"
 supportedTargets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-apple-darwin",
 ]
 
 [languages.julia]
-provider = "julia-lang-project-harness"
 repo = "JuliaCN/JuliaLangProjectHarness.jl"
 version = "v0.1.0"
 downloadBaseUrl = "https://github.com/JuliaCN/JuliaLangProjectHarness.jl/releases/download/v0.1.0"
-binary = "asp-julia-harness"
 supportedTargets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-apple-darwin",
 ]
 
 [languages.gerbil-scheme]
-provider = "asp-gerbil-scheme"
 repo = "tao3k/gerbil-scheme-language-project-harness"
 version = "v0.1.0"
 downloadBaseUrl = "https://github.com/tao3k/gerbil-scheme-language-project-harness/releases/download/v0.1.0"
-binary = "asp-gerbil-scheme"
 archivePrefix = "asp-gerbil-scheme"
 archiveBinary = "asp-gerbil-scheme"
 requireNativeBinary = true
@@ -58,11 +48,9 @@ supportedTargets = [
 ]
 
 [languages.org]
-provider = "orgize"
 repo = "tao3k/orgize"
 version = "v0.10.0-alpha.10"
 downloadBaseUrl = "https://github.com/tao3k/orgize/releases/download/v0.10.0-alpha.10"
-binary = "orgize"
 supportedTargets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-apple-darwin",

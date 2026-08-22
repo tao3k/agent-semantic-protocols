@@ -456,8 +456,8 @@ fn default_provider_for_language(language_id: &str) -> (Option<String>, Option<S
             Some("rs-harness".to_string()),
         ),
         "typescript" => (
-            Some("ts-harness".to_string()),
-            Some("ts-harness".to_string()),
+            Some("asp-typescript".to_string()),
+            Some("asp-typescript".to_string()),
         ),
         "python" => (
             Some("py-harness".to_string()),

@@ -1,8 +1,0 @@
-#+title: Compatibility locator: Artifact ledger and improvement state
-#+property: rfc_status compatibility-locator
-
-* Canonical RFC
-
-This historical path is retained only for inbound relative-link compatibility.
-The canonical RFC is [[file:../../10.05-interactive-graph-first-progressive-searchloop/10.05.40-receipts-cache-identity/00.05-artifact-ledger-and-improvement-state.org][Artifact ledger and improvement state]].
-New receipt and ledger semantics MUST be authored under the graph-first RFC tree.

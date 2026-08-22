@@ -3,17 +3,15 @@
 use super::action_match_facade as action_match;
 
 use agent_semantic_config::{
-    HookClientConfigDecision, HookClientConfigFile, HookClientConfigReasonKind,
-    HookClientConfigRouteKind, HookClientConfigStdinMode, HookClientRuleConfig,
-    HookClientRuleMatchConfig, HookClientRuleRouteConfig,
+    HookClientConfigDecision, HookClientConfigFile, HookClientConfigRouteKind,
+    HookClientRuleConfig, HookClientRuleMatchConfig, HookClientRuleRouteConfig,
 };
 
 use crate::hook_config::AspSessionPolicy;
 use crate::hook_config::compile_agent_org_artifacts_config;
 use crate::protocol::{
-    DecisionKind, DecisionRoute, DecisionRouteKind, HOOK_DECISION_SCHEMA_ID,
-    HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
-    ReasonKind, StdinMode,
+    DecisionKind, DecisionRouteKind, HOOK_DECISION_SCHEMA_ID, HOOK_DECISION_SCHEMA_VERSION,
+    HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision, ReasonKind, StdinMode,
 };
 use crate::tool_action::{ToolAction, subject_for_action};
 use crate::{
@@ -21,10 +19,19 @@ use crate::{
     CompiledRecoveryPromptConfig, HookRuntime, collect_source_selector_matches,
 };
 
+#[path = "compiled_rule_conversion.rs"]
+mod conversion;
 #[path = "compiled_rule_environment_assignment.rs"]
 mod environment_assignment;
+#[path = "compiled_rule_matcher_helpers.rs"]
+mod matcher_helpers;
 #[path = "compiled_rule_structured_projection_template.rs"]
 mod structured_projection_template;
+use matcher_helpers::{fast_path_token, path_without_line_range, structured_document_format};
+#[path = "compiled_hook_rule.rs"]
+mod compiled_hook_rule;
+#[path = "compiled_rule_match.rs"]
+mod rule_match_helpers;
 
 #[derive(Debug)]
 /// Compiled hook rules loaded from the global ASP state root.
@@ -98,6 +105,8 @@ pub(super) struct RuleMatch {
     command_contains_any: CompiledCommandContains,
     path_any: Vec<String>,
     path_glob_any: CompiledPathGlobs,
+    profile_extension_any: Vec<String>,
+    profile_any: Vec<agent_semantic_config::HookClientProfileConfig>,
     pub(super) argv_source_any: Vec<String>,
     pub(super) argv_source_glob_any: CompiledPathGlobs,
     pub(super) argv_source_exclude_flag_any: Vec<String>,
@@ -110,7 +119,6 @@ pub(super) struct RuleMatch {
 #[derive(Debug)]
 struct CompiledStructuredProjection {
     config: agent_semantic_config::HookClientStructuredProjectionMatchConfig,
-    capability_available: bool,
 }
 
 #[derive(Default)]
@@ -131,81 +139,8 @@ struct RuleRoute {
 }
 
 impl CompiledHookRule {
-    fn canonical_event_key(&self) -> Option<String> {
-        self.event.as_deref().map(canonical_event)
-    }
-
-    fn canonical_platform_key(&self) -> Option<String> {
-        self.platform
-            .as_ref()
-            .map(|value| value.to_ascii_lowercase())
-    }
-
-    fn durable_matcher_artifact(&self) -> DurableRuleMatcherArtifact {
-        self.match_config.durable_matcher_artifact()
-    }
-
-    fn rendered_message(&self) -> String {
-        compiled_rule_message::render(self)
-    }
-
-    fn needs_decision_paths(&self) -> bool {
-        self.match_config.needs_source_paths()
-    }
-
-    fn matches_before_paths(
-        &self,
-        runtime: &HookRuntime,
-        platform: &str,
-        event: &str,
-        action: &ToolAction,
-        command_tokens: Option<&[String]>,
-    ) -> bool {
-        self.platform
-            .as_deref()
-            .is_none_or(|expected| expected.eq_ignore_ascii_case(platform))
-            && self
-                .event
-                .as_deref()
-                .is_none_or(|expected| canonical_event(expected) == canonical_event(event))
-            && self.match_config.matches_before_paths(
-                runtime,
-                action,
-                command_tokens,
-                Some(action.paths.as_slice()),
-            )
-    }
-
     fn matches_after_paths(&self, runtime: &HookRuntime, paths: &[String]) -> bool {
         self.matches_language(runtime, paths) && self.match_config.matches_paths(paths)
-    }
-
-    fn agent_action_receipt(
-        &self,
-        runtime: &HookRuntime,
-        action: &ToolAction,
-        paths: &[String],
-        structured_source_operands: Option<&[String]>,
-    ) -> Option<serde_json::Value> {
-        self.match_config
-            .agent_action
-            .derive_agent_action_for_rule(runtime, action, Some(paths), structured_source_operands)
-            .map(|agent_action| agent_action.receipt_value())
-    }
-
-    fn matches_language(&self, runtime: &HookRuntime, paths: &[String]) -> bool {
-        if self.language_ids.is_empty() {
-            return true;
-        }
-        if paths.is_empty() {
-            return false;
-        }
-        !collect_source_selector_matches(runtime, paths.iter().map(String::as_str), |provider| {
-            self.language_ids
-                .iter()
-                .any(|language_id| language_id == &provider.language_id)
-        })
-        .is_empty()
     }
 
     fn decision(
@@ -242,12 +177,7 @@ impl CompiledHookRule {
             .iter()
             .map(|route| route.decision_route(runtime))
             .collect::<Vec<_>>();
-        let mut message = self.rendered_message();
-        if self.reason_kind == ReasonKind::SubagentReceiptRequired
-            && let Some(command) = action.command.as_deref()
-        {
-            message.push_str(&format!("\nDenied command: `{command}`."));
-        }
+        let message = self.rendered_message();
         let mut subject = subject_for_action(action);
         subject.paths = paths.to_vec();
         let mut decision_fields = self
@@ -317,6 +247,8 @@ impl RuleMatch {
             command_contains: self.command_contains_any.durable_artifact(),
             path_glob: self.path_glob_any.durable_artifact(),
             argv_source_glob: self.argv_source_glob_any.durable_artifact(),
+            profile_extension_any: self.profile_extension_any.clone(),
+            profile_any: self.profile_any.clone(),
         }
     }
 
@@ -324,17 +256,25 @@ impl RuleMatch {
         mut config: HookClientRuleMatchConfig,
         durable_matcher: Option<DurableRuleMatcherArtifact>,
         policies: ResolvedActionPolicies,
-        executable_capabilities: Option<&std::collections::BTreeSet<String>>,
+        _executable_capabilities: Option<&std::collections::BTreeSet<String>>,
     ) -> Result<Self, String> {
         let mut tool_any = std::mem::take(&mut config.tool_any);
         if let Some(tool) = config.tool.take() {
             tool_any.push(tool);
         }
-        let (command_contains_any, path_glob_any, argv_source_glob_any) = match durable_matcher {
+        let (
+            command_contains_any,
+            path_glob_any,
+            argv_source_glob_any,
+            profile_extension_any,
+            profile_any,
+        ) = match durable_matcher {
             Some(durable) => (
                 CompiledCommandContains::from_durable(durable.command_contains)?,
                 CompiledPathGlobs::from_durable(durable.path_glob)?,
                 CompiledPathGlobs::from_durable(durable.argv_source_glob)?,
+                durable.profile_extension_any,
+                durable.profile_any,
             ),
             None => (
                 compile_command_contains(std::mem::take(&mut config.command_contains_any))?,
@@ -343,6 +283,8 @@ impl RuleMatch {
                     "argvSourceGlobAny",
                     std::mem::take(&mut config.argv_source_glob_any),
                 )?,
+                std::mem::take(&mut config.profile_extension_any),
+                std::mem::take(&mut config.profile_any),
             ),
         };
         Ok(Self {
@@ -369,25 +311,17 @@ impl RuleMatch {
             command_contains_any,
             path_any: config.path_any,
             path_glob_any,
+            profile_extension_any,
+            profile_any,
             argv_source_any: config.argv_source_any,
             argv_source_glob_any,
             argv_source_exclude_flag_any: config.argv_source_exclude_flag_any,
             argv_workspace_regular_file: config.argv_workspace_regular_file,
             argv_structured_document_file: config.argv_structured_document_file,
             argv_registered_source_file: config.argv_registered_source_file,
-            structured_projection: config.structured_projection.map(|config| {
-                let capability_available = executable_capabilities.map_or_else(
-                    || {
-                        crate::executable::resolve_executable_with_status(&config.binary).status
-                            == crate::executable::ExecutableStatus::Available
-                    },
-                    |available| available.contains(&config.binary),
-                );
-                CompiledStructuredProjection {
-                    config,
-                    capability_available,
-                }
-            }),
+            structured_projection: config
+                .structured_projection
+                .map(|config| CompiledStructuredProjection { config }),
         })
     }
 
@@ -408,8 +342,9 @@ impl RuleMatch {
         action: &ToolAction,
         command_tokens: Option<&[String]>,
     ) -> bool {
+        let execute_facts = action.execute_rule_facts(command_tokens);
         self.matches_tool(action)
-            && self.matches_command(action, command_tokens)
+            && self.matches_command(&execute_facts)
             && (self.argv_pattern_any.is_empty()
                 || crate::hook_config::core::registered_asp::match_registered_asp_command(
                     &self.argv_pattern_any,
@@ -428,60 +363,13 @@ impl RuleMatch {
         };
         crate::hook_config::core::structured_projection::match_source_operands(
             &projection.config,
-            projection.capability_available,
             action,
         )
         .map(Some)
         .ok_or(())
     }
 
-    fn matches_paths(&self, paths: &[String]) -> bool {
-        self.matches_path(paths)
-    }
-
-    fn matches_tool(&self, action: &ToolAction) -> bool {
-        self.tool_any.is_empty()
-            || self
-                .tool_any
-                .iter()
-                .any(|tool| tool.eq_ignore_ascii_case(&action.tool_name))
-    }
-
-    fn needs_command_tokens(&self) -> bool {
-        !self.command_any.is_empty()
-            || !self.argv_prefix_any.is_empty()
-            || !self.leading_environment_assignment_any.is_empty()
-            || !self.argv_source_any.is_empty()
-            || !self.argv_source_glob_any.is_empty()
-            || self.argv_workspace_regular_file
-            || self.argv_structured_document_file
-            || self.argv_registered_source_file
-            || self.structured_projection.is_some()
-    }
-
-    fn needs_path_match(&self) -> bool {
-        !self.path_any.is_empty() || !self.path_glob_any.is_empty()
-    }
-
-    fn needs_source_paths(&self) -> bool {
-        self.agent_action.needs_subjects()
-            || self.needs_path_match()
-            || !self.argv_source_any.is_empty()
-            || !self.argv_source_glob_any.is_empty()
-            || self.argv_workspace_regular_file
-            || self.argv_structured_document_file
-            || self.argv_registered_source_file
-    }
-
-    fn needs_argv_source_match(&self) -> bool {
-        !self.argv_source_any.is_empty()
-            || !self.argv_source_glob_any.is_empty()
-            || self.argv_workspace_regular_file
-            || self.argv_structured_document_file
-            || self.argv_registered_source_file
-    }
-
-    fn matches_command(&self, action: &ToolAction, command_tokens: Option<&[String]>) -> bool {
+    fn matches_command(&self, facts: &crate::execute_rule_facts::ExecuteRuleFacts<'_>) -> bool {
         if self.command_any.is_empty()
             && self.argv_prefix_any.is_empty()
             && self.leading_environment_assignment_any.is_empty()
@@ -489,58 +377,55 @@ impl RuleMatch {
         {
             return true;
         }
-        let Some(command) = action.command.as_deref() else {
+        let Some(command) = facts.command() else {
             return false;
         };
-        let matches_prefix = |prefix: &[String]| match self.wrapper_match {
-            agent_semantic_config::WrapperMatchMode::Enable => command_tokens.map_or_else(
-                || {
-                    crate::command_match::bash::parse_bash_command_candidates(command).map_or(
-                        agent_semantic_command_match::PrefixMatch::BudgetExceeded,
-                        |stages| {
-                            agent_semantic_command_match::command_stages_match_wrapped_prefix(
-                                &stages, prefix,
-                            )
-                        },
-                    )
-                },
-                |tokens| {
-                    if tokens.len() > agent_semantic_command_match::MAX_STAGE_TOKENS {
-                        agent_semantic_command_match::PrefixMatch::BudgetExceeded
-                    } else {
-                        if prefix.is_empty()
-                            || tokens.windows(prefix.len()).any(|candidate| {
-                                agent_semantic_command_match::candidate_matches_prefix(
-                                    candidate, prefix,
-                                )
-                            })
-                        {
-                            agent_semantic_command_match::PrefixMatch::Matched
-                        } else {
-                            agent_semantic_command_match::PrefixMatch::NotMatched
-                        }
-                    }
-                },
-            ),
-        };
         let token_match = self.command_any.is_empty()
-            || self
-                .command_any
-                .iter()
-                .any(|expected| matches_prefix(std::slice::from_ref(expected)).routes_protected());
+            || self.command_any.iter().any(|expected| {
+                facts
+                    .matches_wrapped_prefix(self.wrapper_match, std::slice::from_ref(expected))
+                    .routes_protected()
+            });
         let contains_match =
             self.command_contains_any.is_empty() || self.command_contains_any.matches(command);
         let prefix_match = self.argv_prefix_any.is_empty()
-            || self
-                .argv_prefix_any
-                .iter()
-                .any(|prefix| matches_prefix(prefix).routes_protected());
-        let leading_environment_match = environment_assignment::matches(command, &self.leading_environment_assignment_any, action.leading_shell_stage);
+            || self.argv_prefix_any.iter().any(|prefix| {
+                facts
+                    .matches_wrapped_prefix(self.wrapper_match, prefix)
+                    .routes_protected()
+            });
+        let leading_environment_match = environment_assignment::matches(
+            command,
+            &self.leading_environment_assignment_any,
+            facts.leading_shell_stage(),
+        );
         token_match && prefix_match && contains_match && leading_environment_match
     }
 
+    pub(super) fn matching_profile(
+        &self,
+        paths: &[String],
+    ) -> Option<&agent_semantic_config::HookClientProfileConfig> {
+        self.profile_any.iter().find(|profile| {
+            paths.iter().any(|path| {
+                std::path::Path::new(path)
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    .is_some_and(|extension| {
+                        profile
+                            .extension_any
+                            .iter()
+                            .any(|expected| extension.eq_ignore_ascii_case(expected))
+                    })
+            })
+        })
+    }
+
     fn matches_path(&self, paths: &[String]) -> bool {
-        if self.path_any.is_empty() && self.path_glob_any.is_empty() {
+        if self.path_any.is_empty()
+            && self.path_glob_any.is_empty()
+            && self.profile_extension_any.is_empty()
+        {
             return true;
         }
         let exact_match = !self.path_any.is_empty()
@@ -550,7 +435,17 @@ impl RuleMatch {
                     .any(|expected| path == expected || path.ends_with(expected))
             });
         let glob_match = paths.iter().any(|path| self.path_glob_any.matches(path));
-        exact_match || glob_match
+        let profile_extension_match = paths.iter().any(|path| {
+            std::path::Path::new(path)
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| {
+                    self.profile_extension_any
+                        .iter()
+                        .any(|expected| extension.eq_ignore_ascii_case(expected))
+                })
+        });
+        exact_match || glob_match || profile_extension_match
     }
 
     pub(super) fn fast_argv_source_path(
@@ -611,81 +506,6 @@ impl RuleMatch {
         }
         self.matches_configured_document_format(&candidate)
     }
-
-    fn matches_configured_document_format(&self, candidate: &std::path::Path) -> bool {
-        if self.argv_structured_document_file && structured_document_format(candidate).is_none() {
-            return false;
-        }
-        self.matches_structured_projection_format(candidate)
-    }
-
-    fn matches_structured_projection_format(&self, candidate: &std::path::Path) -> bool {
-        let Some(projection) = self.structured_projection.as_ref() else {
-            return true;
-        };
-        let format = structured_document_format(candidate);
-        format.is_some_and(|format| format == projection.config.document_format)
-    }
-}
-
-fn structured_document_format(
-    candidate: &std::path::Path,
-) -> Option<agent_semantic_config::HookClientStructuredFormat> {
-    candidate
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .and_then(|extension| match extension.to_ascii_lowercase().as_str() {
-            "json" => Some(agent_semantic_config::HookClientStructuredFormat::Json),
-            "toml" => Some(agent_semantic_config::HookClientStructuredFormat::Toml),
-            _ => None,
-        })
-}
-
-fn fast_path_token(token: &str) -> Option<&str> {
-    if token.starts_with('-') {
-        return None;
-    }
-    let trimmed = token.trim_matches(|ch| matches!(ch, '"' | '\'' | ',' | ';'));
-    let path = trimmed.strip_prefix("file://").unwrap_or(trimmed);
-    path.contains('.').then_some(path)
-}
-
-fn path_without_line_range(path: &str) -> Option<&str> {
-    let (base, suffix) = path.rsplit_once(':')?;
-    if suffix.chars().all(|character| character.is_ascii_digit()) {
-        let (base, start) = base.rsplit_once(':')?;
-        return start
-            .chars()
-            .all(|character| character.is_ascii_digit())
-            .then_some(base);
-    }
-    let (start, end) = suffix.split_once('-')?;
-    (!start.is_empty()
-        && !end.is_empty()
-        && start.chars().all(|character| character.is_ascii_digit())
-        && end.chars().all(|character| character.is_ascii_digit()))
-    .then_some(base)
-}
-
-impl RuleRoute {
-    fn decision_route(&self, runtime: &HookRuntime) -> DecisionRoute {
-        let provider = runtime
-            .providers
-            .iter()
-            .find(|provider| provider.provider_id == self.provider_id);
-        DecisionRoute {
-            language_id: self.language_id.clone(),
-            provider_id: self.provider_id.clone(),
-            binary: self
-                .binary
-                .clone()
-                .or_else(|| provider.map(|provider| provider.binary.clone()))
-                .unwrap_or_default(),
-            kind: self.kind,
-            argv: self.argv.clone(),
-            stdin_mode: self.stdin_mode,
-        }
-    }
 }
 
 impl TryFrom<HookClientRuleConfig> for CompiledHookRule {
@@ -731,6 +551,14 @@ impl CompiledHookRule {
         durable_matcher: Option<DurableRuleMatcherArtifact>,
         executable_capabilities: Option<&std::collections::BTreeSet<String>>,
     ) -> Result<Self, String> {
+        let wrapper_match =
+            if config.matcher_policies.iter().any(|policy| {
+                *policy == agent_semantic_config::HookClientMatcherPolicy::WrappedCommand
+            }) {
+                agent_semantic_config::WrapperMatchMode::Enable
+            } else {
+                wrapper_match
+            };
         let dispatch = config
             .dispatch
             .map(|dispatch| {
@@ -932,20 +760,6 @@ impl TryFrom<HookClientRuleRouteConfig> for RuleRoute {
     }
 }
 
-impl From<HookClientConfigReasonKind> for ReasonKind {
-    fn from(kind: HookClientConfigReasonKind) -> Self {
-        match kind {
-            HookClientConfigReasonKind::None => Self::None,
-            HookClientConfigReasonKind::DirectSourceRead => Self::DirectSourceRead,
-            HookClientConfigReasonKind::StructuredSourceRead => Self::StructuredSourceRead,
-            HookClientConfigReasonKind::BulkSourceDump => Self::BulkSourceDump,
-            HookClientConfigReasonKind::RawBroadSearch => Self::RawBroadSearch,
-            HookClientConfigReasonKind::AgentSearchJson => Self::AgentSearchJson,
-            HookClientConfigReasonKind::SubagentReceiptRequired => Self::SubagentReceiptRequired,
-        }
-    }
-}
-
 impl From<HookClientConfigRouteKind> for DecisionRouteKind {
     fn from(kind: HookClientConfigRouteKind) -> Self {
         match kind {
@@ -959,17 +773,6 @@ impl From<HookClientConfigRouteKind> for DecisionRouteKind {
             HookClientConfigRouteKind::Ingest => Self::Ingest,
             HookClientConfigRouteKind::Tests => Self::Tests,
             HookClientConfigRouteKind::CheckChanged => Self::CheckChanged,
-        }
-    }
-}
-
-impl From<HookClientConfigStdinMode> for StdinMode {
-    fn from(mode: HookClientConfigStdinMode) -> Self {
-        match mode {
-            HookClientConfigStdinMode::None => Self::None,
-            HookClientConfigStdinMode::PipeCandidates => Self::PipeCandidates,
-            HookClientConfigStdinMode::PipeDiff => Self::PipeDiff,
-            HookClientConfigStdinMode::Unknown => Self::Unknown,
         }
     }
 }

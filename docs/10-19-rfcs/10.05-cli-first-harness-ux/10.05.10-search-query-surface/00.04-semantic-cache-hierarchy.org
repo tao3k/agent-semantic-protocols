@@ -1,8 +1,0 @@
-#+title: Compatibility locator: Semantic cache hierarchy
-#+property: rfc_status compatibility-locator
-
-* Canonical RFC
-
-This historical path is retained only for inbound relative-link compatibility.
-The canonical RFC is [[file:../../10.05-interactive-graph-first-progressive-searchloop/10.05.40-receipts-cache-identity/00.04-semantic-cache-hierarchy.org][Semantic cache hierarchy]].
-New cache semantics MUST be authored under the graph-first RFC tree.

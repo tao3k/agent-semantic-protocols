@@ -32,7 +32,20 @@ impl RuntimeServerWorkspaceRegistry {
                         )
                         .await
                         {
-                            Ok(_client) => Ok(super::PublishedWorkspaceGenerationState::Ready),
+                            Ok(client) => {
+                                let workspace_generation = &client.authority().workspace_generation;
+                                if workspace_generation.owner_count == 0
+                                    && workspace_generation.leaf_count == 0
+                                {
+                                    return Ok(
+                            super::PublishedWorkspaceGenerationState::RecoveryRequired {
+                                reason: "provider-owner-inventory-empty: published generation has zero owners and zero leaves"
+                                    .to_owned(),
+                            },
+                        );
+                                }
+                                Ok(super::PublishedWorkspaceGenerationState::Ready)
+                            }
                             Err(reason) => {
                                 Ok(super::PublishedWorkspaceGenerationState::RecoveryRequired {
                                     reason,
@@ -64,21 +77,9 @@ impl RuntimeServerWorkspaceRegistry {
         project_root: &Path,
     ) -> Result<super::WorkspaceRecoveryReceipt, String> {
         let workspace_identity = workspace_identity.into();
-        let pointer_path = super::workspace_generation_pointer_path(
-            &self.root,
-            &workspace_identity,
-            project_root,
-        )?;
-        let snapshot = super::WorkspaceGenerationPointerReader::open(&pointer_path)
-            .await?
-            .read()?;
-        self.restore_checkpoint(
-            request_id,
-            workspace_identity,
-            project_root,
-            snapshot.mmap_segment_path.into(),
-        )
-        .await
+        self.ensure_entry_ready(&workspace_identity, project_root)
+            .await?;
+        self.ready_recovery_receipt(request_id, &workspace_identity, project_root)
     }
 
     /// Returns a typed ready receipt without reopening durable state when the generation is resident.

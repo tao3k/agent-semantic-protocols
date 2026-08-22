@@ -81,7 +81,7 @@ class ReceiptCountValidationTests(unittest.TestCase):
                                 "id": "text-json",
                                 "kind": "search",
                                 "argv": [
-                                    "ts-harness",
+                                    "asp-typescript",
                                     "search",
                                     "text",
                                     "projectRoot",

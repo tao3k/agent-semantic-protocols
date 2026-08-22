@@ -116,7 +116,7 @@ Code owners:
 Tasks:
 
 1. Standardize guide routes through =asp <language>= for agent-facing output.
-2. Keep =rs-harness=, =ts-harness=, and =py-harness= available as provider
+2. Keep =rs-harness=, =asp-typescript=, and =py-harness= available as provider
    implementation/debug routes, not the default agent prompt route.
 3. Validate every guide command by replaying it in guide-quality tests.
 4. Reject stale forms such as =search query --from-hook=, singular
@@ -384,7 +384,7 @@ The guide-route replay slice is now tightened across the active provider
 surface:
 
 - TypeScript and Python =agent guide= output now advertises =asp typescript=
-  and =asp python= commands instead of =ts-harness= or =py-harness= prompt
+  and =asp python= commands instead of =asp-typescript= or =py-harness= prompt
   routes.
 - TypeScript and Python retired =agent install= / =agent hook= errors now point
   to replayable =asp hook ...= commands instead of the retired root hook binary

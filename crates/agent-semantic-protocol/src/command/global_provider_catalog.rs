@@ -470,7 +470,7 @@ pub(crate) fn runtime_provider_registry_snapshot(
 
 pub(super) fn publish_global_provider_catalog(
     state_home: &Path,
-    receipts: &[super::install_provider_reconcile::ProviderInstallReceipt],
+    receipts: &[agent_semantic_runtime::ProviderInstallReceipt],
 ) -> Result<GlobalProviderCatalogPublication, String> {
     let started_at = std::time::Instant::now();
     let receipt_read_micros = 0;
@@ -775,7 +775,7 @@ pub(super) fn publish_global_provider_catalog(
 pub(super) fn active_catalog_matches_receipts(
     active: &GlobalProviderCatalog,
     manifests: &[agent_semantic_hook::ProviderManifest],
-    receipts: &[super::install_provider_reconcile::ProviderInstallReceipt],
+    receipts: &[agent_semantic_runtime::ProviderInstallReceipt],
     catalog_identities: &[agent_semantic_hook::RegisteredProviderCatalogIdentity],
 ) -> bool {
     active.providers.len() == manifests.len()

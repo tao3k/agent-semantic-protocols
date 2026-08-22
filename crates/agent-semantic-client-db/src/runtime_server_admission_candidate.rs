@@ -131,7 +131,9 @@ pub async fn discover_workspace_generation_candidate_with_cancellation(
     result
 }
 
-fn resident_non_git_candidate(project_root: &std::path::Path) -> WorkspaceGenerationCandidateIdentity {
+fn resident_non_git_candidate(
+    project_root: &std::path::Path,
+) -> WorkspaceGenerationCandidateIdentity {
     // This identity is deliberately path-scoped, not a filesystem owner scan.
     // The Server-owned generation transaction supplies source/overlay evidence;
     // a non-Git workspace must not be rejected or force owner rescans merely to
@@ -152,7 +154,9 @@ fn resident_non_git_candidate(project_root: &std::path::Path) -> WorkspaceGenera
         candidate_generation: agent_semantic_runtime::git::RepositoryCandidateGeneration {
             algorithm: "blake3-worktree-state-v1".to_owned(),
             digest: candidate_generation,
-            authorities: vec![agent_semantic_runtime::git::RepositoryCandidateAuthority::ServerResident],
+            authorities: vec![
+                agent_semantic_runtime::git::RepositoryCandidateAuthority::ServerResident,
+            ],
         },
         policy_overlay_digest,
     }

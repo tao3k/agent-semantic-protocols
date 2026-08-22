@@ -110,7 +110,7 @@ fn json_string_paths_containing(
 fn registered_provider_query_routes_are_exact_selector_only() {
     let registry_source = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../schemas/semantic-language-registry.providers.v1.json"
+        "/../../schemas/provider-register.json"
     ));
     let registry_json =
         serde_json::from_str::<serde_json::Value>(registry_source).expect("valid v1 registry JSON");

@@ -459,8 +459,8 @@ Regression tests:
 ## Implementation Order
 
 1. Update the RFC surface under
-   `docs/10-19-rfcs/10.05-cli-first-harness-ux/` with the session
-   observability boundary and include it from `10.05-cli-first-harness-ux.org`.
+   `docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/` with the session
+   observability boundary and include it from `10.05-interactive-graph-first-progressive-searchloop.org`.
 2. Add the session event, session receipt, and feedback packet schemas.
 3. Extend the sandtable schema and receipt schema with additive session links.
 4. Add session artifact writing around the existing Claude SDK runner.

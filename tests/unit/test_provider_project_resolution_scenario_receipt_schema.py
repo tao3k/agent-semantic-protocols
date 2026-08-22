@@ -46,7 +46,7 @@ def test_scenario_receipt_rejects_local_scan_or_database_fallback() -> None:
         "schemaId": "agent.semantic-protocols.provider-project-resolution-scenario-receipt",
         "schemaVersion": "1",
         "languageId": "typescript",
-        "providerId": "ts-harness",
+        "providerId": "asp-typescript",
         "packageManager": "npm",
         "scenarioId": "workspace-members",
         "state": "passed",

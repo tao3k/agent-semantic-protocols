@@ -69,7 +69,7 @@
             "$ref": "#/$defs/contentDigest"
           },
         "runtimeContract": {
-          "$ref": "https://schemas.agent-semantic-protocols.dev/provider-runtime-contract-descriptor.v1.schema.json"
+          "$ref": "https://schemas.agent-semantic-protocols.dev/provider-runtime-contract-descriptor.schema.json"
         },
         "materializedPath": {
           "type": "string",

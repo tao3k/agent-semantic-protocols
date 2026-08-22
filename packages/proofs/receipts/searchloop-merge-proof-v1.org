@@ -13,7 +13,7 @@
 - Proof package: =packages/proofs=
 - Lean module: =ASPProof.SearchLoopMerge=
 - RFC module:
-  =docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.13-searchloop-merge-algebra.org=
+  =docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.10-interactive-searchloop/00.13-searchloop-merge-algebra.org=
 
 ** Verified obligations
 

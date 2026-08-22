@@ -9,8 +9,7 @@
 
 Experimental implementation and proof slice.
 
-This module belongs to the interactive graph-first SearchLoop architecture. It
-does not extend the historical CLI-first command surface. Its executable owner
+This module belongs to the server-first graph SearchLoop architecture. Its executable owner
 is =packages/python/asp_graph_turbo= and its proof owner is =packages/proofs=.
 
 * Problem

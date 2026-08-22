@@ -58,7 +58,7 @@ fn root_query_facade_non_rust_exact_selectors_are_provider_owned_and_fail_closed
     let cases = [
         Case {
             language: "typescript",
-            provider_binary: "ts-harness",
+            provider_binary: "asp-typescript",
             path: "src/main.ts",
             source: "export function runCli(): number {\n  return 0;\n}\n",
             term: "runCli",
@@ -233,7 +233,7 @@ fn root_query_facade_typescript_exact_selector_fails_closed_on_empty_packet() {
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::write(root.join("src/main.ts"), "export function runCli() {}\n")
         .expect("write source");
-    write_marker_provider(&bin_dir, "ts-harness", &provider_marker);
+    write_marker_provider(&bin_dir, "asp-typescript", &provider_marker);
     write_activation(&root, &[provider("typescript", Vec::new())]);
 
     let output = asp_command(&root)

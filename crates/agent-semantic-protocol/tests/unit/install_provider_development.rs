@@ -71,7 +71,7 @@ fn artifact_admission_has_only_checkout_and_typed_state_staging_domains() {
         state_home,
         "py-harness",
         ProviderDevelopmentArtifactDomain::StateHomeProviderStaging,
-        std::path::Path::new("/state/runtime/provider-artifacts/ts-harness/develop/py-harness")
+        std::path::Path::new("/state/runtime/provider-artifacts/asp-typescript/develop/py-harness")
     ));
     assert!(!development_artifact_is_authorized(
         provider_source_root,

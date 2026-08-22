@@ -17,19 +17,13 @@ fn isolated_state_home() -> std::path::PathBuf {
 #[test]
 fn start_publishes_a_healthy_endpoint_after_owner_spawn() {
     let state_home = isolated_state_home();
-    let installed_binary = state_home.join("runtime/bin/asp");
     std::fs::create_dir_all(&state_home).expect("create isolated ASP state home");
+    let state_home = std::fs::canonicalize(state_home).expect("canonical ASP state home");
+    let installed_binary = state_home.join("runtime/bin/asp");
 
     let install = Command::new(env!("CARGO_BIN_EXE_asp"))
         .env("ASP_STATE_HOME", &state_home)
-        .args([
-            "install",
-            "binary",
-            "--target",
-            installed_binary
-                .to_str()
-                .expect("isolated binary path must be UTF-8"),
-        ])
+        .args(["install", "binary"])
         .output()
         .expect("install isolated ASP binary");
     assert!(
@@ -113,19 +107,13 @@ fn start_publishes_a_healthy_endpoint_after_owner_spawn() {
 #[test]
 fn concurrent_starts_share_one_runtime_server_owner() {
     let state_home = isolated_state_home();
-    let installed_binary = state_home.join("runtime/bin/asp");
     std::fs::create_dir_all(&state_home).expect("create isolated ASP state home");
+    let state_home = std::fs::canonicalize(state_home).expect("canonical ASP state home");
+    let installed_binary = state_home.join("runtime/bin/asp");
 
     let install = Command::new(env!("CARGO_BIN_EXE_asp"))
         .env("ASP_STATE_HOME", &state_home)
-        .args([
-            "install",
-            "binary",
-            "--target",
-            installed_binary
-                .to_str()
-                .expect("isolated binary path must be UTF-8"),
-        ])
+        .args(["install", "binary"])
         .output()
         .expect("install isolated ASP binary");
     assert!(install.status.success(), "isolated binary install failed");

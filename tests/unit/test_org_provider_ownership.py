@@ -27,11 +27,11 @@ def test_orgize_owns_org_and_markdown_provider_manifests() -> None:
     assert not (ROOT / "org/provider/asp-md-provider-manifest.json").exists()
 
     expected_languages = {
-        "asp-org-provider-manifest.json": "org",
-        "asp-md-provider-manifest.json": "md",
+        "asp-org-provider.json": "org",
+        "asp-md-provider.json": "md",
     }
     for manifest_name, language_id in expected_languages.items():
-        manifest_path = ROOT / "languages/orgize/provider" / manifest_name
+        manifest_path = ROOT / "languages/orgize/schemas" / manifest_name
         manifest = json.loads(manifest_path.read_text())
         assert manifest["providerId"] == "orgize"
         assert manifest["binary"] == "orgize"

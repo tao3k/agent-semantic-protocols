@@ -10,8 +10,8 @@ fn search_json_routes_to_compact_search() {
         "codex",
         "pre-tool",
         &json!({
-            "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": "ts-harness search lexical projectRoot owner tests --json ."}
+            "tool_name": "exec_command",
+            "tool_input": {"cmd": "asp-typescript search lexical projectRoot owner tests --json ."}
         }),
     );
 
@@ -56,7 +56,7 @@ fn search_json_owner_routes_to_provider_owner_query() {
         "pre-tool",
         &json!({
             "tool_name": "functions.exec_command",
-            "tool_input": {"cmd": "ts-harness search owner src/cli/agent-hooks.ts items --query agent-hooks --json ."}
+            "tool_input": {"cmd": "asp-typescript search owner src/cli/agent-hooks.ts items --query agent-hooks --json ."}
         }),
     );
 

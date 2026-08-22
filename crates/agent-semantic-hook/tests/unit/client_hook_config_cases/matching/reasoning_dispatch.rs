@@ -373,11 +373,23 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
                             expected_message.push_str(expected_command);
                             expected_message.push_str("`.");
                         }
-                        assert_eq!(
-                            decision_json["message"].as_str(),
-                            Some(expected_message.as_str()),
-                            "positive case bypassed the shared declarative dispatch renderer: {case_id}"
-                        );
+        let actual_message = decision_json["message"]
+            .as_str()
+            .expect("positive dispatch message");
+        if decision_json["fields"]["configRuleId"].as_str()
+            == Some("registered-asp-reasoning-search")
+        {
+            assert!(
+                actual_message.starts_with(
+                    "Raw search over registered source is denied only in the current Agent."
+                ),
+                "registered search lost the Config TOML policy message: {case_id}: {actual_message}"
+            );
+        }
+        assert!(
+            actual_message.contains(&expected_message),
+            "positive case lost the shared dynamic dispatch guidance: {case_id}: {actual_message}"
+        );
                     }
                     for forbidden in ["receiptKind", "residentName"] {
                         assert!(
@@ -440,12 +452,12 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
             let requires_unavailable_projection =
                 unavailable_projection_binaries.iter().any(|binary| {
                     matches!(
-                        agent_semantic_command_match::match_bash_wrapped_command_prefix(
+                        agent_semantic_shell_parser::match_bash_wrapped_command_prefix(
                             command,
                             &[*binary],
                         ),
-                        agent_semantic_command_match::BashCommandMatchV1::Parsed(
-                            agent_semantic_command_match::PrefixMatch::Matched
+        agent_semantic_shell_parser::BashCommandMatch::Parsed(
+                            agent_semantic_shell_parser::PrefixMatch::Matched
                         )
                     )
                 });

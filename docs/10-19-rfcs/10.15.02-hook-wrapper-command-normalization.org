@@ -29,7 +29,7 @@ The canonical hook =config.toml= requires wrapper matching to be enabled by
 default:
 
 #+begin_src toml
-wrapper_match = "enable"
+matcherPolicies = ["wrapped_command"]
 #+end_src
 
 =enable= means every command rule is evaluated against the original argv and

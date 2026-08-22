@@ -14,6 +14,7 @@ fn provider_search_missing_resident_index_is_typed() {
             index_artifact_digest: None,
         },
         0,
+        Vec::new(),
     )
     .expect_err("missing resident source index must fail closed");
     assert_eq!(
@@ -35,6 +36,7 @@ fn provider_search_receipt_exposes_runtime_timing_and_zero_external_work() {
             index_artifact_digest: None,
         },
         7,
+        Vec::new(),
     )
     .expect("resident miss is a successful terminal search");
 

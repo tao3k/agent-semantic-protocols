@@ -29,8 +29,6 @@ const DEFAULT_HOOK_CLIENT_CONFIG_TEMPLATE: &str = include_str!("../../templates/
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientConfigFile {
-    #[serde(default, rename = "wrapper_match")]
-    pub wrapper_match: WrapperMatchMode,
     #[serde(default)]
     pub schema_id: Option<String>,
     #[serde(default)]
@@ -56,6 +54,8 @@ pub struct HookClientConfigFile {
     #[serde(default)]
     pub language_providers: Vec<HookClientLanguageProviderConfig>,
     #[serde(default)]
+    pub profiles: BTreeMap<String, HookClientProfileConfig>,
+    #[serde(default)]
     pub action_policies: Vec<HookClientActionPolicyConfig>,
     #[serde(default)]
     pub rules: Vec<HookClientRuleConfig>,
@@ -72,6 +72,14 @@ pub struct HookClientLanguageProviderConfig {
     pub provider_id: String,
     pub manifest_digest: String,
     pub source_extensions: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientProfileConfig {
+    pub language_id: String,
+    pub provider_id: String,
+    pub extension_any: Vec<String>,
 }
 
 /// Optional hook recovery prompt template and per-client agent-flow fragments.
@@ -153,6 +161,70 @@ pub struct AspProjectHookConfig {
 ///
 /// Rules replace complete rules with the same `id`. Agent identities are owned by
 /// `agents/config.toml` plus the platform projection files and cannot be overlaid here.
+pub fn materialize_profile_rule_ir(config: &mut HookClientConfigFile) -> Result<(), String> {
+    for rule in &mut config.rules {
+        for action in &rule.actions {
+            if !rule.match_config.action_any.contains(action) {
+                rule.match_config.action_any.push(*action);
+            }
+        }
+
+        if rule.profiles_list.is_empty() {
+            continue;
+        }
+
+        let mut has_registered_profile = false;
+        for profile_id in &rule.profiles_list {
+            let profile = config.profiles.get(profile_id).ok_or_else(|| {
+                format!(
+                    "rule {} profilesList references unknown profile {profile_id:?}",
+                    rule.id
+                )
+            })?;
+            has_registered_profile = true;
+            if !rule.match_config.profile_any.contains(profile) {
+                rule.match_config.profile_any.push(profile.clone());
+            }
+            let mut provider = config.language_providers.iter_mut().find(|provider| {
+                provider.language_id == profile.language_id
+                    && provider.provider_id == profile.provider_id
+            });
+            for extension in &profile.extension_any {
+                let extension = extension.trim().to_ascii_lowercase();
+                if !rule.match_config.profile_extension_any.contains(&extension) {
+                    rule.match_config
+                        .profile_extension_any
+                        .push(extension.clone());
+                }
+                if let Some(provider) = provider.as_deref_mut() {
+                    let provider_extension = format!(".{extension}");
+                    if !provider.source_extensions.contains(&provider_extension) {
+                        provider.source_extensions.push(provider_extension);
+                    }
+                }
+            }
+        }
+
+        if has_registered_profile {
+            rule.decision_materializer =
+                Some(super::routing::HookClientDecisionMaterializer::SourceAccess);
+        } else {
+            rule.enabled = false;
+        }
+    }
+    Ok(())
+}
+
+impl HookClientConfigFile {
+    pub fn validate(&self) -> Result<(), String> {
+        validate_config(self)
+    }
+
+    pub fn materialize_profile_rule_ir(&mut self) -> Result<(), String> {
+        materialize_profile_rule_ir(self)
+    }
+}
+
 pub fn merge_asp_project_hook_config(
     mut base: HookClientConfigFile,
     project: AspProjectConfigFile,
@@ -460,4 +532,5 @@ impl Default for HookClientAgentOrgArtifactsArchiveWarningConfig {
 pub enum WrapperMatchMode {
     #[default]
     Enable,
+    Off,
 }

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-response.schema.json",
+  "title": "Provider Project Scope Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "languageId", "providerId", "state"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.provider-project-resolution-response" },
+    "schemaVersion": { "const": "1" },
+    "languageId": { "type": "string", "minLength": 1 },
+    "providerId": { "type": "string", "minLength": 1 },
+    "state": { "enum": ["resolved", "failed", "not-applicable"] },
+    "scope": { "$ref": "https://schemas.agent-semantic-protocols.dev/project-resolution.schema.json" },
+    "failure": { "$ref": "#/$defs/failure" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "resolved" } }, "required": ["state"] },
+      "then": { "required": ["scope"], "not": { "required": ["failure"] } }
+    },
+    {
+      "if": { "properties": { "state": { "const": "failed" } }, "required": ["state"] },
+      "then": { "required": ["failure"], "not": { "required": ["scope"] } }
+    },
+    {
+      "if": { "properties": { "state": { "const": "not-applicable" } }, "required": ["state"] },
+      "then": {
+        "not": {
+          "anyOf": [
+            { "required": ["scope"] },
+            { "required": ["failure"] }
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reasonKind", "message", "nextAction"],
+      "properties": {
+        "reasonKind": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "nextAction": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

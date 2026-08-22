@@ -28,6 +28,7 @@ pub struct RuntimeMerkleOwnerProofQualificationReceiptV1 {
     pub provider_id: String,
     pub workspace_identity: String,
     pub generation_digest: Option<String>,
+    /// Resident owner-path Merkle root, not the workspace source snapshot root.
     pub root_digest: Option<String>,
     pub owner_path: Option<String>,
     pub owner_content_digest: Option<String>,

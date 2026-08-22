@@ -18,7 +18,7 @@ packages/proofs/ASPProof/SearchRouteDAGEnumeration.lean
 RFC owner:
 
 #+begin_example
-docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.18-searchroute-constructive-enumeration.org
+docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00.18-searchroute-constructive-enumeration.org
 #+end_example
 
 The RFC contains the named Org-Babel Typst source

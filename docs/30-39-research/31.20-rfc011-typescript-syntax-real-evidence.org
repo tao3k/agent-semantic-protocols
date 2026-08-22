@@ -12,7 +12,7 @@ It is evidence for the native-projection v1 lane only.  It does not claim cache 
 * Evidence record
 
 #+begin_example
-[syntax-real-evidence] language=typescript provider=ts-harness project=typescript-lang-project-harness
+[syntax-real-evidence] language=typescript provider=asp-typescript project=typescript-lang-project-harness
 commands=search-prime,syntax-frontier,exact-selector-code,hook-recovery
 metrics=commandCount=6,providerProcessCount=6,packetBytes=13040,coldElapsedMs=31,warmElapsedMs=50
 metrics=syntaxQueryCount=3,exactCodeCount=1,manualRangeScanCount=0,repeatedTriggerReduction=0

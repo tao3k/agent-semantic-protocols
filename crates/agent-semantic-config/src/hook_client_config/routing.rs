@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Eq, PartialEq)]
 pub enum HookClientDecisionMaterializer {
     AgentSearchJson,
     ApplyPatch,
@@ -34,6 +35,12 @@ pub struct HookClientRuleConfig {
     pub reason_kind: Option<HookClientConfigReasonKind>,
     #[serde(default)]
     pub message: Option<String>,
+    #[serde(default)]
+    pub actions: Vec<HookClientActionKind>,
+    #[serde(default)]
+    pub profiles_list: Vec<String>,
+    #[serde(default)]
+    pub matcher_policies: Vec<HookClientMatcherPolicy>,
     #[serde(default)]
     pub language_ids: Vec<String>,
     #[serde(default)]
@@ -102,6 +109,7 @@ impl HookClientRuleDispatchTransport {
 /// Shared host action spelling used by declarative hook rules.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Hash)]
 pub enum HookClientActionKind {
     Read,
     Edit,
@@ -112,6 +120,12 @@ pub enum HookClientActionKind {
     Build,
     Delete,
     Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HookClientMatcherPolicy {
+    WrappedCommand,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -187,6 +201,10 @@ pub struct HookClientRuleMatchConfig {
     pub path_any: Vec<String>,
     #[serde(default)]
     pub path_glob_any: Vec<String>,
+    #[serde(default, skip_deserializing, skip_serializing)]
+    pub profile_extension_any: Vec<String>,
+    #[serde(default, skip_deserializing, skip_serializing)]
+    pub profile_any: Vec<super::document::HookClientProfileConfig>,
     #[serde(default)]
     pub argv_source_any: Vec<String>,
     #[serde(default)]

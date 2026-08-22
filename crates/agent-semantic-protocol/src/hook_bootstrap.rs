@@ -164,7 +164,7 @@ async fn run_hook_bootstrap(args: Vec<OsString>) -> Result<i32, String> {
         .collect::<Result<Vec<_>, _>>()?;
     let hook_input = String::from_utf8(input.clone())
         .map_err(|error| format!("hook payload must be UTF-8 JSON: {error}"))?;
-    if hook_event_is_canonical_recovery(&args, &input) {
+    if agent_semantic_hook::canonical_recovery_admission(hook_event(&args), &input) {
         if std::env::var_os(TRACE_ENV).is_some() {
             eprintln!("[asp-hook] route=bootstrap-canonical-recovery");
         }
@@ -232,18 +232,14 @@ fn hook_event_requires_policy_evaluation(event: &str, input: &[u8]) -> Result<bo
 fn local_hook_policy_unavailable(event: &str, error: &str) -> String {
     let canonical_install_command = "<validated-candidate-asp> install binary";
     serde_json::json!({
-        "schemaId": "agent.semantic-protocols.hook-local-policy-unavailable.v1",
+        "schemaId": "agent.semantic-protocols.hook-local-policy-unavailable",
         "schemaVersion": "1",
         "surface": "hook",
         "event": event,
         "state": "unavailable",
         "reasonKind": "local-hook-policy-authority-unavailable",
-        "recoveryCommand": "asp hook refresh --client codex",
-        "recoveryCommands": [
-            "asp hook refresh --client codex",
-            "asp hook doctor --client codex",
-            canonical_install_command
-        ],
+        "recoveryCommand": canonical_install_command,
+        "recoveryCommands": [canonical_install_command],
         "canonicalBinaryInstallTarget": canonical_install_command,
         "error": single_line(error),
     })
@@ -278,87 +274,6 @@ fn validate_hook_args(args: &[OsString]) -> Result<(), String> {
         return Err("bootstrap hook event is missing or non-UTF-8".to_string());
     }
     Ok(())
-}
-
-fn hook_event_is_canonical_recovery(args: &[OsString], input: &[u8]) -> bool {
-    if !matches!(hook_event(args), Some("pre-tool" | "permission-request")) {
-        return false;
-    }
-    let Ok(payload) = serde_json::from_slice::<serde_json::Value>(input) else {
-        return false;
-    };
-    let Some(command) = hook_payload_command(&payload) else {
-        return false;
-    };
-    let Ok(stages) = agent_semantic_command_match::parse_bash_command_candidates(command) else {
-        return false;
-    };
-    if stages.len() != 1 {
-        return false;
-    }
-    let words = stages[0].words();
-    if words.windows(3).any(|candidate| {
-        candidate[0]
-            .rsplit(['/', '\\'])
-            .next()
-            .is_some_and(|name| name == "asp")
-            && candidate[1] == "hook"
-            && candidate[2] == "refresh"
-    }) {
-        return true;
-    }
-    let Some(asp_index) = words.iter().position(|word| {
-        word.rsplit(['/', '\\'])
-            .next()
-            .is_some_and(|name| name == "asp")
-    }) else {
-        return false;
-    };
-    let trusted_prefix = asp_index == 0
-        || (asp_index == 3
-            && words[0].rsplit(['/', '\\']).next() == Some("direnv")
-            && words[1] == "exec"
-            && words[2] == ".");
-    if !trusted_prefix {
-        return false;
-    }
-    let exact_server_control = words.get(asp_index + 1).map(String::as_str) == Some("server")
-        && matches!(
-            words.get(asp_index + 2).map(String::as_str),
-            Some("status" | "reconcile" | "restart")
-        )
-        && words.len() == asp_index + 3;
-    if exact_server_control {
-        return true;
-    }
-    let exact_hook_doctor = words.get(asp_index + 1).map(String::as_str) == Some("hook")
-        && words.get(asp_index + 2).map(String::as_str) == Some("doctor")
-        && words.get(asp_index + 3).map(String::as_str) == Some("--client")
-        && words.get(asp_index + 4).map(String::as_str) == Some("codex")
-        && words.len() == asp_index + 5;
-    if exact_hook_doctor {
-        return true;
-    }
-    if agent_semantic_runtime::resolve_state_home().is_err() {
-        return false;
-    }
-    exact_canonical_binary_install(words, asp_index)
-}
-
-fn exact_canonical_binary_install(words: &[String], asp_index: usize) -> bool {
-    words.get(asp_index + 1).map(String::as_str) == Some("install")
-        && words.get(asp_index + 2).map(String::as_str) == Some("binary")
-        && words.len() == asp_index + 3
-}
-
-fn hook_payload_command(payload: &serde_json::Value) -> Option<&str> {
-    let tool_input = payload
-        .get("tool_input")
-        .or_else(|| payload.get("toolInput"));
-    tool_input
-        .and_then(|input| input.get("cmd").or_else(|| input.get("command")))
-        .and_then(serde_json::Value::as_str)
-        .or_else(|| payload.get("command").and_then(serde_json::Value::as_str))
 }
 
 fn read_bounded_stdin() -> Result<Vec<u8>, String> {

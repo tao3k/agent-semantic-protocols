@@ -100,6 +100,12 @@ impl RuntimeServer {
         let listener = bind_runtime_server_listener(Path::new(&endpoint.socket_path))?;
         let data_listener =
             bind_runtime_server_listener(Path::new(&endpoint.data_plane_socket_path))?;
+        let provider_listener =
+            bind_runtime_server_listener(Path::new(&endpoint.provider_plane_socket_path))?;
+        let provider_register_state_path =
+            crate::runtime_server_control::provider_register_state_path(Path::new(
+                &endpoint.provider_plane_socket_path,
+            ))?;
         let mut status_memory = RuntimeServerStatusMemoryWriter::create(&endpoint).await?;
         let entry_counts = registry.workspace_entry_counts();
         let slot_count = entry_counts.slot_count;
@@ -121,6 +127,14 @@ impl RuntimeServer {
             endpoint,
             listener,
             data_listener,
+            provider_listener,
+            provider_register: Arc::new(
+                crate::runtime_provider_register::RuntimeProviderRegister::from_seed_with_store(
+                    agent_semantic_provider_protocol::builtin_provider_registrations()?,
+                    provider_register_state_path,
+                )
+                .await?,
+            ),
             registry,
             workspace_count,
             shutdown,

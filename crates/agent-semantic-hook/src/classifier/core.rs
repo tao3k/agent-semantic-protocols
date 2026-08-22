@@ -119,12 +119,17 @@ pub(super) fn resolve_dispatch_decision(
         .unwrap_or("configured");
     let target_description = dispatch_target_field(&decision, "targetAgentDescription")
         .unwrap_or("the configured typed execution Agent");
-    decision.message = render_choice_plane_instruction(AgentDispatchMessageFields {
+    let dispatch_instruction = render_choice_plane_instruction(AgentDispatchMessageFields {
         agent_kind: target_kind,
         call_target: call_target.as_str(),
         role: target_role,
         description: target_description,
     });
+    if decision.message.trim().is_empty() {
+        decision.message = dispatch_instruction;
+    } else if !decision.message.contains(&dispatch_instruction) {
+        decision.message = format!("{}\n{dispatch_instruction}", decision.message);
+    }
     decision.fields.insert(
         "dispatchGuidance".to_owned(),
         serde_json::Value::String("delegate-exact-command-to-typed-agent".to_owned()),
@@ -186,9 +191,6 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
     } else if request.event == "pre-tool"
         && let Some(candidate) = classify_tool_actions(&request, &actions)
     {
-        if candidate.terminal {
-            return candidate.decision;
-        }
         candidate.decision
     } else {
         let subject = actions.first().map(subject_for_action).unwrap_or_default();

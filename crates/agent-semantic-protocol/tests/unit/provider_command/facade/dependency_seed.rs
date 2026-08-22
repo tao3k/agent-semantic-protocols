@@ -8,7 +8,7 @@ fn direct_dependency_seed_rejects_provider_without_topology_capability() {
     let cases = [
         DependencySeedCase {
             language: "typescript",
-            binary: "ts-harness",
+            binary: "asp-typescript",
             query: "react",
             manifest_path: "package.json",
             manifest_text: r#"{"dependencies":{"react":"18.2.0"}}"#,

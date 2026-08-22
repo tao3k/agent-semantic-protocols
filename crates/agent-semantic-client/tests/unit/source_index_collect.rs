@@ -1,23 +1,75 @@
 use super::{
-    ProviderScopeCollectionRoute, SourceIndexCollectionScope, provider_scope_collection_route,
-    retain_explicit_owner_files,
+    ProviderSourceInventoryAdapter, SourceIndexCollectionScope, retain_explicit_owner_files,
+    select_provider_source_inventory_adapter,
 };
-use agent_semantic_client_core::ProviderScopeAuthority;
+
+fn inventory_capabilities(
+    project_entry_markers: Option<Vec<&str>>,
+    document_git_candidates: Option<bool>,
+) -> agent_semantic_client_core::ProviderSourceInventoryCapabilities {
+    agent_semantic_client_core::ProviderSourceInventoryCapabilities {
+        project_resolution: project_entry_markers.map(|entry_markers| {
+            agent_semantic_client_core::ProviderProjectInventoryCapability {
+                entry_markers: entry_markers.into_iter().map(str::to_owned).collect(),
+            }
+        }),
+        document_resolution: document_git_candidates.map(|supports_git_candidates| {
+            agent_semantic_client_core::ProviderDocumentInventoryCapability {
+                extensions: vec![".ss".to_owned()],
+                supports_git_candidates,
+            }
+        }),
+    }
+}
 
 #[test]
-fn package_providers_use_project_resolution() {
+fn exact_project_entry_selects_project_adapter_when_both_capabilities_are_declared() {
+    let capabilities = inventory_capabilities(Some(vec!["gerbil.pkg"]), Some(true));
     assert_eq!(
-        provider_scope_collection_route(ProviderScopeAuthority::ProjectResolution),
-        ProviderScopeCollectionRoute::ProjectResolution
+        select_provider_source_inventory_adapter(
+            &capabilities,
+            "gerbil-scheme",
+            "asp-gerbil-scheme",
+            |path| path == "gerbil.pkg",
+        ),
+        Ok(ProviderSourceInventoryAdapter::ProjectResolution)
     );
 }
 
 #[test]
-fn document_providers_use_git_candidates_without_project_resolution() {
+fn absent_project_entry_selects_declared_document_adapter_before_invocation() {
+    let capabilities = inventory_capabilities(Some(vec!["gerbil.pkg"]), Some(true));
     assert_eq!(
-        provider_scope_collection_route(ProviderScopeAuthority::DocumentResolution),
-        ProviderScopeCollectionRoute::GitDocumentCandidates
+        select_provider_source_inventory_adapter(
+            &capabilities,
+            "gerbil-scheme",
+            "asp-gerbil-scheme",
+            |_| false,
+        ),
+        Ok(ProviderSourceInventoryAdapter::GitDocumentCandidates)
     );
+}
+
+#[test]
+fn absent_project_entry_without_document_capability_fails_closed() {
+    let capabilities = inventory_capabilities(Some(vec!["Cargo.toml"]), None);
+    let error =
+        select_provider_source_inventory_adapter(&capabilities, "rust", "asp-rust", |_| false)
+            .expect_err("missing declared adapter must fail closed");
+    assert!(error.contains("reasonKind=provider-source-inventory-capability-unavailable"));
+}
+
+#[test]
+fn document_adapter_without_git_candidate_support_fails_closed() {
+    let capabilities = inventory_capabilities(None, Some(false));
+    let error = select_provider_source_inventory_adapter(
+        &capabilities,
+        "gerbil-scheme",
+        "asp-gerbil-scheme",
+        |_| false,
+    )
+    .expect_err("document adapter precondition must fail closed");
+    assert!(error.contains("reasonKind=provider-document-resolution-git-candidates-unsupported"));
 }
 
 fn scope_file(path: std::path::PathBuf) -> agent_semantic_client_db::ClientDbSourceIndexScopeFile {

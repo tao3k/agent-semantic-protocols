@@ -472,6 +472,16 @@ impl RuntimeServerWorkspaceRegistry {
         Ok(receipt)
     }
 
+    pub(crate) async fn ensure_entry_ready(
+        &self,
+        workspace_identity: &str,
+        project_root: &std::path::Path,
+    ) -> Result<(), String> {
+        self.entry(workspace_identity, project_root)
+            .await
+            .map(|_| ())
+    }
+
     pub(super) async fn entry(
         &self,
         workspace_identity: &str,

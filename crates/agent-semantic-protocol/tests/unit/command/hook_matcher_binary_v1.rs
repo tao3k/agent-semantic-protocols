@@ -1,6 +1,6 @@
 use super::{
-    MatcherSection, MatcherSectionKind, encode_matcher_bundle, matcher_section_key,
-    select_matcher_section,
+    MatcherSection, MatcherSectionKind, compiled_generation_key_with_artifact_fingerprint,
+    encode_matcher_bundle, matcher_section_key, select_matcher_section,
 };
 
 fn fixture_sections() -> Vec<MatcherSection> {
@@ -76,4 +76,29 @@ fn binary_v1_selected_section_corruption_fails_closed() {
         .expect_err("selected corrupt section must fail closed");
 
     assert!(error.contains("digest mismatch"), "{error}");
+}
+
+#[test]
+fn compiled_generation_key_tracks_hook_artifact_identity() {
+    let temp = tempfile::tempdir().expect("temp project");
+    let config_path = temp.path().join("config.toml");
+    std::fs::write(&config_path, "[hook]\n").expect("write config fixture");
+
+    let before = compiled_generation_key_with_artifact_fingerprint(
+        &config_path,
+        temp.path(),
+        "registry=before;config=stable",
+    )
+    .expect("generation key before provider drift");
+    let after = compiled_generation_key_with_artifact_fingerprint(
+        &config_path,
+        temp.path(),
+        "registry=after;config=stable",
+    )
+    .expect("generation key after provider drift");
+
+    assert_ne!(
+        before, after,
+        "provider artifact drift must rebuild matcher mmap"
+    );
 }

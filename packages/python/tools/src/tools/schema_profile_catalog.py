@@ -59,7 +59,7 @@ def schema_profile_contract_errors(
 
 
 _CORE_QUERY_SCHEMAS = (
-    "callable-skeleton-projection.v1.schema.json",
+    "callable-skeleton.schema.json",
     "exact-structural-selector.v1.schema.json",
     "provider-native-exact-request.v1.schema.json",
     "provider-native-exact-response.v1.schema.json",
@@ -104,8 +104,8 @@ _AGENT_REASONING_SCHEMAS = (
 )
 
 _PROJECT_RESOLUTION_IPC_SCHEMAS = (
-    "provider-project-resolution-request.v1.schema.json",
-    "provider-project-resolution-response.v1.schema.json",
+    "provider-project-resolution-request.schema.json",
+    "provider-project-resolution-response.schema.json",
 )
 
 
@@ -159,7 +159,7 @@ LANGUAGE_SCHEMA_PROFILES: tuple[LanguageSchemaProfile, ...] = (
         language_id="gerbil-scheme",
         package_root="languages/gerbil-scheme-language-project-harness",
         shared_schema_files=(
-            "semantic-agent-hook-provider-manifest.v1.schema.json",
+            "semantic-agent-hook-provider-manifest.schema.json",
             "semantic-compare-packet.v1.schema.json",
             "semantic-content-compaction.v1.schema.json",
             "semantic-evidence-graph.v1.schema.json",
@@ -171,7 +171,7 @@ LANGUAGE_SCHEMA_PROFILES: tuple[LanguageSchemaProfile, ...] = (
             "semantic-language-registry.v1.schema.json",
             "semantic-language-projection.v1.schema.json",
             "semantic-native-syntax-fact-index.v1.schema.json",
-            "callable-skeleton-projection.v1.schema.json",
+            "callable-skeleton.schema.json",
             "exact-structural-selector.v1.schema.json",
             "provider-native-exact-request.v1.schema.json",
             "provider-native-exact-response.v1.schema.json",

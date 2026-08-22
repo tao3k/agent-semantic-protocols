@@ -168,7 +168,7 @@ fn missing_home_local_binary_reports_install_language_without_runtime_profile_fa
 fn home_local_binary_is_canonical_for_every_external_provider() {
     for (language_id, binary) in [
         ("rust", "rs-harness"),
-        ("typescript", "ts-harness"),
+        ("typescript", "asp-typescript"),
         ("python", "py-harness"),
         ("julia", "asp-julia-harness"),
         ("gerbil-scheme", "gslph"),
@@ -276,7 +276,15 @@ fn provider(language_id: &str, binary: &str) -> ResolvedProvider {
         .find(|manifest| manifest.language_id().as_str() == language_id)
         .expect("provider manifest");
     ResolvedProvider {
-        scope_authority: agent_semantic_client_core::ProviderScopeAuthority::ProjectResolution,
+        source_inventory_capabilities:
+            agent_semantic_client_core::ProviderSourceInventoryCapabilities {
+                project_resolution: Some(
+                    agent_semantic_client_core::ProviderProjectInventoryCapability {
+                        entry_markers: vec!["Cargo.toml".to_owned()],
+                    },
+                ),
+                document_resolution: None,
+            },
         manifest_id: format!("{binary}-test-manifest"),
         manifest_digest: format!("sha256:{binary}-test-manifest"),
         namespace: language_id.to_string(),

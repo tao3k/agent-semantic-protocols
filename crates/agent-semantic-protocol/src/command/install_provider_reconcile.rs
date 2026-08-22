@@ -1,18 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct ProviderInstallReceipt {
-    pub(super) language_id: String,
-    pub(super) provider_id: String,
-    pub(super) installed_path: PathBuf,
-    pub(super) installed_entrypoint_digest: String,
-    pub(super) installed_entrypoint_metadata_digest: String,
-    pub(super) execution_command_digest: String,
-}
-
 pub(super) fn provider_install_receipt_matches_artifact(
-    receipt: &ProviderInstallReceipt,
+    receipt: &agent_semantic_runtime::ProviderInstallReceipt,
     installed_path: &Path,
 ) -> Result<bool, String> {
     let expected_path = receipt
@@ -33,7 +23,7 @@ pub(super) fn provider_install_receipt_matches_artifact(
 pub(super) fn read_provider_install_receipt(
     language_id: &str,
     provider_lock_dir: &Path,
-) -> Result<ProviderInstallReceipt, String> {
+) -> Result<agent_semantic_runtime::ProviderInstallReceipt, String> {
     let lock_path = provider_lock_dir.join(format!("{language_id}.lock.toml"));
     let contents = fs::read_to_string(&lock_path)
         .map_err(|error| format!("failed to read {}: {error}", lock_path.display()))?;
@@ -66,7 +56,7 @@ pub(super) fn read_provider_install_receipt(
             lock_path.display()
         ));
     }
-    Ok(ProviderInstallReceipt {
+    Ok(agent_semantic_runtime::ProviderInstallReceipt {
         language_id: language_id.to_owned(),
         provider_id: field("provider")?.to_owned(),
         installed_path: PathBuf::from(field("installedPath")?),

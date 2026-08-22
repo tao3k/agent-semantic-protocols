@@ -341,6 +341,21 @@ elapsed time.
 
 ** Provider Contract v1
 
+Provider Contract v1 exposes one source-inventory interface.  The manifest may
+declare both =projectResolution= and =documentResolution= capabilities; they are
+adapter descriptors, not a static provider scope authority.  The collection
+request and Runtime-owned Git candidate snapshot determine the single eligible
+adapter before provider invocation.  Exact project entry markers take
+precedence when present; document resolution is selected only when project
+preconditions are absent and Git-candidate document resolution is declared.
+
+Selection is deterministic capability negotiation, not fallback.  After an
+adapter is selected, =Unsupported=, schema mismatch, provider failure, and an
+empty owner inventory fail closed.  The collector must not invoke a second
+adapter, infer a language-specific marker, or publish an empty generation as
+Ready.  This keeps Provider parsing independent from ASP Server generation,
+cache, and lifecycle authority.
+
 Provider Contract v1 is the only Rust ASP hot-path contract for language
 harnesses and freezes the no-compatibility boundary. A provider is the authority
 for native parser/typechecker/project manager facts and bounded owner-local

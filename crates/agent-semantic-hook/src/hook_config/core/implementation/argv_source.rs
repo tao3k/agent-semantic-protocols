@@ -70,7 +70,7 @@ impl RuleMatch {
             }
         }
         if self.argv_registered_source_file {
-            for candidate in agent_semantic_command_match::embedded_literal_candidates(tokens) {
+            for candidate in agent_semantic_shell_parser::embedded_literal_candidates(tokens) {
                 let provider_owned =
                     !collect_source_selector_matches(runtime, [candidate.as_str()], |_| true)
                         .is_empty();

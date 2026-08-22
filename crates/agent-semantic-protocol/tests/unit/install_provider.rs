@@ -18,7 +18,7 @@ fn asset_names_are_rev_independent_and_target_selected() {
 
 #[test]
 fn registered_provider_receipt_covers_language_alias_for_same_binary() {
-    let receipt = super::super::install_provider_reconcile::ProviderInstallReceipt {
+    let receipt = agent_semantic_runtime::ProviderInstallReceipt {
         language_id: "org".to_string(),
         provider_id: "orgize".to_string(),
         installed_path: std::path::PathBuf::from("/runtime/bin/orgize"),
@@ -39,7 +39,6 @@ fn registered_provider_receipt_covers_language_alias_for_same_binary() {
 fn orgize_release_pin_resolves_provider_binary_asset() {
     let spec = provider_release("org").expect("orgize release spec");
     assert_eq!(spec.provider_id, "orgize");
-    assert_eq!(spec.binary, "orgize");
     assert_eq!(spec.release_version, "v0.10.0-alpha.10");
     assert_eq!(
         asset_name(&spec, "aarch64-apple-darwin"),
@@ -104,6 +103,25 @@ fn unsupported_apple_intel_target_is_rejected() {
     let error = validate_target(&spec, "x86_64-apple-darwin").expect_err("unsupported target");
     assert!(error.contains("unsupported target `x86_64-apple-darwin`"));
     assert!(error.contains("aarch64-apple-darwin"));
+}
+
+#[test]
+fn external_register_fixture_resolves_identity_without_caller_supplied_binary() {
+    let registration = agent_semantic_provider_protocol::ProviderRegistrationDocument {
+        language_id: "external-language".to_string(),
+        provider_id: "external-provider".to_string(),
+        registration: serde_json::json!({
+            "languageId": "external-language",
+            "providerId": "external-provider"
+        }),
+    };
+    // The register is the identity authority; callers provide only language_id.
+    let error = super::canonical_provider_identity("external-language", &[registration])
+        .expect_err("unregistered external binary must fail closed");
+    assert!(
+        !error.is_empty(),
+        "external register without a binary must fail closed"
+    );
 }
 fn install_scope_args(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| (*value).to_string()).collect()

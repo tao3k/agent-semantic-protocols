@@ -19,6 +19,7 @@ pub use codex_global_config::{
 };
 mod codex_project_trust;
 mod codex_trust;
+mod action_ir;
 mod command;
 pub use command::semantic_shell_tokens;
 pub use tool_action::{codex_tool_event_requires_policy_evaluation, direct_source_read_paths};
@@ -35,7 +36,11 @@ mod hook_config;
 mod hook_config_agent_org;
 mod hook_config_global;
 mod hook_policy_kernel;
+mod hook_recovery_admission;
 mod hook_recovery_prompt;
+pub use hook_recovery_admission::canonical_recovery_admission;
+mod hook_workspace_candidate;
+pub use hook_workspace_candidate::{hook_workspace_candidate, normalize_workspace_path};
 mod match_policy_conformance;
 pub mod policy_testing;
 mod protocol;
@@ -64,6 +69,7 @@ pub use provider_registry::{
     materialize_provider_routes, registered_language_descriptor_digest,
     registered_query_pack_digest, schema_registry_provider_manifests, semantic_registry_digest,
 };
+mod execute_rule_facts;
 mod runtime_profile;
 pub mod source_access;
 mod source_selector;
@@ -80,7 +86,6 @@ pub use crate::activation_store::{
 pub use crate::active_artifact_receipt::{
     ActiveAspArtifactMaterialization, active_asp_artifact_receipt_path,
     materialize_active_asp_artifact_receipt,
-    materialize_active_asp_artifact_receipt_for_current_process,
     verify_active_asp_artifact_receipt,
 };
 pub use classifier::{
@@ -116,8 +121,10 @@ pub use event_state_subagent_model_drift::{
 };
 pub use hook_config::{
     AspSessionPolicy, ClientHookConfig, ConfiguredResidentTarget, DurableHookConfigArtifact,
-    default_client_config_path, default_client_config_template, load_client_config,
-    load_client_config_for_project, load_client_config_for_project_with_executable_capabilities,
+    default_client_config_path, default_client_config_projection_digest,
+    default_client_config_template, hook_runtime_artifact_fingerprint, load_client_config,
+    load_client_config_for_matcher_publication, load_client_config_for_project,
+    load_client_config_for_project_with_executable_capabilities,
     load_client_config_overlay_for_project, load_embedded_client_config_for_project,
 };
 pub(crate) use hook_config_agent_org::{
@@ -141,11 +148,11 @@ pub use protocol_activation::digest::provider_manifest_digest;
 pub(crate) use protocol_activation::protocol_activation_manifest::SourceSelectorKind;
 pub use protocol_activation::protocol_activation_manifest::{
     ActivatedProvider, ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy,
-    HookActivation, HookRuntime, ProviderExecution, ProviderLanguageProjectionDescriptor,
-    ProviderManifest, ProviderProjectResolutionDescriptor, ProviderQueryPackDescriptor,
-    ProviderQueryPackTermRole, ProviderRuntimeContractDescriptor,
-    ProviderRuntimeContractOperationDescriptor, ProviderRuntimeContractTransport,
-    ProviderSearchCapabilities, ProviderSemanticFactsDescriptor, ProviderSemanticFactsIntentAxis,
+    HookActivation, HookRuntime, ProviderExecution, ProviderManifest,
+    ProviderProjectResolutionDescriptor, ProviderQueryPackDescriptor, ProviderQueryPackTermRole,
+    ProviderRuntimeContractDescriptor, ProviderRuntimeContractOperationDescriptor,
+    ProviderRuntimeContractTransport, ProviderSearchCapabilities, ProviderSemanticFactsDescriptor,
+    ProviderSemanticFactsIntentAxis,
 };
 pub use protocol_activation::protocol_activation_runtime::parse_activation;
 pub use provider_manifest::{
@@ -185,10 +192,7 @@ pub use crate::provider_registry::{
     ProviderMethodArgumentValuesV1, RegisteredProviderCatalogIdentity, RegisteredProviderKind,
     registered_provider_catalog_identities, registered_provider_id_v1, registered_provider_kind,
     registered_provider_method_invocation_v1, registered_provider_method_projected_argv_v1,
-    registered_provider_projection_command_binding,
+    registered_provider_projection_operation,
 };
-#[doc(hidden)]
-pub use agent_semantic_command_match as command_match;
-#[doc(hidden)]
-pub use agent_semantic_command_match::bash as bash_command_stages;
+use agent_semantic_shell_parser as shell_parser;
 mod agent_dispatch_message;

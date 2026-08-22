@@ -9,13 +9,13 @@ from referencing import Registry, Resource
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MANIFEST_PATHS = (
-    "languages/rust-lang-project-harness/provider/asp-provider-manifest.json",
-    "languages/typescript-lang-project-harness/provider/asp-provider-manifest.json",
-    "languages/python-lang-project-harness/provider/asp-provider-manifest.json",
-    "languages/JuliaLangProjectHarness.jl/juliac/asp-provider-manifest.json",
-    "languages/gerbil-scheme-language-project-harness/provider/asp-provider-manifest.json",
-    "languages/orgize/provider/asp-org-provider-manifest.json",
-    "languages/orgize/provider/asp-md-provider-manifest.json",
+    "languages/rust-lang-project-harness/schemas/asp-provider.json",
+    "languages/typescript-lang-project-harness/schemas/asp-provider.json",
+    "languages/python-lang-project-harness/schemas/asp-provider.json",
+    "languages/JuliaLangProjectHarness.jl/schemas/asp-provider.json",
+    "languages/gerbil-scheme-language-project-harness/schemas/asp-provider.json",
+    "languages/orgize/schemas/asp-org-provider.json",
+    "languages/orgize/schemas/asp-md-provider.json",
 )
 
 
@@ -35,7 +35,7 @@ def _schema_registry() -> Registry:
 
 
 def test_provider_manifests_use_one_typed_resolution_owner() -> None:
-    schema = _document(REPO_ROOT / "schemas/provider-manifest.v1.schema.json")
+    schema = _document(REPO_ROOT / "schemas/provider-manifest.schema.json")
     validator = Draft202012Validator(schema, registry=_schema_registry())
 
     for relative_path in MANIFEST_PATHS:

@@ -50,8 +50,6 @@ impl From<&ActivatedProvider> for HookProviderProjection {
         Self {
             language_id: provider.language_id.clone(),
             provider_id: provider.provider_id.clone(),
-            binary: provider.binary.clone(),
-            provider_command_prefix: provider.provider_command_prefix.clone(),
             package_roots: provider.package_roots.clone(),
             source_extensions: provider.source_extensions.clone(),
             config_files: provider.config_files.clone(),
@@ -129,21 +127,6 @@ impl HookProviderProjection {
                     .replace("{workspace}", project_root)
             })
             .collect::<Vec<_>>();
-        let argv = if argv.first().is_some_and(|command| command == "asp") {
-            argv
-        } else if argv.first().is_some_and(|command| command == &self.binary) {
-            let mut facade = vec!["asp".to_owned(), self.language_id.as_str().to_owned()];
-            facade.extend(argv.into_iter().skip(1));
-            facade
-        } else if !self.provider_command_prefix.is_empty()
-            && argv.starts_with(&self.provider_command_prefix)
-        {
-            let mut facade = vec!["asp".to_owned(), self.language_id.as_str().to_owned()];
-            facade.extend(argv.into_iter().skip(self.provider_command_prefix.len()));
-            facade
-        } else {
-            argv
-        };
         DecisionRoute {
             language_id: self.language_id.clone(),
             provider_id: self.provider_id.clone(),
@@ -229,28 +212,10 @@ impl ActivatedProvider {
         }
     }
 
-    pub(crate) fn agent_facade_argv<I, S>(&self, args: I) -> Vec<String>
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        let mut argv = vec!["asp".to_string(), self.language_id.as_str().to_owned()];
-        argv.extend(args.into_iter().map(Into::into));
-        argv
-    }
 
     pub(crate) fn agent_facade_argv_from_provider_argv(&self, argv: Vec<String>) -> Vec<String> {
         if argv.first().is_some_and(|command| command == "asp") {
             return argv;
-        }
-        if argv.first().is_some_and(|command| command == &self.binary) {
-            return self.agent_facade_argv(argv.into_iter().skip(1));
-        }
-        if !self.provider_command_prefix.is_empty()
-            && argv.starts_with(&self.provider_command_prefix)
-        {
-            return self
-                .agent_facade_argv(argv.into_iter().skip(self.provider_command_prefix.len()));
         }
         argv
     }

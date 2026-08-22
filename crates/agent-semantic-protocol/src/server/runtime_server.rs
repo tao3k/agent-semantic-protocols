@@ -1,7 +1,6 @@
 use agent_semantic_client_db::runtime_server_control::prewarm_runtime_server_status_memory;
 use agent_semantic_client_db::{
     RuntimeServerControlReceipt, RuntimeServerOperation, call_runtime_server,
-    runtime_server_endpoint_path,
 };
 use clap::{Command, CommandFactory, Parser, Subcommand};
 use sha2::{Digest, Sha256};
@@ -51,7 +50,12 @@ pub(crate) async fn runtime_server_workspace_session_async(
     let (workspace_identity, canonical_project_root) =
         runtime_server_query_workspace_scope(project_root)?;
     let state_home = state_home()?;
-    let endpoint = read_endpoint(&runtime_server_endpoint_path(&state_home)?).await?;
+    let endpoint_path =
+        agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(
+            &state_home,
+        )
+        .await?;
+    let endpoint = read_endpoint(&endpoint_path).await?;
     Ok(
         agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::for_runtime_server_client(
             &endpoint,
@@ -141,7 +145,11 @@ pub(crate) async fn runtime_server_workspace_exact_projection_async(
 
 async fn run_control_status() -> Result<(), String> {
     let state_home = state_home()?;
-    let endpoint_path = runtime_server_endpoint_path(&state_home)?;
+    let endpoint_path =
+        agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(
+            &state_home,
+        )
+        .await?;
     let endpoint = read_endpoint(&endpoint_path).await?;
     let request_id = request_identity("control").await?;
     prewarm_runtime_server_status_memory(&endpoint).await?;
@@ -169,7 +177,8 @@ pub(super) async fn await_healthy_runtime_server_after_spawn() -> Result<(), Str
             "state": "failed",
             "reasonKind": "runtime-server-readiness-deadline-exceeded",
             "deadlineMillis": STARTUP_DEADLINE.as_millis(),
-        }).to_string()
+        })
+        .to_string()
     })?
 }
 
@@ -179,7 +188,8 @@ async fn await_healthy_runtime_server_after_spawn_inner() -> Result<(), String> 
     let state_home = state_home()?;
     loop {
         if let Some(exit) =
-            agent_semantic_client_db::runtime_server_lifecycle::read_latest_owner_exit(&state_home).await?
+            agent_semantic_client_db::runtime_server_lifecycle::read_latest_owner_exit(&state_home)
+                .await?
         {
             return Err(serde_json::json!({
                 "schemaId": "agent.semantic-protocols.runtime-server-daemon-exit",
@@ -219,7 +229,7 @@ async fn run_start() -> Result<(), String> {
 
 async fn run_start_inner() -> Result<(), String> {
     let state_home = state_home()?;
-    match super::runtime_server_supervisor::ensure_runtime_server(&state_home, true).await? {
+    match super::runtime_server_wire_adapter::ensure_runtime_server(&state_home, true).await? {
         Some(receipt) => print_receipt(&receipt).await,
         None => run_status().await,
     }
@@ -231,7 +241,7 @@ async fn run_status() -> Result<(), String> {
         Ok(()) => Ok(()),
         Err(reason) => {
             let spawn =
-                super::runtime_server_supervisor::read_runtime_server_spawn_receipt(&state_home)
+                super::runtime_server_wire_adapter::read_runtime_server_spawn_receipt(&state_home)
                     .await?;
             let receipt = serde_json::json!({
                 "schemaId": "agent.semantic-protocols.runtime-server-lifecycle-receipt.v1",
@@ -270,11 +280,15 @@ async fn run_restart_inner() -> Result<(), String> {
 
 async fn restart_runtime_server_at(
     state_home: &Path,
-) -> Result<Option<super::runtime_server_supervisor::RuntimeServerSpawnReceipt>, String> {
-    let endpoint_path = runtime_server_endpoint_path(&state_home)?;
+) -> Result<Option<super::runtime_server_wire_adapter::RuntimeServerSpawnReceipt>, String> {
+    let endpoint_path =
+        agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(
+            state_home,
+        )
+        .await?;
     if let Ok(endpoint) = read_supervisor_endpoint(&endpoint_path).await {
         agent_semantic_client_db::runtime_server_lifecycle::remove_stale(&state_home).await?;
-        super::runtime_server_supervisor::request_runtime_server_drain(&state_home).await?;
+        super::runtime_server_wire_adapter::request_runtime_server_drain(&state_home).await?;
         let exit = agent_semantic_client_db::runtime_server_lifecycle::await_owner_exit(
             &state_home,
             endpoint.owner_epoch,
@@ -285,7 +299,7 @@ async fn restart_runtime_server_at(
         }
         cleanup_endpoint(&state_home, &endpoint).await?;
     }
-    super::runtime_server_supervisor::ensure_runtime_server(state_home, true).await
+    super::runtime_server_wire_adapter::ensure_runtime_server(state_home, true).await
 }
 
 /// Reconcile a resident Runtime after its immutable provider catalog changed.
@@ -301,7 +315,11 @@ pub(crate) async fn reconcile_runtime_server_after_provider_catalog_change(
     if !catalog_write {
         return Ok("current");
     }
-    let endpoint_path = runtime_server_endpoint_path(state_home)?;
+    let endpoint_path =
+        agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(
+            state_home,
+        )
+        .await?;
     if !tokio::fs::try_exists(&endpoint_path)
         .await
         .map_err(|error| format!("inspect Runtime Server endpoint after catalog write: {error}"))?
@@ -316,13 +334,18 @@ pub(crate) async fn reconcile_runtime_server_after_provider_catalog_change(
 pub(crate) async fn reconcile_runtime_server_for_healthcheck(
     state_home: &Path,
 ) -> Result<RuntimeServerControlReceipt, String> {
-    super::runtime_server_supervisor::reconcile_healthy_runtime_server(state_home).await
+    super::runtime_server_wire_adapter::reconcile_healthy_runtime_server(state_home).await
 }
 
 pub(crate) async fn observe_agent_facing_runtime_server(
     state_home: &Path,
 ) -> Result<RuntimeServerControlReceipt, String> {
-    let endpoint = read_endpoint(&runtime_server_endpoint_path(state_home)?).await?;
+    let endpoint_path =
+        agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(
+            state_home,
+        )
+        .await?;
+    let endpoint = read_endpoint(&endpoint_path).await?;
     let request_id = request_identity("session-choice-plane").await?;
     prewarm_runtime_server_status_memory(&endpoint).await?;
     call_runtime_server(
@@ -337,7 +360,12 @@ pub(crate) async fn observe_agent_facing_runtime_server(
 pub(super) async fn observe_runtime_server_readiness(
     state_home: &Path,
 ) -> Result<RuntimeServerControlReceipt, String> {
-    let endpoint = read_supervisor_endpoint(&runtime_server_endpoint_path(state_home)?).await?;
+    let endpoint_path =
+        agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(
+            state_home,
+        )
+        .await?;
+    let endpoint = read_supervisor_endpoint(&endpoint_path).await?;
     let mut receipt =
         agent_semantic_client_db::runtime_server_control::read_runtime_server_cached_health_status(
             Path::new(&endpoint.status_memory_path),

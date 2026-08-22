@@ -16,16 +16,13 @@ pub use rust_lang_project_harness::{
 pub mod build_gate;
 pub use build_gate::assert_asp_rust_project_harness_member_policy_from_env;
 pub mod evidence;
-pub mod hook_registry_build;
 /// Reusable hook scenarios for Rust project harness policy checks.
-pub mod hook_scenarios;
 pub mod member_policy;
 pub mod package_evidence_graph;
 pub mod scenario;
 pub mod search_scenarios;
 pub mod workspace_evidence_graph;
 
-pub use hook_registry_build::generate_agent_semantic_hook_registry_from_env;
 pub use member_policy::{
     AspRustProjectHarnessMemberPolicy, AspRustProjectHarnessOwnerPolicy,
     asp_workspace_member_policies,

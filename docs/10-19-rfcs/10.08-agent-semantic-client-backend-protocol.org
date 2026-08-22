@@ -3,7 +3,7 @@
 #+DATE: 2026-06-02
 #+STATUS: draft
 #+RFC: 008
-#+DEPENDS: docs/10-19-rfcs/10.03-code-intelligence-lane.org (003), docs/10-19-rfcs/10.05-cli-first-harness-ux.org (005)
+#+DEPENDS: docs/10-19-rfcs/10.03-code-intelligence-lane.org (003), docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org (005)
 #+SEE_ALSO: docs/10-19-rfcs/10.15-agent-hook-interception-protocol.org - hook routing over provider manifests.
 #+SEE_ALSO: docs/10-19-rfcs/10.07-semantic-ast-apply-patch-protocol.org (007) - shared binary growth path.
 #+SEE_ALSO: docs/10-19-rfcs/10.06-agent-compact-graph-feature.org (006) - shared compact graph render contract.
@@ -59,7 +59,7 @@ Machine output: compact JSON artifacts and local SQL rows outside the prompt; Ar
    selection.  It is not two separate clients named local and cloud.
 
 3. /Local-first remains the community default./  The local client works with
-   installed provider CLIs such as =ts-harness=, =rs-harness=, and
+   installed provider CLIs such as =asp-typescript=, =rs-harness=, and
    =py-harness=, but the default agent-facing command surface is the
    =asp <language>= facade for =guide=, =search=, =query=, =check=,
    and bounded provider-native surfaces such as =ast-patch= and
@@ -123,7 +123,7 @@ Machine output: compact JSON artifacts and local SQL rows outside the prompt; Ar
     membership, package excludes, project references, virtual environments,
     source/test roots, or language-specific layout.  Cargo context resolution
     belongs to =rs-harness=, TypeScript project references belong to
-    =ts-harness=, Python project/env discovery belongs to =py-harness=, and
+    =asp-typescript=, Python project/env discovery belongs to =py-harness=, and
     Julia project discovery belongs to =asp-julia-harness=.  =PRJ_CACHE_HOME= is
     only a state-storage location for client cache/runtime artifacts.  If it is
     unset, client cache may live under a git toplevel =.cache=, but neither
@@ -289,7 +289,7 @@ agent-semantic-client core
   |-- artifact and receipt store
   `-- execution router
        |-- LocalNativeCliBackend
-       |    |-- ts-harness CLI
+       |    |-- asp-typescript CLI
        |    |-- rs-harness CLI
        |    `-- py-harness CLI
        |
@@ -452,7 +452,7 @@ Protocol admission requires all of the following:
 
 | Component | Owns |
 |-----------+------|
-| =ts-harness=, =rs-harness=, =py-harness= | native parser facts, provider commands, schema-valid search/query/check packets and provider-native receipts |
+| =asp-typescript=, =rs-harness=, =py-harness= | native parser facts, provider commands, schema-valid search/query/check packets and provider-native receipts |
 | =asp-julia-harness= | JuliaSyntax-native facts, facade-aligned provider commands, index exports for cache refresh, source-provider fallback via =julia-project-harness.jl= |
 | =agent-semantic-protocol= | shared schemas/receipts, compact graph render algorithm, graph render validation, provider shell-out =graph render= CLI |
 | =agent-semantic-hook= | agent platform event classification and provider route guidance |
@@ -467,6 +467,71 @@ surface.  =tao3k/agent-semantic-protocols-server= is a private repository.  It
 may be checked out as an optional git submodule for integrated development and
 Cloud sandtable runs, but the public protocol/client workspace must build,
 test, and support local mode without that submodule.
+
+* Provider Protocol and ASP Server Protocol isolation
+
+The Provider Protocol and the ASP Server Protocol are separate product
+interfaces.  A provider owns parsing and projection semantics.  The ASP Server
+owns process lifecycle, repository candidate snapshots, generation admission,
+publication, resident cache state, and read authority.  A provider response
+never grants or mutates Runtime lifecycle authority, and Runtime code never
+branches on a language identity.
+
+All providers expose source discovery through one agent-facing source-inventory
+capability surface.  Project resolution and document resolution are provider
+adapter capabilities behind that surface, not mutually exclusive provider
+identities and not public Runtime routes.  Registration may declare either or
+both adapters.  For each inventory request the shared adapter selects exactly
+one declared capability from schema-visible request facts and descriptor
+preconditions:
+
+- a project adapter is eligible only when its exact workspace-root entry marker
+  is present in the Runtime-owned Git candidate snapshot;
+- otherwise a document adapter is eligible only when it declares Git-candidate
+  support;
+- no language-name, extension, command, or corpus-specific heuristic may select
+  an adapter;
+- once selected, =Unsupported= is a typed terminal result for that request and
+  must not trigger an implicit alternate-adapter fallback;
+- an empty owner inventory is not a publishable Ready generation.
+
+The CLI is a thin transport facade.  Capability negotiation belongs to the
+shared Provider Protocol adapter; generation recovery and cache publication
+belong to the ASP Server.  This retains LSP's useful capability-negotiation
+boundary while avoiding per-language server wiring and client-visible
+lifecycle state.
+
+* Open Provider Registration Protocol
+
+ASP MUST expose one public Provider Registration Protocol for built-in, local,
+and downstream language implementations.  Registering a new language MUST NOT
+require editing ASP source, extending an RPC enum, adding a catalog
+=include_str!=, or rebuilding the ASP binary.
+
+A registration descriptor is the single provider authority.  It declares the
+language and provider identities, executable identity, HTTP-JSON lifecycle
+contract, methods, source-inventory adapters, projection/query capabilities,
+and schema identities.  The root ASP schemas define this interface; a language
+package stores only its descriptor instance and language-owned extension
+schemas under =languages/<language>/schemas=.  Version is carried by
+=schemaVersion= and MUST NOT be duplicated in Rust type names or descriptor
+filenames.
+
+The Provider Register contains descriptor locators and content identities.  It
+does not discover providers by walking directories or matching filenames.
+Built-in providers are seeds in the same register consumed by third-party
+providers; they have no private catalog path.  Registration is an ASP Server
+mutation with typed =register=, =unregister=, =list=, and =initialize=
+operations.  Successful mutation publishes a new immutable registry generation
+which Runtime readers acquire atomically.
+
+=initialize= follows the useful part of LSP capability negotiation without
+copying LSP's client-specific lifecycle coupling.  The provider declares
+capabilities, the Server selects only schema-compatible operations for the
+request, and both sides receive a typed receipt.  The provider never receives
+Runtime cache, generation, process-owner, or publication authority.  The CLI
+only transports registration requests; it does not parse, merge, or fall back
+between descriptors.
 
 * Implementation topology
 
@@ -1277,7 +1342,7 @@ stay stable.
 mode = "local"
 
 [agent-semantic-client.local]
-providers = ["ts-harness", "rs-harness", "py-harness"]
+providers = ["asp-typescript", "rs-harness", "py-harness"]
 
 [agent-semantic-client.cloud]
 endpoint = "grpc+tls://api.agent-semantic-protocols.dev:443"
@@ -1413,7 +1478,7 @@ Scenarios should measure:
 
 The first local scenarios should replay real provider binaries without a
 server.  They should prove that =asp <language>= and later
-=asp= do not make Codex learn =ts-harness=, =rs-harness=, or =py-harness= for
+=asp= do not make Codex learn =asp-typescript=, =rs-harness=, or =py-harness= for
 common search/query/check and bounded provider-native flows, while still
 preserving provider-owned parser facts.
 
@@ -1492,7 +1557,7 @@ local-cache path:
 
 - =asp graph render --packet - --view seeds= is available as the shared compact
   graph renderer CLI.
-- =rs-harness=, =ts-harness=, and =py-harness= build canonical
+- =rs-harness=, =asp-typescript=, and =py-harness= build canonical
   =semantic-search-packet.v1= data and invoke the shared renderer through the
   process boundary.
 - Language providers under =languages/= do not keep provider-local compact

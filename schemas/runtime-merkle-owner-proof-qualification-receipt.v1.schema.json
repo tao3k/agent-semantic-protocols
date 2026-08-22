@@ -42,7 +42,10 @@
     "providerId": { "type": "string", "minLength": 1 },
     "workspaceIdentity": { "type": "string", "minLength": 1 },
     "generationDigest": { "$ref": "#/$defs/optionalDigest" },
-    "rootDigest": { "$ref": "#/$defs/optionalDigest" },
+    "rootDigest": {
+      "description": "Resident owner-path Merkle root; this is not the workspace source snapshot root.",
+      "$ref": "#/$defs/optionalDigest"
+    },
     "ownerPath": { "type": ["string", "null"], "minLength": 1 },
     "ownerContentDigest": { "$ref": "#/$defs/optionalDigest" },
     "ownerSubtreeDigest": { "$ref": "#/$defs/optionalDigest" },

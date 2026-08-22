@@ -9,18 +9,14 @@ use crate::tool_action::ToolAction;
 /// Match one structured projection contract and retain its typed source operands.
 pub(super) fn match_source_operands(
     projection: &HookClientStructuredProjectionMatchConfig,
-    capability_available: bool,
     action: &ToolAction,
 ) -> Option<Vec<String>> {
-    if !capability_available {
-        return None;
-    }
     let command = action.command.as_deref()?;
     let classification = match projection.filter_grammar {
         HookClientStructuredFilterGrammar::BoundedPathV1 => {
-            crate::command_match::structured::classify_single_bounded_path_command(
+            crate::shell_parser::structured::classify_single_bounded_path_command(
                 command,
-                crate::command_match::structured::BoundedPathCommandSpecV1 {
+        crate::shell_parser::structured::BoundedPathCommandSpec {
                     binary: &projection.binary,
                     optional_subcommand_any: &projection.optional_subcommand_any,
                     option_any: &projection.option_any,
@@ -31,11 +27,11 @@ pub(super) fn match_source_operands(
         }
     };
     let source_operands = match classification {
-        crate::command_match::structured::StructuredFilterClassificationV1::BoundedPath {
+        crate::shell_parser::structured::StructuredFilterClassification::BoundedPath {
             source_operands,
             ..
         }
-        | crate::command_match::structured::StructuredFilterClassificationV1::BoundedScalarPredicate {
+        | crate::shell_parser::structured::StructuredFilterClassification::BoundedScalarPredicate {
             source_operands,
             ..
         } => source_operands,

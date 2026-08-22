@@ -188,6 +188,7 @@ protocolVersion = "1"
 [[rules]]
 id = "deny-recursive-force-remove"
 decision = "deny"
+matcherPolicies = ["wrapped_command"]
 
 [rules.match]
 tool = "Bash"

@@ -7,10 +7,13 @@ use criterion::{Criterion, criterion_group, criterion_main};
 
 fn backend_hot_path(c: &mut Criterion) {
     let root = PathBuf::from(".");
-    let backend = LocalNativeCliBackend::new(ProviderRegistrySnapshot {
-        activation_path: root.join(".cache/agent-semantic-protocol/hooks/activation.json"),
-        providers: Vec::new(),
-    });
+    let backend = LocalNativeCliBackend::new(
+        ProviderRegistrySnapshot {
+            activation_path: root.join(".cache/agent-semantic-protocol/hooks/activation.json"),
+            providers: Vec::new(),
+        },
+        agent_semantic_provider_transport::ProviderProcessSupervisor::default(),
+    );
     let request = ClientRequest::new(ClientMethod::Search, root)
         .with_language("rust")
         .with_forwarded_args(vec![

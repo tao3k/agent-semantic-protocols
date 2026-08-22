@@ -1,6 +1,0 @@
-#+title: Compatibility locator: evidence-graph router executability
-
-* Canonical RFC
-
-The canonical RFC is
-[[file:../../10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00.28-evidence-graph-router-executability-certificate.org][Evidence-graph router executability certificate]].

@@ -1,7 +1,7 @@
-use agent_semantic_command_match::parse_bash_command_candidates;
 use agent_semantic_config::{
     HookClientActionAuthority, HookClientActionKind, HookClientActionSubjectKind,
 };
+use agent_semantic_shell_parser::parse_bash_command_candidates;
 
 use super::{AgentActionMatch, AgentActionMatchConfig};
 use crate::HookRuntime;

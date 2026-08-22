@@ -264,7 +264,7 @@ async fn resident_merkle_read_uses_the_published_generation_with_sub_millisecond
     };
     assert_eq!(active_epoch, snapshot.active_epoch);
     assert_eq!(generation_digest, snapshot.generation_digest);
-    assert_eq!(root_digest, snapshot.source_root_digest);
+    assert_eq!(root_digest, client.authority().owner_merkle_root_digest);
     assert_eq!(owner_path, "src/lib.rs");
     assert!(!inclusion_proof.is_empty());
     eprintln!(
@@ -274,5 +274,18 @@ async fn resident_merkle_read_uses_the_published_generation_with_sub_millisecond
     assert!(
         elapsed < std::time::Duration::from_millis(1),
         "published-generation resident Merkle read must remain sub-millisecond: elapsed={elapsed:?}"
+    );
+    let repeated_started = tokio::time::Instant::now();
+    let repeated = client
+        .read_merkle_owner("src/lib.rs")
+        .expect("repeat resident Merkle owner proof read");
+    let repeated_elapsed = repeated_started.elapsed();
+    assert!(matches!(
+        repeated,
+        crate::runtime_server_workspace::WorkspaceRuntimeMerkleOwnerRead::Owner { .. }
+    ));
+    assert!(
+        repeated_elapsed < std::time::Duration::from_millis(1),
+        "repeat Merkle owner read reparsed the generation: elapsed={repeated_elapsed:?}"
     );
 }

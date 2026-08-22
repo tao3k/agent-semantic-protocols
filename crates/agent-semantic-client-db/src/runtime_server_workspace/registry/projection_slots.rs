@@ -182,6 +182,16 @@ impl RuntimeServerWorkspaceRegistry {
             .read_source_index(query, language_id, limit)
     }
 
+    pub fn read_projection_parser_owned_callable_selector_pairs(
+        &self,
+        workspace_identity: &str,
+        project_root: &Path,
+        owner_paths: &[String],
+    ) -> Result<Vec<(String, String)>, String> {
+        self.resident_search_projection_client(workspace_identity, project_root)?
+            .parser_owned_callable_selector_pairs(owner_paths)
+    }
+
     pub async fn read_projection_graph_facts(
         &self,
         workspace_identity: &str,

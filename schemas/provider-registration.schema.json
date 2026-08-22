@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent.semantic-protocols.provider-registration",
+  "schemaVersion": "1",
+  "title": "ASP Provider Registration",
+  "type": "object",
+  "required": [
+    "binary",
+    "displayName",
+    "execution",
+    "languageId",
+    "methodDescriptors",
+    "methods",
+    "namespace",
+    "providerDescriptor",
+    "providerId",
+    "queryPackDescriptor",
+    "schemas"
+  ],
+  "properties": {
+    "binary": { "$ref": "#/$defs/nonEmptyString" },
+    "displayName": { "$ref": "#/$defs/nonEmptyString" },
+    "execution": { "$ref": "#/$defs/nonEmptyString" },
+    "languageId": { "$ref": "#/$defs/nonEmptyString" },
+    "methodDescriptors": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/methodDescriptor" }
+    },
+    "methods": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/nonEmptyString" },
+      "uniqueItems": true
+    },
+    "namespace": { "$ref": "#/$defs/nonEmptyString" },
+    "providerDescriptor": {
+      "type": "object",
+      "required": ["$ref"],
+      "properties": { "$ref": { "$ref": "#/$defs/nonEmptyString" } },
+      "additionalProperties": false
+    },
+    "providerId": { "$ref": "#/$defs/nonEmptyString" },
+    "queryPackDescriptor": { "type": "object" },
+    "schemas": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/schemaRegistration" },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "nonEmptyString": { "type": "string", "minLength": 1 },
+    "schemaRegistration": {
+      "type": "object",
+      "required": ["authority", "path", "schemaId", "schemaVersion"],
+      "properties": {
+        "authority": { "enum": ["asp", "provider"] },
+        "path": { "type": "string", "pattern": "^schemas/[^/]+\\.schema\\.json$" },
+        "schemaId": { "$ref": "#/$defs/nonEmptyString" },
+        "schemaVersion": { "$ref": "#/$defs/nonEmptyString" }
+      },
+      "additionalProperties": false
+    },
+    "methodDescriptor": {
+      "type": "object",
+      "required": [
+        "command",
+        "invocation",
+        "method",
+        "supportsCompact",
+        "supportsJson"
+      ],
+      "properties": {
+        "acceptsStdin": { "type": "boolean" },
+        "argumentProjection": { "$ref": "#/$defs/argumentProjection" },
+        "codeOutput": { "$ref": "#/$defs/codeOutput" },
+        "command": { "$ref": "#/$defs/nonEmptyString" },
+        "invocation": { "$ref": "#/$defs/invocation" },
+        "method": { "$ref": "#/$defs/nonEmptyString" },
+        "outputSchemaIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "packetSchemas": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "requiresQuery": { "type": "boolean" },
+        "queryInputForms": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" },
+          "uniqueItems": true
+        },
+        "supportsCompact": { "type": "boolean" },
+        "supportsJson": { "type": "boolean" },
+        "supportsPackageScope": { "type": "boolean" },
+        "view": { "$ref": "#/$defs/nonEmptyString" }
+      },
+      "additionalProperties": false
+    },
+    "invocation": {
+      "type": "object",
+      "required": ["argv"],
+      "properties": {
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "stdinMode": { "$ref": "#/$defs/nonEmptyString" }
+      },
+      "additionalProperties": false
+    },
+    "argumentProjection": {
+      "type": "object",
+      "required": ["schemaVersion", "tokens"],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/nonEmptyString" },
+        "tokens": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/argumentToken" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "argumentToken": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "literal" },
+            "value": { "$ref": "#/$defs/nonEmptyString" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["kind", "name", "valueType"],
+          "properties": {
+            "kind": { "const": "slot" },
+            "name": { "$ref": "#/$defs/nonEmptyString" },
+            "valueType": { "$ref": "#/$defs/nonEmptyString" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "codeOutput": {
+      "type": "object",
+      "required": ["mode", "multiMatch", "requires"],
+      "properties": {
+        "mode": { "$ref": "#/$defs/nonEmptyString" },
+        "multiMatch": { "$ref": "#/$defs/nonEmptyString" },
+        "requires": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

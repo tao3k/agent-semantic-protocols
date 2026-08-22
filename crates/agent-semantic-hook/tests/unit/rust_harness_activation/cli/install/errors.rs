@@ -67,6 +67,4 @@ fn cli_install_refuses_to_overwrite_invalid_codex_toml() {
     assert!(!config.contains("# BEGIN agent-semantic-protocol agent hooks"));
     let _ = std::fs::remove_dir_all(&root);
 }
-use crate::rust_harness_activation::cli::install::support::{
-    write_real_asp_launcher,
-};
+use crate::rust_harness_activation::cli::install::support::write_real_asp_launcher;

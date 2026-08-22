@@ -2,6 +2,17 @@
 
 //! Process transport for external ASP language providers.
 
+pub use agent_semantic_provider_protocol::{
+    PROVIDER_REGISTER_REQUEST_SCHEMA_ID, PROVIDER_REGISTER_RESPONSE_SCHEMA_ID,
+    PROVIDER_REGISTER_SCHEMA_VERSION, PROVIDER_SYNTAX_QUERY_OPERATION,
+    PROVIDER_SYNTAX_QUERY_REQUEST_SCHEMA_ID, PROVIDER_SYNTAX_QUERY_RESPONSE_SCHEMA_ID,
+    ProviderRegisterOperation, ProviderRegisterRequest, ProviderRegisterResponse,
+    ProviderRegisterResult, ProviderRegisterSnapshot, ProviderRegistrationDocument,
+    ProviderSyntaxQueryCapture, ProviderSyntaxQueryRequest, ProviderSyntaxQueryResponse,
+    SyntaxQueryPattern, SyntaxQueryPlan, SyntaxQueryPredicate, SyntaxQueryPredicateOp,
+    SyntaxQueryPredicateValue,
+};
+
 mod asp_client_server;
 mod asp_client_server_host;
 mod asp_client_server_lifecycle;
@@ -16,7 +27,7 @@ mod runtime_wire;
 pub use projection_batch::{
     ProviderDerivedProjection, ProviderProjectedItem, ProviderProjectedOwner,
     ProviderProjectionBatchError, ProviderProjectionBatchRequest, ProviderProjectionBatchResponse,
-    ProviderProjectionOwner, run_provider_projection_batch,
+    ProviderProjectionOwner,
 };
 mod transport;
 

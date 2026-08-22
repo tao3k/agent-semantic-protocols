@@ -5,9 +5,8 @@ use agent_semantic_content_identity::{
     SourceSnapshotEvidence, SourceSnapshotKind, WorkspaceSnapshot, hash_blob,
 };
 
-const RUST_PROVIDER_MANIFEST: &[u8] = include_bytes!(
-    "../../../../languages/rust-lang-project-harness/provider/asp-provider-manifest.json"
-);
+const RUST_PROVIDER_MANIFEST: &[u8] =
+    include_bytes!("../../../../languages/rust-lang-project-harness/schemas/asp-provider.json");
 
 pub(crate) struct CanonicalTestSnapshot {
     pub(crate) evidence: SourceSnapshotEvidence,

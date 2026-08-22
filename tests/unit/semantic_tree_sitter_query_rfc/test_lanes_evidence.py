@@ -63,7 +63,7 @@ def test_tree_sitter_query_rfc_records_current_native_projection_lanes() -> None
         "[syntax-lane] language=rust provider=rs-harness lane=R",
         "queryInputForms=selector,code-shaped,catalog-id,s-expression",
         "renderProfile=compact-graph-frontier",
-        "[syntax-lane] language=typescript provider=ts-harness lane=T",
+        "[syntax-lane] language=typescript provider=asp-typescript lane=T",
         "renderProfile=corpus-locator",
         "[syntax-lane] language=python provider=py-harness lane=P",
         "pending=real-project-benchmark",

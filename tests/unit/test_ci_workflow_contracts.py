@@ -16,7 +16,7 @@ LANGUAGE_RELEASE_WORKFLOWS = {
         },
     },
     "languages/typescript-lang-project-harness": {
-        "binary": "ts-harness",
+        "binary": "asp-typescript",
         "darwin_os": "ubuntu-latest",
         "targets": {
             "x86_64-unknown-linux-gnu",

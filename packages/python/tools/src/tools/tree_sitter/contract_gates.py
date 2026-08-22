@@ -152,7 +152,7 @@ class _runtime_env:
                 f'exec "{ROOT}/languages/rust-lang-project-harness/target/debug/rs-harness" "$@"\n',
             )
             _write_shim(
-                shim_dir / "ts-harness",
+                shim_dir / "asp-typescript",
                 f'exec node "{ROOT}/languages/typescript-lang-project-harness/dist/src/cli/main.js" "$@"\n',
             )
             _write_shim(

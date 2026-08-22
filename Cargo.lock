@@ -111,6 +111,7 @@ dependencies = [
  "agent-semantic-content-identity",
  "agent-semantic-context-product",
  "agent-semantic-loop",
+ "agent-semantic-provider-protocol",
  "agent-semantic-runtime",
  "arc-swap",
  "asp-rust-project-harness-policy",
@@ -154,15 +155,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "agent-semantic-command-match"
-version = "0.1.0"
-dependencies = [
- "toml 0.9.12+spec-1.1.0",
- "tree-sitter",
- "tree-sitter-bash",
-]
-
-[[package]]
 name = "agent-semantic-config"
 version = "0.1.0"
 dependencies = [
@@ -195,11 +187,13 @@ dependencies = [
 name = "agent-semantic-hook"
 version = "0.1.0"
 dependencies = [
- "agent-semantic-command-match",
  "agent-semantic-config",
  "agent-semantic-content-identity",
+ "agent-semantic-provider-protocol",
  "agent-semantic-runtime",
+ "agent-semantic-shell-parser",
  "aho-corasick",
+ "asp-provider-registry-build",
  "asp-rust-project-harness-policy",
  "base64 0.23.1",
  "blake3",
@@ -219,6 +213,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent-semantic-hook-testkit"
+version = "0.1.0"
+dependencies = [
+ "agent-semantic-hook",
+ "asp-rust-project-harness-policy",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "agent-semantic-loop"
 version = "0.1.0"
 dependencies = [
@@ -235,12 +240,12 @@ dependencies = [
  "agent-semantic-client",
  "agent-semantic-client-core",
  "agent-semantic-client-db",
- "agent-semantic-command-match",
  "agent-semantic-config",
  "agent-semantic-content-identity",
  "agent-semantic-context-product",
  "agent-semantic-hook",
  "agent-semantic-loop",
+ "agent-semantic-provider-protocol",
  "agent-semantic-provider-transport",
  "agent-semantic-runtime",
  "agent-semantic-search",
@@ -275,8 +280,16 @@ dependencies = [
  "tokio-stream",
  "toml 0.9.12+spec-1.1.0",
  "tracing",
- "tree-sitter",
  "which 8.0.4",
+]
+
+[[package]]
+name = "agent-semantic-provider-protocol"
+version = "0.1.0"
+dependencies = [
+ "asp-provider-registry-build",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -284,6 +297,7 @@ name = "agent-semantic-provider-transport"
 version = "0.1.0"
 dependencies = [
  "agent-semantic-content-identity",
+ "agent-semantic-provider-protocol",
  "base64 0.22.1",
  "bstr",
  "bytes",
@@ -321,23 +335,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "uuid",
-]
-
-[[package]]
-name = "agent-semantic-rust-policy-types"
-version = "0.1.0"
-dependencies = [
- "blake3",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "agent-semantic-rust-policy-verifier"
-version = "0.1.0"
-dependencies = [
- "agent-semantic-rust-policy-types",
- "serde_json",
 ]
 
 [[package]]
@@ -381,22 +378,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "agent-semantic-tree-sitter"
+name = "agent-semantic-shell-parser"
 version = "0.1.0"
 dependencies = [
- "agent-semantic-tree-sitter-runtime",
- "asp-rust-project-harness-policy",
- "rust-lang-project-harness 0.1.2",
+ "toml 0.9.12+spec-1.1.0",
  "tree-sitter",
- "tree-sitter-rust",
+ "tree-sitter-bash",
 ]
 
 [[package]]
-name = "agent-semantic-tree-sitter-runtime"
+name = "agent-semantic-tree-sitter"
 version = "0.1.0"
 dependencies = [
- "streaming-iterator",
- "tree-sitter",
+ "agent-semantic-provider-protocol",
+ "asp-rust-project-harness-policy",
+ "rust-lang-project-harness 0.1.2",
 ]
 
 [[package]]
@@ -614,6 +610,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.118",
+]
+
+[[package]]
+name = "asp-provider-registry-build"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]
@@ -5920,16 +5923,6 @@ name = "tree-sitter-language"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
-
-[[package]]
-name = "tree-sitter-rust"
-version = "0.24.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "439e577dbe07423ec2582ac62c7531120dbfccfa6e5f92406f93dd271a120e45"
-dependencies = [
- "cc",
- "tree-sitter-language",
-]
 
 [[package]]
 name = "try-lock"

@@ -1,104 +1,22 @@
 use super::{
-    DefaultActivationSelections, ProviderCommandSelection, RuntimeBinarySelectionV1,
-    asp_binary_selection_from_active_receipt, build_default_activation_from_selections,
-    capture_asp_binary_selection, provider_manifests,
+    StaticActivationSelections, StaticProviderSelection, build_default_activation_from_selections,
+    provider_manifests,
 };
-
-fn test_graph_turbo_selection() -> RuntimeBinarySelectionV1 {
-    RuntimeBinarySelectionV1::new(
-        "/producer-owned/runtime/bin/asp".to_string(),
-        "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
-        "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
-    )
-    .expect("valid producer-owned ASP binary identity")
-}
-
-#[test]
-fn runtime_binary_identity_reuses_active_receipt_and_fails_closed_on_drift() {
-    let root = std::env::temp_dir().join(format!(
-        "asp-runtime-binary-receipt-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system time")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&root).expect("create receipt fixture");
-    let binary = root.join("asp");
-    let activation = root.join("activation.json");
-    std::fs::write(&binary, b"asp-runtime-v1").expect("write runtime binary");
-    std::fs::write(
-        &activation,
-        serde_json::to_vec(&serde_json::json!({
-            "schemaId": "asp.hook-activation.v1",
-            "schemaVersion": "1",
-            "schemaAuthority": "test",
-            "protocolId": "agent.semantic-protocols.hook",
-            "protocolVersion": "1",
-            "projectRoot": root.display().to_string(),
-            "generatedBy": {"runtime": "test", "version": "1"},
-            "rankers": [],
-            "providers": []
-        }))
-        .expect("encode activation"),
-    )
-    .expect("write activation");
-    let digest = agent_semantic_content_identity::file_content_digest_v1(&binary)
-        .expect("runtime binary digest");
-    crate::materialize_active_asp_artifact_receipt(&binary, &digest, &activation)
-        .expect("materialize active artifact receipt");
-    crate::verify_active_asp_artifact_receipt(&activation, &[&binary])
-        .expect("verify active artifact receipt fixture");
-
-    let started = std::time::Instant::now();
-    let selection = asp_binary_selection_from_active_receipt(&binary, &activation)
-        .expect("reuse verified active artifact receipt");
-    let elapsed = started.elapsed();
-    assert_eq!(selection.content_digest(), digest);
-    assert!(
-        elapsed < std::time::Duration::from_millis(10),
-        "receipt-backed runtime identity exceeded the 10ms cold gate: {elapsed:?}"
-    );
-
-    std::fs::write(&binary, b"asp-runtime-v2").expect("drift runtime binary");
-    asp_binary_selection_from_active_receipt(&binary, &activation)
-        .expect_err("drifted runtime binary must not reuse the published content identity");
-    let error = capture_asp_binary_selection(&binary, Some(&activation))
-        .expect_err("query-time receipt drift must fail closed without byte-hash fallback");
-    assert!(
-        error.contains("mismatch") || error.contains("drift"),
-        "unexpected fail-closed diagnostic: {error}"
-    );
-    std::fs::remove_dir_all(root).expect("remove receipt fixture");
-}
 
 #[test]
 fn activation_reuses_selection_manifest_identity_in_milliseconds() {
-    let executable = std::env::current_exe()
-        .expect("resolve current test executable")
-        .display()
-        .to_string();
     let providers = provider_manifests()
         .into_iter()
         .filter(|manifest| manifest.document_resolution().is_some())
         .enumerate()
-        .map(|(index, manifest)| ProviderCommandSelection {
+        .map(|(index, manifest)| StaticProviderSelection {
             manifest_id: manifest.manifest_id.clone(),
             manifest_digest: format!("sha256:{index:064x}"),
-            execution_command_digest: format!("sha256:{:064x}", index + 1),
             language_id: manifest.language_id.clone(),
             provider_id: manifest.provider_id.clone(),
-            binary: if index == 0 {
-                "custom-provider-basename".to_string()
-            } else {
-                manifest.binary.clone()
-            },
-            execution: manifest.execution,
-            provider_command_prefix: vec![executable.clone()],
         })
         .collect::<Vec<_>>();
-    let graph_turbo = test_graph_turbo_selection();
-    let selections = DefaultActivationSelections::new(providers, graph_turbo.clone());
+    let selections = StaticActivationSelections::new(providers);
     let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(std::path::Path::parent)
@@ -119,25 +37,13 @@ fn activation_reuses_selection_manifest_identity_in_milliseconds() {
             provider.manifest_digest, selection.manifest_digest,
             "activation must consume the producer-owned manifest identity without re-hashing"
         );
-        assert_eq!(
-            provider.execution_command_digest, selection.execution_command_digest,
-            "activation must consume the producer-owned execution identity without reading provider bytes"
-        );
-        assert_eq!(
-            provider.binary, selection.binary,
-            "activation must preserve the selected logical provider basename"
-        );
     }
     let ranker = activation
         .rankers
         .first()
         .expect("built-in graph-turbo ranker");
-    assert_eq!(ranker.binary, graph_turbo.binary());
-    assert_eq!(ranker.content_digest, graph_turbo.content_digest());
-    assert_eq!(
-        ranker.artifact_metadata_digest,
-        graph_turbo.artifact_metadata_digest()
-    );
+    assert_eq!(ranker.capability_id, "graph-turbo");
+    assert_eq!(ranker.argv_prefix, ["graph", "render"]);
     assert!(
         elapsed < std::time::Duration::from_millis(250),
         "typed activation materialization exceeded the 250ms gate: {elapsed:?}"
@@ -160,33 +66,19 @@ fn activation_parser_preserves_configured_logical_basename() {
         .parent()
         .and_then(std::path::Path::parent)
         .expect("repository workspace root");
-    let selected_binary = "custom-provider-basename";
-    let selection = ProviderCommandSelection {
+    let selection = StaticProviderSelection {
         manifest_id: manifest.manifest_id.clone(),
         manifest_digest: super::provider_manifest_digest(manifest).expect("manifest digest"),
-        execution_command_digest: "sha256:test-execution-command".to_string(),
         language_id: manifest.language_id.clone(),
         provider_id: manifest.provider_id.clone(),
-        binary: selected_binary.to_string(),
-        execution: manifest.execution,
-        provider_command_prefix: vec![
-            std::path::Path::new("/state-home/runtime/bin")
-                .join(selected_binary)
-                .display()
-                .to_string(),
-        ],
     };
-    let selections =
-        DefaultActivationSelections::new(vec![selection], test_graph_turbo_selection());
+    let selections = StaticActivationSelections::new(vec![selection]);
     let activation = build_default_activation_from_selections(workspace_root, &selections)
         .expect("build activation with configured logical basename");
     let serialized = serde_json::to_string(&activation).expect("serialize activation");
 
     let runtime =
         crate::parse_activation(&serialized, &manifests).expect("parse selected basename");
-    assert_eq!(runtime.providers[0].binary, selected_binary);
-    assert!(
-        runtime.providers[0].provider_command_prefix.is_empty(),
-        "State Home v1 activation must not persist the resolved provider path"
-    );
+    assert_eq!(runtime.providers[0].provider_id, manifest.provider_id);
+    assert!(!serialized.contains("providerCommandPrefix"));
 }

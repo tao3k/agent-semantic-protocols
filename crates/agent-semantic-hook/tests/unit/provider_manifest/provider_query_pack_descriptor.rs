@@ -6,7 +6,7 @@ use serde_json::Value;
 #[test]
 fn every_builtin_language_owns_a_query_pack_descriptor() {
     let schema: Value = serde_json::from_str(include_str!(
-        "../../../../../schemas/provider-query-pack-descriptor.v1.schema.json"
+        "../../../../../schemas/provider-query-pack-descriptor.schema.json"
     ))
     .expect("valid provider query pack descriptor schema");
     let descriptor_version = schema
@@ -60,7 +60,7 @@ fn every_builtin_language_owns_a_query_pack_descriptor() {
 #[test]
 fn provider_and_activation_v1_require_query_pack_descriptors() {
     let provider_schema: Value = serde_json::from_str(include_str!(
-        "../../../../../schemas/provider-manifest.v1.schema.json"
+        "../../../../../schemas/provider-manifest.schema.json"
     ))
     .expect("valid provider manifest v1 schema");
     assert_eq!(
@@ -105,7 +105,7 @@ fn provider_and_activation_v1_require_query_pack_descriptors() {
     assert_eq!(
         provider_schema.pointer("/properties/projectResolution/$ref"),
         Some(&Value::String(
-            "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-descriptor.v1.schema.json".to_string()
+            "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-descriptor.schema.json".to_string()
         ))
     );
     assert_eq!(
@@ -115,16 +115,16 @@ fn provider_and_activation_v1_require_query_pack_descriptors() {
         ))
     );
     assert_eq!(
-        provider_schema["oneOf"]
+        provider_schema["anyOf"]
             .as_array()
-            .expect("provider resolution ownership branches")
+            .expect("provider resolution capability branches")
             .len(),
         2,
-        "provider manifest must select exactly one typed resolution owner"
+        "provider manifest must expose at least one typed resolution capability"
     );
 
     let activation_schema: Value = serde_json::from_str(include_str!(
-        "../../../../../schemas/hook-activation.v1.schema.json"
+        "../../../../../schemas/hook-activation.v2.schema.json"
     ))
     .expect("valid hook activation v1 schema");
     assert_eq!(
@@ -149,7 +149,7 @@ fn provider_and_activation_v1_require_query_pack_descriptors() {
         activation_schema
             .pointer("/$defs/activatedProviderConfig/properties/searchCapabilities/$ref"),
         Some(&Value::String(
-            "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-manifest.v1.schema.json#/$defs/providerSearchCapabilities".to_string()
+            "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-manifest.schema.json#/$defs/providerSearchCapabilities".to_string()
         ))
     );
     assert_eq!(
@@ -164,12 +164,12 @@ fn provider_and_activation_v1_require_query_pack_descriptors() {
 #[test]
 fn registry_v1_descriptors_match_builtin_provider_manifests() {
     let registry: Value = serde_json::from_str(include_str!(
-        "../../../../../schemas/semantic-language-registry.providers.v1.json"
+        "../../../../../schemas/provider-register.json"
     ))
     .expect("valid semantic language registry v1");
-    let registrations = registry["languages"]
+    let registrations = registry["providers"]
         .as_array()
-        .expect("registry languages");
+        .expect("provider register providers");
     let manifests = builtin_provider_manifests();
     assert_eq!(registrations.len(), manifests.len());
 
@@ -192,7 +192,7 @@ fn registry_v1_descriptors_match_builtin_provider_manifests() {
             .and_then(Value::as_str)
             .expect("registry descriptor reference");
         let descriptor_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../schemas")
+            .join("../..")
             .join(descriptor_ref);
         let descriptor: Value = serde_json::from_str(
             &std::fs::read_to_string(&descriptor_path).unwrap_or_else(|error| {
@@ -229,7 +229,7 @@ fn query_pack_v1_schema_and_typed_manifest_accept_literal_roles() {
     }
 
     let schema: Value = serde_json::from_str(include_str!(
-        "../../../../../schemas/provider-query-pack-descriptor.v1.schema.json"
+        "../../../../../schemas/provider-query-pack-descriptor.schema.json"
     ))
     .expect("valid provider query pack descriptor schema");
     assert!(
@@ -274,12 +274,7 @@ fn activation_rejects_search_capabilities_drift() {
             manifest_digest,
             language_id: manifest.language_id().clone(),
             provider_id: manifest.provider_id().clone(),
-            binary: manifest.binary().to_string(),
-            execution: manifest.execution(),
-            provider_command_prefix: Vec::new(),
-            execution_command_digest: "test-execution-command-digest".to_string(),
             search_capabilities: manifest.search_capabilities().clone(),
-            language_projection: manifest.language_projection().cloned(),
             semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
             query_pack_descriptor: manifest.query_pack_descriptor().clone(),
             semantic_registry_digest,
@@ -340,12 +335,7 @@ fn activation_rejects_semantic_facts_descriptor_drift() {
             manifest_digest,
             language_id: manifest.language_id().clone(),
             provider_id: manifest.provider_id().clone(),
-            binary: manifest.binary().to_string(),
-            execution: manifest.execution(),
-            provider_command_prefix: Vec::new(),
-            execution_command_digest: "test-execution-command-digest".to_string(),
             search_capabilities: manifest.search_capabilities().clone(),
-            language_projection: manifest.language_projection().cloned(),
             semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
             query_pack_descriptor: manifest.query_pack_descriptor().clone(),
             semantic_registry_digest,

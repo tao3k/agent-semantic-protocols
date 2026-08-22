@@ -10,7 +10,9 @@ pub use asp_session_policy::AspSessionPolicy;
 pub(crate) use core::HookPolicyCandidate;
 pub use core::{ClientHookConfig, ConfiguredResidentTarget, DurableHookConfigArtifact};
 pub use core_load::{
-    default_client_config_path, default_client_config_template, load_client_config,
-    load_client_config_for_project, load_client_config_for_project_with_executable_capabilities,
+    default_client_config_path, default_client_config_projection_digest,
+    default_client_config_template, hook_runtime_artifact_fingerprint, load_client_config,
+    load_client_config_for_matcher_publication, load_client_config_for_project,
+    load_client_config_for_project_with_executable_capabilities,
     load_client_config_overlay_for_project, load_embedded_client_config_for_project,
 };

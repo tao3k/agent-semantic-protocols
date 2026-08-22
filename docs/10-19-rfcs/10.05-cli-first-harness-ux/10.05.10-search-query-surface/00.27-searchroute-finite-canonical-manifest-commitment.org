@@ -1,6 +1,0 @@
-#+title: Compatibility locator: finite canonical manifest commitment
-
-* Canonical RFC
-
-The canonical RFC is
-[[file:../../10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00.27-searchroute-finite-canonical-manifest-commitment.org][Finite canonical manifest commitment]].

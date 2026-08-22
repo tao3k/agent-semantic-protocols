@@ -1,6 +1,4 @@
-use super::{
-    is_search_owner_items_query, parse_search_owner_items_query_args,
-};
+use super::{is_search_owner_items_query, parse_search_owner_items_query_args};
 
 #[test]
 fn owner_parser_consumes_the_items_projection_before_options() {

@@ -32,6 +32,7 @@ mod install_provider_reconcile;
 mod install_provider_release;
 mod install_provider_runtime_reconcile;
 pub use install_provider_runtime_reconcile::prepare_runtime_server_provider_catalog;
+pub(crate) use install_provider_runtime_reconcile::reconcile_global_provider_catalog_for_runtime;
 
 mod install_provider_target;
 mod live_corpus;

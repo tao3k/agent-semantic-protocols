@@ -16,7 +16,7 @@ _PROVIDER_BINARY_BY_LANGUAGE = {
     "julia": "asp-julia-harness",
     "python": "py-harness",
     "rust": "rs-harness",
-    "typescript": "ts-harness",
+    "typescript": "asp-typescript",
 }
 
 

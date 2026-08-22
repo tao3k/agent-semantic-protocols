@@ -31,49 +31,10 @@ use agent_semantic_provider_transport::projection_batch::{
 };
 
 enum ProviderProjectionExecutor<'a> {
-    #[cfg(test)]
-    OneShot(agent_semantic_provider_transport::ProviderProcessSupervisor),
     Resident(&'a ProviderRuntimeActorClient),
     RuntimeService(
         &'a agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
     ),
-}
-
-#[cfg(test)]
-pub(super) async fn project_generation(
-    project_root: &Path,
-    workspace_identity: &str,
-    registry: &ProviderRegistrySnapshot,
-    files: &[ClientDbSourceIndexScopeFile],
-    source_blobs: &ClientDbSourceIndexSourceBlobs,
-) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
-    let tree = WorkspacePathMerkleTreeV1::from_file_digests(
-        source_blobs
-            .iter()
-            .map(|(owner_path, bytes)| (owner_path.to_owned(), blake3_content_digest_v1(bytes))),
-    )
-    .map_err(|error| format!("build exact-selector workspace Merkle tree: {error}"))?;
-    let mut projected = files.to_vec();
-    let executor = ProviderProjectionExecutor::OneShot(
-        agent_semantic_provider_transport::ProviderProcessSupervisor::default(),
-    );
-    for provider in registry
-        .providers
-        .iter()
-        .filter(|provider| provider.language_projection.is_some())
-    {
-        project_provider(
-            &executor,
-            project_root,
-            workspace_identity,
-            provider,
-            &tree,
-            source_blobs,
-            &mut projected,
-        )
-        .await?;
-    }
-    Ok(projected)
 }
 
 pub(super) async fn project_generation_with_resident_runtime(
@@ -132,7 +93,7 @@ async fn project_generation_with_executor(
     for provider in registry
         .providers
         .iter()
-        .filter(|provider| provider.language_projection.is_some())
+        .filter(|provider| provider.runtime_operation("projection-batch").is_some())
     {
         project_provider(
             &executor,
@@ -157,10 +118,14 @@ async fn project_provider(
     source_blobs: &ClientDbSourceIndexSourceBlobs,
     files: &mut [ClientDbSourceIndexScopeFile],
 ) -> Result<(), String> {
-    let descriptor = provider
-        .language_projection
-        .as_ref()
-        .expect("projection-capable providers were filtered by the caller");
+    let operation = provider
+        .runtime_operation("projection-batch")
+        .ok_or_else(|| {
+            format!(
+                "provider lacks projection-batch runtime operation: providerId={}",
+                provider.provider_id
+            )
+        })?;
     let owner_indexes = files
         .iter()
         .enumerate()
@@ -218,28 +183,9 @@ async fn project_provider(
             owners,
         };
         let response = match executor {
-            #[cfg(test)]
-            ProviderProjectionExecutor::OneShot(supervisor) => {
-                agent_semantic_provider_transport::projection_batch::run_provider_projection_batch(
-                    supervisor,
-                    provider.runtime_command_argv.as_deref().ok_or_else(|| {
-                        format!(
-                            "test provider projection has no runtime command: providerId={}",
-                            provider.provider_id
-                        )
-                    })?,
-                    descriptor.command_binding(),
-                    project_root,
-                    &request,
-                )
-                .await
-                .map_err(|error| error.to_string())?
-            }
             ProviderProjectionExecutor::Resident(runtime) => {
                 let encoded = request.encode().map_err(|error| error.to_string())?;
-                let response = runtime
-                    .request(descriptor.command_binding(), encoded)
-                    .await?;
+                let response = runtime.request(&operation.operation, encoded).await?;
                 agent_semantic_provider_transport::projection_batch::ProviderProjectionBatchResponse::decode_for(
                     &request,
                     &response,
@@ -264,7 +210,7 @@ async fn project_provider(
                     .provider_operation(
                         project_root.to_path_buf(),
                         provider.language_id.as_str().to_owned(),
-                        descriptor.command_binding().to_owned(),
+                        operation.operation.clone(),
                         encoded,
                     )
                     .await?;

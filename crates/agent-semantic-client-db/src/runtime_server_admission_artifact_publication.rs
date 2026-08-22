@@ -22,6 +22,24 @@ impl WorkspaceGenerationAdmission {
         language_id: String,
         provider_id: String,
     ) -> Result<WorkspaceGenerationAdmissionReceipt, String> {
+        self.admit_artifact_publication_with_mode_and_wait(
+            workspace_identity,
+            project_root,
+            language_id,
+            provider_id,
+            WorkspaceGenerationBuildMode::RestoreOrBuild,
+        )
+        .await
+    }
+
+    pub(crate) async fn admit_artifact_publication_with_mode_and_wait(
+        &self,
+        workspace_identity: String,
+        project_root: PathBuf,
+        language_id: String,
+        provider_id: String,
+        build_mode: WorkspaceGenerationBuildMode,
+    ) -> Result<WorkspaceGenerationAdmissionReceipt, String> {
         if workspace_identity.trim().is_empty() {
             return Err("artifact publication admission identity must be non-empty".to_owned());
         }
@@ -49,7 +67,7 @@ impl WorkspaceGenerationAdmission {
                 workspace_identity.clone(),
                 project_root.clone(),
                 candidate,
-                WorkspaceGenerationBuildMode::RestoreOrBuild,
+                build_mode,
                 WorkspaceGenerationAdmissionTrigger::ArtifactPublication,
                 WorkspaceGenerationAdmissionMode::FullRecovery,
                 Some(

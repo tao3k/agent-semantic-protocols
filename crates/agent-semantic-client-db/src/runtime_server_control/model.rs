@@ -1,8 +1,8 @@
 use std::path::Path;
 use std::sync::OnceLock;
 
-use serde::{Deserialize, Serialize};
 use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
+use serde::{Deserialize, Serialize};
 
 pub(super) const SCHEMA_VERSION: &str = "1";
 pub(super) const ENDPOINT_SCHEMA_ID: &str = "agent.semantic-protocols.runtime-server-endpoint.v1";
@@ -15,7 +15,7 @@ const STATUS_SNAPSHOT_SCHEMA_ID: &str =
 
 static RUNTIME_SERVER_TRANSPORT_CONTRACT_DIGEST: OnceLock<String> = OnceLock::new();
 const RUNTIME_SERVER_TRANSPORT_CONTRACT_DOMAIN: &[u8] =
-    b"agent.semantic-protocols.runtime-server-transport.v1";
+    b"agent.semantic-protocols.runtime-server-transport";
 const RUNTIME_SERVER_CONTROL_CONTRACT: &[u8] =
     include_bytes!("../../../../schemas/runtime-server-control.v1.schema.json");
 const WORKSPACE_DB_OWNER_IPC_CONTRACT: &[u8] =
@@ -24,6 +24,10 @@ const RUNTIME_PERFORMANCE_OBSERVATION_CONTRACT: &[u8] =
     include_bytes!("../../../../schemas/runtime-server-performance-observation.v1.schema.json");
 const RUNTIME_PERFORMANCE_INGRESS_RECEIPT_CONTRACT: &[u8] =
     include_bytes!("../../../../schemas/runtime-server-performance-ingress-receipt.v1.schema.json");
+const PROVIDER_REGISTER_REQUEST_CONTRACT: &[u8] =
+    include_bytes!("../../../../schemas/provider-register-request.schema.json");
+const PROVIDER_REGISTER_RESPONSE_CONTRACT: &[u8] =
+    include_bytes!("../../../../schemas/provider-register-response.schema.json");
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,6 +36,8 @@ pub struct RuntimeServerEndpoint {
     pub schema_version: String,
     pub transport_contract_digest: String,
     pub owner_epoch: u64,
+    #[serde(default)]
+    pub owner_process_id: u32,
     pub runtime_artifact_path: String,
     pub runtime_binary_identity: RuntimeBinaryIdentity,
     pub monitor_capability: bool,
@@ -41,6 +47,7 @@ pub struct RuntimeServerEndpoint {
     pub binding_token: String,
     pub socket_path: String,
     pub data_plane_socket_path: String,
+    pub provider_plane_socket_path: String,
     pub workspace_store_path: String,
     pub status_memory_path: String,
 }
@@ -71,6 +78,7 @@ impl RuntimeServerEndpoint {
             || self.binding_token.is_empty()
             || self.socket_path.is_empty()
             || self.data_plane_socket_path.is_empty()
+            || self.provider_plane_socket_path.is_empty()
             || self.workspace_store_path.is_empty()
             || self.status_memory_path.is_empty()
         {
@@ -441,20 +449,28 @@ fn runtime_server_transport_contract_digest_ref() -> &'static str {
             hasher.update(RUNTIME_SERVER_TRANSPORT_CONTRACT_DOMAIN);
             for (contract_name, contract_bytes) in [
                 (
-                    b"runtime-server-control.v1".as_slice(),
+                    b"runtime-server-control".as_slice(),
                     RUNTIME_SERVER_CONTROL_CONTRACT,
                 ),
                 (
-                    b"workspace-db-owner-ipc.v1".as_slice(),
+                    b"workspace-db-owner-ipc".as_slice(),
                     WORKSPACE_DB_OWNER_IPC_CONTRACT,
                 ),
                 (
-                    b"runtime-server-performance-observation.v1".as_slice(),
+                    b"runtime-server-performance-observation".as_slice(),
                     RUNTIME_PERFORMANCE_OBSERVATION_CONTRACT,
                 ),
                 (
-                    b"runtime-server-performance-ingress-receipt.v1".as_slice(),
+                    b"runtime-server-performance-ingress-receipt".as_slice(),
                     RUNTIME_PERFORMANCE_INGRESS_RECEIPT_CONTRACT,
+                ),
+                (
+                    b"provider-register-request".as_slice(),
+                    PROVIDER_REGISTER_REQUEST_CONTRACT,
+                ),
+                (
+                    b"provider-register-response".as_slice(),
+                    PROVIDER_REGISTER_RESPONSE_CONTRACT,
                 ),
             ] {
                 hasher.update(&(contract_name.len() as u64).to_le_bytes());

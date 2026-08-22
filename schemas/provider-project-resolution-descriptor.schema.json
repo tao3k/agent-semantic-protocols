@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-descriptor.schema.json",
+  "title": "Provider Project Scope Descriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "capabilityId", "entryMarkers", "sourceExtensions", "manifestKinds", "lockfileKinds", "parserId", "packageGraphSchema", "projectResolutionSchema"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.provider-project-resolution-descriptor" },
+    "schemaVersion": { "const": "1" },
+    "capabilityId": { "const": "project-resolution" },
+    "entryMarkers": { "type": "array", "description": "Workspace-root-relative project entry paths matched exactly; nested basename matches do not activate the provider.", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true },
+    "sourceExtensions": { "type": "array", "items": { "type": "string", "pattern": "^\\.[A-Za-z0-9]+$" }, "minItems": 1, "uniqueItems": true },
+    "manifestKinds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true },
+    "lockfileKinds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "parserId": { "type": "string", "minLength": 1 },
+    "packageGraphSchema": { "const": "https://schemas.agent-semantic-protocols.dev/language-package-graph.schema.json" },
+    "projectResolutionSchema": { "const": "https://schemas.agent-semantic-protocols.dev/project-resolution.schema.json" }
+  }
+}

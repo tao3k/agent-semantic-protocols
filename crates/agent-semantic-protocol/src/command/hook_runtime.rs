@@ -24,14 +24,8 @@ mod hook_runtime_source_access_materialize;
 mod hook_runtime_stdin;
 #[path = "hook_runtime_subagent.rs"]
 mod hook_runtime_subagent;
-#[path = "hook_runtime_workspace_candidate.rs"]
-mod hook_runtime_workspace_candidate;
 #[path = "hook_runtime_workspace_mutation.rs"]
 mod hook_runtime_workspace_mutation;
-
-#[cfg(test)]
-#[path = "../../tests/unit/command/hook_workspace_candidate.rs"]
-mod hook_workspace_candidate_tests;
 
 use super::{codex_enforcement_report, payload_indicates_subagent_context};
 use agent_semantic_hook::{
@@ -119,7 +113,7 @@ pub(crate) fn read_hook_input_bounded() -> Result<String, String> {
     hook_runtime_stdin::read_hook_stdin_bounded()
         .map_err(|error| format!("failed to read hook payload from stdin: {error}"))
 }
-use hook_runtime_workspace_candidate::hook_workspace_candidate;
+use agent_semantic_hook::hook_workspace_candidate;
 use std::fs;
 use std::path::PathBuf;
 

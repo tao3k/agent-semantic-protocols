@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/provider-syntax-query-response.schema.json",
+  "title": "Provider Syntax Query Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "languageId", "providerId", "ownerPath", "sourceContentDigest", "queryDigest", "parsed", "captures"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.provider-syntax-query-response" },
+    "schemaVersion": { "const": "1" },
+    "languageId": { "type": "string", "minLength": 1 },
+    "providerId": { "type": "string", "minLength": 1 },
+    "ownerPath": { "type": "string", "minLength": 1 },
+    "sourceContentDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "queryDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "parsed": { "type": "boolean" },
+    "captures": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["patternIndex", "captureName", "nativeFactRef", "sourceByteStart", "sourceByteEnd"],
+        "properties": {
+          "patternIndex": { "type": "integer", "minimum": 0 },
+          "captureName": { "type": "string", "minLength": 1 },
+          "nativeFactRef": { "type": "string", "minLength": 1 },
+          "sourceByteStart": { "type": "integer", "minimum": 0 },
+          "sourceByteEnd": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}

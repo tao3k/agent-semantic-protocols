@@ -8,7 +8,7 @@ The hook route-first flow now denies direct TypeScript source reads and returns
 a provider route:
 
 #+begin_src sh
-ts-harness search owner <path> items --query <path-derived-query> .
+asp-typescript search owner <path> items --query <path-derived-query> .
 #+end_src
 
 The route is executable, but sandbox runs showed that path-derived query terms
@@ -21,8 +21,8 @@ queries inside the requested owner.
 Weak file-name queries produced empty owner item packets:
 
 #+begin_src sh
-ts-harness search owner languages/typescript-lang-project-harness/src/cli/semantic-search/types.ts items --query 'types|Types' .
-ts-harness search owner languages/typescript-lang-project-harness/src/cli/semantic-search/packet-base.ts items --query 'packet-base|PacketBase|packetBase' .
+asp-typescript search owner languages/typescript-lang-project-harness/src/cli/semantic-search/types.ts items --query 'types|Types' .
+asp-typescript search owner languages/typescript-lang-project-harness/src/cli/semantic-search/packet-base.ts items --query 'packet-base|PacketBase|packetBase' .
 #+end_src
 
 Both commands were owner-scoped and parser-valid, but returned =item=0= before
@@ -30,7 +30,7 @@ the fallback.  Expanding the query with parent-directory terms fixed recall but
 over-expanded =types.ts= to 35 items:
 
 #+begin_src sh
-ts-harness search owner languages/typescript-lang-project-harness/src/cli/semantic-search/types.ts items --query 'semantic-search|SemanticSearch|semanticSearch|types|Types' .
+asp-typescript search owner languages/typescript-lang-project-harness/src/cli/semantic-search/types.ts items --query 'semantic-search|SemanticSearch|semanticSearch|types|Types' .
 #+end_src
 
 That output is too large for the hook recovery path.  It also teaches agents to
@@ -82,7 +82,7 @@ existing =search/owner= descriptor.
 
 * Sandtable Findings
 
-- =ts-harness search ... --json= is still denied by the hook's
+- =asp-typescript search ... --json= is still denied by the hook's
   =agent-search-json= policy for agent-facing commands.  That is acceptable for
   token control as long as provider tests validate the JSON packet contract and
   the hook route points agents to compact output.

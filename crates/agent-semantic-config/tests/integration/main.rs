@@ -7,5 +7,7 @@ mod action_match_config;
 mod default_read_effect_rule;
 #[path = "legacy_agent_action_contract.rs"]
 mod legacy_agent_action_contract;
+#[path = "profile_rule_dsl.rs"]
+mod profile_rule_dsl;
 #[path = "wrapper_match_contract.rs"]
 mod wrapper_match_contract;

@@ -14,8 +14,9 @@ pub use agent_semantic_runtime::state_core;
 pub mod types;
 
 pub use activation::{
-    ASP_PROVIDER_ACTIVATION_PATH_ENV, ProviderRegistryEvidence, ProviderRegistrySnapshot,
-    ProviderScopeAuthority, ResolvedProvider, RuntimeProfileStatus,
+    ASP_PROVIDER_ACTIVATION_PATH_ENV, ProviderDocumentInventoryCapability,
+    ProviderProjectInventoryCapability, ProviderRegistryEvidence, ProviderRegistrySnapshot,
+    ProviderSourceInventoryCapabilities, ResolvedProvider, RuntimeProfileStatus,
 };
 pub use agent_semantic_hook::ProviderExecution;
 pub use cache_artifact::{
@@ -50,12 +51,11 @@ pub use types::{
 };
 pub use {
     agent_semantic_tree_sitter::{
-        BuiltinCatalogId, BuiltinCatalogLanguageId, CompiledSyntaxQuery, LoadedGrammarProfile,
-        LoadedSyntaxCatalog, SyntaxCatalogDescriptor, SyntaxQueryAbiError, SyntaxQueryAbiPattern,
-        SyntaxQueryAbiPlan, SyntaxQueryCompileError, builtin_catalog_source, compile_catalog_query,
-        compile_query_abi_source, compile_query_source, extract_capture_names, fingerprint_catalog,
-        fingerprint_grammar_profile, load_grammar_profile, load_syntax_catalog,
-        normalize_capture_names,
+        BuiltinCatalogId, BuiltinCatalogLanguageId, LoadedGrammarProfile, LoadedSyntaxCatalog,
+        SyntaxCatalogDescriptor, SyntaxQueryAbiError, SyntaxQueryAbiPattern, SyntaxQueryAbiPlan,
+        builtin_catalog_source, compile_query_abi_source, extract_capture_names,
+        fingerprint_catalog, fingerprint_grammar_profile, load_grammar_profile,
+        load_syntax_catalog, normalize_capture_names,
     },
     request::{
         ASP_SYNTAX_QUERY_CAPTURES_ARG, ASP_SYNTAX_QUERY_FIELDS_ARG,

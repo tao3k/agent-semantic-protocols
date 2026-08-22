@@ -15,7 +15,7 @@ equivalence between the Org RFC and an AXLE-generated declaration bundle.
 - Lean model: =packages/proofs/ASPProof/SearchLoopClauseFirst.lean=
 - AXLE extraction owner: =packages/python/tools=
 - mathematical explanation and embedded Typst block:
-  =docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.11-clause-first-mathematical-model.org=
+  =docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.60-lean-typst-audit/00.11-clause-first-mathematical-model.org=
 
 The current Lean file is a direct RFC bootstrap model.  A later receipt must
 bind it to an AXLE-produced, versioned declaration bundle before claiming the

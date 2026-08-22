@@ -123,7 +123,7 @@ Example surfaces:
   "steps": [
     {
       "id": "text-owner-tests-pipe",
-      "command": ["ts-harness", "search", "text", "parserOwner", "owner", "tests", "."],
+      "command": ["asp-typescript", "search", "text", "parserOwner", "owner", "tests", "."],
       "capture": {"tsOwner": "\\|next owner:([^,\\s]+)"},
       "expect": {
         "lineProtocol": true,
@@ -133,7 +133,7 @@ Example surfaces:
     },
     {
       "id": "owner-from-pipe",
-      "command": ["ts-harness", "search", "owner", "{tsOwner}", "."]
+      "command": ["asp-typescript", "search", "owner", "{tsOwner}", "."]
     }
   ]
 }
@@ -218,7 +218,7 @@ The next run compressed the default compact search surface:
   policy evidence belongs to =check=.
 - The TypeScript sandtable invokes the local built CLI with
   =node dist/src/cli/main.js= so protocol-repository drills are independent of
-  a global =ts-harness= install.
+  a global =asp-typescript= install.
 
 Observed after compression:
 

@@ -71,7 +71,7 @@ def _profile_changes(
     profile: LanguageSchemaProfile,
 ) -> tuple[SchemaProfileChange, ...]:
     schema_dir = repo_root / profile.package_root / "schemas"
-    present = {path.name for path in schema_dir.glob("*.json")}
+    present = {path.name for path in schema_dir.glob("*.schema.json")}
     allowed = set(contract_closure(repo_root, profile.allowed_schema_files))
     return (
         *_missing_schema_changes(profile, allowed - present),

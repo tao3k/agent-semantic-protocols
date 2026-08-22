@@ -149,14 +149,11 @@ pub fn encode_provider_project_resolution_request(
 }
 
 /// Resolve the provider project scope for a project root.
-/// Returns whether a resolved provider is authorized to execute package-project scope.
-pub fn provider_scope_authority_permits_project_resolution(
-    authority: &agent_semantic_client_core::ProviderScopeAuthority,
+/// Returns whether the resolved provider declared the project-resolution adapter.
+pub fn provider_capabilities_permit_project_resolution(
+    capabilities: &agent_semantic_client_core::ProviderSourceInventoryCapabilities,
 ) -> bool {
-    matches!(
-        authority,
-        agent_semantic_client_core::ProviderScopeAuthority::ProjectResolution
-    )
+    capabilities.project_resolution.is_some()
 }
 
 pub async fn provider_project_resolution_with_candidates(
@@ -199,7 +196,7 @@ fn provider_project_resolution_invocation_with_candidates(
     ),
     String,
 > {
-    if !provider_scope_authority_permits_project_resolution(&provider.scope_authority) {
+    if !provider_capabilities_permit_project_resolution(&provider.source_inventory_capabilities) {
         return Err(format!(
             "provider scope authority does not permit ProjectResolution: languageId={} providerId={}",
             provider.language_id, provider.provider_id
@@ -385,10 +382,10 @@ pub fn project_resolution_from_stdout(
     expected_provider_id: &ProviderId,
     candidates: &ProviderProjectResolutionCandidates,
 ) -> Result<ProviderProjectResolution, String> {
-let stdout = String::from_utf8_lossy(stdout);
-let trimmed = stdout.trim();
-let preview: String = trimmed.chars().take(256).collect();
-let packet = serde_json::from_str::<RawProviderProjectResolutionResponse>(trimmed).map_err(
+    let stdout = String::from_utf8_lossy(stdout);
+    let trimmed = stdout.trim();
+    let preview: String = trimmed.chars().take(256).collect();
+    let packet = serde_json::from_str::<RawProviderProjectResolutionResponse>(trimmed).map_err(
     |error| {
         format!(
             "decode provider project-resolution response: {error}; bytes={}; prefix={preview:?}",

@@ -10,7 +10,7 @@ TypeScript search code with fewer tokens and fewer turns.
 The working rule is:
 
 #+begin_src text
-TS code search starts with ts-harness search.
+TS code search starts with asp-typescript search.
 External grep/fd is allowed only as an expansion source, and its output must
 return through search ingest before the agent reasons over it.
 #+end_src
@@ -162,14 +162,14 @@ Observed:
 
 #+begin_src text
 [search-code-flow]
-1. ts-harness search workspace .
-2. ts-harness search prime .
-3. ts-harness search lexical <implementation-term> .
-4. ts-harness search owner <top-owner> .
-5. ts-harness search tests <top-owner> .
+1. asp-typescript search workspace .
+2. asp-typescript search prime .
+3. asp-typescript search lexical <implementation-term> .
+4. asp-typescript search owner <top-owner> .
+5. asp-typescript search tests <top-owner> .
 6. parser-visible modules should stay inside search owner; only path-only files go to ingest
 7. self-apply policy gates must stay green; split owners instead of waiving size findings
-8. rg/fd only for non-parser text, always piped into ts-harness search ingest .
+8. rg/fd only for non-parser text, always piped into asp-typescript search ingest .
 #+end_src
 
 * Closeout

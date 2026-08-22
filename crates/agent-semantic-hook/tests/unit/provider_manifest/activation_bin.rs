@@ -4,7 +4,7 @@ use std::fs;
 use super::{git_init, make_executable, temp_root};
 
 #[test]
-fn default_activation_uses_state_home_runtime_provider_receipt() {
+fn default_activation_keeps_provider_runtime_identity_out_of_static_activation() {
     let root = temp_root("state-home-runtime-provider");
     let state_home = root.join(".asp-state-home");
     git_init(&root);
@@ -25,10 +25,12 @@ fn default_activation_uses_state_home_runtime_provider_receipt() {
         .find(|provider| provider.language_id == "rust")
         .expect("rust provider activated from State Home runtime bin");
 
-    assert_eq!(rust.binary, "asp-rust");
+    assert_eq!(rust.provider_id.as_str(), "asp-rust");
+    let serialized = serde_json::to_string(&activation).expect("serialize static activation");
     assert!(
-        rust.provider_command_prefix.is_empty(),
-        "State Home v1 activation must persist only the logical provider basename"
+        !serialized.contains("providerCommandPrefix")
+            && !serialized.contains("executionCommandDigest"),
+        "static Hook activation must not persist Runtime provider bindings"
     );
 
     fs::remove_dir_all(root).expect("remove temp root");
@@ -234,7 +236,7 @@ pub(crate) fn install_state_home_provider(
 import json
 import sys
 
-if sys.argv[1:] != ["project-resolution-stdin"]:
+if sys.argv[1:] != ["project-resolution"]:
     raise SystemExit(64)
 request = json.load(sys.stdin)
 generation = request["candidateGeneration"]["digest"]

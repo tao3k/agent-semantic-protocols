@@ -1,7 +1,0 @@
-#+title: Compatibility locator: canonical graph cost vector
-
-* Canonical RFC
-
-This historical CLI-first path is retained only as a compatibility locator.
-The canonical RFC is
-[[file:../../10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00.32-canonical-graph-cost-vector.org][Canonical graph cost vector]].

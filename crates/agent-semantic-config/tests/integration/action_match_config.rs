@@ -1,4 +1,4 @@
-use agent_semantic_config::{HookClientActionKind, HookClientConfigFile, WrapperMatchMode};
+use agent_semantic_config::{HookClientActionKind, HookClientConfigFile, HookClientMatcherPolicy};
 
 #[test]
 fn git_source_read_rule_dispatches_to_testing_resident() {
@@ -50,17 +50,32 @@ fn source_deny_rules_have_one_explore_role_dispatch_for_the_choice_plane() {
 }
 
 #[test]
-fn default_template_uses_one_top_level_wrapper_match_mode() {
+fn default_template_uses_rule_local_matcher_policies() {
     let config =
         toml::from_str::<HookClientConfigFile>(include_str!("../../templates/hooks/config.toml"))
             .expect("default hook config template should parse");
+
+    let wrapped_rule = config
+        .rules
+        .iter()
+        .find(|rule| rule.id == "resident-testing-dispatch")
+        .expect("wrapped command rule");
+    assert_eq!(
+        wrapped_rule.matcher_policies,
+        [HookClientMatcherPolicy::WrappedCommand]
+    );
+    let native_read_rule = config
+        .rules
+        .iter()
+        .find(|rule| rule.id == "route-read-to-asp-languages")
+        .expect("native Read route rule");
+    assert!(native_read_rule.matcher_policies.is_empty());
 
     let action_rule = config
         .rules
         .iter()
         .find(|rule| rule.id == "deny-raw-registered-source-action")
         .expect("action-first source deny rule should exist");
-    assert_eq!(config.wrapper_match, WrapperMatchMode::Enable);
     assert_eq!(
         action_rule.match_config.action_policy_all,
         ["raw-shell-read", "registered-language-source"]
@@ -86,12 +101,13 @@ fn default_template_uses_one_top_level_wrapper_match_mode() {
 }
 
 #[test]
-fn wrapper_match_rfc_records_parser_owned_snapshot_contract() {
+fn matcher_policy_rfc_records_parser_owned_snapshot_contract() {
     let rfc = include_str!(
         "../../../../docs/10-19-rfcs/10.15-agent-hook-interception-protocol/10.15.40-parser-owned-wrapper-match-snapshots.org"
     );
 
-    assert!(rfc.contains("wrapper_match"));
+    assert!(rfc.contains("matcherPolicies"));
+    assert!(rfc.contains("wrapped_command"));
     assert!(rfc.contains("commandWrappers"));
     assert!(rfc.contains("Git snapshot"));
 }

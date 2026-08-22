@@ -16,7 +16,7 @@ This receipt covers:
 RFC owner:
 
 #+begin_example
-docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.20-searchroute-partial-route-inspect-scheduler.org
+docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.10-interactive-searchloop/00.20-searchroute-partial-route-inspect-scheduler.org
 #+end_example
 
 Lean owner:

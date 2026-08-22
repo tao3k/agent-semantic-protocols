@@ -7,7 +7,7 @@ impl RuntimeServer {
         self,
         source_builder: crate::runtime_server_admission::WorkspaceGenerationCandidateBuilder,
     ) -> Self {
-        self.configure_workspace_generation_builder(source_builder, None, None, None)
+        self.configure_workspace_generation_builder(source_builder, None, None)
     }
 
     pub fn with_workspace_generation_builder_and_catalog(
@@ -15,7 +15,7 @@ impl RuntimeServer {
         source_builder: crate::runtime_server_admission::WorkspaceGenerationCandidateBuilder,
         catalog: crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog,
     ) -> Self {
-        self.configure_workspace_generation_builder(source_builder, None, Some(catalog), None)
+        self.configure_workspace_generation_builder(source_builder, None, Some(catalog))
     }
 
     pub fn with_workspace_generation_and_owner_builders(
@@ -26,7 +26,6 @@ impl RuntimeServer {
         self.configure_workspace_generation_builder(
             source_builder,
             Some(owner_projection_builder),
-            None,
             None,
         )
     }
@@ -41,36 +40,6 @@ impl RuntimeServer {
             source_builder,
             Some(owner_projection_builder),
             Some(catalog),
-            None,
-        )
-    }
-
-    pub fn with_workspace_generation_builder_catalog_identity(
-        self,
-        source_builder: crate::runtime_server_admission::WorkspaceGenerationCandidateBuilder,
-        catalog: crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog,
-        provider_catalog_generation: String,
-    ) -> Self {
-        self.configure_workspace_generation_builder(
-            source_builder,
-            None,
-            Some(catalog),
-            Some(provider_catalog_generation),
-        )
-    }
-
-    pub fn with_workspace_generation_and_owner_builders_catalog_identity(
-        self,
-        source_builder: crate::runtime_server_admission::WorkspaceGenerationCandidateBuilder,
-        owner_projection_builder: crate::runtime_server_admission::WorkspaceOwnerProjectionBuilder,
-        catalog: crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog,
-        provider_catalog_generation: String,
-    ) -> Self {
-        self.configure_workspace_generation_builder(
-            source_builder,
-            Some(owner_projection_builder),
-            Some(catalog),
-            Some(provider_catalog_generation),
         )
     }
 
@@ -79,6 +48,6 @@ impl RuntimeServer {
         self,
         catalog: crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog,
     ) -> Self {
-        self.configure_workspace_generation_builder(None, None, Some(catalog), None)
+        self.configure_workspace_generation_builder(None, None, Some(catalog))
     }
 }

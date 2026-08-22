@@ -177,7 +177,7 @@ compatible compact command shapes for policy and hook-routed search:
 #+begin_src shell
 rs-harness search policy RUST-PROJ-R001 owner tests --view seeds languages/rust-lang-project-harness
 py-harness search policy PY-AGENT-R008 owner tests --view seeds languages/python-lang-project-harness
-ts-harness search policy TS-AGENT-R001 owner tests --view seeds languages/typescript-lang-project-harness
+asp-typescript search policy TS-AGENT-R001 owner tests --view seeds languages/typescript-lang-project-harness
 julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search policy JULIA-PROJ-R001 owner tests --view seeds languages/JuliaLangProjectHarness.jl
 julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search owner src/cli.jl --view seeds languages/JuliaLangProjectHarness.jl
 julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search lexical run_julia_project_harness_cli owner tests --view seeds languages/JuliaLangProjectHarness.jl

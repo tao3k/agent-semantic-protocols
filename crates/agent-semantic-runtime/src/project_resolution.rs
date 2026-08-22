@@ -373,9 +373,10 @@ fn typed_digest<T: Serialize + ?Sized>(value: &T) -> Result<String, String> {
 pub fn project_resolution_schema_digest() -> String {
     format!(
         "blake3-256:{}",
-        blake3::hash(include_bytes!(
-            "../../../schemas/provider-project-resolution-response.v1.schema.json"
-        ))
+        blake3::hash(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../schemas/provider-project-resolution-response.schema.json"
+        )))
         .to_hex()
     )
 }

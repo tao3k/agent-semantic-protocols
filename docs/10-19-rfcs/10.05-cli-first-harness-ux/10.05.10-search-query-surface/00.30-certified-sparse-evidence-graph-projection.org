@@ -1,6 +1,0 @@
-#+title: Compatibility locator: certified sparse evidence-graph projection
-
-* Canonical RFC
-
-The canonical RFC is
-[[file:../../10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00.30-certified-sparse-evidence-graph-projection.org][Certified sparse evidence-graph projection]].

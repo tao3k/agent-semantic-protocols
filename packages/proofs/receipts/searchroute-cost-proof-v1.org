@@ -10,7 +10,7 @@ round compression.
 
 RFC owner:
 
-=docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.16-searchroute-bounded-shortest-path.org=
+=docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00.16-searchroute-bounded-shortest-path.org=
 
 Lean owner:
 
@@ -105,7 +105,7 @@ independent =.typ= source:
 
 #+begin_src sh
 asp org query \
-  --workspace docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.16-searchroute-bounded-shortest-path.org \
+  --workspace docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00.16-searchroute-bounded-shortest-path.org \
   --kind block \
   --term 'counts SearchLoop transitions' \
   --content |

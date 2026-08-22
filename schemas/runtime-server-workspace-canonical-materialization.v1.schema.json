@@ -170,7 +170,7 @@
             "pattern": "^blake3-256:[0-9a-f]{64}$"
           },
           "scope": {
-            "$ref": "https://schemas.agent-semantic-protocols.dev/project-resolution.v1.schema.json"
+            "$ref": "https://schemas.agent-semantic-protocols.dev/project-resolution.schema.json"
           }
         }
       }

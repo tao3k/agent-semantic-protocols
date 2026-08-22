@@ -17,7 +17,7 @@ fn request_frame_round_trips_with_typed_identity() {
 
 #[test]
 fn response_frame_enforces_outcome_payload_exclusivity() {
-    ProviderRuntimeResponseFrame::ready("request-1", br#"{"entries":[]}"#)
+    ProviderRuntimeResponseFrame::ready("request-1", serde_json::json!({"entries": []}))
         .validate()
         .expect("Ready response");
     ProviderRuntimeResponseFrame::error("request-2", "typed provider error")

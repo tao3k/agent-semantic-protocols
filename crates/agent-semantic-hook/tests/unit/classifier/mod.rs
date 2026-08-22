@@ -129,10 +129,6 @@ pub(super) fn provider(
             .expect("digest canonical provider manifest"),
         language_id: manifest.language_id().clone(),
         provider_id: manifest.provider_id().clone(),
-        binary: manifest.binary().to_string(),
-        execution: manifest.execution(),
-        provider_command_prefix: Vec::new(),
-        execution_command_digest: "test-execution-command-digest".to_string(),
         namespace: manifest.namespace().to_string(),
         package_roots: vec!["src".to_string()],
         source_extensions: layout
@@ -146,7 +142,6 @@ pub(super) fn provider(
             .map(|config| (*config).to_string())
             .collect(),
         search_capabilities: manifest.search_capabilities().clone(),
-        language_projection: manifest.language_projection().cloned(),
         project_resolution: manifest.project_resolution().cloned(),
         document_resolution: manifest.document_resolution().cloned(),
         semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),

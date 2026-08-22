@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/project-resolution.schema.json",
+  "title": "Project Scope",
+  "description": "One provider-owned package-manager resolution receipt rooted at one registered entry inside a Git-worktree workspace. The receipt contributes to that workspace generation's source scope; it does not define a child project, a standalone project scope, or any identity.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "state", "completeness", "languageId", "providerId", "parserId", "candidateGenerationDigest", "projectEntry", "packageGraph", "sourceScopes", "conflicts", "metrics"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.project-resolution" },
+    "schemaVersion": { "const": "1" },
+    "state": { "const": "resolved" },
+    "completeness": { "enum": ["exact", "complete", "partial"] },
+    "languageId": { "type": "string", "minLength": 1 },
+    "providerId": { "type": "string", "minLength": 1 },
+    "parserId": { "type": "string", "minLength": 1 },
+    "candidateGenerationDigest": { "type": "string", "minLength": 1 },
+    "projectEntry": {
+      "description": "Project entry relative to the containing Git-worktree workspace or to the explicitly bounded non-Git candidate base.",
+      "$ref": "#/$defs/path"
+    },
+    "packageGraph": { "$ref": "https://schemas.agent-semantic-protocols.dev/language-package-graph.schema.json" },
+    "sourceScopes": {
+      "description": "Package and target scopes derived by the provider from this project entry; not workspace identities.",
+      "type": "array",
+      "items": { "$ref": "https://schemas.agent-semantic-protocols.dev/resolved-source-scope.v1.schema.json" }
+    },
+    "conflicts": { "type": "array", "items": { "$ref": "#/$defs/conflict" } },
+    "metrics": { "$ref": "#/$defs/metrics" }
+  },
+  "$defs": {
+    "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$" },
+    "conflict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "includeAuthority", "excludeAuthority", "reasonKind"],
+      "properties": {
+        "path": { "$ref": "#/$defs/path" },
+        "includeAuthority": { "type": "string", "minLength": 1 },
+        "excludeAuthority": { "type": "string", "minLength": 1 },
+        "reasonKind": { "type": "string", "minLength": 1 }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parsedManifestCount", "parsedLockfileCount", "affectedPackageCount", "fullWorkspaceReads", "fullManifestReparses", "dbOpens", "elapsedMicros"],
+      "properties": {
+        "parsedManifestCount": { "type": "integer", "minimum": 0 },
+        "parsedLockfileCount": { "type": "integer", "minimum": 0 },
+        "affectedPackageCount": { "type": "integer", "minimum": 0 },
+        "fullWorkspaceReads": { "const": 0 },
+        "fullManifestReparses": { "const": 0 },
+        "dbOpens": { "const": 0 },
+        "elapsedMicros": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

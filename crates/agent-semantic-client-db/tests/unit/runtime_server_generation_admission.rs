@@ -150,80 +150,81 @@ fn cold_restore_publishes_committed_generation_without_live_checkout_probe() {
 
 #[test]
 fn concurrent_256_requests_share_one_server_workspace_writer_lease() {
-    let runtime = agent_semantic_client_db::runtime_server_runtime::RuntimeServerRuntimeBuilder::new_daemon()
-        .enable_all()
-        .build()
-        .expect("adaptive Runtime Server daemon runtime");
+    let runtime =
+        agent_semantic_client_db::runtime_server_runtime::RuntimeServerRuntimeBuilder::new_daemon()
+            .enable_all()
+            .build()
+            .expect("adaptive Runtime Server daemon runtime");
     runtime.block_on(async {
-    const REQUEST_COUNT: usize = 256;
-    let build_count = Arc::new(Mutex::new(0_u32));
-    let release = Arc::new(Barrier::new(2));
-    let admission = WorkspaceGenerationAdmission::new(Arc::new({
-        let build_count = Arc::clone(&build_count);
-        let release = Arc::clone(&release);
-        move |_workspace_identity,
-              _project_root,
-              candidate,
-              _build_mode,
-              _changed_paths,
-              _provider_target,
-              _cancellation| {
+        const REQUEST_COUNT: usize = 256;
+        let build_count = Arc::new(Mutex::new(0_u32));
+        let release = Arc::new(Barrier::new(2));
+        let admission = WorkspaceGenerationAdmission::new(Arc::new({
             let build_count = Arc::clone(&build_count);
             let release = Arc::clone(&release);
-            Box::pin(async move {
-                *build_count.lock().await += 1;
-                release.wait().await;
-                completed_generation(candidate)
-            })
-        }
-    }));
+            move |_workspace_identity,
+                  _project_root,
+                  candidate,
+                  _build_mode,
+                  _changed_paths,
+                  _provider_target,
+                  _cancellation| {
+                let build_count = Arc::clone(&build_count);
+                let release = Arc::clone(&release);
+                Box::pin(async move {
+                    *build_count.lock().await += 1;
+                    release.wait().await;
+                    completed_generation(candidate)
+                })
+            }
+        }));
 
-    let project_root = std::env::temp_dir().join("asp-generation-admission-project");
-    let mut requests = tokio::task::JoinSet::new();
-    for _ in 0..REQUEST_COUNT {
-        let admission = admission.clone();
-        let project_root = project_root.clone();
-        requests.spawn(async move {
-            let started = tokio::time::Instant::now();
-            let receipt = admission
-                .admit(
-                    "workspace-server-writer-lease",
-                    project_root,
-                    candidate_identity(),
-                )
-                .await;
-            (receipt, started.elapsed())
-        });
-    }
-    let mut accepted_count = 0_u32;
-    let mut admission_latencies = Vec::with_capacity(REQUEST_COUNT);
-    while let Some(result) = requests.join_next().await {
-        let (receipt, elapsed) = result.expect("admission request task");
-        let receipt = receipt.expect("admission receipt");
-        admission_latencies.push(elapsed);
-        assert_eq!(receipt.state, WorkspaceGenerationAdmissionState::Building);
-        accepted_count += u32::from(receipt.accepted);
-        receipt.validate().expect("valid admission receipt");
-    }
-    admission_latencies.sort_unstable();
-    let p99_index = admission_latencies.len().saturating_mul(99).div_ceil(100) - 1;
-    let p99 = admission_latencies[p99_index];
-    assert!(
-        p99 < std::time::Duration::from_millis(1),
-        "generation admission submit p99 must remain sub-millisecond: {p99:?}"
-    );
-    release.wait().await;
-    assert_eq!(accepted_count, 1);
-    assert_eq!(*build_count.lock().await, 1);
-    let receipt = admission
-        .wait_terminal("workspace-server-writer-lease", &project_root)
-        .await
-        .expect("wait for completed admission");
-    assert_eq!(receipt.state, WorkspaceGenerationAdmissionState::Ready);
-    admission
-        .shutdown()
-        .await
-        .expect("drain generation admission lane");
+        let project_root = std::env::temp_dir().join("asp-generation-admission-project");
+        let mut requests = tokio::task::JoinSet::new();
+        for _ in 0..REQUEST_COUNT {
+            let admission = admission.clone();
+            let project_root = project_root.clone();
+            requests.spawn(async move {
+                let started = tokio::time::Instant::now();
+                let receipt = admission
+                    .admit(
+                        "workspace-server-writer-lease",
+                        project_root,
+                        candidate_identity(),
+                    )
+                    .await;
+                (receipt, started.elapsed())
+            });
+        }
+        let mut accepted_count = 0_u32;
+        let mut admission_latencies = Vec::with_capacity(REQUEST_COUNT);
+        while let Some(result) = requests.join_next().await {
+            let (receipt, elapsed) = result.expect("admission request task");
+            let receipt = receipt.expect("admission receipt");
+            admission_latencies.push(elapsed);
+            assert_eq!(receipt.state, WorkspaceGenerationAdmissionState::Building);
+            accepted_count += u32::from(receipt.accepted);
+            receipt.validate().expect("valid admission receipt");
+        }
+        admission_latencies.sort_unstable();
+        let p99_index = admission_latencies.len().saturating_mul(99).div_ceil(100) - 1;
+        let p99 = admission_latencies[p99_index];
+        assert!(
+            p99 < std::time::Duration::from_millis(1),
+            "generation admission submit p99 must remain sub-millisecond: {p99:?}"
+        );
+        release.wait().await;
+        assert_eq!(accepted_count, 1);
+        assert_eq!(*build_count.lock().await, 1);
+        let receipt = admission
+            .wait_terminal("workspace-server-writer-lease", &project_root)
+            .await
+            .expect("wait for completed admission");
+        assert_eq!(receipt.state, WorkspaceGenerationAdmissionState::Ready);
+        admission
+            .shutdown()
+            .await
+            .expect("drain generation admission lane");
     });
 }
 
@@ -554,7 +555,7 @@ async fn ensure_schedules_once_without_waiting_for_generation_build() {
 }
 
 #[tokio::test]
-async fn supervisor_restores_registered_workspaces_before_live_git_reconciliation() {
+async fn startup_restores_registered_pointers_without_eager_rebuild() {
     use agent_semantic_client_db::runtime_server_admission_catalog::{
         RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
     };
@@ -588,22 +589,22 @@ async fn supervisor_restores_registered_workspaces_before_live_git_reconciliatio
     let active = Arc::new(AtomicU64::new(0));
     let maximum_active = Arc::new(AtomicU64::new(0));
     let build_count = Arc::new(AtomicU64::new(0));
-    let restore_only_build_count = Arc::new(AtomicU64::new(0));
+    let restore_or_build_count = Arc::new(AtomicU64::new(0));
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let active = Arc::clone(&active);
         let maximum_active = Arc::clone(&maximum_active);
         let build_count = Arc::clone(&build_count);
-        let restore_only_build_count = Arc::clone(&restore_only_build_count);
+        let restore_or_build_count = Arc::clone(&restore_or_build_count);
         move |_, _, candidate, build_mode, _changed_paths, _provider_target, _cancellation| {
             let active = Arc::clone(&active);
             let maximum_active = Arc::clone(&maximum_active);
             let build_count = Arc::clone(&build_count);
-            let restore_only_build_count = Arc::clone(&restore_only_build_count);
+            let restore_or_build_count = Arc::clone(&restore_or_build_count);
             Box::pin(async move {
                 if build_mode
                     == agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildMode::RestoreOrBuild
                 {
-                    restore_only_build_count.fetch_add(1, Ordering::SeqCst);
+                    restore_or_build_count.fetch_add(1, Ordering::SeqCst);
                 }
                 let current = active.fetch_add(1, Ordering::SeqCst) + 1;
                 maximum_active.fetch_max(current, Ordering::SeqCst);
@@ -633,9 +634,10 @@ async fn supervisor_restores_registered_workspaces_before_live_git_reconciliatio
         restored_build_count >= report.ready.len() as u64,
         "every fixture ServerResident must be restored: {report:#?}"
     );
-    assert!(
-        restore_only_build_count.load(Ordering::SeqCst) >= expected_resident_count as u64,
-        "every fixture registered workspace must receive a restore-or-build startup admission"
+    assert_eq!(
+        restore_or_build_count.load(Ordering::SeqCst),
+        0,
+        "startup restore must never request RestoreOrBuild"
     );
     assert!(maximum_active.load(Ordering::SeqCst) > 1);
     assert!(

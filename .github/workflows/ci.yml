@@ -134,7 +134,7 @@ jobs:
           #!/usr/bin/env bash
           exec uv run --project "$repo_root/languages/python-lang-project-harness" --frozen py-harness "\$@"
           EOF
-          cat > .bin/ts-harness <<EOF
+          cat > .bin/asp-typescript <<EOF
           #!/usr/bin/env bash
           exec node "$repo_root/languages/typescript-lang-project-harness/dist/src/cli/main.js" "\$@"
           EOF
@@ -148,7 +148,7 @@ jobs:
           echo "gslph is validated by the Gerbil language CI job" >&2
           exit 127
           EOF
-          chmod 755 .bin/py-harness .bin/ts-harness .bin/asp-julia-harness .bin/gslph
+          chmod 755 .bin/py-harness .bin/asp-typescript .bin/asp-julia-harness .bin/gslph
           echo "$PWD/.bin" >> "$GITHUB_PATH"
 
       - name: Check formatting
@@ -243,7 +243,7 @@ jobs:
             tests/unit/test_semantic_tree_sitter_provenance_schema.py \
             tests/unit/test_semantic_tree_sitter_query_schema.py \
             tests/unit/semantic_tree_sitter_query_rfc \
-            tests/unit/test_cli_first_harness_ux_rfc.py \
+            tests/unit/test_asp_server_first_architecture_rfc.py \
             tests/unit/test_agent_hook_interception_protocol_rfc.py \
             tests/unit/test_docs_rfc_skill_contracts.py \
             tests/unit/test_ci_workflow_contracts.py \
@@ -302,8 +302,8 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           cargo build --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli --bin rs-harness
           install -m 755 languages/rust-lang-project-harness/target/debug/rs-harness "$HOME/.local/bin/rs-harness"
-          printf '#!/usr/bin/env bash\nexec node "%s/languages/typescript-lang-project-harness/dist/src/cli/main.js" "$@"\n' "$PWD" > "$HOME/.local/bin/ts-harness"
-          chmod 755 "$HOME/.local/bin/ts-harness"
+          printf '#!/usr/bin/env bash\nexec node "%s/languages/typescript-lang-project-harness/dist/src/cli/main.js" "$@"\n' "$PWD" > "$HOME/.local/bin/asp-typescript"
+          chmod 755 "$HOME/.local/bin/asp-typescript"
           printf '#!/usr/bin/env bash\nexec uv run --project "%s/languages/python-lang-project-harness" --frozen py-harness "$@"\n' "$PWD" > "$HOME/.local/bin/py-harness"
           chmod 755 "$HOME/.local/bin/py-harness"
           cp .agents/asp.toml .agents/asp.toml.ci-full-provider

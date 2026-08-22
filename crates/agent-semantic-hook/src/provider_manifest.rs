@@ -59,7 +59,7 @@ mod provider_manifest_selection_identity_tests;
 /// Build an activation from the provider selections already resolved for this project.
 pub fn build_default_activation_from_selections(
     project_root: &Path,
-    selections: &DefaultActivationSelections,
+    selections: &StaticActivationSelections,
 ) -> Result<HookActivation, String> {
     if selections.providers.is_empty() {
         return Err(
@@ -98,8 +98,6 @@ pub fn build_default_activation_from_selections(
         providers.push(activate_provider(
             manifest,
             selection.manifest_digest.clone(),
-            selection.execution_command_digest.clone(),
-            selection.binary.clone(),
             coverage,
             &semantic_registry_digest,
         )?);
@@ -109,7 +107,7 @@ pub fn build_default_activation_from_selections(
             "no installed provider exposes a typed project or document resolver".to_string(),
         );
     }
-    let rankers = vec![activate_builtin_graph_turbo_ranker(&selections.graph_turbo)];
+    let rankers = vec![activate_builtin_graph_turbo_ranker()];
     Ok(HookActivation {
         schema_id: HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
@@ -154,71 +152,14 @@ pub(crate) fn activation_capability_coverage(
 #[path = "../tests/unit/provider_manifest/activation_capability.rs"]
 mod provider_activation_capability_tests;
 
-fn capture_current_asp_binary_selection(
-    activation_path: Option<&Path>,
-) -> Result<RuntimeBinarySelectionV1, String> {
-    let binary = std::env::var_os("SEMANTIC_AGENT_PROTOCOL_BIN")
-        .map(PathBuf::from)
-        .unwrap_or(std::env::current_exe().map_err(|error| {
-            format!("failed to resolve ASP binary for built-in graph-turbo ranker: {error}")
-        })?);
-    capture_asp_binary_selection(&binary, activation_path)
-}
 
-fn capture_asp_binary_selection(
-    binary: &Path,
-    activation_path: Option<&Path>,
-) -> Result<RuntimeBinarySelectionV1, String> {
-    let binary = binary.canonicalize().map_err(|error| {
-        format!("failed to canonicalize ASP graph-turbo ranker binary: {error}")
-    })?;
-    if let Some(activation_path) = activation_path {
-        return asp_binary_selection_from_active_receipt(&binary, activation_path);
-    }
-    let content_digest =
-        match agent_semantic_content_identity::blake3_digest_from_canonical_artifact_path(&binary) {
-            Some(digest) => digest,
-            None => agent_semantic_content_identity::file_content_digest_v1(&binary)?.to_string(),
-        };
-    let artifact_metadata_digest =
-        agent_semantic_content_identity::file_artifact_metadata_digest_v1(&binary)?.to_string();
-    RuntimeBinarySelectionV1::new(
-        binary.display().to_string(),
-        content_digest,
-        artifact_metadata_digest,
-    )
-}
-
-fn asp_binary_selection_from_active_receipt(
-    binary: &Path,
-    activation_path: &Path,
-) -> Result<RuntimeBinarySelectionV1, String> {
-    let receipt = crate::verify_active_asp_artifact_receipt(activation_path, &[binary])?;
-    let artifact_metadata_digest =
-        agent_semantic_content_identity::file_artifact_metadata_digest_v1(binary)?;
-    RuntimeBinarySelectionV1::new(
-        binary.display().to_string(),
-        receipt
-            .asp_binary_leaf()
-            .artifact_digest()
-            .as_str()
-            .to_string(),
-        artifact_metadata_digest.to_string(),
-    )
-}
-
-fn activate_builtin_graph_turbo_ranker(
-    selection: &RuntimeBinarySelectionV1,
-) -> ActivatedRankerConfig {
+fn activate_builtin_graph_turbo_ranker() -> ActivatedRankerConfig {
     ActivatedRankerConfig {
         schema_id: "asp.activated-ranker.v1".to_string(),
         ranker_id: "asp-graph-turbo".to_string(),
         capability_id: "graph-turbo".to_string(),
         protocol_version: "1".to_string(),
-        binary: selection.binary.clone(),
         argv_prefix: vec!["graph".to_string(), "render".to_string()],
-        content_digest: selection.content_digest.clone(),
-        artifact_metadata_digest: selection.artifact_metadata_digest.clone(),
     }
 }
 
@@ -271,85 +212,60 @@ impl ProviderCommandSelection {
     }
 }
 
-/// Producer-owned identity for the ASP executable used by a built-in runtime.
-///
-/// Activation materialization consumes this selection without reopening or
-/// hashing the executable.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RuntimeBinarySelectionV1 {
-    binary: String,
-    content_digest: String,
-    artifact_metadata_digest: String,
-}
-
-impl RuntimeBinarySelectionV1 {
-    pub fn new(
-        binary: String,
-        content_digest: String,
-        artifact_metadata_digest: String,
-    ) -> Result<Self, String> {
-        if binary.is_empty() {
-            return Err("runtime binary selection requires a non-empty binary path".to_string());
-        }
-        if content_digest.is_empty() {
-            return Err("runtime binary selection requires a content digest".to_string());
-        }
-        if artifact_metadata_digest.is_empty() {
-            return Err(
-                "runtime binary selection requires an artifact metadata digest".to_string(),
-            );
-        }
-        Ok(Self {
-            binary,
-            content_digest,
-            artifact_metadata_digest,
-        })
-    }
-
-    #[must_use]
-    pub fn binary(&self) -> &str {
-        &self.binary
-    }
-
-    #[must_use]
-    pub fn content_digest(&self) -> &str {
-        &self.content_digest
-    }
-
-    #[must_use]
-    pub fn artifact_metadata_digest(&self) -> &str {
-        &self.artifact_metadata_digest
-    }
-}
 
 /// Complete typed producer input for default activation materialization.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DefaultActivationSelections {
-    providers: Vec<ProviderCommandSelection>,
-    graph_turbo: RuntimeBinarySelectionV1,
+pub struct StaticProviderSelection {
+    pub manifest_id: String,
+    pub manifest_digest: String,
+    pub language_id: agent_semantic_config::LanguageId,
+    pub provider_id: agent_semantic_config::ProviderId,
 }
 
-impl DefaultActivationSelections {
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StaticActivationSelections {
+    providers: Vec<StaticProviderSelection>,
+}
+
+impl StaticActivationSelections {
     #[must_use]
-    pub fn new(
-        providers: Vec<ProviderCommandSelection>,
-        graph_turbo: RuntimeBinarySelectionV1,
-    ) -> Self {
-        Self {
-            providers,
-            graph_turbo,
-        }
+    pub fn new(providers: Vec<StaticProviderSelection>) -> Self {
+        Self { providers }
     }
 
     #[must_use]
-    pub fn providers(&self) -> &[ProviderCommandSelection] {
+    pub fn providers(&self) -> &[StaticProviderSelection] {
         &self.providers
     }
+}
 
-    #[must_use]
-    pub fn graph_turbo(&self) -> &RuntimeBinarySelectionV1 {
-        &self.graph_turbo
+pub(crate) fn static_activation_selections_for_scope(
+    project_root: &Path,
+    scope: &ProviderCommandSelectionScopeV1,
+) -> Result<StaticActivationSelections, String> {
+    let project_config = ProjectProviderConfigSet::load(project_root)?;
+    let mut providers = Vec::new();
+    for manifest in builtin_provider_manifests() {
+        if !scope.selects(&manifest.language_id, &manifest.provider_id) {
+            continue;
+        }
+        if project_config
+            .provider_config(manifest.language_id.as_str())
+            .is_none()
+        {
+            continue;
+        }
+        let manifest_digest =
+            crate::protocol_activation::digest::provider_manifest_digest(&manifest)
+                .map_err(|error| error.to_string())?;
+        providers.push(StaticProviderSelection {
+            manifest_id: manifest.manifest_id,
+            manifest_digest,
+            language_id: manifest.language_id,
+            provider_id: manifest.provider_id,
+        });
     }
+    Ok(StaticActivationSelections::new(providers))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -384,104 +300,49 @@ pub fn provider_command_selections(
 
 pub fn default_activation_selections(
     project_root: &Path,
-) -> Result<DefaultActivationSelections, String> {
-    default_activation_selections_for_scope(
+) -> Result<StaticActivationSelections, String> {
+    static_activation_selections_for_scope(
         project_root,
         &ProviderCommandSelectionScopeV1::CompleteGeneration,
-        None,
     )
 }
 
 pub fn default_activation_selections_with_state_home(
     project_root: &Path,
-    state_home: &Path,
-) -> Result<DefaultActivationSelections, String> {
-    default_activation_selections_for_scope_with_state_home(
+    _state_home: &Path,
+) -> Result<StaticActivationSelections, String> {
+    static_activation_selections_for_scope(
         project_root,
-        state_home,
         &ProviderCommandSelectionScopeV1::CompleteGeneration,
-        None,
     )
 }
 
 pub fn default_activation_selections_for_scope(
     project_root: &Path,
     scope: &ProviderCommandSelectionScopeV1,
-    activation_path: Option<&Path>,
-) -> Result<DefaultActivationSelections, String> {
-    let state_paths = agent_semantic_runtime::project_state_paths(project_root)
-        .map_err(|error| format!("failed to resolve ASP project state paths: {error}"))?;
-    default_activation_selections_for_scope_with_paths(
-        project_root,
-        &state_paths,
-        scope,
-        activation_path,
-    )
+    _activation_path: Option<&Path>,
+) -> Result<StaticActivationSelections, String> {
+    static_activation_selections_for_scope(project_root, scope)
 }
 
 pub fn default_activation_selections_for_scope_with_state_home(
     project_root: &Path,
-    state_home: &Path,
+    _state_home: &Path,
     scope: &ProviderCommandSelectionScopeV1,
-    activation_path: Option<&Path>,
-) -> Result<DefaultActivationSelections, String> {
-    let state_paths =
-        agent_semantic_runtime::project_state_paths_with_state_home(project_root, state_home)
-            .map_err(|error| format!("failed to resolve ASP project state paths: {error}"))?;
-    default_activation_selections_for_scope_with_paths(
-        project_root,
-        &state_paths,
-        scope,
-        activation_path,
-    )
-}
-
-fn default_activation_selections_for_scope_with_paths(
-    project_root: &Path,
-    state_paths: &agent_semantic_runtime::state::ProjectStatePaths,
-    scope: &ProviderCommandSelectionScopeV1,
-    activation_path: Option<&Path>,
-) -> Result<DefaultActivationSelections, String> {
-    default_activation_selections_for_scope_with_context(
-        project_root,
-        state_paths,
-        scope,
-        activation_path,
-        None,
-    )
-}
-
-fn default_activation_selections_for_scope_with_context(
-    project_root: &Path,
-    state_paths: &agent_semantic_runtime::state::ProjectStatePaths,
-    scope: &ProviderCommandSelectionScopeV1,
-    activation_path: Option<&Path>,
-    asp_binary: Option<&Path>,
-) -> Result<DefaultActivationSelections, String> {
-    let providers =
-        provider_command_selections_for_scope_with_paths(project_root, state_paths, scope)?;
-    let graph_turbo = match asp_binary {
-        Some(binary) => capture_asp_binary_selection(binary, activation_path)?,
-        None => capture_current_asp_binary_selection(activation_path)?,
-    };
-    Ok(DefaultActivationSelections::new(providers, graph_turbo))
+    _activation_path: Option<&Path>,
+) -> Result<StaticActivationSelections, String> {
+    static_activation_selections_for_scope(project_root, scope)
 }
 
 pub fn default_activation_selections_with_state_home_and_binary(
     project_root: &Path,
-    state_home: &Path,
-    asp_binary: &Path,
-    activation_path: Option<&Path>,
-) -> Result<DefaultActivationSelections, String> {
-    let state_paths =
-        agent_semantic_runtime::project_state_paths_with_state_home(project_root, state_home)
-            .map_err(|error| format!("failed to resolve ASP project state paths: {error}"))?;
-    default_activation_selections_for_scope_with_context(
+    _state_home: &Path,
+    _asp_binary: &Path,
+    _activation_path: Option<&Path>,
+) -> Result<StaticActivationSelections, String> {
+    static_activation_selections_for_scope(
         project_root,
-        &state_paths,
         &ProviderCommandSelectionScopeV1::CompleteGeneration,
-        activation_path,
-        Some(asp_binary),
     )
 }
 
@@ -603,8 +464,6 @@ use manifest_contract::validate_source_snapshot_capability;
 pub(crate) fn activate_provider(
     manifest: &ProviderManifest,
     manifest_digest: String,
-    execution_command_digest: String,
-    binary: String,
     coverage: ActivationCoverage,
     semantic_registry_digest: &str,
 ) -> Result<ActivatedProviderConfig, String> {
@@ -623,17 +482,12 @@ pub(crate) fn activate_provider(
     }
     Ok(ActivatedProviderConfig {
         search_capabilities: manifest.search_capabilities.clone(),
-        language_projection: manifest.language_projection.clone(),
         semantic_facts_descriptor: manifest.semantic_facts_descriptor.clone(),
         query_pack_descriptor: manifest.query_pack_descriptor.clone(),
         manifest_id: manifest.manifest_id.clone(),
         manifest_digest,
         language_id: manifest.language_id.clone(),
         provider_id: manifest.provider_id.clone(),
-        binary,
-        execution: manifest.execution,
-        execution_command_digest,
-        provider_command_prefix: Vec::new(),
         semantic_registry_digest: semantic_registry_digest.to_string(),
         routes,
         coverage,

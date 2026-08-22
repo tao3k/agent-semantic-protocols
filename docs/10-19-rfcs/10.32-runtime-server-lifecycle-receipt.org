@@ -115,22 +115,20 @@ Logs and public receipts MUST NOT emit the binding token, endpoint-publication
 temporary nonce, peer credentials, or raw request bodies.  Request IDs may be
 emitted only as correlation identities and never as authorization secrets.
 
-* Hook ensure contract
+* Hook observation contract
 :PROPERTIES:
 :ID: ASP-RFC-10.32-ENSURE-IDEMPOTENCE
 :END:
 
-The ASP Hook MAY perform a bounded =ensure= before dispatch.  =ensure= first
-observes the State-Home lifecycle receipt and endpoint health.  If the global
-server is Ready, it succeeds without spawning.  If no live owner exists, one
-caller wins the lifecycle lock and starts the server as a detached child;
-concurrent callers observe the same start generation and MUST NOT start another
-process.
+The ASP Hook performs only a bounded observation before dispatch.  If the
+global server is Ready, it may use the published endpoint.  If no live owner or
+Ready endpoint exists, it returns a typed NotReady receipt.  A Hook never wins
+the lifecycle election, spawns, restarts, stops, or waits for a Runtime Server.
 
-The Hook MUST NOT use =launchctl= or install an operating-system service.  It
-MUST NOT wait for the lifetime of the detached server.  It waits only for a
-bounded Ready or typed failure receipt and then continues or fails according to
-the command admission policy.
+Only the explicit Runtime supervisor commands own election and spawn.  The
+resident Runtime Server owns identity monitoring and latest-generation
+successor handoff.  This separation keeps the Hook millisecond-bounded and
+prevents command admission from becoming a second lifecycle implementation.
 
 ** Fixed hook contract
 :PROPERTIES:
@@ -223,8 +221,21 @@ Ready, stopped, or clean drain merely because the initiating client exited.
 7. Restart never overlaps ownership generations.
 8. Runtime recovery does not mutate plugin trust or require a Codex restart.
 
-9. Registered workspace restore uses one bounded scheduler with a default
-   concurrency of two; restore and live reconciliation share that scheduler.
+9. Startup loads only durable workspace locators; it does not open every
+   historical generation segment.  The first request for one workspace uses
+   admission-owned =RestoreOnly= for that pointer and may enter scope-local
+   =RestoreOrBuild= only for the requested workspace.  Neither path gates
+   Global Healthy publication.
+   The active-generation pointer, its checkpoint, and referenced mmap
+   projections are the sole restore authority.  Turso materialization cannot
+   authorize, reject, or replace that restore.  The provider-independent
+   =RestoreRuntimeGenerationFromPointer= Runtime IPC operation performs this
+   cold restore without a provider invocation or source build.
+   A restored generation exposes both its source snapshot root and its owner
+   Merkle root.  These are distinct authorities bound by the same generation
+   digest: source recovery compares the source root, while owner inclusion
+   proofs compare the owner Merkle root.  They are never interchangeable or
+   required to be equal.
 10. A failed workspace/provider generation enters typed terminal Backoff with
     =nextRetryAt=; no immediate retry is permitted until identity changes or
     the bounded retry deadline is reached.
@@ -239,6 +250,39 @@ Ready, stopped, or clean drain merely because the initiating client exited.
     platform inspection work MUST cross a bounded `spawn_blocking` boundary;
     synchronous process spawning and filesystem I/O are not valid lifecycle
     owners.
+14. =asp install binary= publishes only the configured Developer direct link
+    or Managed Release identity.  It never starts, stops, reconciles, or waits
+    for a Runtime Server, and it never creates a candidate-generation artifact.
+    If the Server is absent it remains stopped.
+15. Runtime artifact identity changes are observed by the resident
+    Runtime-owned Tokio monitor.  The current owner drains completely, publishes
+    terminal receipts, validates and retires its epoch/PID/executable-bound
+    owner receipt while it still owns election authority, releases that
+    authority, and only then admits one latest-generation successor.
+16. A control-exchange timeout does not authorize termination by itself.
+    Fallback termination requires the current endpoint =ownerEpoch= and
+    =ownerProcessId=, the owner receipt =processId=, and the expected executable
+    identity to match.  Any mismatch fails closed without termination or
+    cleanup.
+17. Endpoint publication is Global readiness; workspace generation restore is
+    workspace-keyed readiness.  =workspaceEntryCount=0= is valid for a Healthy
+    endpoint and is never a reason to block the control/data listeners.
+18. Runtime Server candidate directories, candidate promotion envelopes, and
+    previous-generation lifecycle fallbacks are not part of the v1
+    architecture and MUST NOT be recreated.
+19. The short hashed State-Home owner lock is the only lifecycle election.
+    Datagram singleton sockets and any second single-flight ownership layer are
+    legacy designs and MUST NOT be recreated.
+20. Concurrent explicit starts use that same owner lock for a short supervisor
+    reservation covering reclassification, child launch, and owner-receipt
+    publication.  The daemon waits for the reservation handoff and then owns
+    the same lock for its lifetime; contending callers join the published start
+    generation and never launch a second child.
+21. Live-corpus qualification may select one pinned resource.  It performs one
+    bounded cold =RestoreRuntimeGenerationFromPointer= step after a Server
+    generation change, then measures resident search/query samples separately.
+    Cold restore latency never weakens or contaminates the resident
+    sub-millisecond budget.
 
 The executable Rust receipt and the Lean model
 ~ASPProof.RuntimeServerLifecycle~ are refinement witnesses for these claims.

@@ -1,7 +1,7 @@
 #+TITLE: Semantic Flow Sandbox: TypeScript Schema-CI Drill
 #+DATE: 2026-05-31
 #+STATUS: sandbox
-#+SOURCE_RFC: docs/10-19-rfcs/10.02-evidence-layer-architecture.org, docs/10-19-rfcs/10.05-cli-first-harness-ux.org
+#+SOURCE_RFC: docs/10-19-rfcs/10.02-evidence-layer-architecture.org, docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org
 
 * Scenario
 
@@ -38,7 +38,7 @@ node dist/src/cli/main.js agent doctor --json . \
 Observed:
 
 #+begin_src text
-provider=ts-harness binary=ts-harness language=typescript methods=14
+provider=asp-typescript binary=asp-typescript language=typescript methods=14
 schemas=semantic-search-packet.v1,semantic-language-registry.v1
 #+end_src
 

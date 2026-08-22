@@ -44,6 +44,25 @@ pub fn default_client_config_template() -> String {
         .replace(AGENT_ROUTES_MARKER, EMBEDDED_AGENT_ROUTES.trim_end())
 }
 
+/// Return the identity of the fully rendered default Hook policy projection.
+pub fn default_client_config_projection_digest() -> String {
+    use sha2::{Digest, Sha256};
+
+    format!(
+        "sha256:{:x}",
+        Sha256::digest(default_client_config_template().as_bytes())
+    )
+}
+
+/// Return the identities that make a Hook executable compatible with this library.
+pub fn hook_runtime_artifact_fingerprint() -> String {
+    format!(
+        "registry={};config={}",
+        crate::semantic_registry_digest(),
+        default_client_config_projection_digest()
+    )
+}
+
 pub(crate) fn default_client_config_file()
 -> Result<agent_semantic_config::HookClientConfigFile, String> {
     toml::from_str(&default_client_config_template())
@@ -99,6 +118,25 @@ pub fn load_client_config_for_project(
         Some(agents) => load_hook_client_config_file_with_agents(path, agents)?,
         None => agent_semantic_config::load_hook_client_config_file(path)?,
     };
+    let agent_config_path = project_agent_config_path(project_root);
+    let project = load_asp_project_config_file(&agent_config_path)?;
+    compile_config(merge_asp_project_hook_config(parsed, project)?)
+}
+
+/// Load user-owned Hook policy while taking provider projection identity from
+/// the running ASP binary. Disk `languageProviders` and its contract
+/// fingerprint are publication output, never source authority.
+pub fn load_client_config_for_matcher_publication(
+    path: &Path,
+    project_root: &Path,
+) -> Result<ClientHookConfig, String> {
+    let mut parsed = agent_semantic_config::load_hook_client_config_file(path)?;
+    let embedded = default_client_config_file()?;
+    parsed.language_providers = embedded.language_providers;
+    parsed.contract_fingerprint = embedded.contract_fingerprint;
+    if let Some(agents) = load_project_agent_routes(project_root)? {
+        parsed.agents = agents;
+    }
     let agent_config_path = project_agent_config_path(project_root);
     let project = load_asp_project_config_file(&agent_config_path)?;
     compile_config(merge_asp_project_hook_config(parsed, project)?)

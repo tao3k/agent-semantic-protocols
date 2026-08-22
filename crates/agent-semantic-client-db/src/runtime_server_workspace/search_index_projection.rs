@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use memmap2::{Mmap, MmapOptions};
 use serde::{Deserialize, Serialize};
@@ -38,6 +39,27 @@ struct SearchMerkleOwnerRecord {
 pub struct WorkspaceSearchGenerationDataPlaneClient {
     mapping: Mmap,
     authority: WorkspaceSearchGenerationAuthority,
+    lexical_index: BTreeMap<String, Vec<String>>,
+    owner_directory_records: BTreeMap<String, Vec<u8>>,
+    owner_record_cache: Mutex<HashMap<String, Arc<SearchOwnerRecord>>>,
+    owner_bytes_range: std::ops::Range<usize>,
+    merkle_owner_records: BTreeMap<String, Vec<u8>>,
+    graph_relation_records: BTreeMap<Vec<u8>, Vec<u8>>,
+    source_index_query_cache: Vec<
+        Mutex<
+            Option<(
+                SourceIndexQueryCacheKey,
+                crate::ClientDbSourceIndexLookupResult,
+            )>,
+        >,
+    >,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct SourceIndexQueryCacheKey {
+    query: String,
+    language_id: Option<String>,
+    limit: u32,
 }
 
 pub fn workspace_search_generation_segment_path(generation_path: &Path) -> PathBuf {
@@ -302,7 +324,59 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         {
             return Err("workspace search generation pointer binding mismatch".to_owned());
         }
-        Ok(Self { mapping, authority })
+        let (lexical_bytes, _, _) = segment.section(SearchGenerationSectionKind::LexicalIndex);
+        let lexical_index = ValidatedSortedRecordTable::parse(lexical_bytes)?
+            .owned_records()?
+            .into_iter()
+            .map(|(key, value)| {
+                let key = String::from_utf8(key).map_err(|error| {
+                    format!("workspace search lexical key is not UTF-8: {error}")
+                })?;
+                Ok((key, decode_string_list(&value)?))
+            })
+            .collect::<Result<BTreeMap<_, _>, String>>()?;
+        let (owner_directory_bytes, _, _) =
+            segment.section(SearchGenerationSectionKind::OwnerDirectory);
+        let owner_directory_records = ValidatedSortedRecordTable::parse(owner_directory_bytes)?
+            .owned_records()?
+            .into_iter()
+            .map(|(key, value)| {
+                let key = String::from_utf8(key).map_err(|error| {
+                    format!("workspace search owner-directory key is not UTF-8: {error}")
+                })?;
+                Ok((key, value))
+            })
+            .collect::<Result<BTreeMap<_, _>, String>>()?;
+        let owner_bytes_range = segment.section_range(SearchGenerationSectionKind::OwnerBytes);
+        let (merkle_owner_bytes, _, _) =
+            segment.section(SearchGenerationSectionKind::MerkleOwnerIndex);
+        let merkle_owner_records = ValidatedSortedRecordTable::parse(merkle_owner_bytes)?
+            .owned_records()?
+            .into_iter()
+            .map(|(key, value)| {
+                let key = String::from_utf8(key).map_err(|error| {
+                    format!("workspace search Merkle-owner key is not UTF-8: {error}")
+                })?;
+                Ok((key, value))
+            })
+            .collect::<Result<BTreeMap<_, _>, String>>()?;
+        let (graph_relation_bytes, _, _) =
+            segment.section(SearchGenerationSectionKind::GraphRelations);
+        let graph_relation_records = ValidatedSortedRecordTable::parse(graph_relation_bytes)?
+            .owned_records()?
+            .into_iter()
+            .collect::<BTreeMap<_, _>>();
+        Ok(Self {
+            mapping,
+            authority,
+            lexical_index,
+            owner_directory_records,
+            owner_record_cache: Mutex::new(HashMap::new()),
+            owner_bytes_range,
+            merkle_owner_records,
+            graph_relation_records,
+            source_index_query_cache: (0..64).map(|_| Mutex::new(None)).collect(),
+        })
     }
 
     pub fn authority(&self) -> &WorkspaceSearchGenerationAuthority {
@@ -315,9 +389,31 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         language_id: Option<&agent_semantic_client_core::LanguageId>,
         limit: u32,
     ) -> Result<crate::ClientDbSourceIndexLookupResult, String> {
-        let segment = ValidatedSearchGenerationSegment::parse(&self.mapping)?;
-        let (lexical_bytes, _, _) = segment.section(SearchGenerationSectionKind::LexicalIndex);
-        let lexical = ValidatedSortedRecordTable::parse(lexical_bytes)?;
+        let cache_key = SourceIndexQueryCacheKey {
+            query: query.trim().to_ascii_lowercase(),
+            language_id: language_id.map(ToString::to_string),
+            limit,
+        };
+        let cache_identity = format!(
+            "{}\0{}\0{}",
+            cache_key.query,
+            cache_key.language_id.as_deref().unwrap_or_default(),
+            cache_key.limit
+        );
+        let cache_digest = blake3::hash(cache_identity.as_bytes());
+        let cache_slot = usize::from(u16::from_le_bytes([
+            cache_digest.as_bytes()[0],
+            cache_digest.as_bytes()[1],
+        ])) % self.source_index_query_cache.len();
+        if let Some((stored_key, stored_result)) = self.source_index_query_cache[cache_slot]
+            .lock()
+            .map_err(|_| "workspace search query cache is poisoned".to_owned())?
+            .as_ref()
+        {
+            if stored_key == &cache_key {
+                return Ok(stored_result.clone());
+            }
+        }
         let query_terms = crate::source_index::source_query_keys("", query);
         let normalized = query.trim();
         let paths: Vec<String> = if !normalized.is_empty()
@@ -326,10 +422,9 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             })
             && normalized.contains(['-', '_'])
         {
-            lexical
-                .get_checked(normalized.to_ascii_lowercase().as_bytes())?
-                .map(decode_string_list)
-                .transpose()?
+            self.lexical_index
+                .get(&normalized.to_ascii_lowercase())
+                .cloned()
                 .unwrap_or_default()
                 .into_iter()
                 .take(limit as usize)
@@ -337,9 +432,9 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         } else {
             let mut scores = HashMap::<String, usize>::new();
             for term in query_terms {
-                if let Some(value) = lexical.get_checked(term.as_bytes())? {
-                    for path in decode_string_list(value)? {
-                        *scores.entry(path).or_default() += 1;
+                if let Some(paths) = self.lexical_index.get(&term) {
+                    for path in paths {
+                        *scores.entry(path.clone()).or_default() += 1;
                     }
                 }
             }
@@ -352,9 +447,9 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         };
         let candidates = paths
             .into_iter()
-            .map(|path| self.source_index_candidate(&segment, &path, language_id))
+            .map(|path| self.source_index_candidate(&path, language_id))
             .collect::<Result<Vec<_>, String>>()?;
-        Ok(crate::ClientDbSourceIndexLookupResult {
+        let result = crate::ClientDbSourceIndexLookupResult {
             db_path: PathBuf::new(),
             state: if candidates.is_empty()
                 && self.authority.workspace_generation.owner_count == 0
@@ -371,7 +466,54 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             index_artifact_digest: Some(crate::client_db_source_index_artifact_digest(
                 &self.authority.source_snapshot,
             )),
-        })
+        };
+        self.source_index_query_cache[cache_slot]
+            .lock()
+            .map_err(|_| "workspace search query cache is poisoned".to_owned())?
+            .replace((cache_key, result.clone()));
+        Ok(result)
+    }
+
+    pub fn parser_owned_callable_selector_pairs(
+        &self,
+        owner_paths: &[String],
+    ) -> Result<Vec<(String, String)>, String> {
+        let mut pairs = Vec::new();
+        for owner_path in owner_paths {
+            let record = self
+                .resident_owner_record(owner_path)?
+                .ok_or_else(|| "workspace search result references a missing owner".to_owned())?;
+            if let Some(selector) = record.selectors.iter().find(|selector| {
+                selector.derived_projections.iter().any(|projection| {
+                    projection.projection_kind == super::ExactProjectionKind::CallableSkeleton
+                })
+            }) {
+                pairs.push((selector.selector.clone(), owner_path.clone()));
+            }
+        }
+        Ok(pairs)
+    }
+
+    fn resident_owner_record(
+        &self,
+        owner_path: &str,
+    ) -> Result<Option<Arc<SearchOwnerRecord>>, String> {
+        let mut cache = self
+            .owner_record_cache
+            .lock()
+            .map_err(|_| "workspace search owner-record cache is poisoned".to_owned())?;
+        if let Some(record) = cache.get(owner_path) {
+            return Ok(Some(Arc::clone(record)));
+        }
+        let Some(bytes) = self.owner_directory_records.get(owner_path) else {
+            return Ok(None);
+        };
+        let record: Arc<SearchOwnerRecord> = Arc::new(
+            serde_json::from_slice(bytes)
+                .map_err(|error| format!("decode workspace search owner record: {error}"))?,
+        );
+        cache.insert(owner_path.to_owned(), Arc::clone(&record));
+        Ok(Some(record))
     }
 
     pub fn read_merkle_owner(
@@ -387,10 +529,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         } else {
             format!("blake3-256:{}", self.authority.owner_merkle_root_digest)
         };
-        let segment = ValidatedSearchGenerationSegment::parse(&self.mapping)?;
-        let (bytes, _, _) = segment.section(SearchGenerationSectionKind::MerkleOwnerIndex);
-        let table = ValidatedSortedRecordTable::parse(bytes)?;
-        let Some(value) = table.get_checked(owner_path.as_bytes())? else {
+        let Some(value) = self.merkle_owner_records.get(owner_path) else {
             return Ok(super::WorkspaceRuntimeMerkleOwnerRead::OwnerMissing {
                 schema_id: super::RUNTIME_MERKLE_OWNER_READ_RECEIPT_SCHEMA_ID.to_owned(),
                 schema_version: "1".to_owned(),
@@ -451,29 +590,35 @@ impl WorkspaceSearchGenerationDataPlaneClient {
     }
 
     pub fn read_owner(&self, owner_path: &str) -> Result<super::WorkspaceRuntimeOwnerRead, String> {
-        let segment = ValidatedSearchGenerationSegment::parse(&self.mapping)?;
-        let Some(record) = self.owner_record(&segment, owner_path)? else {
+        let Some(record) = self.resident_owner_record(owner_path)? else {
             return Ok(super::WorkspaceRuntimeOwnerRead::OwnerMissing {
                 generation_digest: self.authority.generation_digest.clone(),
                 root_digest: self.authority.source_snapshot.root_digest.clone(),
             });
         };
-        let (bytes, _, _) = segment.section(SearchGenerationSectionKind::OwnerBytes);
-        let start = record.byte_offset as usize;
+        let start = self
+            .owner_bytes_range
+            .start
+            .checked_add(record.byte_offset as usize)
+            .ok_or_else(|| "workspace search owner byte offset overflows".to_owned())?;
         let end = start
             .checked_add(record.byte_length as usize)
             .ok_or_else(|| "workspace search owner byte range overflows".to_owned())?;
-        let owner_bytes = bytes
+        if end > self.owner_bytes_range.end {
+            return Err("workspace search owner bytes exceed section bounds".to_owned());
+        }
+        let owner_bytes = self
+            .mapping
             .get(start..end)
             .ok_or_else(|| "workspace search owner bytes exceed section bounds".to_owned())?;
         Ok(super::WorkspaceRuntimeOwnerRead::Owner {
             generation_digest: self.authority.generation_digest.clone(),
             root_digest: self.authority.source_snapshot.root_digest.clone(),
             owner: WorkspaceOwnerSnapshot {
-                owner_path: record.owner_path,
-                content_digest: record.content_digest,
+                owner_path: record.owner_path.clone(),
+                content_digest: record.content_digest.clone(),
                 bytes: owner_bytes.to_vec(),
-                selectors: record.selectors,
+                selectors: record.selectors.clone(),
             },
         })
     }
@@ -482,12 +627,12 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         &self,
         sources: &[crate::workspace_db_ipc::RuntimeGraphFactSource],
     ) -> Result<crate::workspace_db_ipc::RuntimeGraphFactsRead, String> {
-        let segment = ValidatedSearchGenerationSegment::parse(&self.mapping)?;
-        let (bytes, _, _) = segment.section(SearchGenerationSectionKind::GraphRelations);
-        let table = ValidatedSortedRecordTable::parse(bytes)?;
         let mut relations = Vec::new();
         for source in sources {
-            if let Some(value) = table.get_checked(&graph_key(&source.kind, &source.id))? {
+            if let Some(value) = self
+                .graph_relation_records
+                .get(&graph_key(&source.kind, &source.id))
+            {
                 let mut decoded = serde_json::from_slice(value)
                     .map_err(|error| format!("decode workspace search graph relations: {error}"))?;
                 relations.append(&mut decoded);
@@ -499,38 +644,21 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         )
     }
 
-    fn owner_record(
-        &self,
-        segment: &ValidatedSearchGenerationSegment<'_>,
-        owner_path: &str,
-    ) -> Result<Option<SearchOwnerRecord>, String> {
-        let (bytes, _, _) = segment.section(SearchGenerationSectionKind::OwnerDirectory);
-        let table = ValidatedSortedRecordTable::parse(bytes)?;
-        table
-            .get_checked(owner_path.as_bytes())?
-            .map(|value| {
-                serde_json::from_slice(value)
-                    .map_err(|error| format!("decode workspace search owner record: {error}"))
-            })
-            .transpose()
-    }
-
     fn source_index_candidate(
         &self,
-        segment: &ValidatedSearchGenerationSegment<'_>,
         owner_path: &str,
         language_id: Option<&agent_semantic_client_core::LanguageId>,
     ) -> Result<crate::ClientDbSourceIndexCandidate, String> {
-        let record = self.owner_record(segment, owner_path)?.ok_or_else(|| {
+        let record = self.resident_owner_record(owner_path)?.ok_or_else(|| {
             "workspace search lexical index references a missing owner".to_owned()
         })?;
         Ok(crate::ClientDbSourceIndexCandidate {
-            path: record.owner_path.into(),
+            path: record.owner_path.clone().into(),
             language_id: language_id.cloned(),
             provider_id: None,
             source_kind: crate::ClientDbSourceIndexSourceKind::File,
             line_count: Some(record.line_count),
-            query_keys: record.query_keys.into_iter().map(Into::into).collect(),
+            query_keys: record.query_keys.iter().cloned().map(Into::into).collect(),
             selector_symbol: None,
             selector_kind: None,
             selector_projection: None,

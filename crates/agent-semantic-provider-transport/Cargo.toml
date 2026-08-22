@@ -6,6 +6,7 @@ license = "MIT"
 description = "Tokio process transport for external ASP language providers."
 
 [dependencies]
+agent-semantic-provider-protocol.workspace = true
 agent-semantic-content-identity.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

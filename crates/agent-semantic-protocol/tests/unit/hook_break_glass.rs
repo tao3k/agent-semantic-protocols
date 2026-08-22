@@ -97,16 +97,10 @@ fn provider_direct_deny_is_ledger_backed_and_break_glass_is_one_shot() {
         "tool_name": "Bash",
         "tool_input": { "cmd": protected_command },
     });
-    let mut decision = agent_semantic_hook::runtime_binary_policy_decision_v1(
-        "codex",
-        "pre-tool",
-        &payload,
-    )
-    .expect("provider direct execution is denied");
-    crate::command::publish_hook_decision_before_emit(
-        &workspace,
-        &mut decision,
-    );
+    let mut decision =
+        agent_semantic_hook::runtime_binary_policy_decision_v1("codex", "pre-tool", &payload)
+            .expect("provider direct execution is denied");
+    crate::command::publish_hook_decision_before_emit(&workspace, &mut decision);
     let deny_evidence_ref = decision
         .fields
         .get("denyEvidenceRef")

@@ -1,12 +1,18 @@
 use std::time::{Duration, Instant};
 
-use super::{materialize_provider_routes, schema_registry, schema_registry_provider_manifests};
+use super::{materialize_provider_routes, provider_register, schema_registry_provider_manifests};
 
 #[cfg(unix)]
 fn current_thread_cpu_nanos() -> u128 {
-    let mut time = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    let mut time = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
     // SAFETY: `time` is writable process-local storage for the clock result.
-    assert_eq!(unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut time) }, 0);
+    assert_eq!(
+        unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut time) },
+        0
+    );
     (time.tv_sec as u128) * 1_000_000_000 + (time.tv_nsec as u128)
 }
 
@@ -19,8 +25,8 @@ fn current_thread_cpu_nanos() -> u128 {
 #[test]
 fn registry_is_singleton_and_all_language_routes_materialize_in_milliseconds() {
     let started = Instant::now();
-    let first = schema_registry() as *const _;
-    let second = schema_registry() as *const _;
+    let first = provider_register() as *const _;
+    let second = provider_register() as *const _;
     assert_eq!(
         first, second,
         "registry must be parsed exactly once per process"
@@ -44,7 +50,7 @@ fn registry_is_singleton_and_all_language_routes_materialize_in_milliseconds() {
 
 #[test]
 fn selected_registry_method_lookup_is_lazy_and_sub_millisecond_warm() {
-    let _ = schema_registry();
+    let _ = provider_register();
     let started = current_thread_cpu_nanos();
     for _ in 0..100 {
         let invocation = crate::registered_provider_method_invocation_v1(
@@ -69,7 +75,7 @@ fn selected_registry_method_lookup_is_lazy_and_sub_millisecond_warm() {
 
 #[test]
 fn dependency_topology_routes_are_registered_for_capable_languages() {
-    let registry = schema_registry();
+    let registry = provider_register();
     for (language_id, provider_id) in [
         ("rust", "asp-rust"),
         ("typescript", "asp-typescript"),
@@ -78,7 +84,7 @@ fn dependency_topology_routes_are_registered_for_capable_languages() {
         ("gerbil-scheme", "asp-gerbil-scheme"),
     ] {
         let language = registry
-            .languages
+            .providers
             .iter()
             .find(|language| {
                 language.language_id == language_id && language.provider_id == provider_id
@@ -128,9 +134,9 @@ fn registry_method_inventory_is_explicit() {
         ["asp-rust", "query", "--asp-exact-request-stdin", "--json"]
     );
 
-    let registry = super::schema_registry();
+    let registry = super::provider_register();
     for language in registry
-        .languages
+        .providers
         .iter()
         .filter(|language| language.language_id != "rust")
     {
@@ -148,7 +154,7 @@ fn registry_method_inventory_is_explicit() {
     }
 
     let mut declared_native_exact_count = 0usize;
-    for language in &registry.languages {
+    for language in &registry.providers {
         let declared = language
             .method_descriptors
             .iter()

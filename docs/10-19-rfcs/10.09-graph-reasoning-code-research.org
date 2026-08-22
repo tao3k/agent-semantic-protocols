@@ -3,7 +3,7 @@
 #+DATE: 2026-06-03
 #+RFC: 009
 #+STATUS: research
-#+DEPENDS: docs/10-19-rfcs/10.05-cli-first-harness-ux.org (005), docs/10-19-rfcs/10.06-agent-compact-graph-feature.org (006), schemas/semantic-search-packet.v1.schema.json, schemas/semantic-compact-graph-render.v1.schema.json
+#+DEPENDS: docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org (005), docs/10-19-rfcs/10.06-agent-compact-graph-feature.org (006), schemas/semantic-search-packet.v1.schema.json, schemas/semantic-compact-graph-render.v1.schema.json
 
 * One-sentence summary
 
@@ -97,7 +97,7 @@ ASP should learn selectively:
 
 ASP's own strengths must stay primary:
 
-- CLI-first provider commands rather than MCP as the required prompt protocol.
+- ASP Server typed operations rather than provider commands or MCP as the required protocol.
 - Schema-backed packets before provider-specific implementation shortcuts.
 - Hook deny recovery with copyable guide routes.
 - Native parser compact code and read-plan frontiers.
@@ -474,7 +474,7 @@ two-search evidence success rate =
 
 * Relationship to other RFCs
 
-RFC 005 defines the CLI-first boundary and explicitly rejects natural-language
+RFC 005 defines the ASP Server-first boundary and explicitly rejects natural-language
 intent parsing inside provider commands.  This RFC extends that boundary to
 =search guide=, =search prime=, and =search reasoning <profile>=.
 

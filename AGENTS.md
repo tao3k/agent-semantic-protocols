@@ -28,9 +28,8 @@ search packets, or agent-facing search guidance, follow this order:
    `docs/10-19-rfcs/`, especially
    `docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org`
    when the interactive SearchLoop, evidence graph, progressive search, public
-   adapter, or agent workflow changes. The historical
-   `docs/10-19-rfcs/10.05-cli-first-harness-ux.org` path is a compatibility
-   locator, not the canonical architecture root. Use
+   client, or agent workflow changes. Git is the only archive; the working tree
+   contains only the current server-first architecture. Use
    `docs/10-19-rfcs/10.06-agent-search-projection.org` when work changes search projection
    rendering, graph-derived rank, LLM-oriented code reasoning projection, or
    graph facts that should be available across the agent-facing `search`

@@ -225,7 +225,7 @@
         "text-location-line"
       ],
       "recommendedCommand": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "text",
         "--query-set",

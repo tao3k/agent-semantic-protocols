@@ -38,7 +38,7 @@ class ReceiptQuerySetReportTests(unittest.TestCase):
                                 "id": "text-location-path",
                                 "kind": "search",
                                 "argv": [
-                                    "ts-harness",
+                                    "asp-typescript",
                                     "search",
                                     "text",
                                     "location.path",
@@ -92,7 +92,7 @@ class ReceiptQuerySetReportTests(unittest.TestCase):
                                 },
                                 "beforeCommandIds": ["text-location-path"],
                                 "recommendedCommand": [
-                                    "ts-harness",
+                                    "asp-typescript",
                                     "search",
                                     "text",
                                     "--query-set",

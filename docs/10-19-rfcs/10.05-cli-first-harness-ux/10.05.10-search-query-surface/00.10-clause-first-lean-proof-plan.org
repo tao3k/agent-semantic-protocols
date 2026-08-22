@@ -1,8 +1,0 @@
-#+title: Compatibility locator: Clause-first Lean proof plan
-#+property: rfc_status compatibility-locator
-
-* Canonical RFC
-
-This historical path is retained only for inbound relative-link compatibility.
-The canonical RFC is [[file:../../10.05-interactive-graph-first-progressive-searchloop/10.05.60-lean-typst-audit/00.10-clause-first-lean-proof-plan.org][Clause-first Lean proof plan]].
-New proof and audit semantics MUST be authored under the graph-first RFC tree.

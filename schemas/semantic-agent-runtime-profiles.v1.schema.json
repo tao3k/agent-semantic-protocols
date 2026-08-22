@@ -73,7 +73,7 @@
       "minLength": 1
     },
     "generatedBy": {
-      "$ref": "semantic-agent-definitions.v1.schema.json#/$defs/generatedBy"
+      "$ref": "semantic-agent-definitions.schema.json#/$defs/generatedBy"
     },
     "providerProfile": {
       "type": "object",

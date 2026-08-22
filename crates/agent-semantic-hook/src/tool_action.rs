@@ -36,70 +36,7 @@ const ACTION_SCAN_KEYS: &[&str] = &[
     "tool_calls",
     "toolCalls",
 ];
-
-#[derive(Clone, Debug, Copy, Eq, PartialEq)]
-pub(crate) enum AgentActionKind {
-    Read,
-    Edit,
-    Search,
-    Enumerate,
-    Execute,
-    Test,
-    Build,
-    Delete,
-    Unknown,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AgentActionSubjectKind {
-    RegisteredLanguageSource,
-    RegisteredLanguageSourcePattern,
-    Directory,
-    StructuralSelector,
-    Other,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AgentActionAuthority {
-    RawHostAction,
-    RawShell,
-    ParserOwnedExactEvidence,
-    ParserOwnedSearch,
-    AstPatchEvidence,
-    Unknown,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct AgentActionSubject {
-    pub(crate) value: String,
-    pub(crate) kind: AgentActionSubjectKind,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct AgentAction {
-    pub(crate) action: AgentActionKind,
-    pub(crate) effect: AgentActionKind,
-    pub(crate) authority: AgentActionAuthority,
-    pub(crate) subjects: Vec<AgentActionSubject>,
-}
-
-impl AgentAction {
-    pub(crate) fn receipt_value(&self) -> serde_json::Value {
-        serde_json::json!({
-            "action": agent_action_kind_label(self.action),
-            "effect": agent_action_kind_label(self.effect),
-            "authority": action_authority_label(self.authority),
-            "subjects": self
-                .subjects
-                .iter()
-                .map(|subject| serde_json::json!({
-                    "value": subject.value.as_str(),
-                    "kind": action_subject_kind_label(subject.kind),
-                }))
-                .collect::<Vec<_>>(),
-        })
-    }
-}
+pub(crate) use crate::action_ir::*;
 
 const fn agent_action_kind_label(kind: AgentActionKind) -> &'static str {
     match kind {
@@ -136,26 +73,6 @@ const fn action_subject_kind_label(kind: AgentActionSubjectKind) -> &'static str
         AgentActionSubjectKind::StructuralSelector => "structural-selector",
         AgentActionSubjectKind::Other => "other",
     }
-}
-
-pub(crate) fn action_kind_matches(
-    candidate: AgentActionKind,
-    configured: agent_semantic_config::HookClientActionKind,
-) -> bool {
-    use agent_semantic_config::HookClientActionKind as Configured;
-
-    matches!(
-        (candidate, configured),
-        (AgentActionKind::Read, Configured::Read)
-            | (AgentActionKind::Edit, Configured::Edit)
-            | (AgentActionKind::Search, Configured::Search)
-            | (AgentActionKind::Enumerate, Configured::Enumerate)
-            | (AgentActionKind::Execute, Configured::Execute)
-            | (AgentActionKind::Test, Configured::Test)
-            | (AgentActionKind::Build, Configured::Build)
-            | (AgentActionKind::Delete, Configured::Delete)
-            | (AgentActionKind::Unknown, Configured::Unknown)
-    )
 }
 
 pub(crate) fn action_kind_from_config(
@@ -276,25 +193,25 @@ impl ToolAction {
         self.command.as_deref()
     }
 
-    pub(crate) fn derive_agent_action(&self) -> AgentAction {
-        let action = self.operation.agent_action_kind();
-        let authority = match action {
-            AgentActionKind::Execute => AgentActionAuthority::RawShell,
-            AgentActionKind::Unknown => AgentActionAuthority::Unknown,
-            _ => AgentActionAuthority::RawHostAction,
-        };
-        let effect = if action == AgentActionKind::Execute {
-            AgentActionKind::Unknown
-        } else {
-            action
-        };
-        AgentAction {
-            action,
-            effect,
+pub(crate) fn derive_agent_action(&self) -> AgentAction {
+    let host_action = self.operation.agent_action_kind();
+    let authority = match host_action {
+        AgentActionKind::Execute => AgentActionAuthority::RawShell,
+        AgentActionKind::Unknown => AgentActionAuthority::Unknown,
+        _ => AgentActionAuthority::RawHostAction,
+    };
+    AgentAction {
+        host_action,
+        host_tool_name: self.tool_name.clone(),
+        capabilities: vec![SemanticCapability {
+            action: host_action,
+            certainty: SemanticCapabilityCertainty::Exact,
             authority,
-            subjects: Vec::new(),
-        }
+            evidence: SemanticCapabilityEvidence::HostAction,
+        }],
+        subjects: Vec::new(),
     }
+}
 
     pub(crate) fn command_tokens(&self) -> Option<Cow<'_, [String]>> {
         self.command_tokens
@@ -760,7 +677,7 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
             }
         }
         if surface != ToolSurface::CodexApplyPatch {
-            let command_paths = agent_semantic_command_match::command_source_paths(
+            let command_paths = agent_semantic_shell_parser::command_source_paths(
                 command,
                 command_tokens.as_deref().unwrap_or_default(),
             );

@@ -48,7 +48,7 @@ durable replacement contract.
 
 * Executable mapping
 
-The Rust projection is parser-neutral and lives outside the CLI adapter.  It
+The Rust projection is parser-neutral and lives behind the ASP Server operation boundary.  It
 accepts already-observed facts and emits the shared projection.  Registry
 strings such as =idle=, =invalid=, and =orphan-risk= are rejected as conflated
 legacy states; adapters must supply separate session, binding, and dispatch

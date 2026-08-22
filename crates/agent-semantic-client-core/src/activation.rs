@@ -20,12 +20,11 @@ use crate::types::{LanguageId, ProviderId};
 /// the hook installation root separately from the provider execution root.
 pub const ASP_PROVIDER_ACTIVATION_PATH_ENV: &str = "ASP_PROVIDER_ACTIVATION_PATH";
 
-/// Provider resolved from the project hook activation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ProviderScopeAuthority {
-    ProjectResolution,
-    DocumentResolution,
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedProviderRuntimeOperation {
+    pub operation: String,
+    pub request_schema_id: String,
+    pub response_schema_id: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -44,11 +43,11 @@ pub struct ResolvedProvider {
     pub package_roots: Vec<String>,
     pub config_files: Vec<String>,
     pub source_extensions: Vec<String>,
-    pub scope_authority: ProviderScopeAuthority,
+    pub source_inventory_capabilities: ProviderSourceInventoryCapabilities,
     pub search_capabilities: agent_semantic_hook::ProviderSearchCapabilities,
-    pub language_projection: Option<agent_semantic_hook::ProviderLanguageProjectionDescriptor>,
     pub query_pack_descriptor: agent_semantic_hook::ProviderQueryPackDescriptor,
     pub semantic_facts_descriptor: Option<agent_semantic_hook::ProviderSemanticFactsDescriptor>,
+    pub runtime_operations: Vec<ResolvedProviderRuntimeOperation>,
 }
 
 /// Health status copied from the provider runtime profile.
@@ -113,19 +112,41 @@ impl TryFrom<&ActivatedProvider> for ResolvedProvider {
                     provider.manifest_id, provider.language_id, provider.provider_id
                 )
             })?;
-        let scope_authority = match (
-            manifest.project_resolution().is_some(),
-            manifest.document_resolution().is_some(),
-        ) {
-            (true, false) => ProviderScopeAuthority::ProjectResolution,
-            (false, true) => ProviderScopeAuthority::DocumentResolution,
-            _ => {
-                return Err(format!(
-                    "provider manifest must declare exactly one scope authority: manifestId={}",
-                    provider.manifest_id
-                ));
-            }
-        };
+        let project_resolution =
+            manifest
+                .project_resolution()
+                .map(|descriptor| ProviderProjectInventoryCapability {
+                    entry_markers: descriptor.entry_markers.clone(),
+                });
+        let document_resolution =
+            manifest
+                .document_resolution()
+                .map(|descriptor| ProviderDocumentInventoryCapability {
+                    extensions: descriptor.extensions.clone(),
+                    supports_git_candidates: descriptor.supports_git_candidates,
+                });
+        if project_resolution.is_none() && document_resolution.is_none() {
+            return Err(format!(
+                "provider manifest must declare at least one source inventory capability: manifestId={}",
+                provider.manifest_id
+            ));
+        }
+        let runtime_operations = manifest
+            .runtime_contract()
+            .operations()
+            .iter()
+            .map(|operation| ResolvedProviderRuntimeOperation {
+                operation: operation.operation().to_owned(),
+                request_schema_id: operation.request_schema_id().to_owned(),
+                response_schema_id: operation.response_schema_id().to_owned(),
+            })
+            .collect::<Vec<_>>();
+        if runtime_operations.is_empty() {
+            return Err(format!(
+                "provider manifest must declare runtime operations: manifestId={}",
+                provider.manifest_id
+            ));
+        }
         Ok(Self {
             manifest_id: provider.manifest_id.clone(),
             manifest_digest: provider.manifest_digest.clone(),
@@ -141,12 +162,23 @@ impl TryFrom<&ActivatedProvider> for ResolvedProvider {
             package_roots: provider.package_roots.clone(),
             config_files: provider.config_files.clone(),
             source_extensions: provider.source_extensions.clone(),
-            scope_authority,
+            source_inventory_capabilities: ProviderSourceInventoryCapabilities {
+                project_resolution,
+                document_resolution,
+            },
             search_capabilities: provider.search_capabilities.clone(),
-            language_projection: provider.language_projection.clone(),
             query_pack_descriptor: provider.query_pack_descriptor.clone(),
             semantic_facts_descriptor: provider.semantic_facts_descriptor.clone(),
+            runtime_operations,
         })
+    }
+}
+
+impl ResolvedProvider {
+    pub fn runtime_operation(&self, operation: &str) -> Option<&ResolvedProviderRuntimeOperation> {
+        self.runtime_operations
+            .iter()
+            .find(|item| item.operation == operation)
     }
 }
 
@@ -367,11 +399,6 @@ fn provider_fingerprint(provider: &ResolvedProvider) -> String {
                 .expect("search-capabilities serialization must be infallible")
         ),
         format!(
-            "languageProjection={}",
-            serde_json::to_string(&provider.language_projection)
-                .expect("language-projection descriptor serialization must be infallible")
-        ),
-        format!(
             "queryPackDescriptor={}",
             serde_json::to_string(&provider.query_pack_descriptor)
                 .expect("query-pack descriptor serialization must be infallible")
@@ -399,4 +426,20 @@ fn project_root_has_provider_identity(project_root: &Path) -> bool {
         || project_root.join("pyproject.toml").is_file()
         || project_root.join("Project.toml").is_file()
         || project_root.join("JuliaProject.toml").is_file()
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderProjectInventoryCapability {
+    pub entry_markers: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderDocumentInventoryCapability {
+    pub extensions: Vec<String>,
+    pub supports_git_candidates: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderSourceInventoryCapabilities {
+    pub project_resolution: Option<ProviderProjectInventoryCapability>,
+    pub document_resolution: Option<ProviderDocumentInventoryCapability>,
 }

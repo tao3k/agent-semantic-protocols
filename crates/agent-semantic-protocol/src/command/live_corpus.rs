@@ -38,7 +38,7 @@ fn materialized_source_identity(
         source_merkle_root: runtime_source_root_digest,
     })
 }
-#[path = "live_corpus_qualification.rs"]
+#[path = "live_corpus_qualification/mod.rs"]
 mod qualification;
 const BUILDER_ID: &str = "asp-live-corpus";
 

@@ -332,6 +332,7 @@ pub enum WorkspaceRuntimeMerkleOwnerRead {
         project_root: String,
         active_epoch: u64,
         generation_digest: String,
+        /// Resident owner-path Merkle root, not the workspace source snapshot root.
         root_digest: String,
         owner_path: String,
         source_blob_digest: String,
@@ -346,6 +347,7 @@ pub enum WorkspaceRuntimeMerkleOwnerRead {
         project_root: String,
         active_epoch: u64,
         generation_digest: String,
+        /// Resident owner-path Merkle root, not the workspace source snapshot root.
         root_digest: String,
         owner_path: String,
     },

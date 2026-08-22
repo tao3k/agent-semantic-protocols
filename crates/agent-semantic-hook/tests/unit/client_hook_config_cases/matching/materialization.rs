@@ -144,7 +144,7 @@ fn action_first_rule_denies_inferred_reads_before_shell_expansion() {
     );
     assert_eq!(
         native_read.fields["configRuleId"],
-        "materialize-registered-source-read-action"
+        "route-read-to-asp-languages"
     );
     assert!(
         native_read.message.starts_with(
@@ -224,7 +224,7 @@ fn registered_source_read_action_matches_real_payload_field_variants() {
             "{label}: {decision:?}"
         );
         assert_eq!(
-            decision.fields["configRuleId"], "materialize-registered-source-read-action",
+            decision.fields["configRuleId"], "route-read-to-asp-languages",
             "{label}: payload={payload}"
         );
         assert_eq!(
@@ -298,7 +298,7 @@ toolAny = ["multi_tool_use.parallel"]
     assert_eq!(decision.decision, DecisionKind::Deny, "{decision:?}");
     assert_eq!(
         decision.fields["configRuleId"],
-        "materialize-registered-source-read-action"
+        "route-read-to-asp-languages"
     );
     assert_eq!(
         decision.subject.tool_name.as_deref(),

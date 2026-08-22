@@ -3,20 +3,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::ops::Range;
-use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    OutputFraming, OutputMode, ProviderProcessFraming, ProviderProcessLimits, ProviderProcessSpec,
-    ProviderProcessSupervisor, StdinMode,
-};
-
 pub const PROJECTION_BATCH_REQUEST_SCHEMA_ID: &str =
-    "asp.provider-language-projection-batch-request.v1";
+    "agent.semantic-protocols.provider-language-projection-batch-request";
 pub const PROJECTION_BATCH_RESPONSE_SCHEMA_ID: &str =
-    "asp.provider-language-projection-batch-response.v1";
-pub const PROJECTION_BATCH_TRANSPORT: &str = "framed-stdin-v1";
+    "agent.semantic-protocols.provider-language-projection-batch-response";
 /// Maximum owners admitted to one short-lived provider projection process.
 pub const MAX_PROVIDER_PROJECTION_BATCH_OWNERS: usize = 32;
 /// Maximum aggregate source bytes admitted to one provider projection process.
@@ -124,31 +117,6 @@ pub struct ProviderProjectedItemScope {
     pub symbol: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct ProjectionBatchHeader {
-    schema_id: String,
-    schema_version: String,
-    language_id: String,
-    provider_id: String,
-    workspace_identity: String,
-    transport: String,
-    generation_root_digest: String,
-    parser_identity_digest: String,
-    query_pack_digest: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    base_generation_root_digest: Option<String>,
-    owners: Vec<ProjectionBatchOwnerHeader>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct ProjectionBatchOwnerHeader {
-    owner_path: String,
-    source_leaf_digest: String,
-    byte_length: usize,
-}
-
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ProviderProjectionBatchError(String);
 
@@ -163,45 +131,40 @@ impl std::error::Error for ProviderProjectionBatchError {}
 impl ProviderProjectionBatchRequest {
     pub fn encode(&self) -> Result<Vec<u8>, ProviderProjectionBatchError> {
         self.validate()?;
-        let header = ProjectionBatchHeader {
-            schema_id: PROJECTION_BATCH_REQUEST_SCHEMA_ID.to_string(),
-            schema_version: "1".to_string(),
-            language_id: self.language_id.clone(),
-            provider_id: self.provider_id.clone(),
-            workspace_identity: self.workspace_identity.clone(),
-            transport: PROJECTION_BATCH_TRANSPORT.to_string(),
-            generation_root_digest: self.generation_root_digest.clone(),
-            parser_identity_digest: self.parser_identity_digest.clone(),
-            query_pack_digest: self.query_pack_digest.clone(),
-            base_generation_root_digest: self.base_generation_root_digest.clone(),
-            owners: self
-                .owners
-                .iter()
-                .map(|owner| ProjectionBatchOwnerHeader {
-                    owner_path: owner.owner_path.clone(),
-                    source_leaf_digest: owner.source_leaf_digest.clone(),
-                    byte_length: owner.source_bytes.len(),
-                })
-                .collect(),
-        };
-        let header_bytes = serde_json::to_vec(&header).map_err(|error| {
-            ProviderProjectionBatchError(format!("encode projection batch header: {error}"))
-        })?;
-        let header_length = u32::try_from(header_bytes.len()).map_err(|_| {
-            ProviderProjectionBatchError("projection batch header exceeds u32 framing".to_string())
-        })?;
-        let owner_bytes = self
+        let owners = self
             .owners
             .iter()
-            .map(|owner| owner.source_bytes.len())
-            .sum::<usize>();
-        let mut frame = Vec::with_capacity(4 + header_bytes.len() + owner_bytes);
-        frame.extend_from_slice(&header_length.to_be_bytes());
-        frame.extend_from_slice(&header_bytes);
-        for owner in &self.owners {
-            frame.extend_from_slice(&owner.source_bytes);
+            .map(|owner| {
+                let source_text = std::str::from_utf8(&owner.source_bytes).map_err(|error| {
+                    ProviderProjectionBatchError(format!(
+                        "projection owner is not UTF-8 {}: {error}",
+                        owner.owner_path
+                    ))
+                })?;
+                Ok(serde_json::json!({
+                    "ownerPath": owner.owner_path,
+                    "sourceLeafDigest": owner.source_leaf_digest,
+                    "sourceText": source_text,
+                }))
+            })
+            .collect::<Result<Vec<_>, ProviderProjectionBatchError>>()?;
+        let mut payload = serde_json::json!({
+            "schemaId": PROJECTION_BATCH_REQUEST_SCHEMA_ID,
+            "schemaVersion": "1",
+            "languageId": self.language_id,
+            "providerId": self.provider_id,
+            "workspaceIdentity": self.workspace_identity,
+            "generationRootDigest": self.generation_root_digest,
+            "parserIdentityDigest": self.parser_identity_digest,
+            "queryPackDigest": self.query_pack_digest,
+            "owners": owners,
+        });
+        if let Some(base_digest) = &self.base_generation_root_digest {
+            payload["baseGenerationRootDigest"] = serde_json::Value::String(base_digest.clone());
         }
-        Ok(frame)
+        serde_json::to_vec(&payload).map_err(|error| {
+            ProviderProjectionBatchError(format!("encode projection batch request: {error}"))
+        })
     }
 
     fn validate(&self) -> Result<(), ProviderProjectionBatchError> {
@@ -240,53 +203,6 @@ impl ProviderProjectionBatchResponse {
         validate_response(request, &response)?;
         Ok(response)
     }
-}
-
-pub async fn run_provider_projection_batch(
-    supervisor: &ProviderProcessSupervisor,
-    command_argv: &[String],
-    command_binding: impl Into<String>,
-    cwd: impl AsRef<Path>,
-    request: &ProviderProjectionBatchRequest,
-) -> Result<ProviderProjectionBatchResponse, ProviderProjectionBatchError> {
-    let (program, prefix_args) = command_argv.split_first().ok_or_else(|| {
-        ProviderProjectionBatchError("projection provider command must be non-empty".to_owned())
-    })?;
-    let stdin = request.encode()?;
-    let spec = ProviderProcessSpec {
-        program: program.clone(),
-        args: prefix_args
-            .iter()
-            .cloned()
-            .chain(std::iter::once(command_binding.into()))
-            .collect(),
-        cwd: PathBuf::from(cwd.as_ref()),
-        env: BTreeMap::new(),
-        stdin: StdinMode::bytes(stdin),
-        stdout: OutputMode::Capture,
-        stderr: OutputMode::Capture,
-        limits: ProviderProcessLimits::default(),
-    };
-    let output = supervisor
-        .run_with_framing(
-            spec,
-            ProviderProcessFraming {
-                stdout: OutputFraming::Bytes,
-                stderr: OutputFraming::Bytes,
-            },
-        )
-        .await
-        .map_err(|error| {
-            ProviderProjectionBatchError(format!("projection provider failed: {error}"))
-        })?;
-    if !output.status.success() {
-        return Err(ProviderProjectionBatchError(format!(
-            "projection provider exited with status {:?}: {}",
-            output.status.code(),
-            output.stderr_lossy()
-        )));
-    }
-    ProviderProjectionBatchResponse::decode_for(request, &output.stdout)
 }
 
 fn validate_response(

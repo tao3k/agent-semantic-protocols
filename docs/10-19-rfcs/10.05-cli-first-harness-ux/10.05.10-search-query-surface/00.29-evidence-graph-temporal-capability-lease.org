@@ -1,6 +1,0 @@
-#+title: Compatibility locator: evidence-graph temporal capability lease
-
-* Canonical RFC
-
-The canonical RFC is
-[[file:../../10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00.29-evidence-graph-temporal-capability-lease.org][Evidence-graph temporal capability lease]].

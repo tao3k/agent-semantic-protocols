@@ -75,10 +75,6 @@ fn default_template_round_trips_through_config_parser() {
         Some(hook_client_contract_fingerprint().as_str())
     );
     assert!(config.experimental.is_empty());
-    assert_eq!(
-        config.wrapper_match,
-        agent_semantic_config::WrapperMatchMode::Enable
-    );
     assert!(config.agent_org_artifacts.is_none());
     assert!(config.recovery_prompt.template.is_none());
     assert!(config.recovery_prompt.codex_agent_flow.is_none());
@@ -240,12 +236,12 @@ fn default_template_round_trips_through_config_parser() {
         [
             "registered-asp-reasoning-search",
             "resident-testing-dispatch",
-        "deny-raw-registered-source-search-action",
-        "deny-raw-registered-source-action",
-        "allow-explicit-no-agent-host-bypass",
-        "deny-agent-search-json",
+            "deny-raw-registered-source-search-action",
+            "deny-raw-registered-source-action",
+            "allow-explicit-no-agent-host-bypass",
+            "deny-agent-search-json",
             "materialize-apply-patch-policy",
-            "materialize-registered-source-read-action",
+            "route-read-to-asp-languages",
             "materialize-structured-document-read-action",
             "materialize-source-access-policy",
             "deny-uncontrolled-source-search-commands",

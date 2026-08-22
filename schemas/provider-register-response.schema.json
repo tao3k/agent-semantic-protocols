@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-register-response.schema.json",
+  "title": "ASP Provider Register Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "result"],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.provider-register.response"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "result": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["outcome", "snapshot"],
+          "properties": {
+            "outcome": { "const": "snapshot" },
+            "snapshot": { "$ref": "#/$defs/snapshot" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["outcome", "actualGeneration"],
+          "properties": {
+            "outcome": { "const": "generation-conflict" },
+            "actualGeneration": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["outcome", "reasonKind", "message"],
+          "properties": {
+            "outcome": { "const": "rejected" },
+            "reasonKind": { "type": "string", "minLength": 1 },
+            "message": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generation", "digest", "providers"],
+      "properties": {
+        "generation": { "type": "integer", "minimum": 0 },
+        "digest": { "type": "string", "minLength": 1 },
+        "providers": {
+          "type": "array",
+          "items": {
+            "$ref": "provider-register-request.schema.json#/$defs/providerRegistration"
+          }
+        }
+      }
+    }
+  }
+}

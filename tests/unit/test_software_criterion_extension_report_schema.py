@@ -37,7 +37,7 @@ def _effect_report() -> dict[str, Any]:
         "protocolId": "agent.semantic-protocols.software-criterion",
         "protocolVersion": "1",
         "languageId": "typescript",
-        "providerId": "ts-harness",
+        "providerId": "asp-typescript",
         "projectRoot": ".",
         "extensionId": "typescript.extension.effect",
         "ecosystem": "effect",

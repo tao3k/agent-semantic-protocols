@@ -1,6 +1,0 @@
-#+title: Compatibility locator: SearchRoute costed inspect trace
-
-* Canonical RFC
-
-The canonical RFC is
-[[file:../../10.05-interactive-graph-first-progressive-searchloop/10.05.30-progressive-projection-cost/00.23-searchroute-costed-inspect-trace.org][SearchRoute costed inspect trace]].

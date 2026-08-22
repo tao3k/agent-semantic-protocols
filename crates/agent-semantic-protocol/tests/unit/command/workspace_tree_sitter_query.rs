@@ -54,19 +54,24 @@ fn workspace_search_request_requires_query_source_without_selector() {
 
 #[test]
 fn query_captures_join_canonical_selector_signature_and_byte_spans() {
-    let language = agent_semantic_tree_sitter::registered_language_grammar("rust".into())
-        .expect("Rust grammar");
-    let query = agent_semantic_tree_sitter::compile_native_query_source(
-        &language,
-        "[(function_item name: (identifier) @declaration.name) (struct_item name: (type_identifier) @declaration.name)]",
-    )
-    .expect("compile query");
     let source = "pub fn run() {}\npub struct Record;\n";
     let captures = join_capture_projections(
-        &language,
-        &query,
-        source,
-        "src/lib.rs",
+        vec![
+            agent_semantic_provider_transport::ProviderSyntaxQueryCapture {
+                pattern_index: 0,
+                capture_name: "declaration.name".to_owned(),
+                native_fact_ref: "rust:item:src/lib.rs:1:1:run".to_owned(),
+                source_byte_start: 7,
+                source_byte_end: 10,
+            },
+            agent_semantic_provider_transport::ProviderSyntaxQueryCapture {
+                pattern_index: 1,
+                capture_name: "declaration.name".to_owned(),
+                native_fact_ref: "rust:item:src/lib.rs:2:2:Record".to_owned(),
+                source_byte_start: 25,
+                source_byte_end: 31,
+            },
+        ],
         &[complete_owner(
             "rust://src/lib.rs#item/module/root",
             "module root",
@@ -90,17 +95,21 @@ fn query_captures_join_canonical_selector_signature_and_byte_spans() {
 
 #[test]
 fn query_capture_without_complete_owner_item_is_not_a_semantic_match() {
-    let language = agent_semantic_tree_sitter::registered_language_grammar("rust".into())
-        .expect("Rust grammar");
-    let query = agent_semantic_tree_sitter::compile_native_query_source(
-        &language,
-        r#"((string_literal) @value (#match? @value "asp install plugin --codex"))"#,
-    )
-    .expect("compile query");
     let source = r#"pub const INSTALL: &str = "asp install plugin --codex";"#;
 
-    let captures = join_capture_projections(&language, &query, source, "src/lib.rs", &[])
-        .expect("unowned parser captures are excluded");
+    let captures = join_capture_projections(
+        vec![
+            agent_semantic_provider_transport::ProviderSyntaxQueryCapture {
+                pattern_index: 0,
+                capture_name: "value".to_owned(),
+                native_fact_ref: "rust:item:src/lib.rs:1:1:INSTALL".to_owned(),
+                source_byte_start: 26,
+                source_byte_end: source.len() as u64 - 1,
+            },
+        ],
+        &[],
+    )
+    .expect("unowned parser captures are excluded");
     assert!(captures.is_empty());
 }
 

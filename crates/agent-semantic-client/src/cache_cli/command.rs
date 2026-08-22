@@ -78,10 +78,7 @@ fn runtime_cache_mutation_id(action: &str) -> Result<String, String> {
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| format!("system clock is before the Unix epoch: {error}"))?
         .as_nanos();
-    Ok(format!(
-        "cache:{action}:{}:{timestamp}",
-        std::process::id()
-    ))
+    Ok(format!("cache:{action}:{}:{timestamp}", std::process::id()))
 }
 
 async fn run_runtime_cache_control(

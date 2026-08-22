@@ -38,6 +38,7 @@ pub(crate) async fn run_runtime_server_tree_sitter_query(
     language_id: &str,
     args: &[String],
     project_root: &Path,
+    provider_runtime: agent_semantic_provider_transport::ProviderRuntimeActorClient,
 ) -> Result<Option<String>, String> {
     let Some(request) = WorkspaceTreeSitterRequest::parse(args)? else {
         return Ok(None);
@@ -52,23 +53,16 @@ pub(crate) async fn run_runtime_server_tree_sitter_query(
         .find(|provider| provider.language_id == language_id)
         .ok_or_else(|| format!("no activated provider for language {language_id}"))?;
     let profiles = super::provider_dispatch::tree_sitter_runtime_profiles(project_root, &runtime);
-    let language = agent_semantic_tree_sitter::registered_language_grammar(language_id.into())?;
-    let query =
-        agent_semantic_tree_sitter::compile_native_query_source(&language, &request.query_source)?;
-    if !query.unsupported_predicates().is_empty() {
-        return Err(format!(
-            "tree-sitter query uses unsupported predicates: {}",
-            query.unsupported_predicates().join(",")
-        ));
-    }
+    let query = agent_semantic_tree_sitter::compile_query_abi_source(&request.query_source)
+        .map_err(|error| format!("invalid SCM syntax query: {error}"))?;
     let result = run_workspace_tree_sitter_query(
         language_id,
         project_root,
         provider,
         &profiles,
         &request,
-        &language,
         &query,
+        provider_runtime,
     )
     .await?;
     render_workspace_query(
@@ -138,34 +132,21 @@ pub(super) fn infer_workspace_tree_sitter_search_language(
     let Some(query_source) = option_value(args, "--treesitter-query")? else {
         return Ok(None);
     };
-    let mut compatible_languages = std::collections::BTreeSet::new();
-
-    for provider in providers {
-        let language_id = provider.language_id.as_str();
-        let Ok(language) =
-            agent_semantic_tree_sitter::registered_language_grammar(language_id.into())
-        else {
-            continue;
-        };
-        let Ok(query) =
-            agent_semantic_tree_sitter::compile_native_query_source(&language, &query_source)
-        else {
-            continue;
-        };
-        if !query.unsupported_predicates().is_empty() {
-            continue;
-        }
-        compatible_languages.insert(language_id.to_string());
-    }
+    agent_semantic_tree_sitter::compile_query_abi_source(&query_source)
+        .map_err(|error| format!("invalid SCM syntax query: {error}"))?;
+    let compatible_languages = providers
+        .iter()
+        .map(|provider| provider.language_id.as_str().to_owned())
+        .collect::<std::collections::BTreeSet<_>>();
 
     match compatible_languages.len() {
         1 => Ok(compatible_languages.into_iter().next()),
         0 => Err(
-            "tree-sitter search pattern did not compile for any active language; add `--language <language>` to select the intended grammar"
+            "SCM syntax query has no active language provider; add `--language <language>` after activating the provider"
                 .to_string(),
         ),
         _ => Err(format!(
-            "tree-sitter search language is ambiguous across active grammars: {}; add `--language <language>`",
+            "SCM syntax query language is ambiguous across active native providers: {}; add `--language <language>`",
             compatible_languages
                 .into_iter()
                 .collect::<Vec<_>>()
@@ -213,8 +194,8 @@ async fn run_workspace_tree_sitter_query(
     provider: &ActivatedProvider,
     profiles: &agent_semantic_hook::RuntimeProfiles,
     request: &WorkspaceTreeSitterRequest,
-    language: &tree_sitter::Language,
-    query: &agent_semantic_tree_sitter::CompiledNativeSyntaxQuery,
+    query: &agent_semantic_tree_sitter::SyntaxQueryAbiPlan,
+    provider_runtime: agent_semantic_provider_transport::ProviderRuntimeActorClient,
 ) -> Result<WorkspaceTreeSitterQueryResult, String> {
     let total_started = std::time::Instant::now();
     let phase_started = std::time::Instant::now();
@@ -268,8 +249,8 @@ async fn run_workspace_tree_sitter_query(
         project_root,
         provider,
         profiles,
-        language,
         query,
+        &provider_runtime,
         &state,
         &query_identity,
         scheduled.scheduled_entries.as_slice(),
@@ -501,8 +482,8 @@ async fn process_scheduled_owners(
     project_root: &Path,
     provider: &ActivatedProvider,
     profiles: &agent_semantic_hook::RuntimeProfiles,
-    language: &tree_sitter::Language,
-    query: &agent_semantic_tree_sitter::CompiledNativeSyntaxQuery,
+    query: &agent_semantic_tree_sitter::SyntaxQueryAbiPlan,
+    provider_runtime: &agent_semantic_provider_transport::ProviderRuntimeActorClient,
     state: &TreeSitterQueryState,
     query_identity: &agent_semantic_client_db::ProviderTreeSitterQueryIdentity,
     scheduled: &[agent_semantic_client_db::ProviderOwnerInventoryEntry],
@@ -526,8 +507,8 @@ async fn process_scheduled_owners(
                 project_root,
                 provider,
                 profiles,
-                language,
                 query,
+                provider_runtime,
                 state,
                 query_identity,
                 owner,
@@ -544,10 +525,10 @@ async fn process_owner(
     project_root: &Path,
     provider: &ActivatedProvider,
     profiles: &agent_semantic_hook::RuntimeProfiles,
-    language: &tree_sitter::Language,
-    query: &agent_semantic_tree_sitter::CompiledNativeSyntaxQuery,
+    query: &agent_semantic_tree_sitter::SyntaxQueryAbiPlan,
+    provider_runtime: &agent_semantic_provider_transport::ProviderRuntimeActorClient,
     state: &TreeSitterQueryState,
-    _query_identity: &agent_semantic_client_db::ProviderTreeSitterQueryIdentity,
+    query_identity: &agent_semantic_client_db::ProviderTreeSitterQueryIdentity,
     owner: &mut InventoryOwner,
 ) -> Result<ProcessedOwner, String> {
     if std::env::var_os("ASP_TREESITTER_TRACE").is_some() {
@@ -620,13 +601,18 @@ async fn process_owner(
             owner.owner_path
         )
     })?;
-    let captures = join_capture_projections(
-        language,
-        query,
-        source,
+    let provider_captures = run_provider_syntax_query(
+        provider_runtime,
+        language_id,
+        provider.provider_id.as_str(),
         &owner.owner_path,
-        &owner_projections,
-    )?;
+        source,
+        &fingerprint.content_digest,
+        &query_identity.query_digest,
+        query,
+    )
+    .await?;
+    let captures = join_capture_projections(provider_captures, &owner_projections)?;
     client_db_session
         .write_provider_incremental_owner(
             &agent_semantic_client_db::ProviderIncrementalOwnerWrite {
@@ -652,20 +638,72 @@ async fn process_owner(
     })
 }
 
-fn join_capture_projections(
-    language: &tree_sitter::Language,
-    query: &agent_semantic_tree_sitter::CompiledNativeSyntaxQuery,
+async fn run_provider_syntax_query(
+    runtime: &agent_semantic_provider_transport::ProviderRuntimeActorClient,
+    language_id: &str,
+    provider_id: &str,
+    owner_path: &str,
     source: &str,
-    _owner_path: &str,
+    source_content_digest: &str,
+    query_digest: &str,
+    plan: &agent_semantic_tree_sitter::SyntaxQueryAbiPlan,
+) -> Result<Vec<agent_semantic_provider_transport::ProviderSyntaxQueryCapture>, String> {
+    let request = agent_semantic_provider_transport::ProviderSyntaxQueryRequest {
+        schema_id: agent_semantic_provider_transport::PROVIDER_SYNTAX_QUERY_REQUEST_SCHEMA_ID
+            .to_owned(),
+        schema_version: "1".to_owned(),
+        language_id: language_id.to_owned(),
+        provider_id: provider_id.to_owned(),
+        owner_path: owner_path.to_owned(),
+        source_content_digest: source_content_digest.to_owned(),
+        query_digest: query_digest.to_owned(),
+        source: source.to_owned(),
+        plan: plan.clone(),
+    };
+    let payload = serde_json::to_vec(&request)
+        .map_err(|error| format!("encode provider syntax-query request: {error}"))?;
+    let payload = runtime
+        .request(
+            agent_semantic_provider_transport::PROVIDER_SYNTAX_QUERY_OPERATION,
+            payload,
+        )
+        .await?;
+    let response: agent_semantic_provider_transport::ProviderSyntaxQueryResponse =
+        serde_json::from_slice(&payload)
+            .map_err(|error| format!("decode provider syntax-query response: {error}"))?;
+    if response.schema_id
+        != agent_semantic_provider_transport::PROVIDER_SYNTAX_QUERY_RESPONSE_SCHEMA_ID
+        || response.schema_version != "1"
+        || response.language_id != language_id
+        || response.provider_id != provider_id
+        || response.owner_path != owner_path
+        || response.source_content_digest != source_content_digest
+        || response.query_digest != query_digest
+        || !response.parsed
+    {
+        return Err("provider syntax-query response identity or parse state drift".to_owned());
+    }
+    let source_len = source.len() as u64;
+    if response.captures.iter().any(|capture| {
+        capture.capture_name.is_empty()
+            || capture.native_fact_ref.is_empty()
+            || capture.source_byte_start >= capture.source_byte_end
+            || capture.source_byte_end > source_len
+    }) {
+        return Err("provider syntax-query response contains an invalid capture span".to_owned());
+    }
+    Ok(response.captures)
+}
+
+fn join_capture_projections(
+    captures: Vec<agent_semantic_provider_transport::ProviderSyntaxQueryCapture>,
     owner_projections: &[agent_semantic_client_db::ProviderSelectorProjection],
 ) -> Result<Vec<agent_semantic_client_db::ProviderTreeSitterCaptureProjection>, String> {
-    agent_semantic_tree_sitter::execute_native_query(language, query, source)?
-        .matches
+    captures
         .into_iter()
-        .flat_map(|matched| matched.captures)
         .filter_map(|capture| {
-            let start = capture.node.start_byte as u64;
-            let end = capture.node.end_byte as u64;
+            let start = capture.source_byte_start;
+            let end = capture.source_byte_end;
             let item = owner_projections
                 .iter()
                 .filter(|item| item.source_byte_start <= start && end <= item.source_byte_end)

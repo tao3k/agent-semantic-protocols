@@ -1,8 +1,0 @@
-#+title: Compatibility locator: SearchLoop cache minimal identity refinement
-#+property: rfc_status compatibility-locator
-
-* Canonical RFC
-
-This historical path is retained only for inbound relative-link compatibility.
-The canonical RFC is [[file:../../10.05-interactive-graph-first-progressive-searchloop/10.05.40-receipts-cache-identity/00.15-searchloop-cache-minimal-identity-refinement.org][SearchLoop cache minimal identity refinement]].
-New cache identity semantics MUST be authored under the graph-first RFC tree.

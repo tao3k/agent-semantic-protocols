@@ -558,6 +558,36 @@ async fn published_search_generation_reads_lexical_and_owner_sections_without_fu
         .expect("read lexical section");
     assert_eq!(lookup.candidates.len(), 1);
     assert_eq!(lookup.candidates[0].path, "src/lib.rs");
+    assert_eq!(
+        client
+            .parser_owned_callable_selector_pairs(&["src/lib.rs".to_owned()])
+            .expect("read parser-owned selectors from the resident owner directory"),
+        vec![(
+            "rust://src/lib.rs#item/function/run_search".to_owned(),
+            "src/lib.rs".to_owned(),
+        )]
+    );
+    let cached_started = std::time::Instant::now();
+    let cached = client
+        .read_source_index("run_search", None, 8)
+        .expect("repeat lexical lookup");
+    let cached_elapsed = cached_started.elapsed();
+    assert_eq!(cached, lookup);
+    assert!(
+        cached_elapsed < std::time::Duration::from_millis(1),
+        "repeat resident search exceeded 1ms: {cached_elapsed:?}"
+    );
+    let different_query_started = std::time::Instant::now();
+    let different_query = client
+        .read_source_index("fn", None, 8)
+        .expect("read a different query from the admitted typed tables");
+    let different_query_elapsed = different_query_started.elapsed();
+    assert_eq!(different_query.candidates.len(), 1);
+    assert_eq!(different_query.candidates[0].path, "src/lib.rs");
+    assert!(
+        different_query_elapsed < std::time::Duration::from_millis(1),
+        "different resident search reparsed the generation: {different_query_elapsed:?}"
+    );
 
     let read = client.read_owner("src/lib.rs").expect("read owner section");
     let agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::Owner {
@@ -569,6 +599,19 @@ async fn published_search_generation_reads_lexical_and_owner_sections_without_fu
     };
     assert_eq!(owner.bytes, b"fn run_search() {}");
     assert_eq!(client.authority().active_epoch, 1);
+    let repeated_owner_started = std::time::Instant::now();
+    let repeated_owner = client
+        .read_owner("src/lib.rs")
+        .expect("repeat owner read from admitted section range");
+    let repeated_owner_elapsed = repeated_owner_started.elapsed();
+    assert!(matches!(
+        repeated_owner,
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::Owner { .. }
+    ));
+    assert!(
+        repeated_owner_elapsed < std::time::Duration::from_millis(1),
+        "repeat owner read reparsed the generation: {repeated_owner_elapsed:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

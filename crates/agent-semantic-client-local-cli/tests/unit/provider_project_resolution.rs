@@ -113,7 +113,15 @@ fn rust_project_resolution_provider() -> agent_semantic_client_core::ResolvedPro
         .find(|manifest| manifest.language_id().as_str() == "rust")
         .expect("Rust provider manifest");
     agent_semantic_client_core::ResolvedProvider {
-        scope_authority: agent_semantic_client_core::ProviderScopeAuthority::ProjectResolution,
+        source_inventory_capabilities:
+            agent_semantic_client_core::ProviderSourceInventoryCapabilities {
+                project_resolution: Some(
+                    agent_semantic_client_core::ProviderProjectInventoryCapability {
+                        entry_markers: vec!["Cargo.toml".to_owned()],
+                    },
+                ),
+                document_resolution: None,
+            },
         manifest_id: "rs-harness-test-manifest".to_string(),
         manifest_digest: "sha256:rs-harness-test-manifest".to_string(),
         namespace: "rust".to_string(),

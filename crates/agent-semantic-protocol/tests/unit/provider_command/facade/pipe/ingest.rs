@@ -16,7 +16,7 @@ fn empty_search_ingest_seeds_is_facade_diagnostic_for_all_languages() {
     let marker = root.join("provider-called");
     let providers = [
         ("rust", "rs-harness"),
-        ("typescript", "ts-harness"),
+        ("typescript", "asp-typescript"),
         ("python", "py-harness"),
         ("julia", "asp-julia-harness"),
     ];

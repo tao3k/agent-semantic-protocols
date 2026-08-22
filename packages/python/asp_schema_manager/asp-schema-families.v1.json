@@ -104,7 +104,7 @@
     },
     {
       "familyId": "asp.schema-family.semantic-agent",
-      "definitionSchemaPath": "schemas/semantic-agent-definitions.v1.schema.json",
+      "definitionSchemaPath": "schemas/semantic-agent-definitions.schema.json",
       "definitionVisibility": "family",
       "owner": "schemas",
       "rationale": "Agent hook, session, search, policy, and runtime profile contracts.",
@@ -376,8 +376,7 @@
         "includeSchemaPaths": [
         "schemas/asp.active-workspace-generation.v1.schema.json",
         "schemas/active-generation-projection-capability.v1.schema.json",
-        "schemas/active-search-generation.v1.schema.json",
-        "schemas/active-search-generation.v2.schema.json"
+          "schemas/active-search-generation.v1.schema.json"
         ]
       },
       "definitionSchemaPath": "schemas/workspace-definitions.v1.schema.json",

@@ -238,7 +238,7 @@ pub(super) fn python_sandtable_runner_does_not_resolve_language_harness_binaries
         "_python_harness_entry",
         "_julia_harness_entry",
         "command[0] == \"rs-harness\"",
-        "command[0] == \"ts-harness\"",
+        "command[0] == \"asp-typescript\"",
         "command[0] == \"asp-julia-harness\"",
         "command[1] == \"python\"",
         "\"py-harness\"",

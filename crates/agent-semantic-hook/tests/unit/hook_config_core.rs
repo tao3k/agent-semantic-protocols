@@ -181,3 +181,53 @@ fn managed_template_serializes_provider_owned_language_extensions() {
         );
     }
 }
+
+#[test]
+fn matcher_publication_replaces_stale_disk_provider_identity() {
+    let project = std::env::temp_dir().join(format!(
+        "asp-hook-matcher-publication-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&project).expect("create temporary project");
+    let config_path = project.join("config.toml");
+    let mut document = toml::from_str::<toml::Value>(
+        &crate::hook_config::default_client_config_template(),
+    )
+    .expect("parse managed Hook config");
+    let providers = document
+        .get_mut("languageProviders")
+        .and_then(toml::Value::as_array_mut)
+        .expect("managed language provider projection");
+    for provider in providers {
+        provider
+            .as_table_mut()
+            .expect("provider table")
+            .insert(
+                "manifestDigest".to_owned(),
+                toml::Value::String(format!("sha256:{}", "0".repeat(64))),
+            );
+    }
+    std::fs::write(
+        &config_path,
+        toml::to_string(&document).expect("serialize stale Hook config"),
+    )
+    .expect("write stale Hook config");
+
+    let stale_error = crate::hook_config::load_client_config_for_project(
+        &config_path,
+        &project,
+    )
+    .expect_err("complete disk document must expose stale provider identity");
+    assert!(stale_error.contains("manifest drift"), "{stale_error}");
+
+    crate::hook_config::load_client_config_for_matcher_publication(
+        &config_path,
+        &project,
+    )
+    .expect("matcher publication must use embedded provider authority");
+    std::fs::remove_dir_all(&project).expect("remove temporary project");
+}

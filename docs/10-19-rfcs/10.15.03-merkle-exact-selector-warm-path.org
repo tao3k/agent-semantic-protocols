@@ -3,7 +3,7 @@
 
 * Status
 
-Proposed for v1 implementation.  This module refines the existing CLI-first
+Proposed for v1 implementation.  This module refines the ASP Server-first
 search, source-snapshot, source-index, and exact-selector contracts.  It does
 not introduce a v2 contract.
 

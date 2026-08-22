@@ -1,6 +1,9 @@
+//! Runtime state materialization for ASP project-local storage.
+
 #![deny(dead_code)]
 
-//! Runtime state materialization for ASP project-local storage.
+pub mod provider_catalog;
+pub use provider_catalog::ProviderInstallReceipt;
 
 mod agent_session_identity;
 mod agent_session_status;
@@ -21,7 +24,6 @@ pub mod runtime_artifact_catalog;
 pub mod runtime_artifact_identity;
 pub mod runtime_artifact_retention;
 pub mod runtime_identity_monitor;
-pub mod runtime_candidate_state;
 pub mod runtime_process_lifecycle;
 mod runtime_source;
 pub mod state;
@@ -115,17 +117,14 @@ mod language_owner_items_tests;
 #[path = "../tests/unit/runtime_host_authority.rs"]
 mod runtime_host_authority_tests;
 #[cfg(test)]
-#[path = "../tests/unit/timeout_policy.rs"]
-mod timeout_policy_tests;
-#[cfg(test)]
 #[path = "../tests/unit/runtime_identity_monitor.rs"]
 mod runtime_identity_monitor_tests;
 #[cfg(test)]
-#[path = "../tests/unit/runtime_candidate_state.rs"]
-mod runtime_candidate_state_tests;
-#[cfg(test)]
 #[path = "../tests/unit/runtime_process_lifecycle.rs"]
 mod runtime_process_lifecycle_tests;
+#[cfg(test)]
+#[path = "../tests/unit/timeout_policy.rs"]
+mod timeout_policy_tests;
 
 pub use state::{
     discover_project_activation_path, is_project_activation_path, project_root_for_activation_path,

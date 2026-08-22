@@ -215,11 +215,7 @@ fn build_source_index_import_from_started(
         .map(|selector| selector.selector_id.as_str())
         .collect::<BTreeSet<_>>();
     relations.retain(|relation| {
-        relation_endpoints_are_selector_bound(
-            relation,
-            &selector_owner_paths,
-            &selector_ids,
-        )
+        relation_endpoints_are_selector_bound(relation, &selector_owner_paths, &selector_ids)
     });
     relations.sort_by(|left, right| {
         (
@@ -271,7 +267,6 @@ fn relation_endpoints_are_selector_bound(
         false
     })
 }
-
 
 fn ensure_source_index_cold_assembly_budget(
     started: std::time::Instant,

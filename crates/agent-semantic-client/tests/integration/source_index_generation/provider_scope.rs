@@ -138,9 +138,28 @@ fn provider(
         package_roots: Vec::new(),
         config_files: Vec::new(),
         source_extensions: vec![source_extension.to_string()],
-        scope_authority: agent_semantic_client_core::ProviderScopeAuthority::ProjectResolution,
+        source_inventory_capabilities:
+            agent_semantic_client_core::ProviderSourceInventoryCapabilities {
+                project_resolution: Some(
+                    agent_semantic_client_core::ProviderProjectInventoryCapability {
+                        entry_markers: vec!["Cargo.toml".to_owned()],
+                    },
+                ),
+                document_resolution: None,
+            },
         search_capabilities: manifest.search_capabilities().clone(),
-        language_projection: manifest.language_projection().cloned(),
+        runtime_operations: manifest
+            .runtime_contract()
+            .operations()
+            .iter()
+            .map(
+                |operation| agent_semantic_client_core::ResolvedProviderRuntimeOperation {
+                    operation: operation.operation().to_owned(),
+                    request_schema_id: operation.request_schema_id().to_owned(),
+                    response_schema_id: operation.response_schema_id().to_owned(),
+                },
+            )
+            .collect(),
         query_pack_descriptor: manifest.query_pack_descriptor().clone(),
         semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
     }

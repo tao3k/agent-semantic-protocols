@@ -296,7 +296,7 @@ The block is evaluated through:
 #+begin_example
 orgize eval plan --json \
   evidence-graph-router-executability-certificate-model \
-  docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.28-evidence-graph-router-executability-certificate.org
+  docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00.28-evidence-graph-router-executability-certificate.org
 #+end_example
 
 The resulting =.body= is sent to =typst eval --in -=.  This RFC does not own a

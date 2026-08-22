@@ -1,6 +1,0 @@
-#+title: Compatibility locator: SearchRoute committed candidate universe
-
-* Canonical RFC
-
-The canonical RFC is
-[[file:../../10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00.26-searchroute-committed-candidate-universe.org][SearchRoute committed candidate universe]].

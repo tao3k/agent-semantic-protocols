@@ -673,7 +673,7 @@ defaults, and route argv templates without making the hook classifier
 language-specific. It does not store independent command display text; command
 text is rendered from argv when needed.
 
-`semantic-agent-hook-activation.v1.schema.json` is the generated workspace
+`hook-activation.v2.schema.json` is the static Hook activation schema
 activation contract. It records which provider manifests are active in the
 current project, their resolved command prefixes, manifest digests, and
 coverage roots. It does not repeat provider routes or policies, so a stale
@@ -826,9 +826,9 @@ The TypeScript provider registers as:
 ```json
 {
   "languageId": "typescript",
-  "providerId": "ts-harness",
-  "binary": "ts-harness",
-  "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
+  "providerId": "asp-typescript",
+  "binary": "asp-typescript",
+  "namespace": "agent.semantic-protocols.languages.typescript.asp-typescript",
   "methods": ["search/workspace", "search/prime", "check/full", "agent/doctor", "guide"],
   "methodDescriptors": [
     {
@@ -846,7 +846,7 @@ The TypeScript provider registers as:
 }
 ```
 
-`ts-harness` is the binary/provider name. The protocol namespace is
+`asp-typescript` is the binary/provider name. The protocol namespace is
 `agent.semantic-protocols.semantic-language`; the registry is
 `agent.semantic-protocols.semantic-language-registry`. The provider namespace
 is the stable method space for a concrete implementation.
@@ -917,11 +917,11 @@ The stable envelope is language-neutral:
 - `protocolVersion`: `1`
 - `languageId`: source language id, such as `typescript`, `rust`, `julia`, or
   `python`
-- `providerId`: provider id, such as `ts-harness`, `rs-harness`, or
+- `providerId`: provider id, such as `asp-typescript`, `rs-harness`, or
   `jl-harness`
 - `binary`: executable entrypoint advertised by the provider
 - `namespace`: dot-qualified provider namespace, such as
-  `agent.semantic-protocols.languages.typescript.ts-harness`
+  `agent.semantic-protocols.languages.typescript.asp-typescript`
 - `method`: namespaced method, such as `search/prime`, `search/dependency`,
   or `search/deps`
 - `view`: one semantic-search view, such as `workspace`, `prime`, `owner`,
@@ -1098,7 +1098,7 @@ follow-up search planning; provider-specific compiler details still belong in
 `fields`.
 
 For `search lexical`, a flag-like first query positional remains literal. For
-example, `ts-harness search lexical --json --workspace . --view seeds` searches for the token
+example, `asp-typescript search lexical --json --workspace . --view seeds` searches for the token
 `--json`; request JSON output by placing `--json` after the query.
 
 This repository's `schemas/` directory is the protocol source of truth.
@@ -1116,8 +1116,8 @@ repository may keep language-specific templates, such as
 expected active schema shape without making the common registry schema own a
 global capability enum. The TypeScript harness unit suite reads its
 package-local common schema copies, validates every implemented
-`ts-harness search ... --json` view against the shared envelope, checks
-`ts-harness agent doctor --json` against the common registry contract, checks
+`asp-typescript search ... --json` view against the shared envelope, checks
+`asp-typescript agent doctor --json` against the common registry contract, checks
 TypeScript descriptor capabilities against the TypeScript-local schema, compares
 common package-local copies with this repository's source schemas when the
 package is checked out as a submodule, and compares the TypeScript-local
@@ -1141,24 +1141,24 @@ new schema version.
 The current TypeScript slice emits conforming packets from:
 
 ```shell
-ts-harness search prime --json .
-ts-harness search prime packages/core --json .
-ts-harness search owner src/index.ts --json .
-ts-harness search dependency react --json .
-ts-harness search deps react/jsx-runtime@19.0.0::jsx --json .
-ts-harness search api OrderStatus --json .
-ts-harness search public-external-types react --json .
-ts-harness search symbol OrderStatus --json .
-ts-harness search callsite OrderStatus --json .
-ts-harness search import ./order --json .
-ts-harness search tests src/domain/order.ts --json .
-ts-harness search lexical OrderStatus --json .
-rg -n "OrderStatus" src tests | ts-harness search ingest --json .
+asp-typescript search prime --json .
+asp-typescript search prime packages/core --json .
+asp-typescript search owner src/index.ts --json .
+asp-typescript search dependency react --json .
+asp-typescript search deps react/jsx-runtime@19.0.0::jsx --json .
+asp-typescript search api OrderStatus --json .
+asp-typescript search public-external-types react --json .
+asp-typescript search symbol OrderStatus --json .
+asp-typescript search callsite OrderStatus --json .
+asp-typescript search import ./order --json .
+asp-typescript search tests src/domain/order.ts --json .
+asp-typescript search lexical OrderStatus --json .
+rg -n "OrderStatus" src tests | asp-typescript search ingest --json .
 ```
 
 Those JSON examples are contract checks, not an agent exploration recipe. A
 prompt-facing agent should use compact line protocol, for example
-`ts-harness search lexical OrderStatus --workspace . --view seeds`, and reserve `--json` for
+`asp-typescript search lexical OrderStatus --workspace . --view seeds`, and reserve `--json` for
 tests, receipts, validators, IDE/Flowhub, or other machine consumers.
 
 For TypeScript, `search owner` resolves reasoning owners first, then

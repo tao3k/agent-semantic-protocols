@@ -20,7 +20,7 @@ pub(crate) async fn prepare_runtime_server_owner_projection_with_registry_async(
     snapshot: ProviderRegistrySnapshot,
 ) -> Result<agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot, String> {
     let mut providers = snapshot.providers.iter().filter(|provider| {
-        provider.language_projection.is_some()
+        provider.runtime_operation("projection-batch").is_some()
             && provider
                 .source_extensions
                 .iter()
@@ -145,7 +145,7 @@ async fn prepare_runtime_server_owner_projection_async(
     snapshot: ProviderRegistrySnapshot,
 ) -> Result<agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot, String> {
     let mut providers = snapshot.providers.iter().filter(|provider| {
-        provider.language_projection.is_some()
+        provider.runtime_operation("projection-batch").is_some()
             && provider
                 .source_extensions
                 .iter()

@@ -172,6 +172,63 @@ argvSourceExcludeFlagAny = ["--output"]
 }
 
 #[test]
+fn same_action_collects_all_matching_rules_before_priority_selection() {
+    let root = temp_root("same-action-priority-dominance");
+    let config_path = root.join("config.toml");
+    fs::write(
+        &config_path,
+        r#"
+schemaId = "agent.semantic-protocols.hook.client-config"
+schemaVersion = "1"
+protocolId = "agent.semantic-protocols.hook"
+protocolVersion = "1"
+
+[[rules]]
+id = "lower-priority-match"
+priority = 100
+decision = "deny"
+
+[rules.match]
+commandContainsAny = ["same-action-witness"]
+
+[[rules]]
+id = "higher-priority-match"
+priority = 200
+decision = "deny"
+
+[rules.match]
+commandContainsAny = ["same-action-witness"]
+"#,
+    )
+    .expect("write config");
+    let config_source = fs::read_to_string(&config_path).expect("read config");
+    fs::write(
+        &config_path,
+        crate::client_hook_config::matching::with_required_resident_agents(&config_source),
+    )
+    .expect("write config with resident agents");
+    let config = load_client_config(&config_path).expect("load config");
+    let runtime = registry();
+    let decision = classify_hook_with_config(HookClassificationRequest {
+        registry: &runtime,
+        config: &config,
+        platform: "codex",
+        event: "pre-tool",
+        payload: &json!({
+            "tool_name": "Bash",
+            "tool_input": {"command": "same-action-witness"}
+        }),
+    });
+
+    assert_eq!(
+        decision.fields.get("configRuleId"),
+        Some(&json!("higher-priority-match")),
+        "same-action matching must aggregate candidates before applying Rule DSL priority: {decision:?}"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads_by_language() {
     let root = temp_root("builtin-source-argv-command-name");
     let config = ClientHookConfig::default();
@@ -202,6 +259,20 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
             .get("intent")
             .and_then(|value| value.as_str()),
         Some("reasoning-search")
+    );
+    assert!(
+        asp_search_decision
+            .message
+            .contains("compact `asp <language> search ...` route without `--json`"),
+        "registered search dispatch must explain the normal compact Explorer path: {}",
+        asp_search_decision.message
+    );
+    assert!(
+        asp_search_decision
+            .message
+            .contains("reserved for explicit debug or programmatic automation"),
+        "registered search dispatch must keep JSON outside normal Explorer search: {}",
+        asp_search_decision.message
     );
     assert_eq!(
         asp_search_decision.fields["choicePlaneOwner"].as_str(),

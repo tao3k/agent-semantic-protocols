@@ -639,11 +639,11 @@ pub(in super::super) fn asp_typescript_owner_items_cache_hot_path_stays_inside_s
     )
     .expect("write source");
     fs::create_dir_all(&bin_dir).expect("create bin dir");
-    let provider_path = bin_dir.join("ts-harness");
+    let provider_path = bin_dir.join("asp-typescript");
     fs::write(
         &provider_path,
         format!(
-            "#!/bin/sh\ncount=0\nif [ -f '{count}' ]; then count=$(cat '{count}'); fi\ncount=$((count + 1))\nprintf '%s' \"$count\" > '{count}'\nprintf '[search-owner] q=app/src/model.ts pkg=. selector=items alg=ts-harness-owner-items\\n'\nprintf 'O=owner:path(app/src/model.ts)!owner;I=item:symbol(dynamicOwnerItemIndex)@app/src/model.ts:1:1!syntax\\n'\n",
+            "#!/bin/sh\ncount=0\nif [ -f '{count}' ]; then count=$(cat '{count}'); fi\ncount=$((count + 1))\nprintf '%s' \"$count\" > '{count}'\nprintf '[search-owner] q=app/src/model.ts pkg=. selector=items alg=asp-typescript-owner-items\\n'\nprintf 'O=owner:path(app/src/model.ts)!owner;I=item:symbol(dynamicOwnerItemIndex)@app/src/model.ts:1:1!syntax\\n'\n",
             count = count_path.display()
         ),
     )
@@ -712,7 +712,10 @@ pub(in super::super) fn asp_typescript_owner_items_cache_hot_path_stays_inside_s
         }
     }
     let stdout = fastest_stdout;
-    assert!(stdout.contains("alg=ts-harness-owner-items"), "{stdout}");
+    assert!(
+        stdout.contains("alg=asp-typescript-owner-items"),
+        "{stdout}"
+    );
     assert!(
         stdout.contains("item:symbol(dynamicOwnerItemIndex)"),
         "{stdout}"

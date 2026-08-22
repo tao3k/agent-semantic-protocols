@@ -187,7 +187,7 @@ fn topology_projects_typed_packages_policy_handles_and_prime_facts() {
         "schemaId": "agent.semantic-protocols.semantic-search-packet",
         "schemaVersion": "1",
         "languageId": "typescript",
-        "providerId": "ts-harness",
+        "providerId": "asp-typescript",
         "view": "lexical",
         "query": "findOrderStatus",
         "items": [],

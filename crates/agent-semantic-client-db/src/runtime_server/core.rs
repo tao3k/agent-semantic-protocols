@@ -46,6 +46,8 @@ pub struct RuntimeServer {
     pub(super) endpoint: RuntimeServerEndpoint,
     pub(super) listener: UnixListener,
     pub(super) data_listener: UnixListener,
+    pub(super) provider_listener: UnixListener,
+    pub(super) provider_register: Arc<crate::runtime_provider_register::RuntimeProviderRegister>,
     pub(super) registry: Arc<WorkspaceDbRegistry>,
     pub(super) workspace_count: watch::Receiver<usize>,
     pub(super) shutdown: watch::Receiver<bool>,
@@ -101,6 +103,7 @@ impl RuntimeServer {
         for path in [
             &self.endpoint.socket_path,
             &self.endpoint.data_plane_socket_path,
+            &self.endpoint.provider_plane_socket_path,
             &self.endpoint.status_memory_path,
         ] {
             let _ = tokio::fs::remove_file(path).await;
@@ -166,7 +169,6 @@ impl RuntimeServer {
             crate::runtime_server_admission::WorkspaceOwnerProjectionBuilder,
         >,
         catalog: Option<crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog>,
-        provider_catalog_generation: Option<String>,
     ) -> Self {
         let source_builder = source_builder.into();
         let durable_registry = Arc::clone(&self.registry);
@@ -188,7 +190,6 @@ impl RuntimeServer {
                 let source_builder = source_builder.clone();
                 let mutation_owner_projection_builder =
                     mutation_owner_projection_builder.clone();
-                let provider_catalog_generation = provider_catalog_generation.clone();
                 let events = events.clone();
                 let workspace_for_build = workspace_identity.clone();
                 Box::pin(async move {
@@ -253,13 +254,17 @@ impl RuntimeServer {
                     .await?;
                     if build_mode.attempts_durable_restore() {
                         let restore_started = std::time::Instant::now();
-                        let materialization_load = await_stage(
-                        &workspace_identity,
-                        &operation_id,
+                        let pointer_restore = await_stage(
+                            &workspace_identity,
+                            &operation_id,
                             Stage::DurableRestore,
                             async {
-                                session
-                                    .load_active_workspace_generation_materialization_state(
+                                memory_registry
+                                    .restore_published_generation(
+                                        format!(
+                                            "daemon-admission-restore-{workspace_identity}-{operation_id}"
+                                        ),
+                                        workspace_identity.clone(),
                                         &project_root,
                                     )
                                     .await
@@ -290,111 +295,47 @@ impl RuntimeServer {
                         )
                         .with_operation_id(operation_id.clone());
                         restore_observation.workspace_identity = Some(workspace_identity.clone());
-                        if materialization_load.is_err() {
+                        if pointer_restore.is_err() {
                             restore_observation.failure_reason =
-                                Some("workspace-generation-durable-restore-failed".to_owned());
+                                Some("workspace-generation-pointer-restore-failed".to_owned());
                         }
                         let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(
                             restore_observation,
                         );
-                        match materialization_load? {
-                            crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Ready(materialization) => {
+                        match pointer_restore {
+                            Ok(published) => {
                             publish_event(
                                 events.as_ref(),
-                                RuntimeServerEvent::WorkspaceGenerationMaterializationObserved {
+                                RuntimeServerEvent::WorkspaceGenerationResidentPublished {
                                     workspace_identity: workspace_identity.clone(),
                                     build_mode: build_mode_label.to_owned(),
-                                    owner_count: materialization.owners.len(),
-                                    owner_source_bytes: materialization
-                                        .owners
-                                        .iter()
-                                        .fold(0_u64, |total, owner| {
-                                            total.saturating_add(owner.bytes.len() as u64)
-                                        }),
-                                    selector_count: materialization
-                                        .owners
-                                        .iter()
-                                        .map(|owner| owner.selectors.len())
-                                        .sum(),
-                                    relation_count: materialization.relations.len(),
+                                    generation_digest: published.generation_digest.clone(),
+                                    elapsed_micros: u64::try_from(
+                                        build_started.elapsed().as_micros(),
+                                    )
+                                    .unwrap_or(u64::MAX),
                                 },
                             );
-                            let materialization = materialization.into_validated(&workspace_identity).map_err(|error| {
-                                crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
-                                    crate::runtime_server_admission::WorkspaceGenerationFailureStage::DurableRestore,
-                                    error,
-                                )
-                            })?;
-                            if build_mode
-                                == crate::runtime_server_admission::WorkspaceGenerationBuildMode::RestoreOnly
-                                || canonical_materialization_matches_admitted_generation(
-                                    materialization.as_materialization(),
-                                    provider_catalog_generation.as_deref(),
-                                    &candidate,
-                                )
-                            {
-                                let published = await_stage(
-                        &workspace_identity,
-                        &operation_id,
-                                    Stage::CanonicalGenerationPublication,
-                                    async {
-                                        memory_registry.admit_canonical_generation_resident(
-                                        format!(
-                                            "daemon-admission-restore-{workspace_identity}-{}-{}",
-                                            materialization.as_materialization().workspace_generation.root_digest,
-                                            materialization.as_materialization().selector_set_digest
-                                        ),
-                                        &workspace_identity,
-                                        materialization,
-                                        )
-                                        .await
-                                        .map_err(|error| {
-                                            crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
-                                                crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
-                                                error,
-                                            )
-                                        })
-                                    },
-                                )
-                                .await?;
-                                publish_event(
-                                    events.as_ref(),
-                                    RuntimeServerEvent::WorkspaceGenerationResidentPublished {
-                                        workspace_identity: workspace_identity.clone(),
-                                        build_mode: build_mode_label.to_owned(),
-                                        generation_digest: published.generation_digest.clone(),
-                                        elapsed_micros: u64::try_from(
-                                            build_started.elapsed().as_micros(),
-                                        )
-                                        .unwrap_or(u64::MAX),
-                                    },
-                                );
-                                let commit = crate::runtime_server_admission::WorkspaceGenerationCommitReceipt::from_recovery(&published).map_err(|error| crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                            let commit = crate::runtime_server_admission::WorkspaceGenerationCommitReceipt::from_recovery(&published).map_err(|error| crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
                                     crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
                                     error,
                                 ))?;
-                                return crate::runtime_server_admission::WorkspaceGenerationBuildCompletion::new(
-                                    candidate.clone(),
-                                    commit,
-                                ).map_err(|error| crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                            return crate::runtime_server_admission::WorkspaceGenerationBuildCompletion::new(
+                                candidate.clone(),
+                                commit,
+                            ).map_err(|error| crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
                                     crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
                                     error,
                                 ));
                             }
+                            Err(failure)
+                                if build_mode
+                                    == crate::runtime_server_admission::WorkspaceGenerationBuildMode::RestoreOnly =>
+                            {
+                                return Err(failure);
                             }
-                            crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Missing
-                            | crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Incompatible { .. } => {}
+                            Err(_) => {}
                         }
-                    }
-                    if build_mode
-                        == crate::runtime_server_admission::WorkspaceGenerationBuildMode::RestoreOnly
-                    {
-                        return Err(crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
-                            crate::runtime_server_admission::WorkspaceGenerationFailureStage::DurableRestore,
-                            format!(
-                            "registered workspace restore requires a current canonical materialization; an explicit admission is required before rebuild: workspaceIdentity={workspace_identity}"
-                            ),
-                        ));
                     }
                     if build_mode
                         == crate::runtime_server_admission::WorkspaceGenerationBuildMode::RebuildAfterMutation
@@ -609,6 +550,8 @@ impl RuntimeServer {
             endpoint,
             listener,
             data_listener,
+            provider_listener,
+            provider_register,
             registry,
             mut workspace_count,
             mut shutdown,
@@ -627,11 +570,9 @@ impl RuntimeServer {
         let (_lifecycle_state, lifecycle) =
             watch::channel(crate::runtime_server_control::RuntimeServerState::Healthy);
         // Socket liveness is Global; generation readiness is workspace-keyed.
-        // Restore the authoritative registered workspace catalog before
-        // publishing Healthy; genuinely new workspaces remain lazy.
-        if let Some(admission) = generation_admission.as_ref() {
-            admission.restore_registered().await?;
-        }
+        // Durable catalog locators stay lazy. A workspace request restores its
+        // published pointer or admits one scope-local rebuild; startup never
+        // opens every historical generation segment.
         let entry_counts = registry.workspace_entry_counts();
         let slot_count = entry_counts.slot_count;
         let loaded_entry_count = entry_counts.loaded_entry_count;
@@ -735,6 +676,30 @@ impl RuntimeServer {
             agent_session_status.as_ref(),
                                         &codex_multi_agent_control_plane_owner,
                                         telemetry_sender.as_ref(),
+                                        connection_drain,
+                                    )
+                                    .await
+                                    .map(|()| false);
+                                    (lease, result)
+                                });
+                            }
+                            connection = provider_listener.accept(), if connection_supervisor.has_capacity() => {
+                                let (stream, _) = connection.map_err(|error| {
+                                    format!("failed to accept Runtime Server provider-plane request: {error}")
+                                })?;
+                                crate::runtime_server_control::validate_runtime_server_peer_fd(
+                                    std::os::fd::AsRawFd::as_raw_fd(&stream),
+                                )?;
+                                let register = Arc::clone(&provider_register);
+                                let connection_drain = drain_receiver.clone();
+                                let lease = connection_supervisor.try_admit().ok_or_else(|| {
+                                    "Runtime Server provider-plane connection capacity changed during admission"
+                                        .to_owned()
+                                })?;
+                                connections.spawn(async move {
+                                    let result = crate::runtime_provider_register_ipc::serve_provider_register_stream(
+                                        stream,
+                                        register,
                                         connection_drain,
                                     )
                                     .await
@@ -917,23 +882,6 @@ fn publish_connection_completion(
             RuntimeServerEvent::ConnectionTaskFailed(error.to_string()),
         ),
     }
-}
-
-fn canonical_materialization_matches_admitted_generation(
-    materialization: &crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
-    provider_catalog_generation: Option<&str>,
-    candidate: &crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
-) -> bool {
-    provider_catalog_generation
-        .is_none_or(|generation| materialization.provider_schema_digest == generation)
-        && !materialization.project_resolutions.is_empty()
-        && materialization
-            .project_resolutions
-            .iter()
-            .all(|resolution| {
-                resolution.resolution.candidate_generation_digest
-                    == candidate.candidate_generation.digest
-            })
 }
 
 #[cfg(unix)]

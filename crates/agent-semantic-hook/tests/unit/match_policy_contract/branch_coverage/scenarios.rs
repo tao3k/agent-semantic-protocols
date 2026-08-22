@@ -19,6 +19,10 @@ fn run_scenarios(_test_name: &str, scenarios: &[Scenario]) {
     fs::create_dir_all(root.join("src")).expect("create scenario source root");
     fs::write(root.join("src/app.ts"), "export const value = 1;\n")
         .expect("write registered source fixture");
+    fs::write(root.join("src/app.py"), "value = 1\n").expect("write Python source fixture");
+    fs::write(root.join("src/app.jl"), "value = 1\n").expect("write Julia source fixture");
+    fs::write(root.join("src/app.ss"), "(define value 1)\n")
+        .expect("write Gerbil Scheme source fixture");
     fs::write(root.join("README.md"), "# fixture\n").expect("write unregistered source fixture");
     fs::write(
         root.join("package.json"),
@@ -160,8 +164,44 @@ fn codex_payload_surfaces_are_equivalent() {
                 "tool_name": "Read",
                 "tool_input": {"file_path": "src/app.ts"},
             }),
-            expected_rule: Some("materialize-registered-source-read-action"),
+            expected_rule: Some("route-read-to-asp-languages"),
             forbidden_rule: None,
+        },
+        Scenario {
+            name: "Python profile Read",
+            payload: json!({
+                "tool_name": "Read",
+                "tool_input": {"file_path": "src/app.py"},
+            }),
+            expected_rule: Some("route-read-to-asp-languages"),
+            forbidden_rule: None,
+        },
+        Scenario {
+            name: "Julia profile Read",
+            payload: json!({
+                "tool_name": "Read",
+                "tool_input": {"file_path": "src/app.jl"},
+            }),
+            expected_rule: Some("route-read-to-asp-languages"),
+            forbidden_rule: None,
+        },
+        Scenario {
+            name: "Gerbil Scheme profile Read",
+            payload: json!({
+                "tool_name": "Read",
+                "tool_input": {"file_path": "src/app.ss"},
+            }),
+            expected_rule: Some("route-read-to-asp-languages"),
+            forbidden_rule: None,
+        },
+        Scenario {
+            name: "JSON Read stays on structured projector route",
+            payload: json!({
+                "tool_name": "Read",
+                "tool_input": {"file_path": "package.json"},
+            }),
+            expected_rule: Some("materialize-structured-document-read-action"),
+            forbidden_rule: Some("route-read-to-asp-languages"),
         },
         Scenario {
             name: "structured Grep",
@@ -240,14 +280,14 @@ fn every_rule_has_a_near_miss() {
         ("deny-raw-registered-source-action", shell("read README.md")),
         (
             "deny-agent-search-json",
-            shell("ts-harness search lexical projectRoot owner tests ."),
+            shell("asp-typescript search lexical projectRoot owner tests ."),
         ),
         (
             "materialize-apply-patch-policy",
             json!({"tool_name":"apply_patch_preview","tool_input":{"path":"src/app.ts"}}),
         ),
         (
-            "materialize-registered-source-read-action",
+            "route-read-to-asp-languages",
             json!({"tool_name":"Read","tool_input":{"file_path":"README.md"}}),
         ),
         (

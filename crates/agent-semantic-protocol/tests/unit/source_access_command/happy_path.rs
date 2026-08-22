@@ -23,7 +23,7 @@ fn shell_egress_command_returns_suppress_for_source_path() {
     assert_eq!(decision.decision, SourceAccessDecisionKind::Suppress);
     assert!(decision.source_bytes_returned);
     assert!(!decision.model_visible_bytes_returned);
-    assert_eq!(value["providerId"], "ts-harness");
+    assert_eq!(value["providerId"], "asp-typescript");
 }
 
 #[test]

@@ -211,6 +211,30 @@ structure ControlPlane where
   installedHookDigest : String
   server : ServerSnapshot
 
+inductive LifecycleAuthority where
+  | runtimeSupervisor
+  | hookObserver
+  | installer
+  deriving DecidableEq, Repr
+
+def maySpawnServer : LifecycleAuthority → Bool
+  | .runtimeSupervisor => true
+  | .hookObserver => false
+  | .installer => false
+
+theorem runtime_supervisor_is_only_spawn_authority (authority : LifecycleAuthority)
+    (h : maySpawnServer authority = true) :
+    authority = .runtimeSupervisor := by
+  cases authority <;> simp [maySpawnServer] at h ⊢
+
+theorem hook_observation_does_not_spawn :
+    maySpawnServer .hookObserver = false := by
+  rfl
+
+theorem installer_does_not_own_server_lifecycle :
+    maySpawnServer .installer = false := by
+  rfl
+
 def ensureControlPlane (control : ControlPlane) : ControlPlane :=
   { control with
       server := { control.server with lifecycle := ensure control.server.lifecycle } }

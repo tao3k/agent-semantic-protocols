@@ -61,7 +61,7 @@
       "enum": ["rust", "python", "typescript", "julia"]
     },
     "providerId": {
-      "enum": ["rs-harness", "py-harness", "ts-harness", "julia-lang-project-harness"]
+      "enum": ["asp-rust", "asp-python", "asp-typescript", "asp-julia"]
     },
     "provenance": {
       "enum": ["parser", "build", "test", "failure", "receipt", "heuristic"]

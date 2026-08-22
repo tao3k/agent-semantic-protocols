@@ -321,6 +321,7 @@ impl ClientHookConfig {
                             event,
                             action,
                             agent_action.as_ref(),
+                            rule.match_config.matching_profile(action.paths.as_slice()),
                             self.semantic_ast_patch_enabled(),
                             self.recovery_prompt(),
                         )
@@ -332,7 +333,13 @@ impl ClientHookConfig {
                         rule.dispatch.as_ref(),
                         action,
                     );
-                    if let Some(message) = rule.message.as_ref() {
+                    if let Some(message) = rule.message.as_ref()
+                        && decision
+                            .fields
+                            .get("routeStatus")
+                            .and_then(serde_json::Value::as_str)
+                            != Some("unavailable")
+                    {
                         if decision.message != *message {
                             decision.message = format!("{message}\n{}", decision.message);
                         }
@@ -362,15 +369,16 @@ impl ClientHookConfig {
                         .extend(rule.fields.iter().map(|(key, value)| {
                             (key.clone(), serde_json::Value::String(value.clone()))
                         }));
-                    return Some(crate::hook_config::HookPolicyCandidate {
+                    let candidate = crate::hook_config::HookPolicyCandidate {
                         priority: rule.priority,
                         terminal: rule.terminal,
                         decision,
-                    });
+                    };
+                    return Some(candidate);
                 }
                 continue;
             }
-            return Some(crate::hook_config::HookPolicyCandidate {
+            let candidate = crate::hook_config::HookPolicyCandidate {
                 priority: rule.priority,
                 terminal: rule.terminal,
                 decision: rule.decision(
@@ -381,7 +389,8 @@ impl ClientHookConfig {
                     decision_paths,
                     structured_source_operands.as_deref(),
                 ),
-            });
+            };
+            return Some(candidate);
         }
         None
     }
@@ -422,6 +431,12 @@ pub(in crate::hook_config) fn compile_config_with_executable_capabilities(
     executable_capabilities: Option<&std::collections::BTreeSet<String>>,
 ) -> Result<ClientHookConfig, String> {
     let default_config = agent_semantic_config::default_hook_client_config_file()?;
+    for (profile_id, profile) in &default_config.profiles {
+        config
+            .profiles
+            .entry(profile_id.clone())
+            .or_insert_with(|| profile.clone());
+    }
     config.agent_session_messages = merge_agent_session_messages(
         config.agent_session_messages,
         default_config.agent_session_messages,
@@ -463,6 +478,7 @@ pub(in crate::hook_config) fn compile_config_with_executable_capabilities(
     rule_configs.extend(config.rules);
     config.rules = rule_configs;
     config.agents = merge_agents(config.agents, default_config.agents);
+    config.materialize_profile_rule_ir()?;
     compile_resolved_config(config, None, None, executable_capabilities)
 }
 
@@ -480,7 +496,7 @@ fn compile_resolved_config(
     let source_config = durable_matchers.is_none().then(|| config.clone());
     let contract_fingerprint = config.contract_fingerprint.clone();
     let language_providers = config.language_providers.clone();
-    let wrapper_match = config.wrapper_match;
+    let wrapper_match = agent_semantic_config::WrapperMatchMode::Off;
     let agent_session_messages = config.agent_session_messages.clone();
     let semantic_ast_patch_enabled = config
         .experimental

@@ -82,7 +82,6 @@ pub(crate) fn write_activation(root: &Path, state_home: &Path, language_ids: &[&
                 .expect("provider execution command digest"),
                 provider_command_prefix: Vec::new(),
                 search_capabilities: manifest.search_capabilities().clone(),
-                language_projection: manifest.language_projection().cloned(),
                 semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
                 query_pack_descriptor: manifest.query_pack_descriptor().clone(),
                 semantic_registry_digest: semantic_registry_digest.clone(),

@@ -46,15 +46,27 @@ async fn stalled_control_exchange_is_bounded_and_discards_the_lane() {
         schema_version: "1".to_owned(),
         transport_contract_digest: runtime_server_transport_contract_digest(),
         owner_epoch: 1,
+        owner_process_id: 0,
         runtime_artifact_path: "/runtime/asp".to_owned(),
-        runtime_binary_identity: RuntimeBinaryIdentity::Content { value: "runtime-digest".to_owned(), algorithm: "blake3-256".to_owned() },
+        runtime_binary_identity: RuntimeBinaryIdentity::Content {
+            value: "runtime-digest".to_owned(),
+            algorithm: "blake3-256".to_owned(),
+        },
         monitor_capability: true,
-        observed_runtime_binary_identity: RuntimeBinaryIdentity::Content { value: "runtime-digest".to_owned(), algorithm: "blake3-256".to_owned() },
+        observed_runtime_binary_identity: RuntimeBinaryIdentity::Content {
+            value: "runtime-digest".to_owned(),
+            algorithm: "blake3-256".to_owned(),
+        },
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "0".repeat(64)),
         binding_token: "binding".to_owned(),
         socket_path: socket_path.display().to_string(),
         data_plane_socket_path: temporary.path().join("data.sock").display().to_string(),
+        provider_plane_socket_path: temporary
+            .path()
+            .join("providers.sock")
+            .display()
+            .to_string(),
         workspace_store_path: temporary.path().join("workspace").display().to_string(),
         status_memory_path: temporary.path().join("status").display().to_string(),
     };
@@ -62,7 +74,11 @@ async fn stalled_control_exchange_is_bounded_and_discards_the_lane() {
         schema_id: "agent.semantic-protocols.runtime-server-control-request.v1".to_owned(),
         schema_version: "1".to_owned(),
         operation: RuntimeServerOperation::Restart,
-        expected_runtime_binary_identity: agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content { value: "next-runtime-digest".to_owned(), algorithm: "blake3-256".to_owned() },
+        expected_runtime_binary_identity:
+            agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+                value: "next-runtime-digest".to_owned(),
+                algorithm: "blake3-256".to_owned(),
+            },
         request_id: "bounded-control-exchange".to_owned(),
         transport_contract_digest: endpoint.transport_contract_digest.clone(),
         owner_epoch: endpoint.owner_epoch,

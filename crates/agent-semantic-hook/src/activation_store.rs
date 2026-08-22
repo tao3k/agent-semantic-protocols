@@ -3,7 +3,7 @@
 use crate::protocol_activation::protocol_activation_manifest::{HookActivation, HookRuntime};
 use crate::protocol_activation::protocol_activation_runtime::parse_activation;
 use crate::provider_manifest::{
-    DefaultActivationSelections, ProviderCommandSelection, ProviderCommandSelectionScopeV1,
+    ProviderCommandSelectionScopeV1, StaticActivationSelections,
     default_activation_selections_for_scope,
     default_activation_selections_for_scope_with_state_home,
     default_activation_selections_with_state_home_and_binary, provider_manifests,
@@ -243,7 +243,7 @@ fn emit_activation_timing(step: &str, started: std::time::Instant) {
 fn assess_activation(
     activation_path: &Path,
     project_root: &Path,
-    current_selections: &DefaultActivationSelections,
+    current_selections: &StaticActivationSelections,
 ) -> Result<ActivationAssessment, String> {
     let mut gates = ActivationAdmissionGates::default();
     let contents = match fs::read_to_string(activation_path) {
@@ -300,8 +300,8 @@ fn assess_activation(
         });
     }
     gates.project_identity_matches = true;
-    if !activation_matches_provider_command_selections(&activation, current_selections.providers())
-        || !activation_matches_graph_turbo_selection(&activation, current_selections.graph_turbo())
+    if !activation_matches_static_provider_selections(&activation, current_selections.providers())
+        || !activation_has_static_graph_turbo(&activation)
     {
         return Ok(ActivationAssessment {
             activation: None,
@@ -346,24 +346,22 @@ fn assess_activation(
     })
 }
 
-fn activation_matches_graph_turbo_selection(
-    activation: &HookActivation,
-    current_selection: &crate::provider_manifest::RuntimeBinarySelectionV1,
-) -> bool {
+fn activation_has_static_graph_turbo(activation: &HookActivation) -> bool {
     activation
         .rankers
         .iter()
         .find(|ranker| ranker.ranker_id == "asp-graph-turbo")
         .is_some_and(|ranker| {
-            ranker.binary == current_selection.binary()
-                && ranker.content_digest == current_selection.content_digest()
-                && ranker.artifact_metadata_digest == current_selection.artifact_metadata_digest()
+            ranker.schema_id == "asp.activated-ranker.v1"
+                && ranker.capability_id == "graph-turbo"
+                && ranker.protocol_version == "1"
+                && ranker.argv_prefix == ["graph", "render"]
         })
 }
 
-fn activation_matches_provider_command_selections(
+fn activation_matches_static_provider_selections(
     activation: &HookActivation,
-    current_selections: &[ProviderCommandSelection],
+    current_selections: &[crate::provider_manifest::StaticProviderSelection],
 ) -> bool {
     let current_registry_digest = crate::provider_registry::semantic_registry_digest();
     let manifests = provider_manifests();
@@ -378,9 +376,6 @@ fn activation_matches_provider_command_selections(
                 })
                 .is_some_and(|selection| {
                     provider.manifest_digest == selection.manifest_digest
-                        && provider.binary == selection.binary
-                        && provider.execution == selection.execution
-                        && provider.execution_command_digest == selection.execution_command_digest
                         && provider.semantic_registry_digest == current_registry_digest
                         && manifests
                             .iter()

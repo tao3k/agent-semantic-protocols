@@ -150,7 +150,7 @@
         "text-protocol-args-interface-json"
       ],
       "recommendedCommand": [
-        "ts-harness",
+        "asp-typescript",
         "search",
         "text",
         "--query-set",

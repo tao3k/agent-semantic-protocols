@@ -48,7 +48,7 @@ in the RFC and schema first, then align providers and sandtable evidence.
 - `docs/10-19-rfcs/10.11-semantic-tree-sitter-query-protocol.org` owns the portable
   tree-sitter-compatible syntax ABI, catalog/profile/corpus layout, native
   projection boundary, and pattern-graph roadmap.
-- `docs/10-19-rfcs/10.05-cli-first-harness-ux.org` owns the agent-facing `asp <language> guide`,
+- `docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org` owns the server-first agent search architecture; `asp <language> ...` is a typed ASP Server client surface,
   search/query/read-plan stdout contracts, and syntax locate/code flows.
 - `docs/10-19-rfcs/10.15-agent-hook-interception-protocol.org` owns hook decision packets,
   Markdown recovery prompts, `Detected Binaries`, and ast-patch config
@@ -76,7 +76,7 @@ just agent-hooks-doctor
 ```
 
 This installs the core ASP runtime surface: `asp`, `asp-graph-turbo`,
-`rs-harness`, `ts-harness`, and `py-harness`. `asp-graph-turbo` is the only
+`rs-harness`, `asp-typescript`, and `py-harness`. `asp-graph-turbo` is the only
 supported graph turbo executable and a required local ranking dependency for
 the graph-turbo search/history path, not an optional debugging tool.
 
@@ -248,7 +248,7 @@ asp install hook --client claude .
 asp hook doctor --client claude .
 ```
 
-`just install` installs `asp`, `asp-graph-turbo`, `rs-harness`, `ts-harness`,
+`just install` installs `asp`, `asp-graph-turbo`, `rs-harness`, `asp-typescript`,
 `py-harness`, and `asp-julia-harness` into
 `${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}` by default, then refreshes the
 Codex hook config. Pass a directory argument, such as
@@ -260,7 +260,7 @@ cache.
 `asp install hook --client claude` writes the direct Claude hook
 configuration. Both install surfaces refresh cache activation, versioned hook
 policy config, and provider manifests for this repository. They do not build or
-install `asp-graph-turbo`, `rs-harness`, `ts-harness`, `py-harness`, or
+install `asp-graph-turbo`, `rs-harness`, `asp-typescript`, `py-harness`, or
 `asp-julia-harness`; use `just install` for the full local setup or the
 `just agent-tools-install-*` commands for one binary family.
 

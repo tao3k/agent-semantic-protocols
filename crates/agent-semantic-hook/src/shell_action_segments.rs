@@ -5,7 +5,7 @@ use crate::tool_action::{OperationIntent, ToolAction, ToolSurface};
 /// Parses a compound shell command once and projects one declarative Hook
 /// action per executable stage. Simple commands stay on the envelope fast path.
 pub(super) fn split_shell_command(tool_name: &str, command: &str) -> Option<Vec<ToolAction>> {
-    let Ok(stages) = agent_semantic_command_match::parse_bash_command_candidates(command) else {
+    let Ok(stages) = agent_semantic_shell_parser::parse_bash_command_candidates(command) else {
         return None;
     };
     let stages = stages
@@ -21,8 +21,8 @@ pub(super) fn split_shell_command(tool_name: &str, command: &str) -> Option<Vec<
             .enumerate()
             .map(|(index, stage)| {
                 let command_tokens = stage.words().to_vec();
-                let command = agent_semantic_command_match::render_bash_command_stage(&stage);
-                let mut paths = agent_semantic_command_match::command_stage_source_paths(&stage);
+                let command = agent_semantic_shell_parser::render_bash_command_stage(&stage);
+                let mut paths = agent_semantic_shell_parser::command_stage_source_paths(&stage);
                 for path in crate::command::apply_patch_source_paths(tool_name, &command) {
                     if !paths.contains(&path) {
                         paths.push(path);

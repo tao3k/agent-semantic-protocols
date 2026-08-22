@@ -3,4 +3,4 @@
 * Canonicalization pending
 
 The historical RFC remains at
-[[file:../../10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.21-searchroute-repeated-inspect-loop.org][SearchRoute repeated inspect loop]].
+[[file:../../10.05-interactive-graph-first-progressive-searchloop/10.05.10-interactive-searchloop/00.21-searchroute-repeated-inspect-loop.org][SearchRoute repeated inspect loop]].

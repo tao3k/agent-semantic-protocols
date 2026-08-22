@@ -322,9 +322,8 @@ An =inspect lower-partition=, =inspect selected=, or
 committed reports. This keeps the normal graph path short while preserving a
 verifiable route to concrete evidence.
 
-No separate complex CLI command family is required. The interactive protocol
-may render these transitions through a CLI adapter, tool call, or direct model
-runtime.
+No separate complex CLI command family is required.  Every client sends the
+same typed transition through ASP Server; presentation is client-local.
 
 * Lean realization
 

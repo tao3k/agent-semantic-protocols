@@ -397,7 +397,7 @@ pub(crate) fn write_marker_provider(bin_dir: &Path, binary: &str, marker: &Path)
     let delegate = bin_dir.join(format!(".{binary}-delegate"));
     let (language_id, provider_id, source_extensions) = match binary {
         "rs-harness" => ("rust", binary, r#"[".rs"]"#),
-        "ts-harness" => (
+        "asp-typescript" => (
             "typescript",
             binary,
             r#"[".ts",".tsx",".js",".jsx",".mts",".cts",".mjs",".cjs"]"#,
@@ -481,7 +481,7 @@ fn write_default_project_resolution_provider_shims(bin_dir: &Path) {
     std::fs::create_dir_all(bin_dir).expect("create default provider shim directory");
     for binary in [
         "rs-harness",
-        "ts-harness",
+        "asp-typescript",
         "py-harness",
         "asp-julia-harness",
         "gslph",

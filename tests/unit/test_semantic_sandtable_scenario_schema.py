@@ -42,7 +42,7 @@ class SemanticSandtableScenarioSchemaTests(unittest.TestCase):
                             "languageId": "typescript",
                             "routeKind": "query",
                             "routeCommandContains": [
-                                "ts-harness query --from-hook",
+                                "asp-typescript query --from-hook",
                                 "--surface owners,tests",
                             ],
                             "routeCommandNotContains": [

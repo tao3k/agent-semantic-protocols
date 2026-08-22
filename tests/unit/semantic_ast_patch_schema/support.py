@@ -23,9 +23,9 @@ def minimal_ast_patch_request() -> dict[str, Any]:
         "protocolId": "agent.semantic-protocols.ast-patch",
         "protocolVersion": "1",
         "languageId": "typescript",
-        "providerId": "ts-harness",
-        "binary": "ts-harness",
-        "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
+        "providerId": "asp-typescript",
+        "binary": "asp-typescript",
+        "namespace": "agent.semantic-protocols.languages.typescript.asp-typescript",
         "target": {
             "ownerPath": "src/render.ts",
             "locator": "src/render.ts#fn:renderSemanticSearchSeedPacket",

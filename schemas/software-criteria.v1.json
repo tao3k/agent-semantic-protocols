@@ -282,7 +282,7 @@
     },
     {
       "languageId": "typescript",
-      "providerId": "ts-harness",
+      "providerId": "asp-typescript",
       "status": "ready",
       "criterionIds": [
         "control-flow.decision-stack",

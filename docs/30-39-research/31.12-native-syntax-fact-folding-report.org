@@ -202,7 +202,7 @@ large local-window source/projection dump.  Its agent guide now documents
 =[--code]= rather than implying hook recovery must always request code.
 
 TypeScript now applies the same gate in both line protocol and JSON read-packet
-paths.  =ts-harness query --from-hook direct-source-read --selector
+paths.  =asp-typescript query --from-hook direct-source-read --selector
 <path:range> --code= returns =read-plan= for wide ranges, and
 =--json --view read-packet= emits =readPlan= without =sourceWindows=.  The
 package-local TypeScript schema copy is synchronized with the shared
@@ -279,7 +279,7 @@ The same mixed-query failure exists outside Rust, but each language sits at a
 different capability level.
 
 #+begin_src shell
-ts-harness search owner src/cli/semantic-search/item-query.ts items \
+asp-typescript search owner src/cli/semantic-search/item-query.ts items \
   --query 'render_semantic_query_json|projection_from_code_line|projection_node|expandActions' \
   languages/typescript-lang-project-harness
 #+end_src
@@ -434,13 +434,13 @@ queries, while broad TypeScript source globs route to provider prime:
 
 #+begin_example
 Read languages/typescript-lang-project-harness/src/cli/protocol.ts
-  -> ts-harness query --selector src/cli/protocol.ts --code languages/typescript-lang-project-harness
+  -> asp-typescript query --selector src/cli/protocol.ts --code languages/typescript-lang-project-harness
 
 Read languages/python-lang-project-harness/src/python_lang_project_harness/_semantic_search_item_direct_read.py
   -> py-harness query --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py --code languages/python-lang-project-harness
 
 Read languages/typescript-lang-project-harness/src/**/*.ts
-  -> ts-harness search prime --view seeds languages/typescript-lang-project-harness
+  -> asp-typescript search prime --view seeds languages/typescript-lang-project-harness
 #+end_example
 
 Cross-language classifier coverage now locks the same behavior for Rust,
@@ -449,10 +449,10 @@ confirms nested provider roots are preserved correctly:
 
 #+begin_example
 head -n 80 languages/typescript-lang-project-harness/src/cli/protocol.ts
-  -> ts-harness query --selector src/cli/protocol.ts:1:80 --code languages/typescript-lang-project-harness
+  -> asp-typescript query --selector src/cli/protocol.ts:1:80 --code languages/typescript-lang-project-harness
 
 awk 'NR>=10 && NR<=30' languages/typescript-lang-project-harness/src/cli/protocol.ts
-  -> ts-harness query --selector src/cli/protocol.ts:10:30 --code languages/typescript-lang-project-harness
+  -> asp-typescript query --selector src/cli/protocol.ts:10:30 --code languages/typescript-lang-project-harness
 
 tail -n +115 languages/python-lang-project-harness/src/python_lang_project_harness/_semantic_search_item_direct_read.py | head -n 126
   -> py-harness query --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py:115:240 --code languages/python-lang-project-harness

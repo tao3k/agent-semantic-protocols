@@ -255,37 +255,6 @@ pub fn materialize_active_asp_artifact_receipt(
     })
 }
 
-pub fn materialize_active_asp_artifact_receipt_for_current_process(
-    activation_path: &Path,
-    activation: &crate::HookRuntime,
-) -> Result<bool, String> {
-    materialize_active_asp_artifact_receipt_for_current_process_inner(activation_path, activation)
-}
-
-fn materialize_active_asp_artifact_receipt_for_current_process_inner(
-    activation_path: &Path,
-    activation: &crate::HookRuntime,
-) -> Result<bool, String> {
-    let ranker = activation
-        .rankers
-        .iter()
-        .find(|ranker| ranker.ranker_id == "asp-graph-turbo")
-        .ok_or_else(|| {
-            "activation has no producer-owned ASP graph-turbo binary identity".to_string()
-        })?;
-    let canonical = canonical_regular_file(Path::new(&ranker.binary), "ASP binary")?;
-    let current_metadata =
-        agent_semantic_content_identity::file_artifact_metadata_digest_v1(&canonical)?.to_string();
-    if current_metadata != ranker.artifact_metadata_digest {
-        return Err(format!(
-            "ASP graph-turbo binary metadata drift: binary={} expected={} actual={current_metadata}",
-            canonical.display(),
-            ranker.artifact_metadata_digest
-        ));
-    }
-    materialize_active_asp_artifact_receipt(&canonical, &ranker.content_digest, activation_path)?;
-    Ok(true)
-}
 
 #[path = "active_artifact_receipt_verification.rs"]
 mod verification;

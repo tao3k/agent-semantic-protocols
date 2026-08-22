@@ -12,8 +12,8 @@ inductive BuildAction where
   | fail
   deriving DecidableEq, Repr
 
-def decide (mode : BuildMode) (currentMaterialization : Bool) : BuildAction :=
-  match mode, currentMaterialization with
+def decide (mode : BuildMode) (currentGenerationPointer : Bool) : BuildAction :=
+  match mode, currentGenerationPointer with
   | .restoreOnly, true => .publishCommitted
   | .restoreOnly, false => .fail
   | .restoreOrBuild, true => .publishCommitted
@@ -22,6 +22,9 @@ def decide (mode : BuildMode) (currentMaterialization : Bool) : BuildAction :=
 
 def legacyRestore (currentMaterialization : Bool) : BuildAction :=
   if currentMaterialization then .publishCommitted else .runSourceBuilder
+
+def onDemandPointerRestore (currentGenerationPointer : Bool) : BuildAction :=
+  decide .restoreOnly currentGenerationPointer
 
 theorem legacy_missing_restore_runs_source_builder :
     legacyRestore false = .runSourceBuilder := by
@@ -35,26 +38,60 @@ theorem restore_only_missing_fails :
     decide .restoreOnly false = .fail := by
   rfl
 
-theorem restore_only_never_runs_source_builder (currentMaterialization : Bool) :
-    decide .restoreOnly currentMaterialization ≠ .runSourceBuilder := by
-  cases currentMaterialization <;> simp [decide]
+theorem restore_only_never_runs_source_builder (currentGenerationPointer : Bool) :
+    decide .restoreOnly currentGenerationPointer ≠ .runSourceBuilder := by
+  cases currentGenerationPointer <;> simp [decide]
+
+theorem on_demand_pointer_restore_uses_restore_only (currentGenerationPointer : Bool) :
+    onDemandPointerRestore currentGenerationPointer =
+      decide .restoreOnly currentGenerationPointer := by
+  rfl
+
+theorem on_demand_pointer_restore_never_runs_source_builder (currentGenerationPointer : Bool) :
+    onDemandPointerRestore currentGenerationPointer ≠ .runSourceBuilder := by
+  exact restore_only_never_runs_source_builder currentGenerationPointer
+
+theorem on_demand_pointer_restore_missing_is_terminal_failure :
+    onDemandPointerRestore false = .fail := by
+  rfl
 
 theorem source_builder_requires_explicit_build_authority
     (mode : BuildMode)
-    (currentMaterialization : Bool)
-    (runs : decide mode currentMaterialization = .runSourceBuilder) :
+    (currentGenerationPointer : Bool)
+    (runs : decide mode currentGenerationPointer = .runSourceBuilder) :
     mode ≠ .restoreOnly := by
   intro restoreOnly
   subst mode
-  exact restore_only_never_runs_source_builder currentMaterialization runs
+  exact restore_only_never_runs_source_builder currentGenerationPointer runs
 
-theorem restore_only_result_domain (currentMaterialization : Bool) :
-    decide .restoreOnly currentMaterialization = .publishCommitted ∨
-      decide .restoreOnly currentMaterialization = .fail := by
-  cases currentMaterialization <;> simp [decide]
+theorem restore_only_result_domain (currentGenerationPointer : Bool) :
+    decide .restoreOnly currentGenerationPointer = .publishCommitted ∨
+      decide .restoreOnly currentGenerationPointer = .fail := by
+  cases currentGenerationPointer <;> simp [decide]
 
-theorem mutation_never_publishes_existing (currentMaterialization : Bool) :
-    decide .rebuildAfterMutation currentMaterialization = .runSourceBuilder := by
-  cases currentMaterialization <;> rfl
+theorem mutation_never_publishes_existing (currentGenerationPointer : Bool) :
+    decide .rebuildAfterMutation currentGenerationPointer = .runSourceBuilder := by
+  cases currentGenerationPointer <;> rfl
+
+structure RestoredGenerationRoots where
+  sourceSnapshotRoot : String
+  ownerMerkleRoot : String
+
+inductive RootConsumer where
+  | sourceRecovery
+  | ownerProof
+  deriving DecidableEq
+
+def rootFor (roots : RestoredGenerationRoots) : RootConsumer → String
+  | .sourceRecovery => roots.sourceSnapshotRoot
+  | .ownerProof => roots.ownerMerkleRoot
+
+theorem source_recovery_uses_only_source_snapshot_root (roots : RestoredGenerationRoots) :
+    rootFor roots .sourceRecovery = roots.sourceSnapshotRoot := by
+  rfl
+
+theorem owner_proof_uses_only_owner_merkle_root (roots : RestoredGenerationRoots) :
+    rootFor roots .ownerProof = roots.ownerMerkleRoot := by
+  rfl
 
 end ASPProof.RuntimeServerRestoreAuthority

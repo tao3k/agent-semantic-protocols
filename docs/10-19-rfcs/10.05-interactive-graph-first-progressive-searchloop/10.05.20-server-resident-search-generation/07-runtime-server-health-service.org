@@ -36,8 +36,8 @@ an implicit fallback hidden inside the warm healthcheck adapter.
 
 The in-process warm service operation MUST satisfy a sub-millisecond p99 gate
 under concurrent multi-workspace and multi-session status reads. The installed
-CLI adapter has a separate process-startup budget and MUST report service time
-independently from adapter wall time. A gate failure is a correctness failure;
+ASP CLI client has a separate process-startup budget and MUST report Server
+service time independently from client wall time. A gate failure is a correctness failure;
 the budget MUST NOT be widened to hide filesystem, activation, provider, Turso,
 or supervisor work on the warm path.
 

@@ -7,15 +7,6 @@ from jsonschema import Draft202012Validator, ValidationError
 
 ROOT = Path(__file__).resolve().parents[2]
 
-EXTERNAL_PROVIDERS = (
-    ("languages/rust-lang-project-harness/provider", "rust"),
-    ("languages/python-lang-project-harness/provider", "python"),
-    ("languages/typescript-lang-project-harness/provider", "typescript"),
-    ("languages/gerbil-scheme-language-project-harness/provider", "gerbil-scheme"),
-    ("languages/JuliaLangProjectHarness.jl/juliac", "julia"),
-)
-
-
 def load(relative: str) -> dict[str, object]:
     return json.loads((ROOT / relative).read_text())
 
@@ -27,19 +18,14 @@ def provider_id_validator(schema_name: str) -> Draft202012Validator:
 
 
 def provider_identity_validator() -> Draft202012Validator:
-    schema = load("schemas/provider-manifest.v1.schema.json")
+    schema = load("schemas/provider-manifest.schema.json")
     identity = schema["$defs"]["canonicalProviderIdentity"]
     return Draft202012Validator(identity)
 
 
-def install_identity_validator() -> Draft202012Validator:
-    schema = load("schemas/provider-workspace-install.v1.schema.json")
-    return Draft202012Validator({"oneOf": schema["oneOf"]})
-
-
 def provider_identity_branches(schema_name: str) -> list[dict[str, object]]:
     schema = load(f"schemas/{schema_name}")
-    if schema_name == "provider-manifest.v1.schema.json":
+    if schema_name == "provider-manifest.schema.json":
         return schema["$defs"]["canonicalProviderIdentity"]["oneOf"]
     return schema["oneOf"]
 
@@ -54,23 +40,68 @@ def provider_identity_mapping(schema_name: str) -> set[tuple[str, str]]:
     }
 
 
-def test_external_provider_manifests_and_install_receipts_use_language_identity() -> None:
-    manifest_validator = provider_id_validator("provider-manifest.v1.schema.json")
-    install_validator = provider_id_validator("provider-workspace-install.v1.schema.json")
-    identity_validator = provider_identity_validator()
-    workspace_install_identity = install_identity_validator()
+def registered_provider_descriptors(
+    register_path: Path = ROOT / "schemas/provider-register.json",
+    reference_root: Path = ROOT,
+) -> list[dict[str, object]]:
+    register = json.loads(register_path.read_text())
+    descriptors = []
+    for entry in register["providers"]:
+        registration_path = reference_root / entry["descriptor"]["$ref"]
+        registration = json.loads(registration_path.read_text())
+        provider_path = registration_path.parent / registration["providerDescriptor"]["$ref"]
+        provider = json.loads(provider_path.read_text())
+        assert provider["languageId"] == entry["languageId"]
+        assert provider["providerId"] == entry["providerId"]
+        descriptors.append(provider)
+    return descriptors
 
-    for provider_root, language_id in EXTERNAL_PROVIDERS:
-        expected = f"asp-{language_id}"
-        manifest = load(f"{provider_root}/asp-provider-manifest.json")
-        install = load(f"{provider_root}/asp-provider-workspace-install.json")
-        assert manifest["providerId"] == expected
-        assert install["languageId"] == language_id
-        assert install["providerId"] == expected
-        manifest_validator.validate(manifest["providerId"])
-        install_validator.validate(install["providerId"])
-        identity_validator.validate(manifest)
-        workspace_install_identity.validate(install)
+
+def test_provider_register_conforms_to_asp_schema() -> None:
+    schema = load("schemas/provider-register.schema.json")
+    Draft202012Validator.check_schema(schema)
+    Draft202012Validator(schema).validate(load("schemas/provider-register.json"))
+
+
+def test_external_provider_is_discovered_only_from_provider_register(tmp_path: Path) -> None:
+    registration = load("languages/rust-lang-project-harness/schemas/asp-registration.json")
+    provider = load("languages/rust-lang-project-harness/schemas/asp-provider.json")
+    registration["languageId"] = "external-test"
+    registration["providerId"] = "asp-external-test"
+    provider["languageId"] = "external-test"
+    provider["providerId"] = "asp-external-test"
+
+    registration_path = tmp_path / "asp-registration.json"
+    provider_path = tmp_path / "asp-provider.json"
+    register_path = tmp_path / "provider-register.json"
+    registration_path.write_text(json.dumps(registration))
+    provider_path.write_text(json.dumps(provider))
+    register_path.write_text(
+        json.dumps(
+            {
+                "schemaId": "agent.semantic-protocols.provider-register",
+                "schemaVersion": "1",
+                "providers": [
+                    {
+                        "languageId": "external-test",
+                        "providerId": "asp-external-test",
+                        "descriptor": {"$ref": "asp-registration.json"},
+                    }
+                ],
+            }
+        )
+    )
+
+    assert registered_provider_descriptors(register_path, tmp_path) == [provider]
+
+
+def test_provider_register_descriptors_use_canonical_language_identity() -> None:
+    manifest_validator = provider_id_validator("provider-manifest.schema.json")
+    identity_validator = provider_identity_validator()
+
+    for descriptor in registered_provider_descriptors():
+        manifest_validator.validate(descriptor["providerId"])
+        identity_validator.validate(descriptor)
 
 
 def test_live_corpus_lock_and_plan_derive_provider_id_from_language() -> None:
@@ -95,7 +126,6 @@ def test_implementation_names_are_not_public_provider_ids() -> None:
     legacy = {
         "rs-harness",
         "py-harness",
-        "ts-harness",
         "gerbil-scheme-harness",
         "julia-lang-project-harness",
         "orgize",
@@ -106,7 +136,7 @@ def test_implementation_names_are_not_public_provider_ids() -> None:
 
 
 def test_asp_client_server_bootstrap_uses_canonical_provider_identity() -> None:
-    schema = load("schemas/asp-client-server-bootstrap.v1.schema.json")
+    schema = load("schemas/asp-client-server-bootstrap.schema.json")
     fixture = load("schemas/fixtures/asp-client-server-bootstrap.ready.v1.json")
     Draft202012Validator.check_schema(schema)
     Draft202012Validator(schema).validate(fixture)
@@ -123,7 +153,7 @@ def test_provider_manifest_rejects_cross_language_identity() -> None:
 def test_every_public_contract_uses_the_canonical_provider_mapping() -> None:
     canonical = provider_identity_mapping("canonical-provider-identity.v1.schema.json")
     for schema_name in (
-        "provider-manifest.v1.schema.json",
+        "provider-manifest.schema.json",
         "asp-client-server-request.v1.schema.json",
         "asp-client-server-response.v1.schema.json",
         "asp-client-server-lifecycle-receipt.v1.schema.json",

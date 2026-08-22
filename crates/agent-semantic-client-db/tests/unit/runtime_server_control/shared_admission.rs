@@ -83,7 +83,10 @@ async fn shared_runtime_admission_plane_is_workspace_keyed_and_drains() {
     let restart = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Restart,
-        agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content { value: "next-runtime-digest".to_owned(), algorithm: "blake3-256".to_owned() },
+        agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+            value: "next-runtime-digest".to_owned(),
+            algorithm: "blake3-256".to_owned(),
+        },
         "restart-data-plane".to_owned(),
     )
     .await

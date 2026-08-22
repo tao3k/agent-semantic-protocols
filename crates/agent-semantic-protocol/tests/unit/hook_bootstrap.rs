@@ -1,6 +1,5 @@
 use super::{
-    event_is_observational, exact_canonical_binary_install, hook_event,
-    hook_event_is_canonical_recovery, hook_event_requires_policy_evaluation,
+    event_is_observational, hook_event, hook_event_requires_policy_evaluation,
     is_hook_event_dispatch, local_hook_policy_unavailable, local_hook_policy_unavailable_deny,
     validate_hook_args,
 };
@@ -22,27 +21,6 @@ fn lifecycle_failures_degrade_open_but_enforcement_failures_do_not() {
     for event in ["pre-tool", "permission-request"] {
         let args = vec![OsString::from("hook"), OsString::from(event)];
         assert!(!event_is_observational(&args), "{event}");
-    }
-}
-
-#[test]
-fn recovery_kernel_admits_only_the_binary_install_command() {
-    let words = |command: &str| {
-        agent_semantic_command_match::parse_bash_command_candidates(command)
-            .expect("parse recovery command")[0]
-            .words()
-            .to_vec()
-    };
-    assert!(exact_canonical_binary_install(
-        &words("/tmp/candidate/asp install binary"),
-        0,
-    ));
-    for command in [
-        "/tmp/candidate/asp install binary --target /tmp/asp",
-        "/tmp/candidate/asp install binary /state/runtime/bin/asp",
-        "/tmp/candidate/asp install binary --force",
-    ] {
-        assert!(!exact_canonical_binary_install(&words(command), 0,));
     }
 }
 
@@ -85,57 +63,6 @@ fn bootstrap_intercepts_events_but_not_lifecycle_diagnostics() {
             "non-event dispatch must use the ordinary CLI parser"
         );
     }
-}
-
-fn pre_tool(command: &str) -> (Vec<OsString>, Vec<u8>) {
-    (
-        vec![OsString::from("hook"), OsString::from("pre-tool")],
-        serde_json::to_vec(&serde_json::json!({
-            "tool_name": "Bash",
-            "tool_input": { "cmd": command }
-        }))
-        .expect("hook payload"),
-    )
-}
-
-#[test]
-fn canonical_recovery_is_a_configuration_independent_escape_edge() {
-    for command in [
-        "asp server status",
-        "asp server reconcile",
-        "/tmp/runtime/bin/asp server restart",
-        "direnv exec . asp server reconcile",
-        "asp hook doctor --client codex",
-        "direnv exec . asp hook doctor --client codex",
-    ] {
-        let (args, input) = pre_tool(command);
-        assert!(hook_event_is_canonical_recovery(&args, &input), "{command}");
-    }
-}
-
-#[test]
-fn recovery_kernel_rejects_chains_extra_arguments_and_non_control_commands() {
-    for command in [
-        "asp server reconcile && touch /tmp/escaped",
-        "asp server reconcile --force",
-        "asp hook doctor --client claude",
-        "asp hook doctor --client codex --json",
-        "cargo test",
-        "other-asp server restart",
-    ] {
-        let (args, input) = pre_tool(command);
-        assert!(
-            !hook_event_is_canonical_recovery(&args, &input),
-            "{command}"
-        );
-    }
-}
-
-#[test]
-fn observational_events_cannot_claim_the_recovery_escape_edge() {
-    let args = vec![OsString::from("hook"), OsString::from("stop")];
-    let (_, input) = pre_tool("asp server reconcile");
-    assert!(!hook_event_is_canonical_recovery(&args, &input));
 }
 
 #[test]
@@ -195,7 +122,7 @@ fn unavailable_local_policy_authority_is_typed_and_names_the_escape_edge() {
     let value: serde_json::Value = serde_json::from_str(&failure).expect("typed failure JSON");
     assert_eq!(
         value["schemaId"],
-        "agent.semantic-protocols.hook-local-policy-unavailable.v1"
+        "agent.semantic-protocols.hook-local-policy-unavailable"
     );
     assert_eq!(
         value["reasonKind"],
@@ -204,21 +131,13 @@ fn unavailable_local_policy_authority_is_typed_and_names_the_escape_edge() {
     assert!(
         value["recoveryCommand"]
             .as_str()
-            .is_some_and(|command| command == "asp hook refresh --client codex")
+            .is_some_and(|command| command.contains("install binary"))
     );
-    assert_eq!(value["recoveryCommands"].as_array().map(Vec::len), Some(3));
-    assert_eq!(
-        value["recoveryCommands"][0],
-        "asp hook refresh --client codex"
-    );
-    assert_eq!(
-        value["recoveryCommands"][1],
-        "asp hook doctor --client codex"
-    );
+    assert_eq!(value["recoveryCommands"].as_array().map(Vec::len), Some(1));
     assert!(
-        value["recoveryCommands"][2]
+        value["recoveryCommands"][0]
             .as_str()
-            .is_some_and(|command| command.contains("install binary --target"))
+            .is_some_and(|command| command.contains("install binary"))
     );
     assert!(value["canonicalBinaryInstallTarget"].is_string());
 }
@@ -238,7 +157,7 @@ fn unavailable_enforcement_authority_is_a_host_protocol_deny() {
             value["hookSpecificOutput"]["additionalContext"]
                 .as_str()
                 .is_some_and(|context| context
-                    .contains("agent.semantic-protocols.hook-local-policy-unavailable.v1")),
+                    .contains("agent.semantic-protocols.hook-local-policy-unavailable")),
             "{response}"
         );
     }

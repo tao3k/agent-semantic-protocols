@@ -5,7 +5,7 @@ fn search_pipe_graph_request_uses_provider_declared_project_topology_markers() {
     let cases = [
         (
             "typescript",
-            "ts-harness",
+            "asp-typescript",
             "package.json",
             "package.json",
             "src/index.ts",

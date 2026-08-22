@@ -21,13 +21,13 @@ pub(crate) fn asp_typescript_owner_items_cold_functional_path_stays_inside_scena
         scenario_dir: "asp_typescript_owner_items_cold_functional_path",
         scenario_id: "asp-typescript-owner-items-cold-functional-path",
         language_id: "typescript",
-        binary: "ts-harness",
+        binary: "asp-typescript",
         owner_path: "app/src/model.ts",
         package_anchor_path: "package.json",
         package_anchor_text: "{\"name\":\"scenario-typescript-owner-items-cold-functional\",\"private\":true}\n",
         source_text: "export function dynamicOwnerItemIndex(): boolean { return true; }\n",
         query: "dynamicOwnerItemIndex",
-        alg: "ts-harness-owner-items",
+        alg: "asp-typescript-owner-items",
         item_symbol: "dynamicOwnerItemIndex",
     });
 }

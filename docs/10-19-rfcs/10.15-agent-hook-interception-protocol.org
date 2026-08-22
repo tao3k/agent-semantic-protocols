@@ -3,7 +3,7 @@
 #+DATE: 2026-05-31
 #+RFC: 015
 #+STATUS: implemented-single-bin-configurable-client-hook
-#+DEPENDS: docs/10-19-rfcs/10.05-cli-first-harness-ux.org (005)
+#+DEPENDS: docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org (005)
 
 * One-sentence summary
 
@@ -630,7 +630,7 @@ Project activation is the repository-local generated file.  The shared JSON
 shape is:
 
 #+begin_src text
-schemas/semantic-agent-hook-activation.v1.schema.json
+schemas/hook-activation.v2.schema.json
 #+end_src
 
 Activation records only which provider manifests are enabled in this workspace
@@ -685,7 +685,7 @@ complete JSON object with:
 
 #+begin_src text
 schemaId = agent.semantic-protocols.hook.event
-schemaVersion = 1
+schemaVersion = 2
 protocolId = agent.semantic-protocols.hook
 protocolVersion = 1
 platform
@@ -1163,7 +1163,7 @@ owner-item frontier route, =search owner <path> items --workspace ... --view
 seeds=, instead of asking the agent to run a file-level code query or explicit
 direct-source-read command.  For TypeScript, source-read recovery therefore
 routes through the public =asp= language facade while preserving
-=providerId=ts-harness=:
+=providerId=asp-typescript=:
 
 #+begin_example
 direct-source-read denied; route: asp typescript search owner src/components/WorkflowExecution.tsx items --workspace . --view seeds
@@ -1223,7 +1223,7 @@ The root hook must not maintain a parser/query engine.  Selected source paths
 route back to the owning provider's =search owner <path> items --workspace
 <workspace-root> --view seeds= surface through =asp <language>=, while
 =providerId= records the native provider identity such as =rs-harness=,
-=ts-harness=, or =py-harness=.  Hook routes must not expose provider
+=asp-typescript=, or =py-harness=.  Hook routes must not expose provider
 implementation binaries as the executable command surface.  =--from-hook
 direct-source-read= is reserved for audited low-priority exact windows after
 parser-owned search/frontier evidence has failed, and must not be advertised as
@@ -1273,7 +1273,7 @@ the platform's expected output:
   "routes": [
     {
       "languageId": "typescript",
-      "providerId": "ts-harness",
+      "providerId": "asp-typescript",
       "binary": "asp",
       "kind": "owner",
       "argv": ["asp", "typescript", "search", "owner", "src/cli/agent-hooks.ts", "items", "--workspace", ".", "--view", "seeds"]
@@ -1303,7 +1303,7 @@ Output-mode denial example:
   "routes": [
     {
       "languageId": "typescript",
-      "providerId": "ts-harness",
+      "providerId": "asp-typescript",
       "binary": "asp",
       "kind": "lexical",
       "argv": ["asp", "typescript", "search", "lexical", "location.path", "owner", "tests", "--view", "seeds", "."]

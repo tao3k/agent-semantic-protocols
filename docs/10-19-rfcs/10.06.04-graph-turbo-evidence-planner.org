@@ -1,7 +1,7 @@
 #+TITLE: RFC: Graph Turbo Evidence Planner Boundary
 #+STATUS: draft
 #+PROTOCOL: v1
-#+DEPENDS: docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.12-search-query-semantic-abi.org
+#+DEPENDS: docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org
 #+DEPENDS: docs/10-19-rfcs/10.06.03-context-product-state-v1.org
 #+DEPENDS: schemas/context-product-state.v1.schema.json
 #+DEPENDS: schemas/evidence-query-catalog.v1.schema.json

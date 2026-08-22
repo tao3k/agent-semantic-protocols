@@ -542,7 +542,7 @@ crate::source_index::prepare_runtime_server_owner_projection_with_registry_async
         .await
         .expect("bind fixture Runtime Server")
         .with_workspace_generation_and_owner_builders(std::sync::Arc::new(
-            |_workspace_identity, project_root, changed_paths| {
+            |_workspace_identity, project_root, changed_paths, _provider_target| {
                 Box::pin(async move {
                     let collection_scope = if changed_paths.is_empty() {
                         crate::source_index::SourceIndexCollectionScope::CompleteGeneration

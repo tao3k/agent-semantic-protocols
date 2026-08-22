@@ -6,73 +6,11 @@
 
 use std::collections::BTreeSet;
 
-/// Grammarless ABI plan extracted from tree-sitter-compatible query source.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SyntaxQueryAbiPlan {
-    pub patterns: Vec<SyntaxQueryAbiPattern>,
-    pub captures: Vec<String>,
-    pub node_types: Vec<String>,
-    pub fields: Vec<String>,
-    pub predicates: Vec<SyntaxQueryAbiPredicate>,
-}
-
-impl SyntaxQueryAbiPlan {
-    #[must_use]
-    pub fn pattern_count(&self) -> usize {
-        self.patterns.len()
-    }
-}
-
-/// Predicate operator extracted from a tree-sitter-compatible query.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum SyntaxQueryPredicateOp {
-    Eq,
-    AnyEq,
-    AnyOf,
-    Match,
-    AnyMatch,
-    NotEq,
-    NotMatch,
-}
-
-impl SyntaxQueryPredicateOp {
-    #[must_use]
-    pub fn as_abi_str(&self) -> &'static str {
-        match self {
-            Self::Eq => "eq",
-            Self::AnyEq => "any-eq",
-            Self::AnyOf => "any-of",
-            Self::Match => "match",
-            Self::AnyMatch => "any-match",
-            Self::NotEq => "not-eq",
-            Self::NotMatch => "not-match",
-        }
-    }
-}
-
-/// Predicate operand extracted from a tree-sitter-compatible query.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum SyntaxQueryPredicateValue {
-    String(String),
-    Capture(String),
-}
-
-/// Predicate ABI fact extracted from one tree-sitter query predicate form.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct SyntaxQueryAbiPredicate {
-    pub op: SyntaxQueryPredicateOp,
-    pub capture: String,
-    pub values: Vec<SyntaxQueryPredicateValue>,
-}
-
-/// Per-pattern ABI facts extracted from one top-level query pattern.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SyntaxQueryAbiPattern {
-    pub index: usize,
-    pub captures: Vec<String>,
-    pub node_types: Vec<String>,
-    pub fields: Vec<String>,
-}
+pub use agent_semantic_provider_protocol::{
+    SyntaxQueryPattern as SyntaxQueryAbiPattern, SyntaxQueryPlan as SyntaxQueryAbiPlan,
+    SyntaxQueryPredicate as SyntaxQueryAbiPredicate, SyntaxQueryPredicateOp,
+    SyntaxQueryPredicateValue,
+};
 
 /// Error returned when grammarless query ABI planning rejects a source string.
 #[derive(Clone, Debug, Eq, PartialEq)]

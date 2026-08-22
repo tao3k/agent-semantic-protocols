@@ -274,18 +274,18 @@ impl AspClientServerPeer {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             .saturating_add(1);
         let request_id = format!("provider-http-{request_id}");
-    let request = ProviderRuntimeRequestFrame::new(&request_id, operation, &payload)?;
-    let request = serde_json::to_vec(&request)
-        .map_err(|error| format!("encode provider HTTP server request: {error}"))?;
-    let request_prefix = String::from_utf8_lossy(&request)
-        .chars()
-        .take(4096)
-        .collect::<String>();
+        let request = ProviderRuntimeRequestFrame::new(&request_id, operation, &payload)?;
+        let request = serde_json::to_vec(&request)
+            .map_err(|error| format!("encode provider HTTP server request: {error}"))?;
+        let request_prefix = String::from_utf8_lossy(&request)
+            .chars()
+            .take(4096)
+            .collect::<String>();
         let request_path = self.request_path.clone();
         let response = self
             .http_json("POST", &request_path, Some(&request))
             .await?;
-    let response = serde_json::from_slice::<ProviderRuntimeResponseFrame>(&response).map_err(
+        let response = serde_json::from_slice::<ProviderRuntimeResponseFrame>(&response).map_err(
         |error| {
             let prefix = String::from_utf8_lossy(&response)
                 .chars()

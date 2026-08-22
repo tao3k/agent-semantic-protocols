@@ -4,7 +4,7 @@
 * Owners
 
 - RFC owner:
-  =docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.23-searchroute-costed-inspect-trace.org=
+  =docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.30-progressive-projection-cost/00.23-searchroute-costed-inspect-trace.org=
 - Lean owner:
   =packages/proofs/ASPProof/SearchRouteInspectTraceCost.lean=
 - Lean audit:
@@ -84,7 +84,7 @@ standalone =.typ= source, =:file= header argument, or PDF compilation was used.
 #+begin_src sh
 orgize eval plan --json \
   searchroute-costed-inspect-trace-model \
-  docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.23-searchroute-costed-inspect-trace.org
+  docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.30-progressive-projection-cost/00.23-searchroute-costed-inspect-trace.org
 
 typst eval --in - '"ok"'
 #+end_src

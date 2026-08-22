@@ -81,7 +81,7 @@ def test_record_syntax_real_evidence_rejects_unproven_cache_hit() -> None:
             "--language",
             "typescript",
             "--provider",
-            "ts-harness",
+            "asp-typescript",
             "--project",
             "playwright",
             "--command-count",

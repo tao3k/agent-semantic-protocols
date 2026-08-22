@@ -93,9 +93,9 @@ impl StructuredProjectionDecisionShard {
                 |error| format!("decode structured-projection decision record: {error}"),
             )?;
             let classification =
-                agent_semantic_command_match::structured::classify_single_bounded_path_tokens(
+                agent_semantic_shell_parser::structured::classify_single_bounded_path_tokens(
                     &key.command_tokens,
-                    agent_semantic_command_match::structured::BoundedPathCommandSpecV1 {
+        agent_semantic_shell_parser::structured::BoundedPathCommandSpec {
                         binary: &entry.projection.binary,
                         optional_subcommand_any: &entry.projection.optional_subcommand_any,
                         option_any: &entry.projection.option_any,
@@ -105,21 +105,21 @@ impl StructuredProjectionDecisionShard {
                 );
             if matches!(
                 classification,
-                agent_semantic_command_match::structured::StructuredFilterClassificationV1::NotApplicable
+        agent_semantic_shell_parser::structured::StructuredFilterClassification::NotApplicable
             ) {
                 continue;
             }
             let bounded = matches!(
                 &classification,
-                agent_semantic_command_match::structured::StructuredFilterClassificationV1::BoundedPath { .. }
-                    | agent_semantic_command_match::structured::StructuredFilterClassificationV1::BoundedScalarPredicate { .. }
+        agent_semantic_shell_parser::structured::StructuredFilterClassification::BoundedPath { .. }
+        | agent_semantic_shell_parser::structured::StructuredFilterClassification::BoundedScalarPredicate { .. }
             );
             let bounded_source = match &classification {
-                agent_semantic_command_match::structured::StructuredFilterClassificationV1::BoundedPath {
+            agent_semantic_shell_parser::structured::StructuredFilterClassification::BoundedPath {
                     source_operands,
                     ..
                 }
-                | agent_semantic_command_match::structured::StructuredFilterClassificationV1::BoundedScalarPredicate {
+            | agent_semantic_shell_parser::structured::StructuredFilterClassification::BoundedScalarPredicate {
                     source_operands,
                     ..
                 } => source_operands.first().map(String::as_str),

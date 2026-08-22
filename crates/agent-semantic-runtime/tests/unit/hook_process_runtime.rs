@@ -11,7 +11,10 @@ async fn timed_out_hook_process_is_killed_and_reaped() {
     let script_path = temporary.path().join("hang.sh");
     std::fs::write(
         &script_path,
-        format!("#!/bin/sh\nprintf '%s' \"$$\" > {}\nexec sleep 30\n", pid_path.display()),
+        format!(
+            "#!/bin/sh\nprintf '%s' \"$$\" > {}\nexec sleep 30\n",
+            pid_path.display()
+        ),
     )
     .expect("write hanging hook fixture");
     let mut permissions = std::fs::metadata(&script_path)
@@ -41,5 +44,8 @@ async fn timed_out_hook_process_is_killed_and_reaped() {
         .expect("numeric child pid");
     let status = unsafe { libc::kill(pid, 0) };
     assert_eq!(status, -1, "timed-out child must no longer exist");
-    assert_eq!(std::io::Error::last_os_error().raw_os_error(), Some(libc::ESRCH));
+    assert_eq!(
+        std::io::Error::last_os_error().raw_os_error(),
+        Some(libc::ESRCH)
+    );
 }

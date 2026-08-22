@@ -363,9 +363,9 @@ fn command_for_atom(atom: &CoverageKey, policy: &ProductionPolicy) -> String {
             }
         }
         "deny-agent-search-json" => {
-            format!("ts-harness search lexical projectRoot owner tests {alt} .")
+            format!("asp-typescript search lexical projectRoot owner tests {alt} .")
         }
-        "materialize-registered-source-read-action" => {
+        "route-read-to-asp-languages" => {
             format!("read {}", source_path_for(alt))
         }
         "materialize-structured-document-read-action" => "read package.json".to_owned(),
@@ -457,8 +457,7 @@ fn payload_for_atom(atom: &CoverageKey, policy: &ProductionPolicy) -> Value {
             "raw-host-action"
                 if matches!(
                     atom.rule_id.as_str(),
-                    "materialize-registered-source-read-action"
-                        | "materialize-structured-document-read-action"
+                    "route-read-to-asp-languages" | "materialize-structured-document-read-action"
                 ) =>
             {
                 json!({
@@ -485,7 +484,7 @@ fn payload_for_atom(atom: &CoverageKey, policy: &ProductionPolicy) -> Value {
                 "path": source_path_for(&atom.alternative),
             },
         }),
-        "materialize-registered-source-read-action" => json!({
+        "route-read-to-asp-languages" => json!({
             "tool_name": "Read",
             "tool_input": {"file_path": source_path_for(&atom.alternative)},
         }),

@@ -48,5 +48,5 @@ def schema_profile_contract_closure(
     schema_names: Iterable[str],
 ) -> frozenset[str]:
     roots = set(schema_names)
-    roots.add("provider-manifest.v1.schema.json")
+    roots.add("provider-manifest.schema.json")
     return schema_reference_closure(repo_root, roots)

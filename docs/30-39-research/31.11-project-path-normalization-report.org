@@ -23,7 +23,7 @@ A focused TypeScript owner search returned compact evidence, but the output
 mixed graph/display identity and command-ready path values:
 
 #+begin_src shell
-ts-harness search owner src/components/WorkflowExecution.tsx .
+asp-typescript search owner src/components/WorkflowExecution.tsx .
 #+end_src
 
 The rendered edge and finding lines carried values shaped like:

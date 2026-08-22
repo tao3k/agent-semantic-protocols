@@ -20,7 +20,7 @@ accumulation are therefore excluded from the final evidence.
 * Evidence record
 
 #+begin_example
-[software-criterion-real-evidence] language=typescript provider=ts-harness project=languages/typescript-lang-project-harness
+[software-criterion-real-evidence] language=typescript provider=asp-typescript project=languages/typescript-lang-project-harness
 commands=policy-json-check
 metrics=commandCount=1,providerProcessCount=1,packetBytes=9423005,coldElapsedMs=2236,warmElapsedMs=2174
 metrics=findingCount=28,qualityFindingCount=15,exitCode=0,repeatedTriggerDelta=0

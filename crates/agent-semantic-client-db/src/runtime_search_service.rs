@@ -111,6 +111,7 @@ pub fn build_runtime_provider_search_receipt(
     language_id: agent_semantic_client_core::LanguageId,
     lookup: crate::source_index::ClientDbSourceIndexLookupResult,
     resident_read_elapsed_micros: u64,
+    parser_owned_selector_pairs: Vec<(String, String)>,
 ) -> Result<RuntimeProviderSearchReceipt, String> {
     let started = std::time::Instant::now();
     let read_state = lookup.state.clone();
@@ -145,18 +146,27 @@ pub fn build_runtime_provider_search_receipt(
         rendered
     };
     let candidate_count = lookup.candidates.len();
-    let selectors = lookup
+    let mut selector_pairs = lookup
         .candidates
         .iter()
         .filter_map(|candidate| candidate.selector_projection.as_ref())
-        .map(|projection| projection.proof.structural_selector().to_owned())
+        .map(|projection| {
+            (
+                projection.proof.structural_selector().to_owned(),
+                projection.proof.owner_path().to_owned(),
+            )
+        })
         .collect::<Vec<_>>();
-    let owner_paths = lookup
-        .candidates
+    let mut seen_selectors = selector_pairs
         .iter()
-        .filter_map(|candidate| candidate.selector_projection.as_ref())
-        .map(|projection| projection.proof.owner_path().to_owned())
-        .collect::<Vec<_>>();
+        .map(|(selector, _)| selector.clone())
+        .collect::<std::collections::HashSet<_>>();
+    for pair in parser_owned_selector_pairs {
+        if seen_selectors.insert(pair.0.clone()) {
+            selector_pairs.push(pair);
+        }
+    }
+    let (selectors, owner_paths): (Vec<_>, Vec<_>) = selector_pairs.into_iter().unzip();
     let (root_digest, provider_digest) = lookup
         .source_snapshot
         .as_ref()

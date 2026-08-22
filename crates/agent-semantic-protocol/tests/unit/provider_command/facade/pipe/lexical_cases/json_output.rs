@@ -46,12 +46,20 @@ fn agent_platform_denies_non_session_json_output_with_token_warning() {
         stderr.contains("warning: --json output is disabled"),
         "{stderr}"
     );
+    assert!(stderr.contains("debug/programmatic format"), "{stderr}");
     assert!(
-        stderr.contains("debug or programmatic use only"),
+        stderr.contains("compact output without `--json`"),
         "{stderr}"
     );
-    assert!(stderr.contains("not normal agent workflow"), "{stderr}");
-    assert!(stderr.contains("wastes tokens"), "{stderr}");
+    assert!(
+        stderr.contains("explicit non-agent debug automation"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("filter the JSON with jq"), "{stderr}");
+    assert!(
+        stderr.contains("must not be used to bypass Hook policy"),
+        "{stderr}"
+    );
     assert!(stderr.contains("ASP_NO_AGENT_PLATFORM=1"), "{stderr}");
 
     let _ = std::fs::remove_dir_all(root);

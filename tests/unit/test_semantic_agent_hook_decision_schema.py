@@ -25,16 +25,16 @@ def minimal_decision(reason_kind: str) -> dict[str, object]:
         "languageIds": ["typescript"],
         "subject": {
             "toolName": "Bash",
-            "command": "ts-harness search lexical location.path owner tests --json .",
+            "command": "asp-typescript search lexical location.path owner tests --json .",
         },
         "routes": [
             {
                 "languageId": "typescript",
-                "providerId": "ts-harness",
-                "binary": "ts-harness",
+                "providerId": "asp-typescript",
+                "binary": "asp-typescript",
                 "kind": "lexical",
                 "argv": [
-                    "ts-harness",
+                    "asp-typescript",
                     "search",
                     "lexical",
                     "location.path",
@@ -86,11 +86,11 @@ class SemanticAgentHookDecisionSchemaTests(unittest.TestCase):
         decision = minimal_decision("direct-source-read")
         decision["routes"][0] = {  # type: ignore[index]
             "languageId": "typescript",
-            "providerId": "ts-harness",
-            "binary": "ts-harness",
+            "providerId": "asp-typescript",
+            "binary": "asp-typescript",
             "kind": "read",
             "argv": [
-                "ts-harness",
+                "asp-typescript",
                 "query",
                 "--from-hook",
                 "direct-source-read",
@@ -157,11 +157,11 @@ class SemanticAgentHookDecisionSchemaTests(unittest.TestCase):
         decision = minimal_decision("direct-source-read")
         decision["routes"][0] = {  # type: ignore[index]
             "languageId": "typescript",
-            "providerId": "ts-harness",
-            "binary": "ts-harness",
+            "providerId": "asp-typescript",
+            "binary": "asp-typescript",
             "kind": "query",
             "argv": [
-                "ts-harness",
+                "asp-typescript",
                 "query",
                 "--from-hook",
                 "direct-source-read",

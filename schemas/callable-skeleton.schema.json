@@ -4,8 +4,10 @@
   "title": "Callable Skeleton Payload",
   "type": "object",
   "additionalProperties": false,
-  "required": ["rootNodeId", "callable", "nodes", "relations", "cost"],
+  "required": ["rootSelector", "rootNodeId", "callable", "nodes", "relations", "cost"],
   "properties": {
+    "projectionKind": {"const": "callable-skeleton"},
+    "rootSelector": {},
     "rootNodeId": {"type": "string", "minLength": 1},
     "callable": {"type": "object"},
     "nodes": {"type": "array"},

@@ -288,7 +288,7 @@ reads.  Exact direct-source-read recovery is provider query transport:
 search-synthesis layer is now partially closed across providers:
 =semantic-search-packet= owns
 =searchSynthesis.windowSet=, =rs-harness= emits =window_set= alongside
-=edit_frontier=, =test_frontier=, and =seeds=, =py-harness= and =ts-harness=
+=edit_frontier=, =test_frontier=, and =seeds=, =py-harness= and =asp-typescript=
 emit =windowSet= in compact line protocol and JSON packets, and
 =the Julia workspace command= emits =windowSet= in compact line protocol.
 Julia still needs a full semantic-search JSON packet path before it can
@@ -317,7 +317,7 @@ The real compact-provider smoke checks now emit:
 #+begin_src text
 rs-harness:     window_set=owner:...,tests:...
 py-harness:     windowSet=owner:...,tests:...
-ts-harness:     windowSet=owner:...,tests:...
+asp-typescript:     windowSet=owner:...,tests:...
 julia workspace: windowSet=owner:...,tests:...
 #+end_src
 

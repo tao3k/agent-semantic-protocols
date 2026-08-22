@@ -420,35 +420,57 @@ pub async fn serve_runtime_server_workspace_stream(
                         .await
                     {
                         Ok(lookup) => {
-                            let resident_read_elapsed_micros = provider_search_started
-                                .elapsed()
-                                .as_micros()
-                                .min(u128::from(u64::MAX))
-                                as u64;
-                            match crate::runtime_search_service::build_runtime_provider_search_receipt(
-                                    operation_id.clone(),
-                                    language_id.clone(),
-                                    lookup,
-                                    resident_read_elapsed_micros,
+                            let owner_paths = lookup
+                                .candidates
+                                .iter()
+                                .map(|candidate| candidate.path.as_str().to_owned())
+                                .collect::<Vec<_>>();
+                            match memory_registry
+                                .read_projection_parser_owned_callable_selector_pairs(
+                                    &request.workspace_identity,
+                                    Path::new(&project_root),
+                                    &owner_paths,
                                 ) {
-                                    Ok(receipt) => WorkspaceDbIpcResult::ProviderSearch { receipt },
-                                    Err(message) => {
-                                        tracing::error!(
-                                            event = "runtime_provider_search_terminal",
-                                            operation_id,
-                                            workspace_identity = %request.workspace_identity,
-                                            language_id = %language_id,
-                                            reason_kind = "runtime-server-provider-search-failed",
-                                            elapsed_micros = provider_search_started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64,
-                                            error = %message
-                                        );
-                                        WorkspaceDbIpcResult::Failed {
-                                            code: "runtime-server-provider-search-failed"
-                                                .to_owned(),
-                                            message,
+                                Ok(parser_owned_selector_pairs) => {
+                                    let resident_read_elapsed_micros = provider_search_started
+                                        .elapsed()
+                                        .as_micros()
+                                        .min(u128::from(u64::MAX))
+                                        as u64;
+                                    match crate::runtime_search_service::build_runtime_provider_search_receipt(
+                                        operation_id.clone(),
+                                        language_id.clone(),
+                                        lookup,
+                                        resident_read_elapsed_micros,
+                                        parser_owned_selector_pairs,
+                                    ) {
+                                        Ok(receipt) => {
+                                            WorkspaceDbIpcResult::ProviderSearch { receipt }
+                                        }
+                                        Err(message) => {
+                                            tracing::error!(
+                                                event = "runtime_provider_search_terminal",
+                                                operation_id,
+                                                workspace_identity = %request.workspace_identity,
+                                                language_id = %language_id,
+                                                reason_kind = "runtime-server-provider-search-failed",
+                                                elapsed_micros = provider_search_started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64,
+                                                error = %message
+                                            );
+                                            WorkspaceDbIpcResult::Failed {
+                                                code: "runtime-server-provider-search-failed"
+                                                    .to_owned(),
+                                                message,
+                                            }
                                         }
                                     }
                                 }
+                                Err(message) => WorkspaceDbIpcResult::Failed {
+                                    code: "runtime-server-provider-search-selector-read-failed"
+                                        .to_owned(),
+                                    message,
+                                },
+                            }
                         }
                         Err(message) => {
                             tracing::error!(
@@ -681,6 +703,14 @@ pub async fn serve_runtime_server_workspace_stream(
                     generation::require_lifecycle_generation(
                         memory_registry,
                         generation_admission,
+                        &request.workspace_identity,
+                        project_root,
+                    )
+                    .await
+                }
+                WorkspaceDbIpcOperation::RestoreRuntimeGenerationFromPointer { project_root } => {
+                    generation::restore_lifecycle_generation_from_pointer(
+                        memory_registry,
                         &request.workspace_identity,
                         project_root,
                     )

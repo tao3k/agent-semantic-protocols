@@ -1,9 +1,9 @@
-use agent_semantic_command_match::{CommandStageV1, parse_bash_command_candidates};
 use agent_semantic_config::AgentActionEffectRule;
 use agent_semantic_config::{
     AgentActionAuthorityRule, HookClientActionAuthority, HookClientActionKind,
     HookClientActionSubjectKind,
 };
+use agent_semantic_shell_parser::{CommandStage, parse_bash_command_candidates};
 
 use crate::HookRuntime;
 use crate::tool_action::ToolAction;
@@ -176,8 +176,14 @@ impl AgentActionMatch {
         include_subjects: bool,
     ) -> crate::tool_action::AgentAction {
         let mut agent_action = action.derive_agent_action();
-        if let Some(authority) = self.infer_authority(registry, action) {
-            agent_action.authority = authority;
+        let inferred_authority = self.infer_authority(registry, action);
+        if let Some(authority) = inferred_authority {
+            agent_action.add_capability(crate::tool_action::SemanticCapability {
+                action: agent_action.host_action,
+                certainty: crate::tool_action::SemanticCapabilityCertainty::Exact,
+                authority,
+                evidence: crate::tool_action::SemanticCapabilityEvidence::ParserEffect,
+            });
         }
         let needs_command_stages = include_subjects
             || !self.effect_rules.is_empty()
@@ -191,7 +197,14 @@ impl AgentActionMatch {
             Vec::new()
         };
         if let Some(effect) = self.infer_effect(&command_stages, action.semantic_command_text()) {
-            agent_action.effect = effect;
+            agent_action.add_capability(crate::tool_action::SemanticCapability {
+                action: effect,
+                certainty: crate::tool_action::SemanticCapabilityCertainty::Exact,
+                authority: inferred_authority.unwrap_or(
+                    crate::tool_action::AgentActionAuthority::RawShell,
+                ),
+                evidence: crate::tool_action::SemanticCapabilityEvidence::ParserEffect,
+            });
         }
         if include_subjects {
             let mut subject_paths = if let Some(source_operands) = structured_source_operands {
@@ -263,7 +276,7 @@ impl AgentActionMatch {
         }
     }
 
-    fn command_stages(&self, action: &ToolAction) -> Vec<CommandStageV1> {
+    fn command_stages(&self, action: &ToolAction) -> Vec<CommandStage> {
         action
             .semantic_command_text()
             .and_then(|command| parse_bash_command_candidates(command).ok())
@@ -288,17 +301,17 @@ impl AgentActionMatch {
 
     fn infer_effect(
         &self,
-        command_stages: &[CommandStageV1],
+    command_stages: &[CommandStage],
         command: Option<&str>,
     ) -> Option<crate::tool_action::AgentActionKind> {
         self.effect_rules.iter().find_map(|rule| {
             let prefix_matches = !rule.argv_prefix.is_empty()
                 && matches!(
-                    agent_semantic_command_match::command_stages_match_wrapped_prefix(
+                    agent_semantic_shell_parser::command_stages_match_wrapped_prefix(
                         command_stages,
                         &rule.argv_prefix,
                     ),
-                    agent_semantic_command_match::PrefixMatch::Matched
+                    agent_semantic_shell_parser::PrefixMatch::Matched
                 );
             let command_matches = command.is_some_and(|command| {
                 let command = command.to_ascii_lowercase();
@@ -355,25 +368,27 @@ impl ActionPredicate {
 
 impl ActionPredicateRef<'_> {
     fn matches_non_subject(&self, action: &crate::tool_action::AgentAction) -> bool {
-        (self.action_any.is_empty()
-            || self.action_any.iter().copied().any(|configured| {
-                crate::tool_action::action_kind_matches(action.action, configured)
-            }))
-            && (self.effect_any.is_empty()
-                || self.effect_any.iter().copied().any(|configured| {
-                    crate::tool_action::action_kind_matches(action.effect, configured)
+        action.capabilities.iter().any(|capability| {
+            (self.action_any.is_empty()
+                || self.action_any.iter().copied().any(|configured| {
+                    crate::tool_action::action_kind_matches(capability.action, configured)
                 }))
-            && (self.authority_any.is_empty()
-                || self.authority_any.iter().copied().any(|configured| {
-                    crate::tool_action::authority_matches(action.authority, configured)
-                }))
-            && !self
-                .authority_exclude_any
-                .iter()
-                .copied()
-                .any(|configured| {
-                    crate::tool_action::authority_matches(action.authority, configured)
-                })
+                && (self.effect_any.is_empty()
+                    || self.effect_any.iter().copied().any(|configured| {
+                        crate::tool_action::action_kind_matches(capability.action, configured)
+                    }))
+                && (self.authority_any.is_empty()
+                    || self.authority_any.iter().copied().any(|configured| {
+                        crate::tool_action::authority_matches(capability.authority, configured)
+                    }))
+                && !self
+                    .authority_exclude_any
+                    .iter()
+                    .copied()
+                    .any(|configured| {
+                        crate::tool_action::authority_matches(capability.authority, configured)
+                    })
+        })
     }
 
     fn matches(&self, action: &crate::tool_action::AgentAction) -> bool {

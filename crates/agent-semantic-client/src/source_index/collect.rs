@@ -100,22 +100,56 @@ pub(crate) struct SourceIndexCollectionReceipt {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ProviderScopeCollectionRoute {
+enum ProviderSourceInventoryAdapter {
     ProjectResolution,
     GitDocumentCandidates,
 }
 
-fn provider_scope_collection_route(
-    authority: agent_semantic_client_core::ProviderScopeAuthority,
-) -> ProviderScopeCollectionRoute {
-    match authority {
-        agent_semantic_client_core::ProviderScopeAuthority::ProjectResolution => {
-            ProviderScopeCollectionRoute::ProjectResolution
-        }
-        agent_semantic_client_core::ProviderScopeAuthority::DocumentResolution => {
-            ProviderScopeCollectionRoute::GitDocumentCandidates
+fn provider_source_inventory_adapter(
+    provider: &agent_semantic_client_core::ResolvedProvider,
+    candidates: &agent_semantic_runtime::git::RepositoryCandidateSnapshot,
+) -> Result<ProviderSourceInventoryAdapter, String> {
+    select_provider_source_inventory_adapter(
+        &provider.source_inventory_capabilities,
+        provider.language_id.as_str(),
+        provider.provider_id.as_str(),
+        |entry_marker| {
+            candidates
+                .candidates
+                .iter()
+                .any(|candidate| candidate.path == std::path::Path::new(entry_marker))
+        },
+    )
+}
+
+fn select_provider_source_inventory_adapter(
+    capabilities: &agent_semantic_client_core::ProviderSourceInventoryCapabilities,
+    language_id: &str,
+    provider_id: &str,
+    has_candidate_path: impl Fn(&str) -> bool,
+) -> Result<ProviderSourceInventoryAdapter, String> {
+    if let Some(project_resolution) = capabilities.project_resolution.as_ref() {
+        if project_resolution
+            .entry_markers
+            .iter()
+            .any(|entry_marker| has_candidate_path(entry_marker))
+        {
+            return Ok(ProviderSourceInventoryAdapter::ProjectResolution);
         }
     }
+    if let Some(document_resolution) = capabilities.document_resolution.as_ref() {
+        if document_resolution.supports_git_candidates {
+            return Ok(ProviderSourceInventoryAdapter::GitDocumentCandidates);
+        }
+        return Err(format!(
+            "reasonKind=provider-document-resolution-git-candidates-unsupported languageId={} providerId={}",
+            language_id, provider_id
+        ));
+    }
+    Err(format!(
+        "reasonKind=provider-source-inventory-capability-unavailable languageId={} providerId={} detail=no declared capability satisfies the Runtime candidate snapshot",
+        language_id, provider_id
+    ))
 }
 
 pub(crate) async fn collect_source_index_files(
@@ -149,8 +183,8 @@ pub(crate) async fn collect_source_index_files(
         if !provider_is_selected {
             continue;
         }
-        let receipt = match provider_scope_collection_route(provider.scope_authority) {
-            ProviderScopeCollectionRoute::ProjectResolution => {
+        let receipt = match provider_source_inventory_adapter(provider, &repository_candidates)? {
+            ProviderSourceInventoryAdapter::ProjectResolution => {
                 agent_semantic_client_local_cli::provider_project_resolution_files_with_candidates(
                     supervisor.clone(),
                     project_root,
@@ -162,7 +196,7 @@ pub(crate) async fn collect_source_index_files(
                 .await
                 .map_err(|error| error.to_string())?
             }
-            ProviderScopeCollectionRoute::GitDocumentCandidates => {
+            ProviderSourceInventoryAdapter::GitDocumentCandidates => {
                 document_scope_files(project_root, provider, &repository_candidates)
             }
         };
@@ -212,13 +246,13 @@ pub(crate) async fn collect_source_index_scope_async(
         if !selected
             || (!explicit_target
                 && !agent_semantic_hook::registered_provider_matches_candidate_paths(
-                provider.language_id.as_str(),
-                provider.provider_id.as_str(),
-                repository_candidates
-                    .candidates
-                    .iter()
-                    .map(|candidate| candidate.path.as_path()),
-            )?)
+                    provider.language_id.as_str(),
+                    provider.provider_id.as_str(),
+                    repository_candidates
+                        .candidates
+                        .iter()
+                        .map(|candidate| candidate.path.as_path()),
+                )?)
         {
             continue;
         }
@@ -227,10 +261,10 @@ pub(crate) async fn collect_source_index_scope_async(
         let repository_candidates = repository_candidates.clone();
         let collection_scope = provider_project_resolution_collection_scope(scope);
         providers.spawn(async move {
-            let (receipt, project_resolution) =
-                match provider_scope_collection_route(provider.scope_authority) {
-                    ProviderScopeCollectionRoute::ProjectResolution => {
-                        let package_root_path = std::path::PathBuf::from(&provider.binary);
+        let (receipt, project_resolution) =
+            match provider_source_inventory_adapter(&provider, &repository_candidates)? {
+                ProviderSourceInventoryAdapter::ProjectResolution => {
+            let package_root_path = project_root.clone();
                         let resolution = agent_semantic_client_local_cli::provider_project_resolution_with_candidates(
                             agent_semantic_provider_transport::ProviderProcessSupervisor::default(),
                             &provider,
@@ -265,7 +299,7 @@ pub(crate) async fn collect_source_index_scope_async(
                             Some(admitted),
                         )
                     }
-                    ProviderScopeCollectionRoute::GitDocumentCandidates => (
+                ProviderSourceInventoryAdapter::GitDocumentCandidates => (
                         document_scope_files(&project_root, &provider, &repository_candidates),
                         None,
                     ),
@@ -296,6 +330,27 @@ pub(crate) async fn collect_source_index_scope_async(
             && left.language_id == right.language_id
             && left.provider_id == right.provider_id
     });
+    if files.is_empty() {
+        match scope {
+            SourceIndexCollectionScope::TargetProvider {
+                language_id,
+                provider_id,
+            } => {
+                return Err(format!(
+                    "Target provider returned an empty owner inventory: languageId={language_id} providerId={provider_id} projectRoot={} reasonKind=provider-owner-inventory-empty",
+                    project_root.display()
+                ));
+            }
+            SourceIndexCollectionScope::TargetProviderId { provider_id } => {
+                return Err(format!(
+                    "Target provider returned an empty owner inventory: providerId={provider_id} projectRoot={} reasonKind=provider-owner-inventory-empty",
+                    project_root.display()
+                ));
+            }
+            SourceIndexCollectionScope::CompleteGeneration
+            | SourceIndexCollectionScope::ExplicitOwners { .. } => {}
+        }
+    }
     project_resolutions.sort_by(|left, right| {
         (
             &left.candidate_base,
@@ -377,13 +432,13 @@ async fn collect_source_index_scope_with_executor_async(
         if !selected
             || (!explicit_target
                 && !agent_semantic_hook::registered_provider_matches_candidate_paths(
-                provider.language_id.as_str(),
-                provider.provider_id.as_str(),
-                repository_candidates
-                    .candidates
-                    .iter()
-                    .map(|candidate| candidate.path.as_path()),
-            )?)
+                    provider.language_id.as_str(),
+                    provider.provider_id.as_str(),
+                    repository_candidates
+                        .candidates
+                        .iter()
+                        .map(|candidate| candidate.path.as_path()),
+                )?)
         {
             continue;
         }
@@ -394,8 +449,8 @@ async fn collect_source_index_scope_with_executor_async(
         let executor = executor.clone();
         providers.spawn(async move {
             let (receipt, project_resolution) =
-                match provider_scope_collection_route(provider.scope_authority) {
-                ProviderScopeCollectionRoute::ProjectResolution => {
+                match provider_source_inventory_adapter(&provider, &repository_candidates)? {
+                ProviderSourceInventoryAdapter::ProjectResolution => {
                     let package_root_path = std::path::PathBuf::from(&provider.binary);
                         let resolution = match executor {
                             ProviderScopeExecutor::RuntimeService(runtime) => {
@@ -462,7 +517,7 @@ async fn collect_source_index_scope_with_executor_async(
                         Some(admitted),
                     )
                 }
-                ProviderScopeCollectionRoute::GitDocumentCandidates => {
+                ProviderSourceInventoryAdapter::GitDocumentCandidates => {
                     (
                         document_scope_files(&project_root, &provider, &repository_candidates),
                         None,
@@ -525,12 +580,18 @@ fn document_scope_files(
         .candidates
         .iter()
         .filter(|candidate| {
-            provider.source_extensions.iter().any(|extension| {
-                candidate
-                    .path
-                    .to_string_lossy()
-                    .ends_with(extension.as_str())
-            })
+            provider
+                .source_inventory_capabilities
+                .document_resolution
+                .as_ref()
+                .is_some_and(|document_resolution| {
+                    document_resolution.extensions.iter().any(|extension| {
+                        candidate
+                            .path
+                            .to_string_lossy()
+                            .ends_with(extension.as_str())
+                    })
+                })
         })
         .filter_map(|candidate| {
             let candidate_path = candidate.path.to_str()?;

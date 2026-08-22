@@ -5,7 +5,7 @@ use super::{registered_provider_binaries_v1, registered_provider_catalog_identit
 #[test]
 fn registered_binary_identities_are_materialized_from_the_v1_registry_schema() {
     let binaries = registered_provider_binaries_v1();
-    let manifests = crate::provider_registry::language_provider_manifests();
+    let manifests = crate::provider_registry::schema_registry_provider_manifests();
     let programming_language_count = manifests
         .iter()
         .filter(|manifest| {
@@ -201,7 +201,7 @@ fn every_registered_language_has_one_canonical_exact_query_pack_identity() {
     let identities = registered_provider_catalog_identities();
     assert_eq!(
         identities.len(),
-        crate::provider_registry::language_provider_manifests().len()
+        crate::provider_registry::schema_registry_provider_manifests().len()
     );
     for identity in identities {
         assert_eq!(identity.exact_query_pack_identity_digest.len(), 64);

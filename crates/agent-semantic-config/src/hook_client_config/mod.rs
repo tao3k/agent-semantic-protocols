@@ -19,12 +19,13 @@ pub use document::{
     CLIENT_HOOK_CONFIG_SCHEMA_ID, CLIENT_HOOK_CONFIG_SCHEMA_VERSION,
     HookClientAgentOrgArtifactsArchiveWarningConfig, HookClientAgentOrgArtifactsConfig,
     HookClientAgentSessionMessagesConfig, HookClientConfigFile, HookClientLanguageProviderConfig,
-    HookClientRecoveryPromptConfig, WrapperMatchMode, default_hook_client_config_file,
-    default_hook_client_config_template, hook_client_contract_fingerprint,
-    load_asp_project_config_file, load_hook_client_config_declared_contract_fingerprint,
-    load_hook_client_config_file, load_hook_client_config_file_with_agents,
-    load_hook_client_config_overlay_file, load_hook_client_config_overlay_file_with_agents,
-    merge_asp_project_hook_config, render_hook_client_message_template,
+    HookClientProfileConfig, HookClientRecoveryPromptConfig, WrapperMatchMode,
+    default_hook_client_config_file, default_hook_client_config_template,
+    hook_client_contract_fingerprint, load_asp_project_config_file,
+    load_hook_client_config_declared_contract_fingerprint, load_hook_client_config_file,
+    load_hook_client_config_file_with_agents, load_hook_client_config_overlay_file,
+    load_hook_client_config_overlay_file_with_agents, merge_asp_project_hook_config,
+    render_hook_client_message_template,
 };
 pub use invocation::{AgentActionAuthorityRule, AgentActionEffectRule};
 pub use policy_coverage::{
@@ -39,7 +40,7 @@ pub use routing::{
     HookClientActionAuthority, HookClientActionKind, HookClientActionPolicyConfig,
     HookClientActionSubjectKind, HookClientAgentRoleSelector, HookClientConfigDecision,
     HookClientConfigReasonKind, HookClientConfigRouteKind, HookClientConfigStdinMode,
-    HookClientDecisionMaterializer, HookClientLazyProviderPolicy, HookClientRuleConfig,
-    HookClientRuleDispatchConfig, HookClientRuleDispatchTransport, HookClientRuleMatchConfig,
-    HookClientRuleRouteConfig,
+    HookClientDecisionMaterializer, HookClientLazyProviderPolicy, HookClientMatcherPolicy,
+    HookClientRuleConfig, HookClientRuleDispatchConfig, HookClientRuleDispatchTransport,
+    HookClientRuleMatchConfig, HookClientRuleRouteConfig,
 };

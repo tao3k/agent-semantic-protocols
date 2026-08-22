@@ -210,11 +210,17 @@ the following authorities:
 - the provider-catalog digest whose provider implementation validates those
   projections.
 
-The Runtime Server MUST NOT publish =Ready= or =Healthy= while any bound
-provider catalog is unreadable, any exposed selector lacks a same-generation
-projection capability, or the resident projection segment is absent.  A query
-MUST consume this single receipt; it MUST NOT join discovery identity from one
+A workspace generation MUST NOT publish =Ready= while its bound provider
+catalog is unreadable, any exposed selector lacks a same-generation projection
+capability, or its resident projection segment is absent.  A query MUST consume
+this single workspace receipt; it MUST NOT join discovery identity from one
 generation with projection bytes or capability metadata from another.
+
+Global Runtime Server =Healthy= is a different receipt.  It proves that the
+control/data endpoints and provider-catalog authority are readable; it does not
+prove that every historical workspace generation is restored.  Pointer restore,
+workspace admission, and scope-local =Ready= therefore MUST NOT block Global
+=Healthy= publication.
 
 Callable-skeleton output MAY expose branch, binding, or expression segment
 selectors only when the active receipt declares the requested projection mode
@@ -222,13 +228,12 @@ for those selectors.  Otherwise generation construction fails before
 publication.  The query path does not repair, rebind, or synthesize capability
 state and does not downgrade the failure to =source-unavailable=.
 
-Explicit operator lifecycle actions and background reconciliation are distinct
+Explicit operator lifecycle actions and workspace admission are distinct
 authorities.  =server start= and =server restart= clear an operator-stop marker
-and run the catalog/capability admission transaction.  Hook health checks and
-background =ensure= preserve operator stop and never spawn implicitly.  A
-healthy lifecycle receipt is therefore a postcondition receipt for a readable
-provider catalog and an admitted projection-capability generation, not merely
-evidence that a daemon process or socket once existed.
+and publish the Global catalog/control authority.  Hook health checks preserve
+operator stop and never spawn implicitly.  Workspace requests separately admit
+one projection-capability generation; they do not redefine Global lifecycle
+health.
 
 The resident data plane MUST reject a mapped generation before payload
 deserialization when its binary segment contract does not match the current

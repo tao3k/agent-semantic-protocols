@@ -18,6 +18,6 @@ reference_repositories = ["agent-semantic-protocols"]
 reference_patterns = [
   "crates/agent-semantic-client/src/syntax_query_preflight.rs",
   "crates/agent-semantic-client/tests/unit/syntax_query_preflight.rs",
-  "docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface.org",
+  "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org",
   "docs/10-19-rfcs/10.11-semantic-tree-sitter-query-protocol.org",
 ]

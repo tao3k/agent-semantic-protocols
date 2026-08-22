@@ -1,8 +1,0 @@
-#+title: Compatibility locator: Clause-first design rationale and risk register
-#+property: rfc_status compatibility-locator
-
-* Canonical RFC
-
-This historical path is retained only for inbound relative-link compatibility.
-The canonical RFC is [[file:../../10.05-interactive-graph-first-progressive-searchloop/10.05.00-foundations-invariants/00.09-clause-first-design-rationale-and-risk-register.org][Clause-first design rationale and risk register]].
-New search invariants MUST be authored under the graph-first RFC tree.

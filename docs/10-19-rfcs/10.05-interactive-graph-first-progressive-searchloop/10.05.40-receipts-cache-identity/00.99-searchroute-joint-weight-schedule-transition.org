@@ -297,7 +297,7 @@ The compact joint projection SHOULD expose:
 lists, preserving token efficiency and model prefix stability.
 
 No complex transition-specific CLI family is required. These are typed
-interactive transitions that a CLI adapter may render.
+ASP Server transitions that any admitted client may request.
 
 * Failure receipts
 

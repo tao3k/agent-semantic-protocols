@@ -13,7 +13,7 @@ fn sample_packet() -> serde_json::Value {
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "languageId": "typescript",
-        "providerId": "ts-harness",
+        "providerId": "asp-typescript",
         "view": "lexical",
         "query": "SemanticSearchOwnerFallback",
         "header": {

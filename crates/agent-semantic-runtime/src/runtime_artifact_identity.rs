@@ -50,17 +50,25 @@ impl RuntimeArtifactIdentityReceipt {
         &self.artifact_digest
     }
 
-    pub fn identity_kind(&self) -> &str { &self.identity_kind }
-    pub fn identity_value(&self) -> &str { &self.identity_value }
-    pub fn identity_algorithm(&self) -> &str { &self.identity_algorithm }
+    pub fn identity_kind(&self) -> &str {
+        &self.identity_kind
+    }
+    pub fn identity_value(&self) -> &str {
+        &self.identity_value
+    }
+    pub fn identity_algorithm(&self) -> &str {
+        &self.identity_algorithm
+    }
 
     pub fn identity(&self) -> RuntimeBinaryIdentity {
         match self.identity_kind.as_str() {
             "developer-source-generation" => RuntimeBinaryIdentity::DeveloperSourceGeneration {
-                value: self.identity_value.clone(), algorithm: self.identity_algorithm.clone(),
+                value: self.identity_value.clone(),
+                algorithm: self.identity_algorithm.clone(),
             },
             _ => RuntimeBinaryIdentity::Content {
-                value: self.identity_value.clone(), algorithm: self.identity_algorithm.clone(),
+                value: self.identity_value.clone(),
+                algorithm: self.identity_algorithm.clone(),
             },
         }
     }
@@ -88,8 +96,14 @@ pub async fn publish_runtime_artifact_identity(
         "release"
     };
     let (identity_kind, identity_value, identity_algorithm) = match &publication.identity {
-        RuntimeBinaryIdentity::Content { value, algorithm } => ("content", value.clone(), algorithm.clone()),
-        RuntimeBinaryIdentity::DeveloperSourceGeneration { value, algorithm } => ("developer-source-generation", value.clone(), algorithm.clone()),
+        RuntimeBinaryIdentity::Content { value, algorithm } => {
+            ("content", value.clone(), algorithm.clone())
+        }
+        RuntimeBinaryIdentity::DeveloperSourceGeneration { value, algorithm } => (
+            "developer-source-generation",
+            value.clone(),
+            algorithm.clone(),
+        ),
     };
     let receipt = RuntimeArtifactIdentityReceipt {
         schema_id: SCHEMA_ID.to_owned(),
@@ -122,7 +136,7 @@ pub async fn publish_runtime_artifact_identity(
     let stage = receipt_parent.join(format!(
         ".{}.stage-{}-{}",
         receipt.artifact_kind,
-        std::process::id(),
+        crate::runtime_process_lifecycle::current_process_id(),
         STAGE_NONCE.fetch_add(1, Ordering::Relaxed)
     ));
     let bytes = serde_json::to_vec_pretty(&receipt)

@@ -8,6 +8,8 @@ mod active_artifact_receipt;
 
 #[path = "unit/client_hook_config.rs"]
 mod client_hook_config;
+#[path = "unit/integration_fixture.rs"]
+mod integration_fixture;
 #[path = "unit/read_only_subagent.rs"]
 mod read_only_subagent;
 
@@ -26,9 +28,6 @@ mod event_state;
 #[path = "unit/event_state_subagent_model_drift.rs"]
 mod event_state_subagent_model_drift;
 
-#[path = "unit/integration_fixture.rs"]
-mod integration_fixture;
-
 #[path = "unit/provider_manifest/mod.rs"]
 mod provider_manifest;
 
@@ -37,12 +36,12 @@ mod protocol_roundtrip;
 
 #[path = "unit/agent_dispatch_message.rs"]
 mod agent_dispatch_message;
-#[path = "unit/hook_scenario_contract.rs"]
-mod hook_scenario_contract;
+#[path = "unit/hook_recovery_admission.rs"]
+mod hook_recovery_admission;
+#[path = "unit/hook_workspace_candidate.rs"]
+mod hook_workspace_candidate;
 #[path = "unit/match_policy_contract.rs"]
 mod match_policy_contract;
-#[path = "unit/rust_harness_activation/mod.rs"]
-mod rust_harness_activation;
 #[path = "unit/rust_project_harness_gate.rs"]
 mod rust_project_harness_gate;
 #[path = "unit/source_access.rs"]

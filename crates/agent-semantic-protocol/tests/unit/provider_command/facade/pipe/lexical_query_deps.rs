@@ -62,7 +62,7 @@ fn typescript_lexical_query_deps_request_includes_import_dependency_facts() {
         "import { readFile } from 'node:fs';\nexport function cacheRoot() { return readFile; }\n",
     )
     .expect("write source");
-    write_marker_provider(&bin_dir, "ts-harness", &marker);
+    write_marker_provider(&bin_dir, "asp-typescript", &marker);
     write_activation(&root, &[provider("typescript", Vec::new())]);
 
     let output = asp_command(&root)

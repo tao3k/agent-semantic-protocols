@@ -1,4 +1,4 @@
-use super::{require_resident_sample_budget, resident_latency_distribution};
+use super::{parse_args, require_resident_sample_budget, resident_latency_distribution};
 
 #[test]
 fn resident_latency_distribution_reports_all_v1_quantiles_for_128_samples() {
@@ -21,4 +21,30 @@ fn any_resident_sample_above_one_millisecond_fails_the_case() {
     assert!(error.contains("case=rust.case"));
     assert!(error.contains("sampleIndex=73"));
     assert!(error.contains("elapsedMicros=1001"));
+}
+
+#[test]
+fn qualification_accepts_one_explicit_resource_selector() {
+    let args = parse_args(&["--resource".to_owned(), "rust.bytes".to_owned()])
+        .expect("parse one resource selector");
+    assert_eq!(args.resource_id.as_deref(), Some("rust.bytes"));
+}
+
+#[test]
+fn qualification_rejects_a_missing_resource_selector_value() {
+    let error =
+        parse_args(&["--resource".to_owned()]).expect_err("resource selector value is required");
+    assert!(error.contains("requires a resource id after --resource"));
+}
+
+#[test]
+fn qualification_rejects_duplicate_resource_selectors() {
+    let error = parse_args(&[
+        "--resource".to_owned(),
+        "rust.bytes".to_owned(),
+        "--resource".to_owned(),
+        "rust.tokio".to_owned(),
+    ])
+    .expect_err("one atomic resource selector is allowed");
+    assert!(error.contains("accepts exactly one --resource option"));
 }

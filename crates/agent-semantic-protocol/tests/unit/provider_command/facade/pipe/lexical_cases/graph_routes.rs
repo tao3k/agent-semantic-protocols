@@ -72,7 +72,7 @@ fn typescript_lexical_can_emit_typed_hot_request_for_live_candidate_frontier() {
         "export function cacheRoot() {}\nexport function unrelated() {}\n",
     )
     .expect("write source");
-    support::write_marker_provider(&bin_dir, "ts-harness", &marker);
+    support::write_marker_provider(&bin_dir, "asp-typescript", &marker);
     support::write_activation(&root, &[support::provider("typescript", Vec::new())]);
 
     let output = support::asp_command(&root)
@@ -165,7 +165,7 @@ fn typescript_lexical_default_view_uses_shared_graph_turbo_ranker() {
         "export function cacheRoot() {}\nexport function unrelated() {}\n",
     )
     .expect("write source");
-    support::write_marker_provider(&bin_dir, "ts-harness", &marker);
+    support::write_marker_provider(&bin_dir, "asp-typescript", &marker);
     support::write_activation(&root, &[support::provider("typescript", Vec::new())]);
 
     let output = support::asp_command(&root)

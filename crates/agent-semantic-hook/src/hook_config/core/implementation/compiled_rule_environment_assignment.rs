@@ -6,9 +6,9 @@ use crate::{HookDecision, HookRuntime};
 pub(super) fn matches(command: &str, expected: &[String], leading_shell_stage: bool) -> bool {
     expected.is_empty()
         || (leading_shell_stage
-            && agent_semantic_command_match::parse_bash_command_candidates(command).is_ok_and(
+            && agent_semantic_shell_parser::parse_bash_command_candidates(command).is_ok_and(
             |stages| {
-                agent_semantic_command_match::command_stages_match_leading_environment_assignment(
+                agent_semantic_shell_parser::command_stages_match_leading_environment_assignment(
                     &stages, expected,
                 )
             },

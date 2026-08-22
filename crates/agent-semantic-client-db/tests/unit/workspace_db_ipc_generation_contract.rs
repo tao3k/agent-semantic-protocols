@@ -68,6 +68,23 @@ fn runtime_generation_admission_wire_shape_requires_lifecycle_identity() {
 }
 
 #[test]
+fn runtime_generation_pointer_restore_wire_shape_is_provider_independent() {
+    let restore = serde_json::to_value(
+        WorkspaceDbIpcOperation::RestoreRuntimeGenerationFromPointer {
+            project_root: "/workspace".to_owned(),
+        },
+    )
+    .expect("encode Runtime generation pointer restoration");
+    assert_eq!(
+        restore,
+        serde_json::json!({
+            "kind": "restore-runtime-generation-from-pointer",
+            "projectRoot": "/workspace"
+        })
+    );
+}
+
+#[test]
 fn query_driven_generation_control_is_absent_from_the_wire_contract() {
     for kind in [
         "ensure-runtime-generation",

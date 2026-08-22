@@ -377,7 +377,7 @@
       }
     },
     "agentOrgArtifacts": {
-      "$ref": "semantic-agent-definitions.v1.schema.json#/$defs/agentOrgArtifacts"
+      "$ref": "semantic-agent-definitions.schema.json#/$defs/agentOrgArtifacts"
     },
     "rule": {
       "type": "object",

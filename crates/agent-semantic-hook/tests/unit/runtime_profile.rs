@@ -9,7 +9,8 @@ use crate::provider_manifest::provider_manifests;
 
 use super::{
     RuntimeProviderHealthStatus, runtime_profile_invocation, runtime_profiles_for_activation,
-    runtime_profiles_for_runtime, runtime_project_root_for_activation, runtime_provider_command,
+    runtime_profiles_for_runtime_with_state_home, runtime_project_root_for_activation,
+    runtime_provider_command,
 };
 
 #[test]
@@ -60,13 +61,9 @@ fn resolved_provider_binary_materializes_authoritative_command() {
 }
 
 #[test]
-fn runtime_profiles_for_activation_rejects_persisted_command_prefix() {
+fn runtime_profiles_for_activation_accepts_static_provider_identity() {
     let root = temp_root("activation-command-prefix");
-    let wrapper = write_executable_provider(&root, "provider-wrapper");
-    let provider = activated_rust_provider(vec![
-        wrapper.display().to_string(),
-        "rs-harness".to_string(),
-    ]);
+    let provider = activated_rust_provider();
     let activation = HookActivation {
         rankers: Vec::new(),
         schema_id: crate::HOOK_ACTIVATION_SCHEMA_ID.to_string(),
@@ -85,12 +82,7 @@ fn runtime_profiles_for_activation_rejects_persisted_command_prefix() {
             manifest_digest: provider.manifest_digest.clone(),
             language_id: provider.language_id.clone(),
             provider_id: provider.provider_id.clone(),
-            binary: provider.binary.clone(),
-            execution: provider.execution,
-            provider_command_prefix: provider.provider_command_prefix.clone(),
-            execution_command_digest: provider.execution_command_digest.clone(),
             search_capabilities: provider.search_capabilities.clone(),
-            language_projection: provider.language_projection.clone(),
             semantic_facts_descriptor: provider.semantic_facts_descriptor.clone(),
             query_pack_descriptor: provider.query_pack_descriptor.clone(),
             semantic_registry_digest: provider.semantic_registry_digest.clone(),
@@ -102,25 +94,22 @@ fn runtime_profiles_for_activation_rejects_persisted_command_prefix() {
             },
         }],
     };
-    let error = runtime_profiles_for_activation(&root, &activation)
-        .err()
-        .expect("persisted provider command prefix must fail closed");
-    assert!(
-        error.contains("provider activation command prefix must be empty"),
-        "unexpected activation validation error: {error}"
-    );
+    let profiles = runtime_profiles_for_activation(&root, &activation)
+        .expect("static activation must not require a Runtime provider binding");
+    assert_eq!(profiles.providers.len(), 1);
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn runtime_profiles_for_runtime_uses_activation_command_prefix() {
+fn runtime_profiles_for_runtime_resolves_provider_from_explicit_state_home() {
     let root = temp_root("gerbil-command-prefix");
-    let _project_gslph = write_executable_provider(&root, "gslph");
-    let wrapper = write_executable_provider(&root, "asp");
-    let provider = activated_gerbil_provider(vec![
-        wrapper.display().to_string(),
-        "gerbil-scheme".to_string(),
-    ]);
+    let state_home = root.join("state-home");
+    let state_paths = agent_semantic_runtime::project_state_paths_with_state_home(&root, &state_home)
+        .expect("resolve explicit State Home");
+    std::fs::create_dir_all(&state_paths.runtime_bin_dir).expect("create runtime bin dir");
+    let provider_binary = state_paths.runtime_bin_dir.join("asp-gerbil-scheme");
+    write_executable_file(&provider_binary);
+    let provider = activated_gerbil_provider();
     let runtime = HookRuntime {
         rankers: Vec::new(),
         project_root: root.display().to_string(),
@@ -128,18 +117,18 @@ fn runtime_profiles_for_runtime_uses_activation_command_prefix() {
         policy_providers: Vec::new(),
     };
     let provider = &runtime.providers[0];
-    let profiles = runtime_profiles_for_runtime(&root, &runtime);
+    let profiles = runtime_profiles_for_runtime_with_state_home(&root, &state_home, &runtime)
+        .expect("resolve lazy provider binding");
     let invocation =
         runtime_profile_invocation(&profiles, provider, &["query".into()]).expect("invocation");
 
     assert_eq!(
         invocation,
         [
-            std::fs::canonicalize(&wrapper)
-                .expect("canonical provider wrapper")
+            std::fs::canonicalize(&provider_binary)
+                .expect("canonical provider binary")
                 .display()
                 .to_string(),
-            "gerbil-scheme".to_string(),
             "query".to_string(),
         ]
     );
@@ -153,20 +142,23 @@ fn runtime_profiles_for_runtime_uses_activation_command_prefix() {
 #[test]
 fn runtime_profiles_for_runtime_fails_closed_when_activation_executable_is_missing() {
     let root = temp_root("missing-activation-executable");
-    let wrapper = write_executable_provider(&root, "provider-wrapper");
-    let provider = activated_rust_provider(vec![
-        wrapper.display().to_string(),
-        "rs-harness".to_string(),
-    ]);
+    let state_home = root.join("state-home");
+    let state_paths = agent_semantic_runtime::project_state_paths_with_state_home(&root, &state_home)
+        .expect("resolve explicit State Home");
+    std::fs::create_dir_all(&state_paths.runtime_bin_dir).expect("create runtime bin dir");
+    let provider_binary = state_paths.runtime_bin_dir.join("asp-rust");
+    write_executable_file(&provider_binary);
+    let provider = activated_rust_provider();
     let runtime = HookRuntime {
         rankers: Vec::new(),
         project_root: root.display().to_string(),
         providers: vec![provider],
         policy_providers: Vec::new(),
     };
-    std::fs::remove_file(&wrapper).expect("remove activated provider executable");
+    std::fs::remove_file(&provider_binary).expect("remove lazy provider executable");
 
-    let profiles = runtime_profiles_for_runtime(&root, &runtime);
+    let profiles = runtime_profiles_for_runtime_with_state_home(&root, &state_home, &runtime)
+        .expect("resolve lazy provider health");
 
     let profile = profiles
         .providers
@@ -180,7 +172,7 @@ fn runtime_profiles_for_runtime_fails_closed_when_activation_executable_is_missi
             .health
             .reason
             .as_deref()
-            .is_some_and(|reason| reason.contains("provider-wrapper")),
+            .is_some_and(|reason| reason.contains("asp-rust")),
         "{:?}",
         profile.health.reason
     );
@@ -188,12 +180,12 @@ fn runtime_profiles_for_runtime_fails_closed_when_activation_executable_is_missi
         !profile
             .argv
             .iter()
-            .any(|arg| arg == &wrapper.display().to_string())
+            .any(|arg| arg == &provider_binary.display().to_string())
     );
     let _ = std::fs::remove_dir_all(root);
 }
 
-fn activated_rust_provider(provider_command_prefix: Vec<String>) -> ActivatedProvider {
+fn activated_rust_provider() -> ActivatedProvider {
     let manifest = provider_manifests()
         .into_iter()
         .find(|manifest| manifest.language_id == "rust")
@@ -201,33 +193,16 @@ fn activated_rust_provider(provider_command_prefix: Vec<String>) -> ActivatedPro
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
     let semantic_registry_digest = crate::semantic_registry_digest();
     let routes = crate::materialize_provider_routes(&manifest).expect("provider routes");
-    let executable_artifact_digest =
-        agent_semantic_content_identity::file_content_digest_v1(std::path::Path::new(
-            provider_command_prefix
-                .first()
-                .expect("provider command prefix"),
-        ))
-        .expect("digest provider test executable");
     ActivatedProvider {
         manifest_id: manifest.manifest_id,
         manifest_digest,
         language_id: manifest.language_id,
         provider_id: manifest.provider_id,
-        binary: manifest.binary,
-        execution: manifest.execution,
-        execution_command_digest:
-            crate::protocol_activation::digest::provider_execution_command_digest(
-                &provider_command_prefix,
-                &executable_artifact_digest,
-            )
-            .expect("digest provider execution command"),
-        provider_command_prefix,
         namespace: manifest.namespace,
         package_roots: vec!["src".to_string()],
         source_extensions: vec![".rs".to_string()],
         config_files: vec!["Cargo.toml".to_string()],
         search_capabilities: manifest.search_capabilities,
-        language_projection: manifest.language_projection,
         project_resolution: manifest.project_resolution,
         document_resolution: manifest.document_resolution,
         semantic_facts_descriptor: manifest.semantic_facts_descriptor,
@@ -238,7 +213,7 @@ fn activated_rust_provider(provider_command_prefix: Vec<String>) -> ActivatedPro
     }
 }
 
-fn activated_gerbil_provider(provider_command_prefix: Vec<String>) -> ActivatedProvider {
+fn activated_gerbil_provider() -> ActivatedProvider {
     let manifest = provider_manifests()
         .into_iter()
         .find(|manifest| manifest.language_id == "gerbil-scheme")
@@ -246,33 +221,16 @@ fn activated_gerbil_provider(provider_command_prefix: Vec<String>) -> ActivatedP
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
     let semantic_registry_digest = crate::semantic_registry_digest();
     let routes = crate::materialize_provider_routes(&manifest).expect("provider routes");
-    let executable_artifact_digest =
-        agent_semantic_content_identity::file_content_digest_v1(std::path::Path::new(
-            provider_command_prefix
-                .first()
-                .expect("provider command prefix"),
-        ))
-        .expect("digest provider test executable");
     ActivatedProvider {
         manifest_id: manifest.manifest_id,
         manifest_digest,
         language_id: manifest.language_id,
         provider_id: manifest.provider_id,
-        binary: manifest.binary,
-        execution: manifest.execution,
-        execution_command_digest:
-            crate::protocol_activation::digest::provider_execution_command_digest(
-                &provider_command_prefix,
-                &executable_artifact_digest,
-            )
-            .expect("digest provider execution command"),
-        provider_command_prefix,
         namespace: manifest.namespace,
         package_roots: vec!["src".to_string()],
         source_extensions: vec![".ss".to_string()],
         config_files: vec!["gerbil.pkg".to_string()],
         search_capabilities: manifest.search_capabilities,
-        language_projection: manifest.language_projection,
         project_resolution: manifest.project_resolution,
         document_resolution: manifest.document_resolution,
         semantic_facts_descriptor: manifest.semantic_facts_descriptor,
