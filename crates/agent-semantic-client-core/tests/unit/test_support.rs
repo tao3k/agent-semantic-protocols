@@ -1,4 +1,4 @@
-use std::{ffi::OsString, path::Path, sync::Mutex};
+use std::{ffi::OsString, path::Path, process::Command, sync::Mutex};
 
 static ASP_STATE_HOME_ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -11,7 +11,7 @@ impl IsolatedAspStateHome {
     pub(crate) fn activate(root: &Path) -> Self {
         let guard = ASP_STATE_HOME_ENV_LOCK
             .lock()
-            .expect("ASP_STATE_HOME env lock");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let previous = std::env::var_os("ASP_STATE_HOME");
         let state_home = root.join(".agent-semantic-protocols-test-state");
         unsafe {
@@ -35,37 +35,68 @@ impl Drop for IsolatedAspStateHome {
         }
     }
 }
-pub(super) fn resolved_provider() -> crate::ResolvedProvider {
-    let manifest = agent_semantic_hook::builtin_provider_manifests()
-        .into_iter()
-        .find(|manifest| manifest.language_id().as_str() == "rust")
-        .expect("builtin Rust provider manifest");
-    let manifest_digest =
-        agent_semantic_hook::provider_manifest_digest(&manifest).expect("Rust manifest digest");
-    let routes =
-        agent_semantic_hook::materialize_provider_routes(&manifest).expect("Rust provider routes");
-    let provider = agent_semantic_hook::ActivatedProvider {
-        manifest_id: manifest.manifest_id().to_owned(),
-        manifest_digest,
-        language_id: manifest.language_id().clone(),
-        provider_id: manifest.provider_id().clone(),
-        binary: manifest.binary().to_owned(),
-        execution: manifest.execution(),
-        provider_command_prefix: vec!["rs-harness".to_string()],
-        execution_command_digest: "test-execution-command-digest".to_string(),
-        namespace: manifest.namespace().to_owned(),
-        package_roots: vec![".".to_string()],
-        source_extensions: vec!["rs".to_string()],
-        config_files: vec!["Cargo.toml".to_string()],
-        search_capabilities: manifest.search_capabilities().clone(),
-        project_resolution: manifest.project_resolution().cloned(),
-        document_resolution: manifest.document_resolution().cloned(),
-        semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
-        query_pack_descriptor: manifest.query_pack_descriptor().clone(),
-        semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
-        policy: manifest.policy().clone(),
-        routes,
-    };
 
-    crate::ResolvedProvider::try_from(&provider).expect("canonical activated Rust provider")
+pub(crate) fn init_durable_repo(root: &Path, label: &str) {
+    let init = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["init", "--quiet"])
+        .output()
+        .expect("run git init");
+    assert!(
+        init.status.success(),
+        "git init failed: {}",
+        String::from_utf8_lossy(&init.stderr)
+    );
+    let remote = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args([
+            "remote",
+            "add",
+            "origin",
+            &format!("https://example.invalid/asp/{label}.git"),
+        ])
+        .output()
+        .expect("add canonical remote");
+    assert!(
+        remote.status.success(),
+        "git remote add failed: {}",
+        String::from_utf8_lossy(&remote.stderr)
+    );
+}
+pub(super) fn runtime_provider() -> crate::RuntimeProvider {
+    crate::RuntimeProvider {
+        registration_digest: "sha256:test".to_string(),
+        namespace: "agent.semantic-protocols.languages.rust".to_string(),
+        language_id: crate::LanguageId::from("rust"),
+        provider_id: crate::ProviderId::from("asp-rust"),
+        binary: "/test/asp-rust".to_string(),
+        package_roots: vec![".".to_string()],
+        config_files: vec!["Cargo.toml".to_string()],
+        source_extensions: vec!["rs".to_string()],
+        source_inventory_capabilities: crate::ProviderSourceInventoryCapabilities {
+            project_resolution: Some(crate::ProviderProjectInventoryCapability {
+                entry_markers: vec!["Cargo.toml".to_string()],
+            }),
+            document_resolution: None,
+        },
+        search_capabilities: serde_json::from_value(serde_json::json!({
+            "ownerItems": true,
+            "semanticFacts": true,
+            "dependencyTopology": true,
+            "dependencyTopologyMetadata": true
+        }))
+        .expect("search capabilities"),
+        query_pack_descriptor: serde_json::from_value(serde_json::json!({
+            "descriptorId": "rust.search",
+            "descriptorVersion": "1",
+            "languageId": "rust",
+            "termRoleOverrides": [],
+            "recipes": []
+        }))
+        .expect("query pack descriptor"),
+        semantic_facts_descriptor: None,
+        runtime_operations: Vec::new(),
+    }
 }

@@ -2,6 +2,8 @@
 
 use serde::de;
 use serde::{Deserialize, Serialize};
+
+pub(crate) const HOOK_POLICY_KERNEL_VERSION: &str = "1";
 use serde_json::{Value, json};
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -60,16 +62,8 @@ impl HookPolicy {
         action_blocks(self.direct_source_read)
     }
 
-    pub(crate) fn blocks_bulk_source_dump(&self) -> bool {
-        action_blocks(self.bulk_source_dump)
-    }
-
     pub(crate) fn blocks_raw_source_search(&self) -> bool {
         action_blocks(self.raw_source_search)
-    }
-
-    pub(crate) fn blocks_agent_search_json(&self) -> bool {
-        action_blocks(self.agent_search_json)
     }
 }
 
@@ -295,21 +289,19 @@ where
 }
 
 impl HookDecision {
-    /// Whether an explicit config rule selected a complete resident dispatch.
-    pub fn has_configured_resident_dispatch(&self) -> bool {
+    /// Whether a config rule emitted a complete ChoicePlane role signal.
+    pub fn has_dispatch_choice_plane_role(&self) -> bool {
         self.fields
             .get("agentSessionAction")
             .and_then(Value::as_str)
-            == Some("dispatch-configured-resident")
-            && self.fields.get("transport").and_then(Value::as_str) == Some("resident-agent")
-            && ["residentName", "receiptKind", "targetAgentName"]
-                .into_iter()
-                .all(|field| {
-                    self.fields
-                        .get(field)
-                        .and_then(Value::as_str)
-                        .is_some_and(|value| !value.is_empty())
-                })
+            == Some("dispatch-choice-plane-role")
+            && self.fields.get("transport").and_then(Value::as_str) == Some("host-agent")
+            && ["receiptKind", "targetAgentRole"].into_iter().all(|field| {
+                self.fields
+                    .get(field)
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| !value.is_empty())
+            })
     }
 }
 
@@ -336,7 +328,6 @@ pub enum ReasonKind {
     SourceDirectoryEnumeration,
     AgentSearchJson,
     SemanticAstPatchRequired,
-    ProviderBinaryDirectExecution,
     ReadOnlySubagentWrite,
     SubagentReceiptRequired,
     FocusedSubagentNestedStart,

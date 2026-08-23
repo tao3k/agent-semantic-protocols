@@ -15,6 +15,7 @@ async fn read_only_runtime_session_rejects_selector_mutation_before_io() {
         socket_path: "/tmp/unused-control.sock".to_owned(),
         data_plane_socket_path: "/tmp/unused-data.sock".to_owned(),
         provider_plane_socket_path: "/tmp/unused-providers.sock".to_owned(),
+        client_http_endpoint: "http://127.0.0.1:1".to_owned(),
         runtime_artifact_path: "/tmp/asp".to_owned(),
         runtime_binary_identity:
             agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {

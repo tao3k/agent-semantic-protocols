@@ -5,31 +5,31 @@
   "title": "ASP Provider Registration",
   "type": "object",
   "required": [
+    "$schema",
     "binary",
     "displayName",
     "execution",
     "languageId",
-    "methodDescriptors",
-    "methods",
     "namespace",
     "providerDescriptor",
     "providerId",
     "queryPackDescriptor",
-    "schemas"
+    "runtimeContract",
+    "routes",
+    "searchCapabilities",
+    "schemas",
+    "sourceInventory"
   ],
   "properties": {
+    "$schema": { "const": "../schemas/provider-registration.schema.json" },
     "binary": { "$ref": "#/$defs/nonEmptyString" },
     "displayName": { "$ref": "#/$defs/nonEmptyString" },
     "execution": { "$ref": "#/$defs/nonEmptyString" },
     "languageId": { "$ref": "#/$defs/nonEmptyString" },
-    "methodDescriptors": {
+    "routes": {
       "type": "array",
-      "items": { "$ref": "#/$defs/methodDescriptor" }
-    },
-    "methods": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/nonEmptyString" },
-      "uniqueItems": true
+      "minItems": 1,
+      "items": { "$ref": "provider-route.schema.json" }
     },
     "namespace": { "$ref": "#/$defs/nonEmptyString" },
     "providerDescriptor": {
@@ -39,7 +39,10 @@
       "additionalProperties": false
     },
     "providerId": { "$ref": "#/$defs/nonEmptyString" },
-    "queryPackDescriptor": { "type": "object" },
+    "queryPackDescriptor": { "$ref": "provider-query-pack-descriptor.schema.json" },
+    "runtimeContract": { "$ref": "provider-runtime-contract-descriptor.schema.json" },
+    "searchCapabilities": { "type": "object" },
+    "sourceInventory": { "$ref": "#/$defs/sourceInventory" },
     "schemas": {
       "type": "array",
       "items": { "$ref": "#/$defs/schemaRegistration" },
@@ -60,104 +63,75 @@
       },
       "additionalProperties": false
     },
-    "methodDescriptor": {
+    "sourceInventory": {
       "type": "object",
+      "additionalProperties": false,
       "required": [
-        "command",
-        "invocation",
-        "method",
-        "supportsCompact",
-        "supportsJson"
+        "packageRoots",
+        "configFiles",
+        "sourceExtensions",
+        "projectResolution",
+        "documentResolution"
       ],
       "properties": {
-        "acceptsStdin": { "type": "boolean" },
-        "argumentProjection": { "$ref": "#/$defs/argumentProjection" },
-        "codeOutput": { "$ref": "#/$defs/codeOutput" },
-        "command": { "$ref": "#/$defs/nonEmptyString" },
-        "invocation": { "$ref": "#/$defs/invocation" },
-        "method": { "$ref": "#/$defs/nonEmptyString" },
-        "outputSchemaIds": {
+        "packageRoots": {
           "type": "array",
+          "uniqueItems": true,
           "items": { "$ref": "#/$defs/nonEmptyString" }
         },
-        "packetSchemas": {
+        "configFiles": {
           "type": "array",
+          "uniqueItems": true,
           "items": { "$ref": "#/$defs/nonEmptyString" }
         },
-        "requiresQuery": { "type": "boolean" },
-        "queryInputForms": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/nonEmptyString" },
-          "uniqueItems": true
-        },
-        "supportsCompact": { "type": "boolean" },
-        "supportsJson": { "type": "boolean" },
-        "supportsPackageScope": { "type": "boolean" },
-        "view": { "$ref": "#/$defs/nonEmptyString" }
-      },
-      "additionalProperties": false
-    },
-    "invocation": {
-      "type": "object",
-      "required": ["argv"],
-      "properties": {
-        "argv": {
+        "sourceExtensions": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/nonEmptyString" }
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^\\.[A-Za-z0-9+_-]+$" }
         },
-        "stdinMode": { "$ref": "#/$defs/nonEmptyString" }
-      },
-      "additionalProperties": false
-    },
-    "argumentProjection": {
-      "type": "object",
-      "required": ["schemaVersion", "tokens"],
-      "properties": {
-        "schemaVersion": { "$ref": "#/$defs/nonEmptyString" },
-        "tokens": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/argumentToken" }
+        "projectResolution": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["entryMarkers"],
+              "properties": {
+                "entryMarkers": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": { "$ref": "#/$defs/nonEmptyString" }
+                }
+              }
+            }
+          ]
+        },
+        "documentResolution": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["extensions", "supportsGitCandidates"],
+              "properties": {
+                "extensions": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": { "type": "string", "pattern": "^\\.[A-Za-z0-9+_-]+$" }
+                },
+                "supportsGitCandidates": { "type": "boolean" }
+              }
+            }
+          ]
         }
       },
-      "additionalProperties": false
-    },
-    "argumentToken": {
-      "oneOf": [
-        {
-          "type": "object",
-          "required": ["kind", "value"],
-          "properties": {
-            "kind": { "const": "literal" },
-            "value": { "$ref": "#/$defs/nonEmptyString" }
-          },
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "required": ["kind", "name", "valueType"],
-          "properties": {
-            "kind": { "const": "slot" },
-            "name": { "$ref": "#/$defs/nonEmptyString" },
-            "valueType": { "$ref": "#/$defs/nonEmptyString" }
-          },
-          "additionalProperties": false
-        }
+      "anyOf": [
+        { "properties": { "projectResolution": { "type": "object" } } },
+        { "properties": { "documentResolution": { "type": "object" } } }
       ]
-    },
-    "codeOutput": {
-      "type": "object",
-      "required": ["mode", "multiMatch", "requires"],
-      "properties": {
-        "mode": { "$ref": "#/$defs/nonEmptyString" },
-        "multiMatch": { "$ref": "#/$defs/nonEmptyString" },
-        "requires": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/nonEmptyString" },
-          "uniqueItems": true
-        }
-      },
-      "additionalProperties": false
     }
   }
 }

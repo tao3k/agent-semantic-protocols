@@ -1,0 +1,96 @@
+{
+  "$schema": "../../asp-client-conformance.schema.json",
+  "schemaId": "agent.semantic-protocols.client.conformance",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.client",
+  "protocolVersion": "1",
+  "cases": [
+    {
+      "caseId": "initialize-capabilities",
+      "request": {
+        "schemaId": "agent.semantic-protocols.client.frame",
+        "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.client",
+        "protocolVersion": "1",
+        "kind": "initialize",
+        "sessionId": "fixture-session",
+        "workspaceIdentity": "fixture-workspace",
+        "requestId": "initialize-1",
+        "clientInfo": { "name": "fixture-client", "version": "1" },
+        "capabilities": { "requestCancellation": true, "traceContext": true }
+      },
+      "expectedOutcome": "ready"
+    },
+    {
+      "caseId": "schema-catalog-request",
+      "request": {
+        "schemaId": "agent.semantic-protocols.client.frame",
+        "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.client",
+        "protocolVersion": "1",
+        "kind": "request",
+        "sessionId": "fixture-session",
+        "workspaceIdentity": "fixture-workspace",
+        "requestId": "request-1",
+        "catalogGeneration": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "workspaceGeneration": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "method": "rust.search",
+        "params": { "query": "client protocol" },
+        "traceContext": { "traceparent": "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01" }
+      },
+      "expectedOutcome": "ready"
+    },
+    {
+      "caseId": "unknown-method-fails-closed",
+      "request": {
+        "schemaId": "agent.semantic-protocols.client.frame",
+        "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.client",
+        "protocolVersion": "1",
+        "kind": "request",
+        "sessionId": "fixture-session",
+        "workspaceIdentity": "fixture-workspace",
+        "requestId": "request-unknown",
+        "catalogGeneration": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "workspaceGeneration": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "method": "unknown.operation",
+        "params": {}
+      },
+      "expectedOutcome": "error",
+      "expectedReasonKind": "method-not-in-client-catalog"
+    },
+    {
+      "caseId": "stale-generation-fails-closed",
+      "request": {
+        "schemaId": "agent.semantic-protocols.client.frame",
+        "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.client",
+        "protocolVersion": "1",
+        "kind": "request",
+        "sessionId": "fixture-session",
+        "workspaceIdentity": "fixture-workspace",
+        "requestId": "request-stale",
+        "catalogGeneration": "blake3-256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "workspaceGeneration": "blake3-256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "method": "rust.search",
+        "params": {}
+      },
+      "expectedOutcome": "stale-generation",
+      "expectedReasonKind": "client-catalog-generation-mismatch"
+    },
+    {
+      "caseId": "request-scoped-cancellation",
+      "request": {
+        "schemaId": "agent.semantic-protocols.client.frame",
+        "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.client",
+        "protocolVersion": "1",
+        "kind": "cancel",
+        "sessionId": "fixture-session",
+        "workspaceIdentity": "fixture-workspace",
+        "requestId": "request-1"
+      },
+      "expectedOutcome": "cancelled"
+    }
+  ]
+}

@@ -41,7 +41,7 @@ fn wrapped_cargo_test_arguments_cannot_match_raw_search_rules() {
                 case.argv_prefix
             );
         }
-        if case.rule_id == "resident-testing-dispatch"
+        if case.rule_id == "testing-role-dispatch"
             && case.argv_prefix == ["cargo".to_string(), "test".to_string()]
         {
             testing_lane_prefixes += 1;
@@ -69,7 +69,7 @@ fn wrapper_match_enable_accepts_arbitrary_wrapper_names() {
     let testing_case = match_config::rule_prefixes()
         .into_iter()
         .find(|case| {
-            case.rule_id == "resident-testing-dispatch"
+            case.rule_id == "testing-role-dispatch"
                 && case.wrapped_command
                 && case.argv_prefix == ["cargo".to_string(), "test".to_string()]
         })
@@ -91,7 +91,7 @@ fn wrapper_match_enable_accepts_arbitrary_wrapper_names() {
 #[test]
 fn wrapped_command_match_stays_within_git_snapshot_budget() {
     let scenario = toml::from_str::<toml::Value>(include_str!(
-        "../../../agent-semantic-hook/tests/fixtures/scenarios/generic_wrapper_testing_resident_dispatch/scenario.toml"
+        "../../../agent-semantic-hook/tests/fixtures/scenarios/generic_wrapper_testing_role_dispatch/scenario.toml"
     ))
     .expect("hook match scenario snapshot");
     let commands = scenario["commands"].as_array().expect("scenario commands");
@@ -101,7 +101,7 @@ fn wrapped_command_match_stays_within_git_snapshot_budget() {
     let testing_case = match_config::rule_prefixes()
         .into_iter()
         .find(|case| {
-            case.rule_id == "resident-testing-dispatch"
+            case.rule_id == "testing-role-dispatch"
                 && case.argv_prefix == ["cargo".to_string(), "test".to_string()]
         })
         .expect("cargo test dispatch rule");

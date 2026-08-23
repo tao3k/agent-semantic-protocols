@@ -48,8 +48,44 @@ pub struct RuntimeServerEndpoint {
     pub socket_path: String,
     pub data_plane_socket_path: String,
     pub provider_plane_socket_path: String,
+    pub client_http_endpoint: String,
     pub workspace_store_path: String,
     pub status_memory_path: String,
+}
+
+/// Stable owner envelope used only by lifecycle coordination.
+///
+/// Service fields may evolve while schema version 1 is under development, but
+/// lifecycle handoff must still be able to prove which process owns an
+/// otherwise undecodable endpoint. Keep this projection deliberately smaller
+/// than [`RuntimeServerEndpoint`]: it is authority for verified retirement,
+/// never authority for serving requests.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeServerEndpointOwnerBinding {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub owner_epoch: u64,
+    #[serde(default)]
+    pub owner_process_id: u32,
+    pub runtime_artifact_path: String,
+    pub binding_token: String,
+}
+
+impl RuntimeServerEndpointOwnerBinding {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_id != ENDPOINT_SCHEMA_ID || self.schema_version != SCHEMA_VERSION {
+            return Err("Runtime Server endpoint owner schema identity mismatch".to_owned());
+        }
+        if self.owner_epoch == 0
+            || self.owner_process_id == 0
+            || self.binding_token.is_empty()
+            || !Path::new(&self.runtime_artifact_path).is_absolute()
+        {
+            return Err("Runtime Server endpoint owner binding is incomplete".to_owned());
+        }
+        Ok(())
+    }
 }
 
 impl RuntimeServerEndpoint {
@@ -79,6 +115,7 @@ impl RuntimeServerEndpoint {
             || self.socket_path.is_empty()
             || self.data_plane_socket_path.is_empty()
             || self.provider_plane_socket_path.is_empty()
+            || self.client_http_endpoint.is_empty()
             || self.workspace_store_path.is_empty()
             || self.status_memory_path.is_empty()
         {
@@ -89,6 +126,16 @@ impl RuntimeServerEndpoint {
         }
         if !Path::new(&self.data_plane_socket_path).is_absolute() {
             return Err("Runtime Server data-plane socket path must be absolute".to_owned());
+        }
+        let client_endpoint = self
+            .client_http_endpoint
+            .strip_prefix("http://")
+            .ok_or_else(|| "Runtime Server client HTTP endpoint must use http".to_owned())?;
+        let client_address: std::net::SocketAddr = client_endpoint
+            .parse()
+            .map_err(|error| format!("Runtime Server client HTTP endpoint is invalid: {error}"))?;
+        if !client_address.ip().is_loopback() {
+            return Err("Runtime Server client HTTP endpoint must be loopback-only".to_owned());
         }
         if !Path::new(&self.workspace_store_path).is_absolute() {
             return Err("Runtime Server workspace store path must be absolute".to_owned());

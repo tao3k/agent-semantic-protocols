@@ -5,13 +5,13 @@ from jsonschema import Draft202012Validator
 
 
 ROOT = Path(__file__).resolve().parents[2]
-PLAN_PATH = ROOT / "benchmarks/live-corpus-search-query-qualification.v1.json"
-LOCK_PATH = ROOT / "benchmarks/large-library-runtime-corpora.v1.json"
+PLAN_PATH = ROOT / "benchmarks/live-corpus-search-query-qualification.json"
+LOCK_PATH = ROOT / "benchmarks/large-library-runtime-corpora.json"
 PLAN_SCHEMA_PATH = (
-    ROOT / "schemas/asp.live-corpus-search-query-qualification-plan.v1.schema.json"
+    ROOT / "schemas/asp.live-corpus-search-query-qualification-plan.schema.json"
 )
 RECEIPT_SCHEMA_PATH = (
-    ROOT / "schemas/asp.live-corpus-search-query-qualification-receipt.v1.schema.json"
+    ROOT / "schemas/asp.live-corpus-search-query-qualification-receipt.schema.json"
 )
 
 
@@ -33,11 +33,19 @@ def test_live_corpus_search_query_plan_covers_the_complete_locked_matrix() -> No
     assert list(Draft202012Validator(plan_schema).iter_errors(under_sampled))
 
     locked = {
-        entry["resourceId"]: (entry["language"], entry["providerId"])
+        entry["resourceId"]: (
+            entry["scenarioId"],
+            entry["language"],
+            entry["providerId"],
+        )
         for entry in lock["corpora"]
     }
     planned = {
-        entry["resourceId"]: (entry["languageId"], entry["providerId"])
+        entry["resourceId"]: (
+            entry["scenarioId"],
+            entry["languageId"],
+            entry["providerId"],
+        )
         for entry in plan["cases"]
     }
 
@@ -52,7 +60,7 @@ def test_live_corpus_search_query_plan_covers_the_complete_locked_matrix() -> No
         "rust",
         "typescript",
     }
-    assert {provider_id for _, provider_id in planned.values()} == {
+    assert {provider_id for _, _, provider_id in planned.values()} == {
         "asp-gerbil-scheme",
         "asp-julia",
         "asp-md",
@@ -82,7 +90,7 @@ def test_every_locked_corpus_has_fixed_search_query_and_telemetry_budgets() -> N
         }
 
 
-def test_v1_receipt_requires_complete_sub_millisecond_latency_distributions() -> None:
+def test_receipt_requires_complete_sub_millisecond_latency_distributions() -> None:
     receipt_schema = load_json(RECEIPT_SCHEMA_PATH)
     case_schema = receipt_schema["$defs"]["caseReceipt"]
     required = set(case_schema["required"])

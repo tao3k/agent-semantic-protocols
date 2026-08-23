@@ -221,9 +221,7 @@ fn classify_bounded_path_filter_with_limit(
                 if start == cursor {
                     return classify_unbounded_token(bytes.get(cursor).copied());
                 }
-                segments.push(BoundedPathSegment::Field(
-                    filter[start..cursor].to_string(),
-                ));
+                segments.push(BoundedPathSegment::Field(filter[start..cursor].to_string()));
             }
             b'[' => {
                 cursor += 1;
@@ -242,9 +240,7 @@ fn classify_bounded_path_filter_with_limit(
                     if cursor == start || bytes.get(cursor) != Some(&b'\"') {
                         return StructuredFilterClassification::Invalid;
                     }
-                    segments.push(BoundedPathSegment::Field(
-                        filter[start..cursor].to_string(),
-                    ));
+                    segments.push(BoundedPathSegment::Field(filter[start..cursor].to_string()));
                     cursor += 1;
                 } else {
                     let start = cursor;
@@ -298,9 +294,7 @@ fn classify_bounded_path_filter_with_limit(
                 while cursor < bytes.len() && is_identifier_continue(bytes[cursor]) {
                     cursor += 1;
                 }
-                segments.push(BoundedPathSegment::Field(
-                    filter[start..cursor].to_string(),
-                ));
+                segments.push(BoundedPathSegment::Field(filter[start..cursor].to_string()));
             }
             b'|' | b',' | b'{' | b'}' | b'(' | b')' | b'?' | b'=' | b';' => {
                 return StructuredFilterClassification::Compound;

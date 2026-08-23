@@ -212,12 +212,12 @@ async fn exact_selector_projection_round_trip_hydrates_a_validated_merkle_record
     let source_blob_digest =
         agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(source);
     let parser_identity_digest =
-        agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest_v1(
+        agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest(
             b"parser",
             &[b"rs-harness"],
         );
     let query_pack_digest =
-        agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest_v1(
+        agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest(
             b"query-pack",
             &[b"rust"],
         );

@@ -79,6 +79,17 @@ pub type GraphTurboEvaluationBuilder = std::sync::Arc<
 >;
 
 impl RuntimeServer {
+    /// Use one Runtime-owned provider register for provider-plane mutations
+    /// and data-plane route resolution.
+    #[must_use]
+    pub fn with_provider_register(
+        mut self,
+        provider_register: Arc<crate::runtime_provider_register::RuntimeProviderRegister>,
+    ) -> Self {
+        self.provider_register = provider_register;
+        self
+    }
+
     /// Immutable artifact authority loaded once for this daemon generation.
     pub fn artifact_catalog(
         &self,

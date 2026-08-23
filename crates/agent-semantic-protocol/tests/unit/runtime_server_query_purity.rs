@@ -18,10 +18,9 @@ fn query_data_plane_never_invokes_generation_reconciliation() {
     assert!(!query_adapter.contains("RuntimeWorkspaceAdmissionCatalog::resolve_mapped"));
     assert!(!query_adapter.contains("RuntimeWorkspaceScopeResolution"));
     assert!(!data_plane.contains("connect_hook_workspace_session"));
-    assert!(data_plane.contains("runtime_generation_pointer_path"));
     assert!(!data_plane.contains("connect_runtime_server_workspace_session"));
-    assert!(data_plane.contains("RuntimeResidentReadClient::open"));
-    assert!(data_plane.contains("read_runtime_selector"));
+    assert!(data_plane.contains("runtime_server_workspace_session_for_admission_async"));
+    assert!(data_plane.contains("read_runtime_exact_projection"));
     assert!(!data_plane.contains("rebind_runtime_selector_overlay"));
 }
 
@@ -97,14 +96,9 @@ fn owner_items_is_a_pre_activation_resident_read() {
     let owner_route = source
         .find("if is_search_owner_items_query(&command_args)")
         .expect("typed pre-activation resident owner predicate");
-    let activation_load = source
-        .find("load_activation_for_language(")
-        .expect("activation path for provider-backed commands");
-    assert!(
-        owner_route < activation_load,
-        "owner-items must route before activation construction"
-    );
-    assert!(source[owner_route..activation_load].contains("run_search_owner_items_query_command("));
+    let owner_branch = &source[owner_route..];
+    assert!(owner_branch.contains("run_search_owner_items_query_command("));
+    assert!(owner_branch.contains("SearchOwnerItemsContext {"));
     for legacy in [
         "OwnerItemsExecutionRoute",
         "owner-provider-surface-admitted",
@@ -119,39 +113,19 @@ fn owner_items_is_a_pre_activation_resident_read() {
 }
 
 #[test]
-fn activation_loader_does_not_resolve_runtime_authority() {
-    let activation = include_str!("../../src/command/provider_activation.rs");
-    let loader = activation
-        .find("pub(super) async fn load_activation_for_language")
-        .expect("activation language loader");
-    let body_end = activation[loader..]
-        .find("\n}\n")
-        .map(|offset| loader + offset + 2)
-        .expect("activation language loader body");
-    let body = &activation[loader..body_end];
-    assert!(
-        !body.contains("resolve_provider_runtime"),
-        "activation loader must not consume Runtime authority receipt"
-    );
-    assert!(
-        body.contains("load_activation(path, invocation_root)"),
-        "activation loader must use the published activation snapshot"
-    );
-}
-
-#[test]
 fn search_adapter_never_decodes_the_complete_resident_generation() {
     let dispatch = include_str!("../../src/command/provider_dispatch.rs");
     let data_plane = include_str!("../../src/server/runtime_server_generation_data_plane.rs");
 
     assert!(!dispatch.contains("runtime_server_workspace_generation_client_async"));
     assert!(!dispatch.contains("WorkspaceGenerationDataPlaneClient"));
-    assert!(dispatch.contains("run_client_backend_command("));
+    assert!(dispatch.contains("run_runtime_provider_search_command("));
+    assert!(dispatch.contains("run_search_owner_items_query_command("));
     assert!(!dispatch.contains("runtime_server_search_data_plane_async"));
     assert!(!dispatch.contains("run_asp_fast_search_command"));
     assert!(!dispatch.contains("await_agent_facing_runtime_server_client"));
-    assert!(data_plane.contains("RuntimeResidentReadClient::open"));
-    assert!(data_plane.contains("read_runtime_selector"));
+    assert!(data_plane.contains("runtime_server_workspace_session_for_admission_async"));
+    assert!(data_plane.contains("read_runtime_exact_projection"));
     assert!(data_plane.contains("WorkspaceRuntimeSelectorRead"));
     assert!(!data_plane.contains("runtime_search_generation_authority"));
 }

@@ -46,23 +46,3 @@ fn query_scope_derives_identity_without_catalog_or_bootstrap() {
     assert_eq!(actual, expected);
     assert_eq!(canonical_root, project_root);
 }
-
-#[tokio::test]
-async fn unchanged_provider_catalog_does_not_reconcile_runtime() {
-    let state_home = tempfile::tempdir().expect("isolated ASP State Home");
-    let disposition =
-        super::reconcile_runtime_server_after_provider_catalog_change(state_home.path(), false)
-            .await
-            .expect("unchanged catalog reconciliation");
-    assert_eq!(disposition, "current");
-}
-
-#[tokio::test]
-async fn provider_install_does_not_start_an_absent_runtime() {
-    let state_home = tempfile::tempdir().expect("isolated ASP State Home");
-    let disposition =
-        super::reconcile_runtime_server_after_provider_catalog_change(state_home.path(), true)
-            .await
-            .expect("absent Runtime reconciliation");
-    assert_eq!(disposition, "not-running");
-}

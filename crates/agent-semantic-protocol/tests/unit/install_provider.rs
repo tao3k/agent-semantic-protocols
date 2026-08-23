@@ -38,7 +38,7 @@ fn registered_provider_receipt_covers_language_alias_for_same_binary() {
 #[test]
 fn orgize_release_pin_resolves_provider_binary_asset() {
     let spec = provider_release("org").expect("orgize release spec");
-    assert_eq!(spec.provider_id, "orgize");
+    assert_eq!(spec.provider_id, "asp-org");
     assert_eq!(spec.release_version, "v0.10.0-alpha.10");
     assert_eq!(
         asset_name(&spec, "aarch64-apple-darwin"),
@@ -115,13 +115,10 @@ fn external_register_fixture_resolves_identity_without_caller_supplied_binary() 
             "providerId": "external-provider"
         }),
     };
-    // The register is the identity authority; callers provide only language_id.
-    let error = super::canonical_provider_identity("external-language", &[registration])
-        .expect_err("unregistered external binary must fail closed");
-    assert!(
-        !error.is_empty(),
-        "external register without a binary must fail closed"
-    );
+    // The provider register owns identity; release metadata owns archive naming.
+    let provider_id = super::canonical_provider_identity("external-language", &[registration])
+        .expect("external provider identity");
+    assert_eq!(provider_id, "external-provider");
 }
 fn install_scope_args(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| (*value).to_string()).collect()

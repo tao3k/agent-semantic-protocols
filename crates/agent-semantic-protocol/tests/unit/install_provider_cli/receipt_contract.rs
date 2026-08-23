@@ -5,7 +5,7 @@ use super::{make_executable, temp_project_root};
 
 #[cfg(unix)]
 #[test]
-fn default_develop_receipt_install_publishes_the_global_runtime_catalog_atomically() {
+fn default_develop_receipt_install_publishes_installed_artifacts_atomically() {
     let root = temp_project_root();
     let state_home = root.join("state");
     let dev_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -31,14 +31,16 @@ fn default_develop_receipt_install_publishes_the_global_runtime_catalog_atomical
     let provider_receipts = state_home.join("runtime/providers/receipts");
     fs::create_dir_all(&runtime_bin).expect("create runtime bin");
     fs::create_dir_all(&provider_receipts).expect("create provider receipt directory");
-    for manifest in agent_semantic_hook::schema_registry_provider_manifests()
-        .into_iter()
-        .filter(|manifest| manifest.language_id().as_str() != "rust")
-    {
-        let binary_path = runtime_bin.join(manifest.binary());
+    for (language_id, provider_id, binary) in [
+        ("typescript", "asp-typescript", "asp-typescript"),
+        ("python", "asp-python", "asp-python"),
+        ("julia", "asp-julia", "asp-julia"),
+        ("gerbil-scheme", "asp-gerbil-scheme", "asp-gerbil-scheme"),
+    ] {
+        let binary_path = runtime_bin.join(binary);
         fs::write(
             &binary_path,
-            format!("#!/bin/sh\n# {}\nexit 0\n", manifest.provider_id()).as_bytes(),
+            format!("#!/bin/sh\n# {provider_id}\nexit 0\n").as_bytes(),
         )
         .expect("write registered provider fixture");
         make_executable(&binary_path);
@@ -53,11 +55,11 @@ fn default_develop_receipt_install_publishes_the_global_runtime_catalog_atomical
         )
         .expect("provider execution command digest");
         fs::write(
-            provider_receipts.join(format!("{}.lock.toml", manifest.language_id())),
+            provider_receipts.join(format!("{language_id}.lock.toml")),
             format!(
                 "schemaId = \"asp.provider-install-lock.v1\"\nlanguage = \"{}\"\nprovider = \"{}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{}\"\ninstalledEntrypointMetadataDigest = \"{}\"\nexecutionCommandDigest = \"{}\"\n",
-                manifest.language_id(),
-                manifest.provider_id(),
+                language_id,
+                provider_id,
                 binary_path.display(),
                 content_digest,
                 metadata_digest,
@@ -92,50 +94,43 @@ fn default_develop_receipt_install_publishes_the_global_runtime_catalog_atomical
     let first_receipt = String::from_utf8_lossy(&first.stdout);
     assert!(first_receipt.contains("scope=global"), "{first_receipt}");
     assert!(
-        first_receipt.contains("globalProviderCatalog=blake3-256:"),
+        first_receipt.contains("installedProviderArtifacts=sha256:"),
         "{first_receipt}"
     );
     assert!(
-        first_receipt.contains("globalProviderCatalogWrite=true"),
+        first_receipt.contains("installedProviderArtifactsWrite=true"),
         "{first_receipt}"
     );
-    assert!(
-        first_receipt.contains("runtimeServerReconcile=not-running"),
-        "{first_receipt}"
-    );
-
-    let catalog_path = state_home.join("runtime/provider-catalog.v1.json");
-    let catalog: serde_json::Value =
-        serde_json::from_slice(&fs::read(&catalog_path).expect("read global provider catalog"))
-            .expect("decode global provider catalog");
-    let provider = catalog["providers"]
+    let artifacts_path = state_home.join("runtime/installed-provider-artifacts.json");
+    let artifacts: serde_json::Value = serde_json::from_slice(
+        &fs::read(&artifacts_path).expect("read installed provider artifacts"),
+    )
+    .expect("decode installed provider artifacts");
+    let provider = artifacts["providers"]
         .as_array()
-        .expect("catalog providers")
+        .expect("installed providers")
         .iter()
         .find(|provider| provider["languageId"] == "rust")
-        .expect("Rust provider catalog leaf");
+        .expect("Rust installed artifact leaf");
     let materialized_path = provider["materializedPath"]
         .as_str()
         .expect("materialized provider path");
-    let canonical_artifact_root =
-        fs::canonicalize(state_home.join("runtime/artifacts")).expect("canonical artifact root");
-    assert!(
-        std::path::Path::new(materialized_path).starts_with(&canonical_artifact_root),
-        "provider escaped ASP State Home runtime artifacts: {materialized_path}"
-    );
-    assert_ne!(
-        materialized_path,
-        source.to_str().expect("utf-8 provider source")
+    assert_eq!(
+        std::path::Path::new(materialized_path),
+        state_home.join("runtime/bin/asp-rust"),
+        "installed artifacts must publish the stable Runtime lattice entry"
     );
     assert_eq!(
-        provider["argvPrefix"][0]
-            .as_str()
-            .expect("provider argv prefix"),
-        materialized_path
+        fs::canonicalize(materialized_path).expect("resolve development lattice entry"),
+        fs::canonicalize(
+            dev_root.join("languages/rust-lang-project-harness/target/release/asp-rust"),
+        )
+        .expect("resolve registered workspace artifact"),
+        "development install must select the registry-owned workspace artifact"
     );
     assert!(
         std::path::Path::new(materialized_path).is_file(),
-        "catalog provider artifact is missing: {materialized_path}"
+        "installed provider artifact is missing: {materialized_path}"
     );
 
     let second = install();
@@ -147,11 +142,7 @@ fn default_develop_receipt_install_publishes_the_global_runtime_catalog_atomical
     );
     let second_receipt = String::from_utf8_lossy(&second.stdout);
     assert!(
-        second_receipt.contains("globalProviderCatalogWrite=false"),
-        "{second_receipt}"
-    );
-    assert!(
-        second_receipt.contains("runtimeServerReconcile=current"),
+        second_receipt.contains("installedProviderArtifactsWrite=false"),
         "{second_receipt}"
     );
 
@@ -177,8 +168,8 @@ fn root_justfile_develop_install_is_only_a_registry_driven_adapter() {
         "--record-installed-receipt",
         "provider_source=",
         r#"case "{{ language }}" in"#,
-        "languages/rust-lang-project-harness/target/release/rs-harness",
-        "runtime/provider-artifacts/gslph/develop",
+        "languages/rust-lang-project-harness/target/release/asp-rust",
+        "runtime/provider-artifacts/asp-gerbil-scheme/develop",
     ] {
         assert!(
             !justfile.contains(forbidden),
@@ -195,7 +186,7 @@ fn record_and_reconcile_receipt_modes_are_mutually_exclusive() {
             "language",
             "rust",
             "--record-installed-receipt",
-            "rs-harness",
+            "asp-rust",
             "--reconcile-receipt",
         ])
         .env("ASP_NO_AGENT_PLATFORM", "1")

@@ -143,7 +143,7 @@ fn search_view_option_value_stays_provider_arg_without_project_root_inference() 
 }
 
 #[test]
-fn workspace_flag_allows_explicit_project_root_outside_activation_root() {
+fn workspace_flag_allows_explicit_external_project_root() {
     let cwd = temp_dir("workspace-flag-outside");
     let outside = temp_dir("workspace-flag-outside-target");
 
@@ -162,7 +162,6 @@ fn workspace_flag_allows_explicit_project_root_outside_activation_root() {
     )
     .expect("explicit workspace flag may target an external project root");
 
-    assert_eq!(parsed.activation_root, cwd);
     assert_eq!(
         parsed.project_root,
         fs::canonicalize(&outside).expect("canonical outside root")
@@ -171,7 +170,7 @@ fn workspace_flag_allows_explicit_project_root_outside_activation_root() {
         parsed.forwarded_args,
         vec!["--selector", "src/lib.rs:1:20", "--projection", "source"]
     );
-    let _ = fs::remove_dir_all(parsed.activation_root);
+    let _ = fs::remove_dir_all(cwd);
     let _ = fs::remove_dir_all(outside);
 }
 
@@ -267,8 +266,7 @@ fn positional_marker_path_stays_provider_arg_without_workspace_flag() {
     )
     .expect("positional marker path is a provider arg");
 
-    assert_eq!(parsed.activation_root, cwd);
-    assert_eq!(parsed.project_root, parsed.activation_root);
+    assert_eq!(parsed.project_root, cwd);
     assert_eq!(
         parsed.forwarded_args,
         vec![
@@ -278,7 +276,7 @@ fn positional_marker_path_stays_provider_arg_without_workspace_flag() {
             provider_root.to_str().expect("utf8 provider root")
         ]
     );
-    let _ = fs::remove_dir_all(parsed.activation_root);
+    let _ = fs::remove_dir_all(cwd);
 }
 
 #[test]
@@ -332,7 +330,6 @@ fn doctor_parser_preserves_global_invocation_fields() {
         .expect("plain doctor arguments must parse");
 
     assert_eq!(parsed.command.as_deref(), Some("doctor"));
-    assert_eq!(parsed.activation_root, cwd);
     assert_eq!(parsed.project_root, cwd);
     assert!(parsed.forwarded_args.is_empty());
     assert!(!parsed.receipt_json);
@@ -353,7 +350,6 @@ fn doctor_parser_does_not_reinterpret_workspace_as_project_root() {
     )
     .expect("doctor workspace tokens must remain available for command validation");
 
-    assert_eq!(parsed.activation_root, cwd);
     assert_eq!(parsed.project_root, cwd);
     assert_eq!(
         parsed.forwarded_args,

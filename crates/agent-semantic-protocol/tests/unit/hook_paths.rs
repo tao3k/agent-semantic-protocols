@@ -1,22 +1,12 @@
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use agent_semantic_runtime::state_core::ResolvedState;
-
 #[test]
 fn hook_paths_reports_runtime_layout_without_materializing_state() {
     let root = temp_project_root("hook-paths");
     let state_home = temp_project_root("hook-paths-state");
-    let resolved =
-        ResolvedState::resolve_with_state_home(&root, &state_home).expect("resolved state");
-    let expected_hook_state_dir = resolved
-        .state_home
-        .join("hooks")
-        .join("projects")
-        .join(resolved.repo.repo_id.as_str())
-        .join("workspaces")
-        .join(resolved.workspace.workspace_id.as_str())
-        .join("state");
+    let expected = agent_semantic_runtime::project_state_paths_with_state_home(&root, &state_home)
+        .expect("resolved project state paths");
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("ASP_STATE_HOME", &state_home)
@@ -35,14 +25,14 @@ fn hook_paths_reports_runtime_layout_without_materializing_state() {
     assert!(
         stdout.contains(&format!(
             "activation={}",
-            expected_hook_state_dir.join("activation.json").display()
+            expected.activation_path.display()
         )),
         "stdout: {stdout}"
     );
     assert!(
         stdout.contains(&format!(
             "hookStateDir={}",
-            expected_hook_state_dir.display()
+            expected.hook_state_dir.display()
         )),
         "stdout: {stdout}"
     );

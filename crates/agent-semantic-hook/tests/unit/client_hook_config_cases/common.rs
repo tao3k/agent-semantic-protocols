@@ -21,12 +21,8 @@ pub(super) fn temp_root(label: &str) -> PathBuf {
     canonical(&root)
 }
 
-pub(super) fn with_required_resident_agents(config: &str) -> String {
-    let projection = agent_semantic_config::agent_route_registry::render_hook_agent_routes(
-        &canonical_agent_registry_root(),
-    )
-    .expect("render canonical Hook agent routes");
-    format!("{config}\n{projection}")
+pub(super) fn with_direct_dispatch_roles(config: &str) -> String {
+    config.to_owned()
 }
 
 fn materialize_agent_registry(root: &Path) {
@@ -117,7 +113,7 @@ Keep recoverable ASP Org state.
 pub(super) fn agent_org_artifacts_config(root: &Path, enabled: bool) -> String {
     let artifacts_path = org_artifacts_root(root);
     let entry_skill_path = org_state_skill_path(root);
-    with_required_resident_agents(&format!(
+    with_direct_dispatch_roles(&format!(
         r#"
 schemaId = "agent.semantic-protocols.hook.client-config"
 schemaVersion = "1"
@@ -151,7 +147,7 @@ commandAny = ["rg"]
 pub(super) fn agent_org_artifacts_default_config(root: &Path) -> String {
     let artifacts_path = org_artifacts_root(root);
     let entry_skill_path = org_state_skill_path(root);
-    with_required_resident_agents(&format!(
+    with_direct_dispatch_roles(&format!(
         r#"
 schemaId = "agent.semantic-protocols.hook.client-config"
 schemaVersion = "1"

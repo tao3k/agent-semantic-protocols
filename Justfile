@@ -359,7 +359,7 @@ check-live-corpus-search-query-all-setup: check-language-evidence-smoke-all-setu
 
 check-live-corpus-search-query-all:
     PATH="$PWD/.bin:$PATH" .bin/asp server start >/dev/null
-    PATH="$PWD/.bin:$PATH" .bin/asp live-corpus qualify --plan benchmarks/live-corpus-search-query-qualification.v1.json
+    PATH="$PWD/.bin:$PATH" .bin/asp live-corpus qualify --plan benchmarks/live-corpus-search-query-qualification.json
 
 provider-gate: check-rust-warnings check-schema-profiles check-rfc-docs check-schema-manager check-tree-sitter-query-contracts check-language-workspace-search-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia
 

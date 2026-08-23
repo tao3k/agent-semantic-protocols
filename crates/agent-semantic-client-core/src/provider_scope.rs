@@ -2,11 +2,11 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use crate::ResolvedProvider;
+use crate::RuntimeProvider;
 
 #[must_use]
 /// Return whether a provider owns the source-file extension at `path`.
-pub fn provider_supports_source_file(provider: &ResolvedProvider, path: &Path) -> bool {
+pub fn provider_supports_source_file(provider: &RuntimeProvider, path: &Path) -> bool {
     agent_semantic_config::source_extension::source_extensions_support_file(
         &provider.source_extensions,
         path,

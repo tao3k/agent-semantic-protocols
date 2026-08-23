@@ -11,6 +11,18 @@ pub(super) enum HostLifecycleDisposition {
     Recorded,
 }
 
+pub(super) fn registered_host_agent_roles(
+    project_root: &Path,
+    platform: &str,
+    agent_name: &str,
+) -> Result<Option<Vec<String>>, String> {
+    let state = agent_semantic_runtime::state_core::ResolvedState::resolve(project_root)?;
+    let registry = load_agent_route_registry(&state.state_home.join("agents/config.toml"))?;
+    registry
+        .compile_route_for_platform_host_agent_name(platform, agent_name)
+        .map(|route| route.map(|route| route.roles))
+}
+
 async fn publish_host_lifecycle_event_locally(
     state_home: &Path,
     lifecycle_event: &mut AgentHostLifecycleEventIpc,

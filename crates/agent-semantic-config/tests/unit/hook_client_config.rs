@@ -2,23 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use agent_semantic_config::{
-    CLIENT_HOOK_CONFIG_SCHEMA_ID, HookClientConfigFile, HookClientResidentAgentConfig,
-    agent_route_registry::render_hook_agent_routes, default_hook_client_config_file,
+    CLIENT_HOOK_CONFIG_SCHEMA_ID, default_hook_client_config_file,
     default_hook_client_config_template, hook_client_contract_fingerprint,
     load_asp_project_config_file, load_hook_client_config_file, merge_asp_project_hook_config,
 };
-
-fn resident_agent<'a>(
-    config: &'a HookClientConfigFile,
-    name: &str,
-) -> &'a HookClientResidentAgentConfig {
-    config
-        .agents
-        .resident_agents
-        .iter()
-        .find(|agent| agent.name == name)
-        .expect("resident agent")
-}
 
 #[path = "hook_client_config/parsing.rs"]
 mod parsing;
@@ -26,7 +13,7 @@ mod parsing;
 mod validation;
 
 fn write_canonical_config_overlay(path: &std::path::Path, overlay: &str) {
-    let mut config = toml::from_str::<toml::Value>(&projected_default_template())
+    let mut config = toml::from_str::<toml::Value>(&canonical_default_template())
         .expect("parse canonical hook config");
     let overlay = toml::from_str::<toml::Value>(overlay).expect("parse hook config overlay");
     merge_toml_value(&mut config, overlay);
@@ -37,22 +24,8 @@ fn write_canonical_config_overlay(path: &std::path::Path, overlay: &str) {
     .expect("write hook config overlay");
 }
 
-fn projected_default_template() -> String {
-    let mut config = toml::from_str::<toml::Value>(&default_hook_client_config_template())
-        .expect("parse default hook config template");
-    let projection = toml::from_str::<toml::Value>(&projected_agent_routes())
-        .expect("parse project agent route projection");
-    config["agents"] = projection["agents"].clone();
-    toml::to_string_pretty(&config).expect("render projected default hook config")
-}
-
-fn projected_agent_routes() -> String {
-    render_hook_agent_routes(
-        &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join("agents"),
-    )
-    .expect("render canonical agent route registry")
+fn canonical_default_template() -> String {
+    default_hook_client_config_template()
 }
 
 fn merge_toml_value(base: &mut toml::Value, overlay: toml::Value) {

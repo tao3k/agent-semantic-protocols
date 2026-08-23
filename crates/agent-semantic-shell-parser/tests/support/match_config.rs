@@ -203,7 +203,7 @@ pub fn assert_case(case: &RulePrefix) {
         assert!(
             matches!(
                 outcome(case, &command),
-        BashCommandMatch::InvalidSyntax { .. }
+                BashCommandMatch::InvalidSyntax { .. }
             ),
             "rule={} command={command}",
             case.rule_id

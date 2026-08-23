@@ -11,6 +11,39 @@ structure ActionFacts
   toolSurfaces : List ToolSurface
   wrappedStagesPresent : Bool
 
+/-- Immutable facts supplied by the Host invocation boundary. The shell parser
+cannot rewrite these fields. -/
+structure HostInvocationFact
+    (ActionKind ToolName Payload InvocationSource : Type) where
+  action : ActionKind
+  toolName : ToolName
+  payload : Payload
+  invocationSource : Option InvocationSource
+
+/-- One parser- or Host-proven capability. It deliberately has no authority,
+environment, confidence, review, or executable-name dimension. -/
+structure SemanticCapability (CapabilityKind Evidence : Type) where
+  kind : CapabilityKind
+  evidence : Evidence
+
+/-- A classified policy subject, kept orthogonal to capability facts. -/
+structure Subject (SubjectKind SubjectValue : Type) where
+  kind : SubjectKind
+  value : SubjectValue
+
+/-- The v2 Hook fact product: Host facts, semantic capabilities, and subjects
+are separate layers. Profiles and extensions remain declarative routing axes. -/
+structure SemanticActionFacts
+    (ActionKind ToolName Payload InvocationSource CapabilityKind Evidence
+      SubjectKind SubjectValue LanguageExtension CommandProfile ToolSurface : Type) where
+  hostInvocation : HostInvocationFact ActionKind ToolName Payload InvocationSource
+  capabilities : List (SemanticCapability CapabilityKind Evidence)
+  subjects : List (Subject SubjectKind SubjectValue)
+  languageExtensions : List LanguageExtension
+  commandProfiles : List CommandProfile
+  toolSurfaces : List ToolSurface
+  wrappedStagesPresent : Bool
+
 /-- A rule is a predicate over normalized facts. Conjunction, disjunction, and
 negation are policy composition, not branches over raw Host strings. -/
 structure PolicyRule (Facts : Type) where
@@ -69,6 +102,21 @@ theorem normalized_facts_determine_every_policy_decision
     (sameFacts : normalize left = normalize right) :
     evaluate normalize snapshot left ↔ evaluate normalize snapshot right := by
   simp [evaluate, sameFacts]
+
+theorem semantic_action_facts_determine_every_policy_decision
+    {ActionKind ToolName Payload InvocationSource CapabilityKind Evidence
+      SubjectKind SubjectValue LanguageExtension CommandProfile ToolSurface : Type}
+    (normalize : RawEnvelope →
+      SemanticActionFacts ActionKind ToolName Payload InvocationSource CapabilityKind Evidence
+        SubjectKind SubjectValue LanguageExtension CommandProfile ToolSurface)
+    (snapshot : PolicySnapshot
+      (SemanticActionFacts ActionKind ToolName Payload InvocationSource CapabilityKind Evidence
+        SubjectKind SubjectValue LanguageExtension CommandProfile ToolSurface))
+    (left right : RawEnvelope)
+    (sameFacts : normalize left = normalize right) :
+    evaluate normalize snapshot left ↔ evaluate normalize snapshot right := by
+  exact normalized_facts_determine_every_policy_decision
+    normalize snapshot left right sameFacts
 
 /-- Relabeling any raw wrapper/tool/provider representation is harmless when
 the parser/config projection is unchanged. This quantifies over arbitrary raw

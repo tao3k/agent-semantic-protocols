@@ -10,11 +10,11 @@ fn builtin_inline_materialization_rules_use_config_and_source_paths() {
     for (command, expected_rule) in [
         (
             "python -c \"open('crates/agent-semantic-hook/src/hook_config/core/implementation.rs').read()\"",
-            "materialize-source-access-policy",
+            "deny-raw-registered-source-action",
         ),
         (
             "node -e \"require('fs').readFileSync('crates/agent-semantic-hook/src/hook_config/core/implementation.rs')\"",
-            "materialize-source-access-policy",
+            "deny-raw-registered-source-action",
         ),
     ] {
         let decision = classify_hook_with_config(HookClassificationRequest {
@@ -77,16 +77,16 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
             "registered-asp-reasoning-search",
         ),
         (
-            "resident testing dispatch",
+            "testing role dispatch",
             json!({
                 "tool_name": "Bash",
                 "tool_input": {"command": "cargo test -p agent-semantic-hook"}
             }),
             DecisionKind::Deny,
-            "resident-testing-dispatch",
+            "testing-role-dispatch",
         ),
         (
-            "resident TypeScript build and node test dispatch",
+            "TypeScript build and node test role dispatch",
             json!({
                 "tool_name": "Bash",
                 "tool_input": {
@@ -94,7 +94,7 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
                 }
             }),
             DecisionKind::Deny,
-            "resident-testing-dispatch",
+            "testing-role-dispatch",
         ),
         (
             "native registered source search",
@@ -119,24 +119,11 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
             json!({
                 "tool_name": "Bash",
                 "tool_input": {
-                "command": "asp-typescript search lexical HookDecision owner tests --json ."
+            "command": "asp typescript search lexical HookDecision owner tests --json ."
                 }
             }),
             DecisionKind::Deny,
             "deny-agent-search-json",
-        ),
-        (
-            "source apply patch",
-            json!({
-                "tool_name": "apply_patch",
-                "tool_input": {
-                    "patch": format!(
-                        "*** Begin Patch\n*** Update File: {source}\n@@\n-//! Normalizes\n+//! Normalizes payloads\n*** End Patch\n"
-                    )
-                }
-            }),
-            DecisionKind::Deny,
-            "materialize-apply-patch-policy",
         ),
         (
             "native registered source read",
@@ -199,7 +186,7 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
                 "tool_input": {"file_path": json_document}
             }),
             DecisionKind::Deny,
-            "materialize-structured-document-read-action",
+            "route-structured-document-read",
         ),
         (
             "nested registered source read",
@@ -224,7 +211,7 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
                 }
             }),
             DecisionKind::Deny,
-            "materialize-source-access-policy",
+            "deny-raw-registered-source-action",
         ),
         (
             "raw source search command",
@@ -255,7 +242,7 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
                 "tool_input": {"command": format!("sed -n '1,8p' {source}")}
             }),
             DecisionKind::Deny,
-            "deny-uncontrolled-source-materialization-commands",
+            "deny-raw-registered-source-action",
         ),
         (
             "python inline source materialization",
@@ -266,7 +253,7 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
                 }
             }),
             DecisionKind::Deny,
-            "materialize-source-access-policy",
+            "deny-raw-registered-source-action",
         ),
         (
             "javascript inline source materialization",
@@ -277,7 +264,7 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
                 }
             }),
             DecisionKind::Deny,
-            "materialize-source-access-policy",
+            "deny-raw-registered-source-action",
         ),
         (
             "git source read",
@@ -366,7 +353,7 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
                     .fields
                     .get("targetAgentRole")
                     .and_then(serde_json::Value::as_str),
-                Some("asp_explorer"),
+                Some("explore"),
                 "{label}: native JSON/TOML Read must dispatch to the registered Explorer: {decision:?}"
             );
             assert!(

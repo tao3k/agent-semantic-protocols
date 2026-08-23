@@ -12,8 +12,7 @@ use std::{
 
 use super::validation::validate_config;
 
-use super::agent_runtime::HookClientAgentsConfig;
-use super::routing::{HookClientActionPolicyConfig, HookClientRuleConfig};
+use super::routing::{HookClientCapabilityPolicyConfig, HookClientRuleConfig};
 
 /// Schema id for hook client config.
 pub const CLIENT_HOOK_CONFIG_SCHEMA_ID: &str = "agent.semantic-protocols.hook.client-config";
@@ -46,17 +45,11 @@ pub struct HookClientConfigFile {
     #[serde(default)]
     pub recovery_prompt: HookClientRecoveryPromptConfig,
     #[serde(default)]
-    pub agent_session_messages: HookClientAgentSessionMessagesConfig,
-    #[serde(default)]
-    pub agents: HookClientAgentsConfig,
-    #[serde(default)]
     pub command_profiles: Vec<super::profiles::HookClientCommandProfileConfig>,
-    #[serde(default)]
-    pub language_providers: Vec<HookClientLanguageProviderConfig>,
     #[serde(default)]
     pub profiles: BTreeMap<String, HookClientProfileConfig>,
     #[serde(default)]
-    pub action_policies: Vec<HookClientActionPolicyConfig>,
+    pub capability_policies: Vec<HookClientCapabilityPolicyConfig>,
     #[serde(default)]
     pub rules: Vec<HookClientRuleConfig>,
 }
@@ -65,15 +58,6 @@ pub struct HookClientConfigFile {
 ///
 /// Provider manifests remain the authority. ASP serializes this projection into
 /// the managed hook config so the hot matcher can load one audited TOML artifact.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HookClientLanguageProviderConfig {
-    pub language_id: String,
-    pub provider_id: String,
-    pub manifest_digest: String,
-    pub source_extensions: Vec<String>,
-}
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientProfileConfig {
@@ -97,38 +81,6 @@ pub struct HookClientRecoveryPromptConfig {
 }
 
 /// Optional agent-facing hook decision text for session routing.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HookClientAgentSessionMessagesConfig {
-    #[serde(default)]
-    pub session_start_reuse: Option<String>,
-    #[serde(default)]
-    pub session_start_bootstrap: Option<String>,
-    #[serde(default)]
-    pub missing_resident_explore: Option<String>,
-    #[serde(default)]
-    pub main_restricted_with_child: Option<String>,
-    #[serde(default)]
-    pub main_restricted_without_child: Option<String>,
-    #[serde(default)]
-    pub binary_gate_with_child: Option<String>,
-    #[serde(default)]
-    pub binary_gate_without_child: Option<String>,
-    #[serde(default)]
-    pub binary_gate_invalid_child: Option<String>,
-    #[serde(default)]
-    pub binary_gate_registry_blocked: Option<String>,
-    #[serde(default)]
-    /// Deprecated compatibility input. Source-access receipts are rule-owned typed materializers.
-    pub source_access_compact: Option<String>,
-    #[serde(default)]
-    /// Deprecated compatibility input. Repeated deny replay no longer carries prompt templates.
-    pub source_access_compact_repeated: Option<String>,
-    #[serde(default)]
-    /// Deprecated compatibility input. Resident agent role text belongs to its agent profile.
-    pub source_access_compact_subagent: Option<String>,
-}
-
 /// Parsed ASP project config from `.agents/asp.toml`.
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -173,7 +125,6 @@ pub fn materialize_profile_rule_ir(config: &mut HookClientConfigFile) -> Result<
             continue;
         }
 
-        let mut has_registered_profile = false;
         for profile_id in &rule.profiles_list {
             let profile = config.profiles.get(profile_id).ok_or_else(|| {
                 format!(
@@ -181,14 +132,9 @@ pub fn materialize_profile_rule_ir(config: &mut HookClientConfigFile) -> Result<
                     rule.id
                 )
             })?;
-            has_registered_profile = true;
             if !rule.match_config.profile_any.contains(profile) {
                 rule.match_config.profile_any.push(profile.clone());
             }
-            let mut provider = config.language_providers.iter_mut().find(|provider| {
-                provider.language_id == profile.language_id
-                    && provider.provider_id == profile.provider_id
-            });
             for extension in &profile.extension_any {
                 let extension = extension.trim().to_ascii_lowercase();
                 if !rule.match_config.profile_extension_any.contains(&extension) {
@@ -196,20 +142,7 @@ pub fn materialize_profile_rule_ir(config: &mut HookClientConfigFile) -> Result<
                         .profile_extension_any
                         .push(extension.clone());
                 }
-                if let Some(provider) = provider.as_deref_mut() {
-                    let provider_extension = format!(".{extension}");
-                    if !provider.source_extensions.contains(&provider_extension) {
-                        provider.source_extensions.push(provider_extension);
-                    }
-                }
             }
-        }
-
-        if has_registered_profile {
-            rule.decision_materializer =
-                Some(super::routing::HookClientDecisionMaterializer::SourceAccess);
-        } else {
-            rule.enabled = false;
         }
     }
     Ok(())
@@ -379,16 +312,6 @@ pub fn load_hook_client_config_file(path: &Path) -> Result<HookClientConfigFile,
 
 /// Load a managed hook config while taking agent identities from the canonical
 /// project agent-route registry projection.
-pub fn load_hook_client_config_file_with_agents(
-    path: &Path,
-    agents: HookClientAgentsConfig,
-) -> Result<HookClientConfigFile, String> {
-    let mut parsed = parse_hook_client_config_file(path)?;
-    parsed.agents = agents;
-    validate_config(&parsed)?;
-    Ok(parsed)
-}
-
 fn parse_hook_client_config_file(path: &Path) -> Result<HookClientConfigFile, String> {
     if !path.is_file() {
         return Err(format!(
@@ -412,16 +335,6 @@ pub fn load_hook_client_config_overlay_file(path: &Path) -> Result<HookClientCon
 
 /// Load a hook overlay while taking agent identities from the canonical
 /// project agent-route registry projection.
-pub fn load_hook_client_config_overlay_file_with_agents(
-    path: &Path,
-    agents: HookClientAgentsConfig,
-) -> Result<HookClientConfigFile, String> {
-    let mut parsed = parse_hook_client_config_overlay_file(path)?;
-    parsed.agents = agents;
-    validate_config(&parsed)?;
-    Ok(parsed)
-}
-
 fn parse_hook_client_config_overlay_file(path: &Path) -> Result<HookClientConfigFile, String> {
     if !path.is_file() {
         return Err(format!(

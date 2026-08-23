@@ -9,7 +9,7 @@ fn terminal_allow_rule_uses_parser_owned_leading_environment_assignment() {
     let config_path = root.join("config.toml");
     fs::write(
         &config_path,
-        super::common::with_required_resident_agents(
+        super::common::with_direct_dispatch_roles(
             r#"
 schemaId = "agent.semantic-protocols.hook.client-config"
 schemaVersion = "1"
@@ -91,7 +91,7 @@ fn command_contains_any_rejects_empty_patterns() {
     let config_path = root.join("config.toml");
     fs::write(
         &config_path,
-        super::common::with_required_resident_agents(
+        super::common::with_direct_dispatch_roles(
             r#"
 schemaId = "agent.semantic-protocols.hook.client-config"
 schemaVersion = "1"
@@ -125,7 +125,7 @@ fn command_contains_any_matches_ascii_case_insensitively() {
     let config_path = root.join("config.toml");
     fs::write(
         &config_path,
-        super::common::with_required_resident_agents(
+        super::common::with_direct_dispatch_roles(
             r#"
 schemaId = "agent.semantic-protocols.hook.client-config"
 schemaVersion = "1"
@@ -178,7 +178,7 @@ fn argv_prefix_any_matches_a_nested_command_stage_without_matching_nearby_forms(
     let config_path = root.join("config.toml");
     fs::write(
         &config_path,
-        super::common::with_required_resident_agents(
+        super::common::with_direct_dispatch_roles(
             r#"
 schemaId = "agent.semantic-protocols.hook.client-config"
 schemaVersion = "1"
@@ -241,7 +241,7 @@ fn argv_prefix_any_rejects_empty_patterns() {
     let config_path = root.join("config.toml");
     fs::write(
         &config_path,
-        super::common::with_required_resident_agents(
+        super::common::with_direct_dispatch_roles(
             r#"
 schemaId = "agent.semantic-protocols.hook.client-config"
 schemaVersion = "1"
@@ -297,7 +297,7 @@ fn configured_git_diff_projects_the_tag_selected_agent_into_org_choice_plane_gui
             .fields
             .get("requiredAction")
             .and_then(serde_json::Value::as_str),
-        Some("open-org-interactive-resident-agent-window")
+        Some("open-org-interactive-choice-plane")
     );
     assert_eq!(
         decision
@@ -313,14 +313,18 @@ fn configured_git_diff_projects_the_tag_selected_agent_into_org_choice_plane_gui
             .and_then(serde_json::Value::as_str),
         Some("org-contract:agent-interactive")
     );
-    assert_eq!(decision.fields["targetAgentName"], "asp_testing");
-    assert_eq!(decision.fields["targetAgentRole"], "asp_testing");
-    assert!(
-        decision.fields["targetAgentDescription"]
-            .as_str()
-            .is_some_and(|description| !description.is_empty())
+    assert_eq!(decision.fields["targetAgentRole"], "testing");
+    assert_eq!(
+        decision.fields["agentSessionAction"],
+        "dispatch-choice-plane-role"
     );
-    for forbidden in ["residentName", "residentChildName", "canonicalTarget"] {
+    for forbidden in [
+        "residentName",
+        "residentChildName",
+        "canonicalTarget",
+        "targetAgentName",
+        "targetAgentDescription",
+    ] {
         assert!(
             !decision.fields.contains_key(forbidden),
             "Hook must not materialize Runtime lifecycle state through {forbidden}"
@@ -358,7 +362,7 @@ fn configured_git_diff_projects_the_tag_selected_agent_into_org_choice_plane_gui
     .expect("parse command invocation schema");
     let schema_registry = jsonschema::Registry::new()
         .add(
-            "https://agent-semantic-protocols.local/schemas/agent-action.v1.schema.json",
+        "https://agent-semantic-protocols.dev/schemas/agent-action.v1.schema.json",
             agent_action_schema,
         )
         .expect("register agent action schema")
@@ -474,7 +478,7 @@ fn configurable_hook_default_rule_classification_stays_fast() {
         );
     }
 
-    assert_eq!(best_denied, (iterations / 4) * 3 + (iterations % 4).min(3));
+    assert_eq!(best_denied, iterations);
     // Debug builds exercise the functional path but include instrumentation and
     // allocator noise that are not representative of the shipped hook binary.
     // Keep the production performance gate strict in release builds.

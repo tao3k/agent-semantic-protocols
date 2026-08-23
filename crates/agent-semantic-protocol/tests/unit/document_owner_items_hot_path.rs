@@ -39,13 +39,13 @@ fn org_owner_items_stays_on_document_fast_path() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("[search-owner]")
-            && stdout.contains("selector=items")
-            && stdout.contains("alg=asp-dynamic-owner-items-v1"),
+        stdout.starts_with("[search-owner] lang=org")
+            && stdout.contains(&format!("q={owner_path}"))
+            && stdout.contains(" item="),
         "org owner-items should render a search-owner packet; stdout={stdout}"
     );
     assert!(
-        stdout.contains("kind=heading") && stdout.contains("#item/heading/"),
+        stdout.lines().any(|line| line.starts_with("|heading ")),
         "org owner-items should expose heading items; stdout={stdout}"
     );
     assert!(

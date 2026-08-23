@@ -13,7 +13,6 @@ use super::install_provider_archive::{
 };
 use super::install_provider_development::{
     capture_development_artifact_provenance, development_artifact_is_authorized,
-    run_development_provider_installer,
 };
 #[path = "install_provider_binary.rs"]
 mod install_provider_binary;
@@ -22,7 +21,6 @@ mod install_provider_workspace;
 use super::install_provider_release::ProviderReleaseSpec;
 use super::install_provider_runtime_reconcile::reconcile_registered_provider_runtime_binaries;
 use super::install_provider_target::resolve_provider_binary_install_target;
-use super::org_capture;
 
 #[path = "install_provider_cli_support.rs"]
 mod install_provider_cli_support;
@@ -125,14 +123,9 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
     if matches!(language_id, "help" | "--help" | "-h") {
         return Err(usage());
     }
-    if agent_semantic_hook::registered_provider_kind(language_id)?
-        != agent_semantic_hook::RegisteredProviderKind::ProgrammingLanguage
-    {
-        return Err(format!(
-            "no installable programming-language provider is registered for `{language_id}`"
-        ));
-    }
     let install_args = parse_install_args(&args[1..])?;
+    let install_registration =
+        super::provider_install_registry::provider_install_registration(language_id)?;
     let target = match install_args.target {
         Some(target) => target,
         None => host_target_triple().ok_or_else(|| {
@@ -153,48 +146,44 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
             project_root,
         );
     }
-    let registered_binary = agent_semantic_hook::registered_provider_binary_v1(language_id)?;
     let state_home = agent_semantic_runtime::resolve_state_home()?;
     let artifact_catalog =
         agent_semantic_runtime::runtime_artifact_catalog::load_runtime_artifact_catalog(
             &state_home,
         )
         .await?;
+    let provider_id = install_registration.provider_id.as_str();
+    let registered_binary = install_registration.binary.as_str();
     match provider_artifact_authority(
         artifact_catalog.mode(),
         install_args.record_installed_receipt.as_deref(),
     )? {
         ProviderArtifactAuthority::DevelopBuild { root } => {
-            let registration =
-                agent_semantic_hook::registered_provider_development_v1(language_id)?;
-            if registration.development.workspace_install.is_some() {
-                let built = install_provider_workspace::build_registered_provider_workspace(
-                    root,
-                    &registration,
-                )
-                .await?;
-                return install_provider_workspace::record_registered_provider_workspace_install(
-                    language_id,
-                    registered_binary.provider_id().as_str(),
-                    registered_binary.binary(),
-                    &target,
-                    &invocation_root,
-                    project_root,
-                    &install_args.scope,
-                    root,
-                    &registration,
-                    built,
-                )
-                .await;
-            }
-            return run_development_provider_installer(root, language_id, &target, project_root)
-                .await;
+            let registration = &install_registration;
+            let built = install_provider_workspace::build_registered_provider_workspace(
+                root,
+                &registration,
+            )
+            .await?;
+            return install_provider_workspace::record_registered_provider_workspace_install(
+                language_id,
+                provider_id,
+                registered_binary,
+                &target,
+                &invocation_root,
+                project_root,
+                &install_args.scope,
+                root,
+                &registration,
+                built,
+            )
+            .await;
         }
         ProviderArtifactAuthority::Develop { root, artifact } => {
             return record_development_provider_install(
                 language_id,
-                registered_binary.provider_id().as_str(),
-                registered_binary.binary(),
+                provider_id,
+                registered_binary,
                 &target,
                 &invocation_root,
                 project_root,
@@ -209,7 +198,7 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
     let spec = provider_release(language_id)?;
     let rev = spec.release_version.as_str();
     validate_target(&spec, &target)?;
-    let provider_binary = binary_file_name(registered_binary.binary(), &target);
+    let provider_binary = binary_file_name(registered_binary, &target);
     let runtime_binary_identity =
         super::protocol_binary::RuntimeBinaryIdentityV1::from_registered_provider(
             &provider_binary,
@@ -318,7 +307,7 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
             repo: Some(&spec.repo),
             rev: Some(rev),
             target: &target,
-            binary: registered_binary.binary(),
+            binary: install_registration.binary.as_str(),
             installed_path: &installed,
             package_path: &provider_package_dir,
             sha256: &actual_sha256,
@@ -338,18 +327,14 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
             launcher_digest: None,
         },
     )?;
-    let org_state_sync = match project_root {
-        Some(project_root) => org_capture::run_org_state_sync(project_root).await?.status,
-        None => "not-applicable",
-    };
     println!(
-        "[asp-install] provider={} language={} scope={} installMode=locked-release rev={} target={} binary={} sha256={} checksumAuthority={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} binaryCurrent={} binarySwitch=atomic orgState={} orgStateSync={}",
+        "[asp-install] provider={} language={} scope={} installMode=locked-release rev={} target={} binary={} sha256={} checksumAuthority={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} binaryCurrent={} binarySwitch=atomic",
         spec.provider_id,
         spec.language_id,
         scope,
         rev,
         target,
-        registered_binary.binary(),
+        install_registration.binary.as_str(),
         actual_sha256,
         checksum_authority,
         installed.display(),
@@ -357,13 +342,6 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
         lock_path.display(),
         runtime_bin_dir.display(),
         published.path.display(),
-        project_root
-            .map(|root| root
-                .join(".agent-semantic-protocols/org")
-                .display()
-                .to_string())
-            .unwrap_or_else(|| "not-applicable".to_string()),
-        org_state_sync,
     );
     Ok(())
 }
@@ -386,23 +364,22 @@ async fn record_development_provider_install(
             configured_dev_root.display()
         )
     })?;
-    let registration = agent_semantic_hook::registered_provider_development_v1(language_id)?;
-    if registration.provider_id.as_str() != provider_id
-        || registration.binary.as_str() != registered_binary
+    let registration =
+        super::provider_install_registry::provider_install_registration(language_id)?;
+    if registration.provider_id != provider_id || registration.binary.as_str() != registered_binary
     {
         return Err(format!(
             "ProviderRegistry development identity drift: language={language_id} provider={} binary={} expectedProvider={provider_id} expectedBinary={registered_binary}",
-            registration.provider_id.as_str(),
-            registration.binary
+            registration.provider_id, registration.binary
         ));
     }
     let provider_source_root = dev_root
-        .join(&registration.development.source_root)
+        .join(&registration.source_root)
         .canonicalize()
         .map_err(|error| {
             format!(
                 "failed to canonicalize registered provider sourceRoot {}: {error}",
-                registration.development.source_root
+                registration.source_root
             )
         })?;
     let source_path = if source_path.is_absolute() {
@@ -419,7 +396,7 @@ async fn record_development_provider_install(
         &provider_source_root,
         &state_home,
         registered_binary,
-        registration.development.artifact_domain,
+        registration.artifact_domain,
         &source_path,
     ) {
         return Err(format!(
@@ -427,7 +404,7 @@ async fn record_development_provider_install(
             source_path.display(),
             dev_root.display(),
             provider_source_root.display(),
-            registration.development.artifact_domain,
+            registration.artifact_domain,
             state_home
                 .join("runtime/provider-artifacts")
                 .join(registered_binary)
@@ -456,11 +433,12 @@ async fn record_development_provider_install(
         |_| runtime_state.runtime_bin_dir.join(&provider_binary),
     );
     let artifact_root = runtime_state.protocol_home.join("runtime/artifacts");
-    let published = super::protocol_binary::install_protocol_binary_target(
+    let published = super::protocol_binary::install_protocol_binary_target_under_guard(
         &source_path,
         &stable_entry,
         &artifact_root,
         &runtime_binary_identity,
+        &reconciliation_guard,
     )
     .await?;
     let installed_path = published.path;
@@ -525,15 +503,16 @@ async fn record_development_provider_install(
             launcher_digest: None,
         },
     )?;
-    let global_provider_catalog = if matches!(install_scope, InstallScope::Global) {
+    let installed_provider_artifacts = if matches!(install_scope, InstallScope::Global) {
         let provider_binaries = reconcile_registered_provider_runtime_binaries(
             &runtime_state.runtime_bin_dir,
             &artifact_root,
             &runtime_state.provider_lock_dir,
+            &reconciliation_guard,
         )
         .await?;
         Some(
-            super::global_provider_catalog::publish_global_provider_catalog(
+            super::installed_provider_artifacts::publish_installed_provider_artifacts(
                 &state_home,
                 &provider_binaries.provider_receipts,
             )?,
@@ -542,16 +521,8 @@ async fn record_development_provider_install(
         None
     };
     drop(reconciliation_guard);
-    let runtime_server_reconcile =
-        crate::server::runtime_server::reconcile_runtime_server_after_provider_catalog_change(
-            &runtime_state.protocol_home,
-            global_provider_catalog
-                .as_ref()
-                .is_some_and(|publication| publication.catalog_write),
-        )
-        .await?;
     println!(
-        "[asp-install] provider={} language={} scope={} installMode=develop-workspace sourceKind=develop-workspace devRoot={} target={} binary={} sha256={} installedPath={} lock={} switch=atomic globalProviderCatalog={} globalProviderCatalogWrite={} runtimeServerReconcile={}",
+        "[asp-install] provider={} language={} scope={} installMode=develop-workspace sourceKind=develop-workspace devRoot={} target={} binary={} sha256={} installedPath={} lock={} switch=atomic installedProviderArtifacts={} installedProviderArtifactsWrite={}",
         provider_id,
         language_id,
         scope,
@@ -561,14 +532,13 @@ async fn record_development_provider_install(
         installed_sha256,
         installed_path.display(),
         lock_path.display(),
-        global_provider_catalog
+        installed_provider_artifacts
             .as_ref()
-            .map(|publication| publication.catalog_generation.as_str())
+            .map(|publication| publication.generation.as_str())
             .unwrap_or("not-applicable"),
-        global_provider_catalog
+        installed_provider_artifacts
             .as_ref()
-            .is_some_and(|publication| publication.catalog_write),
-        runtime_server_reconcile,
+            .is_some_and(|publication| publication.artifact_write),
     );
     Ok(())
 }
@@ -658,8 +628,7 @@ fn canonical_global_provider_state_root_from(state_home: &Path) -> Result<PathBu
 
 fn provider_release(language_id: &str) -> Result<ProviderReleaseSpec, String> {
     let registrations = agent_semantic_provider_protocol::builtin_provider_registrations()?;
-    let (canonical_provider_id, canonical_binary) =
-        canonical_provider_identity(language_id, &registrations)?;
+    let canonical_provider_id = canonical_provider_identity(language_id, &registrations)?;
     let mut manifest = pinned_language_release_manifest()?;
     let Some(entry) = manifest.languages.remove(language_id) else {
         let supported = manifest
@@ -672,16 +641,22 @@ fn provider_release(language_id: &str) -> Result<ProviderReleaseSpec, String> {
             "[asp-install-error] state=locked-release-unavailable installMode=locked-release language={language_id} reason=language-not-pinned pinnedLanguages={supported}"
         ));
     };
+    let archive_prefix = entry
+        .archive_prefix
+        .clone()
+        .or_else(|| entry.archive_binary.clone())
+        .unwrap_or_else(|| canonical_provider_id.clone());
+    let archive_binary = entry
+        .archive_binary
+        .unwrap_or_else(|| archive_prefix.clone());
     Ok(ProviderReleaseSpec {
         language_id: language_id.to_string(),
         provider_id: canonical_provider_id,
         repo: entry.repo,
         release_version: entry.version,
         download_base_url: entry.download_base_url,
-        archive_prefix: entry
-            .archive_prefix
-            .unwrap_or_else(|| canonical_binary.clone()),
-        archive_binary: entry.archive_binary.unwrap_or(canonical_binary),
+        archive_prefix,
+        archive_binary,
         require_native_binary: entry.require_native_binary.unwrap_or(false),
         supported_targets: entry.supported_targets,
         sha256_by_target: entry.sha256_by_target,
@@ -691,7 +666,7 @@ fn provider_release(language_id: &str) -> Result<ProviderReleaseSpec, String> {
 fn canonical_provider_identity(
     language_id: &str,
     registrations: &[agent_semantic_provider_protocol::ProviderRegistrationDocument],
-) -> Result<(String, String), String> {
+) -> Result<String, String> {
     let matching = registrations
         .iter()
         .filter(|registration| registration.language_id == language_id)
@@ -709,10 +684,7 @@ fn canonical_provider_identity(
             ));
         }
     };
-    let binary = agent_semantic_hook::registered_provider_binary_v1(language_id)?
-        .binary()
-        .to_owned();
-    Ok((registration.provider_id.clone(), binary))
+    Ok(registration.provider_id.clone())
 }
 
 fn pinned_release_sha256<'a>(

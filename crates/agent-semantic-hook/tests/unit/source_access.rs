@@ -2,11 +2,8 @@ use agent_semantic_hook::source_access::{
     SourceAccessAuthorization, SourceAccessDecision, SourceAccessDecisionKind,
     SourceAccessEnforcement, SourceAccessExplicitReadInput,
     SourceAccessProviderCapabilityAllowInput, SourceAccessShellEgressSuppressedInput,
-    codex_fs_read_file_decision, codex_shell_egress_suppression_decision,
 };
 use serde_json::json;
-
-use crate::classifier::registry;
 
 #[test]
 fn explicit_fs_read_allows_source_bytes() {
@@ -123,64 +120,5 @@ fn provider_capability_allow_keeps_authorization_explicit() {
             },
             "message": "provider-capability allowed compact source access."
         })
-    );
-}
-
-#[test]
-fn codex_fs_read_file_policy_allows_activated_source_path() {
-    let decision =
-        codex_fs_read_file_decision(&registry(), "fs/readFile", "src/cli/agent-hooks.ts")
-            .expect("source path is explicitly readable");
-    let value = serde_json::to_value(decision).expect("serializes");
-
-    assert_eq!(value["boundary"], "codex-fs-api");
-    assert_eq!(value["decision"], "allow");
-    assert_eq!(value["enforcement"], "not-enforced");
-    assert_eq!(value["sourceBytesReturned"], true);
-    assert_eq!(value["modelVisibleBytesReturned"], true);
-    assert_eq!(value["authorization"], "user-approved");
-    assert_eq!(value["languageIds"], json!(["typescript"]));
-    assert_eq!(value["providerId"], "asp-typescript");
-    assert_eq!(value["subject"]["paths"], json!(["src/cli/agent-hooks.ts"]));
-    assert!(value["routes"].is_null());
-}
-
-#[test]
-fn codex_shell_egress_policy_suppresses_activated_source_output() {
-    let decision = codex_shell_egress_suppression_decision(
-        &registry(),
-        "sed -n '1,120p' src/cli/agent-hooks.ts",
-        "src/cli/agent-hooks.ts",
-        "sha256:source-like-output",
-    )
-    .expect("source output is suppressed");
-    let value = serde_json::to_value(decision).expect("serializes");
-
-    assert_eq!(value["boundary"], "codex-shell-egress");
-    assert_eq!(value["decision"], "suppress");
-    assert_eq!(value["sourceBytesReturned"], true);
-    assert_eq!(value["modelVisibleBytesReturned"], false);
-    assert_eq!(value["providerId"], "asp-typescript");
-    assert_eq!(value["routes"][0]["kind"], "owner");
-    assert_eq!(value["routes"][0]["argv"][2], "search");
-    assert_eq!(value["routes"][0]["argv"][3], "owner");
-    let argv = value["routes"][0]["argv"].as_array().expect("route argv");
-    assert!(!argv.iter().any(|arg| matches!(
-        arg.as_str(),
-        Some("query" | "--from-hook" | "--code" | "--content")
-    )));
-}
-
-#[test]
-fn codex_source_access_policy_ignores_non_source_path() {
-    assert!(codex_fs_read_file_decision(&registry(), "fs/readFile", "README.md").is_none());
-    assert!(
-        codex_shell_egress_suppression_decision(
-            &registry(),
-            "sed -n '1,120p' README.md",
-            "README.md",
-            "sha256:docs-output",
-        )
-        .is_none()
     );
 }

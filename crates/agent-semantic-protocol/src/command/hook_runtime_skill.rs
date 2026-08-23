@@ -7,7 +7,7 @@ use self::hook_runtime_skill_render::{
     render_agent_semantic_protocols_installed_skill, render_agent_semantic_protocols_plugin_skill,
 };
 
-use agent_semantic_hook::{HookActivation, RuntimeProfiles, project_agent_config_path};
+use agent_semantic_hook::project_agent_config_path;
 use agent_semantic_runtime::project_state_paths;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -19,8 +19,6 @@ const ASP_CODEX_PLUGIN_MANIFEST_JSON: &str =
 
 pub(super) fn install_agent_semantic_protocols_skill(
     project_root: &Path,
-    activation: &HookActivation,
-    runtime_profiles: &RuntimeProfiles,
 ) -> Result<InstalledAgentSkillPaths, String> {
     let skill_path = default_agent_skill_path(project_root);
     let paths = project_state_paths(project_root)?;
@@ -34,8 +32,6 @@ pub(super) fn install_agent_semantic_protocols_skill(
         project_root,
         &org_state_skill_path,
         &org_artifacts_path,
-        activation,
-        runtime_profiles,
     )?;
     write_agent_skill(&skill_path, &rendered_skill)?;
     Ok(InstalledAgentSkillPaths {
@@ -44,17 +40,8 @@ pub(super) fn install_agent_semantic_protocols_skill(
     })
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum PluginSkillScope {
-    Project,
-    Global,
-}
-
 pub(super) fn install_agent_semantic_protocols_plugin_skill(
     project_root: &Path,
-    scope: PluginSkillScope,
-    activation: &HookActivation,
-    runtime_profiles: &RuntimeProfiles,
 ) -> Result<InstalledAgentSkillPaths, String> {
     let paths = project_state_paths(project_root)?;
     let org_state_skill_path = paths
@@ -67,22 +54,12 @@ pub(super) fn install_agent_semantic_protocols_plugin_skill(
         project_root,
         &org_state_skill_path,
         &org_artifacts_path,
-        activation,
-        runtime_profiles,
     )?;
     let global_plugin_skill_path = global_codex_plugin_cache_skill_path()?;
-    let plugin_skill_path = match scope {
-        PluginSkillScope::Project => {
-            let plugin_skill_path = plugin_skill_path(project_root)?;
-            write_agent_skill(&plugin_skill_path, &rendered_skill)?;
-            Some(plugin_skill_path)
-        }
-        PluginSkillScope::Global => None,
-    };
     write_agent_skill(&global_plugin_skill_path, &rendered_skill)?;
     Ok(InstalledAgentSkillPaths {
         skill_path: None,
-        plugin_skill_path: plugin_skill_path.or(Some(global_plugin_skill_path)),
+        plugin_skill_path: Some(global_plugin_skill_path),
     })
 }
 
@@ -119,17 +96,6 @@ fn default_agent_skill_path(project_root: &Path) -> PathBuf {
         .join("skills")
         .join("agent-semantic-protocols")
         .join("SKILL.org")
-}
-
-fn plugin_skill_path(project_root: &Path) -> Result<PathBuf, String> {
-    Ok(project_root.join(codex_project_plugin_cache_skill_config_path()?))
-}
-
-fn codex_project_plugin_cache_skill_config_path() -> Result<String, String> {
-    let version = codex_plugin_manifest_version()?;
-    Ok(format!(
-        ".codex/plugins/cache/{ASP_CODEX_PLUGIN_MARKETPLACE_NAME}/{ASP_CODEX_PLUGIN_NAME}/{version}/skills/agent-semantic-protocols/SKILL.org"
-    ))
 }
 
 fn merge_agent_semantic_protocols_agent_config(existing: &str) -> Result<String, String> {
@@ -204,12 +170,8 @@ fn global_codex_plugin_cache_skill_path() -> Result<PathBuf, String> {
 // present.
 #[allow(dead_code)]
 pub(crate) fn active_codex_plugin_skill_path(
-    project_root: &Path,
+    _project_root: &Path,
 ) -> Result<Option<PathBuf>, String> {
-    let project_skill_path = project_root.join(codex_project_plugin_cache_skill_config_path()?);
-    if project_skill_path.exists() {
-        return Ok(Some(project_skill_path));
-    }
     let global_skill_path = global_codex_plugin_cache_skill_path()?;
     if global_skill_path.exists() {
         return Ok(Some(global_skill_path));

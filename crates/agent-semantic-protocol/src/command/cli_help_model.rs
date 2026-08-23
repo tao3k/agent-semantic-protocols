@@ -191,7 +191,9 @@ fn hook_command() -> Command {
         &[
             ("accept-host", "Validate normal-task Host-to-Hook delivery"),
             ("doctor", "Diagnose host hook integration"),
+            ("enablement", "Prove that the Codex Hook may be enabled"),
             ("paths", "Resolve hook-owned paths"),
+            ("refresh", "Refresh the managed Hook matcher"),
             ("break-glass", "Mint a bound one-shot defect capability"),
             ("pre-tool", "Handle a pre-tool event"),
             ("post-tool", "Handle a post-tool event"),
@@ -248,6 +250,18 @@ fn hook_doctor_command() -> Command {
                 .value_name("ARGS")
                 .num_args(0..)
                 .allow_hyphen_values(true),
+        )
+}
+
+fn hook_enablement_command() -> Command {
+    Command::new("enablement")
+        .bin_name("asp hook enablement")
+        .about("Prove that the Codex Hook may be enabled")
+        .arg(project_root_arg())
+        .arg(
+            Arg::new("json")
+                .long("json")
+                .action(clap::ArgAction::SetTrue),
         )
 }
 

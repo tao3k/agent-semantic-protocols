@@ -7,33 +7,21 @@ mod collect;
 mod generation_build;
 mod generation_commit;
 mod generation_overlay;
-pub use api::current_live_provider_source_index_snapshot_with_registry;
 mod projection;
 mod provider_envelope;
 
 #[cfg(test)]
 pub(crate) use api::materialized_current_source_index_snapshot;
-pub use api::{
-    CurrentSourceIndexSnapshot, current_provider_source_index_snapshot_with_registry,
-    current_source_index_snapshot, current_source_index_snapshot_for_owner,
-    current_source_index_snapshot_for_owner_from_activation,
-    current_workspace_search_source_index_snapshot,
-};
+pub use api::{CurrentSourceIndexSnapshot, current_provider_source_index_snapshot_with_registry};
 pub use async_rebuild::{
     prepare_runtime_server_owner_projection_with_resident_runtime_async,
     prepare_runtime_server_workspace_generation_with_runtime_service_async,
 };
 
-#[cfg(test)]
-pub(crate) use async_rebuild::{
-    prepare_runtime_server_owner_projection_with_registry_async,
-    prepare_runtime_server_workspace_generation_with_registry_async,
-};
 pub use provider_envelope::{
     ProviderSourceEnvelopeLookupRequestV1, ProviderSourceSnapshotEnvelopePublicationV1,
     ProviderWorkspaceIdentityV1,
     current_provider_source_index_snapshot_at_artifact_root_with_registry,
-    ensure_provider_source_index_snapshot_at_artifact_root_with_registry,
     provider_source_snapshot_envelope_path_at_artifact_root_with_registry,
     provider_workspace_identity_v1, publish_provider_source_snapshot_envelope,
 };
@@ -49,13 +37,6 @@ mod config;
 mod lookup;
 mod model;
 
-pub use api::CurrentSourceIndexOwnerFromActivationRequest;
-pub use api::{
-    current_provider_source_index_snapshot_from_activation,
-    current_source_index_snapshot_from_activation,
-    ensure_provider_source_index_snapshot_from_activation,
-    provider_source_snapshot_envelope_path_from_activation,
-};
 #[cfg(test)]
 pub(crate) use lookup::search_pipe_source_index_lookup_from_client_result;
 pub use lookup::{

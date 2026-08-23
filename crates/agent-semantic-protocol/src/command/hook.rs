@@ -25,7 +25,7 @@ pub(crate) async fn run_hook_command(args: &[String]) -> Result<(), String> {
     let forwarded = forwarded_hook_args(args)?;
     if matches!(
         args.first().map(String::as_str),
-        Some("accept-host" | "doctor" | "paths" | "refresh")
+        Some("accept-host" | "doctor" | "enablement" | "paths" | "refresh")
     ) {
         return run_hook_runtime_args(forwarded).await;
     }
@@ -49,13 +49,13 @@ pub(super) fn is_help_request(args: &[String]) -> bool {
 pub(super) fn is_lifecycle_help_request(args: &[String]) -> bool {
     matches!(
         args.first().map(String::as_str),
-        Some("accept-host" | "doctor" | "paths")
+        Some("accept-host" | "doctor" | "enablement" | "paths")
     ) && is_help_request(&args[1..])
 }
 
 fn forwarded_hook_lifecycle_args(command: &str, args: &[String]) -> Result<Vec<String>, String> {
     match command {
-        "accept-host" | "doctor" | "paths" | "refresh" => {
+        "accept-host" | "doctor" | "enablement" | "paths" | "refresh" => {
             let mut forwarded = vec![command.to_string()];
             forwarded.extend(args.iter().cloned());
             Ok(forwarded)
@@ -71,7 +71,7 @@ pub(super) fn forwarded_hook_args(args: &[String]) -> Result<Vec<String>, String
 
     match command {
         "help" | "--help" | "-h" => Err(usage()),
-        lifecycle @ ("accept-host" | "doctor" | "paths" | "refresh") => {
+        lifecycle @ ("accept-host" | "doctor" | "enablement" | "paths" | "refresh") => {
             forwarded_hook_lifecycle_args(lifecycle, &args[1..])
         }
         "event" => {
@@ -100,5 +100,5 @@ fn forwarded_event_args(event: &str, rest: &[String]) -> Result<Vec<String>, Str
 }
 
 fn usage() -> String {
-    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp hook accept-host --host-rollout PATH --host-probe-path PATH --host-sentinel TOKEN\n       asp hook doctor --client <codex|claude> [--host-rollout PATH --host-probe-path PATH --host-sentinel TOKEN] ...\n       asp hook paths [PROJECT_ROOT]\n       asp hook break-glass mint --defect-kind <KIND> --command <COMMAND> [PROJECT_ROOT]\n       asp hook --client <codex|claude> --event <event> ...\n       asp hook <pre-tool|post-tool|stop|event> ...\n       asp install plugin --codex".to_string()
+    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp hook accept-host --host-rollout PATH --host-probe-path PATH --host-sentinel TOKEN\n       asp hook doctor --client <codex|claude> [--host-rollout PATH --host-probe-path PATH --host-sentinel TOKEN] ...\n       asp hook enablement [PROJECT_ROOT] [--json]\n       asp hook paths [PROJECT_ROOT]\n       asp hook refresh --client <codex|claude> [PROJECT_ROOT]\n       asp hook break-glass mint --defect-kind <KIND> --command <COMMAND> [PROJECT_ROOT]\n       asp hook --client <codex|claude> --event <event> ...\n       asp hook <pre-tool|post-tool|stop|event> ...\n       asp install plugin --codex".to_string()
 }

@@ -1,4 +1,3 @@
-use agent_semantic_hook::{HookActivation, RuntimeProfiles};
 use orgize::{
     Org,
     ast::{
@@ -19,8 +18,6 @@ pub(crate) fn render_agent_semantic_protocols_installed_skill(
     _project_root: &Path,
     _org_state_skill_path: &Path,
     _org_artifacts_path: &Path,
-    _activation: &HookActivation,
-    _runtime_profiles: &RuntimeProfiles,
 ) -> Result<String, String> {
     render_agent_semantic_protocols_skill_from_contract()
 }
@@ -29,8 +26,6 @@ pub(crate) fn render_agent_semantic_protocols_plugin_skill(
     _project_root: &Path,
     _org_state_skill_path: &Path,
     _org_artifacts_path: &Path,
-    _activation: &HookActivation,
-    _runtime_profiles: &RuntimeProfiles,
 ) -> Result<String, String> {
     render_agent_semantic_protocols_skill_from_contract()
 }

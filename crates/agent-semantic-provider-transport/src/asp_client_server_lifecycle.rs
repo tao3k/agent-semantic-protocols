@@ -29,7 +29,7 @@ pub struct AspClientServerLifecycleReceipt {
     pub attempt: u64,
     pub publication_epoch: u64,
     pub artifact_digest: String,
-    pub manifest_digest: String,
+    pub registration_digest: String,
     pub runtime_contract_digest: String,
     pub endpoint: Option<String>,
     pub operations: Vec<String>,
@@ -73,7 +73,7 @@ impl AspClientServerLifecycleReceipt {
             attempt: 1,
             publication_epoch: u64::from(ready),
             artifact_digest: expected.artifact_digest.clone(),
-            manifest_digest: expected.manifest_digest.clone(),
+            registration_digest: expected.registration_digest.clone(),
             runtime_contract_digest: expected.contract_digest.clone(),
             endpoint: None,
             operations: expected
@@ -94,7 +94,7 @@ impl AspClientServerLifecycleReceipt {
             || self.language_id.trim().is_empty()
             || self.attempt == 0
             || self.artifact_digest.trim().is_empty()
-            || self.manifest_digest.trim().is_empty()
+            || self.registration_digest.trim().is_empty()
             || self.runtime_contract_digest.trim().is_empty()
         {
             return Err("ASP Client Server lifecycle receipt identity is invalid".to_owned());

@@ -21,27 +21,17 @@
     "wrapper_match": {
       "const": "enable"
     },
-    "agents": {
-      "$ref": "#/$defs/agents"
-    },
     "commandProfiles": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/commandProfile"
       }
     },
-    "languageProviders": {
-      "description": "Managed runtime projection of provider-manifest-owned language source extensions. The provider manifest remains authoritative; this projection is serialized for audited hook matching.",
+    "capabilityPolicies": {
+      "description": "Reusable predicates over SemanticCapability and subject facts. Rules compose predicates while retaining ownership of decisions and dispatch.",
       "type": "array",
       "items": {
-        "$ref": "#/$defs/languageProvider"
-      }
-    },
-    "actionPolicies": {
-      "description": "Reusable predicates over normalized AgentAction envelopes. Rules compose predicates while retaining ownership of decisions and dispatch.",
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/actionPolicy"
+        "$ref": "#/$defs/capabilityPolicy"
       }
     },
     "agentOrgArtifacts": {
@@ -74,84 +64,20 @@
       "pattern": "^[a-z][a-z0-9_-]*$"
     },
     "typedActionKind": {
-      "enum": ["read", "edit", "search", "enumerate", "execute", "test", "build", "delete", "unknown"]
+      "enum": ["read", "edit", "search", "enumerate", "execute", "unknown"]
     },
     "typedSubjectKind": {
       "enum": ["registered-language-source", "registered-language-source-pattern", "provider-config-file", "directory", "structural-selector", "other"]
     },
-    "typedAuthority": {
-      "enum": ["raw-host-action", "raw-shell", "parser-owned-exact-evidence", "parser-owned-search", "ast-patch-evidence", "unknown"]
-    },
-    "actionPolicy": {
+    "capabilityPolicy": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id"],
       "properties": {
         "id": { "$ref": "#/$defs/identifier" },
         "actionAny": { "type": "array", "items": { "$ref": "#/$defs/typedActionKind" } },
-        "effectAny": { "type": "array", "items": { "$ref": "#/$defs/typedActionKind" } },
-        "subjectKindAny": { "type": "array", "items": { "$ref": "#/$defs/typedSubjectKind" } },
-        "authorityAny": { "type": "array", "items": { "$ref": "#/$defs/typedAuthority" } },
-        "authorityExcludeAny": { "type": "array", "items": { "$ref": "#/$defs/typedAuthority" } }
-      }
-    },
-    "agents": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["placeholders", "residentAgents"],
-      "properties": {
-        "placeholders": {
-          "type": "object",
-          "propertyNames": {
-            "$ref": "#/$defs/identifier"
-          },
-          "additionalProperties": {
-            "$ref": "#/$defs/identifier"
-          }
-        },
-        "residentAgents": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/residentAgent"
-          }
-        }
-      }
-    },
-    "residentAgent": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["name", "role", "codexAgentName"],
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "name": {
-          "$ref": "#/$defs/identifier"
-        },
-        "role": {
-          "$ref": "#/$defs/identifier"
-        },
-        "roles": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "$ref": "#/$defs/identifier"
-          }
-        },
-        "permissions": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "codexAgentName": {
-          "$ref": "#/$defs/identifier"
-        },
-        "sessionLifetime": {
-          "enum": ["temporary", "resident"]
-        }
+        "semanticCapabilityAny": { "type": "array", "items": { "$ref": "#/$defs/typedActionKind" } },
+        "subjectKindAny": { "type": "array", "items": { "$ref": "#/$defs/typedSubjectKind" } }
       }
     },
     "commandProfile": {
@@ -191,37 +117,6 @@
         }
       }
     },
-    "languageProvider": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "languageId",
-        "providerId",
-        "manifestDigest",
-        "sourceExtensions"
-      ],
-      "properties": {
-        "languageId": {
-          "$ref": "#/$defs/identifier"
-        },
-        "providerId": {
-          "$ref": "#/$defs/identifier"
-        },
-        "manifestDigest": {
-          "type": "string",
-          "pattern": "^sha256:[0-9a-f]{64}$"
-        },
-        "sourceExtensions": {
-          "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "pattern": "^\\.[^/\\\\\\s]+$"
-          }
-        }
-      }
-    },
     "commandProfileRef": {
       "type": "object",
       "additionalProperties": false,
@@ -238,12 +133,12 @@
     "dispatch": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["transport", "agent", "receiptKind"],
+  "required": ["transport", "role", "receiptKind"],
       "properties": {
         "transport": {
-          "const": "resident-agent"
+      "const": "host-agent"
         },
-        "agent": {
+    "role": {
           "$ref": "#/$defs/identifier"
         },
         "receiptKind": {
@@ -392,19 +287,6 @@
           "then": {
             "properties": { "decision": { "const": "allow" } }
           }
-        },
-        {
-          "if": {
-            "required": ["decisionMaterializer"],
-            "properties": {
-              "decisionMaterializer": { "type": "string" }
-            }
-          },
-          "then": {
-            "properties": {
-              "routes": { "maxItems": 0 }
-            }
-          }
         }
       ],
       "properties": {
@@ -436,17 +318,6 @@
         },
         "decision": {
           "enum": ["allow", "deny", "block"]
-        },
-        "decisionMaterializer": {
-          "type": ["string", "null"],
-          "enum": [
-            "agent-search-json",
-            "prompt-search-strategy",
-            "invalid-asp-facade",
-            "apply-patch",
-            "source-access",
-            null
-          ]
         },
         "reasonKind": {
           "enum": [
@@ -493,17 +364,17 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "actionPolicyAll": {
+        "capabilityPolicyAll": {
           "type": "array",
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/identifier" }
         },
-        "actionPolicyAny": {
+        "capabilityPolicyAny": {
           "type": "array",
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/identifier" }
         },
-        "actionPolicyNone": {
+        "capabilityPolicyNone": {
           "type": "array",
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/identifier" }
@@ -512,21 +383,9 @@
           "type": "array",
           "items": { "$ref": "#/$defs/typedActionKind" }
         },
-        "effectAny": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/typedActionKind" }
-        },
         "subjectKindAny": {
           "type": "array",
           "items": { "$ref": "#/$defs/typedSubjectKind" }
-        },
-        "authorityAny": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/typedAuthority" }
-        },
-        "authorityExcludeAny": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/typedAuthority" }
         },
         "tool": {
           "type": "string",

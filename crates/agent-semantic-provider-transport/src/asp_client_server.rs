@@ -57,9 +57,6 @@ struct AspClientServerState {
 }
 
 const MAX_BOOTSTRAP_STDERR_BYTES: usize = 16 * 1024;
-const DEFAULT_PROVIDER_HTTP_REQUEST_TIMEOUT: std::time::Duration =
-    std::time::Duration::from_secs(30);
-
 #[derive(Clone)]
 struct AspClientServerHttpClient {
     client: reqwest::Client,
@@ -68,9 +65,16 @@ struct AspClientServerHttpClient {
 
 impl AspClientServerHttpClient {
     fn new(base_url: reqwest::Url) -> Result<Self, String> {
-        Self::new_with_timeout(base_url, DEFAULT_PROVIDER_HTTP_REQUEST_TIMEOUT)
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .http1_only()
+            .pool_max_idle_per_host(1)
+            .build()
+            .map_err(|error| format!("construct ASP Client Server HTTP client: {error}"))?;
+        Ok(Self { client, base_url })
     }
 
+    #[cfg(test)]
     fn new_with_timeout(
         base_url: reqwest::Url,
         request_timeout: std::time::Duration,

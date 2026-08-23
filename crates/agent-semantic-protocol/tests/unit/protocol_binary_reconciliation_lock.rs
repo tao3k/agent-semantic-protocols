@@ -1,7 +1,7 @@
 use super::ProtocolBinaryReconciliationGuard;
 
 #[test]
-fn global_reconciliation_lock_rejects_concurrent_writer_without_waiting() {
+fn runtime_artifact_transaction_rejects_concurrent_writer_without_waiting() {
     let protocol_home = std::env::temp_dir().join(format!(
         "asp-global-reconciliation-lock-{}",
         std::process::id()
@@ -27,7 +27,7 @@ fn global_reconciliation_lock_rejects_concurrent_writer_without_waiting() {
     assert!(
         contender
             .1
-            .contains("global ASP reconciliation is already active")
+            .contains("reasonKind=artifact-publication-conflict")
     );
 
     drop(first);
@@ -38,14 +38,14 @@ fn global_reconciliation_lock_rejects_concurrent_writer_without_waiting() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn global_reconciliation_atomically_updates_every_managed_path_alias() {
+async fn runtime_artifact_transaction_atomically_updates_every_managed_path_alias() {
     use std::os::unix::fs::symlink;
 
     let root = std::env::temp_dir().join(format!(
         "asp-managed-path-alias-reconciliation-{}",
         std::process::id()
     ));
-    let artifact_root = root.join("artifacts");
+    let artifact_root = root.join("runtime/artifacts");
     let old_artifact = artifact_root
         .join("blake3-256")
         .join("a".repeat(64))

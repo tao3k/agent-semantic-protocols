@@ -269,7 +269,7 @@ pub struct ProviderSourceEnvelopeLookupRequestV1<'a> {
     pub artifact_root: &'a Path,
     pub language_id: &'a agent_semantic_client_core::LanguageId,
     pub provider_id: &'a agent_semantic_client_core::ProviderId,
-    pub provider_registry: &'a agent_semantic_client_core::ProviderRegistrySnapshot,
+    pub provider_registry: &'a agent_semantic_client_core::RuntimeProviderProjection,
 }
 
 struct ProviderSourceEnvelopeLookupV1 {
@@ -316,7 +316,7 @@ fn provider_source_envelope_lookup(
 }
 
 pub(super) fn provider_registry_address_digest(
-    provider_registry: &agent_semantic_client_core::ProviderRegistrySnapshot,
+    provider_registry: &agent_semantic_client_core::RuntimeProviderProjection,
     project_root: &Path,
 ) -> String {
     let registry = provider_registry.evidence(project_root);
@@ -351,27 +351,6 @@ pub fn provider_source_snapshot_envelope_path_at_artifact_root_with_registry(
     request: ProviderSourceEnvelopeLookupRequestV1<'_>,
 ) -> Result<PathBuf, String> {
     Ok(provider_source_envelope_lookup(&request)?.envelope_path)
-}
-
-/// Refresh and publish one provider workspace envelope, then load it strictly.
-pub async fn ensure_provider_source_index_snapshot_at_artifact_root_with_registry(
-    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
-    request: ProviderSourceEnvelopeLookupRequestV1<'_>,
-) -> Result<CurrentSourceIndexSnapshot, String> {
-    super::generation::publish_target_provider_source_envelope_v1(
-        supervisor,
-        super::generation::TargetProviderSourceEnvelopePublicationRequestV1 {
-            collection_scope: super::collect::SourceIndexCollectionScope::TargetProvider {
-                language_id: request.language_id.clone(),
-                provider_id: request.provider_id.clone(),
-            },
-            provider_registry: request.provider_registry,
-            artifact_root: request.artifact_root,
-            project_root: request.project_root,
-        },
-    )
-    .await?;
-    current_provider_source_index_snapshot_at_artifact_root_with_registry(request)
 }
 
 #[cfg(test)]

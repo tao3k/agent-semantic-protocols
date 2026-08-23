@@ -264,8 +264,8 @@
       "type": "object",
       "properties": {
         "agentAction": {
-          "$ref": "https://agent-semantic-protocols.dev/schemas/agent-action.v1.schema.json",
-          "description": "Typed action, authority, effect, and subjects derived from the host tool payload."
+              "$ref": "https://agent-semantic-protocols.dev/schemas/agent-action.v1.schema.json",
+          "description": "Layered HostInvocation, SemanticCapability, and Subject facts derived from Host payloads and parser-owned behavior evidence."
         },
         "normalizedActions": {
           "type": "array",
@@ -338,42 +338,12 @@
           "type": "string",
           "minLength": 1
         },
-        "targetAgentName": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Host-native managed profile selected from the hook deny intent, for example asp_explorer."
-        },
         "targetAgentRole": {
           "type": "string",
           "minLength": 1
         },
         "targetAgentSelectionSource": {
-          "const": "hook-deny-intent"
-        },
-        "targetAgentRegistrySource": {
-          "type": "string",
-          "minLength": 1
-        },
-        "targetAgentHostRegistry": {
-          "type": "string",
-          "minLength": 1
-        },
-        "targetAgentLifecycleOwner": {
-          "const": "main-agent"
-        },
-        "targetAgentReusePolicy": {
-          "const": "reuse-unique-child-before-spawn"
-        },
-        "targetAgentRegistryStatus": {
-          "enum": [
-            "ready",
-            "repaired-by-asp-sync",
-            "degraded-built-in-route"
-          ]
-        },
-        "targetAgentAutoSync": {
-          "type": "string",
-          "minLength": 1
+          "const": "choice-plane-role-signal"
         },
         "hookConfigStatus": {
           "enum": [

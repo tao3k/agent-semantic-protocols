@@ -1,6 +1,5 @@
 //! Codex plugin installation path for `asp install plugin --codex`.
 
-use agent_semantic_hook::validate_codex_config_toml;
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -14,10 +13,10 @@ const ASP_CODEX_PLUGIN_MARKETPLACE_NAME: &str = "asp-project";
 mod authority;
 #[cfg(test)]
 pub(in crate::command) use authority::{
-    ASP_CODEX_PLUGIN_HOOK_LAUNCHER, ASP_CODEX_PLUGIN_HOOKS_JSON, ASP_CODEX_PLUGIN_MARKETPLACE_JSON,
+    ASP_CODEX_PLUGIN_HOOK_LAUNCHER, ASP_CODEX_PLUGIN_HOOKS_JSON, ASP_CODEX_PLUGIN_MANIFEST_JSON,
+    ASP_CODEX_PLUGIN_MARKETPLACE_JSON,
 };
 pub(in crate::command) use authority::{
-    ASP_CODEX_PLUGIN_MANIFEST_JSON, codex_plugin_hook_present,
     remove_codex_managed_global_hook_config, validate_codex_plugin_source_payload,
 };
 
@@ -30,21 +29,6 @@ static CODEX_CONFIG_PUBLISH_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 pub(super) struct CodexHookConfigInstallReceipt {
     pub(super) changed: bool,
     pub(super) digest: String,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum CodexPluginScope {
-    Project,
-    Global,
-}
-
-impl CodexPluginScope {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Project => "project",
-            Self::Global => "global",
-        }
-    }
 }
 
 #[path = "hook_runtime_codex_plugin_path.rs"]
@@ -102,28 +86,6 @@ fn write_codex_config_atomically(path: &Path, bytes: &[u8]) -> Result<bool, Stri
 #[path = "../../tests/unit/canonical_codex_plugin_hook_binary.rs"]
 mod canonical_codex_plugin_hook_binary_tests;
 
-fn codex_project_plugin_cache_path(project_root: &Path) -> Result<PathBuf, String> {
-    Ok(project_root.join(codex_project_plugin_cache_relative_path()?))
-}
-
-fn codex_project_plugin_cache_relative_path() -> Result<PathBuf, String> {
-    Ok(Path::new(".codex")
-        .join("plugins")
-        .join("cache")
-        .join(ASP_CODEX_PLUGIN_MARKETPLACE_NAME)
-        .join(ASP_CODEX_PLUGIN_NAME)
-        .join(asp_codex_plugin_version()?))
-}
-
-fn asp_codex_plugin_version() -> Result<String, String> {
-    serde_json::from_str::<serde_json::Value>(ASP_CODEX_PLUGIN_MANIFEST_JSON)
-        .map_err(|error| format!("invalid ASP Codex plugin manifest JSON: {error}"))?
-        .get("version")
-        .and_then(serde_json::Value::as_str)
-        .map(ToString::to_string)
-        .ok_or_else(|| "ASP Codex plugin manifest JSON missing version".to_string())
-}
-
 pub(crate) fn codex_plugin_source_root(project_root: &Path) -> Result<PathBuf, String> {
     if is_codex_plugin_source_root(project_root) {
         return fs::canonicalize(project_root)
@@ -150,146 +112,6 @@ fn display_codex_plugin_source_root(project_root: &Path, plugin_source_root: &Pa
     } else {
         display
     }
-}
-
-fn install_codex_project_plugin_config(project_root: &Path) -> Result<PathBuf, String> {
-    let codex_dir = project_root.join(".codex");
-    fs::create_dir_all(&codex_dir)
-        .map_err(|error| format!("failed to create {}: {error}", codex_dir.display()))?;
-    let config_path = codex_dir.join("config.toml");
-    let existing = fs::read_to_string(&config_path).unwrap_or_default();
-    if config_path.is_file() {
-        validate_codex_config_toml(&existing)
-            .map_err(|error| format!("refusing to clean invalid Codex config TOML: {error}"))?;
-    }
-    let merged = normalize_codex_project_plugin_config(&existing);
-    let merged = agent_semantic_hook::remove_codex_managed_hook_config(&merged);
-    if merged != existing || !config_path.is_file() {
-        validate_codex_config_toml(&merged).map_err(|error| {
-            format!("refusing to write invalid Codex project plugin config TOML: {error}")
-        })?;
-        fs::write(&config_path, merged.as_bytes())
-            .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
-    }
-    Ok(config_path)
-}
-
-fn normalize_codex_project_plugin_config(content: &str) -> String {
-    let mut lines = content
-        .trim()
-        .lines()
-        .map(str::to_string)
-        .collect::<Vec<_>>();
-    ensure_codex_project_feature_flags(&mut lines, &["hooks", "plugins", "unified_exec"]);
-    let normalized = lines.join("\n");
-    if normalized.trim().is_empty() {
-        String::new()
-    } else {
-        format!("{}\n", normalized.trim_end())
-    }
-}
-
-fn ensure_codex_project_feature_flags(lines: &mut Vec<String>, required_features: &[&str]) {
-    let Some((features_start, features_end)) = codex_features_section_bounds(lines) else {
-        if !lines.is_empty() && lines.last().is_some_and(|line| !line.trim().is_empty()) {
-            lines.push(String::new());
-        }
-        lines.push("[features]".to_string());
-        lines.extend(
-            required_features
-                .iter()
-                .map(|feature| format!("{feature} = true")),
-        );
-        return;
-    };
-
-    let required = required_features
-        .iter()
-        .copied()
-        .collect::<std::collections::HashSet<_>>();
-    let mut present = std::collections::HashSet::new();
-    lines[features_start + 1..features_end]
-        .iter_mut()
-        .filter_map(|line| {
-            let key = line.trim_start().split_once('=')?.0.trim();
-            required.get(key).copied().map(|feature| (line, feature))
-        })
-        .for_each(|(line, feature)| {
-            let indent = line
-                .chars()
-                .take_while(|character| character.is_whitespace())
-                .collect::<String>();
-            *line = format!("{indent}{feature} = true");
-            present.insert(feature);
-        });
-    let missing = required_features
-        .iter()
-        .copied()
-        .filter(|feature| !present.contains(feature))
-        .map(|feature| format!("{feature} = true"))
-        .collect::<Vec<_>>();
-    lines.splice(features_end..features_end, missing);
-}
-
-fn codex_features_section_bounds(lines: &[String]) -> Option<(usize, usize)> {
-    let mut features_start = None;
-    for (index, line) in lines.iter().enumerate() {
-        let trimmed = line.trim();
-        if !toml_table_header(trimmed) {
-            continue;
-        }
-        if trimmed == "[features]" {
-            features_start = Some(index);
-            continue;
-        }
-        if let Some(start) = features_start {
-            return Some((start, index));
-        }
-    }
-    features_start.map(|start| (start, lines.len()))
-}
-
-fn toml_table_header(trimmed: &str) -> bool {
-    trimmed.starts_with('[') && trimmed.ends_with(']') && !trimmed.starts_with("[[")
-}
-
-fn remove_codex_project_plugin_section(existing: &str, plugin_id: &str) -> String {
-    let section_plain = format!("[plugins.{plugin_id}]");
-    let section_quoted = format!("[plugins.{}]", toml_basic_string(plugin_id));
-    remove_toml_sections(existing, &[section_plain.as_str(), section_quoted.as_str()])
-}
-
-fn remove_codex_project_plugin_config(config_path: &Path, plugin_id: &str) -> Result<(), String> {
-    let existing = fs::read_to_string(config_path).unwrap_or_default();
-    validate_codex_config_toml(&existing)
-        .map_err(|error| format!("refusing to clean invalid Codex config TOML: {error}"))?;
-    let cleaned = remove_codex_project_plugin_section(&existing, plugin_id);
-    if cleaned != existing {
-        validate_codex_config_toml(&cleaned).map_err(|error| {
-            format!("refusing to write invalid cleaned Codex config TOML: {error}")
-        })?;
-        fs::write(config_path, cleaned.as_bytes())
-            .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
-    }
-    Ok(())
-}
-
-fn remove_toml_sections(existing: &str, sections: &[&str]) -> String {
-    let mut lines = Vec::new();
-    let mut skipping = false;
-    for line in existing.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('[') {
-            skipping = sections.contains(&trimmed);
-            if skipping {
-                continue;
-            }
-        }
-        if !skipping {
-            lines.push(line.to_string());
-        }
-    }
-    format!("{}\n", lines.join("\n").trim_end())
 }
 
 fn ensure_codex_plugin_marketplace_registered(
@@ -416,10 +238,6 @@ fn codex_plugin_installed_path(add_stdout: &str) -> Option<String> {
                 .and_then(serde_json::Value::as_str)
                 .map(ToString::to_string)
         })
-}
-
-fn toml_basic_string(value: &str) -> String {
-    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 fn global_codex_config_path() -> Result<PathBuf, String> {

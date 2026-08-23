@@ -12,15 +12,11 @@ fn paths_reports_project_root_and_org_state_paths() {
         ResolvedState::resolve_with_state_home(&root, &state_home).expect("resolved state");
     let resolved = &resolved_state.paths;
     let expected_org_artifacts = resolved.artifacts_dir.join("org");
-    let expected_hook_dir = resolved_state
-        .state_home
-        .join("hooks")
-        .join("projects")
-        .join(resolved_state.repo.repo_id.as_str())
-        .join("workspaces")
-        .join(resolved_state.workspace.workspace_id.as_str());
-    let expected_hook_state_dir = expected_hook_dir.join("state");
-    let expected_hook_cache_dir = expected_hook_dir.join("cache");
+    let expected_paths =
+        agent_semantic_runtime::project_state_paths_with_state_home(&root, &state_home)
+            .expect("resolved project state paths");
+    let expected_hook_state_dir = expected_paths.hook_state_dir;
+    let expected_hook_cache_dir = expected_paths.hook_cache_dir;
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("ASP_STATE_HOME", &state_home)
@@ -130,15 +126,11 @@ fn paths_json_is_machine_readable() {
         ResolvedState::resolve_with_state_home(&root, &state_home).expect("resolved state");
     let resolved = &resolved_state.paths;
     let expected_org_artifacts = resolved.artifacts_dir.join("org");
-    let expected_hook_dir = resolved_state
-        .state_home
-        .join("hooks")
-        .join("projects")
-        .join(resolved_state.repo.repo_id.as_str())
-        .join("workspaces")
-        .join(resolved_state.workspace.workspace_id.as_str());
-    let expected_hook_state_dir = expected_hook_dir.join("state");
-    let expected_hook_cache_dir = expected_hook_dir.join("cache");
+    let expected_paths =
+        agent_semantic_runtime::project_state_paths_with_state_home(&root, &state_home)
+            .expect("resolved project state paths");
+    let expected_hook_state_dir = expected_paths.hook_state_dir;
+    let expected_hook_cache_dir = expected_paths.hook_cache_dir;
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(&root)
         .env("ASP_STATE_HOME", &state_home)
@@ -195,7 +187,6 @@ fn paths_json_is_machine_readable() {
             .contains("/live/client/cache-manifest.json")
     );
     assert!(!root.join(".cache").exists());
-    assert!(!state_home.join("projects/by-id").exists());
     let _ = std::fs::remove_dir_all(root);
     let _ = std::fs::remove_dir_all(state_home);
 }

@@ -29,7 +29,7 @@ async fn async_snapshot_reads_each_owner_once_and_preserves_canonical_order() {
             },
         )
         .collect::<Vec<_>>();
-    let registry = agent_semantic_client_core::ProviderRegistryEvidence {
+    let registry = agent_semantic_client_core::RuntimeProviderProjectionEvidence {
         fingerprint: "async-snapshot-registry".to_owned(),
         scope_dirs: std::collections::BTreeSet::new(),
     };

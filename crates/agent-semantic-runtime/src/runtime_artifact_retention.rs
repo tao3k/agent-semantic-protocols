@@ -4,15 +4,16 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-const SCHEMA_ID: &str = "agent.semantic-protocols.runtime-artifact-retention-receipt.v1";
+const SCHEMA_ID: &str = "agent.semantic-protocols.runtime-artifact-retention-receipt";
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeArtifactRetentionReceipt {
     pub schema_id: String,
     pub schema_version: String,
-    pub algorithm: String,
-    pub rollback_generations_per_binary: usize,
+    pub content_algorithm: String,
+    pub retention_policy: String,
+    pub retained_slots_per_binary: usize,
     pub scanned_generation_count: usize,
     pub retained_generation_count: usize,
     pub removed_generation_count: usize,
@@ -26,6 +27,59 @@ struct ArtifactGeneration {
     bytes: u64,
 }
 
+#[derive(Clone)]
+pub struct RuntimeArtifactMutationGuard {
+    _file: std::sync::Arc<std::fs::File>,
+    artifact_root: PathBuf,
+}
+
+impl RuntimeArtifactMutationGuard {
+    pub fn try_acquire(artifact_root: &Path) -> Result<Self, String> {
+        acquire_runtime_artifact_mutation_guard(artifact_root)
+    }
+
+    pub(crate) fn admits(&self, artifact_root: &Path) -> bool {
+        self.artifact_root == artifact_root
+    }
+}
+
+fn acquire_runtime_artifact_mutation_guard(
+    artifact_root: &Path,
+) -> Result<RuntimeArtifactMutationGuard, String> {
+    let runtime_root = artifact_root.parent().ok_or_else(|| {
+        format!(
+            "Runtime artifact root has no Runtime parent: {}",
+            artifact_root.display()
+        )
+    })?;
+    let lock_dir = runtime_root.join("locks");
+    std::fs::create_dir_all(&lock_dir)
+        .map_err(|error| format!("failed to create {}: {error}", lock_dir.display()))?;
+    let lock_path = lock_dir.join("artifact-mutation.lock");
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .map_err(|error| {
+            format!(
+                "failed to open Runtime artifact mutation lock {}: {error}",
+                lock_path.display()
+            )
+        })?;
+    fs2::FileExt::try_lock_exclusive(&file).map_err(|error| {
+        format!(
+            "Runtime artifact mutation is already active: lock={} reasonKind=artifact-publication-conflict error={error}",
+            lock_path.display()
+        )
+    })?;
+    Ok(RuntimeArtifactMutationGuard {
+        _file: std::sync::Arc::new(file),
+        artifact_root: artifact_root.to_path_buf(),
+    })
+}
+
 /// Removes every digest generation that is not reachable from a stable Runtime slot.
 ///
 /// Runtime owns both publication roots. Protocol/provider clients must not add their
@@ -35,6 +89,7 @@ pub async fn prune_unreachable_runtime_artifacts(
 ) -> Result<RuntimeArtifactRetentionReceipt, String> {
     let artifact_root = artifact_root.to_path_buf();
     tokio::task::spawn_blocking(move || {
+        let _mutation_guard = acquire_runtime_artifact_mutation_guard(&artifact_root)?;
         prune_unreachable_runtime_artifacts_blocking(&artifact_root)
     })
     .await
@@ -66,8 +121,9 @@ pub(crate) fn prune_unreachable_runtime_artifacts_blocking(
     let receipt = RuntimeArtifactRetentionReceipt {
         schema_id: SCHEMA_ID.to_owned(),
         schema_version: "1".to_owned(),
-        algorithm: "reachable-stable-runtime-slots-v1".to_owned(),
-        rollback_generations_per_binary: 0,
+        content_algorithm: "blake3-256".to_owned(),
+        retention_policy: "active-healthy-reachability".to_owned(),
+        retained_slots_per_binary: 2,
         scanned_generation_count: generations.len(),
         retained_generation_count: generations.len() - removed_generation_count,
         removed_generation_count,
@@ -199,9 +255,9 @@ fn publish_retention_receipt(
 ) -> Result<(), String> {
     fs::create_dir_all(artifact_root)
         .map_err(|error| format!("failed to create {}: {error}", artifact_root.display()))?;
-    let path = artifact_root.join("retention-receipt.v1.json");
+    let path = artifact_root.join("retention-receipt.json");
     let staged = artifact_root.join(format!(
-        ".retention-receipt.v1.json.tmp-{}",
+        ".retention-receipt.json.tmp-{}",
         std::process::id()
     ));
     let bytes = serde_json::to_vec_pretty(receipt)

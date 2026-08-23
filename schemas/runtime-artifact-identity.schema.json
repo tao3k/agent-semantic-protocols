@@ -11,6 +11,8 @@
     "artifactMode",
     "stablePath",
     "sourcePath",
+    "sourceGeneration",
+    "sourceGenerationAlgorithm",
     "artifactDigest",
     "identityKind",
     "identityValue",
@@ -38,20 +40,22 @@
       "type": "string",
       "minLength": 1
     },
+    "sourceGeneration": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "sourceGenerationAlgorithm": {
+      "const": "filesystem-generation-v1"
+    },
     "artifactDigest": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },
-    "identityKind": {
-      "enum": ["content", "developer-source-generation"]
-    },
+    "identityKind": { "const": "content" },
     "identityValue": {
       "type": "string",
       "minLength": 1
     },
-    "identityAlgorithm": {
-      "type": "string",
-      "minLength": 1
-    }
+    "identityAlgorithm": { "const": "blake3-256" }
   }
 }

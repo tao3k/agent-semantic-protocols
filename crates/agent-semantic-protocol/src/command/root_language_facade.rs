@@ -1,31 +1,26 @@
 //! Thin root `asp search` / `asp query` router over language facades.
 
-use std::env;
-use std::path::{Path, PathBuf};
-
-use agent_semantic_hook::HookRuntime;
+use std::path::Path;
 
 use super::provider_dispatch::{
     is_language_facade, run_language_command, unsupported_language_facade_message,
 };
 
 pub(crate) async fn run_root_language_facade(command: &str, args: &[String]) -> Result<(), String> {
-    let cwd = env::current_dir()
-        .map_err(|error| format!("failed to resolve current directory: {error}"))?;
-    let (language_id, provider_args) = root_language_and_args(command, args, &cwd)?;
+    let (language_id, provider_args) = root_language_and_args(command, args)?;
     let mut language_args = vec![command.to_string()];
     language_args.extend(provider_args);
     run_language_command(&language_id, &language_args, tokio::time::Instant::now()).await
 }
 
-fn root_language_and_args(
-    command: &str,
-    args: &[String],
-    cwd: &Path,
-) -> Result<(String, Vec<String>), String> {
+fn root_language_and_args(command: &str, args: &[String]) -> Result<(String, Vec<String>), String> {
     let (explicit_language, provider_args) = split_root_language_arg(command, args)?;
     let provider_args = normalize_root_provider_args(command, provider_args);
-    let runtime = load_activation_runtime(cwd);
+    let profiles = agent_semantic_config::default_hook_client_config_file()?
+        .profiles
+        .into_values()
+        .map(|profile| (profile.language_id, profile.extension_any))
+        .collect::<Vec<_>>();
     if let Some(language) = explicit_language {
         if is_language_facade(&language) {
             return Ok((language, provider_args));
@@ -33,13 +28,13 @@ fn root_language_and_args(
         return Err(unsupported_language_facade_message(
             &language,
             Some(command),
-            runtime.as_ref(),
+            None,
         ));
     }
 
-    infer_root_facade_language(&provider_args, cwd, runtime.as_ref())?
+    infer_root_facade_language(&provider_args, &profiles)?
         .map(|language| (language, provider_args))
-        .ok_or_else(|| root_facade_language_required(command, runtime.as_ref()))
+        .ok_or_else(|| root_facade_language_required(command, &profiles))
 }
 
 fn split_root_language_arg(
@@ -93,64 +88,34 @@ fn strip_query_view_seeds(args: Vec<String>) -> Vec<String> {
     normalized
 }
 
-fn load_activation_runtime(cwd: &Path) -> Option<HookRuntime> {
-    let activation_path = super::provider_activation::provider_activation_path(cwd);
-    super::provider_activation::load_activation(&activation_path, cwd).ok()
-}
-
 fn infer_root_facade_language(
     args: &[String],
-    cwd: &Path,
-    runtime: Option<&HookRuntime>,
+    profiles: &[(String, Vec<String>)],
 ) -> Result<Option<String>, String> {
-    let Some(runtime) = runtime else {
-        return Ok(None);
-    };
     let path_languages = args
         .iter()
-        .filter_map(|arg| language_from_path_like_arg(arg, runtime))
+        .filter_map(|arg| language_from_path_like_arg(arg, profiles))
         .collect::<std::collections::BTreeSet<_>>();
     if path_languages.len() == 1 {
         return Ok(path_languages.into_iter().next().map(str::to_string));
     }
-
-    let project_roots = args
-        .iter()
-        .filter_map(|arg| project_root_candidate(arg, cwd))
-        .collect::<Vec<_>>();
-    let tree_sitter_root = project_roots.first().map(PathBuf::as_path).unwrap_or(cwd);
-    if let Some(language) =
-        super::workspace_tree_sitter_query::infer_workspace_tree_sitter_search_language(
-            args,
-            tree_sitter_root,
-            &runtime.providers,
-        )?
-    {
-        return Ok(Some(language));
-    }
-    let marker_languages = project_roots
-        .iter()
-        .flat_map(|root| marker_languages(root, runtime))
-        .collect::<std::collections::BTreeSet<_>>();
-    if marker_languages.len() == 1 {
-        return Ok(marker_languages.into_iter().next().map(str::to_string));
-    }
     Ok(None)
 }
 
-fn language_from_path_like_arg<'a>(arg: &str, runtime: &'a HookRuntime) -> Option<&'a str> {
+fn language_from_path_like_arg<'a>(
+    arg: &str,
+    profiles: &'a [(String, Vec<String>)],
+) -> Option<&'a str> {
     let path = selector_path(arg);
     let extension = Path::new(path).extension()?.to_str()?;
-    let matches = runtime
-        .providers
+    let matches = profiles
         .iter()
-        .filter(|provider| {
-            provider
-                .source_extensions
+        .filter(|(_language_id, extensions)| {
+            extensions
                 .iter()
                 .any(|source_extension| source_extension.trim_start_matches('.') == extension)
         })
-        .map(|provider| provider.language_id.as_str())
+        .map(|(language_id, _extensions)| language_id.as_str())
         .collect::<std::collections::BTreeSet<_>>();
     (matches.len() == 1).then(|| *matches.first().expect("one language match"))
 }
@@ -170,49 +135,20 @@ fn selector_path(arg: &str) -> &str {
     }
 }
 
-fn project_root_candidate(arg: &str, cwd: &Path) -> Option<PathBuf> {
-    if arg.starts_with('-') || arg.contains(':') {
-        return None;
-    }
-    let path = if Path::new(arg).is_absolute() {
-        PathBuf::from(arg)
-    } else {
-        cwd.join(arg)
-    };
-    path.is_dir().then_some(path)
-}
-
-fn marker_languages<'a>(root: &Path, runtime: &'a HookRuntime) -> Vec<&'a str> {
-    runtime
-        .providers
+fn root_facade_language_required(command: &str, profiles: &[(String, Vec<String>)]) -> String {
+    let languages = profiles
         .iter()
-        .filter(|provider| {
-            provider
-                .config_files
-                .iter()
-                .any(|config_file| root.join(config_file).exists())
-        })
-        .map(|provider| provider.language_id.as_str())
-        .collect()
-}
-
-fn root_facade_language_required(command: &str, runtime: Option<&HookRuntime>) -> String {
-    let languages = runtime
-        .map(active_language_hint)
-        .filter(|languages| !languages.is_empty())
-        .unwrap_or_else(|| "language".to_string());
-    format!(
-        "asp {command} requires --language <{languages}> or an unambiguous path/selector; use `asp {command} --language <language> ...` or `asp <language> {command} ...`"
-    )
-}
-
-fn active_language_hint(runtime: &HookRuntime) -> String {
-    runtime
-        .providers
-        .iter()
-        .map(|provider| provider.language_id.as_str())
+        .map(|(language_id, _extensions)| language_id.as_str())
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>()
-        .join("|")
+        .join("|");
+    let languages = if languages.is_empty() {
+        "language"
+    } else {
+        languages.as_str()
+    };
+    format!(
+        "asp {command} requires --language <{languages}> or an unambiguous path/selector; use `asp {command} --language <language> ...` or `asp <language> {command} ...`"
+    )
 }

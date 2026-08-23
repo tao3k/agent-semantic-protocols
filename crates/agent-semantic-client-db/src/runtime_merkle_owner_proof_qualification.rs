@@ -2,10 +2,9 @@ use crate::runtime_resident_read::RuntimeResidentReadClient;
 use crate::runtime_resident_read::RuntimeResidentReadWorkCounters;
 use crate::runtime_server_workspace::WorkspaceRuntimeMerkleOwnerRead;
 
-const SCHEMA_ID: &str =
-    "agent-semantic-protocols.runtime-merkle-owner-proof-qualification-receipt.v1";
+const SCHEMA_ID: &str = "agent-semantic-protocols.runtime-merkle-owner-proof-qualification-receipt";
 const SCHEMA_VERSION: &str = "1";
-const PROOF_DIGEST_DOMAIN: &[u8] = b"asp.runtime-merkle-owner-inclusion-proof.v1";
+const PROOF_DIGEST_DOMAIN: &[u8] = b"asp.runtime-merkle-owner-inclusion-proof";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -16,7 +15,7 @@ pub enum RuntimeMerkleOwnerProofEvidenceLayer {
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct RuntimeMerkleOwnerProofQualificationReceiptV1 {
+pub struct RuntimeMerkleOwnerProofQualificationReceipt {
     pub schema_id: String,
     pub schema_version: String,
     pub evidence_layer: RuntimeMerkleOwnerProofEvidenceLayer,
@@ -42,7 +41,7 @@ pub struct RuntimeMerkleOwnerProofQualificationReceiptV1 {
     pub reason_kind: Option<String>,
 }
 
-impl RuntimeMerkleOwnerProofQualificationReceiptV1 {
+impl RuntimeMerkleOwnerProofQualificationReceipt {
     #[allow(clippy::too_many_arguments)]
     pub fn qualified(
         evidence_layer: RuntimeMerkleOwnerProofEvidenceLayer,
@@ -86,7 +85,7 @@ impl RuntimeMerkleOwnerProofQualificationReceiptV1 {
         let proof_payload = serde_json::to_vec(&inclusion_proof)
             .map_err(|error| format!("encode Runtime Merkle inclusion proof: {error}"))?;
         let proof_digest =
-            agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest_v1(
+            agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest(
                 PROOF_DIGEST_DOMAIN,
                 &[&proof_payload],
             );
@@ -130,13 +129,13 @@ impl RuntimeResidentReadClient {
         provider_id: impl Into<String>,
         owner_path: &str,
         structural_selector: impl Into<String>,
-    ) -> Result<RuntimeMerkleOwnerProofQualificationReceiptV1, String> {
+    ) -> Result<RuntimeMerkleOwnerProofQualificationReceipt, String> {
         let case_id = case_id.into();
         let language_id = language_id.into();
         let started = std::time::Instant::now();
         let read = self.read_merkle_owner(owner_path)?;
         let elapsed_micros = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
-        let receipt = RuntimeMerkleOwnerProofQualificationReceiptV1::qualified(
+        let receipt = RuntimeMerkleOwnerProofQualificationReceipt::qualified(
             evidence_layer,
             case_id.clone(),
             resource_id,

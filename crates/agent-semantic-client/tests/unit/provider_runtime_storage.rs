@@ -139,7 +139,12 @@ fn provider_runtime_storage_rejects_invalid_identity_without_partial_write() {
 
 #[test]
 fn provider_runtime_storage_real_binding_persists_to_isolated_turso_profile() {
+    let _lock = crate::test_support::CACHE_TEST_LOCK
+        .lock()
+        .expect("cache test lock");
     let project = TestProject::new("real-binding");
+    let state_home = project.0.join("state-home");
+    let _state_home = crate::test_support::EnvVarGuard::set("ASP_STATE_HOME", &state_home);
     let binding = ProviderRuntimeStorageBinding::from_runtime_identity(
         &project.0,
         "codex",

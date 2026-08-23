@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/runtime-merkle-owner-proof-qualification-receipt.schema.json",
+  "title": "Runtime Merkle Owner Proof Qualification Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "evidenceLayer",
+    "runtimeEcosystem",
+    "readMode",
+    "caseId",
+    "resourceId",
+    "languageId",
+    "providerId",
+    "workspaceIdentity",
+    "generationDigest",
+    "rootDigest",
+    "ownerPath",
+    "ownerContentDigest",
+    "ownerSubtreeDigest",
+    "structuralSelector",
+    "proofDigest",
+    "proofStepCount",
+    "elapsedMicros",
+    "workCounters",
+    "status",
+    "reasonKind"
+  ],
+  "properties": {
+    "runtimeEcosystem": { "const": "tokio" },
+    "readMode": { "const": "synchronous-mmap" },
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-merkle-owner-proof-qualification-receipt"
+    },
+    "schemaVersion": { "const": "1" },
+    "evidenceLayer": { "enum": ["scenario", "live-corpus"] },
+    "caseId": { "type": "string", "minLength": 1 },
+    "resourceId": { "type": ["string", "null"], "minLength": 1 },
+    "languageId": { "type": "string", "minLength": 1 },
+    "providerId": { "type": "string", "minLength": 1 },
+    "workspaceIdentity": { "type": "string", "minLength": 1 },
+    "generationDigest": { "$ref": "#/$defs/optionalDigest" },
+    "rootDigest": {
+      "description": "Resident owner-path Merkle root; this is not the workspace source snapshot root.",
+      "$ref": "#/$defs/optionalDigest"
+    },
+    "ownerPath": { "type": ["string", "null"], "minLength": 1 },
+    "ownerContentDigest": { "$ref": "#/$defs/optionalDigest" },
+    "ownerSubtreeDigest": { "$ref": "#/$defs/optionalDigest" },
+    "structuralSelector": { "type": ["string", "null"], "minLength": 1 },
+    "proofDigest": { "$ref": "#/$defs/optionalDigest" },
+    "proofStepCount": { "type": ["integer", "null"], "minimum": 0 },
+    "elapsedMicros": {
+      "type": "integer",
+      "minimum": 0,
+      "exclusiveMaximum": 1000
+    },
+    "workCounters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "providerProcessCount",
+        "schedulerTaskCount",
+        "filesystemReadCount",
+        "databaseReadCount",
+        "socketOperationCount"
+      ],
+      "properties": {
+        "providerProcessCount": { "const": 0 },
+        "schedulerTaskCount": { "const": 0 },
+        "filesystemReadCount": { "const": 0 },
+        "databaseReadCount": { "const": 0 },
+        "socketOperationCount": { "const": 0 }
+      }
+    },
+    "status": { "enum": ["qualified", "rejected"] },
+    "reasonKind": { "type": ["string", "null"], "minLength": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "qualified" } } },
+      "then": {
+        "properties": {
+          "generationDigest": { "$ref": "#/$defs/digest" },
+          "rootDigest": { "$ref": "#/$defs/digest" },
+          "ownerPath": { "type": "string", "minLength": 1 },
+          "ownerContentDigest": { "$ref": "#/$defs/digest" },
+          "ownerSubtreeDigest": { "$ref": "#/$defs/digest" },
+          "structuralSelector": { "type": "string", "minLength": 1 },
+          "proofDigest": { "$ref": "#/$defs/digest" },
+          "proofStepCount": { "type": "integer", "minimum": 0 },
+          "reasonKind": { "type": "null" }
+        }
+      },
+      "else": {
+        "properties": {
+          "reasonKind": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "optionalDigest": {
+      "anyOf": [
+        { "$ref": "#/$defs/digest" },
+        { "type": "null" }
+      ]
+    }
+  }
+}

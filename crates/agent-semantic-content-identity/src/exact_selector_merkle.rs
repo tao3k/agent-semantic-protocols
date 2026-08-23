@@ -262,7 +262,7 @@ pub fn parse_content_digest_v1(value: &str) -> Result<ContentDigestV1, String> {
     Ok(ContentDigestV1(value.to_string()))
 }
 
-pub fn canonical_content_digest_v1(domain: &[u8], parts: &[&[u8]]) -> ContentDigestV1 {
+pub fn canonical_content_digest(domain: &[u8], parts: &[&[u8]]) -> ContentDigestV1 {
     let mut hasher = blake3::Hasher::new();
     hasher.update(&(domain.len() as u64).to_be_bytes());
     hasher.update(domain);

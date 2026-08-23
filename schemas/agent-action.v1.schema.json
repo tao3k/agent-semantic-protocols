@@ -1,14 +1,18 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.dev/schemas/agent-action.v1.schema.json",
-  "title": "Agent Action v1",
+  "title": "Agent Action IR v1",
+  "description": "Separates immutable Host invocation facts from parser-derived semantic capabilities and classified subjects.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["action", "effect", "authority", "subjects"],
+  "required": ["hostInvocation", "semanticCapabilities", "subjects"],
   "properties": {
-    "action": { "$ref": "#/$defs/actionKind" },
-    "effect": { "$ref": "#/$defs/actionKind" },
-    "authority": { "$ref": "#/$defs/authority" },
+    "hostInvocation": { "$ref": "#/$defs/hostInvocation" },
+    "semanticCapabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/semanticCapability" }
+    },
     "subjects": {
       "type": "array",
       "items": { "$ref": "#/$defs/subject" }
@@ -16,19 +20,28 @@
   },
   "$defs": {
     "actionKind": {
-      "type": "string",
       "enum": ["read", "edit", "search", "enumerate", "execute", "unknown"]
     },
-    "authority": {
-      "type": "string",
-      "enum": [
-        "raw-host-action",
-        "raw-shell",
-        "parser-owned-exact-evidence",
-        "parser-owned-search",
-        "ast-patch-evidence",
-        "unknown"
-      ]
+    "hostInvocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "toolName", "surface", "payload", "source"],
+      "properties": {
+        "action": { "$ref": "#/$defs/actionKind" },
+        "toolName": { "type": "string" },
+        "surface": { "type": "string", "minLength": 1 },
+        "payload": {},
+        "source": { "type": ["string", "null"] }
+      }
+    },
+    "semanticCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "evidence"],
+      "properties": {
+        "action": { "$ref": "#/$defs/actionKind" },
+        "evidence": { "enum": ["host-invocation", "shell-redirection"] }
+      }
     },
     "subject": {
       "type": "object",
@@ -37,7 +50,6 @@
       "properties": {
         "value": { "type": "string", "minLength": 1 },
         "kind": {
-          "type": "string",
           "enum": [
             "registered-language-source",
             "registered-language-source-pattern",

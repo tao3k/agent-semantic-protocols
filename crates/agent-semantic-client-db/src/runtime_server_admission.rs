@@ -50,7 +50,7 @@ use entry_authority::AdmissionEntryAuthority;
 use query_coverage::QueryTargetCoverage;
 
 pub const WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID: &str =
-    "agent.semantic-protocols.runtime-server-workspace-generation-admission.v1";
+    "agent.semantic-protocols.runtime-server-workspace-generation-admission";
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct WorkspaceGenerationAdmissionKey {

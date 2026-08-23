@@ -65,7 +65,8 @@ fn global_install_checks_release_profile_before_and_after_copy() {
         2,
         "release profile must be checked before and after installation"
     );
-    assert!(recipe.contains("target/release/asp"));
+    assert!(recipe.contains("asp_artifact=\"${cargo_target_dir}/release/asp\""));
+    assert!(recipe.contains("\"${asp_artifact}\" install binary"));
     assert!(!recipe.contains("target/debug/asp"));
 }
 
@@ -84,7 +85,8 @@ fn debug_install_never_publishes_a_stale_target_after_build_failure() {
         ),
         "a failed debug build must stop before an older target/debug/asp can be published"
     );
-    assert!(recipe.contains("target/debug/asp install binary"));
+    assert!(recipe.contains("asp_artifact=\"${cargo_target_dir}/debug/asp\""));
+    assert!(recipe.contains("\"${asp_artifact}\" install binary"));
 }
 
 #[test]

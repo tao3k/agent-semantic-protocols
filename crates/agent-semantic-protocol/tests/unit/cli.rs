@@ -47,7 +47,7 @@ fn missing_generation_has_one_runtime_owned_non_recursive_action() {
     );
     let receipt: serde_json::Value = serde_json::from_str(&rendered).expect("typed receipt");
     let schema: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../schemas/workspace-generation-required.v1.schema.json"
+        "../../../../schemas/workspace-generation-required.schema.json"
     ))
     .expect("workspace generation schema");
     jsonschema::validator_for(&schema)

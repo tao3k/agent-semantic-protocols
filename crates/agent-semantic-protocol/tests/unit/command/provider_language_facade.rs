@@ -9,7 +9,7 @@ fn workspace_root() -> PathBuf {
 }
 
 #[test]
-fn structural_item_source_query_routes_to_provider_backend() {
+fn structural_item_source_query_fails_closed_without_live_provider() {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
             "typescript",
@@ -18,23 +18,20 @@ fn structural_item_source_query_routes_to_provider_backend() {
             "typescript://languages/typescript-lang-project-harness/src/cli/semantic-search/item-query.ts#item/function/renderOwnerItemQuery",
             "--workspace",
             ".",
+            "--projection",
+            "source",
         ])
         .current_dir(workspace_root())
         .output()
         .expect("run asp structural item query");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(output.status.success(), "stderr={stderr}");
-
-    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    assert!(!output.status.success(), "stderr={stderr}");
     assert!(
-        stdout.starts_with("export function renderOwnerItemQuery("),
-        "stdout={stdout}"
+        stderr.contains("reasonKind=active-workspace-generation-required"),
+        "stderr={stderr}"
     );
-    assert!(
-        !stdout.contains("export interface SemanticQueryPacket"),
-        "structural item query leaked owner file: {stdout}"
-    );
+    assert!(stderr.contains("provider-missing"), "stderr={stderr}");
 }
 
 #[test]
@@ -48,15 +45,21 @@ fn exact_structural_selector_does_not_require_a_term() {
             selector,
             "--workspace",
             ".",
+            "--projection",
+            "source",
         ])
         .current_dir(workspace_root())
         .output()
         .expect("run exact structural selector query");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(output.status.success(), "stderr={stderr}");
+    assert!(!output.status.success(), "stderr={stderr}");
     assert!(
         !stderr.contains("query requires at least one --term"),
+        "stderr={stderr}"
+    );
+    assert!(
+        stderr.contains("reasonKind=active-workspace-generation-required"),
         "stderr={stderr}"
     );
 }

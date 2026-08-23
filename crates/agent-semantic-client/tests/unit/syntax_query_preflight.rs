@@ -207,7 +207,7 @@ fn ignores_owner_queries() {
 }
 
 fn query_request(forwarded_args: Vec<String>) -> ClientRequest {
-    ClientRequest::new(ClientMethod::Query, ".")
+    ClientRequest::new(ClientMethod::Query, env!("CARGO_MANIFEST_DIR"))
         .with_language("rust")
         .with_forwarded_args(forwarded_args)
 }

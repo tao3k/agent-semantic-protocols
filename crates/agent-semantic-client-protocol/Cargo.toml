@@ -1,0 +1,16 @@
+[package]
+name = "agent-semantic-client-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+asp-rust-project-harness-policy.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

@@ -82,6 +82,15 @@ pub(super) fn reconcile_provider_install_receipt_in_lock_dir(
     provider_lock_dir: &Path,
     emit_receipt: bool,
 ) -> Result<bool, String> {
+    reconcile_provider_install_receipt_for_path(language_id, provider_lock_dir, None, emit_receipt)
+}
+
+pub(super) fn reconcile_provider_install_receipt_for_path(
+    language_id: &str,
+    provider_lock_dir: &Path,
+    installed_path_override: Option<&Path>,
+    emit_receipt: bool,
+) -> Result<bool, String> {
     let lock_path = provider_lock_dir.join(format!("{language_id}.lock.toml"));
     let contents = fs::read_to_string(&lock_path)
         .map_err(|error| format!("failed to read {}: {error}", lock_path.display()))?;
@@ -90,7 +99,7 @@ pub(super) fn reconcile_provider_install_receipt_in_lock_dir(
     let table = lock
         .as_table_mut()
         .ok_or_else(|| format!("provider lock is not a TOML table: {}", lock_path.display()))?;
-    let (current_provider_id, installed_path) = {
+    let (current_provider_id, recorded_installed_path) = {
         let field = |name: &str| -> Result<&str, String> {
             table
                 .get(name)
@@ -120,8 +129,11 @@ pub(super) fn reconcile_provider_install_receipt_in_lock_dir(
             PathBuf::from(field("installedPath")?),
         )
     };
-    let provider_id = agent_semantic_hook::registered_provider_id_v1(language_id)
-        .ok_or_else(|| format!("no registered provider identity for language `{language_id}`"))?;
+    let installed_path = installed_path_override
+        .map(Path::to_path_buf)
+        .unwrap_or(recorded_installed_path.clone());
+    let provider_id =
+        super::provider_install_registry::provider_install_registration(language_id)?.provider_id;
     let installed_entrypoint_digest =
         agent_semantic_content_identity::file_content_digest_v1(&installed_path)?;
     let installed_entrypoint_metadata_digest =
@@ -139,6 +151,7 @@ pub(super) fn reconcile_provider_install_receipt_in_lock_dir(
         })?
         .len();
     let changed = current_provider_id != provider_id
+        || recorded_installed_path != installed_path
         || table
             .get("installedEntrypointDigest")
             .and_then(toml::Value::as_str)
@@ -156,6 +169,10 @@ pub(super) fn reconcile_provider_install_receipt_in_lock_dir(
         toml::Value::String(provider_id.clone()),
     );
     table.insert(
+        "installedPath".to_string(),
+        toml::Value::String(installed_path.to_string_lossy().into_owned()),
+    );
+    table.insert(
         "installedEntrypointDigest".to_string(),
         toml::Value::String(installed_entrypoint_digest.clone()),
     );
@@ -171,6 +188,38 @@ pub(super) fn reconcile_provider_install_receipt_in_lock_dir(
         let reconciled = toml::to_string_pretty(&lock)
             .map_err(|error| format!("failed to encode {}: {error}", lock_path.display()))?;
         atomic_write_provider_lock(&lock_path, reconciled.as_bytes())?;
+    }
+    if installed_path_override.is_some()
+        && recorded_installed_path != installed_path
+        && recorded_installed_path.parent() == installed_path.parent()
+    {
+        let recorded_name = recorded_installed_path
+            .file_name()
+            .and_then(|name| name.to_str());
+        let is_registered_stable_entry =
+            super::provider_install_registry::provider_install_registrations()?
+                .iter()
+                .any(|registration| Some(registration.binary.as_str()) == recorded_name);
+        if !is_registered_stable_entry {
+            match fs::symlink_metadata(&recorded_installed_path) {
+                Ok(metadata) if metadata.is_file() || metadata.file_type().is_symlink() => {
+                    fs::remove_file(&recorded_installed_path).map_err(|error| {
+                        format!(
+                            "remove superseded provider Runtime entry {}: {error}",
+                            recorded_installed_path.display()
+                        )
+                    })?;
+                }
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(format!(
+                        "inspect superseded provider Runtime entry {}: {error}",
+                        recorded_installed_path.display()
+                    ));
+                }
+            }
+        }
     }
     if emit_receipt {
         println!(

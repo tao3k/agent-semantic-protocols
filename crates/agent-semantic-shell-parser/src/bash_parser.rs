@@ -41,12 +41,39 @@ pub(crate) fn bash_ast_tokens(command: &str) -> Option<Vec<String>> {
     parser.set_language(&language).ok()?;
     let tree = parser.parse(command, None)?;
     let root = tree.root_node();
-    if root.has_error() {
+    if root.has_error() && !parse_errors_are_supported_redirections(root, command.as_bytes(), None)
+    {
         return None;
     }
     let mut tokens = Vec::new();
     collect_bash_tokens(root, command.as_bytes(), &mut tokens);
     (!tokens.is_empty()).then_some(tokens)
+}
+
+/// Accept the one bounded recovery emitted by tree-sitter-bash for valid Bash
+/// read/write redirections (`<>`). Every error node must be owned by that
+/// `file_redirect`; unrelated or missing syntax remains fail-closed.
+fn parse_errors_are_supported_redirections(
+    node: tree_sitter::Node<'_>,
+    source: &[u8],
+    parent: Option<tree_sitter::Node<'_>>,
+) -> bool {
+    if node.is_missing() {
+        return false;
+    }
+    if node.is_error() {
+        return parent.is_some_and(|parent| {
+            parent.kind() == "file_redirect"
+                && node_text(parent, source).is_some_and(|text| {
+                    text.trim_start()
+                        .trim_start_matches(|character: char| character.is_ascii_digit())
+                        .starts_with("<>")
+                })
+        });
+    }
+    let mut cursor = node.walk();
+    node.children(&mut cursor)
+        .all(|child| parse_errors_are_supported_redirections(child, source, Some(node)))
 }
 
 pub(crate) fn bash_heredoc_literal_candidates(command: &str) -> Vec<String> {
@@ -176,6 +203,18 @@ pub(crate) fn quoted_literal_candidates(text: &str) -> Vec<String> {
 }
 
 fn collect_bash_tokens(node: tree_sitter::Node<'_>, source: &[u8], tokens: &mut Vec<String>) {
+    if node.kind() == "redirected_statement" {
+        if let Some(body) = node.child_by_field_name("body") {
+            collect_bash_tokens(body, source, tokens);
+        }
+        let mut cursor = node.walk();
+        for child in node.named_children(&mut cursor) {
+            if is_filesystem_redirection_node(child.kind()) {
+                collect_redirection_tokens(child, source, tokens);
+            }
+        }
+        return;
+    }
     if node.kind() == "command" {
         let mut command_tokens = Vec::new();
         collect_command_words(node, source, &mut command_tokens);
@@ -204,6 +243,10 @@ fn collect_command_words(node: tree_sitter::Node<'_>, source: &[u8], tokens: &mu
         push_nested_stage_separator(tokens);
         return;
     }
+    if is_filesystem_redirection_node(node.kind()) {
+        collect_redirection_tokens(node, source, tokens);
+        return;
+    }
     if is_command_word_node(node.kind()) {
         if node_contains_nested_command_stage(node) {
             let mut cursor = node.walk();
@@ -224,6 +267,45 @@ fn collect_command_words(node: tree_sitter::Node<'_>, source: &[u8], tokens: &mu
     let children: Vec<_> = node.children(&mut cursor).collect();
     for child in children {
         collect_command_words(child, source, tokens);
+    }
+}
+
+fn is_filesystem_redirection_node(kind: &str) -> bool {
+    kind == "file_redirect"
+}
+
+/// Preserve parser-owned redirection syntax as normalized stage tokens.
+///
+/// This projection is intentionally based on a tree-sitter redirection node,
+/// never on an executable name or an unparsed command string.
+fn collect_redirection_tokens(
+    node: tree_sitter::Node<'_>,
+    source: &[u8],
+    tokens: &mut Vec<String>,
+) {
+    let Some(text) = node_text(node, source) else {
+        return;
+    };
+    let text = text.trim();
+    let operator_start = text
+        .char_indices()
+        .find_map(|(index, character)| matches!(character, '<' | '>').then_some(index));
+    let Some(operator_start) = operator_start else {
+        return;
+    };
+    let operator_text = &text[operator_start..];
+    let operator_len = ["<<<", "<<-", "<<", "<>", ">>", ">|", "<", ">"]
+        .into_iter()
+        .find(|operator| operator_text.starts_with(operator))
+        .map(str::len);
+    let Some(operator_len) = operator_len else {
+        return;
+    };
+    tokens.push(text[..operator_start + operator_len].to_owned());
+    let subject =
+        normalize_shell_word_text(text[operator_start + operator_len..].trim().to_owned());
+    if !subject.is_empty() {
+        tokens.push(subject);
     }
 }
 

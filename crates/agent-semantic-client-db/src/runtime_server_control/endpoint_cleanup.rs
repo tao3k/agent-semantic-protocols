@@ -47,8 +47,22 @@ pub(crate) async fn cleanup_invalid_runtime_server_endpoint(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(format!("read invalid Runtime Server endpoint: {error}")),
     };
-    let value: serde_json::Value = serde_json::from_slice(&bytes)
-        .map_err(|error| format!("decode invalid Runtime Server endpoint: {error}"))?;
+    let value = match serde_json::from_slice::<serde_json::Value>(&bytes) {
+        Ok(value) => value,
+        Err(_) => {
+            match tokio::fs::remove_file(&endpoint_path).await {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(format!(
+                        "remove invalid Runtime Server endpoint {}: {error}",
+                        endpoint_path.display()
+                    ));
+                }
+            }
+            return Ok(());
+        }
+    };
     let mut paths = Vec::new();
     if let (Some(owner_epoch), Some(binding_token), Some(identity)) = (
         value.get("ownerEpoch").and_then(serde_json::Value::as_u64),

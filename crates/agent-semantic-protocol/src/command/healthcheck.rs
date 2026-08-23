@@ -39,6 +39,14 @@ pub(super) async fn run_healthcheck_command(args: &[String]) -> Result<(), Strin
         )?,
     )
     .await?;
+    if health.is_healthy() {
+        agent_semantic_runtime::runtime_artifact_catalog::promote_active_runtime_artifact_to_healthy(
+            &state_home,
+            "asp",
+            health.resident.runtime_binary_identity.value(),
+        )
+        .await?;
+    }
     if options.json {
         println!(
             "{}",

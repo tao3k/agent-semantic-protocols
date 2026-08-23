@@ -206,6 +206,45 @@ impl RuntimeServerWorkspaceRegistry {
             .map(|resident| Arc::clone(&resident.context))
     }
 
+    /// Resolve the only resident project scope admitted for one workspace and
+    /// bind it to the current immutable generation. Public client sessions do
+    /// not accept a caller-supplied project root; an absent or multi-scope
+    /// workspace fails closed instead of crossing a RuntimeContext boundary.
+    pub fn unique_resident_scope(
+        &self,
+        workspace_identity: &str,
+    ) -> Result<(PathBuf, String), String> {
+        let resident = self
+            .entries
+            .read()
+            .get(workspace_identity)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "state=workspace-missing reasonKind=client-workspace-not-resident workspaceIdentity={workspace_identity}"
+                )
+            })?;
+        let project_root = {
+            let scopes = resident.scopes.read();
+            let mut roots = scopes.keys();
+            let root = roots.next().ok_or_else(|| {
+                format!(
+                    "state=scope-missing reasonKind=client-workspace-scope-not-resident workspaceIdentity={workspace_identity}"
+                )
+            })?;
+            if roots.next().is_some() {
+                return Err(format!(
+                    "state=scope-ambiguous reasonKind=client-workspace-has-multiple-resident-scopes workspaceIdentity={workspace_identity}"
+                ));
+            }
+            PathBuf::from(root)
+        };
+        let generation_digest = self
+            .lease(workspace_identity, &project_root)?
+            .runtime_generation_digest();
+        Ok((project_root, generation_digest))
+    }
+
     pub(crate) fn begin_request(
         &self,
         workspace_identity: &str,

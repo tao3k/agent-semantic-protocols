@@ -86,13 +86,79 @@ bootstrap, lifecycle, request, response, error, and shutdown packets use the
 =asp-client-server= namespace; a language harness must not mint a private server
 schema family.
 
+* ASP Client Protocol ecosystem
+
+Provider HTTP is an internal transport between ASP Server and one admitted
+language provider.  Downstream tools use the separate
+=agent.semantic-protocols.client= protocol and never connect to provider
+endpoints.  The client protocol is schema-first and transport-neutral.  Its
+published catalog declares protocol identity, server capabilities, admitted
+semantic methods, request and response schema identities, typed errors,
+cancellation behavior, streaming behavior, typed parameter slots, and the active
+workspace generation.  Parameter slots are executable admission rules rather
+than documentation: unknown parameters, missing required values, type drift,
+and client-supplied RuntimeContext fail closed.
+
+An ASP client follows a closed lifecycle: =initialize=, capability negotiation,
+semantic requests or notifications, request-scoped cancellation, =shutdown=,
+and =exit=.  Unlike LSP, client initialization does not discover or start a
+language process.  It negotiates only client-visible capabilities against the
+already admitted ASP Server catalog.  A method missing from that immutable
+catalog fails closed.  Dynamic provider activation changes the server catalog
+by an atomic generation publication; it never mutates an established catalog
+in place.  Initialization binds one =sessionId= to one =workspaceIdentity=;
+subsequent frames cannot cross that isolation boundary.
+
+The canonical HTTP/JSON binding uses one ASP Server loopback origin and typed
+request, response, event, and cancellation frames.  A local Runtime IPC binding
+MAY encode the same frames, but it is not a second protocol authority.  Both
+bindings validate the same schema identities and produce the same terminal
+receipt.  Client libraries in Rust, TypeScript, Python, Julia, Gerbil, DSLs, or
+future languages can therefore be generated from the catalog without knowing
+ASP implementation details.  The language-neutral conformance suite is an
+executable protocol asset: every client implementation runs the same lifecycle,
+generation, unknown-method, parameter, cancellation, and isolation vectors.
+
+Clients cannot launch, warm, restart, drain, or stop providers; select a
+provider-private transport; inspect provider argv or environment; publish a
+workspace generation; or bypass schema validation.  Cancellation is scoped to
+one client session and request identity.  Concurrent clients have isolated
+request namespaces, budgets, event cursors, and caches while sharing immutable
+server generations and content-addressed facts.
+
+* Schema bundle authority
+
+The Rust Schema Manager is the only authority that publishes schema bundles to
+language packages and downstream client SDKs.  A declarative language profile
+names root schemas and provider-owned schemas.  The Manager resolves the full
+reference closure, validates the closed catalog, atomically materializes files,
+and publishes a digest-bound =language-schema-bundle-receipt=.  Installation and
+client generation consume that receipt rather than copying files directly.
+
+The Manager may remove only a stale file named by its previous receipt.  It
+never deletes or overwrites a provider-owned schema.  Python schema tooling is
+read-only analysis over the same catalog and receipts; it has no sync or
+materialization authority.  Adding a language or a downstream SDK requires one
+profile declaration and conformance fixtures, not a new copier or ASP Server
+language branch.
+
 * HTTP transport
 
 ASP Client Servers use loopback HTTP/JSON with a persistent Tokio connection pool.
+One shared =agent-semantic-http-json= runtime owns Tokio/Hyper accept, connection,
+body-limit, drain, and JSON response behavior.  Provider transport and the
+public ASP Client Protocol compose that runtime; neither carries a private HTTP
+server implementation.  Public clients send the shared client frame to
+=POST /protocol/frame= and use =GET /health= only for transport health.
+
 The ASP authority allocates the endpoint, starts the installed server artifact,
 polls its health route outside the query path, validates the returned contract,
 and atomically publishes =Ready=. Requests are admitted only when their operation
 is present in that exact receipt.
+
+HTTP session state is keyed by =(workspaceIdentity, sessionId)=.  The session
+admission lock is released before semantic dispatch, so cancellation and other
+isolated sessions remain routable while a request is running.
 
 Julia uses HTTP.jl and is server-only. It does not expose a framed-stdio runtime
 or one-shot provider command. Julia package loading and cache construction finish
@@ -125,3 +191,8 @@ generation; receipts from an older generation are never reusable.
 - Julia HTTP health, request, malformed JSON, unknown operation, and shutdown are
   exercised against the native artifact.
 - warm request p99 is measured independently from server startup and warm-up.
+- Rust Schema Manager materialize followed by verify is deterministic, offline,
+  atomic, and leaves provider-owned schemas untouched.
+- Rust, TypeScript, Python, Julia, Gerbil, and one fixture DSL consume the same
+  client catalog and pass initialize, request, cancellation, unknown-method,
+  generation-drift, shutdown, and trace-context conformance scenarios.

@@ -221,16 +221,26 @@ impl ProviderRuntimeActorAuthority {
     }
 
     pub async fn shutdown(self) -> Result<(), String> {
+        let Self { client, mut task } = self;
         let (response, stopped) = oneshot::channel();
-        let _ = self
-            .client
-            .commands
-            .send(ProviderRuntimeActorCommand::Shutdown { response })
-            .await;
-        let _ = stopped.await;
-        self.task
-            .await
-            .map_err(|error| format!("provider runtime actor task failed: {error}"))
+        let graceful = async {
+            let _ = client
+                .commands
+                .send(ProviderRuntimeActorCommand::Shutdown { response })
+                .await;
+            let _ = stopped.await;
+            (&mut task)
+                .await
+                .map_err(|error| format!("provider runtime actor task failed: {error}"))
+        };
+        match tokio::time::timeout(std::time::Duration::from_secs(1), graceful).await {
+            Ok(result) => result,
+            Err(_) => {
+                task.abort();
+                let _ = task.await;
+                Err("provider runtime actor shutdown exceeded 1 second and was aborted".to_owned())
+            }
+        }
     }
 
     pub async fn drain(self) -> Result<(), String> {

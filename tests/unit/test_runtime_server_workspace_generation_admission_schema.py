@@ -5,14 +5,14 @@ from jsonschema import Draft202012Validator
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCHEMA_PATH = ROOT / "schemas" / "runtime-server-workspace-generation-admission.v1.schema.json"
+SCHEMA_PATH = ROOT / "schemas" / "runtime-server-workspace-generation-admission.schema.json"
 
 
 def load_schema() -> dict:
     return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
-def test_runtime_owned_incremental_admission_remains_v1() -> None:
+def test_runtime_owned_incremental_admission_keeps_schema_version_one() -> None:
     schema = load_schema()
 
     Draft202012Validator.check_schema(schema)

@@ -500,17 +500,9 @@ fn compile_hook_selected_route(
             hook_route.config_rule_id
         )
     })?;
-    let route_key = hook_config
-        .agents
-        .placeholders
-        .get(dispatch.role.as_str())
-        .ok_or_else(|| {
-            format!(
-                "hook-session-role-placeholder-missing: rule `{}` role `{}` has no agents.placeholders binding",
-                hook_route.config_rule_id,
-                dispatch.role.as_str()
-            )
-        })?;
+    let (route_key, _) = loaded
+        .registry
+        .unique_route_for_role(dispatch.role.as_str())?;
     let route = compile_agent_route(loaded, route_key, platform)?;
     let identity_matches = route_key == route.route_key.as_str()
         || route_key == route.platform_host_agent_name.as_str();

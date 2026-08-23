@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use super::{
-    ResolvedProvider, normalize_project_path, project_child_path, provider_supports_source_file,
-    relative_project_path, scoped_child_path, test_support::resolved_provider,
+    RuntimeProvider, normalize_project_path, project_child_path, provider_supports_source_file,
+    relative_project_path, scoped_child_path, test_support::runtime_provider,
 };
 
 #[test]
@@ -48,15 +48,15 @@ fn provider_source_extension_matching_is_case_insensitive() {
     ));
 }
 
-fn provider() -> ResolvedProvider {
-    resolved_provider()
+fn provider() -> RuntimeProvider {
+    runtime_provider()
 }
 
 trait ProviderFixtureExt {
     fn with_source_extensions(self, source_extensions: Vec<String>) -> Self;
 }
 
-impl ProviderFixtureExt for ResolvedProvider {
+impl ProviderFixtureExt for RuntimeProvider {
     fn with_source_extensions(mut self, source_extensions: Vec<String>) -> Self {
         self.source_extensions = source_extensions;
         self

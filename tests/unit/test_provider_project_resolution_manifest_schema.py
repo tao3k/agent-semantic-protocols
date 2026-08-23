@@ -3,18 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
 
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMAS = ROOT / "schemas"
-RUST_PROVIDER_MANIFEST = (
-    ROOT
-    / "languages"
-    / "rust-lang-project-harness"
-    / "schemas"
-    / "asp-provider.json"
-)
 
 
 def load_json(path: Path) -> dict[str, object]:
@@ -28,25 +20,8 @@ def test_shared_provider_manifest_schemas_reference_project_resolution() -> None
     )
     for schema_name in (
         "provider-manifest.schema.json",
-        "semantic-agent-hook-provider-manifest.schema.json",
     ):
         schema = load_json(SCHEMAS / schema_name)
         properties = schema["properties"]
         assert isinstance(properties, dict)
         assert properties["projectResolution"] == {"$ref": expected_ref}
-
-
-def test_rust_provider_manifest_declares_typed_project_resolution() -> None:
-    project_resolution_schema = load_json(
-        SCHEMAS / "provider-project-resolution-descriptor.schema.json"
-    )
-    manifest = load_json(RUST_PROVIDER_MANIFEST)
-
-    descriptor = manifest["projectResolution"]
-    assert isinstance(descriptor, dict)
-    Draft202012Validator(project_resolution_schema).validate(descriptor)
-    assert descriptor["capabilityId"] == "project-resolution"
-    assert descriptor["parserId"] == "rust.cargo-toml"
-    assert "project-resolution" in {
-        operation["operation"] for operation in manifest["runtimeContract"]["operations"]
-    }

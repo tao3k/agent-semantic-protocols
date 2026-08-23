@@ -1,0 +1,15 @@
+[package]
+name = "agent-semantic-schema-manager"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+agent-semantic-content-identity.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

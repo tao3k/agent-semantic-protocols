@@ -1,0 +1,16 @@
+{
+  "schemaId": "agent.semantic-protocols.runtime-artifact-retention-receipt",
+  "schemaVersion": "1",
+  "contentAlgorithm": "blake3-256",
+  "retentionPolicy": "active-healthy-reachability",
+  "retainedSlotsPerBinary": 2,
+  "scannedGenerationCount": 12,
+  "retainedGenerationCount": 5,
+  "removedGenerationCount": 7,
+  "ignoredEntryCount": 0,
+  "reclaimedBytes": 734003200,
+  "protectedDigests": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  ]
+}

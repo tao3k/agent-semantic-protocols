@@ -9,7 +9,7 @@ fn turso_cache_hot_path(c: &mut Criterion) {
     };
     use agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1;
     use agent_semantic_content_identity::exact_selector_merkle::{
-        ExactProjectionModeV1, blake3_content_digest_v1, canonical_content_digest_v1,
+        ExactProjectionModeV1, blake3_content_digest_v1, canonical_content_digest,
     };
     use agent_semantic_content_identity::exact_selector_projection_packet::build_exact_selector_projection_packet_v1;
     use agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1;
@@ -33,8 +33,8 @@ fn turso_cache_hot_path(c: &mut Criterion) {
     let selector = "rust://src/lib.rs#item/function/warm_symbol";
     let source = b"fn warm_symbol() -> usize { 7 }\n";
     let source_blob_digest = blake3_content_digest_v1(source);
-    let parser_identity_digest = canonical_content_digest_v1(b"parser", &[b"rs-harness"]);
-    let query_pack_digest = canonical_content_digest_v1(b"query-pack", &[b"rust"]);
+    let parser_identity_digest = canonical_content_digest(b"parser", &[b"rs-harness"]);
+    let query_pack_digest = canonical_content_digest(b"query-pack", &[b"rust"]);
     let tree = WorkspacePathMerkleTreeV1::from_file_digests([(
         owner_path.to_string(),
         source_blob_digest.clone(),

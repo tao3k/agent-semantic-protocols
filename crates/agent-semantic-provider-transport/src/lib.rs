@@ -14,7 +14,6 @@ pub use agent_semantic_provider_protocol::{
 };
 
 mod asp_client_server;
-mod asp_client_server_host;
 mod asp_client_server_lifecycle;
 pub mod byte_text;
 mod capture;
@@ -31,10 +30,11 @@ pub use projection_batch::{
 };
 mod transport;
 
-pub use asp_client_server::{AspClientServerPeer, AspClientServerSpec};
-pub use asp_client_server_host::{
-    AspClientServerRequest, AspClientServerResponse, run_asp_client_server, serve_asp_client_server,
+pub use agent_semantic_http_json::{
+    HttpJsonRequest as AspClientServerRequest, HttpJsonResponse as AspClientServerResponse,
+    run_http_json as run_asp_client_server, serve_http_json as serve_asp_client_server,
 };
+pub use asp_client_server::{AspClientServerPeer, AspClientServerSpec};
 pub use asp_client_server_lifecycle::{
     ASP_CLIENT_SERVER_LIFECYCLE_RECEIPT_SCHEMA_ID, AspClientServerLifecycleReceipt,
     AspClientServerLifecycleState,

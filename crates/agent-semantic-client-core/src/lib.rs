@@ -1,8 +1,7 @@
 #![deny(dead_code)]
 
-//! Core contracts for the local-first agent semantic client.
+//! Core contracts for the server-first agent semantic client.
 
-pub mod activation;
 pub mod cache_artifact;
 pub mod cache_manifest;
 pub mod config;
@@ -10,15 +9,10 @@ pub mod project_context;
 pub mod provider_scope;
 pub mod receipt;
 pub mod request;
+pub mod runtime_provider;
 pub use agent_semantic_runtime::state_core;
 pub mod types;
 
-pub use activation::{
-    ASP_PROVIDER_ACTIVATION_PATH_ENV, ProviderDocumentInventoryCapability,
-    ProviderProjectInventoryCapability, ProviderRegistryEvidence, ProviderRegistrySnapshot,
-    ProviderSourceInventoryCapabilities, ResolvedProvider, RuntimeProfileStatus,
-};
-pub use agent_semantic_hook::ProviderExecution;
 pub use cache_artifact::{
     replay_artifact_path, replay_artifacts_root, structured_evidence_artifact_path,
 };
@@ -40,6 +34,11 @@ pub use receipt::{
     AGENT_SEMANTIC_CLIENT_RECEIPT_PROTOCOL_ID, AGENT_SEMANTIC_CLIENT_RECEIPT_SCHEMA_ID,
     ClientDbEngineFeaturesReceipt, ClientDbEngineReceipt, ClientDbRuntimePragmasReceipt,
     ClientReceipt, ExecutionRoute, NativeProvenance, ProviderCommandReceipt,
+};
+pub use runtime_provider::{
+    ProviderDocumentInventoryCapability, ProviderProjectInventoryCapability,
+    ProviderSourceInventoryCapabilities, RuntimeProvider, RuntimeProviderOperation,
+    RuntimeProviderProjection, RuntimeProviderProjectionEvidence,
 };
 pub use types::{
     ByteCount, CacheArtifactId, CacheExportMethod, CacheGenerationId, CacheStatus, ClientCachePath,
@@ -64,9 +63,6 @@ pub use {
         syntax_query_ast_abi_fingerprint,
     },
 };
-#[cfg(test)]
-#[path = "../tests/unit/activation.rs"]
-mod activation_tests;
 #[cfg(test)]
 #[path = "../tests/unit/cache_artifact.rs"]
 mod cache_artifact_tests;

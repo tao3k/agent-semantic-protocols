@@ -6,5 +6,3 @@ mod command_patterns;
 mod common;
 #[path = "client_hook_config_cases/matching.rs"]
 mod matching;
-#[path = "client_hook_config_cases/resident_agents.rs"]
-mod resident_agents;

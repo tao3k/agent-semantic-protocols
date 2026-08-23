@@ -15,7 +15,8 @@ which = { workspace = true }
 sha2 = { workspace = true }
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-client-db = { path = "../agent-semantic-client-db" }
-agent-semantic-client-local-cli = { path = "../agent-semantic-client-local-cli" }
+agent-semantic-provider-protocol = { path = "../agent-semantic-provider-protocol" }
+agent-semantic-client-server = { path = "../agent-semantic-client-server" }
 agent-semantic-hook = { path = "../agent-semantic-hook" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }

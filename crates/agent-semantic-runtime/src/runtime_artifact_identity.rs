@@ -18,6 +18,8 @@ pub struct RuntimeArtifactIdentityReceipt {
     artifact_mode: String,
     stable_path: PathBuf,
     source_path: PathBuf,
+    source_generation: String,
+    source_generation_algorithm: String,
     artifact_digest: String,
     identity_kind: String,
     identity_value: String,
@@ -45,6 +47,20 @@ impl RuntimeArtifactIdentityReceipt {
         &self.source_path
     }
 
+    pub fn source_generation_matches(&self, source_path: &Path) -> Result<bool, String> {
+        let canonical_source = std::fs::canonicalize(source_path).map_err(|error| {
+            format!(
+                "resolve Runtime artifact source generation {}: {error}",
+                source_path.display()
+            )
+        })?;
+        Ok(
+            self.source_generation_algorithm == "filesystem-generation-v1"
+                && canonical_source == self.source_path
+                && runtime_artifact_source_generation(&canonical_source)? == self.source_generation,
+        )
+    }
+
     #[must_use]
     pub fn artifact_digest(&self) -> &str {
         &self.artifact_digest
@@ -61,15 +77,9 @@ impl RuntimeArtifactIdentityReceipt {
     }
 
     pub fn identity(&self) -> RuntimeBinaryIdentity {
-        match self.identity_kind.as_str() {
-            "developer-source-generation" => RuntimeBinaryIdentity::DeveloperSourceGeneration {
-                value: self.identity_value.clone(),
-                algorithm: self.identity_algorithm.clone(),
-            },
-            _ => RuntimeBinaryIdentity::Content {
-                value: self.identity_value.clone(),
-                algorithm: self.identity_algorithm.clone(),
-            },
+        RuntimeBinaryIdentity::Content {
+            value: self.identity_value.clone(),
+            algorithm: self.identity_algorithm.clone(),
         }
     }
 }
@@ -95,23 +105,18 @@ pub async fn publish_runtime_artifact_identity(
     } else {
         "release"
     };
-    let (identity_kind, identity_value, identity_algorithm) = match &publication.identity {
-        RuntimeBinaryIdentity::Content { value, algorithm } => {
-            ("content", value.clone(), algorithm.clone())
-        }
-        RuntimeBinaryIdentity::DeveloperSourceGeneration { value, algorithm } => (
-            "developer-source-generation",
-            value.clone(),
-            algorithm.clone(),
-        ),
-    };
+    let RuntimeBinaryIdentity::Content { value, algorithm } = &publication.identity;
+    let (identity_kind, identity_value, identity_algorithm) =
+        ("content", value.clone(), algorithm.clone());
     let receipt = RuntimeArtifactIdentityReceipt {
         schema_id: SCHEMA_ID.to_owned(),
         schema_version: SCHEMA_VERSION.to_owned(),
         artifact_kind,
         artifact_mode: artifact_mode.to_owned(),
         stable_path: stable_path.to_path_buf(),
-        source_path: publication.reference.executable_path.clone(),
+        source_path: publication.source_path.clone(),
+        source_generation: publication.source_generation.clone(),
+        source_generation_algorithm: "filesystem-generation-v1".to_owned(),
         artifact_digest: publication.artifact_digest.clone(),
         identity_kind: identity_kind.to_owned(),
         identity_value,
@@ -187,6 +192,31 @@ pub async fn read_runtime_artifact_identity(
             receipt.artifact_kind
         ));
     }
+    if !matches!(receipt.artifact_mode.as_str(), "dev" | "release")
+        || receipt.identity_kind != "content"
+        || receipt.source_generation_algorithm != "filesystem-generation-v1"
+        || !receipt
+            .source_generation
+            .strip_prefix("blake3-256:")
+            .is_some_and(|value| {
+                value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+            })
+        || receipt.identity_algorithm != "blake3-256"
+        || receipt.identity_value != receipt.artifact_digest
+        || receipt.artifact_digest.len() != 64
+        || !receipt
+            .artifact_digest
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err(format!(
+            "Runtime artifact identity content contract mismatch: path={} mode={} identityKind={} identityAlgorithm={}",
+            receipt_path.display(),
+            receipt.artifact_mode,
+            receipt.identity_kind,
+            receipt.identity_algorithm,
+        ));
+    }
     let expected_stable_path = state_home.join("runtime/bin").join(artifact_kind);
     if receipt.stable_path != expected_stable_path {
         return Err(format!(
@@ -196,6 +226,46 @@ pub async fn read_runtime_artifact_identity(
         ));
     }
     Ok(receipt)
+}
+
+pub fn runtime_artifact_source_generation(source_path: &Path) -> Result<String, String> {
+    let metadata = std::fs::metadata(source_path).map_err(|error| {
+        format!(
+            "inspect Runtime artifact source generation {}: {error}",
+            source_path.display()
+        )
+    })?;
+    if !metadata.is_file() {
+        return Err(format!(
+            "Runtime artifact source generation is not a file: {}",
+            source_path.display()
+        ));
+    }
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"agent.semantic-protocols.filesystem-generation.v1\0");
+    hasher.update(source_path.to_string_lossy().as_bytes());
+    hasher.update(&metadata.len().to_le_bytes());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+
+        hasher.update(&metadata.dev().to_le_bytes());
+        hasher.update(&metadata.ino().to_le_bytes());
+        hasher.update(&metadata.mtime().to_le_bytes());
+        hasher.update(&metadata.mtime_nsec().to_le_bytes());
+        hasher.update(&metadata.ctime().to_le_bytes());
+        hasher.update(&metadata.ctime_nsec().to_le_bytes());
+    }
+    #[cfg(not(unix))]
+    {
+        let modified = metadata
+            .modified()
+            .map_err(|error| format!("read source modification time: {error}"))?
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| format!("source modification time predates epoch: {error}"))?;
+        hasher.update(&modified.as_nanos().to_le_bytes());
+    }
+    Ok(format!("blake3-256:{}", hasher.finalize().to_hex()))
 }
 
 fn runtime_artifact_identity_path(
@@ -219,7 +289,10 @@ fn runtime_artifact_identity_path(
 
 #[cfg(test)]
 mod tests {
-    use super::{read_runtime_artifact_identity, runtime_artifact_identity_path};
+    use super::{
+        read_runtime_artifact_identity, runtime_artifact_identity_path,
+        runtime_artifact_source_generation,
+    };
 
     #[test]
     fn identity_path_is_version_neutral_and_binary_scoped() {
@@ -229,6 +302,20 @@ mod tests {
             state_home.join("runtime/artifact-identities/asp.json")
         );
         assert!(runtime_artifact_identity_path(state_home, "../asp").is_err());
+    }
+
+    #[test]
+    fn source_generation_is_stable_until_the_source_changes() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let source = root.path().join("asp");
+        std::fs::write(&source, b"generation-a").expect("write first generation");
+        let first = runtime_artifact_source_generation(&source).expect("first generation");
+        let current = runtime_artifact_source_generation(&source).expect("current generation");
+        assert_eq!(first, current);
+
+        std::fs::write(&source, b"generation-b").expect("write second generation");
+        let second = runtime_artifact_source_generation(&source).expect("second generation");
+        assert_ne!(first, second);
     }
 
     #[tokio::test]
@@ -249,5 +336,39 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn rejects_non_content_or_mismatched_identity() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = runtime_artifact_identity_path(root.path(), "asp").expect("identity path");
+        tokio::fs::create_dir_all(path.parent().expect("identity parent"))
+            .await
+            .expect("create identity parent");
+        let digest = "a".repeat(64);
+        tokio::fs::write(
+            &path,
+            serde_json::to_vec(&serde_json::json!({
+                "schemaId": "agent.semantic-protocols.runtime-artifact-identity",
+                "schemaVersion": "1",
+                "artifactKind": "asp",
+                "artifactMode": "dev",
+                "stablePath": root.path().join("runtime/bin/asp"),
+                "sourcePath": root.path().join("checkout/target/debug/asp"),
+                "sourceGeneration": format!("blake3-256:{}", "b".repeat(64)),
+                "sourceGenerationAlgorithm": "filesystem-generation-v1",
+                "artifactDigest": digest.clone(),
+                "identityKind": "source-generation",
+                "identityValue": digest,
+                "identityAlgorithm": "metadata"
+            }))
+            .expect("encode invalid identity"),
+        )
+        .await
+        .expect("write invalid identity");
+        let error = read_runtime_artifact_identity(root.path(), "asp")
+            .await
+            .expect_err("non-content identity must fail closed");
+        assert!(error.contains("content contract mismatch"));
     }
 }

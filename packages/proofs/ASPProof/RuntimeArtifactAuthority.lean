@@ -1,3 +1,5 @@
+import ASPProof.ASPActiveHealthyArtifactRetention
+
 namespace ASPProof.RuntimeArtifactAuthority
 
 inductive RuntimeMode where
@@ -115,6 +117,25 @@ theorem dev_plain_install_never_uses_locked_release (root : String) :
     installAuthority (.dev root) ≠ .lockedRelease := by
   simp [installAuthority]
 
+inductive ExecutableDomain where
+  | contentStore
+  | checkoutBuild
+  | localPath
+  deriving DecidableEq, Repr
+
+def executableDomainAdmitted : ExecutableDomain → Bool
+  | .contentStore => true
+  | .checkoutBuild => false
+  | .localPath => false
+
+theorem checkout_build_is_provenance_not_execution :
+    executableDomainAdmitted .checkoutBuild = false := by
+  rfl
+
+theorem local_path_is_not_runtime_authority :
+    executableDomainAdmitted .localPath = false := by
+  rfl
+
 inductive DevelopmentInstallPhase where
   | delegateBuild
   | publishReceipt
@@ -181,19 +202,19 @@ theorem canonical_warm_receipt_is_resident :
   simp [residentWarmPath]
 
 structure ProviderRuntimeState where
-  entryIsDigestLattice : Bool
+  entryIsContentStore : Bool
   receiptMatchesEntry : Bool
   deriving DecidableEq, Repr
 
 def migrateProviderEntry (state : ProviderRuntimeState) : ProviderRuntimeState :=
-  if state.entryIsDigestLattice then state
+  if state.entryIsContentStore then state
   else ⟨true, false⟩
 
 def reconcileProviderReceipt (state : ProviderRuntimeState) : ProviderRuntimeState :=
   { state with receiptMatchesEntry := true }
 
 def providerRuntimeInstallReady (state : ProviderRuntimeState) : Bool :=
-  state.entryIsDigestLattice && state.receiptMatchesEntry
+  state.entryIsContentStore && state.receiptMatchesEntry
 
 theorem regular_provider_migration_invalidates_the_pre_switch_receipt
     (receiptWasCurrent : Bool) :
@@ -208,7 +229,7 @@ theorem provider_receipt_reconciliation_after_migration_closes_install
         (migrateProviderEntry ⟨false, receiptWasCurrent⟩)) = true := by
   rfl
 
-theorem external_non_lattice_entry_cannot_be_declared_ready
+theorem external_non_store_entry_cannot_be_declared_ready
     (receiptMatches : Bool) :
     providerRuntimeInstallReady ⟨false, receiptMatches⟩ = false := by
   cases receiptMatches <;> rfl

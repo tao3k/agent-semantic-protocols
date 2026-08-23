@@ -57,8 +57,6 @@ fn hook_event_plane_has_zero_runtime_server_dependencies() {
         include_str!("../../src/hook_bootstrap.rs"),
         include_str!("../../src/command/hook_runtime.rs"),
         include_str!("../../src/command/hook_runtime_config_recovery.rs"),
-        include_str!("../../src/command/hook_runtime_agent_session_dispatch.rs"),
-        include_str!("../../src/command/hook_runtime_source_access_materialize.rs"),
     ] {
         for forbidden in [
             "RuntimeServerClientExecutor",
@@ -87,18 +85,6 @@ fn hook_event_plane_has_zero_runtime_server_dependencies() {
         assert!(
             !runtime.contains(forbidden),
             "synchronous Hook evaluation reintroduced Agent Session or rollout I/O: {forbidden}"
-        );
-    }
-    let dispatch = include_str!("../../src/command/hook_runtime_agent_session_dispatch.rs");
-    for forbidden in [
-        "configured_resident_target(",
-        "requiredForkTurns",
-        "materialize_host_proven_resident_execution",
-        "materialize_resident_dispatch_wrapper",
-    ] {
-        assert!(
-            !dispatch.contains(forbidden),
-            "Hook reimplemented Codex scheduling through {forbidden}"
         );
     }
     let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -190,31 +176,6 @@ fn explicit_no_agent_environment_bypasses_host_hook_before_payload_evaluation() 
         "stderr={stderr}"
     );
     assert!(!stderr.contains("runtime-server"), "stderr={stderr}");
-}
-
-#[test]
-fn hook_recovery_references_the_org_agent_window_without_rust_owned_choice_panes() {
-    let execution = include_str!("../../src/command/hook_runtime_agent_session_dispatch.rs");
-    let event_state = include_str!("../../../agent-semantic-hook/src/event_state.rs");
-    let event_replay = include_str!("../../../agent-semantic-hook/src/event_replay.rs");
-    let config = include_str!("../../../agent-semantic-config/templates/hooks/config.toml");
-
-    for source in [execution, event_state, event_replay, config] {
-        assert!(source.contains("asp session"));
-        assert!(!source.contains("asp session @"));
-        for legacy in [
-            "choice-pane",
-            "choice pane",
-            "bootstrap-pane",
-            "bootstrap pane",
-            "asp agent session bootstrap",
-        ] {
-            assert!(
-                !source.contains(legacy),
-                "Hook execution recovery must not implement a Rust-owned ChoicePlane: {legacy}"
-            );
-        }
-    }
 }
 
 #[test]
@@ -523,7 +484,7 @@ fn structured_rust_read_binary_path_is_local_bounded_and_runtime_free() {
         .expect("recovery Hook context");
     assert!(recovery_context.contains("mmap-hit"), "{recovery_context}");
     let repaired = std::fs::read(&snapshot).expect("read repaired matcher snapshot");
-    assert_eq!(&repaired[..8], b"ASPHOOK1");
+    assert_eq!(&repaired[..8], b"ASPHK1PC");
     assert!(
         repaired.len() > 120,
         "repaired Binary v1 bundle omitted its section index"
@@ -643,55 +604,6 @@ fn control_plane_refresh_repairs_managed_config_before_hook_evaluation() {
         ),
         "{context}"
     );
-
-    for (language, path) in [("md", "docs/hook-policy.md"), ("org", "ASP_ORG_SKILL.org")] {
-        let payload = serde_json::json!({
-            "session_id": format!("managed-config-{language}-read"),
-            "cwd": workspace,
-            "hook_event_name": "PreToolUse",
-            "tool_name": "Read",
-            "tool_input": { "file_path": path }
-        });
-        let mut child = Command::new(env!("CARGO_BIN_EXE_asp"))
-            .current_dir(workspace)
-            .args(["hook", "pre-tool", "--client", "codex"])
-            .env_clear()
-            .env("HOME", &root)
-            .env("ASP_STATE_HOME", &state_home)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("spawn registered document Read Hook");
-        serde_json::to_writer(child.stdin.as_mut().expect("Hook stdin"), &payload)
-            .expect("write registered document Read payload");
-        drop(child.stdin.take());
-        let output = child
-            .wait_with_output()
-            .expect("wait for registered document Read Hook");
-        let stdout = String::from_utf8(output.stdout).expect("Hook stdout UTF-8");
-        let stderr = String::from_utf8(output.stderr).expect("Hook stderr UTF-8");
-        assert!(output.status.success(), "stdout={stdout} stderr={stderr}");
-        let response: serde_json::Value =
-            serde_json::from_str(&stdout).expect("parse registered document Hook decision");
-        let context = response["hookSpecificOutput"]["additionalContext"]
-            .as_str()
-            .expect("registered document Hook context");
-        assert!(
-            context.contains("\"configRuleId\":\"route-read-to-asp-languages\""),
-            "{language}: {context}"
-        );
-        assert!(
-            context.contains(&format!("Registered {language} source reads are denied")),
-            "{language}: {context}"
-        );
-        assert!(
-            context.contains(&format!(
-                "asp {language} search owner {path} items --workspace . --view seeds"
-            )),
-            "{language}: {context}"
-        );
-    }
 
     let refreshed = std::fs::read_to_string(&config_path).expect("read refreshed Hook config");
     assert!(refreshed.contains(&expected_fingerprint));

@@ -255,7 +255,6 @@ pub fn materialize_active_asp_artifact_receipt(
     })
 }
 
-
 #[path = "active_artifact_receipt_verification.rs"]
 mod verification;
 pub use verification::verify_active_asp_artifact_receipt;

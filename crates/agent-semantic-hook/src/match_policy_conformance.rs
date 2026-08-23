@@ -62,12 +62,7 @@ pub fn evaluate_match_policy_conformance(
     config: &ClientHookConfig,
     platform: &str,
 ) -> MatchPolicyConformanceReport {
-    let agent_search_binary = runtime
-        .providers
-        .iter()
-        .find(|provider| provider.language_id.as_str() == "typescript")
-        .map(|_| "asp");
-    let cases = production_cases(agent_search_binary);
+    let cases = production_cases();
     let config = match config.match_policy_conformance_config() {
         Ok(config) => config,
         Err(error) => {
@@ -156,7 +151,7 @@ pub fn validate_match_policy_rule_coverage(config: &ClientHookConfig) -> Result<
         .rule_ids()
         .map(str::to_owned)
         .collect::<BTreeSet<_>>();
-    let witnessed = production_cases(None)
+    let witnessed = production_cases()
         .into_iter()
         .map(|case| case.rule_id.to_owned())
         .collect::<BTreeSet<_>>();
@@ -181,7 +176,7 @@ fn validate_match_policy_rule_sets(
 #[path = "../tests/unit/match_policy_conformance.rs"]
 mod tests;
 
-fn production_cases(agent_search_binary: Option<&str>) -> Vec<MatchPolicyCase> {
+fn production_cases() -> Vec<MatchPolicyCase> {
     vec![
         MatchPolicyCase {
             name: "explicit no-agent command bypass",
@@ -207,7 +202,7 @@ fn production_cases(agent_search_binary: Option<&str>) -> Vec<MatchPolicyCase> {
         MatchPolicyCase {
             name: "testing dispatch",
             payload: shell("cargo test --workspace"),
-            rule_id: "resident-testing-dispatch",
+            rule_id: "testing-role-dispatch",
             decision: DecisionKind::Deny,
             reason: ReasonKind::SubagentReceiptRequired,
         },
@@ -221,21 +216,21 @@ fn production_cases(agent_search_binary: Option<&str>) -> Vec<MatchPolicyCase> {
         MatchPolicyCase {
             name: "javascript inline source materialization",
             payload: shell("node -e 'require(\"fs\").readFileSync(\"src/app.ts\", \"utf8\")'"),
-            rule_id: "materialize-source-access-policy",
+            rule_id: "deny-raw-registered-source-action",
             decision: DecisionKind::Deny,
             reason: ReasonKind::BulkSourceDump,
         },
         MatchPolicyCase {
             name: "python inline source materialization",
             payload: shell("python -c 'print(open(\"src/app.ts\").read())'"),
-            rule_id: "materialize-source-access-policy",
+            rule_id: "deny-raw-registered-source-action",
             decision: DecisionKind::Deny,
             reason: ReasonKind::BulkSourceDump,
         },
         MatchPolicyCase {
             name: "source materialization command",
             payload: shell("sed -n '1,8p' src/app.ts"),
-            rule_id: "deny-uncontrolled-source-materialization-commands",
+            rule_id: "deny-raw-registered-source-action",
             decision: DecisionKind::Deny,
             reason: ReasonKind::BulkSourceDump,
         },
@@ -297,35 +292,22 @@ fn production_cases(agent_search_binary: Option<&str>) -> Vec<MatchPolicyCase> {
         },
         MatchPolicyCase {
             name: "agent search JSON",
-            payload: agent_search_binary
-                .map(|binary| {
-                    shell(&format!(
-                        "{binary} search lexical projectRoot owner tests --json ."
-                    ))
-                })
-                .unwrap_or(serde_json::Value::Null),
+            payload: shell("asp typescript search lexical projectRoot owner tests --json ."),
             rule_id: "deny-agent-search-json",
             decision: DecisionKind::Deny,
             reason: ReasonKind::AgentSearchJson,
         },
         MatchPolicyCase {
-            name: "apply patch materializer",
-            payload: json!({"tool_name":"apply_patch","tool_input":{"patch":"*** Begin Patch\n*** Update File: src/app.ts\n@@\n-old\n+new\n*** End Patch\n"}}),
-            rule_id: "materialize-apply-patch-policy",
-            decision: DecisionKind::Deny,
-            reason: ReasonKind::SemanticAstPatchRequired,
-        },
-        MatchPolicyCase {
             name: "source access materializer",
             payload: json!({"tool_name":"functions.exec_command","tool_input":{"cmd":"custom-reader '.read_text(' src/app.ts"}}),
-            rule_id: "materialize-source-access-policy",
+            rule_id: "deny-raw-registered-source-action",
             decision: DecisionKind::Deny,
             reason: ReasonKind::BulkSourceDump,
         },
         MatchPolicyCase {
             name: "structured document read",
             payload: json!({"tool_name":"Read","tool_input":{"file_path":"package.json"}}),
-            rule_id: "materialize-structured-document-read-action",
+            rule_id: "route-structured-document-read",
             decision: DecisionKind::Deny,
             reason: ReasonKind::StructuredSourceRead,
         },

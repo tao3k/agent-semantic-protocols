@@ -1,8 +1,4 @@
-use agent_semantic_config::AgentActionEffectRule;
-use agent_semantic_config::{
-    AgentActionAuthorityRule, HookClientActionAuthority, HookClientActionKind,
-    HookClientActionSubjectKind,
-};
+use agent_semantic_config::{HookClientActionKind, HookClientActionSubjectKind};
 use agent_semantic_shell_parser::{CommandStage, parse_bash_command_candidates};
 
 use crate::HookRuntime;
@@ -10,13 +6,8 @@ use crate::tool_action::ToolAction;
 
 #[derive(Debug)]
 pub(super) struct AgentActionMatch {
-    authority_rules: Vec<AgentActionAuthorityRule>,
-    effect_rules: Vec<AgentActionEffectRule>,
     action_any: Vec<HookClientActionKind>,
-    effect_any: Vec<HookClientActionKind>,
     subject_kind_any: Vec<HookClientActionSubjectKind>,
-    authority_any: Vec<HookClientActionAuthority>,
-    authority_exclude_any: Vec<HookClientActionAuthority>,
     policy_all: Vec<ActionPredicate>,
     policy_any: Vec<ActionPredicate>,
     policy_none: Vec<ActionPredicate>,
@@ -25,10 +16,8 @@ pub(super) struct AgentActionMatch {
 #[derive(Debug)]
 struct ActionPredicate {
     action_any: Vec<HookClientActionKind>,
-    effect_any: Vec<HookClientActionKind>,
+    semantic_capability_any: Vec<HookClientActionKind>,
     subject_kind_any: Vec<HookClientActionSubjectKind>,
-    authority_any: Vec<HookClientActionAuthority>,
-    authority_exclude_any: Vec<HookClientActionAuthority>,
 }
 
 #[cfg(test)]
@@ -37,40 +26,25 @@ mod production_derivation_contract;
 
 #[derive(Default)]
 pub(super) struct AgentActionMatchConfig {
-    pub(super) authority_rules: Vec<AgentActionAuthorityRule>,
-    pub(super) effect_rules: Vec<AgentActionEffectRule>,
     pub(super) action_any: Vec<HookClientActionKind>,
-    pub(super) effect_any: Vec<HookClientActionKind>,
     pub(super) subject_kind_any: Vec<HookClientActionSubjectKind>,
-    pub(super) authority_any: Vec<HookClientActionAuthority>,
-    pub(super) authority_exclude_any: Vec<HookClientActionAuthority>,
-    pub(super) policy_all: Vec<agent_semantic_config::HookClientActionPolicyConfig>,
-    pub(super) policy_any: Vec<agent_semantic_config::HookClientActionPolicyConfig>,
-    pub(super) policy_none: Vec<agent_semantic_config::HookClientActionPolicyConfig>,
+    pub(super) policy_all: Vec<agent_semantic_config::HookClientCapabilityPolicyConfig>,
+    pub(super) policy_any: Vec<agent_semantic_config::HookClientCapabilityPolicyConfig>,
+    pub(super) policy_none: Vec<agent_semantic_config::HookClientCapabilityPolicyConfig>,
 }
 
 impl AgentActionMatch {
     pub(super) fn new(config: AgentActionMatchConfig) -> Self {
         let AgentActionMatchConfig {
-            authority_rules,
-            effect_rules,
             action_any,
-            effect_any,
             subject_kind_any,
-            authority_any,
-            authority_exclude_any,
             policy_all,
             policy_any,
             policy_none,
         } = config;
         Self {
-            authority_rules,
-            effect_rules,
             action_any,
-            effect_any,
             subject_kind_any,
-            authority_any,
-            authority_exclude_any,
             policy_all: policy_all.into_iter().map(ActionPredicate::from).collect(),
             policy_any: policy_any.into_iter().map(ActionPredicate::from).collect(),
             policy_none: policy_none.into_iter().map(ActionPredicate::from).collect(),
@@ -90,13 +64,8 @@ impl AgentActionMatch {
         action: &ToolAction,
         match_paths: Option<&[String]>,
     ) -> bool {
-        if self.authority_rules.is_empty()
-            && self.effect_rules.is_empty()
-            && self.action_any.is_empty()
-            && self.effect_any.is_empty()
+        if self.action_any.is_empty()
             && self.subject_kind_any.is_empty()
-            && self.authority_any.is_empty()
-            && self.authority_exclude_any.is_empty()
             && self.policy_all.is_empty()
             && self.policy_any.is_empty()
             && self.policy_none.is_empty()
@@ -176,34 +145,29 @@ impl AgentActionMatch {
         include_subjects: bool,
     ) -> crate::tool_action::AgentAction {
         let mut agent_action = action.derive_agent_action();
-        let inferred_authority = self.infer_authority(registry, action);
-        if let Some(authority) = inferred_authority {
-            agent_action.add_capability(crate::tool_action::SemanticCapability {
-                action: agent_action.host_action,
-                certainty: crate::tool_action::SemanticCapabilityCertainty::Exact,
-                authority,
-                evidence: crate::tool_action::SemanticCapabilityEvidence::ParserEffect,
-            });
-        }
         let needs_command_stages = include_subjects
-            || !self.effect_rules.is_empty()
-            || !self.effect_any.is_empty()
-            || self.policy_all.iter().any(ActionPredicate::needs_effect)
-            || self.policy_any.iter().any(ActionPredicate::needs_effect)
-            || self.policy_none.iter().any(ActionPredicate::needs_effect);
+            || agent_action.host.action == crate::action_ir::AgentActionKind::Execute;
         let command_stages = if needs_command_stages {
             self.command_stages(action)
         } else {
             Vec::new()
         };
-        if let Some(effect) = self.infer_effect(&command_stages, action.semantic_command_text()) {
-            agent_action.add_capability(crate::tool_action::SemanticCapability {
-                action: effect,
-                certainty: crate::tool_action::SemanticCapabilityCertainty::Exact,
-                authority: inferred_authority.unwrap_or(
-                    crate::tool_action::AgentActionAuthority::RawShell,
-                ),
-                evidence: crate::tool_action::SemanticCapabilityEvidence::ParserEffect,
+        let behavior_facts = command_stages
+            .iter()
+            .flat_map(agent_semantic_shell_parser::command_stage_behavior_facts)
+            .collect::<Vec<_>>();
+        for fact in &behavior_facts {
+            let semantic_action = match fact.access {
+                agent_semantic_shell_parser::ShellAccessKind::Read => {
+                    crate::action_ir::AgentActionKind::Read
+                }
+                agent_semantic_shell_parser::ShellAccessKind::Write => {
+                    crate::action_ir::AgentActionKind::Edit
+                }
+            };
+            agent_action.add_capability(crate::action_ir::SemanticCapability {
+                action: semantic_action,
+                evidence: crate::action_ir::SemanticCapabilityEvidence::ShellRedirection,
             });
         }
         if include_subjects {
@@ -234,6 +198,14 @@ impl AgentActionMatch {
                 }
                 subject_paths
             };
+            for subject in behavior_facts
+                .iter()
+                .filter_map(|fact| fact.subject.as_ref())
+            {
+                if !subject_paths.contains(subject) {
+                    subject_paths.push(subject.clone());
+                }
+            }
             subject_paths.dedup();
             agent_action.subjects =
                 crate::source_selector::derive_agent_action_subjects(registry, &subject_paths);
@@ -269,10 +241,8 @@ impl AgentActionMatch {
     fn inline_predicate(&self) -> ActionPredicateRef<'_> {
         ActionPredicateRef {
             action_any: &self.action_any,
-            effect_any: &self.effect_any,
+            semantic_capability_any: &[],
             subject_kind_any: &self.subject_kind_any,
-            authority_any: &self.authority_any,
-            authority_exclude_any: &self.authority_exclude_any,
         }
     }
 
@@ -282,56 +252,12 @@ impl AgentActionMatch {
             .and_then(|command| parse_bash_command_candidates(command).ok())
             .unwrap_or_default()
     }
-
-    fn infer_authority(
-        &self,
-        registry: &HookRuntime,
-        action: &ToolAction,
-    ) -> Option<crate::tool_action::AgentActionAuthority> {
-        self.authority_rules.iter().find_map(|rule| {
-            crate::hook_config::core::registered_asp::match_registered_asp_command(
-                std::slice::from_ref(&rule.argv_prefix),
-                registry,
-                action,
-            )
-            .is_some()
-            .then(|| crate::tool_action::action_authority_from_config(rule.authority))
-        })
-    }
-
-    fn infer_effect(
-        &self,
-    command_stages: &[CommandStage],
-        command: Option<&str>,
-    ) -> Option<crate::tool_action::AgentActionKind> {
-        self.effect_rules.iter().find_map(|rule| {
-            let prefix_matches = !rule.argv_prefix.is_empty()
-                && matches!(
-                    agent_semantic_shell_parser::command_stages_match_wrapped_prefix(
-                        command_stages,
-                        &rule.argv_prefix,
-                    ),
-                    agent_semantic_shell_parser::PrefixMatch::Matched
-                );
-            let command_matches = command.is_some_and(|command| {
-                let command = command.to_ascii_lowercase();
-                rule.command_contains_any.iter().any(|pattern| {
-                    !pattern.is_empty() && command.contains(&pattern.to_ascii_lowercase())
-                })
-            });
-            (prefix_matches || command_matches)
-                .then(|| crate::tool_action::action_kind_from_config(rule.effect))
-                .flatten()
-        })
-    }
 }
 
 struct ActionPredicateRef<'a> {
     action_any: &'a [HookClientActionKind],
-    effect_any: &'a [HookClientActionKind],
+    semantic_capability_any: &'a [HookClientActionKind],
     subject_kind_any: &'a [HookClientActionSubjectKind],
-    authority_any: &'a [HookClientActionAuthority],
-    authority_exclude_any: &'a [HookClientActionAuthority],
 }
 
 impl ActionPredicate {
@@ -339,17 +265,11 @@ impl ActionPredicate {
         !self.subject_kind_any.is_empty()
     }
 
-    fn needs_effect(&self) -> bool {
-        !self.effect_any.is_empty()
-    }
-
     fn matches_non_subject(&self, action: &crate::tool_action::AgentAction) -> bool {
         ActionPredicateRef {
             action_any: &self.action_any,
-            effect_any: &self.effect_any,
+            semantic_capability_any: &self.semantic_capability_any,
             subject_kind_any: &self.subject_kind_any,
-            authority_any: &self.authority_any,
-            authority_exclude_any: &self.authority_exclude_any,
         }
         .matches_non_subject(action)
     }
@@ -357,10 +277,8 @@ impl ActionPredicate {
     fn matches(&self, action: &crate::tool_action::AgentAction) -> bool {
         ActionPredicateRef {
             action_any: &self.action_any,
-            effect_any: &self.effect_any,
+            semantic_capability_any: &self.semantic_capability_any,
             subject_kind_any: &self.subject_kind_any,
-            authority_any: &self.authority_any,
-            authority_exclude_any: &self.authority_exclude_any,
         }
         .matches(action)
     }
@@ -368,27 +286,19 @@ impl ActionPredicate {
 
 impl ActionPredicateRef<'_> {
     fn matches_non_subject(&self, action: &crate::tool_action::AgentAction) -> bool {
-        action.capabilities.iter().any(|capability| {
-            (self.action_any.is_empty()
-                || self.action_any.iter().copied().any(|configured| {
-                    crate::tool_action::action_kind_matches(capability.action, configured)
+        (self.action_any.is_empty()
+            || self.action_any.iter().copied().any(|configured| {
+                crate::tool_action::action_kind_matches(action.host.action, configured)
+            }))
+            && (self.semantic_capability_any.is_empty()
+                || action.capabilities.iter().any(|capability| {
+                    self.semantic_capability_any
+                        .iter()
+                        .copied()
+                        .any(|configured| {
+                            crate::tool_action::action_kind_matches(capability.action, configured)
+                        })
                 }))
-                && (self.effect_any.is_empty()
-                    || self.effect_any.iter().copied().any(|configured| {
-                        crate::tool_action::action_kind_matches(capability.action, configured)
-                    }))
-                && (self.authority_any.is_empty()
-                    || self.authority_any.iter().copied().any(|configured| {
-                        crate::tool_action::authority_matches(capability.authority, configured)
-                    }))
-                && !self
-                    .authority_exclude_any
-                    .iter()
-                    .copied()
-                    .any(|configured| {
-                        crate::tool_action::authority_matches(capability.authority, configured)
-                    })
-        })
     }
 
     fn matches(&self, action: &crate::tool_action::AgentAction) -> bool {
@@ -402,14 +312,12 @@ impl ActionPredicateRef<'_> {
     }
 }
 
-impl From<agent_semantic_config::HookClientActionPolicyConfig> for ActionPredicate {
-    fn from(policy: agent_semantic_config::HookClientActionPolicyConfig) -> Self {
+impl From<agent_semantic_config::HookClientCapabilityPolicyConfig> for ActionPredicate {
+    fn from(policy: agent_semantic_config::HookClientCapabilityPolicyConfig) -> Self {
         Self {
             action_any: policy.action_any,
-            effect_any: policy.effect_any,
+            semantic_capability_any: policy.semantic_capability_any,
             subject_kind_any: policy.subject_kind_any,
-            authority_any: policy.authority_any,
-            authority_exclude_any: policy.authority_exclude_any,
         }
     }
 }

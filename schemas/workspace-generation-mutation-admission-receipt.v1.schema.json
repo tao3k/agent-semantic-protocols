@@ -36,7 +36,7 @@
       "minItems": 1,
       "uniqueItems": true,
       "items": {
-        "$ref": "runtime-server-workspace-generation-admission.v1.schema.json"
+        "$ref": "runtime-server-workspace-generation-admission.schema.json"
       }
     }
   }

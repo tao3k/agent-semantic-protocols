@@ -8,7 +8,7 @@ use super::{
 
 #[test]
 #[cfg(unix)]
-fn install_language_gerbil_uses_release_asset_prefix_and_installs_gslph() {
+fn install_language_gerbil_uses_provider_identity_for_release_and_install() {
     let root = temp_project_root();
     let home = root.join("home");
     let release_dir = create_gerbil_pinned_release_fixture(&root);
@@ -39,22 +39,28 @@ fn install_language_gerbil_uses_release_asset_prefix_and_installs_gslph() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     let runtime_bin = home.join(".agent-semantic-protocols/runtime/bin");
-    let bin = runtime_bin.join("gslph");
+    let bin = runtime_bin.join("asp-gerbil-scheme");
     let lock_path = receipt_path(&stdout, "lock");
     let lock = std::fs::read_to_string(&lock_path).expect("read Gerbil lock");
-    let package_binary = provider_package_path(&lock).join("bin/gerbil-scheme-harness");
-    assert!(bin.is_file(), "missing installed gslph {}", bin.display());
+    let package_binary = provider_package_path(&lock).join("bin/asp-gerbil-scheme");
+    assert!(
+        bin.is_file(),
+        "missing installed asp-gerbil-scheme {}",
+        bin.display()
+    );
     assert!(
         package_binary.is_file(),
         "missing Gerbil package binary {}",
         package_binary.display()
     );
+    let canonical_bin = std::fs::canonicalize(&bin).expect("resolve installed provider content");
+    let canonical_artifacts =
+        std::fs::canonicalize(runtime_bin.parent().unwrap().join("artifacts"))
+            .expect("resolve provider artifact store");
     assert!(
-        !std::fs::symlink_metadata(&bin)
-            .expect("stat installed gslph")
-            .file_type()
-            .is_symlink(),
-        "installed provider command must be a binary file, not a symlink"
+        canonical_bin.starts_with(canonical_artifacts),
+        "installed provider command must resolve inside the immutable artifact store: {}",
+        canonical_bin.display()
     );
     assert!(
         std::fs::read(&bin)
@@ -65,12 +71,12 @@ fn install_language_gerbil_uses_release_asset_prefix_and_installs_gslph() {
     let runtime_bin_entries = sorted_file_names(&runtime_bin);
     assert_eq!(
         runtime_bin_entries,
-        vec!["gslph".to_string()],
+        vec!["asp-gerbil-scheme".to_string()],
         "provider install must not copy package companions or build artifacts into the State Home runtime bin"
     );
-    assert!(lock.contains("binary = \"gslph\""), "{lock}");
+    assert!(lock.contains("binary = \"asp-gerbil-scheme\""), "{lock}");
     assert!(lock.contains(
-        "source = \"https://github.com/tao3k/gerbil-scheme-language-project-harness/releases/download/v0.1.0/gerbil-scheme-harness-x86_64-unknown-linux-gnu.tar.gz\""
+        "source = \"https://github.com/tao3k/gerbil-scheme-language-project-harness/releases/download/v0.1.0/asp-gerbil-scheme-x86_64-unknown-linux-gnu.tar.gz\""
     ), "{lock}");
 }
 
@@ -116,8 +122,8 @@ fn install_language_gerbil_rejects_script_release_payload() {
     );
     assert!(
         !home
-            .join(".agent-semantic-protocols/runtime/bin/gslph")
+            .join(".agent-semantic-protocols/runtime/bin/asp-gerbil-scheme")
             .exists(),
-        "script payload must not be installed as gslph"
+        "script payload must not be installed as asp-gerbil-scheme"
     );
 }

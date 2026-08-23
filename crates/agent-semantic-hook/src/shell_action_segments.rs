@@ -4,7 +4,12 @@ use crate::tool_action::{OperationIntent, ToolAction, ToolSurface};
 
 /// Parses a compound shell command once and projects one declarative Hook
 /// action per executable stage. Simple commands stay on the envelope fast path.
-pub(super) fn split_shell_command(tool_name: &str, command: &str) -> Option<Vec<ToolAction>> {
+pub(super) fn split_shell_command(
+    tool_name: &str,
+    command: &str,
+    host_payload: &serde_json::Value,
+    invocation_source: Option<&str>,
+) -> Option<Vec<ToolAction>> {
     let Ok(stages) = agent_semantic_shell_parser::parse_bash_command_candidates(command) else {
         return None;
     };
@@ -30,6 +35,8 @@ pub(super) fn split_shell_command(tool_name: &str, command: &str) -> Option<Vec<
                 }
                 ToolAction {
                     tool_name: tool_name.to_string(),
+                    host_payload: host_payload.clone(),
+                    invocation_source: invocation_source.map(str::to_owned),
                     surface: ToolSurface::CodexShell,
                     operation: OperationIntent::ShellCommand,
                     command: Some(command),

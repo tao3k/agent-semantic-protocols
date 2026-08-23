@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use super::{
-    BoundedPathCommandSpec, StructuredFilterClassification,
-    classify_single_bounded_path_command, classify_single_bounded_path_tokens,
+    BoundedPathCommandSpec, StructuredFilterClassification, classify_single_bounded_path_command,
+    classify_single_bounded_path_tokens,
 };
 
 fn spec<'a>(
@@ -57,7 +57,7 @@ fn command_model_is_configured_instead_of_binary_hardcoded() {
             "project-json --arg scope workspace .package.name package.json",
             spec("project-json", &no_subcommands, &options, &option_values),
         ),
-            StructuredFilterClassification::BoundedPath { .. }
+        StructuredFilterClassification::BoundedPath { .. }
     ));
 }
 
@@ -108,7 +108,7 @@ fn parser_tokens_preserve_wrappers_and_reject_compound_stages() {
             &compound,
             spec("project-json", &[], &options, &option_values),
         ),
-            StructuredFilterClassification::Compound
+        StructuredFilterClassification::Compound
     );
 }
 
@@ -120,21 +120,21 @@ fn rejects_identity_multiple_inputs_and_multi_stage_commands() {
     let configured = || spec("project-toml", &subcommands, &options, &option_values);
     assert_eq!(
         classify_single_bounded_path_command("project-toml eval . Cargo.toml", configured()),
-            StructuredFilterClassification::Identity
+        StructuredFilterClassification::Identity
     );
     assert_eq!(
         classify_single_bounded_path_command(
             "project-toml .workspace Cargo.toml pyproject.toml",
             configured(),
         ),
-            StructuredFilterClassification::Compound
+        StructuredFilterClassification::Compound
     );
     assert_eq!(
         classify_single_bounded_path_command(
             "project-toml .workspace Cargo.toml | sed Cargo.toml",
             configured(),
         ),
-            StructuredFilterClassification::Compound
+        StructuredFilterClassification::Compound
     );
 }
 
@@ -167,7 +167,7 @@ fn bounded_scalar_predicates_reject_compound_or_unknown_filters() {
                 &command,
                 spec("jq", &[], &options, &option_values)
             ),
-                StructuredFilterClassification::Invalid | StructuredFilterClassification::Compound
+            StructuredFilterClassification::Invalid | StructuredFilterClassification::Compound
         ));
     }
 }

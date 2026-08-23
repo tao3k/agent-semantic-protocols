@@ -4,11 +4,12 @@
   "title": "ASP Provider Runtime Contract Descriptor",
   "type": "object",
   "additionalProperties": false,
-  "required": ["transport", "aspClientServer", "operations"],
+  "required": ["transport", "clientBinding", "aspClientServer", "operations"],
   "properties": {
     "transport": { "const": "http-json" },
+    "clientBinding": { "const": "schema-driven" },
     "aspClientServer": {
-"$ref": "asp-client-server-descriptor.schema.json"
+      "$ref": "asp-client-server-descriptor.schema.json"
     },
     "operations": {
       "type": "array",
@@ -19,7 +20,10 @@
         "additionalProperties": false,
         "required": ["operation", "requestSchemaId", "responseSchemaId"],
         "properties": {
-          "operation": { "type": "string", "minLength": 1 },
+          "operation": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)*$"
+          },
           "requestSchemaId": { "type": "string", "minLength": 1 },
           "responseSchemaId": { "type": "string", "minLength": 1 }
         }

@@ -16,9 +16,7 @@ pub(super) fn provider_plane_socket_path(
     Ok(path)
 }
 
-pub(crate) fn provider_register_state_path(
-    provider_plane_socket_path: &Path,
-) -> Result<PathBuf, String> {
+pub fn provider_register_state_path(provider_plane_socket_path: &Path) -> Result<PathBuf, String> {
     let runtime_base = provider_plane_socket_path.parent().ok_or_else(|| {
         "Runtime Server provider-plane socket path has no runtime directory".to_owned()
     })?;

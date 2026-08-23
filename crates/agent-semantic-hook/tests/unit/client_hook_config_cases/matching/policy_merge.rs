@@ -77,32 +77,9 @@ schemaVersion = "1"
 protocolId = "agent.semantic-protocols.hook"
 protocolVersion = "1"
 
-[agents]
-
-[agents.placeholders]
-explore = "asp-explore"
-testing = "asp_testing"
-
-[[agents.residentAgents]]
-enabled = true
-name = "asp-explore"
-role = "asp_explorer"
-roles = []
-permissions = []
-codexAgentName = "asp_explorer"
-sessionLifetime = "resident"
-
-[[agents.residentAgents]]
-enabled = true
-name = "asp_testing"
-role = "asp_testing"
-roles = []
-permissions = []
-codexAgentName = "asp_testing"
-sessionLifetime = "resident"
-
 [[rules]]
 id = "deny-wl-source-argv"
+priority = 20000
 decision = "deny"
 message = "matched configured argv source"
 
@@ -137,11 +114,7 @@ argvSourceExcludeFlagAny = ["--output"]
         Some("deny-wl-source-argv")
     );
 
-    for command in [
-        "wl --flag2 flag3 README",
-        "wl --output *.ts README",
-        "wl --output=*.ts README",
-    ] {
+    for command in ["wl --flag2 flag3 README"] {
         let decision = classify_hook_with_config(HookClassificationRequest {
             registry: &registry,
             config: &config,
@@ -155,6 +128,37 @@ argvSourceExcludeFlagAny = ["--output"]
 
         assert_eq!(decision.decision, DecisionKind::Allow, "{command}");
     }
+
+    for command in ["wl --output *.ts README"] {
+        let decision = classify_hook_with_config(HookClassificationRequest {
+            registry: &registry,
+            config: &config,
+            platform: "codex",
+            event: "pre-tool",
+            payload: &json!({
+                "tool_name": "Bash",
+                "tool_input": {"command": command}
+            }),
+        });
+
+        assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
+        assert_eq!(
+            decision.fields["configRuleId"], "deny-raw-registered-source-action",
+            "the custom argv matcher must exclude the output operand before dominance"
+        );
+    }
+
+    let inline_output = classify_hook_with_config(HookClassificationRequest {
+        registry: &registry,
+        config: &config,
+        platform: "codex",
+        event: "pre-tool",
+        payload: &json!({
+            "tool_name": "Bash",
+            "tool_input": {"command": "wl --output=*.ts README"}
+        }),
+    });
+    assert_eq!(inline_output.decision, DecisionKind::Allow);
 
     let decision = classify_hook_with_config(HookClassificationRequest {
         registry: &registry,
@@ -204,9 +208,9 @@ commandContainsAny = ["same-action-witness"]
     let config_source = fs::read_to_string(&config_path).expect("read config");
     fs::write(
         &config_path,
-        crate::client_hook_config::matching::with_required_resident_agents(&config_source),
+        crate::client_hook_config::matching::with_direct_dispatch_roles(&config_source),
     )
-    .expect("write config with resident agents");
+    .expect("write config with direct dispatch roles");
     let config = load_client_config(&config_path).expect("load config");
     let runtime = registry();
     let decision = classify_hook_with_config(HookClassificationRequest {

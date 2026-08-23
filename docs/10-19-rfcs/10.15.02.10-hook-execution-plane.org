@@ -17,11 +17,11 @@ the typed action envelope and select an execution plane before socket,
 filesystem, supervisor, or durable-state I/O.
 
 Hook matcher compilation and publication are client-neutral control-plane
-operations.  The running ASP binary's embedded provider registry owns the
-managed =languageProviders= projection and its contract fingerprint; the disk
-Hook document contributes user policy and project overlays but MUST NOT replace
-that provider authority.  Matcher publication therefore self-recovers stale
-generated provider digests without consulting installed provider executables.
+operations.  The compiled Hook configuration owns the declarative profile and
+source-extension projection used by matching.  Project policy may add bounded
+rules, but MUST NOT replace the canonical profile contract.  Publication
+validates the static policy/profile digest; Hook classification does not resolve
+provider manifests, activation binaries, or runtime executables.
 Codex and other clients own only their Host adapter and Plugin transport.  A
 client-specific Plugin install, Hook doctor, or provider install MUST NOT be
 presented as matcher refresh or matcher recovery.
@@ -61,10 +61,12 @@ checkpoint path MAY use the longer bounded lock budget for durable compaction.
 Conformance is a four-layer obligation: the plugin host matcher must admit the
 host tool name, action-envelope normalization must produce the typed action,
 the canonical compiled configuration must select an enabled rule witness, and
-the registered provider must expose both the source extension and its owner
-route. Generated cases MUST be derived from the installed plugin artifact,
-canonical config/template, and builtin provider manifests/routes. Handwritten
-single-language examples are regression cases only and MUST NOT establish
+the declarative profile must expose both the source extension and its route
+descriptor. Generated cases MUST derive from the installed plugin artifact and
+canonical config/profile catalog. Provider manifests are not required for Hook
+policy compilation or classification; provider health remains a runtime-lazy
+concern. Handwritten single-language examples are regression cases only and
+MUST NOT establish
 completeness. Compact native reads and nested =commandActions= envelopes are
 separate generated envelope families; an outer aggregator such as
 =functions.exec= is normalization coverage, not a required host matcher alias.
@@ -180,15 +182,17 @@ configuration at daemon startup, or return a final Hook platform response.
 
 * Plugin bootstrap and composable policy algebra
 
-The plugin-owned =$PLUGIN_ROOT/bin/asp-hook= is a Host-discoverable bootstrap,
-not a Hook Runtime or policy authority. Its only responsibilities are resolving
-the canonical =$ASP_STATE_HOME/runtime/bin/asp= artifact, executing exactly
-=asp hook EVENT --client codex=, and converting missing/non-executable or
-=126=/=127= execution failures into a typed local unavailable response. It MUST
-NOT parse =hooks/config.toml=, open a Runtime Server endpoint, reconcile a
-supervisor, classify an action, or cache workspace state. This bootstrap is
-necessary because the Host supplies =PLUGIN_ROOT= but does not establish the
-ASP state environment or interactive =PATH= as plugin authority.
+The plugin-owned =$PLUGIN_ROOT/bin/asp-hook= is a Host-discoverable artifact
+slot resolver, not a Hook Runtime or policy authority. It resolves the stable
+=runtime/bin/asp= alias, then the independently retained
+=runtime/profiles/asp/active= and =runtime/profiles/asp/healthy= slots, and
+executes exactly =asp hook EVENT --client codex= by replacing the launcher
+process with the first present executable slot. Missing or non-executable slots
+advance to the next artifact slot; exhaustion becomes one typed local
+unavailable response. It MUST NOT parse the Host payload or
+=hooks/config.toml=, inspect tool names, open a Runtime Server endpoint,
+reconcile a supervisor, classify an action, or cache workspace state. The same
+=asp= binary remains the sole bootstrap and policy implementation.
 
 The in-process matcher compiles reusable =actionPolicies= over orthogonal
 normalized axes: action, effect, authority, and provider-owned subject kind.
@@ -297,9 +301,44 @@ A local matcher/configuration failure is not a Runtime Server failure. Its
 typed failure is =hook-local-policy-unavailable= with =schemaVersion: "1"= and
 =reasonKind=local-hook-policy-authority-unavailable=. It MUST NOT recommend
 =asp server reconcile=. The exact =asp hook doctor --client codex= command is
-admitted by the configuration-independent bootstrap, as is the digest-targeted
-canonical binary install. Chained commands, extra arguments, alternate clients,
-and non-canonical install targets remain policy-bearing.
+admitted by the configuration-independent bootstrap, as is =asp install
+binary=. The installer derives State Home and publishes verified bytes into the
+active/healthy artifact slots; callers do not select a target or digest path.
+Chained commands, extra arguments, alternate clients, and caller-selected
+install targets remain policy-bearing.
+
+* Hook enablement acceptance
+
+=asp hook enablement [PROJECT_ROOT] [--json]= is the only executable authority
+for declaring that the Codex Hook may be enabled. It is a read-only acceptance
+transaction; it MUST NOT install or refresh a plugin, move Runtime artifact
+slots, promote health, reconcile a Runtime Server, or edit trust.
+
+The command MUST fail closed unless one receipt proves all of the following:
+
+- the global Codex marketplace selects the repository-owned Codex plugin and
+  globally enables it, while the current =hooks.json= and =bin/asp-hook=
+  payloads are present; project-local marketplace or plugin enablement is not
+  an installation authority;
+- =runtime/bin/asp= aliases =profiles/asp/active=, while =active= and =healthy=
+  resolve to executable, digest-addressed content protected by the retention
+  receipt;
+- isolated active-only and healthy-only launcher scenarios both execute the
+  operator passthrough without a second launcher or policy implementation;
+- the acceptance control plane warms the immutable active matcher generation
+  before authorization, then 16 real =pre-tool= decisions all report
+  =hookDecisionBudgetStatus= as =within-budget= with the existing 1000
+  microsecond thread-CPU budget; the receipt records the maximum measured CPU,
+  not an average or a selected passing sample;
+- every launcher sample is below 100000 microseconds and the observed p99 is
+  below 50000 microseconds. Averages or timeout increases cannot qualify a
+  failing sample.
+
+The receipt schema is
+=agent.semantic-protocols.hook-enablement-acceptance= with
+=schemaVersion: "1"=. Only =status: "ready"= authorizes the operator to enable
+Hook delivery. Any failed invariant returns a typed =reasonKind= and no Ready
+receipt.
 
 The canonical binary installer owns a coupled binary/config generation sync.
 Before it returns success it MUST publish the managed Hook config embedded in
@@ -345,10 +384,10 @@ supervisor recovery. If the source configuration is valid, the Hook process may
 perform the bounded cold compile and atomic publication locally. If the source
 configuration or durable artifact is invalid after the single managed sync
 attempt, Hook returns the local typed failure and directs the validated
-candidate's exact =install binary --target
-$ASP_STATE_HOME/runtime/bin/asp= recovery. That installer republishes its own
-matching managed config; it does not reinstall the Codex plugin. There is no
-Runtime fallback.
+candidate's exact =install binary= recovery. Runtime configuration owns the
+stable install slot; callers cannot supply or redirect a target. That installer
+republishes its own matching managed config; it does not reinstall the Codex
+plugin. There is no Runtime fallback.
 
 Hook event evidence is bounded independently from matcher snapshots. Replay
 reads at most the final 1 MiB and 4096 lines; =events.jsonl= is compacted before

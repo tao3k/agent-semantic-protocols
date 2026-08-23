@@ -34,10 +34,6 @@ impl HostAcceptanceReceipt {
         self.state == "accepted"
     }
 
-    pub(super) fn state(&self) -> &'static str {
-        self.state
-    }
-
     pub(super) fn reason_kind(&self) -> &'static str {
         self.reason_kind
     }

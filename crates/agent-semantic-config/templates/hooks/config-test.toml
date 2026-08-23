@@ -30,13 +30,12 @@ wrapperExemption = "the bypass predicate is intentionally bounded to the first s
 [[rules]]
 id = "registered-asp-reasoning-search"
 positiveCommands = [
-  "asp org search owner docs/design.org items --query capability --workspace . --view seeds",
-  "/runtime/bin/asp rust search pipe HookDecision --workspace . --view seeds",
+  "asp rust search owner crates/agent-semantic-hook/src/lib.rs items --query capability --workspace . --view seeds",
+  "env ASP_NO_AGENT=1 asp rust search pipe HookDecision --workspace . --view seeds",
   "asp typescript search pipe Effect --workspace . --view seeds",
   "asp python search owner packages/python/project.py items --query policy --workspace . --view seeds",
   "asp julia search pipe runtime --workspace . --view seeds",
   "asp gerbil-scheme search owner src/main.ss items --query profile --workspace . --view seeds",
-  "asp md search pipe architecture --workspace . --view seeds",
 ]
 negativeCommands = [
   "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source",
@@ -44,7 +43,7 @@ negativeCommands = [
 ]
 
 [[rules]]
-id = "resident-testing-dispatch"
+id = "testing-role-dispatch"
 positiveCommands = [
   "cargo test -p agent-semantic-hook --lib",
   "cargo check -p agent-semantic-hook",
@@ -93,23 +92,12 @@ positiveCommands = [
 ]
 negativeCommands = [
   "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source",
-  "git mv old.rs new.rs",
 ]
 
 [[rules]]
 id = "deny-agent-search-json"
-positiveCommands = ["asp-rust search pipe Effect --workspace . --json", "asp-typescript search pipe Effect --workspace . --json"]
+positiveCommands = ["asp rust search pipe Effect --workspace . --json", "asp typescript search pipe Effect --workspace . --json"]
 negativeCommands = ["asp healthcheck --json", "asp paths --json"]
-
-[[rules]]
-id = "materialize-apply-patch-policy"
-positiveTools = [
-  { name = "functions.apply_patch", input = { patch = "*** Begin Patch\n*** Update File: crates/agent-semantic-hook/src/lib.rs\n@@\n-old\n+new\n*** End Patch" } },
-]
-negativeTools = [
-  { name = "functions.exec_command", input = { cmd = "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source" } },
-]
-wrapperExemption = "apply-patch is a typed host action, not a shell command"
 
 [[rules]]
 id = "route-read-to-asp-languages"
@@ -127,7 +115,7 @@ negativeTools = [
 wrapperExemption = "host read is a typed action, not a shell command"
 
 [[rules]]
-id = "materialize-structured-document-read-action"
+id = "route-structured-document-read"
 positiveTools = [
   { name = "Read", input = { file_path = "schemas/semantic-hook-match-scenario.v1.schema.json" } },
   { name = "Read", input = { file_path = "crates/agent-semantic-config/templates/hooks/config.toml" } },
@@ -136,16 +124,6 @@ negativeTools = [
   { name = "Read", input = { file_path = "Cargo.lock" } },
 ]
 wrapperExemption = "host read is a typed action, not a shell command"
-
-[[rules]]
-id = "materialize-source-access-policy"
-positiveCommands = [
-  "custom-runner Path('crates/agent-semantic-hook/src/lib.rs').read_text()",
-  "custom-runner read_to_string('crates/agent-semantic-hook/src/lib.rs')",
-]
-negativeCommands = [
-  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source",
-]
 
 [[rules]]
 id = "deny-uncontrolled-source-search-commands"
@@ -188,15 +166,6 @@ negativeCommands = [
   "jq -r '.properties.expected' schemas/semantic-hook-match-scenario.v1.schema.json",
   "yq -p=toml '.rules[0].id' crates/agent-semantic-config/templates/hooks/config.toml",
 ]
-
-[[rules]]
-id = "deny-uncontrolled-source-materialization-commands"
-positiveCommands = [
-  "cat crates/agent-semantic-hook/src/lib.rs",
-  "sed -n '1,20p' crates/agent-semantic-hook/src/lib.rs",
-  "jq . crates/agent-semantic-hook/src/provider_manifest.rs",
-]
-negativeCommands = ["cat Cargo.lock", "wc -l Cargo.lock"]
 
 [[rules]]
 id = "deny-uncontrolled-git-metadata-reads"

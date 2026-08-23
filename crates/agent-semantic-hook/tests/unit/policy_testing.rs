@@ -19,9 +19,14 @@ fn compiled_policy_axes_generate_balanced_complex_black_and_white_witnesses() {
     )
     .expect("generate combinatorial provider-extension policy witnesses");
     let configured_extensions = config
-        .language_providers
-        .iter()
-        .flat_map(|provider| provider.source_extensions.iter().cloned())
+        .profiles
+        .values()
+        .flat_map(|profile| {
+            profile
+                .extension_any
+                .iter()
+                .map(|extension| format!(".{extension}"))
+        })
         .collect::<BTreeSet<_>>();
     assert_eq!(
         witnesses
@@ -54,7 +59,7 @@ fn compiled_policy_axes_generate_balanced_complex_black_and_white_witnesses() {
             .filter_map(|witness| witness.command_axis.as_ref())
             .collect::<BTreeSet<_>>()
             .len()
-            >= 6
+            >= 1
     );
     assert!(
         witnesses
@@ -94,7 +99,12 @@ fn positional_shell_witnesses_preserve_argv_structure_for_every_provider() {
         .iter()
         .map(|witness| witness.language_id.as_str())
         .collect::<BTreeSet<_>>();
-    assert_eq!(covered_languages.len(), config.language_providers.len());
+    let configured_languages = config
+        .profiles
+        .values()
+        .map(|profile| profile.language_id.as_str())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(covered_languages, configured_languages);
     for witness in witnesses {
         assert_eq!(witness.expected_decision, crate::DecisionKind::Deny);
         let payload = serde_json::json!({

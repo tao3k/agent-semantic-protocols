@@ -7,8 +7,7 @@ use crate::HookDecision;
 use super::DirectReadSourceKey;
 use super::core::{
     ShellReadSourceKey, collect_payload_tool_actions, direct_read_source_key_from_actions,
-    enforce_org_choice_plane_boundary, resolve_dispatch_decision,
-    shell_read_source_keys_from_actions, with_action_receipt_fields,
+    resolve_dispatch_decision, shell_read_source_keys_from_actions, with_action_receipt_fields,
 };
 
 /// Normalized lookup key for a one-action shell command decision shard.
@@ -89,7 +88,7 @@ pub fn rebind_command_decision_to_payload(decision: HookDecision, payload: &Valu
         decision.subject.command = Some(key.command.clone());
         decision.subject.tool_name = Some(key.tool_name);
     }
-    enforce_org_choice_plane_boundary(resolve_dispatch_decision(decision, payload))
+    resolve_dispatch_decision(decision, payload)
 }
 
 /// Rebind a decision using command keys already normalized by the Hook hot
@@ -122,5 +121,5 @@ pub fn rebind_command_decision_to_payload_with_keys(
                 .collect(),
         ),
     );
-    enforce_org_choice_plane_boundary(resolve_dispatch_decision(decision, payload))
+    resolve_dispatch_decision(decision, payload)
 }

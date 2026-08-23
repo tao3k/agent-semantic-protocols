@@ -1,16 +1,17 @@
 use agent_semantic_hook::HookRuntime;
 
 fn registered_language_facades() -> Vec<String> {
-    agent_semantic_hook::registered_language_ids()
-        .into_iter()
-        .filter(|language_id| {
-            matches!(
-                agent_semantic_hook::registered_provider_kind(language_id.as_str()),
-                Ok(agent_semantic_hook::RegisteredProviderKind::ProgrammingLanguage)
-            )
+    agent_semantic_config::default_hook_client_config_file()
+        .map(|config| {
+            config
+                .profiles
+                .values()
+                .map(|profile| profile.language_id.clone())
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect()
         })
-        .map(|language_id| language_id.to_string())
-        .collect()
+        .unwrap_or_default()
 }
 
 pub(super) fn registered_language_facades_line() -> String {

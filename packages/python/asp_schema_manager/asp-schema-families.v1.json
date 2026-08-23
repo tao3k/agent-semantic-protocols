@@ -341,8 +341,7 @@
       },
       "membershipOverrides": {
         "includeSchemaPaths": [
-          "schemas/asp.activated-ranker.v1.schema.json",
-          "schemas/asp.global-provider-catalog.v1.schema.json"
+          "schemas/asp.activated-ranker.v1.schema.json"
         ]
       }
     },
@@ -376,7 +375,7 @@
         "includeSchemaPaths": [
         "schemas/asp.active-workspace-generation.v1.schema.json",
         "schemas/active-generation-projection-capability.v1.schema.json",
-          "schemas/active-search-generation.v1.schema.json"
+          "schemas/active-search-generation.schema.json"
         ]
       },
       "definitionSchemaPath": "schemas/workspace-definitions.v1.schema.json",

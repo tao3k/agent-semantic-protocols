@@ -17,7 +17,7 @@ fn merkle_selector(
         CanonicalItemIdentity, CanonicalItemSelector,
     };
     use agent_semantic_content_identity::exact_selector_merkle::{
-        ExactProjectionModeV1, canonical_content_digest_v1,
+        ExactProjectionModeV1, canonical_content_digest,
     };
     use agent_semantic_content_identity::exact_selector_projection_packet::{
         ExactSelectorProjectionPacketV1Input, ProjectionPacketLanguageIdV1,
@@ -33,8 +33,8 @@ fn merkle_selector(
             CanonicalItemIdentity::new("rust", "function", symbol),
             structural_selector.clone(),
         ),
-        parser_identity_digest: &canonical_content_digest_v1(b"parser", &[b"rs-harness"]),
-        query_pack_digest: &canonical_content_digest_v1(b"query-pack", &[b"rust"]),
+        parser_identity_digest: &canonical_content_digest(b"parser", &[b"rs-harness"]),
+        query_pack_digest: &canonical_content_digest(b"query-pack", &[b"rust"]),
         owner_path: &ProjectionPacketOwnerPathV1::from(owner_path),
         structural_selector: &ProjectionPacketStructuralSelectorV1::from(
             structural_selector.clone(),

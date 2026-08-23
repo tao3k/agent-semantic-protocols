@@ -19,8 +19,8 @@ fn stale_receipt(language: &str, installed_path: &std::path::Path) -> String {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn stale_missing_legacy_catalog_entry_is_pruned_before_provider_resolution() {
-    let root = std::env::temp_dir().join(format!("asp-stale-catalog-{}", std::process::id()));
+async fn stale_unregistered_receipt_is_pruned_before_provider_resolution() {
+    let root = std::env::temp_dir().join(format!("asp-stale-receipt-{}", std::process::id()));
     let bin = root.join("runtime/bin");
     let receipts = root.join("runtime/providers/receipts");
     std::fs::create_dir_all(&bin).unwrap();
@@ -74,7 +74,8 @@ async fn current_provider_missing_artifact_returns_typed_missing_result() {
     std::fs::create_dir_all(&bin).unwrap();
     std::fs::create_dir_all(&artifacts).unwrap();
     std::fs::create_dir_all(&receipts).unwrap();
-    let registration = agent_semantic_hook::registered_provider_binaries_v1()
+    let registration = crate::command::provider_install_registry::provider_install_registrations()
+        .unwrap()
         .into_iter()
         .next()
         .unwrap();
@@ -123,7 +124,8 @@ async fn registered_scheme_and_python_dangling_runtime_links_are_missing() {
     std::fs::create_dir_all(&runtime_bin).expect("temporary runtime bin");
     std::fs::create_dir_all(&artifact_root).expect("temporary artifact root");
 
-    let registrations = agent_semantic_hook::registered_provider_binaries_v1();
+    let registrations =
+        crate::command::provider_install_registry::provider_install_registrations().unwrap();
     for language_id in ["gerbil-scheme", "python"] {
         let registration = registrations
             .iter()
@@ -157,7 +159,7 @@ async fn registered_scheme_and_python_dangling_runtime_links_are_missing() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn canonical_digest_lattice_symlink_is_current_without_rewrite() {
+async fn canonical_content_store_symlink_is_current_without_rewrite() {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock")
@@ -171,7 +173,8 @@ async fn canonical_digest_lattice_symlink_is_current_without_rewrite() {
     let provider_lock_dir = root.join("runtime/providers/receipts");
     std::fs::create_dir_all(&runtime_bin).expect("temporary runtime bin");
 
-    let registrations = agent_semantic_hook::registered_provider_binaries_v1();
+    let registrations =
+        crate::command::provider_install_registry::provider_install_registrations().unwrap();
     let registration = registrations.first().expect("registered provider");
     let artifact = artifact_root
         .join("blake3-256")
@@ -237,7 +240,7 @@ async fn canonical_digest_lattice_symlink_is_current_without_rewrite() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn registered_provider_file_is_atomically_migrated_to_the_digest_lattice() {
+async fn unmanaged_provider_file_is_rejected_instead_of_migrated() {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock")
@@ -251,11 +254,15 @@ async fn registered_provider_file_is_atomically_migrated_to_the_digest_lattice()
     let provider_lock_dir = root.join("runtime/providers/receipts");
     std::fs::create_dir_all(&runtime_bin).expect("temporary runtime bin");
 
-    let registrations = agent_semantic_hook::registered_provider_binaries_v1();
+    let registrations =
+        crate::command::provider_install_registry::provider_install_registrations().unwrap();
     let registration = registrations.first().expect("registered provider");
     let profile = runtime_bin.join(registration.binary());
-    std::fs::write(&profile, b"provider-binary-awaiting-lattice-migration")
-        .expect("write registered provider file");
+    std::fs::write(
+        &profile,
+        b"provider-binary-awaiting-content-store-migration",
+    )
+    .expect("write registered provider file");
     std::fs::create_dir_all(&provider_lock_dir).expect("temporary provider receipts");
     let content_digest =
         agent_semantic_content_identity::file_content_digest_v1(&profile).expect("content digest");
@@ -283,46 +290,20 @@ async fn registered_provider_file_is_atomically_migrated_to_the_digest_lattice()
     )
     .expect("write pre-migration provider receipt");
 
-    let reconciliation = reconcile_registered_provider_runtime_binaries_from(
+    let error = reconcile_registered_provider_runtime_binaries_from(
         std::slice::from_ref(registration),
         &runtime_bin,
         &artifact_root,
         &provider_lock_dir,
     )
     .await
-    .expect("migrate registered provider file");
-
-    assert_eq!(reconciliation.reconciled_count, 1);
-    assert_eq!(reconciliation.changed_count, 1);
-    assert_eq!(reconciliation.receipt_reconciled_count, 1);
-    assert_eq!(reconciliation.receipt_changed_count, 1);
-    assert_eq!(reconciliation.binary_byte_reads, 2);
+    .expect_err("unmanaged Runtime binary must not become an artifact source");
+    assert!(error.contains("escapes immutable artifact root"), "{error}");
     assert!(
-        std::fs::symlink_metadata(&profile)
-            .expect("migrated provider profile")
+        !std::fs::symlink_metadata(&profile)
+            .unwrap()
             .file_type()
             .is_symlink()
-    );
-    let canonical = std::fs::canonicalize(&profile).expect("canonical provider artifact");
-    let canonical_artifact_root =
-        std::fs::canonicalize(&artifact_root).expect("canonical artifact root");
-    assert!(canonical.starts_with(canonical_artifact_root.join("blake3-256")));
-    assert_eq!(
-        std::fs::read(&canonical).expect("read migrated artifact"),
-        b"provider-binary-awaiting-lattice-migration"
-    );
-    let reconciled_receipt =
-        super::super::install_provider_reconcile::read_provider_install_receipt(
-            registration.language_id().as_str(),
-            &provider_lock_dir,
-        )
-        .expect("read reconciled provider receipt");
-    assert!(
-        super::super::install_provider_reconcile::provider_install_receipt_matches_artifact(
-            &reconciled_receipt,
-            &profile,
-        )
-        .expect("receipt matches migrated provider artifact")
     );
 
     std::fs::remove_dir_all(root).expect("remove migration fixture");
@@ -355,21 +336,17 @@ async fn stale_provider_generation_is_replaced_from_verified_developer_output() 
     )
     .expect("write Developer Source config");
 
-    let registrations = agent_semantic_hook::registered_provider_binaries_v1();
+    let registrations =
+        crate::command::provider_install_registry::provider_install_registrations().unwrap();
     let registration = registrations
         .iter()
         .find(|registration| registration.language_id().as_str() == "rust")
         .expect("registered Rust provider");
-    let development = agent_semantic_hook::registered_provider_development_v1("rust")
-        .expect("registered Rust development descriptor");
-    let provider_source_root = developer_root.join(&development.development.source_root);
-    let descriptor_path = provider_source_root.join(
-        development
-            .development
-            .workspace_install
-            .as_deref()
-            .expect("Rust workspace install descriptor"),
-    );
+    let development =
+        crate::command::provider_install_registry::provider_install_registration("rust")
+            .expect("registered Rust development descriptor");
+    let provider_source_root = developer_root.join(&development.source_root);
+    let descriptor_path = provider_source_root.join(&development.workspace_install);
     let verified_output = provider_source_root.join("target/release/asp-rust");
     std::fs::create_dir_all(descriptor_path.parent().expect("descriptor parent"))
         .expect("create descriptor parent");
@@ -397,8 +374,8 @@ async fn stale_provider_generation_is_replaced_from_verified_developer_output() 
             }}"#,
             registration.provider_id().as_str(),
             registration.binary(),
-            development.development.source_root,
-            development.development.source_root,
+            development.source_root,
+            development.source_root,
         ),
     )
     .expect("write workspace install descriptor");
@@ -408,6 +385,18 @@ async fn stale_provider_generation_is_replaced_from_verified_developer_output() 
         .expect("create old generation");
     std::fs::write(&old_generation, b"stale provider").expect("write stale provider");
     symlink(&old_generation, runtime_bin.join("asp-rust")).expect("link stale provider");
+    let protected_asp = artifact_root
+        .join("blake3-256")
+        .join("b".repeat(64))
+        .join("asp");
+    std::fs::create_dir_all(protected_asp.parent().expect("ASP artifact parent"))
+        .expect("create ASP artifact generation");
+    std::fs::write(&protected_asp, b"protected ASP artifact")
+        .expect("write protected ASP artifact");
+    let asp_profile = root.join("runtime/profiles/asp");
+    std::fs::create_dir_all(&asp_profile).expect("create ASP profile");
+    symlink(&protected_asp, asp_profile.join("active")).expect("link active ASP artifact");
+    symlink(&protected_asp, asp_profile.join("healthy")).expect("link healthy ASP artifact");
 
     let reconciliation = reconcile_registered_provider_runtime_binaries_from(
         std::slice::from_ref(registration),
@@ -419,9 +408,20 @@ async fn stale_provider_generation_is_replaced_from_verified_developer_output() 
     .expect("auto-update stale provider generation");
 
     assert_eq!(reconciliation.changed_count, 1);
-    assert_eq!(
-        std::fs::canonicalize(runtime_bin.join("asp-rust")).expect("canonical runtime provider"),
+    let published_provider =
+        std::fs::canonicalize(runtime_bin.join("asp-rust")).expect("canonical runtime provider");
+    assert!(published_provider.starts_with(artifact_root.join("blake3-256")));
+    assert_ne!(
+        published_provider,
         std::fs::canonicalize(&verified_output).expect("canonical Developer output")
+    );
+    assert_eq!(
+        std::fs::canonicalize(asp_profile.join("active")).expect("active ASP artifact survives"),
+        protected_asp
+    );
+    assert_eq!(
+        std::fs::canonicalize(asp_profile.join("healthy")).expect("healthy ASP artifact survives"),
+        protected_asp
     );
 
     std::fs::remove_dir_all(root).expect("remove Developer reconciliation fixture");
@@ -429,8 +429,8 @@ async fn stale_provider_generation_is_replaced_from_verified_developer_output() 
 
 #[cfg(unix)]
 #[tokio::test]
-async fn stale_typescript_receipt_and_catalog_are_replaced_by_verified_developer_output() {
-    let root = std::env::temp_dir().join(format!("asp-ts-stale-catalog-{}", std::process::id()));
+async fn stale_typescript_receipt_and_artifact_are_replaced_by_verified_developer_output() {
+    let root = std::env::temp_dir().join(format!("asp-ts-stale-artifact-{}", std::process::id()));
     let developer_root = root.join("checkout");
     let runtime_bin = root.join("runtime/bin");
     let artifact_root = root.join("runtime/artifacts");
@@ -446,20 +446,16 @@ async fn stale_typescript_receipt_and_catalog_are_replaced_by_verified_developer
         ),
     )
     .unwrap();
-    let registration = agent_semantic_hook::registered_provider_binaries_v1()
+    let registration = crate::command::provider_install_registry::provider_install_registrations()
+        .unwrap()
         .into_iter()
         .find(|r| r.language_id().as_str() == "typescript")
         .unwrap();
     let development =
-        agent_semantic_hook::registered_provider_development_v1("typescript").unwrap();
-    let source_root = developer_root.join(&development.development.source_root);
-    let workspace = source_root.join(
-        development
-            .development
-            .workspace_install
-            .as_deref()
-            .unwrap(),
-    );
+        crate::command::provider_install_registry::provider_install_registration("typescript")
+            .unwrap();
+    let source_root = developer_root.join(&development.source_root);
+    let workspace = source_root.join(&development.workspace_install);
     std::fs::create_dir_all(workspace.parent().unwrap()).unwrap();
     let authority = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../languages/typescript-lang-project-harness/provider/asp-provider-workspace-install.json");
     std::fs::write(&workspace, std::fs::read(&authority).unwrap()).unwrap();
@@ -487,18 +483,22 @@ async fn stale_typescript_receipt_and_catalog_are_replaced_by_verified_developer
         .find(|r| r.language_id == "typescript")
         .unwrap();
     assert_eq!(receipt.provider_id, "asp-typescript");
-    assert_eq!(receipt.installed_path, verified);
     let stable = runtime_bin.join("asp-typescript");
-    assert_eq!(std::fs::read_link(&stable).unwrap(), receipt.installed_path);
+    assert_eq!(receipt.installed_path, stable);
+    assert_eq!(
+        std::fs::canonicalize(&receipt.installed_path).unwrap(),
+        std::fs::canonicalize(&verified).unwrap()
+    );
     assert!(!stale.exists());
     let readiness =
         super::publish_registered_provider_runtime_reconciliation(&root, &reconciliation)
             .await
             .unwrap();
-    let catalog = std::fs::read_to_string(root.join("runtime/provider-catalog.v1.json")).unwrap();
-    assert!(catalog.contains("asp-typescript"));
-    assert!(catalog.contains(&receipt.installed_entrypoint_digest));
-    assert!(catalog.contains(stable.to_string_lossy().as_ref()));
+    let artifacts =
+        std::fs::read_to_string(root.join("runtime/installed-provider-artifacts.json")).unwrap();
+    assert!(artifacts.contains("asp-typescript"));
+    assert!(artifacts.contains(&receipt.installed_entrypoint_digest));
+    assert!(artifacts.contains(stable.to_string_lossy().as_ref()));
     assert_eq!(readiness.provider_count, 1);
     let _ = std::fs::remove_dir_all(root);
 }
@@ -520,7 +520,8 @@ async fn unmanaged_provider_runtime_symlink_is_rejected_without_migration() {
     std::fs::create_dir_all(&runtime_bin).expect("temporary runtime bin");
     std::fs::create_dir_all(&artifact_root).expect("temporary artifact root");
 
-    let registrations = agent_semantic_hook::registered_provider_binaries_v1();
+    let registrations =
+        crate::command::provider_install_registry::provider_install_registrations().unwrap();
     let registration = registrations.first().expect("registered provider");
     let digest = "a".repeat(64);
     let unmanaged_binary = root

@@ -15,24 +15,10 @@ pub(super) fn extend_dispatch_fields(
     };
     for (field, value) in [
         ("transport", dispatch.transport.as_str()),
-        ("residentName", dispatch.resident_name.as_str()),
-        (
-            "targetAgentName",
-            dispatch.resident_codex_agent_name.as_str(),
-        ),
-        ("targetAgentRole", dispatch.resident_role.as_str()),
-        ("targetAgentKind", dispatch.resident_agent_kind.as_str()),
-        (
-            "targetAgentDisplayRole",
-            dispatch.resident_display_role.as_str(),
-        ),
-        (
-            "targetAgentDescription",
-            dispatch.resident_description.as_str(),
-        ),
-        ("agentSessionAction", "dispatch-configured-resident"),
+        ("targetAgentRole", dispatch.target_role.as_str()),
+        ("agentSessionAction", "dispatch-choice-plane-role"),
         ("receiptKind", dispatch.receipt_kind.as_str()),
-        ("targetAgentSelectionSource", "hook-config-rule-dispatch"),
+        ("targetAgentSelectionSource", "choice-plane-role-signal"),
     ] {
         fields.insert(
             field.to_string(),
@@ -46,10 +32,7 @@ pub(super) fn extend_dispatch_fields(
         );
     }
     for (field, value) in [
-        (
-            "requiredAction",
-            "open-org-interactive-resident-agent-window",
-        ),
+        ("requiredAction", "open-org-interactive-choice-plane"),
         ("nextAction", "run-asp-session-agent-window"),
         ("agentWindowCommand", "asp session --agents choice-plane"),
         ("choicePlaneOwner", "org-contract:agent-interactive"),

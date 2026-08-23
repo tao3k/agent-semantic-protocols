@@ -36,62 +36,10 @@ const ACTION_SCAN_KEYS: &[&str] = &[
     "tool_calls",
     "toolCalls",
 ];
-pub(crate) use crate::action_ir::*;
-
-const fn agent_action_kind_label(kind: AgentActionKind) -> &'static str {
-    match kind {
-        AgentActionKind::Read => "read",
-        AgentActionKind::Edit => "edit",
-        AgentActionKind::Search => "search",
-        AgentActionKind::Enumerate => "enumerate",
-        AgentActionKind::Execute => "execute",
-        AgentActionKind::Test => "test",
-        AgentActionKind::Build => "build",
-        AgentActionKind::Delete => "delete",
-        AgentActionKind::Unknown => "unknown",
-    }
-}
-
-const fn action_authority_label(authority: AgentActionAuthority) -> &'static str {
-    match authority {
-        AgentActionAuthority::RawHostAction => "raw-host-action",
-        AgentActionAuthority::RawShell => "raw-shell",
-        AgentActionAuthority::ParserOwnedExactEvidence => "parser-owned-exact-evidence",
-        AgentActionAuthority::ParserOwnedSearch => "parser-owned-search",
-        AgentActionAuthority::AstPatchEvidence => "ast-patch-evidence",
-        AgentActionAuthority::Unknown => "unknown",
-    }
-}
-
-const fn action_subject_kind_label(kind: AgentActionSubjectKind) -> &'static str {
-    match kind {
-        AgentActionSubjectKind::RegisteredLanguageSource => "registered-language-source",
-        AgentActionSubjectKind::RegisteredLanguageSourcePattern => {
-            "registered-language-source-pattern"
-        }
-        AgentActionSubjectKind::Directory => "directory",
-        AgentActionSubjectKind::StructuralSelector => "structural-selector",
-        AgentActionSubjectKind::Other => "other",
-    }
-}
-
-pub(crate) fn action_kind_from_config(
-    configured: agent_semantic_config::HookClientActionKind,
-) -> Option<AgentActionKind> {
-    use agent_semantic_config::HookClientActionKind as Configured;
-
-    match configured {
-        Configured::Read => Some(AgentActionKind::Read),
-        Configured::Edit => Some(AgentActionKind::Edit),
-        Configured::Search => Some(AgentActionKind::Search),
-        Configured::Enumerate => Some(AgentActionKind::Enumerate),
-        Configured::Execute => Some(AgentActionKind::Execute),
-        Configured::Test => Some(AgentActionKind::Test),
-        Configured::Build => Some(AgentActionKind::Build),
-        Configured::Delete => Some(AgentActionKind::Delete),
-        Configured::Unknown => Some(AgentActionKind::Unknown),
-    }
-}
+pub(crate) use crate::action_ir::{
+    AgentAction, AgentActionKind, AgentActionSubject, AgentActionSubjectKind, HostInvocationFact,
+    SemanticCapability, SemanticCapabilityEvidence, action_kind_matches,
+};
 
 pub(crate) fn subject_kind_matches(
     candidate: AgentActionSubjectKind,
@@ -116,31 +64,11 @@ pub(crate) fn subject_kind_matches(
     )
 }
 
-pub(crate) fn authority_matches(
-    candidate: AgentActionAuthority,
-    configured: agent_semantic_config::HookClientActionAuthority,
-) -> bool {
-    candidate == action_authority_from_config(configured)
-}
-
-pub(crate) fn action_authority_from_config(
-    configured: agent_semantic_config::HookClientActionAuthority,
-) -> AgentActionAuthority {
-    use agent_semantic_config::HookClientActionAuthority as Configured;
-
-    match configured {
-        Configured::RawHostAction => AgentActionAuthority::RawHostAction,
-        Configured::RawShell => AgentActionAuthority::RawShell,
-        Configured::ParserOwnedExactEvidence => AgentActionAuthority::ParserOwnedExactEvidence,
-        Configured::ParserOwnedSearch => AgentActionAuthority::ParserOwnedSearch,
-        Configured::AstPatchEvidence => AgentActionAuthority::AstPatchEvidence,
-        Configured::Unknown => AgentActionAuthority::Unknown,
-    }
-}
-
 #[derive(Clone, Debug)]
 pub(crate) struct ToolAction {
     pub(crate) tool_name: String,
+    pub(crate) host_payload: Value,
+    pub(crate) invocation_source: Option<String>,
     pub(crate) surface: ToolSurface,
     pub(crate) operation: OperationIntent,
     pub(crate) command: Option<String>,
@@ -154,6 +82,8 @@ impl ToolAction {
     pub(crate) fn normalized_direct_policy_action(path: String) -> Self {
         Self {
             tool_name: String::new(),
+            host_payload: serde_json::json!({ "path": path.as_str() }),
+            invocation_source: None,
             surface: ToolSurface::CodexDirectRead,
             operation: OperationIntent::DirectRead,
             command: None,
@@ -167,6 +97,8 @@ impl ToolAction {
         let command_tokens = semantic_shell_tokens(&command);
         Self {
             tool_name: String::new(),
+            host_payload: serde_json::json!({ "command": command.as_str(), "path": path.as_str() }),
+            invocation_source: None,
             surface: ToolSurface::CodexShell,
             operation: OperationIntent::ShellCommand,
             command: Some(command),
@@ -180,6 +112,8 @@ impl ToolAction {
         let command_tokens = semantic_shell_tokens(&command);
         Self {
             tool_name,
+            host_payload: serde_json::json!({ "command": command.as_str() }),
+            invocation_source: None,
             surface: ToolSurface::CodexShell,
             operation: OperationIntent::ShellCommand,
             command: Some(command),
@@ -193,25 +127,23 @@ impl ToolAction {
         self.command.as_deref()
     }
 
-pub(crate) fn derive_agent_action(&self) -> AgentAction {
-    let host_action = self.operation.agent_action_kind();
-    let authority = match host_action {
-        AgentActionKind::Execute => AgentActionAuthority::RawShell,
-        AgentActionKind::Unknown => AgentActionAuthority::Unknown,
-        _ => AgentActionAuthority::RawHostAction,
-    };
-    AgentAction {
-        host_action,
-        host_tool_name: self.tool_name.clone(),
-        capabilities: vec![SemanticCapability {
-            action: host_action,
-            certainty: SemanticCapabilityCertainty::Exact,
-            authority,
-            evidence: SemanticCapabilityEvidence::HostAction,
-        }],
-        subjects: Vec::new(),
+    pub(crate) fn derive_agent_action(&self) -> AgentAction {
+        let host_action = self.operation.agent_action_kind();
+        AgentAction {
+            host: HostInvocationFact {
+                action: host_action,
+                tool_name: self.tool_name.clone(),
+                surface: self.surface.as_str().to_owned(),
+                payload: self.host_payload.clone(),
+                invocation_source: self.invocation_source.clone(),
+            },
+            capabilities: vec![SemanticCapability {
+                action: host_action,
+                evidence: SemanticCapabilityEvidence::HostInvocation,
+            }],
+            subjects: Vec::new(),
+        }
     }
-}
 
     pub(crate) fn command_tokens(&self) -> Option<Cow<'_, [String]>> {
         self.command_tokens
@@ -619,6 +551,8 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
 
         Some(ToolAction {
             tool_name: format!("{tool_name}.command_action.{action_type}"),
+            host_payload: value.clone(),
+            invocation_source: None,
             surface,
             operation,
             command,
@@ -647,7 +581,8 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
     let scans_nested_actions = tool_input_needs_action_scan(tool_name, tool_input);
     if surface == ToolSurface::CodexShell
         && let Some(command) = command.as_deref()
-        && let Some(compound_actions) = shell_segments::split_shell_command(tool_name, command)
+        && let Some(compound_actions) =
+            shell_segments::split_shell_command(tool_name, command, tool_input, None)
     {
         let mut actions = Vec::new();
         if scans_nested_actions {
@@ -691,6 +626,8 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
     let operation = OperationIntent::from_action(surface, command.as_deref(), &paths);
     let envelope_action = ToolAction {
         tool_name: tool_name.to_string(),
+        host_payload: tool_input.clone(),
+        invocation_source: None,
         surface,
         operation,
         command,

@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
@@ -216,65 +216,6 @@ pub fn parse_agent_route_registry(
         .map_err(|error| format!("failed to parse {source_label}: {error}"))?;
     validate_agent_route_registry(&registry)?;
     Ok(registry)
-}
-
-#[derive(Serialize)]
-struct HookAgentRouteProjection {
-    agents: crate::HookClientAgentsConfig,
-}
-
-pub fn render_hook_agent_routes(agents_root: &Path) -> Result<String, String> {
-    let loaded = load_agent_route_registry(&agents_root.join("config.toml"))?;
-    let mut role_counts = BTreeMap::<String, usize>::new();
-    for route in loaded.registry.agents.values() {
-        for role in &route.roles {
-            *role_counts.entry(role.clone()).or_default() += 1;
-        }
-    }
-
-    let mut placeholders = BTreeMap::new();
-    let mut resident_agents = Vec::new();
-    for (route_key, route) in &loaded.registry.agents {
-        let codex = compile_agent_route(&loaded, route_key, "codex")?;
-        for role in &route.roles {
-            if role_counts.get(role) == Some(&1) {
-                placeholders.insert(
-                    role.clone(),
-                    codex.platform_host_agent_name.as_str().to_owned(),
-                );
-            }
-        }
-        let sandbox_mode = codex.sandbox_mode.clone().ok_or_else(|| {
-            format!(
-                "Codex profile `{}` requires `sandbox_mode`",
-                codex.profile_path
-            )
-        })?;
-        resident_agents.push(crate::HookClientResidentAgentConfig {
-            enabled: true,
-            name: codex.platform_host_agent_name.as_str().to_owned(),
-            role: codex.route_key.as_str().to_owned(),
-            agent_kind: codex.agent_kind.clone(),
-            display_role: codex.display_role.clone(),
-            description: codex.description.clone(),
-            roles: codex.roles.clone(),
-            permissions: vec![sandbox_mode],
-            codex_agent_name: codex.platform_host_agent_name.as_str().to_owned(),
-            session_lifetime: codex.session_lifetime.as_str().to_owned(),
-            focus_mode: match codex.focus_mode {
-                AgentFocusMode::Standard => crate::HookClientAgentFocusMode::Standard,
-                AgentFocusMode::Leaf => crate::HookClientAgentFocusMode::Leaf,
-            },
-        });
-    }
-
-    toml::to_string(&HookAgentRouteProjection {
-        agents: crate::HookClientAgentsConfig {
-            placeholders,
-            resident_agents,
-        },
-    })
-    .map_err(|error| format!("failed to serialize hook agent route projection: {error}"))
 }
 
 fn projection_string(value: &toml::Value, field: &str, path: &Path) -> Result<String, String> {

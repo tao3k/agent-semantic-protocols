@@ -210,10 +210,6 @@ impl GraphTurboReceiptRequest {
             extra_args,
         }
     }
-
-    pub(super) fn has_extra_args(&self) -> bool {
-        !self.extra_args.is_empty()
-    }
 }
 
 pub(super) async fn write_graph_turbo_receipt(

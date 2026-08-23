@@ -1,13 +1,13 @@
 use std::{fs, path::PathBuf};
 
-use crate::test_support::IsolatedAspStateHome;
+use crate::test_support::{IsolatedAspStateHome, init_durable_repo};
 use crate::{ProjectContext, StateLayout};
 
 #[test]
 fn project_context_resolves_git_toplevel_from_subdir() {
     let root = temp_root("git-toplevel");
     let _state_home = IsolatedAspStateHome::activate(&root);
-    fs::create_dir_all(root.join(".git")).expect("create git marker");
+    init_durable_repo(&root, "git-toplevel");
     let package = root.join("crates/example/src");
     fs::create_dir_all(&package).expect("create package dir");
 
@@ -22,7 +22,7 @@ fn project_context_resolves_git_toplevel_from_subdir() {
 fn state_layout_uses_single_client_cache_interface() {
     let root = temp_root("state-layout");
     let _state_home = IsolatedAspStateHome::activate(&root);
-    fs::create_dir_all(root.join(".git")).expect("create git marker");
+    init_durable_repo(&root, "state-layout");
     let package = root.join("crates/example");
     fs::create_dir_all(&package).expect("create package dir");
 
@@ -50,7 +50,7 @@ fn state_layout_uses_single_client_cache_interface() {
 fn workspace_boundary_rejects_paths_outside_git_toplevel() {
     let root = temp_root("workspace-boundary");
     let _state_home = IsolatedAspStateHome::activate(&root);
-    fs::create_dir_all(root.join(".git")).expect("create git marker");
+    init_durable_repo(&root, "workspace-boundary");
     let inside = root.join("src/lib.rs");
     fs::create_dir_all(inside.parent().expect("inside parent")).expect("create src");
     fs::write(&inside, "").expect("write inside file");

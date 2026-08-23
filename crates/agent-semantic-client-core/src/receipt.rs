@@ -26,7 +26,7 @@ pub const AGENT_SEMANTIC_CLIENT_RECEIPT_PROTOCOL_VERSION: &str = "1";
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ExecutionRoute {
-    LocalNative,
+    RuntimeService,
     LocalCache,
     CloudFlight,
     HybridReroute,
@@ -222,7 +222,7 @@ impl ClientReceipt {
             protocol_id: AGENT_SEMANTIC_CLIENT_RECEIPT_PROTOCOL_ID.into(),
             protocol_version: AGENT_SEMANTIC_CLIENT_RECEIPT_PROTOCOL_VERSION.into(),
             method,
-            route: ExecutionRoute::LocalNative,
+            route: ExecutionRoute::RuntimeService,
             cache_status: CacheStatus::Miss,
             provider_command_count: 1,
             provider_processes_spawned: 1,

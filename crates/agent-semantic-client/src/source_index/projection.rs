@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use agent_semantic_client_core::{ProviderRegistrySnapshot, ResolvedProvider};
+use agent_semantic_client_core::{RuntimeProvider, RuntimeProviderProjection};
 use agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind;
 use agent_semantic_client_db::{
     ClientDbSourceIndexPath, ClientDbSourceIndexProjectionCoverage, ClientDbSourceIndexQueryKey,
@@ -41,7 +41,7 @@ pub(super) async fn project_generation_with_resident_runtime(
     runtime: &ProviderRuntimeActorClient,
     project_root: &Path,
     workspace_identity: &str,
-    registry: &ProviderRegistrySnapshot,
+    registry: &RuntimeProviderProjection,
     files: &[ClientDbSourceIndexScopeFile],
     source_blobs: &ClientDbSourceIndexSourceBlobs,
 ) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
@@ -60,7 +60,7 @@ pub(super) async fn project_generation_with_runtime_service(
     runtime: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
     project_root: &Path,
     workspace_identity: &str,
-    registry: &ProviderRegistrySnapshot,
+    registry: &RuntimeProviderProjection,
     files: &[ClientDbSourceIndexScopeFile],
     source_blobs: &ClientDbSourceIndexSourceBlobs,
 ) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
@@ -79,7 +79,7 @@ async fn project_generation_with_executor(
     executor: ProviderProjectionExecutor<'_>,
     project_root: &Path,
     workspace_identity: &str,
-    registry: &ProviderRegistrySnapshot,
+    registry: &RuntimeProviderProjection,
     files: &[ClientDbSourceIndexScopeFile],
     source_blobs: &ClientDbSourceIndexSourceBlobs,
 ) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
@@ -113,7 +113,7 @@ async fn project_provider(
     executor: &ProviderProjectionExecutor<'_>,
     project_root: &Path,
     workspace_identity: &str,
-    provider: &ResolvedProvider,
+    provider: &RuntimeProvider,
     tree: &WorkspacePathMerkleTreeV1,
     source_blobs: &ClientDbSourceIndexSourceBlobs,
     files: &mut [ClientDbSourceIndexScopeFile],
@@ -137,8 +137,8 @@ async fn project_provider(
     }
     let parser_identity_digest = derive_parser_identity_digest_v1(
         &ProjectionPacketProviderIdV1::from(provider.provider_id.as_str()),
-        &ProjectionPacketExecutionCommandDigestV1::from(provider.execution_command_digest.as_str()),
-        &ProjectionPacketSemanticRegistryDigestV1::from(provider.manifest_digest.as_str()),
+        &ProjectionPacketExecutionCommandDigestV1::from(provider.registration_digest.as_str()),
+        &ProjectionPacketSemanticRegistryDigestV1::from(provider.registration_digest.as_str()),
     );
     let query_pack_json = serde_json::to_vec(&provider.query_pack_descriptor)
         .map_err(|error| format!("encode provider query-pack identity: {error}"))?;
@@ -297,7 +297,7 @@ fn encode_semantic_projection(
 }
 
 fn selector_receipts(
-    provider: &ResolvedProvider,
+    provider: &RuntimeProvider,
     tree: &WorkspacePathMerkleTreeV1,
     source: &[u8],
     owner: &ProviderProjectedOwner,

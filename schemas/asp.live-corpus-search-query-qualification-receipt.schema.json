@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp.live-corpus-search-query-qualification-receipt.schema.json",
+  "title": "ASP Live Corpus Search Query Qualification Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "planDigest",
+    "lockDigest",
+    "qualifiedCaseCount",
+    "cases",
+    "status"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.live-corpus-search-query-qualification-receipt"
+    },
+    "schemaVersion": { "const": "1" },
+    "planDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+    "lockDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+    "qualifiedCaseCount": { "type": "integer", "minimum": 1 },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/caseReceipt" }
+    },
+    "status": { "const": "qualified" }
+  },
+  "$defs": {
+    "caseReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caseId",
+        "resourceId",
+        "scenarioId",
+        "languageId",
+        "providerId",
+        "revision",
+        "gitTree",
+        "generationDigest",
+        "rootDigest",
+        "searchOperationId",
+        "searchElapsedMicros",
+        "residentSampleCount",
+        "searchResidentReadLatencyMicros",
+        "searchServiceLatencyMicros",
+        "searchTotalLatencyMicros",
+        "candidateCount",
+        "selector",
+        "queryOperationId",
+        "queryElapsedMicros",
+        "exactSourceLatencyMicros",
+        "callableSkeletonLatencyMicros",
+        "merkleOwnerPath",
+        "merkleSourceBlobDigest",
+        "merkleOwnerSubtreeDigest",
+        "merkleProofDigest",
+        "merkleProofStepCount",
+        "zeroMatchOperationId",
+        "sourceIndexTelemetryDigest",
+        "sourceExactTelemetryDigest",
+        "callableSkeletonTelemetryDigest",
+        "merkleTelemetryDigest",
+        "runtimeEcosystem",
+        "searchReadMode",
+        "searchReadWorkCounters",
+        "exactReadMode",
+        "exactReadWorkCounters",
+        "status",
+        "semanticProjectionSchemaId",
+        "payloadSchemaId",
+        "payloadDigest"
+      ],
+      "properties": {
+        "caseId": { "type": "string", "minLength": 1 },
+        "resourceId": { "type": "string", "minLength": 1 },
+        "scenarioId": { "type": "string", "minLength": 1 },
+        "languageId": { "type": "string", "minLength": 1 },
+        "providerId": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "minLength": 1 },
+        "gitTree": { "type": "string", "minLength": 1 },
+        "generationDigest": { "type": "string", "minLength": 1 },
+        "rootDigest": { "type": "string", "minLength": 1 },
+        "searchOperationId": { "type": "string", "minLength": 1 },
+        "searchElapsedMicros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "residentSampleCount": { "type": "integer", "minimum": 128 },
+        "searchResidentReadLatencyMicros": { "$ref": "#/$defs/latencyDistribution" },
+        "searchServiceLatencyMicros": { "$ref": "#/$defs/latencyDistribution" },
+        "searchTotalLatencyMicros": { "$ref": "#/$defs/latencyDistribution" },
+        "candidateCount": { "type": "integer", "minimum": 1 },
+        "selector": { "type": "string", "minLength": 1 },
+        "queryOperationId": { "type": "string", "minLength": 1 },
+        "queryElapsedMicros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "exactSourceLatencyMicros": { "$ref": "#/$defs/latencyDistribution" },
+        "callableSkeletonLatencyMicros": { "$ref": "#/$defs/latencyDistribution" },
+        "merkleOwnerPath": { "type": "string", "minLength": 1 },
+        "merkleSourceBlobDigest": { "type": "string", "minLength": 1 },
+        "merkleOwnerSubtreeDigest": { "type": "string", "minLength": 1 },
+        "merkleProofDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+        "merkleProofStepCount": { "type": "integer", "minimum": 0 },
+        "zeroMatchOperationId": { "type": "string", "minLength": 1 },
+        "sourceIndexTelemetryDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "sourceExactTelemetryDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "callableSkeletonTelemetryDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "merkleTelemetryDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "runtimeEcosystem": { "const": "tokio" },
+        "searchReadMode": { "const": "synchronous-mmap" },
+        "searchReadWorkCounters": { "$ref": "#/$defs/zeroWorkCounters" },
+        "exactReadMode": { "const": "synchronous-mmap" },
+        "exactReadWorkCounters": { "$ref": "#/$defs/zeroWorkCounters" },
+        "status": { "const": "qualified" },
+        "semanticProjectionSchemaId": {
+          "const": "agent.semantic-protocols.semantic-projection"
+        },
+        "payloadSchemaId": {
+          "const": "agent.semantic-protocols.callable-skeleton"
+        },
+        "payloadDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "latencyDistribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sampleCount",
+        "minMicros",
+        "p50Micros",
+        "p95Micros",
+        "p99Micros",
+        "maxMicros"
+      ],
+      "properties": {
+        "sampleCount": { "type": "integer", "minimum": 128 },
+        "minMicros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "p50Micros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "p95Micros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "p99Micros": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "maxMicros": { "type": "integer", "minimum": 0, "maximum": 1000 }
+      }
+    },
+    "zeroWorkCounters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "providerProcessCount",
+        "schedulerTaskCount",
+        "filesystemReadCount",
+        "databaseReadCount",
+        "socketOperationCount"
+      ],
+      "properties": {
+        "providerProcessCount": { "const": 0 },
+        "schedulerTaskCount": { "const": 0 },
+        "filesystemReadCount": { "const": 0 },
+        "databaseReadCount": { "const": 0 },
+        "socketOperationCount": { "const": 0 }
+      }
+    }
+  }
+}

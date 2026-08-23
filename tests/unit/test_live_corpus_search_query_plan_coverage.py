@@ -5,8 +5,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-LOCK_PATH = ROOT / "benchmarks/large-library-runtime-corpora.v1.json"
-PLAN_PATH = ROOT / "benchmarks/live-corpus-search-query-qualification.v1.json"
+LOCK_PATH = ROOT / "benchmarks/large-library-runtime-corpora.json"
+PLAN_PATH = ROOT / "benchmarks/live-corpus-search-query-qualification.json"
 
 
 def load(path: Path) -> dict[str, object]:
@@ -23,11 +23,19 @@ def test_every_locked_live_corpus_has_one_fixed_search_query_case() -> None:
     assert len(cases) == 17
 
     locked = {
-        corpus["resourceId"]: (corpus["language"], corpus["providerId"])
+        corpus["resourceId"]: (
+            corpus["scenarioId"],
+            corpus["language"],
+            corpus["providerId"],
+        )
         for corpus in corpora
     }
     planned = {
-        case["resourceId"]: (case["languageId"], case["providerId"])
+        case["resourceId"]: (
+            case["scenarioId"],
+            case["languageId"],
+            case["providerId"],
+        )
         for case in cases
     }
     assert len(locked) == len(corpora)

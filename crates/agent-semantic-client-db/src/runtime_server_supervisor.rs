@@ -20,6 +20,12 @@ pub enum SupervisorOutcome {
 
 pub struct RuntimeServerSupervisor;
 
+async fn acquire_supervisor_transaction(
+    state_home: &std::path::Path,
+) -> Result<crate::runtime_server_control::RuntimeServerSupervisorTransaction, String> {
+    crate::runtime_server_control::acquire_runtime_server_supervisor_transaction(state_home).await
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeServerStopOutcome {
@@ -94,6 +100,59 @@ async fn terminate_endpoint_owner(
         .await
 }
 
+async fn retire_undecodable_endpoint_owner(request: &SupervisorRequest) -> Result<bool, String> {
+    let Some(binding) = crate::runtime_server_control::read_runtime_server_endpoint_owner_binding(
+        &request.state_home,
+    )
+    .await?
+    else {
+        return Ok(false);
+    };
+    let owner = crate::runtime_server_lifecycle::read_owner_receipt(&request.state_home)
+        .await?
+        .ok_or_else(|| {
+            "undecodable Runtime Server endpoint has no owner receipt; refusing unbound termination"
+                .to_owned()
+        })?;
+    if owner.process_id != binding.owner_process_id
+        || owner.runtime_artifact_path != binding.runtime_artifact_path
+        || owner.state_home != request.state_home.display().to_string()
+    {
+        return Err(
+            "undecodable Runtime Server endpoint and owner receipt identities differ; refusing unbound termination"
+                .to_owned(),
+        );
+    }
+    let coordinator =
+        crate::runtime_server_lifecycle_coordinator::RuntimeServerLifecycleCoordinator::new(
+            &request.state_home,
+            std::path::Path::new(&binding.runtime_artifact_path),
+        );
+    match coordinator.classify(Some(binding.owner_process_id)).await? {
+        crate::runtime_server_lifecycle_coordinator::OwnerClassification::Live => {
+            coordinator
+                .terminate_verified(binding.owner_process_id, false)
+                .await?;
+            let exit = crate::runtime_server_lifecycle::await_owner_exit(
+                &request.state_home,
+                binding.owner_epoch,
+            )
+            .await?;
+            if !exit.clean_drain {
+                return Err(format!(
+                    "undecodable Runtime Server owner {} exited without a clean drain: errors={:?}",
+                    binding.owner_epoch, exit.errors
+                ));
+            }
+        }
+        crate::runtime_server_lifecycle_coordinator::OwnerClassification::Stale => {}
+        crate::runtime_server_lifecycle_coordinator::OwnerClassification::Missing => {
+            return Err("undecodable Runtime Server endpoint owner identity is missing".to_owned());
+        }
+    }
+    Ok(true)
+}
+
 impl RuntimeServerSupervisor {
     pub async fn ensure_runtime_server(
         &self,
@@ -114,6 +173,11 @@ impl RuntimeServerSupervisor {
         }
         crate::runtime_server_lifecycle::create_run_intent(&request.state_home).await?;
         crate::runtime_server_lifecycle::remove_stale(&request.state_home).await?;
+        // Handoff is one serialized transaction: observe, retire the exact old
+        // owner, clean its receipt, and publish the next owner receipt. Without
+        // this reservation, a concurrent ensure could publish a replacement
+        // between invalid-endpoint classification and cleanup.
+        let transaction = acquire_supervisor_transaction(&request.state_home).await?;
         match crate::runtime_server_control::read_runtime_server_supervisor_endpoint(
             &request.state_home,
         )
@@ -165,11 +229,9 @@ impl RuntimeServerSupervisor {
             }
             Ok(None) => {}
             Err(endpoint_error) => {
-                if self.classify_owner(&request).await? == SupervisorOutcome::AlreadyResident {
-                    return Err(format!(
-                        "Runtime Server endpoint is invalid while its owner is live; refusing unbound termination: {endpoint_error}"
-                    ));
-                }
+                retire_undecodable_endpoint_owner(&request)
+                    .await
+                    .map_err(|error| format!("{error}: {endpoint_error}"))?;
                 crate::runtime_server_control::cleanup_invalid_runtime_server_endpoint(
                     &request.state_home,
                 )
@@ -182,7 +244,7 @@ impl RuntimeServerSupervisor {
                 crate::runtime_server_lifecycle::remove_owner_receipt(&request.state_home).await?;
             }
         }
-        self.ensure_owner(request).await
+        self.ensure_owner_in_transaction(request, transaction).await
     }
 
     pub async fn classify_owner(
@@ -212,33 +274,28 @@ impl RuntimeServerSupervisor {
         &self,
         request: SupervisorRequest,
     ) -> Result<SupervisorOutcome, String> {
-        let start_reservation =
-            match crate::runtime_server_control::try_acquire_runtime_server_election(
-                &request.state_home,
-            )
-            .await?
-            {
-                crate::runtime_server_control::RuntimeServerElectionAttempt::Acquired(
-                    reservation,
-                ) => reservation,
-                crate::runtime_server_control::RuntimeServerElectionAttempt::Contended => {
-                    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
-                    loop {
-                        if self.classify_owner(&request).await?
-                            == SupervisorOutcome::AlreadyResident
-                        {
-                            return Ok(SupervisorOutcome::AlreadyResident);
-                        }
-                        if tokio::time::Instant::now() >= deadline {
-                            return Err(
-                                "Runtime Server start reservation did not publish an owner receipt"
-                                    .to_owned(),
-                            );
-                        }
-                        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-                    }
-                }
-            };
+        let transaction = acquire_supervisor_transaction(&request.state_home).await?;
+        self.ensure_owner_in_transaction(request, transaction).await
+    }
+
+    async fn ensure_owner_in_transaction(
+        &self,
+        request: SupervisorRequest,
+        transaction: crate::runtime_server_control::RuntimeServerSupervisorTransaction,
+    ) -> Result<SupervisorOutcome, String> {
+        let reservation = match crate::runtime_server_control::try_acquire_runtime_server_election(
+            &request.state_home,
+        )
+        .await?
+        {
+            crate::runtime_server_control::RuntimeServerElectionAttempt::Acquired(reservation) => {
+                reservation
+            }
+            crate::runtime_server_control::RuntimeServerElectionAttempt::Contended => {
+                crate::runtime_server_control::wait_for_runtime_server_election(&request.state_home)
+                    .await?
+            }
+        };
         match self.classify_owner(&request).await? {
             SupervisorOutcome::AlreadyResident => return Ok(SupervisorOutcome::AlreadyResident),
             SupervisorOutcome::OwnerStale => {
@@ -258,7 +315,8 @@ impl RuntimeServerSupervisor {
             runtime_artifact_path: request.expected_executable.display().to_string(),
         };
         crate::runtime_server_lifecycle::write_owner_receipt(&request.state_home, &receipt).await?;
-        drop(start_reservation);
+        drop(reservation);
+        drop(transaction);
         Ok(SupervisorOutcome::SpawnAccepted)
     }
 

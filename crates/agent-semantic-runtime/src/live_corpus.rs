@@ -57,7 +57,7 @@ pub struct LiveCorpusArtifactIdentity<'a> {
 /// Immutable identity manifest stored in a live-corpus artifact.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LiveCorpusArtifactManifestV1 {
+pub struct LiveCorpusArtifactManifest {
     pub schema_id: String,
     pub schema_version: String,
     pub artifact_digest: String,
@@ -66,14 +66,14 @@ pub struct LiveCorpusArtifactManifestV1 {
     pub provider_id: String,
     pub language_id: String,
     pub builder_id: String,
-    pub git: LiveCorpusArtifactGitIdentityV1,
+    pub git: LiveCorpusArtifactGitIdentity,
     pub source_merkle_root: String,
 }
 
 /// Git identity embedded in the immutable artifact manifest.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LiveCorpusArtifactGitIdentityV1 {
+pub struct LiveCorpusArtifactGitIdentity {
     pub remote: String,
     pub canonical_remote_identity: String,
     pub remote_digest: String,
@@ -93,7 +93,7 @@ pub struct LiveCorpusGitCheckoutQualification {
 /// Provider-owned language-extension evidence read from a clean Git index.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LiveCorpusLanguageExtensionEvidenceV1 {
+pub struct LiveCorpusLanguageExtensionEvidence {
     pub authority: String,
     pub candidate_set_authority: String,
     pub source_extensions: Vec<String>,
@@ -278,7 +278,7 @@ fn qualify_reusable_checkout(
     Ok(())
 }
 
-/// Digest the exact validated v1 lock bytes bound into artifact identity.
+/// Digest the exact validated lock bytes bound into artifact identity.
 #[must_use]
 pub fn live_corpus_lock_digest(lock_bytes: &[u8]) -> String {
     blake3::hash(lock_bytes).to_hex().to_string()
@@ -317,12 +317,8 @@ pub fn qualify_live_corpus_git_checkout(
         .tree_id()
         .map_err(|error| format!("failed to resolve live corpus Git tree: {error}"))?
         .to_string();
-    let checkout_identity_digest = digest_fields(&[
-        "live-corpus-git-tree-v1",
-        &expected,
-        &head_revision,
-        &git_tree,
-    ]);
+    let checkout_identity_digest =
+        digest_fields(&["live-corpus-git-tree", &expected, &head_revision, &git_tree]);
 
     Ok(LiveCorpusGitCheckoutQualification {
         canonical_remote_identity: expected,
@@ -357,7 +353,7 @@ pub fn qualify_live_corpus_language_extensions(
     source_root: &Path,
     source_extensions: &[String],
     provider_registry_extensions: &[String],
-) -> Result<LiveCorpusLanguageExtensionEvidenceV1, String> {
+) -> Result<LiveCorpusLanguageExtensionEvidence, String> {
     let target = normalize_extension_set("sourceExtensions", source_extensions)?;
     let candidates =
         normalize_extension_set("providerRegistryExtensions", provider_registry_extensions)?;
@@ -383,7 +379,7 @@ fn language_extension_evidence_from_paths(
     paths: impl IntoIterator<Item = String>,
     target: BTreeSet<String>,
     candidates: BTreeSet<String>,
-) -> Result<LiveCorpusLanguageExtensionEvidenceV1, String> {
+) -> Result<LiveCorpusLanguageExtensionEvidence, String> {
     let mut matching_file_count = 0;
     let mut candidate_language_file_count = 0;
     for path in paths {
@@ -405,7 +401,7 @@ fn language_extension_evidence_from_paths(
             "live corpus Git index has no valid target-language extension coverage".to_string(),
         );
     }
-    Ok(LiveCorpusLanguageExtensionEvidenceV1 {
+    Ok(LiveCorpusLanguageExtensionEvidence {
         authority: "provider-project-resolution".to_string(),
         candidate_set_authority: "provider-registry-extension-index".to_string(),
         source_extensions: target.into_iter().collect(),
@@ -455,7 +451,7 @@ pub fn live_corpus_artifact_paths(
     validate_hex("sourceMerkleRoot", identity.source_merkle_root, &[64])?;
 
     let artifact_digest = digest_fields(&[
-        "live-corpus-artifact-v1",
+        "live-corpus-artifact",
         identity.lock_digest,
         &repository.canonical_remote_identity,
         identity.resource_id,
@@ -466,7 +462,7 @@ pub fn live_corpus_artifact_paths(
         identity.git_tree,
         identity.source_merkle_root,
     ]);
-    let artifact_root = state_home.join("artifacts").join("live-corpus").join("v1");
+    let artifact_root = state_home.join("artifacts").join("live-corpus");
     let artifact_dir = artifact_root.join(BLAKE3_256).join(&artifact_digest);
 
     Ok(LiveCorpusArtifactPaths {
@@ -491,7 +487,7 @@ pub fn live_corpus_artifact_manifest(
     repository: &LiveCorpusGitRepositoryPaths,
     identity: &LiveCorpusArtifactIdentity<'_>,
     paths: &LiveCorpusArtifactPaths,
-) -> Result<LiveCorpusArtifactManifestV1, String> {
+) -> Result<LiveCorpusArtifactManifest, String> {
     let expected_repository = live_corpus_git_repository_paths(Path::new(""), remote)?;
     if expected_repository.canonical_remote_identity != repository.canonical_remote_identity
         || expected_repository.remote_digest != repository.remote_digest
@@ -503,7 +499,7 @@ pub fn live_corpus_artifact_manifest(
         return Err("live corpus manifest identity does not match artifact digest".to_string());
     }
 
-    Ok(LiveCorpusArtifactManifestV1 {
+    Ok(LiveCorpusArtifactManifest {
         schema_id: LIVE_CORPUS_ARTIFACT_SCHEMA_ID.to_string(),
         schema_version: LIVE_CORPUS_ARTIFACT_SCHEMA_VERSION.to_string(),
         artifact_digest: paths.artifact_digest.clone(),
@@ -512,7 +508,7 @@ pub fn live_corpus_artifact_manifest(
         provider_id: identity.provider_id.to_string(),
         language_id: identity.language_id.to_string(),
         builder_id: identity.builder_id.to_string(),
-        git: LiveCorpusArtifactGitIdentityV1 {
+        git: LiveCorpusArtifactGitIdentity {
             remote: remote.to_string(),
             canonical_remote_identity: repository.canonical_remote_identity.clone(),
             remote_digest: repository.remote_digest.clone(),

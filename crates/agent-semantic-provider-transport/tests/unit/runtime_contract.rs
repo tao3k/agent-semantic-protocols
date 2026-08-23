@@ -30,7 +30,7 @@ fn contract_receipt_is_deterministic_and_valid() {
 }
 
 #[test]
-fn runtime_ipc_transport_uses_the_canonical_v1_wire_literal() {
+fn runtime_ipc_transport_uses_the_canonical_wire_literal() {
     let encoded = serde_json::to_value(ProviderRuntimeContractTransport::RuntimeIpc)
         .expect("encode runtime transport");
     assert_eq!(encoded, serde_json::json!("runtime-ipc"));

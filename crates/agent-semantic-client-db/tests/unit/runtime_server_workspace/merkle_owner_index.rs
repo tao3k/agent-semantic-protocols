@@ -85,7 +85,7 @@ fn search_segment_publishes_a_verified_owner_inclusion_proof() {
             &root_digest,
         )
     );
-    let scenario_receipt = crate::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofQualificationReceiptV1::qualified(
+    let scenario_receipt = crate::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofQualificationReceipt::qualified(
         crate::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofEvidenceLayer::Scenario,
         "scenario.search-segment.merkle-owner-proof",
         None,

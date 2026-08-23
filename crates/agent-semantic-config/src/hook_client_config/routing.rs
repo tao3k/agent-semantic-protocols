@@ -1,14 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-#[derive(Eq, PartialEq)]
-pub enum HookClientDecisionMaterializer {
-    AgentSearchJson,
-    ApplyPatch,
-    SourceAccess,
-}
-
 /// One declarative hook rule from project-local config.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -29,8 +20,6 @@ pub struct HookClientRuleConfig {
     #[serde(default)]
     pub dispatch: Option<HookClientRuleDispatchConfig>,
     pub decision: HookClientConfigDecision,
-    #[serde(default)]
-    pub decision_materializer: Option<HookClientDecisionMaterializer>,
     #[serde(default)]
     pub reason_kind: Option<HookClientConfigReasonKind>,
     #[serde(default)]
@@ -53,7 +42,7 @@ pub struct HookClientRuleConfig {
     pub routes: Vec<HookClientRuleRouteConfig>,
 }
 
-/// Stable responsibility key resolved through `agents.placeholders`.
+/// Stable ChoicePlane responsibility carried directly by a dispatch rule.
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct HookClientAgentRoleSelector(String);
 
@@ -76,7 +65,7 @@ impl HookClientReceiptKind {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientRuleDispatchConfig {
     pub transport: HookClientRuleDispatchTransport,
-    /// Semantic role resolved through the registry-derived `agents.placeholders` projection.
+    /// Semantic role resolved by the host-owned ChoicePlane.
     pub role: HookClientAgentRoleSelector,
     pub receipt_kind: HookClientReceiptKind,
     #[serde(default)]
@@ -87,10 +76,10 @@ pub struct HookClientRuleDispatchConfig {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientRuleDispatchTransport {
-    ResidentAgent,
+    HostAgent,
 }
 
-/// Declarative provider materialization policy for a resident dispatch.
+/// Declarative provider materialization policy for a Host role dispatch.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientLazyProviderPolicy {
@@ -101,7 +90,7 @@ impl HookClientRuleDispatchTransport {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::ResidentAgent => "resident-agent",
+            Self::HostAgent => "host-agent",
         }
     }
 }
@@ -116,9 +105,6 @@ pub enum HookClientActionKind {
     Search,
     Enumerate,
     Execute,
-    Test,
-    Build,
-    Delete,
     Unknown,
 }
 
@@ -139,46 +125,25 @@ pub enum HookClientActionSubjectKind {
     Other,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
-pub enum HookClientActionAuthority {
-    RawHostAction,
-    RawShell,
-    ParserOwnedExactEvidence,
-    ParserOwnedSearch,
-    AstPatchEvidence,
-    Unknown,
-}
-
 /// Rule match axes from project-local hook config.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientRuleMatchConfig {
     /// Reusable typed action predicates that must all match this rule.
     #[serde(default)]
-    pub action_policy_all: Vec<String>,
+    pub capability_policy_all: Vec<String>,
     /// Reusable typed action predicates of which at least one must match.
     #[serde(default)]
-    pub action_policy_any: Vec<String>,
+    pub capability_policy_any: Vec<String>,
     /// Reusable typed action predicates none of which may match.
     #[serde(default)]
-    pub action_policy_none: Vec<String>,
+    pub capability_policy_none: Vec<String>,
     #[serde(default)]
     pub command_profile_any: Vec<super::profiles::HookClientCommandProfileRef>,
     #[serde(default)]
-    pub authority_rules: Vec<super::invocation::AgentActionAuthorityRule>,
-    #[serde(default)]
-    pub effect_rules: Vec<super::invocation::AgentActionEffectRule>,
-    #[serde(default)]
     pub action_any: Vec<HookClientActionKind>,
     #[serde(default)]
-    pub effect_any: Vec<HookClientActionKind>,
-    #[serde(default)]
     pub subject_kind_any: Vec<HookClientActionSubjectKind>,
-    #[serde(default)]
-    pub authority_any: Vec<HookClientActionAuthority>,
-    #[serde(default)]
-    pub authority_exclude_any: Vec<HookClientActionAuthority>,
     #[serde(default)]
     pub tool: Option<String>,
     #[serde(default)]
@@ -234,18 +199,14 @@ pub struct HookClientRuleMatchConfig {
 /// compose side effects.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HookClientActionPolicyConfig {
+pub struct HookClientCapabilityPolicyConfig {
     pub id: String,
     #[serde(default)]
     pub action_any: Vec<HookClientActionKind>,
     #[serde(default)]
-    pub effect_any: Vec<HookClientActionKind>,
+    pub semantic_capability_any: Vec<HookClientActionKind>,
     #[serde(default)]
     pub subject_kind_any: Vec<HookClientActionSubjectKind>,
-    #[serde(default)]
-    pub authority_any: Vec<HookClientActionAuthority>,
-    #[serde(default)]
-    pub authority_exclude_any: Vec<HookClientActionAuthority>,
 }
 
 /// Structured document formats understood by hook projector capabilities.

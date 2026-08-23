@@ -1,7 +1,7 @@
 use super::{parse_args, require_resident_sample_budget, resident_latency_distribution};
 
 #[test]
-fn resident_latency_distribution_reports_all_v1_quantiles_for_128_samples() {
+fn resident_latency_distribution_reports_all_quantiles_for_128_samples() {
     let distribution = resident_latency_distribution((0..128).collect())
         .expect("128 resident samples form a distribution");
 

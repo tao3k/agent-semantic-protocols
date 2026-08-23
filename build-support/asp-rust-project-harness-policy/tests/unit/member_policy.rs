@@ -13,7 +13,7 @@ fn central_policy_registry_contains_migrated_member_crates() {
             "agent-semantic-artifacts",
             "agent-semantic-client-core",
             "agent-semantic-client-db",
-            "agent-semantic-client-local-cli",
+            "agent-semantic-client-server",
             "agent-semantic-client",
             "agent-semantic-hook",
             "agent-semantic-protocol",

@@ -6,7 +6,7 @@ from jsonschema import Draft202012Validator, ValidationError
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCHEMA_NAME = "asp-client-server-lifecycle-receipt.v1.schema.json"
+SCHEMA_NAME = "asp-client-server-lifecycle-receipt.schema.json"
 
 
 def validator() -> Draft202012Validator:
@@ -34,7 +34,7 @@ def lifecycle_receipt() -> dict[str, object]:
         "attempt": 1,
         "publicationEpoch": 1,
         "artifactDigest": "blake3-256:artifact",
-        "manifestDigest": "blake3-256:manifest",
+        "registrationDigest": "blake3-256:registration",
         "runtimeContractDigest": "blake3-256:contract",
         "leaseCount": 1,
         "elapsedMicros": 500,

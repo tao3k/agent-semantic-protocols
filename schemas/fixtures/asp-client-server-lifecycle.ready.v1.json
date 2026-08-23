@@ -16,7 +16,7 @@
   "attempt": 1,
   "publicationEpoch": 1,
   "artifactDigest": "blake3-256:artifact-fixture",
-  "manifestDigest": "blake3-256:manifest-fixture",
+  "registrationDigest": "blake3-256:registration-fixture",
   "runtimeContractDigest": "blake3-256:runtime-contract-fixture",
   "leaseCount": 1,
   "elapsedMicros": 500,

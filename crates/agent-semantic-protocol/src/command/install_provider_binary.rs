@@ -21,7 +21,9 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
     let plan = protocol_binary::ProtocolBinaryInstallPlan::capture(artifact_root)?;
     let reconciliation_guard =
         protocol_binary::ProtocolBinaryReconciliationGuard::acquire(&runtime_state.protocol_home)?;
-    let installed = protocol_binary::ensure_protocol_binary_installed(&plan).await?;
+    let installed =
+        protocol_binary::ensure_protocol_binary_installed_under_guard(&plan, &reconciliation_guard)
+            .await?;
     let hook_config_publication =
         install_binary_config_admission::publish_embedded_hook_config_for_project(
             &runtime_state.protocol_home,
@@ -34,7 +36,7 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
     )?;
     drop(reconciliation_guard);
     println!(
-        "[asp-install-binary] binaryPath={} binaryInstall={} binarySourceGeneration={} generationAlgorithm=blake3-metadata-v1 binaryCurrent={} binarySwitch=atomic hookConfigPublication={} hookConfigCoupling=binary-generation runtimeServerReconcile=not-on-binary-install runtimeServerLifecycle=resident-monitor-owned reasonKind=none providerReconciliation=not-on-binary-install globalProviderCatalog=not-on-binary-install developerIdentityReceipt={} installSource={}",
+        "[asp-install-binary] binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic hookConfigPublication={} hookConfigCoupling=binary-content runtimeServerLifecycle=resident-owner reasonKind=none providerReconciliation=not-on-binary-install installedProviderArtifacts=not-on-binary-install developerIdentityReceipt={} installSource={}",
         installed.path.display(),
         installed.status,
         installed.artifact_digest,

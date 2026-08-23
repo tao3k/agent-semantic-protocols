@@ -3,11 +3,6 @@ pub(crate) fn install_plugin_command() -> Command {
     Command::new("plugin")
         .bin_name("asp install plugin")
         .about("Install the ASP Codex plugin")
-        .group(
-            clap::ArgGroup::new("scope")
-                .args(["global", "project"])
-                .multiple(false),
-        )
         .arg(
             Arg::new("codex")
                 .long("codex")
@@ -20,20 +15,6 @@ pub(crate) fn install_plugin_command() -> Command {
                 .value_name("PROJECT_ROOT")
                 .default_value(".")
                 .help("Locate the ASP plugin source from this project root"),
-        )
-        .arg(
-            Arg::new("global")
-                .long("global")
-                .visible_alias("global-plugin")
-                .action(ArgAction::SetTrue)
-                .help("Install globally (default when no scope flag is given)"),
-        )
-        .arg(
-            Arg::new("project")
-                .long("project")
-                .visible_alias("project-plugin")
-                .action(ArgAction::SetTrue)
-                .help("Enable and cache the plugin only in PROJECT_ROOT"),
         )
 }
 
@@ -109,35 +90,6 @@ pub(crate) fn live_corpus_command() -> Command {
         )
 }
 
-fn source_access_command() -> Command {
-    Command::new("source-access")
-        .bin_name("asp source-access")
-        .about("Inspect hook-owned source egress decisions")
-        .subcommand(
-            Command::new("shell-egress")
-                .about("Report a shell egress decision")
-                .arg(
-                    Arg::new("activation")
-                        .long("activation")
-                        .value_name("ACTIVATION_JSON"),
-                )
-                .arg(
-                    Arg::new("command")
-                        .long("command")
-                        .value_name("COMMAND")
-                        .required(true),
-                )
-                .arg(
-                    Arg::new("output-digest")
-                        .long("output-digest")
-                        .value_name("DIGEST")
-                        .required(true),
-                )
-                .arg(Arg::new("json").long("json").action(ArgAction::SetTrue))
-                .arg(Arg::new("path").value_name("PATH").required(true)),
-        )
-}
-
 fn ast_patch_command() -> Command {
     command_with_subcommands(
         "ast-patch",
@@ -210,6 +162,11 @@ fn facade_leaf_command(name: &'static str, bin_name: &'static str) -> Command {
             .after_help(
                 "Tree-sitter discovery belongs to search. Use query with an exact --selector for deterministic projection.",
             );
+    }
+    if name == "query" {
+        command = command.override_usage(format!(
+            "{bin_name} --selector <selector> --projection <source|callable-skeleton> [OPTIONS]"
+        ));
     }
     command.arg(
         Arg::new("args")
@@ -437,6 +394,12 @@ pub(crate) fn selected_command(args: &[String]) -> Command {
     }
 }
 
+fn source_access_command() -> Command {
+    Command::new("source-access")
+        .bin_name("asp source-access")
+        .about("Inspect Hook-owned source egress decisions")
+}
+
 fn selected_command_default(args: &[String]) -> Command {
     let first = args.first().map(String::as_str);
     let second = args.get(1).map(String::as_str);
@@ -445,6 +408,7 @@ fn selected_command_default(args: &[String]) -> Command {
         (Some("install"), _) => install_command(),
         (Some("hook"), Some("accept-host")) => hook_accept_host_command(),
         (Some("hook"), Some("doctor")) => hook_doctor_command(),
+        (Some("hook"), Some("enablement")) => hook_enablement_command(),
         (Some("hook"), Some("break-glass")) => super::hook_break_glass::break_glass_command(),
         (Some("hook"), _) => hook_command(),
         (Some("agent"), Some("config")) => agent_config_command(),
@@ -463,11 +427,11 @@ fn selected_command_default(args: &[String]) -> Command {
         (Some("healthcheck"), _) => healthcheck_command(),
         (Some("server"), _) => crate::server::runtime_server::runtime_server_command(),
         (Some("live-corpus"), _) => live_corpus_command(),
-        (Some("source-access"), _) => source_access_command(),
         (Some("ast-patch"), _) => ast_patch_command(),
         (Some("graph"), _) => graph_command(),
         (Some("search"), _) => facade_leaf_command("search", "asp search"),
         (Some("query"), _) => facade_leaf_command("query", "asp query"),
+        (Some("source-access"), _) => source_access_command(),
         (Some(document), Some(command))
             if is_document_facade(document)
                 && DOCUMENT_COMMANDS

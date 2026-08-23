@@ -1,4 +1,5 @@
 use agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister;
+use agent_semantic_client_protocol::ClientTransport;
 use agent_semantic_provider_protocol::{
     PROVIDER_REGISTER_REQUEST_SCHEMA_ID, PROVIDER_REGISTER_SCHEMA_VERSION,
     ProviderRegisterOperation, ProviderRegisterRequest, ProviderRegisterResult,
@@ -6,7 +7,7 @@ use agent_semantic_provider_protocol::{
 };
 use serde_json::json;
 
-fn provider(language_id: &str, provider_id: &str) -> ProviderRegistrationDocument {
+fn identity_provider(language_id: &str, provider_id: &str) -> ProviderRegistrationDocument {
     ProviderRegistrationDocument {
         language_id: language_id.to_owned(),
         provider_id: provider_id.to_owned(),
@@ -15,6 +16,59 @@ fn provider(language_id: &str, provider_id: &str) -> ProviderRegistrationDocumen
             "providerId": provider_id,
         }),
     }
+}
+
+fn live_provider(language_id: &str, provider_id: &str) -> ProviderRegistrationDocument {
+    let mut provider = identity_provider(language_id, provider_id);
+    provider.registration["namespace"] = json!(language_id);
+    provider.registration["sourceInventory"] = json!({
+        "packageRoots": [],
+        "configFiles": [],
+        "sourceExtensions": [format!(".{language_id}")],
+        "projectResolution": {"entryMarkers": [format!("{language_id}.project")]},
+        "documentResolution": null
+    });
+    provider.registration["searchCapabilities"] = json!({
+        "ownerItems": true,
+        "semanticFacts": true,
+        "dependencyTopology": false,
+        "dependencyTopologyMetadata": false
+    });
+    provider.registration["queryPackDescriptor"] = json!({});
+    provider.registration["runtimeContract"] = json!({
+        "transport": "http-json",
+        "clientBinding": "schema-driven",
+        "operations": [{
+            "operation": "search.owner",
+            "requestSchemaId": "agent.semantic-protocols.search-owner-request",
+            "responseSchemaId": "agent.semantic-protocols.search-packet"
+        }]
+    });
+    provider.registration["routes"] = json!([{
+        "schemaId": "agent.semantic-protocols.provider-route",
+        "schemaVersion": "1",
+        "routeId": format!("{language_id}.search.owner"),
+        "operation": "search.owner",
+        "authority": "asp-server",
+        "target": {"languageId": language_id, "providerId": provider_id},
+        "inputs": [],
+        "requirements": [{"kind": "state", "state": "provider-ready"}],
+        "effects": {
+            "access": "read",
+            "idempotent": true,
+            "cancellable": true,
+            "concurrency": "shared-read",
+            "streaming": false
+        },
+        "output": {
+            "schemaId": "agent.semantic-protocols.search-packet",
+            "mediaType": "application/json"
+        },
+        "failureSchemaIds": ["agent.semantic-protocols.route-failure"],
+        "cache": {"authority": "asp-server", "scope": "workspace", "keySlots": []},
+        "telemetry": {"spanName": "asp.route.search.owner", "attributeSlots": []}
+    }]);
+    provider
 }
 
 fn request(
@@ -36,7 +90,7 @@ async fn external_provider_registration_publishes_one_immutable_generation() {
         .apply(request(
             Some(0),
             ProviderRegisterOperation::Register {
-                provider: provider("zig", "asp-zig"),
+                provider: live_provider("zig", "asp-zig"),
             },
         ))
         .await
@@ -56,7 +110,7 @@ async fn stale_writer_receives_typed_generation_conflict() {
         .apply(request(
             Some(0),
             ProviderRegisterOperation::Register {
-                provider: provider("rust", "asp-rust"),
+                provider: live_provider("rust", "asp-rust"),
             },
         ))
         .await
@@ -65,7 +119,7 @@ async fn stale_writer_receives_typed_generation_conflict() {
         .apply(request(
             Some(0),
             ProviderRegisterOperation::Register {
-                provider: provider("python", "asp-python"),
+                provider: live_provider("python", "asp-python"),
             },
         ))
         .await
@@ -80,7 +134,7 @@ async fn stale_writer_receives_typed_generation_conflict() {
 
 #[tokio::test]
 async fn list_reads_the_resident_snapshot_without_writer_admission() {
-    let register = RuntimeProviderRegister::from_seed(vec![provider("rust", "asp-rust")])
+    let register = RuntimeProviderRegister::from_seed(vec![identity_provider("rust", "asp-rust")])
         .expect("seed register");
     let response = register
         .apply(request(None, ProviderRegisterOperation::List))
@@ -96,8 +150,8 @@ async fn list_reads_the_resident_snapshot_without_writer_admission() {
 #[tokio::test]
 async fn multiple_providers_can_implement_the_same_language() {
     let register = RuntimeProviderRegister::from_seed(vec![
-        provider("rust", "asp-rust"),
-        provider("rust", "asp-rust-experimental"),
+        identity_provider("rust", "asp-rust"),
+        identity_provider("rust", "asp-rust-experimental"),
     ])
     .expect("multiple implementations");
     assert_eq!(register.snapshot().providers.len(), 2);
@@ -108,7 +162,7 @@ async fn external_provider_state_survives_runtime_server_reconstruction() {
     let temporary = tempfile::tempdir().expect("provider state directory");
     let store_path = temporary.path().join("provider-register-state.json");
     let register = RuntimeProviderRegister::from_seed_with_store(
-        vec![provider("rust", "asp-rust")],
+        vec![identity_provider("rust", "asp-rust")],
         store_path.clone(),
     )
     .await
@@ -117,7 +171,7 @@ async fn external_provider_state_survives_runtime_server_reconstruction() {
         .apply(request(
             Some(1),
             ProviderRegisterOperation::Register {
-                provider: provider("zig", "asp-zig"),
+                provider: live_provider("zig", "asp-zig"),
             },
         ))
         .await
@@ -125,7 +179,7 @@ async fn external_provider_state_survives_runtime_server_reconstruction() {
     drop(register);
 
     let restored = RuntimeProviderRegister::from_seed_with_store(
-        vec![provider("rust", "asp-rust")],
+        vec![identity_provider("rust", "asp-rust")],
         store_path,
     )
     .await
@@ -141,22 +195,123 @@ async fn external_provider_state_survives_runtime_server_reconstruction() {
 }
 
 #[tokio::test]
-async fn runtime_mutation_cannot_override_source_registered_builtin_provider() {
-    let register = RuntimeProviderRegister::from_seed(vec![provider("rust", "asp-rust")])
+async fn builtin_identity_accepts_live_routes_and_unregister_returns_to_seed() {
+    let register = RuntimeProviderRegister::from_seed(vec![identity_provider("rust", "asp-rust")])
         .expect("seed register");
     let response = register
         .apply(request(
             Some(1),
             ProviderRegisterOperation::Register {
-                provider: provider("rust", "asp-rust"),
+                provider: live_provider("rust", "asp-rust"),
             },
         ))
         .await
-        .expect("typed rejection");
+        .expect("publish live provider routes");
     assert!(matches!(
         response.result,
-        ProviderRegisterResult::Rejected { ref reason_kind, .. }
-            if reason_kind == "builtin-provider-owned"
+        ProviderRegisterResult::Snapshot { .. }
     ));
-    assert_eq!(register.snapshot().generation, 1);
+    assert_eq!(register.snapshot().generation, 2);
+    assert_eq!(register.compiled_routes("asp-rust").unwrap().len(), 1);
+
+    register
+        .apply(request(
+            Some(2),
+            ProviderRegisterOperation::Unregister {
+                provider_id: "asp-rust".to_owned(),
+            },
+        ))
+        .await
+        .expect("return to seed identity");
+    assert_eq!(register.snapshot().generation, 3);
+    assert!(register.compiled_routes("asp-rust").is_none());
+}
+
+#[tokio::test]
+async fn warm_compiled_route_lookup_is_sub_millisecond() {
+    let register = RuntimeProviderRegister::new();
+    register
+        .apply(request(
+            Some(0),
+            ProviderRegisterOperation::Register {
+                provider: live_provider("rust", "asp-rust"),
+            },
+        ))
+        .await
+        .expect("register live provider");
+
+    let started = std::time::Instant::now();
+    for _ in 0..1_000 {
+        assert!(register.compiled_routes("asp-rust").is_some());
+    }
+    assert!(
+        started.elapsed() < std::time::Duration::from_millis(1),
+        "1,000 warm route lookups took {:?}",
+        started.elapsed()
+    );
+}
+
+#[tokio::test]
+async fn operation_resolution_requires_a_live_compiled_route() {
+    let register = RuntimeProviderRegister::from_seed(vec![identity_provider("rust", "asp-rust")])
+        .expect("seed register");
+    let missing = register
+        .resolve_route("rust", "search.owner")
+        .expect_err("identity seed must not dispatch");
+    assert!(
+        missing.contains("operation-not-in-live-register"),
+        "{missing}"
+    );
+
+    register
+        .apply(request(
+            Some(1),
+            ProviderRegisterOperation::Register {
+                provider: live_provider("rust", "asp-rust"),
+            },
+        ))
+        .await
+        .expect("register live route");
+    let (provider_id, route) = register
+        .resolve_route("rust", "search.owner")
+        .expect("resolve live route");
+    assert_eq!(provider_id, "asp-rust");
+    assert_eq!(route.spec().route_id, "rust.search.owner");
+}
+
+#[tokio::test]
+async fn client_catalog_is_an_atomic_projection_of_live_routes() {
+    let register = RuntimeProviderRegister::new();
+    register
+        .apply(request(
+            Some(0),
+            ProviderRegisterOperation::Register {
+                provider: live_provider("zig", "asp-zig"),
+            },
+        ))
+        .await
+        .expect("register live route");
+    let workspace_generation = format!("blake3-256:{}", "a".repeat(64));
+    let catalog = register
+        .client_protocol_catalog(workspace_generation, vec![ClientTransport::RuntimeIpc])
+        .expect("project client catalog");
+
+    assert_eq!(catalog.catalog_generation, register.snapshot().digest);
+    assert_eq!(catalog.methods.len(), 1);
+    assert_eq!(catalog.methods[0].method, "zig.search.owner");
+    assert_eq!(
+        catalog.methods[0].request_schema_id,
+        "agent.semantic-protocols.search-owner-request"
+    );
+    assert_eq!(
+        catalog.methods[0].response_schema_id,
+        "agent.semantic-protocols.search-packet"
+    );
+    assert!(catalog.capabilities.request_cancellation);
+    let (language_id, operation, route) = register
+        .resolve_client_method("zig.search.owner")
+        .expect("resolve catalog method");
+    assert_eq!(language_id, "zig");
+    assert_eq!(operation, "search.owner");
+    assert_eq!(route.spec().route_id, "zig.search.owner");
 }

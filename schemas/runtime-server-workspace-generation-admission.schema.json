@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-server-workspace-generation-admission.schema.json",
+  "title": "Runtime Server Workspace Generation Admission",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "trigger",
+    "admissionMode",
+    "buildOwner",
+    "cancellationAuthority",
+    "requestLifetimeIndependent",
+    "candidateGeneration",
+    "policyOverlayDigest",
+    "state",
+    "accepted",
+    "attempt",
+    "commit",
+    "failureStage",
+    "error"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-server-workspace-generation-admission"
+    },
+    "schemaVersion": { "const": "1" },
+    "workspaceIdentity": { "type": "string", "minLength": 1 },
+    "trigger": {
+      "enum": [
+        "query-demand",
+        "workspace-change",
+        "operator-mutation",
+        "artifact-publication",
+        "runtime-recovery"
+      ]
+    },
+    "admissionMode": {
+      "enum": [
+        "cold-targeted",
+        "incremental-overlay",
+        "full-recovery"
+      ]
+    },
+    "buildOwner": { "const": "runtime-server" },
+    "cancellationAuthority": { "const": "runtime-server" },
+    "requestLifetimeIndependent": { "const": true },
+    "candidateGeneration": { "$ref": "https://schemas.agent-semantic-protocols.dev/repository-candidate-snapshot.v1.schema.json#/$defs/candidateGeneration" },
+    "policyOverlayDigest": { "type": "string", "minLength": 1 },
+    "state": { "enum": ["building", "ready", "failed", "cancelled"] },
+    "accepted": { "type": "boolean" },
+    "attempt": { "type": "integer", "minimum": 1 },
+    "commit": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "$ref": "runtime-server-definitions.v1.schema.json#/$defs/generationCommit"
+        }
+      ]
+    },
+    "failureStage": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "enum": [
+            "generation-builder",
+            "generation-builder-supervision",
+            "workspace-bootstrap",
+            "durable-restore",
+            "source-builder",
+            "source-index-commit",
+            "canonical-generation-publication",
+            "admission-validation"
+          ]
+        }
+      ]
+    },
+    "error": { "type": ["string", "null"] }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "building" } } },
+      "then": {
+        "properties": {
+          "commit": { "type": "null" },
+          "failureStage": { "type": "null" },
+          "error": { "type": "null" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "state": { "const": "ready" } } },
+      "then": {
+        "properties": {
+          "commit": { "type": "object" },
+          "failureStage": { "type": "null" },
+          "error": { "type": "null" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "state": { "const": "failed" } } },
+      "then": {
+        "properties": {
+          "commit": { "type": "null" },
+          "failureStage": {
+            "type": "string",
+            "minLength": 1
+          },
+          "error": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "state": { "const": "cancelled" } } },
+      "then": {
+        "properties": {
+          "commit": { "type": "null" },
+          "failureStage": {
+            "type": "string",
+            "minLength": 1
+          },
+          "error": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  ]
+}

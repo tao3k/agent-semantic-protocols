@@ -7,7 +7,7 @@ from jsonschema import Draft202012Validator, ValidationError
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = json.loads(
-    (ROOT / "schemas/runtime-merkle-owner-proof-qualification-receipt.v1.schema.json").read_text()
+    (ROOT / "schemas/runtime-merkle-owner-proof-qualification-receipt.schema.json").read_text()
 )
 
 
@@ -17,7 +17,7 @@ def receipt(
     digest = "blake3-256:" + "a" * 64
     qualified = status == "qualified"
     return {
-        "schemaId": "agent.semantic-protocols.runtime-merkle-owner-proof-qualification-receipt.v1",
+        "schemaId": "agent.semantic-protocols.runtime-merkle-owner-proof-qualification-receipt",
         "schemaVersion": "1",
         "evidenceLayer": evidence_layer,
         "runtimeEcosystem": "tokio",

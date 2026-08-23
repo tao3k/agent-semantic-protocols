@@ -9,10 +9,14 @@
 
 /// Parser-owned Bash AST tokenization and shell-stage normalization.
 mod bash_parser;
+mod behavior_facts;
 mod shell_stage_match;
 pub use bash_parser::apply_patch_header_paths;
 mod source_paths;
 mod structured_projection;
+pub use behavior_facts::{
+    ShellAccessKind, ShellBehaviorEvidence, ShellBehaviorFact, command_stage_behavior_facts,
+};
 pub use shell_stage_match::{
     BashCommandMatch, CommandStage, MAX_COMMAND_CANDIDATES, MAX_STAGE_TOKENS, PrefixMatch,
     candidate_matches_prefix, command_stages_match_leading_environment_assignment,

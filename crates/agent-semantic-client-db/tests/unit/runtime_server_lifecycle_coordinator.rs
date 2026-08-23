@@ -106,14 +106,14 @@ fn fixture_endpoint(state_home: &std::path::Path, owner_epoch: u64) -> RuntimeSe
         owner_epoch,
         owner_process_id: 0,
         runtime_artifact_path: "/runtime/asp".to_owned(),
-        runtime_binary_identity: RuntimeBinaryIdentity::DeveloperSourceGeneration {
+        runtime_binary_identity: RuntimeBinaryIdentity::Content {
             value: identity_value.to_owned(),
-            algorithm: "blake3-metadata-v1".to_owned(),
+            algorithm: "blake3-256".to_owned(),
         },
         monitor_capability: true,
-        observed_runtime_binary_identity: RuntimeBinaryIdentity::DeveloperSourceGeneration {
+        observed_runtime_binary_identity: RuntimeBinaryIdentity::Content {
             value: identity_value.to_owned(),
-            algorithm: "blake3-metadata-v1".to_owned(),
+            algorithm: "blake3-256".to_owned(),
         },
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "a".repeat(64)),
@@ -124,6 +124,7 @@ fn fixture_endpoint(state_home: &std::path::Path, owner_epoch: u64) -> RuntimeSe
             .join(format!("r-{}.providers.sock", &digest[..16]))
             .display()
             .to_string(),
+        client_http_endpoint: "http://127.0.0.1:1".to_owned(),
         workspace_store_path: runtime_root.join("workspaces").display().to_string(),
         status_memory_path: runtime_root.join("status.v1.memory").display().to_string(),
     }
@@ -177,6 +178,44 @@ async fn endpoint_cleanup_is_idempotent_after_terminal_removal() {
     )
     .await
     .unwrap();
+}
+
+#[tokio::test]
+async fn lifecycle_owner_projection_survives_service_identity_schema_drift() {
+    let state_home = tempdir().unwrap();
+    let mut endpoint = fixture_endpoint(state_home.path(), 11);
+    endpoint.owner_process_id = 4242;
+    publish_endpoint_fixture(state_home.path(), &endpoint).await;
+    let endpoint_path =
+        agent_semantic_client_db::runtime_server_endpoint_path(state_home.path()).unwrap();
+    let mut value = serde_json::to_value(&endpoint).unwrap();
+    value["runtimeBinaryIdentity"] = serde_json::json!({
+        "kind": "developerSourceGeneration",
+        "identity": {"value": "legacy", "algorithm": "blake3-metadata-v1"}
+    });
+    value["observedRuntimeBinaryIdentity"] = value["runtimeBinaryIdentity"].clone();
+    tokio::fs::write(&endpoint_path, serde_json::to_vec(&value).unwrap())
+        .await
+        .unwrap();
+
+    assert!(
+        agent_semantic_client_db::runtime_server_control::read_runtime_server_supervisor_endpoint(
+            state_home.path(),
+        )
+        .await
+        .is_err(),
+        "service admission must remain strict"
+    );
+    let owner = agent_semantic_client_db::runtime_server_control::read_runtime_server_endpoint_owner_binding(
+        state_home.path(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(owner.owner_epoch, endpoint.owner_epoch);
+    assert_eq!(owner.owner_process_id, endpoint.owner_process_id);
+    assert_eq!(owner.binding_token, endpoint.binding_token);
+    assert_eq!(owner.runtime_artifact_path, endpoint.runtime_artifact_path);
 }
 
 #[tokio::test]

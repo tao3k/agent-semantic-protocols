@@ -46,6 +46,7 @@ which = { workspace = true }
 asp-rust-project-harness-policy = { workspace = true }
 
 [dev-dependencies]
+agent-semantic-provider-protocol = { path = "../agent-semantic-provider-protocol" }
 jsonschema.workspace = true
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
 rust-lang-project-harness = { workspace = true }

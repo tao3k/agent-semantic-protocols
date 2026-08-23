@@ -1,8 +1,6 @@
 //! Codex-internal source access decision packet models.
 
 use crate::protocol::DecisionRoute;
-use crate::protocol_activation::protocol_activation_manifest::HookRuntime;
-use crate::source_selector::collect_source_selector_matches;
 use serde::Serialize;
 
 /// Schema id for serialized source-access decision packets.
@@ -414,67 +412,6 @@ impl SourceAccessDecision {
     }
 }
 
-/// Builds a Codex filesystem read decision when the registry owns the source path.
-pub fn codex_fs_read_file_decision(
-    registry: &HookRuntime,
-    rpc_method: impl Into<String>,
-    path: impl AsRef<str>,
-) -> Option<SourceAccessDecision> {
-    let path = path.as_ref();
-    let matched = collect_source_selector_matches(registry, [path], |provider| {
-        provider.policy.blocks_direct_source_read()
-    })
-    .into_iter()
-    .next()?;
-    let language_id = matched.provider.language_id.clone();
-    let provider_id = matched.provider.provider_id.clone();
-    Some(SourceAccessDecision::explicit_read_allow(
-        SourceAccessExplicitReadInput {
-            language_id,
-            provider_id,
-            rpc_method: rpc_method.into(),
-            path: path.to_string(),
-        },
-    ))
-}
-
-/// Builds a Codex shell egress decision when source-like output must be hidden.
-pub fn codex_shell_egress_suppression_decision(
-    registry: &HookRuntime,
-    command: impl Into<String>,
-    path: impl AsRef<str>,
-    output_digest: impl Into<String>,
-) -> Option<SourceAccessDecision> {
-    let path = path.as_ref();
-    let matched = collect_source_selector_matches(registry, [path], |provider| {
-        provider.policy.blocks_bulk_source_dump()
-    })
-    .into_iter()
-    .next()?;
-    let route = match matched.kind {
-        SourceSelectorKind::ExactPath => matched.provider.route_from_template(
-            DecisionRouteKind::Owner,
-            &matched.provider.owner_route,
-            Some(&matched.route_selector),
-            None,
-        ),
-        SourceSelectorKind::Pattern => matched.provider.route_from_template(
-            DecisionRouteKind::Lexical,
-            &matched.provider.lexical_route,
-            Some(&matched.route_selector),
-            Some(&matched.route_selector),
-        ),
-    };
-    Some(SourceAccessDecision::shell_egress_suppressed(
-        SourceAccessShellEgressSuppressedInput {
-            route,
-            command: command.into(),
-            path: path.to_string(),
-            output_digest: output_digest.into(),
-        },
-    ))
-}
-
 impl From<DecisionRoute> for SourceAccessRoute {
     fn from(route: DecisionRoute) -> Self {
         Self {
@@ -497,4 +434,3 @@ impl From<DecisionRoute> for SourceAccessRoute {
         }
     }
 }
-use crate::{DecisionRouteKind, SourceSelectorKind};

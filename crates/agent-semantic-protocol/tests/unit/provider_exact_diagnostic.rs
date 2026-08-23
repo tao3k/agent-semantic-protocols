@@ -44,7 +44,8 @@ fn resident_exact_adapter_does_not_own_diagnostic_policy() {
 #[test]
 fn provider_native_owner_search_is_independent_from_pipe_and_workspace_generation() {
     let adapter_source = include_str!("../../src/command/search_owner_items.rs");
-    assert!(adapter_source.contains("project_provider_owner"));
+    assert!(adapter_source.contains("pub(super) async fn run_search_owner_items_query_command"));
+    assert!(adapter_source.contains("async fn run_server_owner_items"));
     assert!(adapter_source.contains("runtime_server_stateless_search_session_async"));
     for forbidden in [
         "runtime_server_workspace_session_async",

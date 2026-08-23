@@ -34,19 +34,31 @@ fn native_language_reads_fail_closed_through_the_profile_rule() {
                 .expect("classify native Read scenario");
         assert_eq!(decision["decision"], "deny", "language={language_id}");
         assert_eq!(
+            decision["fields"]["agentAction"]["hostInvocation"]["action"], "read",
+            "language={language_id}"
+        );
+        assert_eq!(
+            decision["fields"]["agentAction"]["hostInvocation"]["toolName"], "Read",
+            "language={language_id}"
+        );
+        assert_eq!(
+            decision["fields"]["agentAction"]["hostInvocation"]["source"],
+            Value::Null,
+            "Hook payload must not invent Codex ToolInvocation.source"
+        );
+        assert_eq!(
             decision["fields"]["configRuleId"], "route-read-to-asp-languages",
             "language={language_id}"
         );
         assert_eq!(
-            decision["fields"]["providerAvailability"], "unavailable",
+            decision["routes"][0]["providerId"], provider_id,
             "language={language_id}"
         );
+        assert_eq!(decision["routes"][0]["kind"], "owner");
+        assert_eq!(decision["routes"][0]["argv"][0], "asp");
+        assert_eq!(decision["routes"][0]["argv"][1], language_id);
         assert_eq!(
-            decision["fields"]["providerId"], provider_id,
-            "language={language_id}"
-        );
-        assert_eq!(
-            decision["fields"]["routeStatus"], "unavailable",
+            decision["routes"][0]["argv"][4], decision["subject"]["paths"][0],
             "language={language_id}"
         );
         assert_eq!(decision["languageIds"][0], language_id);
@@ -66,7 +78,7 @@ fn native_json_read_stays_owned_by_the_structured_document_rule() {
     assert_eq!(decision["decision"], "deny");
     assert_eq!(
         decision["fields"]["configRuleId"],
-        "materialize-structured-document-read-action"
+        "route-structured-document-read"
     );
     assert_eq!(decision["reasonKind"], "structured-source-read");
 }

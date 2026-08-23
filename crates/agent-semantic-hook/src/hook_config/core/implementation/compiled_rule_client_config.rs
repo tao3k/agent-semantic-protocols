@@ -3,37 +3,12 @@
 use std::{borrow::Cow, path::Path};
 
 use super::{
-    AgentOrgArtifactsArchiveWarning, AgentOrgArtifactsRecovery, AspSessionPolicy, ClientHookConfig,
-    CompiledHookRule, CompiledRecoveryPromptConfig, DURABLE_HOOK_MATCHER_SCHEMA_ID,
+    AgentOrgArtifactsArchiveWarning, AgentOrgArtifactsRecovery, ClientHookConfig, CompiledHookRule,
+    CompiledRecoveryPromptConfig, DURABLE_HOOK_MATCHER_SCHEMA_ID,
     DURABLE_HOOK_MATCHER_SCHEMA_VERSION, DurableHookConfigArtifact, HookClientConfigFile,
     HookRuntime, ToolAction, compile_agent_org_artifacts_config,
 };
-
-fn merge_agent_session_messages(
-    mut config: agent_semantic_config::HookClientAgentSessionMessagesConfig,
-    defaults: agent_semantic_config::HookClientAgentSessionMessagesConfig,
-) -> agent_semantic_config::HookClientAgentSessionMessagesConfig {
-    macro_rules! inherit {
-        ($field:ident) => {
-            if config.$field.is_none() {
-                config.$field = defaults.$field;
-            }
-        };
-    }
-    inherit!(session_start_reuse);
-    inherit!(session_start_bootstrap);
-    inherit!(missing_resident_explore);
-    inherit!(main_restricted_with_child);
-    inherit!(main_restricted_without_child);
-    inherit!(binary_gate_with_child);
-    inherit!(binary_gate_without_child);
-    inherit!(binary_gate_invalid_child);
-    inherit!(binary_gate_registry_blocked);
-    inherit!(source_access_compact);
-    inherit!(source_access_compact_repeated);
-    inherit!(source_access_compact_subagent);
-    config
-}
+use crate::hook_config::core::implementation::profile_provider_projection::extend_profile_provider_projections;
 
 impl Default for ClientHookConfig {
     fn default() -> Self {
@@ -50,16 +25,15 @@ impl ClientHookConfig {
         compile_config(config)
     }
 
-    /// Validate the managed language-provider projection against the active
-    /// manifest-bound runtime before it can participate in source matching.
+    /// Validate configured language profiles against the active runtime identity.
     pub fn validate_language_provider_projection(
         &self,
         runtime: &HookRuntime,
     ) -> Result<(), String> {
         for provider in &runtime.providers {
             let projected = self
-                .language_providers
-                .iter()
+                .profiles
+                .values()
                 .find(|candidate| {
                     candidate.language_id == provider.language_id.as_str()
                         && candidate.provider_id == provider.provider_id.as_str()
@@ -70,15 +44,7 @@ impl ClientHookConfig {
                         provider.language_id, provider.provider_id
                     )
                 })?;
-            if projected.manifest_digest != provider.manifest_digest {
-                return Err(format!(
-                    "managed hook config provider manifest drift for `{}/{}`: configured {}, active {}",
-                    provider.language_id,
-                    provider.provider_id,
-                    projected.manifest_digest,
-                    provider.manifest_digest
-                ));
-            }
+            let _ = projected;
         }
         Ok(())
     }
@@ -95,14 +61,18 @@ impl ClientHookConfig {
             .clone_from(&self.provider_projections);
         for provider in &mut runtime.providers {
             let projected = self
-                .language_providers
-                .iter()
+                .profiles
+                .values()
                 .find(|candidate| {
                     candidate.language_id == provider.language_id.as_str()
                         && candidate.provider_id == provider.provider_id.as_str()
                 })
                 .expect("validated language provider projection");
-            provider.source_extensions = projected.source_extensions.clone();
+            provider.source_extensions = projected
+                .extension_any
+                .iter()
+                .map(|extension| format!(".{extension}"))
+                .collect();
         }
         Ok(())
     }
@@ -117,16 +87,18 @@ impl ClientHookConfig {
         runtime.policy_providers = std::mem::take(&mut self.provider_projections);
         for provider in &mut runtime.providers {
             let projected = self
-                .language_providers
-                .iter()
+                .profiles
+                .values()
                 .find(|candidate| {
                     candidate.language_id == provider.language_id.as_str()
                         && candidate.provider_id == provider.provider_id.as_str()
                 })
                 .expect("validated language provider projection");
-            provider
-                .source_extensions
-                .clone_from(&projected.source_extensions);
+            provider.source_extensions = projected
+                .extension_any
+                .iter()
+                .map(|extension| format!(".{extension}"))
+                .collect();
         }
         Ok(())
     }
@@ -136,26 +108,9 @@ impl ClientHookConfig {
         let generation_digest = self.policy_generation_digest.clone();
         let _ = self.policy_receipt.set(super::HookPolicyReceipt {
             generation_digest: generation_digest.clone(),
-            kernel_version: crate::hook_policy_kernel::HOOK_POLICY_KERNEL_VERSION,
+            kernel_version: crate::protocol::HOOK_POLICY_KERNEL_VERSION,
         });
         Ok(generation_digest)
-    }
-
-    /// Return the agent-facing session message templates.
-    pub fn agent_session_messages(
-        &self,
-    ) -> &agent_semantic_config::HookClientAgentSessionMessagesConfig {
-        &self.agent_session_messages
-    }
-
-    /// Return the resident child session name used for ASP exploration.
-    pub fn resident_asp_explore_child_name(&self) -> &str {
-        self.asp_session_policy.resident_child_name()
-    }
-
-    /// Return the configured Codex agent name used for ASP exploration.
-    pub fn resident_asp_explore_codex_agent_name(&self) -> &str {
-        self.asp_session_policy.resident_codex_agent_name()
     }
 }
 
@@ -202,11 +157,6 @@ impl ClientHookConfig {
         !self.semantic_ast_patch_disabled
     }
 
-    /// Return ASP session routing policy compiled from hook config.
-    pub fn asp_session_policy(&self) -> &AspSessionPolicy {
-        &self.asp_session_policy
-    }
-
     pub(crate) fn recovery_prompt(&self) -> &CompiledRecoveryPromptConfig {
         &self.recovery_prompt
     }
@@ -235,17 +185,15 @@ impl ClientHookConfig {
         event: &str,
         action: &ToolAction,
     ) -> Option<crate::hook_config::HookPolicyCandidate> {
+        let mut classification_runtime = runtime.clone();
+        if classification_runtime.policy_providers.is_empty() {
+            classification_runtime.policy_providers = self.provider_projections.clone();
+        }
+        let runtime = &classification_runtime;
         let mut command_tokens: Option<Option<Cow<'_, [String]>>> = None;
         for rule_index in self.candidate_rule_indices(platform, event) {
             let rule = &self.rules[*rule_index];
-            let needs_command_tokens = rule.match_config.needs_command_tokens()
-                || matches!(
-                    rule.decision_materializer,
-                    Some(
-                        agent_semantic_config::HookClientDecisionMaterializer::AgentSearchJson
-                            | agent_semantic_config::HookClientDecisionMaterializer::SourceAccess
-                    )
-                );
+            let needs_command_tokens = rule.match_config.needs_command_tokens();
             let command_token_slice = if needs_command_tokens {
                 command_tokens
                     .get_or_insert_with(|| action.command_tokens())
@@ -289,92 +237,71 @@ impl ClientHookConfig {
             } else {
                 action.paths.as_slice()
             };
-            if let Some(materializer) = rule.decision_materializer {
-                let decision = match materializer {
-                    agent_semantic_config::HookClientDecisionMaterializer::AgentSearchJson => {
-                        command_token_slice.and_then(|tokens| {
-                            crate::classifier::materialize_agent_search_json_decision(
-                                runtime, platform, event, action, tokens,
-                            )
-                        })
-                    }
-                    agent_semantic_config::HookClientDecisionMaterializer::ApplyPatch => {
-                        crate::classifier::materialize_apply_patch_decision(
-                            runtime,
-                            platform,
-                            event,
-                            action,
-                            self.semantic_ast_patch_enabled(),
-                        )
-                    }
-                    agent_semantic_config::HookClientDecisionMaterializer::SourceAccess => {
-                        let agent_action =
-                            rule.match_config.agent_action.derive_agent_action_for_rule(
-                                runtime,
-                                action,
-                                Some(action.paths.as_slice()),
-                                structured_source_operands.as_deref(),
-                            );
-                        crate::classifier::materialize_source_access_decision(
-                            runtime,
-                            platform,
-                            event,
-                            action,
-                            agent_action.as_ref(),
-                            rule.match_config.matching_profile(action.paths.as_slice()),
-                            self.semantic_ast_patch_enabled(),
-                            self.recovery_prompt(),
-                        )
-                    }
-                };
-                if let Some(mut decision) = decision {
-                    super::super::dispatch_fields::extend_dispatch_fields(
-                        &mut decision.fields,
-                        rule.dispatch.as_ref(),
-                        action,
-                    );
-                    if let Some(message) = rule.message.as_ref()
-                        && decision
-                            .fields
-                            .get("routeStatus")
-                            .and_then(serde_json::Value::as_str)
-                            != Some("unavailable")
-                    {
-                        if decision.message != *message {
-                            decision.message = format!("{message}\n{}", decision.message);
-                        }
-                    }
-                    if let Some(agent_action) = rule.agent_action_receipt(
-                        runtime,
-                        action,
-                        decision.subject.paths.as_slice(),
-                        structured_source_operands.as_deref(),
-                    ) {
-                        decision
-                            .fields
-                            .insert("agentAction".to_string(), agent_action);
-                    }
-                    decision.fields.insert(
-                        "configRuleId".to_string(),
-                        serde_json::Value::String(rule.id.clone()),
-                    );
-                    if let Some(intent) = rule.intent.as_ref() {
-                        decision.fields.insert(
-                            "intent".to_string(),
-                            serde_json::Value::String(intent.clone()),
-                        );
-                    }
+            let finalize_materialized = |mut decision: crate::HookDecision| {
+                super::super::dispatch_fields::extend_dispatch_fields(
+                    &mut decision.fields,
+                    rule.dispatch.as_ref(),
+                    action,
+                );
+                if let Some(message) = rule.message.as_ref()
+                    && decision
+                        .fields
+                        .get("routeStatus")
+                        .and_then(serde_json::Value::as_str)
+                        != Some("unavailable")
+                    && decision.message != *message
+                {
+                    decision.message = format!("{message}\n{}", decision.message);
+                }
+                if let Some(agent_action) = rule.agent_action_receipt(
+                    runtime,
+                    action,
+                    decision.subject.paths.as_slice(),
+                    structured_source_operands.as_deref(),
+                ) {
                     decision
                         .fields
-                        .extend(rule.fields.iter().map(|(key, value)| {
-                            (key.clone(), serde_json::Value::String(value.clone()))
-                        }));
-                    let candidate = crate::hook_config::HookPolicyCandidate {
-                        priority: rule.priority,
-                        terminal: rule.terminal,
-                        decision,
-                    };
-                    return Some(candidate);
+                        .insert("agentAction".to_string(), agent_action);
+                }
+                decision.fields.insert(
+                    "configRuleId".to_string(),
+                    serde_json::Value::String(rule.id.clone()),
+                );
+                if let Some(intent) = rule.intent.as_ref() {
+                    decision.fields.insert(
+                        "intent".to_string(),
+                        serde_json::Value::String(intent.clone()),
+                    );
+                }
+                decision.fields.extend(
+                    rule.fields.iter().map(|(key, value)| {
+                        (key.clone(), serde_json::Value::String(value.clone()))
+                    }),
+                );
+                crate::hook_config::HookPolicyCandidate {
+                    priority: rule.priority,
+                    terminal: rule.terminal,
+                    decision,
+                }
+            };
+            if let Some(profile) = rule.match_config.matching_profile(action.paths.as_slice()) {
+                let agent_action = rule.match_config.agent_action.derive_agent_action_for_rule(
+                    runtime,
+                    action,
+                    Some(action.paths.as_slice()),
+                    structured_source_operands.as_deref(),
+                );
+                if let Some(decision) = crate::classifier::materialize_source_access_decision(
+                    runtime,
+                    platform,
+                    event,
+                    action,
+                    agent_action.as_ref(),
+                    Some(profile),
+                    self.semantic_ast_patch_enabled(),
+                    self.recovery_prompt(),
+                ) {
+                    return Some(finalize_materialized(decision));
                 }
                 continue;
             }
@@ -396,30 +323,6 @@ impl ClientHookConfig {
     }
 }
 
-fn merge_agents(
-    configured: agent_semantic_config::HookClientAgentsConfig,
-    defaults: agent_semantic_config::HookClientAgentsConfig,
-) -> agent_semantic_config::HookClientAgentsConfig {
-    let configured_names = configured
-        .resident_agents
-        .iter()
-        .map(|agent| agent.name.clone())
-        .collect::<std::collections::BTreeSet<_>>();
-    let mut resident_agents = defaults
-        .resident_agents
-        .into_iter()
-        .filter(|agent| !configured_names.contains(agent.name.as_str()))
-        .collect::<Vec<_>>();
-    resident_agents.extend(configured.resident_agents);
-
-    let mut placeholders = defaults.placeholders;
-    placeholders.extend(configured.placeholders);
-    agent_semantic_config::HookClientAgentsConfig {
-        placeholders,
-        resident_agents,
-    }
-}
-
 pub(in crate::hook_config) fn compile_config(
     config: HookClientConfigFile,
 ) -> Result<ClientHookConfig, String> {
@@ -437,10 +340,6 @@ pub(in crate::hook_config) fn compile_config_with_executable_capabilities(
             .entry(profile_id.clone())
             .or_insert_with(|| profile.clone());
     }
-    config.agent_session_messages = merge_agent_session_messages(
-        config.agent_session_messages,
-        default_config.agent_session_messages,
-    );
     let configured_profile_ids = config
         .command_profiles
         .iter()
@@ -453,18 +352,18 @@ pub(in crate::hook_config) fn compile_config_with_executable_capabilities(
         .collect::<Vec<_>>();
     command_profiles.extend(config.command_profiles);
     config.command_profiles = command_profiles;
-    let configured_action_policy_ids = config
-        .action_policies
+    let configured_capability_policy_ids = config
+        .capability_policies
         .iter()
         .map(|policy| policy.id.clone())
         .collect::<std::collections::BTreeSet<_>>();
-    let mut action_policies = default_config
-        .action_policies
+    let mut capability_policies = default_config
+        .capability_policies
         .into_iter()
-        .filter(|policy| !configured_action_policy_ids.contains(policy.id.as_str()))
+        .filter(|policy| !configured_capability_policy_ids.contains(policy.id.as_str()))
         .collect::<Vec<_>>();
-    action_policies.extend(config.action_policies);
-    config.action_policies = action_policies;
+    capability_policies.extend(config.capability_policies);
+    config.capability_policies = capability_policies;
     let configured_rule_ids = config
         .rules
         .iter()
@@ -477,7 +376,6 @@ pub(in crate::hook_config) fn compile_config_with_executable_capabilities(
         .collect::<Vec<_>>();
     rule_configs.extend(config.rules);
     config.rules = rule_configs;
-    config.agents = merge_agents(config.agents, default_config.agents);
     config.materialize_profile_rule_ir()?;
     compile_resolved_config(config, None, None, executable_capabilities)
 }
@@ -495,16 +393,14 @@ fn compile_resolved_config(
 ) -> Result<ClientHookConfig, String> {
     let source_config = durable_matchers.is_none().then(|| config.clone());
     let contract_fingerprint = config.contract_fingerprint.clone();
-    let language_providers = config.language_providers.clone();
+    let profiles = config.profiles.clone();
     let wrapper_match = agent_semantic_config::WrapperMatchMode::Off;
-    let agent_session_messages = config.agent_session_messages.clone();
     let semantic_ast_patch_enabled = config
         .experimental
         .get("semanticAstPatch")
         .and_then(|feature| feature.get("enabled"))
         .copied()
         .unwrap_or(true);
-    let agents = config.agents.clone();
     let mut rules = config
         .rules
         .into_iter()
@@ -521,11 +417,10 @@ fn compile_resolved_config(
                     })
                 })
                 .transpose()?;
-            CompiledHookRule::try_from_with_agents_and_matcher(
+            CompiledHookRule::try_from_with_policy_and_matcher(
                 rule,
-                &agents,
                 &config.command_profiles,
-                &config.action_policies,
+                &config.capability_policies,
                 wrapper_match,
                 durable_matcher,
                 executable_capabilities,
@@ -541,28 +436,32 @@ fn compile_resolved_config(
     // `sort_by_key` is stable, so equal-priority rules keep config file order.
     rules.sort_by_key(|rule| std::cmp::Reverse(rule.priority));
     let rule_candidates = compile_rule_candidate_index(&rules);
-    let (policy_generation_digest, provider_projections) = durable_policy.map_or_else(
-        || {
-            let snapshot =
-                crate::hook_policy_kernel::compile_language_provider_snapshot(&language_providers)?;
-            Ok::<_, String>((snapshot.generation_digest, snapshot.provider_projections))
-        },
-        Ok,
-    )?;
+    let (mut policy_generation_digest, mut provider_projections) =
+        durable_policy.unwrap_or_else(|| ("profile-native-v1".to_owned(), Vec::new()));
+    extend_profile_provider_projections(&config.profiles, &mut provider_projections);
+    let canonical_profiles = serde_json::to_vec(&config.profiles)
+        .map_err(|error| format!("serialize Hook source profiles: {error}"))?;
+    let profile_aware_digest =
+        agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest(
+            b"agent.semantic-protocols.hook-policy-profile-overlay.v1",
+            &[
+                policy_generation_digest.as_bytes(),
+                canonical_profiles.as_slice(),
+            ],
+        );
+    policy_generation_digest = format!("blake3-256:{}", profile_aware_digest.as_str());
     Ok(ClientHookConfig {
         source_config,
         rules,
         rule_candidates,
         policy_receipt: std::sync::OnceLock::new(),
-        language_providers,
+        profiles,
         policy_generation_digest,
         provider_projections,
         contract_fingerprint,
         semantic_ast_patch_disabled: !semantic_ast_patch_enabled,
         agent_org_artifacts: compile_agent_org_artifacts_config(config.agent_org_artifacts)?,
         recovery_prompt: config.recovery_prompt.into(),
-        agent_session_messages,
-        asp_session_policy: AspSessionPolicy::try_from(agents)?,
     })
 }
 
@@ -662,9 +561,14 @@ impl ClientHookConfig {
             .as_ref()
             .ok_or_else(|| "only a source-compiled Hook config may publish shards".to_owned())?;
         let extensions = source
-            .language_providers
-            .iter()
-            .flat_map(|provider| provider.source_extensions.iter().cloned())
+            .profiles
+            .values()
+            .flat_map(|profile| {
+                profile
+                    .extension_any
+                    .iter()
+                    .map(|extension| format!(".{extension}"))
+            })
             .collect::<std::collections::BTreeSet<_>>();
         let target_paths = extensions
             .iter()
@@ -714,19 +618,19 @@ impl ClientHookConfig {
             .source_config
             .as_ref()
             .ok_or_else(|| "only a source-compiled Hook config may publish shards".to_owned())?;
-        let prefixes = source
-            .rules
-            .iter()
-            .filter(|rule| rule.enabled)
-            .flat_map(|rule| rule.match_config.effect_rules.iter())
-            .filter(|effect| effect.effect == agent_semantic_config::HookClientActionKind::Read)
-            .filter(|effect| !effect.argv_prefix.is_empty())
-            .map(|effect| effect.argv_prefix.clone())
-            .collect::<std::collections::BTreeSet<_>>();
+        // The shard proves that opaque shell stages carrying a registered source
+        // operand are governed without pretending the executable implies Read.
+        let prefixes =
+            std::collections::BTreeSet::from([vec!["opaque-source-consumer".to_owned()]]);
         let extensions = source
-            .language_providers
-            .iter()
-            .flat_map(|provider| provider.source_extensions.iter().cloned())
+            .profiles
+            .values()
+            .flat_map(|profile| {
+                profile
+                    .extension_any
+                    .iter()
+                    .map(|extension| format!(".{extension}"))
+            })
             .collect::<std::collections::BTreeSet<_>>();
         let target_paths = extensions
             .iter()
@@ -844,7 +748,7 @@ impl ClientHookConfig {
                 decision.fields.insert(
                     "hookPolicyKernelVersion".to_owned(),
                     serde_json::Value::String(
-                        crate::hook_policy_kernel::HOOK_POLICY_KERNEL_VERSION.to_owned(),
+                        crate::protocol::HOOK_POLICY_KERNEL_VERSION.to_owned(),
                     ),
                 );
                 decision.fields.insert(
@@ -889,7 +793,7 @@ impl ClientHookConfig {
                 decision.fields.insert(
                     "hookPolicyKernelVersion".to_owned(),
                     serde_json::Value::String(
-                        crate::hook_policy_kernel::HOOK_POLICY_KERNEL_VERSION.to_owned(),
+                        crate::protocol::HOOK_POLICY_KERNEL_VERSION.to_owned(),
                     ),
                 );
                 decision.fields.insert(
@@ -922,9 +826,9 @@ impl ClientHookConfig {
             .cloned()
             .collect::<std::collections::BTreeSet<_>>();
         let registered_languages = source
-            .language_providers
-            .iter()
-            .map(|provider| provider.language_id.as_str().to_owned())
+            .profiles
+            .values()
+            .map(|profile| profile.language_id.clone())
             .collect::<Vec<_>>();
         for pattern in source
             .rules

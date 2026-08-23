@@ -3,10 +3,7 @@
 use std::env;
 use std::path::PathBuf;
 
-use agent_semantic_client_core::{ClientMethod, ProviderRegistrySnapshot};
-
 use crate::cli_args::{ParsedArgs, parse_client_args};
-use crate::provider_method::run_provider_method;
 
 /// Runs the agent semantic client CLI from process arguments.
 pub async fn run_cli_from_env() -> Result<(), String> {
@@ -37,8 +34,8 @@ pub async fn run_cli_args(
         }
         Some("tools") => crate::tools_cli::run_tools(&parsed.project_root, &parsed.forwarded_args),
         Some("wrap") => crate::tools_cli::run_wrap(&parsed.forwarded_args),
-        Some("providers") => run_providers(parsed),
-        Some("doctor") => run_doctor(parsed),
+        Some("providers") => run_providers(parsed).await,
+        Some("doctor") => run_doctor(parsed).await,
         Some("cache") => {
             crate::cache_cli::run_cache(
                 &parsed.project_root,
@@ -67,54 +64,14 @@ pub async fn run_cli_args(
                     .to_owned(),
             )
         }
-        Some("query") => {
-            let supervisor =
-                agent_semantic_provider_transport::ProviderProcessSupervisor::default();
-            let result = run_provider_method(
-                supervisor.clone(),
-                parsed,
-                ClientMethod::Query,
-                language_id.ok_or_else(|| provider_language_required("query"))?,
-            )
-            .await;
-            supervisor.shutdown().await;
-            result
-        }
-        Some("check") => {
-            let supervisor =
-                agent_semantic_provider_transport::ProviderProcessSupervisor::default();
-            let result = run_provider_method(
-                supervisor.clone(),
-                parsed,
-                ClientMethod::Check,
-                language_id.ok_or_else(|| provider_language_required("check"))?,
-            )
-            .await;
-            supervisor.shutdown().await;
-            result
-        }
+        Some("query" | "check") => Err(
+            "provider query/check is Runtime Server route-owned; direct client provider execution has been removed"
+                .to_owned(),
+        ),
         Some(command) => Err(format!("unknown client command: {command}")),
     }
 }
-fn provider_language_required(command: &str) -> String {
-    format!(
-        "asp {command} requires a language facade; use asp <language> {command} ...; run asp providers for active facades"
-    )
-}
-
-fn provider_contract_status(
-    manifest: &agent_semantic_hook::ProviderManifest,
-) -> (&'static str, Vec<String>) {
-    let errors = agent_semantic_hook::validate_provider_manifest_contract(manifest);
-    let status = if errors.is_empty() {
-        "valid"
-    } else {
-        "invalid"
-    };
-    (status, errors)
-}
-
-fn run_providers(parsed: ParsedArgs) -> Result<(), String> {
+async fn run_providers(parsed: ParsedArgs) -> Result<(), String> {
     let requested_language = match parsed.forwarded_args.as_slice() {
         [command] if command == "list" => None,
         [command, language_id] if command == "get" => Some(language_id.as_str()),
@@ -125,103 +82,78 @@ fn run_providers(parsed: ParsedArgs) -> Result<(), String> {
             );
         }
     };
-    let manifests = agent_semantic_hook::builtin_provider_manifests();
-    let activation = ProviderRegistrySnapshot::load(&parsed.activation_root);
-    let activation_evidence =
-        |language_id: &agent_semantic_client_core::LanguageId,
-         provider_id: &agent_semantic_client_core::ProviderId| match &activation {
-            Ok(snapshot) => {
-                let provider = snapshot.providers.iter().find(|provider| {
-                    &provider.language_id == language_id && &provider.provider_id == provider_id
-                });
-                serde_json::json!({
-                    "status": if provider.is_some() { "activated" } else { "not-activated" },
-                    "activationPath": snapshot.activation_path,
-                    "provider": provider.map(|provider| serde_json::json!({
-                        "manifestId": provider.manifest_id,
-                        "manifestDigest": provider.manifest_digest,
-                        "binary": provider.binary,
-                        "execution": provider.execution.as_str(),
-                    })),
-                })
-            }
-            Err(error) => serde_json::json!({
-                "status": "unavailable",
-                "reasonKind": "provider-registry-unavailable",
-                "message": error,
-            }),
-        };
-
-    if let Some(language_id) = requested_language {
-        let manifest = manifests
-            .iter()
-            .find(|manifest| manifest.language_id().as_str() == language_id)
-            .ok_or_else(|| format!("no builtin provider manifest for language `{language_id}`"))?;
-        let query_pack_descriptor = manifest.query_pack_descriptor();
-        let (contract_status, contract_errors) = provider_contract_status(manifest);
-        let manifest_digest = agent_semantic_hook::provider_manifest_digest(manifest)
-            .map_err(|error| format!("digest builtin provider manifest: {error}"))?;
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "manifest": manifest,
-                "manifestDigest": manifest_digest,
-                "queryPackDescriptor": query_pack_descriptor,
-                    "searchCapabilities": manifest.search_capabilities(),
-                    "semanticFactsDescriptor": manifest.semantic_facts_descriptor(),
-                "contractStatus": contract_status,
-                "contractErrors": contract_errors,
-                "activation": activation_evidence(manifest.language_id(), manifest.provider_id()),
-            }))
-            .map_err(|error| format!("serialize provider manifest evidence: {error}"))?
-        );
-    } else {
-        let providers = manifests
-            .iter()
-            .map(|manifest| {
-                let query_pack_descriptor = manifest.query_pack_descriptor();
-                let (contract_status, contract_errors) = provider_contract_status(manifest);
-                let manifest_digest = agent_semantic_hook::provider_manifest_digest(manifest)
-                    .map_err(|error| format!("digest builtin provider manifest: {error}"))?;
-                Ok(serde_json::json!({
-                    "manifest": manifest,
-                    "manifestDigest": manifest_digest,
-                    "queryPackDescriptor": query_pack_descriptor,
-                    "searchCapabilities": manifest.search_capabilities(),
-                    "semanticFactsDescriptor": manifest.semantic_facts_descriptor(),
-                    "contractStatus": contract_status,
-                    "contractErrors": contract_errors,
-                    "activation": activation_evidence(
-                        manifest.language_id(),
-                        manifest.provider_id(),
-                    ),
-                }))
-            })
-            .collect::<Result<Vec<_>, String>>()?;
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({ "providers": providers }))
-                .map_err(|error| format!("serialize provider registry evidence: {error}"))?
-        );
+    let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
+    let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&state_home)?
+        .ok_or_else(|| "runtime-server-endpoint-unavailable".to_owned())?;
+    let request = agent_semantic_provider_protocol::ProviderRegisterRequest {
+        schema_id: agent_semantic_provider_protocol::PROVIDER_REGISTER_REQUEST_SCHEMA_ID.to_owned(),
+        schema_version: agent_semantic_provider_protocol::PROVIDER_REGISTER_SCHEMA_VERSION
+            .to_owned(),
+        expected_generation: None,
+        request: agent_semantic_provider_protocol::ProviderRegisterOperation::List,
+    };
+    let response =
+        agent_semantic_client_db::runtime_provider_register_client::call_runtime_provider_register(
+            &endpoint, &request,
+        )
+        .await?;
+    let agent_semantic_provider_protocol::ProviderRegisterResult::Snapshot { snapshot } =
+        response.result
+    else {
+        return Err("Runtime Server rejected read-only provider register snapshot".to_owned());
+    };
+    let generation = snapshot.generation;
+    let digest = snapshot.digest;
+    let providers = match requested_language {
+        Some(language_id) => snapshot
+            .providers
+            .into_iter()
+            .filter(|provider| provider.language_id == language_id)
+            .collect::<Vec<_>>(),
+        None => snapshot.providers,
+    };
+    if let Some(language_id) = requested_language
+        && providers.is_empty()
+    {
+        return Err(format!(
+            "no Runtime Server provider registration for language `{language_id}`"
+        ));
     }
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&serde_json::json!({
+            "generation": generation,
+            "digest": digest,
+            "providers": providers,
+        }))
+        .map_err(|error| format!("serialize provider register snapshot: {error}"))?
+    );
     Ok(())
 }
 
-fn run_doctor(parsed: ParsedArgs) -> Result<(), String> {
+async fn run_doctor(parsed: ParsedArgs) -> Result<(), String> {
     validate_doctor_args(&parsed)?;
-    match ProviderRegistrySnapshot::load(&parsed.activation_root) {
-        Ok(snapshot) => println!(
-            "[asp-doctor] status=ok backend=local activation={} providers={} server=not-required",
-            snapshot.activation_path.display(),
-            snapshot.providers.len()
+    let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
+    let runtime_base = agent_semantic_client_db::runtime_server_runtime_base(&state_home)?;
+    match agent_semantic_client_db::runtime_server_health::cached_runtime_server_health_at(
+        &runtime_base,
+    )
+    .await
+    {
+        Ok(health) => println!(
+            "[asp-doctor] status={} backend=runtime-server state={:?} elapsedMicros={}",
+            if health.is_healthy() {
+                "ok"
+            } else {
+                "degraded"
+            },
+            health.resident.state,
+            health.elapsed_micros,
         ),
         Err(error) => {
-            println!(
-                "[asp-doctor] status=degraded backend=local activation=missing providers=0 server=not-required"
-            );
-            println!("|reason provider-activation-unavailable");
-            println!("|cmd install=asp install plugin --codex .");
-            eprintln!("[asp-doctor] activation unavailable: {error}");
+            println!("[asp-doctor] status=degraded backend=runtime-server");
+            println!("|reason runtime-server-cached-health-unavailable");
+            eprintln!("[asp-doctor] Runtime Server cached health unavailable: {error}");
         }
     }
     println!("|cache status=inspectable authority=runtime-server mutations=explicit-only");

@@ -79,16 +79,16 @@ fn retain_explicit_owner_files(
 
 fn provider_project_resolution_collection_scope(
     scope: &SourceIndexCollectionScope,
-) -> agent_semantic_client_local_cli::ProviderProjectResolutionCollectionScope {
+) -> agent_semantic_client_server::ProviderProjectResolutionCollectionScope {
     match scope {
         SourceIndexCollectionScope::ExplicitOwners { owner_paths } =>
-            agent_semantic_client_local_cli::ProviderProjectResolutionCollectionScope::ExplicitOwners {
+            agent_semantic_client_server::ProviderProjectResolutionCollectionScope::ExplicitOwners {
                 owner_paths: owner_paths.clone(),
             },
         SourceIndexCollectionScope::CompleteGeneration
         | SourceIndexCollectionScope::TargetProvider { .. }
         | SourceIndexCollectionScope::TargetProviderId { .. } =>
-            agent_semantic_client_local_cli::ProviderProjectResolutionCollectionScope::CompleteGeneration,
+            agent_semantic_client_server::ProviderProjectResolutionCollectionScope::CompleteGeneration,
     }
 }
 
@@ -106,7 +106,7 @@ enum ProviderSourceInventoryAdapter {
 }
 
 fn provider_source_inventory_adapter(
-    provider: &agent_semantic_client_core::ResolvedProvider,
+    provider: &agent_semantic_client_core::RuntimeProvider,
     candidates: &agent_semantic_runtime::git::RepositoryCandidateSnapshot,
 ) -> Result<ProviderSourceInventoryAdapter, String> {
     select_provider_source_inventory_adapter(
@@ -152,230 +152,10 @@ fn select_provider_source_inventory_adapter(
     ))
 }
 
-pub(crate) async fn collect_source_index_files(
-    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
-    project_root: &std::path::Path,
-    provider_registry: &agent_semantic_client_core::ProviderRegistrySnapshot,
-    scope: &SourceIndexCollectionScope,
-) -> Result<Vec<agent_semantic_client_db::ClientDbSourceIndexScopeFile>, String> {
-    let repository_candidates =
-        agent_semantic_runtime::git::discover_repository_candidate_snapshot(project_root)
-            .map_err(|error| format!("discover workspace repository candidates: {error}"))?
-            .ok_or_else(|| {
-                format!(
-                    "source-index generation requires an ASP repository candidate snapshot: workspace={}",
-                    project_root.display()
-                )
-            })?;
-    let mut files = Vec::new();
-    for provider in &provider_registry.providers {
-        let provider_is_selected = match scope {
-            SourceIndexCollectionScope::CompleteGeneration
-            | SourceIndexCollectionScope::ExplicitOwners { .. } => true,
-            SourceIndexCollectionScope::TargetProvider {
-                language_id,
-                provider_id,
-            } => language_id == &provider.language_id && provider_id == &provider.provider_id,
-            SourceIndexCollectionScope::TargetProviderId { provider_id } => {
-                provider_id == &provider.provider_id
-            }
-        };
-        if !provider_is_selected {
-            continue;
-        }
-        let receipt = match provider_source_inventory_adapter(provider, &repository_candidates)? {
-            ProviderSourceInventoryAdapter::ProjectResolution => {
-                agent_semantic_client_local_cli::provider_project_resolution_files_with_candidates(
-                    supervisor.clone(),
-                    project_root,
-                    provider,
-                    std::path::Path::new(&provider.binary),
-                    provider_project_resolution_collection_scope(scope),
-                    repository_candidates.clone(),
-                )
-                .await
-                .map_err(|error| error.to_string())?
-            }
-            ProviderSourceInventoryAdapter::GitDocumentCandidates => {
-                document_scope_files(project_root, provider, &repository_candidates)
-            }
-        };
-        append_provider_scope_files(&mut files, provider, receipt)?;
-    }
-    retain_explicit_owner_files(project_root, scope, &mut files)?;
-    Ok(files)
-}
-
-#[cfg(test)]
-pub(crate) async fn collect_source_index_scope_async(
-    project_root: &std::path::Path,
-    provider_registry: &agent_semantic_client_core::ProviderRegistrySnapshot,
-    scope: &SourceIndexCollectionScope,
-) -> Result<SourceIndexCollectionReceipt, String> {
-    let project_root_owned = project_root.to_path_buf();
-    let repository_candidates = tokio::task::spawn_blocking(move || {
-        agent_semantic_runtime::git::discover_repository_candidate_snapshot(&project_root_owned)
-    })
-    .await
-    .map_err(|error| format!("workspace Git candidate task failed: {error}"))?
-    .map_err(|error| format!("discover workspace repository candidates: {error}"))?
-    .ok_or_else(|| {
-        format!(
-            "source-index generation requires a Git candidate snapshot: workspace={}",
-            project_root.display()
-        )
-    })?;
-    let mut providers = tokio::task::JoinSet::new();
-    for provider in &provider_registry.providers {
-        let selected = match scope {
-            SourceIndexCollectionScope::CompleteGeneration
-            | SourceIndexCollectionScope::ExplicitOwners { .. } => true,
-            SourceIndexCollectionScope::TargetProvider {
-                language_id,
-                provider_id,
-            } => language_id == &provider.language_id && provider_id == &provider.provider_id,
-            SourceIndexCollectionScope::TargetProviderId { provider_id } => {
-                provider_id == &provider.provider_id
-            }
-        };
-        let explicit_target = matches!(
-            scope,
-            SourceIndexCollectionScope::TargetProvider { .. }
-                | SourceIndexCollectionScope::TargetProviderId { .. }
-        );
-        if !selected
-            || (!explicit_target
-                && !agent_semantic_hook::registered_provider_matches_candidate_paths(
-                    provider.language_id.as_str(),
-                    provider.provider_id.as_str(),
-                    repository_candidates
-                        .candidates
-                        .iter()
-                        .map(|candidate| candidate.path.as_path()),
-                )?)
-        {
-            continue;
-        }
-        let project_root = project_root.to_path_buf();
-        let provider = provider.clone();
-        let repository_candidates = repository_candidates.clone();
-        let collection_scope = provider_project_resolution_collection_scope(scope);
-        providers.spawn(async move {
-        let (receipt, project_resolution) =
-            match provider_source_inventory_adapter(&provider, &repository_candidates)? {
-                ProviderSourceInventoryAdapter::ProjectResolution => {
-            let package_root_path = project_root.clone();
-                        let resolution = agent_semantic_client_local_cli::provider_project_resolution_with_candidates(
-                            agent_semantic_provider_transport::ProviderProcessSupervisor::default(),
-                            &provider,
-                            &project_root,
-                            collection_scope,
-                            repository_candidates,
-                        )
-                        .await
-                        .map_err(|error| error.to_string())?;
-                        let agent_semantic_client_local_cli::ProviderProjectResolution::Supported(
-                            packet,
-                        ) = resolution
-                        else {
-                            return Ok::<_, String>((
-                                provider,
-                                agent_semantic_client_local_cli::ProviderProjectResolutionFiles::Unsupported,
-                                None,
-                            ));
-                        };
-                        let admitted = agent_semantic_runtime::AdmittedProjectResolution::new(
-                            ".",
-                            packet.resolution.clone(),
-                        )?;
-                        let files = agent_semantic_client_local_cli::provider_project_resolution_files_from_packet_async(
-                            &project_root,
-                            &package_root_path,
-                            packet,
-                        )
-                        .await?;
-                        (
-                            agent_semantic_client_local_cli::ProviderProjectResolutionFiles::Supported(files),
-                            Some(admitted),
-                        )
-                    }
-                ProviderSourceInventoryAdapter::GitDocumentCandidates => (
-                        document_scope_files(&project_root, &provider, &repository_candidates),
-                        None,
-                    ),
-                };
-            Ok::<_, String>((provider, receipt, project_resolution))
-        });
-    }
-    let mut files = Vec::new();
-    let mut project_resolutions = Vec::new();
-    while let Some(result) = providers.join_next().await {
-        let (provider, receipt, project_resolution) =
-            result.map_err(|error| format!("provider scope task failed: {error}"))??;
-        append_provider_scope_files(&mut files, &provider, receipt)?;
-        if let Some(project_resolution) = project_resolution {
-            project_resolutions.push(project_resolution);
-        }
-    }
-    retain_explicit_owner_files(project_root, scope, &mut files)?;
-    files.sort_by(|left, right| {
-        (&left.path, &left.language_id, &left.provider_id).cmp(&(
-            &right.path,
-            &right.language_id,
-            &right.provider_id,
-        ))
-    });
-    files.dedup_by(|left, right| {
-        left.path == right.path
-            && left.language_id == right.language_id
-            && left.provider_id == right.provider_id
-    });
-    if files.is_empty() {
-        match scope {
-            SourceIndexCollectionScope::TargetProvider {
-                language_id,
-                provider_id,
-            } => {
-                return Err(format!(
-                    "Target provider returned an empty owner inventory: languageId={language_id} providerId={provider_id} projectRoot={} reasonKind=provider-owner-inventory-empty",
-                    project_root.display()
-                ));
-            }
-            SourceIndexCollectionScope::TargetProviderId { provider_id } => {
-                return Err(format!(
-                    "Target provider returned an empty owner inventory: providerId={provider_id} projectRoot={} reasonKind=provider-owner-inventory-empty",
-                    project_root.display()
-                ));
-            }
-            SourceIndexCollectionScope::CompleteGeneration
-            | SourceIndexCollectionScope::ExplicitOwners { .. } => {}
-        }
-    }
-    project_resolutions.sort_by(|left, right| {
-        (
-            &left.candidate_base,
-            &left.resolution.provider_id,
-            &left.resolution.project_entry,
-        )
-            .cmp(&(
-                &right.candidate_base,
-                &right.resolution.provider_id,
-                &right.resolution.project_entry,
-            ))
-    });
-    Ok(SourceIndexCollectionReceipt {
-        files,
-        project_resolutions,
-        candidate: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateIdentity::from_snapshot(
-            &repository_candidates,
-        ),
-    })
-}
-
 pub(crate) async fn collect_source_index_scope_with_runtime_service_async(
     runtime: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
     project_root: &std::path::Path,
-    provider_registry: &agent_semantic_client_core::ProviderRegistrySnapshot,
+    provider_registry: &agent_semantic_client_core::RuntimeProviderProjection,
     scope: &SourceIndexCollectionScope,
 ) -> Result<SourceIndexCollectionReceipt, String> {
     collect_source_index_scope_with_executor_async(
@@ -395,7 +175,7 @@ enum ProviderScopeExecutor {
 async fn collect_source_index_scope_with_executor_async(
     executor: ProviderScopeExecutor,
     project_root: &std::path::Path,
-    provider_registry: &agent_semantic_client_core::ProviderRegistrySnapshot,
+    provider_registry: &agent_semantic_client_core::RuntimeProviderProjection,
     scope: &SourceIndexCollectionScope,
 ) -> Result<SourceIndexCollectionReceipt, String> {
     let project_root_owned = project_root.to_path_buf();
@@ -424,22 +204,7 @@ async fn collect_source_index_scope_with_executor_async(
                 provider_id == &provider.provider_id
             }
         };
-        let explicit_target = matches!(
-            scope,
-            SourceIndexCollectionScope::TargetProvider { .. }
-                | SourceIndexCollectionScope::TargetProviderId { .. }
-        );
-        if !selected
-            || (!explicit_target
-                && !agent_semantic_hook::registered_provider_matches_candidate_paths(
-                    provider.language_id.as_str(),
-                    provider.provider_id.as_str(),
-                    repository_candidates
-                        .candidates
-                        .iter()
-                        .map(|candidate| candidate.path.as_path()),
-                )?)
-        {
+        if !selected {
             continue;
         }
         let project_root = project_root.to_path_buf();
@@ -455,7 +220,7 @@ async fn collect_source_index_scope_with_executor_async(
                         let resolution = match executor {
                             ProviderScopeExecutor::RuntimeService(runtime) => {
                                 let (request, candidates) =
-                                    agent_semantic_client_local_cli::encode_provider_project_resolution_request(
+                                    agent_semantic_client_server::encode_provider_project_resolution_request(
                                         &project_root,
                                         &provider.language_id,
                                         &provider.provider_id,
@@ -478,11 +243,11 @@ async fn collect_source_index_scope_with_executor_async(
                                     .provider_operation(
                                         project_root.clone(),
                                         provider.language_id.as_str().to_owned(),
-                                        "project-resolution-stdin".to_owned(),
+                                        "project-resolution".to_owned(),
                                         request,
                                     )
                                     .await?;
-                                agent_semantic_client_local_cli::project_resolution_from_stdout(
+                                agent_semantic_client_server::project_resolution_from_stdout(
                                     &response,
                                     &provider.language_id,
                                     &provider.provider_id,
@@ -490,13 +255,13 @@ async fn collect_source_index_scope_with_executor_async(
                                 )?
                             }
                         };
-                    let agent_semantic_client_local_cli::ProviderProjectResolution::Supported(
+                    let agent_semantic_client_server::ProviderProjectResolution::Supported(
                         packet,
                     ) = resolution
                     else {
                         return Ok::<_, String>((
                             provider,
-                            agent_semantic_client_local_cli::ProviderProjectResolutionFiles::Unsupported,
+                            agent_semantic_client_server::ProviderProjectResolutionFiles::Unsupported,
                             None,
                         ));
                     };
@@ -504,14 +269,14 @@ async fn collect_source_index_scope_with_executor_async(
                         ".",
                         packet.resolution.clone(),
                     )?;
-                    let files = agent_semantic_client_local_cli::provider_project_resolution_files_from_packet_async(
+                    let files = agent_semantic_client_server::provider_project_resolution_files_from_packet_async(
                         &project_root,
                         &package_root_path,
                         packet,
                     )
                     .await?;
                     (
-                        agent_semantic_client_local_cli::ProviderProjectResolutionFiles::Supported(
+                        agent_semantic_client_server::ProviderProjectResolutionFiles::Supported(
                             files,
                         ),
                         Some(admitted),
@@ -573,9 +338,9 @@ async fn collect_source_index_scope_with_executor_async(
 
 fn document_scope_files(
     project_root: &std::path::Path,
-    provider: &agent_semantic_client_core::ResolvedProvider,
+    provider: &agent_semantic_client_core::RuntimeProvider,
     repository_candidates: &agent_semantic_runtime::git::RepositoryCandidateSnapshot,
-) -> agent_semantic_client_local_cli::ProviderProjectResolutionFiles {
+) -> agent_semantic_client_server::ProviderProjectResolutionFiles {
     let files = repository_candidates
         .candidates
         .iter()
@@ -597,7 +362,7 @@ fn document_scope_files(
             let candidate_path = candidate.path.to_str()?;
             let path = agent_semantic_client_core::scoped_child_path(project_root, candidate_path)?;
             path.is_file().then(|| {
-                agent_semantic_client_local_cli::ProviderProjectResolutionPathFile {
+                agent_semantic_client_server::ProviderProjectResolutionPathFile {
                     path,
                     language_id: provider.language_id.clone(),
                     provider_id: provider.provider_id.clone(),
@@ -605,20 +370,18 @@ fn document_scope_files(
             })
         })
         .collect();
-    agent_semantic_client_local_cli::ProviderProjectResolutionFiles::Supported(files)
+    agent_semantic_client_server::ProviderProjectResolutionFiles::Supported(files)
 }
 
 fn append_provider_scope_files(
     files: &mut Vec<agent_semantic_client_db::ClientDbSourceIndexScopeFile>,
-    provider: &agent_semantic_client_core::ResolvedProvider,
-    receipt: agent_semantic_client_local_cli::ProviderProjectResolutionFiles,
+    provider: &agent_semantic_client_core::RuntimeProvider,
+    receipt: agent_semantic_client_server::ProviderProjectResolutionFiles,
 ) -> Result<(), String> {
     match receipt {
-        agent_semantic_client_local_cli::ProviderProjectResolutionFiles::Supported(
-            provider_files,
-        ) => {
+        agent_semantic_client_server::ProviderProjectResolutionFiles::Supported(provider_files) => {
             for provider_file in provider_files {
-                let agent_semantic_client_local_cli::ProviderProjectResolutionPathFile {
+                let agent_semantic_client_server::ProviderProjectResolutionPathFile {
                     path,
                     language_id,
                     provider_id: reported_provider_id,
@@ -647,22 +410,11 @@ fn append_provider_scope_files(
             }
             Ok(())
         }
-        agent_semantic_client_local_cli::ProviderProjectResolutionFiles::Unsupported => {
-            Err(format!(
-                "provider workspace scope is unsupported: languageId={} providerId={}",
-                provider.language_id, provider.provider_id
-            ))
-        }
+        agent_semantic_client_server::ProviderProjectResolutionFiles::Unsupported => Err(format!(
+            "provider workspace scope is unsupported: languageId={} providerId={}",
+            provider.language_id, provider.provider_id
+        )),
     }
-}
-
-pub(crate) async fn collect_workspace_search_source_index_files(
-    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
-    project_root: &std::path::Path,
-    provider_registry: &agent_semantic_client_core::ProviderRegistrySnapshot,
-    scope: &SourceIndexCollectionScope,
-) -> Result<Vec<agent_semantic_client_db::ClientDbSourceIndexScopeFile>, String> {
-    collect_source_index_files(supervisor, project_root, provider_registry, scope).await
 }
 
 #[cfg(test)]

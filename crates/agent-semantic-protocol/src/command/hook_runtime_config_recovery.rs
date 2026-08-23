@@ -1,7 +1,7 @@
 //! Immutable, process-independent Hook matcher snapshot publication and loading.
 
 use agent_semantic_hook::{
-    ClientHookConfig, DecisionKind, DurableHookConfigArtifact, HookDecision, HookRuntime,
+    ClientHookConfig, DecisionKind, DurableHookConfigArtifact, HookDecision,
 };
 use memmap2::MmapOptions;
 use sha2::{Digest, Sha256};
@@ -197,12 +197,10 @@ fn select_matcher_section<'a>(
 }
 
 fn load_active_matcher(
-    config_path: &Path,
     project_root: &Path,
     direct_read_extension: Option<&str>,
     direct_read_path: Option<&str>,
     shell_read_keys: &[agent_semantic_hook::ShellReadSourceKey],
-    shell_command_keys: &[agent_semantic_hook::ShellCommandKey],
 ) -> Result<Option<LoadedHookConfig>, String> {
     let started = std::time::Instant::now();
     let trace_enabled = std::env::var_os("ASP_HOOK_BOOTSTRAP_TRACE").is_some();
@@ -258,17 +256,16 @@ fn load_active_matcher(
     // stat/canonicalization would turn every Host action into hidden workspace
     // discovery and reintroduce the deadlock/performance failure this cache
     // exists to prevent.
-    let config_stamp = source_stamp(config_path)?;
-    let agents_stamp = source_stamp(&agent_semantic_hook::project_agent_config_path(
-        project_root,
-    ))?;
-    if published_config_byte_len != config_stamp.byte_len
-        || published_config_modified_nanos != config_stamp.modified_nanos
-        || published_agents_byte_len != agents_stamp.byte_len
-        || published_agents_modified_nanos != agents_stamp.modified_nanos
-    {
-        return Ok(None);
-    }
+    // Source stamps are publication receipts, not read-side admission checks.
+    // The control-plane publisher validates and atomically replaces the whole
+    // matcher generation. Re-statting source files here would make every Host
+    // action race mutable source state and duplicate the publisher authority.
+    let _publication_receipt = (
+        published_config_byte_len,
+        published_config_modified_nanos,
+        published_agents_byte_len,
+        published_agents_modified_nanos,
+    );
     let bundle = &mapped[offset..];
     let mut shell_read_allow: Option<HookDecision> = None;
     for key in shell_read_keys {
@@ -312,36 +309,30 @@ fn load_active_matcher(
             projection: Some("shell-read-decision-shard"),
         }));
     }
-    if !shell_command_keys.is_empty() {
-        // Shell shards cache parser-owned action facts only. Finalizing an
-        // allow or deny here would bypass the complete Config Rule DSL and
-        // its cross-rule dominance (for example registered provider search
-        // plus the higher-priority `--json` deny). Hydrate the complete
-        // matcher below and make exactly one policy decision there.
-        return Ok(None);
-    }
+    // Shell shards cache parser-owned action facts only. Finalizing an allow
+    // or deny here would bypass the complete Config Rule DSL and its
+    // cross-rule dominance. Keep using this mapping and hydrate the complete
+    // matcher below instead of reopening and remapping the same generation.
     if let (Some(extension), Some(source_path)) = (direct_read_extension, direct_read_path) {
-        let Some(template) = select_matcher_section(
+        if let Some(template) = select_matcher_section(
             bundle,
             MatcherSectionKind::DirectRead,
             matcher_section_key(extension),
-        )?
-        else {
-            return Ok(None);
-        };
-        let placeholder = format!("__ASP_DIRECT_READ_PATH__{extension}");
-        let mut decision = agent_semantic_hook::HookDecision::from_compact_binary(template)?;
-        if !decision.replace_template_marker(&placeholder, source_path) {
-            return Err(
-                "direct-read Hook decision shard omitted its source placeholder".to_owned(),
-            );
+        )? {
+            let placeholder = format!("__ASP_DIRECT_READ_PATH__{extension}");
+            let mut decision = agent_semantic_hook::HookDecision::from_compact_binary(template)?;
+            if !decision.replace_template_marker(&placeholder, source_path) {
+                return Err(
+                    "direct-read Hook decision shard omitted its source placeholder".to_owned(),
+                );
+            }
+            trace("decision-shard");
+            return Ok(Some(LoadedHookConfig {
+                config: None,
+                decision: Some(decision),
+                projection: Some("direct-read-decision-shard"),
+            }));
         }
-        trace("decision-shard");
-        return Ok(Some(LoadedHookConfig {
-            config: None,
-            decision: Some(decision),
-            projection: Some("direct-read-decision-shard"),
-        }));
     }
     let artifact = select_matcher_section(bundle, MatcherSectionKind::Complete, [0; 8])?
         .ok_or_else(|| "Hook matcher Binary v1 omitted its complete matcher section".to_owned())?;
@@ -408,56 +399,30 @@ fn publish_active_matcher(
         key: [0; 8],
         bytes: compiled.durable_snapshot_config().to_binary_bytes()?,
     }];
-    for (extension, _placeholder, decision_json) in
-        compiled.durable_direct_read_decision_shards()?
-    {
-        let mut decision = agent_semantic_hook::HookDecision::from_compact_binary(&decision_json)?;
-        super::materialize_source_access_deny_message(&mut decision);
-        super::hook_runtime_agent_session_dispatch::materialize_org_choice_plane_reference(
-            &mut decision,
-        );
+    let shards = compiled.materialized_decision_shards()?;
+    for (extension, bytes) in shards.direct_read {
         sections.push(MatcherSection {
             kind: MatcherSectionKind::DirectRead,
             key: matcher_section_key(&extension),
-            bytes: decision.to_compact_binary()?,
+            bytes,
         });
     }
-    for (extension, _placeholder, table) in compiled.durable_shell_read_decision_shards()? {
-        let table = agent_semantic_hook::CommandDecisionShard::map_binary_decisions(
-            &table,
-            |mut decision| {
-                super::materialize_source_access_deny_message(&mut decision);
-                super::hook_runtime_agent_session_dispatch::materialize_org_choice_plane_reference(
-                    &mut decision,
-                );
-                decision
-            },
-        )?;
+    for (extension, bytes) in shards.shell_read {
         sections.push(MatcherSection {
             kind: MatcherSectionKind::ShellRead,
             key: matcher_section_key(&extension),
-            bytes: table,
+            bytes,
         });
     }
     sections.push(MatcherSection {
         kind: MatcherSectionKind::StructuredProjection,
         key: [0; 8],
-        bytes: compiled.durable_structured_projection_decision_shard()?,
+        bytes: shards.structured_projection,
     });
-    let command_profile_table = agent_semantic_hook::CommandDecisionShard::map_binary_decisions(
-        &compiled.durable_command_profile_decision_shard()?,
-        |mut decision| {
-            super::materialize_source_access_deny_message(&mut decision);
-            super::hook_runtime_agent_session_dispatch::materialize_org_choice_plane_reference(
-                &mut decision,
-            );
-            decision
-        },
-    )?;
     sections.push(MatcherSection {
         kind: MatcherSectionKind::ShellCommand,
         key: [0; 8],
-        bytes: command_profile_table,
+        bytes: shards.shell_command,
     });
     let bundle = encode_matcher_bundle(&sections)?;
     publish_active_artifact(
@@ -535,7 +500,7 @@ pub(crate) struct LoadedHookConfig {
 }
 
 fn recovery_instruction() -> &'static str {
-    "automatic Hook matcher publication could not recover; repair invalid source config or atomically install a validated candidate `<candidate-asp> install binary --target <ASP_STATE_HOME>/runtime/bin/asp` through the Host bootstrap channel"
+    "automatic Hook matcher publication could not recover; repair invalid source config or atomically publish a validated candidate with `<candidate-asp> install binary` through the Host bootstrap channel; Runtime configuration owns the stable install slot"
 }
 
 fn append_file_identity(hasher: &mut Sha256, path: &Path) -> Result<(), String> {
@@ -594,18 +559,16 @@ pub(crate) fn load_fresh_hook_config(
 ) -> Result<(LoadedHookConfig, &'static str), String> {
     let load_requested = || {
         load_active_matcher(
-            config_path,
             project_root,
             direct_read_extension,
             direct_read_path,
             shell_read_keys,
-            shell_command_keys,
         )
     };
     let has_specialized_request = direct_read_extension.is_some()
         || !shell_read_keys.is_empty()
         || !shell_command_keys.is_empty();
-    let load_complete = || load_active_matcher(config_path, project_root, None, None, &[], &[]);
+    let load_complete = || load_active_matcher(project_root, None, None, &[]);
 
     match load_requested() {
         Ok(Some(loaded)) => return Ok((loaded, "mmap-hit")),
@@ -663,13 +626,13 @@ pub(crate) fn publish_hook_matcher_generation(
     let generation = compiled_generation_key(config_path, project_root)?;
     let config =
         agent_semantic_hook::load_client_config_for_matcher_publication(config_path, project_root)
-        .map_err(|error| {
-            format!(
-                "Hook matcher snapshot source is invalid for {}: {error}; {}",
-                config_path.display(),
-                recovery_instruction()
-            )
-        })?;
+            .map_err(|error| {
+                format!(
+                    "Hook matcher snapshot source is invalid for {}: {error}; {}",
+                    config_path.display(),
+                    recovery_instruction()
+                )
+            })?;
     let expected_fingerprint = agent_semantic_config::hook_client_contract_fingerprint();
     if config.contract_fingerprint() != Some(expected_fingerprint.as_str()) {
         return Err(format!(
@@ -687,19 +650,4 @@ pub(crate) fn publish_hook_matcher_generation(
     })?;
     publish_active_matcher(config_path, project_root, &generation, &config)?;
     Ok(generation)
-}
-
-pub(crate) fn move_language_provider_projection(
-    config: &mut ClientHookConfig,
-    runtime: &mut HookRuntime,
-    config_path: &Path,
-) -> Result<(), String> {
-    config
-        .move_language_provider_projection(runtime)
-        .map_err(|error| {
-            format!(
-                "Hook language provider projection is invalid for {}: {error}",
-                config_path.display()
-            )
-        })
 }

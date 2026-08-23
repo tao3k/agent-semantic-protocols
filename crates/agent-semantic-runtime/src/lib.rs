@@ -12,7 +12,6 @@ mod agent_session_status_snapshot;
 mod agent_session_validation_report;
 mod async_bridge;
 mod codex_rollout_sessions;
-pub mod developer_artifact_cleanup;
 pub mod git;
 mod graph_render;
 pub mod hook_process_runtime;
@@ -70,9 +69,9 @@ pub use language_owner_items::{
 };
 pub use live_corpus::{
     LIVE_CORPUS_ARTIFACT_SCHEMA_ID, LIVE_CORPUS_ARTIFACT_SCHEMA_VERSION,
-    LiveCorpusArtifactGitIdentityV1, LiveCorpusArtifactIdentity, LiveCorpusArtifactManifestV1,
+    LiveCorpusArtifactGitIdentity, LiveCorpusArtifactIdentity, LiveCorpusArtifactManifest,
     LiveCorpusArtifactPaths, LiveCorpusGitCheckoutQualification, LiveCorpusGitCheckoutSync,
-    LiveCorpusGitRepositoryPaths, LiveCorpusLanguageExtensionEvidenceV1,
+    LiveCorpusGitRepositoryPaths, LiveCorpusLanguageExtensionEvidence,
     live_corpus_artifact_manifest, live_corpus_artifact_paths, live_corpus_git_checkout_is_clean,
     live_corpus_git_repository_paths, live_corpus_lock_digest, qualify_live_corpus_git_checkout,
     qualify_live_corpus_language_extensions, sync_live_corpus_git_checkout,

@@ -36,10 +36,12 @@ async fn write_identity(state_home: &Path, value: &str) {
             "artifactMode": "dev",
             "stablePath": state_home.join("runtime/bin/asp"),
             "sourcePath": state_home.join("target/debug/asp"),
+            "sourceGeneration": format!("blake3-256:{}", "b".repeat(64)),
+            "sourceGenerationAlgorithm": "filesystem-generation-v1",
             "artifactDigest": value,
-            "identityKind": "developer-source-generation",
+            "identityKind": "content",
             "identityValue": value,
-            "identityAlgorithm": "blake3-metadata-v1"
+            "identityAlgorithm": "blake3-256"
         }))
         .expect("encode identity"),
     )

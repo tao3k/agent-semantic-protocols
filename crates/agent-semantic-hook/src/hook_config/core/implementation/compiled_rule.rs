@@ -7,7 +7,6 @@ use agent_semantic_config::{
     HookClientRuleConfig, HookClientRuleMatchConfig, HookClientRuleRouteConfig,
 };
 
-use crate::hook_config::AspSessionPolicy;
 use crate::hook_config::compile_agent_org_artifacts_config;
 use crate::protocol::{
     DecisionKind, DecisionRouteKind, HOOK_DECISION_SCHEMA_ID, HOOK_DECISION_SCHEMA_VERSION,
@@ -40,7 +39,7 @@ pub struct ClientHookConfig {
     pub(in crate::hook_config) rules: Vec<CompiledHookRule>,
     rule_candidates: RuleCandidateIndex,
     policy_receipt: std::sync::OnceLock<HookPolicyReceipt>,
-    language_providers: Vec<agent_semantic_config::HookClientLanguageProviderConfig>,
+    profiles: std::collections::BTreeMap<String, agent_semantic_config::HookClientProfileConfig>,
     policy_generation_digest: String,
     provider_projections:
         Vec<crate::protocol_activation::protocol_activation_manifest::HookProviderProjection>,
@@ -48,8 +47,6 @@ pub struct ClientHookConfig {
     semantic_ast_patch_disabled: bool,
     agent_org_artifacts: CompiledAgentOrgArtifactsConfig,
     recovery_prompt: CompiledRecoveryPromptConfig,
-    asp_session_policy: AspSessionPolicy,
-    agent_session_messages: agent_semantic_config::HookClientAgentSessionMessagesConfig,
 }
 
 #[derive(Debug)]
@@ -70,7 +67,6 @@ pub(in crate::hook_config) struct CompiledHookRule {
     fields: std::collections::BTreeMap<String, String>,
     pub(in crate::hook_config) dispatch: Option<CompiledRuleDispatch>,
     decision: HookClientConfigDecision,
-    decision_materializer: Option<agent_semantic_config::HookClientDecisionMaterializer>,
     reason_kind: ReasonKind,
     message: Option<String>,
     language_ids: Vec<agent_semantic_config::LanguageId>,
@@ -83,12 +79,7 @@ pub(in crate::hook_config) struct CompiledHookRule {
 #[derive(Debug)]
 pub(in crate::hook_config) struct CompiledRuleDispatch {
     pub(super) transport: agent_semantic_config::HookClientRuleDispatchTransport,
-    pub(in crate::hook_config) resident_name: String,
-    pub(in crate::hook_config) resident_codex_agent_name: String,
-    pub(in crate::hook_config) resident_role: String,
-    pub(in crate::hook_config) resident_agent_kind: String,
-    pub(in crate::hook_config) resident_display_role: String,
-    pub(in crate::hook_config) resident_description: String,
+    pub(in crate::hook_config) target_role: String,
     pub(super) receipt_kind: String,
     lazy_provider: Option<agent_semantic_config::HookClientLazyProviderPolicy>,
 }
@@ -122,10 +113,10 @@ struct CompiledStructuredProjection {
 }
 
 #[derive(Default)]
-struct ResolvedActionPolicies {
-    all: Vec<agent_semantic_config::HookClientActionPolicyConfig>,
-    any: Vec<agent_semantic_config::HookClientActionPolicyConfig>,
-    none: Vec<agent_semantic_config::HookClientActionPolicyConfig>,
+struct ResolvedCapabilityPolicies {
+    all: Vec<agent_semantic_config::HookClientCapabilityPolicyConfig>,
+    any: Vec<agent_semantic_config::HookClientCapabilityPolicyConfig>,
+    none: Vec<agent_semantic_config::HookClientCapabilityPolicyConfig>,
 }
 
 #[derive(Debug)]
@@ -255,7 +246,7 @@ impl RuleMatch {
     fn try_from_config(
         mut config: HookClientRuleMatchConfig,
         durable_matcher: Option<DurableRuleMatcherArtifact>,
-        policies: ResolvedActionPolicies,
+        policies: ResolvedCapabilityPolicies,
         _executable_capabilities: Option<&std::collections::BTreeSet<String>>,
     ) -> Result<Self, String> {
         let mut tool_any = std::mem::take(&mut config.tool_any);
@@ -291,12 +282,7 @@ impl RuleMatch {
             agent_action: action_match::AgentActionMatch::new(
                 action_match::AgentActionMatchConfig {
                     action_any: std::mem::take(&mut config.action_any),
-                    effect_any: std::mem::take(&mut config.effect_any),
                     subject_kind_any: std::mem::take(&mut config.subject_kind_any),
-                    authority_any: std::mem::take(&mut config.authority_any),
-                    authority_exclude_any: std::mem::take(&mut config.authority_exclude_any),
-                    authority_rules: std::mem::take(&mut config.authority_rules),
-                    effect_rules: std::mem::take(&mut config.effect_rules),
                     policy_all: policies.all,
                     policy_any: policies.any,
                     policy_none: policies.none,
@@ -512,10 +498,8 @@ impl TryFrom<HookClientRuleConfig> for CompiledHookRule {
     type Error = String;
 
     fn try_from(config: HookClientRuleConfig) -> Result<Self, Self::Error> {
-        let agents = agent_semantic_config::HookClientAgentsConfig::default();
-        Self::try_from_with_agents(
+        Self::try_from_with_policy(
             config,
-            &agents,
             &[],
             &[],
             agent_semantic_config::WrapperMatchMode::default(),
@@ -524,29 +508,26 @@ impl TryFrom<HookClientRuleConfig> for CompiledHookRule {
 }
 
 impl CompiledHookRule {
-    pub(in crate::hook_config) fn try_from_with_agents(
+    pub(in crate::hook_config) fn try_from_with_policy(
         config: HookClientRuleConfig,
-        agents: &agent_semantic_config::HookClientAgentsConfig,
         command_profiles: &[agent_semantic_config::HookClientCommandProfileConfig],
-        action_policies: &[agent_semantic_config::HookClientActionPolicyConfig],
+        capability_policies: &[agent_semantic_config::HookClientCapabilityPolicyConfig],
         wrapper_match: agent_semantic_config::WrapperMatchMode,
     ) -> Result<Self, String> {
-        Self::try_from_with_agents_and_matcher(
+        Self::try_from_with_policy_and_matcher(
             config,
-            agents,
             command_profiles,
-            action_policies,
+            capability_policies,
             wrapper_match,
             None,
             None,
         )
     }
 
-    fn try_from_with_agents_and_matcher(
+    fn try_from_with_policy_and_matcher(
         config: HookClientRuleConfig,
-        agents: &agent_semantic_config::HookClientAgentsConfig,
         command_profiles: &[agent_semantic_config::HookClientCommandProfileConfig],
-        action_policies: &[agent_semantic_config::HookClientActionPolicyConfig],
+        capability_policies: &[agent_semantic_config::HookClientCapabilityPolicyConfig],
         wrapper_match: agent_semantic_config::WrapperMatchMode,
         durable_matcher: Option<DurableRuleMatcherArtifact>,
         executable_capabilities: Option<&std::collections::BTreeSet<String>>,
@@ -562,39 +543,9 @@ impl CompiledHookRule {
         let dispatch = config
             .dispatch
             .map(|dispatch| {
-                let resident_name =
-                    agents
-                        .placeholders
-                        .get(dispatch.role.as_str())
-                        .ok_or_else(|| {
-                            format!(
-                                "rule `{}` dispatch references unavailable agent placeholder `{}`",
-                                config.id,
-                                dispatch.role.as_str()
-                            )
-                        })?;
-                let resident = agents
-                    .resident_agents
-                    .iter()
-                    .find(|resident| resident.enabled && resident.name == *resident_name)
-                    .ok_or_else(|| {
-                        format!(
-                            "rule `{}` dispatch references unavailable resident `{}`",
-                            config.id, resident_name
-                        )
-                    })?;
                 Ok::<CompiledRuleDispatch, String>(CompiledRuleDispatch {
                     transport: dispatch.transport,
-                    resident_name: resident_name.clone(),
-                    resident_codex_agent_name: resident.codex_agent_name.clone(),
-                    resident_role: resident.role.clone(),
-                    resident_agent_kind: resident.agent_kind.clone(),
-                    resident_display_role: if resident.display_role.is_empty() {
-                        resident.role.clone()
-                    } else {
-                        resident.display_role.clone()
-                    },
-                    resident_description: resident.description.clone(),
+                    target_role: dispatch.role.as_str().to_owned(),
                     receipt_kind: dispatch.receipt_kind.as_str().to_owned(),
                     lazy_provider: dispatch.lazy_provider,
                 })
@@ -604,46 +555,33 @@ impl CompiledHookRule {
             .reason_kind
             .map(ReasonKind::from)
             .unwrap_or(ReasonKind::None);
-        let typed_action_contract = !config.match_config.action_any.is_empty()
-            || !config.match_config.effect_any.is_empty()
-            || !config.match_config.subject_kind_any.is_empty()
-            || !config.match_config.authority_any.is_empty()
-            || !config.match_config.authority_exclude_any.is_empty()
-            || !config.match_config.authority_rules.is_empty()
-            || !config.match_config.effect_rules.is_empty()
-            || !config.match_config.action_policy_all.is_empty()
-            || !config.match_config.action_policy_any.is_empty()
-            || !config.match_config.action_policy_none.is_empty();
-        if typed_action_contract
-            && matches!(
-                reason_kind,
-                ReasonKind::DirectSourceRead | ReasonKind::BulkSourceDump
-            )
-        {
-            let referenced_effects = config
+        let dynamic_profile_route = !config.match_config.profile_extension_any.is_empty()
+            || !config.match_config.profile_any.is_empty();
+        if dynamic_profile_route && reason_kind == ReasonKind::DirectSourceRead {
+            let referenced_semantic_capabilities = config
                 .match_config
-                .action_policy_all
+                .capability_policy_all
                 .iter()
                 .filter_map(|reference| {
-                    action_policies
+                    capability_policies
                         .iter()
                         .find(|policy| policy.id == *reference)
                 })
-                .flat_map(|policy| policy.effect_any.iter().copied())
+                .flat_map(|policy| policy.semantic_capability_any.iter().copied())
                 .collect::<Vec<_>>();
-            let effect_any = if config.match_config.effect_any.is_empty() {
-                referenced_effects.as_slice()
-            } else {
-                config.match_config.effect_any.as_slice()
-            };
-            let includes_read =
-                effect_any.contains(&agent_semantic_config::HookClientActionKind::Read);
-            let effects_are_typed_read = effect_any
-                .iter()
-                .all(|effect| *effect == agent_semantic_config::HookClientActionKind::Read);
-            if !includes_read || !effects_are_typed_read {
+            let host_actions_are_typed_read = !config.match_config.action_any.is_empty()
+                && config
+                    .match_config
+                    .action_any
+                    .iter()
+                    .all(|action| *action == agent_semantic_config::HookClientActionKind::Read);
+            let semantic_capabilities_are_typed_read = !referenced_semantic_capabilities.is_empty()
+                && referenced_semantic_capabilities.iter().all(|capability| {
+                    *capability == agent_semantic_config::HookClientActionKind::Read
+                });
+            if !host_actions_are_typed_read && !semantic_capabilities_are_typed_read {
                 return Err(format!(
-                    "rule `{}` expands registered source without an exact typed read effect contract",
+                    "rule `{}` expands registered source without an exact Read SemanticCapability contract",
                     config.id
                 ));
             }
@@ -657,33 +595,39 @@ impl CompiledHookRule {
                 raw_match_config.argv_prefix_any.push(prefix);
             }
         }
-        let resolve_action_policies = |axis: &str, references: &mut Vec<String>| {
+        let resolve_capability_policies = |axis: &str, references: &mut Vec<String>| {
             std::mem::take(references)
                 .into_iter()
                 .map(|reference| {
-                    action_policies
+                    capability_policies
                         .iter()
                         .find(|policy| policy.id == reference)
                         .cloned()
                         .ok_or_else(|| {
                             format!(
-                                "rule `{}` {axis} references unknown action policy `{reference}`",
+                                "rule `{}` {axis} references unknown capability policy `{reference}`",
                                 config.id
                             )
                         })
                 })
                 .collect::<Result<Vec<_>, String>>()
         };
-        let policy_all =
-            resolve_action_policies("actionPolicyAll", &mut raw_match_config.action_policy_all)?;
-        let policy_any =
-            resolve_action_policies("actionPolicyAny", &mut raw_match_config.action_policy_any)?;
-        let policy_none =
-            resolve_action_policies("actionPolicyNone", &mut raw_match_config.action_policy_none)?;
+        let policy_all = resolve_capability_policies(
+            "capabilityPolicyAll",
+            &mut raw_match_config.capability_policy_all,
+        )?;
+        let policy_any = resolve_capability_policies(
+            "capabilityPolicyAny",
+            &mut raw_match_config.capability_policy_any,
+        )?;
+        let policy_none = resolve_capability_policies(
+            "capabilityPolicyNone",
+            &mut raw_match_config.capability_policy_none,
+        )?;
         let mut match_config = RuleMatch::try_from_config(
             raw_match_config,
             durable_matcher,
-            ResolvedActionPolicies {
+            ResolvedCapabilityPolicies {
                 all: policy_all,
                 any: policy_any,
                 none: policy_none,
@@ -699,7 +643,6 @@ impl CompiledHookRule {
             fields: config.fields,
             dispatch,
             decision: config.decision,
-            decision_materializer: config.decision_materializer,
             reason_kind,
             message: config.message,
             language_ids: config
@@ -723,7 +666,7 @@ impl TryFrom<HookClientRuleMatchConfig> for RuleMatch {
     type Error = String;
 
     fn try_from(config: HookClientRuleMatchConfig) -> Result<Self, Self::Error> {
-        Self::try_from_config(config, None, ResolvedActionPolicies::default(), None)
+        Self::try_from_config(config, None, ResolvedCapabilityPolicies::default(), None)
     }
 }
 
@@ -732,9 +675,12 @@ impl TryFrom<HookClientRuleRouteConfig> for RuleRoute {
 
     fn try_from(config: HookClientRuleRouteConfig) -> Result<Self, Self::Error> {
         let provider_id = agent_semantic_config::ProviderId::try_new(config.provider_id)?;
-        let manifest = crate::provider_manifest::provider_manifests()
+        let registered_language = crate::provider_registry::registered_language_ids()
             .into_iter()
-            .find(|manifest| manifest.provider_id == provider_id)
+            .find(|language_id| {
+                crate::provider_registry::registered_provider_id(language_id.as_str())
+                    .is_some_and(|registered| registered == provider_id.as_str())
+            })
             .ok_or_else(|| {
                 format!("hook route references unregistered provider `{provider_id}`")
             })?;
@@ -742,11 +688,11 @@ impl TryFrom<HookClientRuleRouteConfig> for RuleRoute {
             .language_id
             .map(agent_semantic_config::LanguageId::try_new)
             .transpose()?
-            .unwrap_or_else(|| manifest.language_id.clone());
-        if language_id != manifest.language_id {
+            .unwrap_or_else(|| registered_language.clone());
+        if language_id != registered_language {
             return Err(format!(
                 "hook route provider `{provider_id}` belongs to language `{}`, not `{language_id}`",
-                manifest.language_id
+                registered_language
             ));
         }
         Ok(Self {

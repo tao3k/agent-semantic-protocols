@@ -1,6 +1,6 @@
 use super::{
     ClientHookConfig, DecisionKind, HookClassificationRequest, classify_hook_with_config, fs, json,
-    load_client_config, temp_root, with_required_resident_agents,
+    load_client_config, temp_root, with_direct_dispatch_roles,
 };
 
 #[test]
@@ -34,7 +34,7 @@ fn builtin_materialization_rule_is_permanent_and_source_scoped() {
                 .fields
                 .get("configRuleId")
                 .and_then(|id| id.as_str()),
-            Some("deny-uncontrolled-source-materialization-commands")
+            Some("deny-raw-registered-source-action")
         );
         assert_eq!(decision.language_ids, ["rust"]);
         assert_eq!(decision.routes.len(), 1);
@@ -95,9 +95,17 @@ fn action_first_rule_denies_inferred_reads_before_shell_expansion() {
             .fields
             .get("agentAction")
             .expect("typed agent action receipt");
-        assert_eq!(host_action["action"], "execute", "{command}");
-        assert_eq!(host_action["effect"], "read", "{command}");
-        assert_eq!(host_action["authority"], "raw-shell", "{command}");
+        assert_eq!(
+            host_action["hostInvocation"]["action"], "execute",
+            "{command}"
+        );
+        assert!(
+            host_action["semanticCapabilities"]
+                .as_array()
+                .is_some_and(|capabilities| capabilities.iter().all(|capability| {
+                    capability["action"] != "read" || capability["evidence"] == "shell-redirection"
+                }))
+        );
         assert!(
             matches!(
                 host_action["subjects"][0]["kind"].as_str(),
@@ -120,8 +128,12 @@ fn action_first_rule_denies_inferred_reads_before_shell_expansion() {
         });
         assert_eq!(
             decision.decision,
-            DecisionKind::Allow,
-            "unprojected execute must not be treated as a semantic read: {command}: {decision:?}"
+            DecisionKind::Deny,
+            "opaque source access must fail closed without inventing a semantic Read: {command}: {decision:?}"
+        );
+        assert_eq!(
+            decision.fields["configRuleId"],
+            "deny-raw-registered-source-action"
         );
     }
 
@@ -136,11 +148,13 @@ fn action_first_rule_denies_inferred_reads_before_shell_expansion() {
         }),
     });
     assert_eq!(native_read.decision, DecisionKind::Deny);
-    assert_eq!(native_read.fields["agentAction"]["action"], "read");
-    assert_eq!(native_read.fields["agentAction"]["effect"], "read");
     assert_eq!(
-        native_read.fields["agentAction"]["authority"],
-        "raw-host-action"
+        native_read.fields["agentAction"]["hostInvocation"]["action"],
+        "read"
+    );
+    assert_eq!(
+        native_read.fields["agentAction"]["semanticCapabilities"][0]["evidence"],
+        "host-invocation"
     );
     assert_eq!(
         native_read.fields["configRuleId"],
@@ -228,11 +242,11 @@ fn registered_source_read_action_matches_real_payload_field_variants() {
             "{label}: payload={payload}"
         );
         assert_eq!(
-            decision.fields["agentAction"]["action"], "read",
+            decision.fields["agentAction"]["hostInvocation"]["action"], "read",
             "{label}: payload={payload}"
         );
         assert_eq!(
-            decision.fields["agentAction"]["effect"], "read",
+            decision.fields["agentAction"]["semanticCapabilities"][0]["action"], "read",
             "{label}: payload={payload}"
         );
         assert_eq!(
@@ -254,7 +268,7 @@ fn later_denied_action_wins_over_earlier_allowed_envelope() {
     let config_path = root.join("config.toml");
     fs::write(
         &config_path,
-        with_required_resident_agents(
+        with_direct_dispatch_roles(
             r#"
 schemaId = "agent.semantic-protocols.hook.client-config"
 schemaVersion = "1"

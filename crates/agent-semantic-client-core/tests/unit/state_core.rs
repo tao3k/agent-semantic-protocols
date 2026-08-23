@@ -69,6 +69,15 @@ fn minimal_layout_writes_manifest_without_project_cache() {
     let state_home = root.join("state");
     fs::create_dir_all(&work).unwrap();
     git(&work, &["init"]);
+    git(
+        &work,
+        &[
+            "remote",
+            "add",
+            "origin",
+            "https://example.invalid/asp/minimal-layout.git",
+        ],
+    );
 
     let state = ResolvedState::resolve_with_state_home(&work, &state_home).unwrap();
     state.ensure_minimal_layout().unwrap();
@@ -156,6 +165,15 @@ fn git_worktree_shares_repo_identity_but_not_workspace_identity() {
     fs::create_dir_all(&main).unwrap();
 
     git(&main, &["init"]);
+    git(
+        &main,
+        &[
+            "remote",
+            "add",
+            "origin",
+            "https://example.invalid/asp/git-worktree.git",
+        ],
+    );
     fs::write(main.join("README.md"), "state core\n").unwrap();
     git(&main, &["add", "README.md"]);
     git(

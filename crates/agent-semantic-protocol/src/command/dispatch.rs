@@ -16,7 +16,7 @@ use super::provider_dispatch::run_language_command;
 use super::root_language_facade::run_root_language_facade;
 use super::run_protocol_version_command;
 use super::runtime_server::run_runtime_server_command;
-use super::source_access::run_source_access_command;
+use super::schema::run_schema_command;
 
 pub(crate) async fn run_protocol_command(args: Vec<String>) -> Result<(), String> {
     run_protocol_command_started(args, tokio::time::Instant::now()).await
@@ -71,8 +71,8 @@ pub(crate) async fn run_protocol_command_started(
         Some("paths") => run_paths_command(&args[1..]),
         Some("healthcheck") => run_healthcheck_command(&args[1..]).await,
         Some("server") => run_runtime_server_command(&args[1..]).await,
+        Some("schema") => run_schema_command(&args[1..]).await,
         Some("live-corpus") => run_live_corpus_command(&args[1..]).await,
-        Some("source-access") => run_source_access_command(&args[1..]),
         Some("ast-patch") => run_ast_patch_command(&args[1..]),
         Some("graph") => run_graph_command(&args[1..]).await,
         Some(document_id) if document_provider::is_document_language(document_id) => {
@@ -172,7 +172,7 @@ fn arg_option_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
 }
 
 fn usage() -> String {
-    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|agent|install|paths|healthcheck|server|workspace-db|live-corpus|source-access|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
+    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|agent|install|paths|healthcheck|server|schema|workspace-db|live-corpus|source-access|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
 }
 
 async fn run_client_command(args: Vec<String>) -> Result<(), String> {

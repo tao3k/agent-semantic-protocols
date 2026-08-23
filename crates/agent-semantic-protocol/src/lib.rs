@@ -4,7 +4,7 @@
 
 mod cli;
 mod command;
-pub use command::prepare_runtime_server_provider_catalog;
+pub use command::prepare_runtime_server_provider_artifacts;
 pub mod session_control_plane;
 pub use command::graph_turbo_resident_process::{
     GraphTurboResidentLaunchSpec, GraphTurboResidentProcess,

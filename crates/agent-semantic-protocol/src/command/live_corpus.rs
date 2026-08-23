@@ -2,10 +2,10 @@
 
 use agent_semantic_runtime::{
     LiveCorpusArtifactIdentity, LiveCorpusGitCheckoutQualification,
-    LiveCorpusLanguageExtensionEvidenceV1, live_corpus_artifact_manifest,
-    live_corpus_artifact_paths, live_corpus_git_checkout_is_clean,
-    live_corpus_git_repository_paths, live_corpus_lock_digest, qualify_live_corpus_git_checkout,
-    qualify_live_corpus_language_extensions, resolve_state_home, sync_live_corpus_git_checkout,
+    LiveCorpusLanguageExtensionEvidence, live_corpus_artifact_manifest, live_corpus_artifact_paths,
+    live_corpus_git_checkout_is_clean, live_corpus_git_repository_paths, live_corpus_lock_digest,
+    qualify_live_corpus_git_checkout, qualify_live_corpus_language_extensions, resolve_state_home,
+    sync_live_corpus_git_checkout,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -14,9 +14,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::provider_activation::{load_activation_for_language, provider_activation_path};
-
-const DEFAULT_LOCK_PATH: &str = "benchmarks/large-library-runtime-corpora.v1.json";
+const DEFAULT_LOCK_PATH: &str = "benchmarks/large-library-runtime-corpora.json";
 
 #[derive(Debug, Eq, PartialEq)]
 struct LiveCorpusMaterializedSourceIdentity {
@@ -44,38 +42,38 @@ const BUILDER_ID: &str = "asp-live-corpus";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct LiveCorpusLockV1 {
+struct LiveCorpusLock {
     schema_id: String,
     schema_version: String,
-    corpora: Vec<LiveCorpusLockEntryV1>,
+    corpora: Vec<LiveCorpusLockEntry>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct LiveCorpusLockEntryV1 {
+struct LiveCorpusLockEntry {
     resource_id: String,
     scenario_id: String,
     provider_id: String,
     language: String,
     repository: String,
-    git: LiveCorpusGitLockV1,
+    git: LiveCorpusGitLock,
     directory: String,
     environment: String,
     #[serde(default)]
-    admission: Option<LiveCorpusExtensionAdmissionV1>,
-    inputs: LiveCorpusInputsV1,
+    admission: Option<LiveCorpusExtensionAdmission>,
+    inputs: LiveCorpusInputs,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct LiveCorpusGitLockV1 {
+struct LiveCorpusGitLock {
     remote: String,
     revision: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct LiveCorpusExtensionAdmissionV1 {
+struct LiveCorpusExtensionAdmission {
     extension_authority: String,
     minimum_matching_files: usize,
     minimum_matching_file_ratio: f64,
@@ -83,7 +81,7 @@ struct LiveCorpusExtensionAdmissionV1 {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct LiveCorpusInputsV1 {
+struct LiveCorpusInputs {
     owner: String,
     query: String,
     dependency: String,
@@ -106,7 +104,7 @@ struct PathRequest {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct LiveCorpusQualificationV1 {
+struct LiveCorpusQualification {
     schema_id: String,
     schema_version: String,
     artifact_digest: String,
@@ -115,14 +113,14 @@ struct LiveCorpusQualificationV1 {
     head_revision: String,
     git_tree: String,
     source_merkle_root: String,
-    language_extension_evidence: LiveCorpusLanguageExtensionEvidenceV1,
+    language_extension_evidence: LiveCorpusLanguageExtensionEvidence,
     clean: bool,
     status: String,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct LiveCorpusMaterializeReceiptV1 {
+struct LiveCorpusMaterializeReceipt {
     schema_id: &'static str,
     schema_version: &'static str,
     resource_id: String,
@@ -138,7 +136,7 @@ struct LiveCorpusMaterializeReceiptV1 {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct LiveCorpusPathReceiptV1 {
+struct LiveCorpusPathReceipt {
     schema_id: &'static str,
     schema_version: &'static str,
     resource_id: String,
@@ -150,7 +148,7 @@ struct LiveCorpusPathReceiptV1 {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct LiveCorpusSyncReceiptV1 {
+struct LiveCorpusSyncReceipt {
     schema_id: &'static str,
     schema_version: &'static str,
     resource_id: String,
@@ -291,34 +289,30 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
     }
     emit_live_corpus_timing("git-status", &mut step_started);
 
-    let invocation_root =
-        env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
-    let activation_path = provider_activation_path(&invocation_root);
-    let runtime =
-        load_activation_for_language(&activation_path, &invocation_root, &corpus.language).await?;
-    emit_live_corpus_timing("activation", &mut step_started);
-    let provider = runtime
-        .providers
-        .iter()
-        .find(|provider| provider.language_id == corpus.language.as_str())
-        .ok_or_else(|| format!("no activated provider for language {}", corpus.language))?;
-    if provider.provider_id.as_str() != corpus.provider_id {
+    let registration = agent_semantic_provider_protocol::builtin_provider_registrations()?
+        .into_iter()
+        .find(|registration| registration.language_id == corpus.language)
+        .ok_or_else(|| {
+            format!(
+                "no builtin provider registration for language {}",
+                corpus.language
+            )
+        })?;
+    if registration.provider_id != corpus.provider_id {
         return Err(format!(
-            "live corpus provider mismatch: lock={} activation={}",
-            corpus.provider_id, provider.provider_id
+            "live corpus provider mismatch: lock={} registration={}",
+            corpus.provider_id, registration.provider_id
         ));
     }
-    let registry_extensions = runtime
-        .providers
-        .iter()
-        .flat_map(|provider| provider.source_extensions.iter().cloned())
-        .collect::<Vec<_>>();
+    let source_inventory = registration.source_inventory()?;
+    let registry_extensions = source_inventory.source_extensions.clone();
     let extension_evidence = qualify_live_corpus_language_extensions(
         &source,
-        &provider.source_extensions,
+        &source_inventory.source_extensions,
         &registry_extensions,
     )?;
     validate_extension_admission(corpus, &extension_evidence)?;
+    emit_live_corpus_timing("provider-registration", &mut step_started);
     emit_live_corpus_timing("extension-evidence", &mut step_started);
 
     let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&state_home)?
@@ -358,7 +352,7 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
     let paths = live_corpus_artifact_paths(&state_home, &repository, &identity)?;
     let manifest =
         live_corpus_artifact_manifest(&corpus.git.remote, &repository, &identity, &paths)?;
-    let qualification = LiveCorpusQualificationV1 {
+    let qualification = LiveCorpusQualification {
         schema_id: "agent.semantic-protocols.live-corpus-artifact-qualification".to_owned(),
         schema_version: "1".to_owned(),
         artifact_digest: paths.artifact_digest.clone(),
@@ -377,7 +371,7 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
     publish_current_pointer(&paths.current_pointer, &paths.artifact_dir)?;
     emit_live_corpus_timing("publication", &mut step_started);
 
-    let receipt = LiveCorpusMaterializeReceiptV1 {
+    let receipt = LiveCorpusMaterializeReceipt {
         schema_id: "agent.semantic-protocols.live-corpus-materialize-receipt",
         schema_version: "1",
         resource_id: corpus.resource_id.clone(),
@@ -435,7 +429,7 @@ fn print_path(request: PathRequest) -> Result<(), String> {
         .repository_dir
         .join("checkouts")
         .join(&corpus.git.revision);
-    let receipt = LiveCorpusPathReceiptV1 {
+    let receipt = LiveCorpusPathReceipt {
         schema_id: "agent.semantic-protocols.live-corpus-path-receipt",
         schema_version: "1",
         resource_id: corpus.resource_id.clone(),
@@ -465,7 +459,7 @@ fn sync_resource(request: PathRequest) -> Result<(), String> {
     let state_home = resolve_state_home()?;
     let checkout =
         sync_live_corpus_git_checkout(&state_home, &corpus.git.remote, &corpus.git.revision)?;
-    let receipt = LiveCorpusSyncReceiptV1 {
+    let receipt = LiveCorpusSyncReceipt {
         schema_id: "agent.semantic-protocols.live-corpus-sync-receipt",
         schema_version: "1",
         resource_id: corpus.resource_id.clone(),
@@ -493,15 +487,15 @@ fn sync_resource(request: PathRequest) -> Result<(), String> {
     Ok(())
 }
 
-fn load_lock(path: &Path) -> Result<LiveCorpusLockV1, String> {
+fn load_lock(path: &Path) -> Result<LiveCorpusLock, String> {
     let lock_bytes = fs::read(path).map_err(|error| {
         format!(
             "failed to read live-corpus lock {}: {error}",
             path.display()
         )
     })?;
-    let lock: LiveCorpusLockV1 = serde_json::from_slice(&lock_bytes)
-        .map_err(|error| format!("failed to decode live-corpus v1 lock: {error}"))?;
+    let lock: LiveCorpusLock = serde_json::from_slice(&lock_bytes)
+        .map_err(|error| format!("failed to decode live-corpus lock: {error}"))?;
     if lock.schema_id != "agent.semantic-protocols.semantic-sandtable-large-library-corpora"
         || lock.schema_version != "1"
     {
@@ -511,9 +505,9 @@ fn load_lock(path: &Path) -> Result<LiveCorpusLockV1, String> {
 }
 
 fn unique_resource<'a>(
-    corpora: &'a [LiveCorpusLockEntryV1],
+    corpora: &'a [LiveCorpusLockEntry],
     resource_id: &str,
-) -> Result<&'a LiveCorpusLockEntryV1, String> {
+) -> Result<&'a LiveCorpusLockEntry, String> {
     let matches = corpora
         .iter()
         .filter(|corpus| corpus.resource_id == resource_id)
@@ -526,8 +520,8 @@ fn unique_resource<'a>(
 }
 
 fn validate_extension_admission(
-    corpus: &LiveCorpusLockEntryV1,
-    evidence: &LiveCorpusLanguageExtensionEvidenceV1,
+    corpus: &LiveCorpusLockEntry,
+    evidence: &LiveCorpusLanguageExtensionEvidence,
 ) -> Result<(), String> {
     let Some(admission) = corpus.admission.as_ref() else {
         return Ok(());

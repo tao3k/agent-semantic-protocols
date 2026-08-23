@@ -19,37 +19,45 @@ pub struct RuntimeArtifactReceipt {
     pub reference: RuntimeArtifactReference,
 }
 
+/// Explicit authority for a qualified artifact whose final launcher is
+/// materialized in State Home from a development-workspace build.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QualifiedRuntimeArtifactSource {
+    checkout_root: PathBuf,
+}
+
+impl QualifiedRuntimeArtifactSource {
+    pub fn develop_state_home_staging(checkout_root: PathBuf) -> Result<Self, String> {
+        if !checkout_root.is_absolute() {
+            return Err("qualified Runtime artifact checkout root must be absolute".to_owned());
+        }
+        Ok(Self { checkout_root })
+    }
+}
+
 pub const RUNTIME_ARTIFACT_REFERENCE_SCHEMA_ID: &str =
-    "agent.semantic-protocols.runtime-artifact-reference.v1";
+    "agent.semantic-protocols.runtime-artifact-reference";
 pub const RUNTIME_ARTIFACT_REFERENCE_SCHEMA_VERSION: u64 = 1;
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase", tag = "kind", content = "identity")]
 pub enum RuntimeBinaryIdentity {
     Content { value: String, algorithm: String },
-    DeveloperSourceGeneration { value: String, algorithm: String },
 }
 
 impl RuntimeBinaryIdentity {
     pub fn kind(&self) -> &'static str {
-        match self {
-            Self::Content { .. } => "content",
-            Self::DeveloperSourceGeneration { .. } => "developer-source-generation",
-        }
+        "content"
     }
 
     pub fn algorithm(&self) -> &str {
-        match self {
-            Self::Content { algorithm, .. } | Self::DeveloperSourceGeneration { algorithm, .. } => {
-                algorithm
-            }
-        }
+        let Self::Content { algorithm, .. } = self;
+        algorithm
     }
 
     pub fn value(&self) -> &str {
-        match self {
-            Self::Content { value, .. } | Self::DeveloperSourceGeneration { value, .. } => value,
-        }
+        let Self::Content { value, .. } = self;
+        value
     }
 }
 
@@ -76,6 +84,10 @@ impl RuntimeArtifactReference {
         checkout_root: Option<PathBuf>,
     ) -> Self {
         let content_digest = content_digest.into();
+        let identity_value = content_digest
+            .strip_prefix("blake3-256:")
+            .unwrap_or(&content_digest)
+            .to_owned();
         Self {
             schema_id: RUNTIME_ARTIFACT_REFERENCE_SCHEMA_ID.to_owned(),
             schema_version: RUNTIME_ARTIFACT_REFERENCE_SCHEMA_VERSION,
@@ -84,7 +96,7 @@ impl RuntimeArtifactReference {
             executable_path,
             content_digest: content_digest.clone(),
             identity: RuntimeBinaryIdentity::Content {
-                value: content_digest,
+                value: identity_value,
                 algorithm: "blake3-256".to_owned(),
             },
             checkout_root,
@@ -113,15 +125,19 @@ impl RuntimeArtifactReference {
                 self.executable_path.display()
             ));
         }
-        if matches!(self.identity, RuntimeBinaryIdentity::Content { .. }) {
-            let Some(digest_hex) = self.content_digest.strip_prefix("blake3-256:") else {
-                return Err("runtime artifact content digest must use blake3-256".to_owned());
-            };
-            if digest_hex.len() != 64 || !digest_hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-                return Err(
-                    "runtime artifact content digest must contain 64 hexadecimal digits".to_owned(),
-                );
-            }
+        let Some(digest_hex) = self.content_digest.strip_prefix("blake3-256:") else {
+            return Err("runtime artifact content digest must use blake3-256".to_owned());
+        };
+        if digest_hex.len() != 64 || !digest_hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(
+                "runtime artifact content digest must contain 64 hexadecimal digits".to_owned(),
+            );
+        }
+        let RuntimeBinaryIdentity::Content { value, algorithm } = &self.identity;
+        if algorithm != "blake3-256" || value != digest_hex {
+            return Err(format!(
+                "runtime artifact identity drift: digest={digest_hex} identityAlgorithm={algorithm} identityValue={value}"
+            ));
         }
         Ok(())
     }
@@ -132,15 +148,6 @@ impl RuntimeArtifactReference {
 pub struct RuntimeArtifactCatalog {
     mode: RuntimeArtifactMode,
     provider_catalog_generation: Option<String>,
-}
-
-/// Filesystem-independent plan for Developer-mode executable publication.
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct DeveloperArtifactPublicationPlan {
-    pub source_identity: PathBuf,
-    pub target: PathBuf,
-    pub artifact_digest: String,
-    pub reference: RuntimeArtifactReference,
 }
 
 fn runtime_artifact_content_digest(path: &Path) -> Result<String, String> {
@@ -172,6 +179,8 @@ fn runtime_artifact_content_digest(path: &Path) -> Result<String, String> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeArtifactPublication {
     pub path: PathBuf,
+    pub source_path: PathBuf,
+    pub source_generation: String,
     pub status: &'static str,
     pub artifact_digest: String,
     pub reference: RuntimeArtifactReference,
@@ -180,10 +189,8 @@ pub struct RuntimeArtifactPublication {
 
 /// Publishes one Runtime artifact according to the state-home authority.
 ///
-/// Developer mode publishes a direct stable link to the verified checkout build
-/// output and never creates a digest generation. Release mode stages one verified
-/// digest generation, atomically moves the stable slot, then removes generations
-/// that are unreachable from Runtime-owned slots.
+/// Development and release sources are provenance inputs only. Both are copied
+/// into the same content-addressed store before an executable slot is moved.
 pub async fn publish_runtime_artifact(
     state_home: &Path,
     source: &Path,
@@ -191,6 +198,34 @@ pub async fn publish_runtime_artifact(
     artifact_root: &Path,
     artifact_kind: impl Into<String>,
 ) -> Result<RuntimeArtifactPublication, String> {
+    let guard = crate::runtime_artifact_retention::RuntimeArtifactMutationGuard::try_acquire(
+        artifact_root,
+    )?;
+    publish_runtime_artifact_under_guard(
+        state_home,
+        source,
+        target,
+        artifact_root,
+        artifact_kind,
+        &guard,
+    )
+    .await
+}
+
+pub async fn publish_runtime_artifact_under_guard(
+    state_home: &Path,
+    source: &Path,
+    target: &Path,
+    artifact_root: &Path,
+    artifact_kind: impl Into<String>,
+    guard: &crate::runtime_artifact_retention::RuntimeArtifactMutationGuard,
+) -> Result<RuntimeArtifactPublication, String> {
+    if !guard.admits(artifact_root) {
+        return Err(format!(
+            "Runtime artifact mutation guard authority drift: artifactRoot={}",
+            artifact_root.display()
+        ));
+    }
     let permit = artifact_publication_semaphore()
         .clone()
         .acquire_owned()
@@ -201,8 +236,10 @@ pub async fn publish_runtime_artifact(
     let target = target.to_path_buf();
     let artifact_root = artifact_root.to_path_buf();
     let artifact_kind = artifact_kind.into();
+    let guard = guard.clone();
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
+        let _guard = guard;
         publish_runtime_artifact_blocking(
             &state_home,
             &source,
@@ -213,6 +250,134 @@ pub async fn publish_runtime_artifact(
     })
     .await
     .map_err(|error| format!("runtime artifact publication task failed: {error}"))?
+}
+
+pub async fn publish_qualified_runtime_artifact_under_guard(
+    state_home: &Path,
+    source: &Path,
+    target: &Path,
+    artifact_root: &Path,
+    artifact_kind: impl Into<String>,
+    authority: QualifiedRuntimeArtifactSource,
+    guard: &crate::runtime_artifact_retention::RuntimeArtifactMutationGuard,
+) -> Result<RuntimeArtifactPublication, String> {
+    if !guard.admits(artifact_root) {
+        return Err(format!(
+            "Runtime artifact mutation guard authority drift: artifactRoot={}",
+            artifact_root.display()
+        ));
+    }
+    let permit = artifact_publication_semaphore()
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|_| "Runtime artifact publication scheduler closed".to_owned())?;
+    let state_home = state_home.to_path_buf();
+    let source = source.to_path_buf();
+    let target = target.to_path_buf();
+    let artifact_root = artifact_root.to_path_buf();
+    let artifact_kind = artifact_kind.into();
+    let guard = guard.clone();
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        let _guard = guard;
+        publish_qualified_runtime_artifact_blocking(
+            &state_home,
+            &source,
+            &target,
+            &artifact_root,
+            artifact_kind,
+            authority,
+        )
+    })
+    .await
+    .map_err(|error| format!("qualified Runtime artifact publication task failed: {error}"))?
+}
+
+/// Promotes the current immutable generation only after an external Runtime
+/// health authority has qualified the exact same content digest. The empty
+/// active/healthy pair is seeded during first publication; later publications cannot move
+/// the healthy slot through this API without matching health evidence.
+pub async fn promote_active_runtime_artifact_to_healthy(
+    state_home: &Path,
+    binary: &str,
+    qualified_digest: &str,
+) -> Result<String, String> {
+    if binary.is_empty()
+        || Path::new(binary).components().count() != 1
+        || Path::new(binary).file_name().and_then(|name| name.to_str()) != Some(binary)
+    {
+        return Err(format!(
+            "invalid Runtime artifact binary identity: {binary:?}"
+        ));
+    }
+    let state_home = state_home.to_path_buf();
+    let binary = binary.to_owned();
+    let qualified_digest = qualified_digest
+        .strip_prefix("blake3-256:")
+        .unwrap_or(qualified_digest)
+        .to_owned();
+    let artifact_root = state_home.join("runtime/artifacts");
+    tokio::task::spawn_blocking(move || {
+        let _mutation_guard =
+            crate::runtime_artifact_retention::RuntimeArtifactMutationGuard::try_acquire(
+                &artifact_root,
+            )?;
+        let runtime_root = state_home.join("runtime");
+        let algorithm_root = artifact_root.join("blake3-256");
+        let profile_root = runtime_root.join("profiles").join(&binary);
+        let active_slot = profile_root.join("active");
+        let healthy_slot = profile_root.join("healthy");
+        let active_identity = std::fs::canonicalize(&active_slot).map_err(|error| {
+            format!(
+                "resolve active Runtime artifact {}: {error}",
+                active_slot.display()
+            )
+        })?;
+        let canonical_algorithm_root = std::fs::canonicalize(&algorithm_root).map_err(|error| {
+            format!(
+                "resolve Runtime artifact content store {}: {error}",
+                algorithm_root.display()
+            )
+        })?;
+        let relative = active_identity
+            .strip_prefix(&canonical_algorithm_root)
+            .map_err(|_| {
+                format!(
+                    "active Runtime artifact escapes content store: {}",
+                    active_identity.display()
+                )
+            })?;
+        let mut components = relative.components();
+        let digest = components
+            .next()
+            .and_then(|component| component.as_os_str().to_str())
+            .filter(|digest| {
+                digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+            })
+            .ok_or_else(|| "active Runtime artifact has no valid content digest".to_owned())?;
+        if digest != qualified_digest {
+            return Err(format!(
+                "Runtime health identity does not qualify active artifact: qualified={qualified_digest} active={digest}"
+            ));
+        }
+        let artifact_binary = components
+            .next()
+            .and_then(|component| component.as_os_str().to_str());
+        if artifact_binary != Some(binary.as_str()) || components.next().is_some() {
+            return Err(format!(
+                "active Runtime artifact identity drift: expected={binary} actual={}",
+                active_identity.display()
+            ));
+        }
+        publish_runtime_artifact_link(&active_identity, &healthy_slot)?;
+        crate::runtime_artifact_retention::prune_unreachable_runtime_artifacts_blocking(
+            &artifact_root,
+        )?;
+        Ok(digest.to_owned())
+    })
+    .await
+    .map_err(|error| format!("Runtime artifact health promotion task failed: {error}"))?
 }
 
 fn artifact_publication_semaphore() -> &'static Arc<tokio::sync::Semaphore> {
@@ -227,78 +392,96 @@ fn publish_runtime_artifact_blocking(
     artifact_root: &Path,
     artifact_kind: String,
 ) -> Result<RuntimeArtifactPublication, String> {
-    if let Some(developer_root) = load_runtime_developer_root(state_home)? {
-        let plan = prepare_developer_artifact_publication_blocking(
-            &developer_root,
-            source,
-            target,
-            artifact_kind,
-        )?;
-        return publish_developer_artifact(plan, artifact_root);
-    }
-    publish_release_artifact(source, target, artifact_root, artifact_kind)
-}
-
-fn publish_developer_artifact(
-    plan: DeveloperArtifactPublicationPlan,
-    _artifact_root: &Path,
-) -> Result<RuntimeArtifactPublication, String> {
-    let target_is_current = std::fs::canonicalize(&plan.target)
-        .ok()
-        .is_some_and(|identity| identity == plan.source_identity);
-    let status = if target_is_current {
-        "current"
-    } else {
-        let parent = plan.target.parent().ok_or_else(|| {
-            format!(
-                "development runtime artifact target has no parent: {}",
-                plan.target.display()
-            )
-        })?;
-        std::fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-        let staged = temporary_runtime_artifact_path(&plan.target);
-        remove_stale_staged_artifact(&staged)?;
-        stage_runtime_artifact_link(&plan.source_identity, &staged)?;
-        let status = if std::fs::symlink_metadata(&plan.target).is_ok() {
-            "updated"
-        } else {
-            "installed"
-        };
-        atomic_replace_runtime_artifact(&staged, &plan.target)?;
-        status
+    let (origin, checkout_root) = match load_runtime_developer_root(state_home)? {
+        Some(root) => {
+            let source_identity = std::fs::canonicalize(source).map_err(|error| {
+                format!(
+                    "canonicalize development artifact source {}: {error}",
+                    source.display()
+                )
+            })?;
+            if !source_identity.starts_with(&root) {
+                return Err(format!(
+                    "development artifact source escapes configured root: source={} root={}",
+                    source_identity.display(),
+                    root.display()
+                ));
+            }
+            (ArtifactOrigin::DevelopWorkspace, Some(root))
+        }
+        None => (ArtifactOrigin::LockedRelease, None),
     };
-    let published_identity = std::fs::canonicalize(&plan.target).map_err(|error| {
-        format!(
-            "failed to resolve published development runtime artifact {}: {error}",
-            plan.target.display()
-        )
-    })?;
-    if published_identity != plan.source_identity {
-        return Err(format!(
-            "development runtime artifact publication drift: expected={} actual={}",
-            plan.source_identity.display(),
-            published_identity.display()
-        ));
-    }
-    Ok(RuntimeArtifactPublication {
-        path: plan.target,
-        status,
-        artifact_digest: plan.artifact_digest,
-        identity: plan.reference.identity.clone(),
-        reference: plan.reference,
-    })
+    publish_content_artifact(
+        source,
+        target,
+        artifact_root,
+        artifact_kind,
+        origin,
+        checkout_root,
+    )
 }
 
-fn publish_release_artifact(
+fn publish_qualified_runtime_artifact_blocking(
+    state_home: &Path,
     source: &Path,
     target: &Path,
     artifact_root: &Path,
     artifact_kind: String,
+    authority: QualifiedRuntimeArtifactSource,
+) -> Result<RuntimeArtifactPublication, String> {
+    let configured_root = load_runtime_developer_root(state_home)?
+        .ok_or_else(|| "qualified development artifact requires Runtime dev mode".to_owned())?;
+    let checkout_root = std::fs::canonicalize(&authority.checkout_root).map_err(|error| {
+        format!(
+            "canonicalize qualified Runtime checkout root {}: {error}",
+            authority.checkout_root.display()
+        )
+    })?;
+    if checkout_root != configured_root {
+        return Err(format!(
+            "qualified Runtime artifact checkout authority drift: expected={} actual={}",
+            configured_root.display(),
+            checkout_root.display()
+        ));
+    }
+    let source_identity = std::fs::canonicalize(source).map_err(|error| {
+        format!(
+            "canonicalize qualified Runtime artifact source {}: {error}",
+            source.display()
+        )
+    })?;
+    let staging_root = state_home
+        .join("runtime/provider-artifacts")
+        .join(&artifact_kind)
+        .join("artifacts");
+    if !source_identity.starts_with(&staging_root) {
+        return Err(format!(
+            "qualified Runtime artifact source escapes provider staging: source={} stagingRoot={}",
+            source_identity.display(),
+            staging_root.display()
+        ));
+    }
+    publish_content_artifact(
+        &source_identity,
+        target,
+        artifact_root,
+        artifact_kind,
+        ArtifactOrigin::DevelopWorkspace,
+        Some(checkout_root),
+    )
+}
+
+fn publish_content_artifact(
+    source: &Path,
+    target: &Path,
+    artifact_root: &Path,
+    artifact_kind: String,
+    origin: ArtifactOrigin,
+    checkout_root: Option<PathBuf>,
 ) -> Result<RuntimeArtifactPublication, String> {
     if !target.is_absolute() || !artifact_root.is_absolute() {
         return Err(format!(
-            "release runtime artifact publication requires absolute paths: target={} artifactRoot={}",
+            "runtime artifact publication requires absolute paths: target={} artifactRoot={}",
             target.display(),
             artifact_root.display()
         ));
@@ -315,31 +498,22 @@ fn publish_release_artifact(
             source_identity.display()
         ));
     }
-    let content_digest = runtime_artifact_content_digest(&source_identity)?;
+    let source_generation =
+        crate::runtime_artifact_identity::runtime_artifact_source_generation(&source_identity)?;
     let file_name = target.file_name().ok_or_else(|| {
         format!(
-            "release runtime artifact target has no file name: {}",
+            "runtime artifact target has no file name: {}",
             target.display()
         )
     })?;
-    let artifact_path = artifact_root
-        .join("blake3-256")
-        .join(&content_digest)
-        .join(file_name);
-    if !artifact_path.is_file() {
-        let artifact_parent = artifact_path.parent().ok_or_else(|| {
-            format!(
-                "release runtime artifact has no parent: {}",
-                artifact_path.display()
-            )
-        })?;
-        std::fs::create_dir_all(artifact_parent)
-            .map_err(|error| format!("failed to create {}: {error}", artifact_parent.display()))?;
-        let staged = temporary_runtime_artifact_path(&artifact_path);
-        remove_stale_staged_artifact(&staged)?;
+    std::fs::create_dir_all(artifact_root)
+        .map_err(|error| format!("failed to create {}: {error}", artifact_root.display()))?;
+    let staged = temporary_runtime_artifact_path(&artifact_root.join(file_name));
+    remove_stale_staged_artifact(&staged)?;
+    let staged_snapshot = (|| -> Result<String, String> {
         std::fs::copy(&source_identity, &staged).map_err(|error| {
             format!(
-                "failed to stage release runtime artifact {}: {error}",
+                "failed to snapshot runtime artifact {}: {error}",
                 staged.display()
             )
         })?;
@@ -348,14 +522,55 @@ fn publish_release_artifact(
             .permissions();
         std::fs::set_permissions(&staged, permissions)
             .map_err(|error| format!("failed to chmod {}: {error}", staged.display()))?;
-        let staged_digest = runtime_artifact_content_digest(&staged)?;
-        if staged_digest != content_digest {
+        runtime_artifact_content_digest(&staged)
+    })();
+    let content_digest = match staged_snapshot {
+        Ok(digest) => digest,
+        Err(error) => {
             let _ = std::fs::remove_file(&staged);
+            return Err(error);
+        }
+    };
+    let source_generation_after_snapshot =
+        crate::runtime_artifact_identity::runtime_artifact_source_generation(&source_identity)?;
+    if source_generation_after_snapshot != source_generation {
+        let _ = std::fs::remove_file(&staged);
+        return Err(format!(
+            "Runtime artifact source changed during snapshot: source={} reasonKind=source-generation-raced",
+            source_identity.display()
+        ));
+    }
+    let artifact_path = artifact_root
+        .join("blake3-256")
+        .join(&content_digest)
+        .join(file_name);
+    if !artifact_path.is_file() {
+        let artifact_parent = artifact_path.parent().ok_or_else(|| {
+            format!(
+                "runtime artifact has no parent: {}",
+                artifact_path.display()
+            )
+        })?;
+        std::fs::create_dir_all(artifact_parent)
+            .map_err(|error| format!("failed to create {}: {error}", artifact_parent.display()))?;
+        if let Err(error) = atomic_replace_runtime_artifact(&staged, &artifact_path) {
+            let _ = std::fs::remove_file(&staged);
+            return Err(error);
+        }
+    } else {
+        let staged_len = std::fs::metadata(&staged)
+            .map_err(|error| format!("failed to inspect {}: {error}", staged.display()))?
+            .len();
+        let existing_len = std::fs::metadata(&artifact_path)
+            .map_err(|error| format!("failed to inspect {}: {error}", artifact_path.display()))?
+            .len();
+        let _ = std::fs::remove_file(&staged);
+        if existing_len != staged_len {
             return Err(format!(
-                "release runtime artifact digest drift: expected={content_digest} actual={staged_digest}"
+                "content-addressed runtime artifact size drift: digest={content_digest} stagedBytes={staged_len} existingBytes={existing_len} path={}",
+                artifact_path.display(),
             ));
         }
-        atomic_replace_runtime_artifact(&staged, &artifact_path)?;
     }
     let artifact_identity = std::fs::canonicalize(&artifact_path).map_err(|error| {
         format!(
@@ -363,53 +578,130 @@ fn publish_release_artifact(
             artifact_path.display()
         )
     })?;
-    let target_is_current = std::fs::canonicalize(target)
+    let runtime_root = artifact_root.parent().ok_or_else(|| {
+        format!(
+            "runtime artifact root has no runtime parent: {}",
+            artifact_root.display()
+        )
+    })?;
+    let profile_root = runtime_root.join("profiles").join(file_name);
+    let active_slot = profile_root.join("active");
+    let healthy_slot = profile_root.join("healthy");
+    std::fs::create_dir_all(&profile_root)
+        .map_err(|error| format!("failed to create {}: {error}", profile_root.display()))?;
+
+    let previous_active = resolve_artifact_profile_slot(&active_slot, artifact_root, file_name)?;
+    let current_healthy = resolve_artifact_profile_slot(&healthy_slot, artifact_root, file_name)?;
+    if current_healthy.is_none() {
+        publish_runtime_artifact_link(
+            previous_active.as_deref().unwrap_or(&artifact_identity),
+            &healthy_slot,
+        )?;
+    }
+    let target_is_current = std::fs::canonicalize(&active_slot)
         .ok()
         .is_some_and(|identity| identity == artifact_identity);
     let status = if target_is_current {
         "current"
     } else {
-        let parent = target.parent().ok_or_else(|| {
-            format!(
-                "release runtime artifact target has no parent: {}",
-                target.display()
-            )
-        })?;
-        std::fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-        let staged = temporary_runtime_artifact_path(target);
-        remove_stale_staged_artifact(&staged)?;
-        stage_runtime_artifact_link(&artifact_identity, &staged)?;
-        let status = if std::fs::symlink_metadata(target).is_ok() {
+        let status = if std::fs::symlink_metadata(&active_slot).is_ok() {
             "updated"
         } else {
             "installed"
         };
-        atomic_replace_runtime_artifact(&staged, target)?;
+        publish_runtime_artifact_link(&artifact_identity, &active_slot)?;
         status
     };
+    let target_is_active_slot = std::fs::read_link(target)
+        .ok()
+        .is_some_and(|link| link == active_slot);
+    if !target_is_active_slot {
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+        }
+        publish_runtime_artifact_link(&active_slot, target)?;
+    }
     let reference = RuntimeArtifactReference {
         schema_id: RUNTIME_ARTIFACT_REFERENCE_SCHEMA_ID.to_owned(),
         schema_version: RUNTIME_ARTIFACT_REFERENCE_SCHEMA_VERSION,
         artifact_kind,
-        origin: ArtifactOrigin::LockedRelease,
+        origin,
         executable_path: target.to_path_buf(),
         content_digest: format!("blake3-256:{content_digest}"),
         identity: RuntimeBinaryIdentity::Content {
             value: content_digest.clone(),
             algorithm: "blake3-256".to_owned(),
         },
-        checkout_root: None,
+        checkout_root,
     };
     reference.validate()?;
     crate::runtime_artifact_retention::prune_unreachable_runtime_artifacts_blocking(artifact_root)?;
     Ok(RuntimeArtifactPublication {
         path: target.to_path_buf(),
+        source_path: source_identity,
+        source_generation,
         status,
         artifact_digest: content_digest,
         identity: reference.identity.clone(),
         reference,
     })
+}
+
+fn publish_runtime_artifact_link(artifact: &Path, target: &Path) -> Result<(), String> {
+    let staged = temporary_runtime_artifact_path(target);
+    remove_stale_staged_artifact(&staged)?;
+    stage_runtime_artifact_link(artifact, &staged)?;
+    atomic_replace_runtime_artifact(&staged, target)
+}
+
+fn resolve_artifact_profile_slot(
+    slot: &Path,
+    artifact_root: &Path,
+    binary: &std::ffi::OsStr,
+) -> Result<Option<PathBuf>, String> {
+    let identity = match std::fs::canonicalize(slot) {
+        Ok(identity) => identity,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "failed to resolve Runtime artifact slot {}: {error}",
+                slot.display()
+            ));
+        }
+    };
+    let algorithm_root =
+        std::fs::canonicalize(artifact_root.join("blake3-256")).map_err(|error| {
+            format!(
+                "failed to resolve Runtime artifact content store {}: {error}",
+                artifact_root.display()
+            )
+        })?;
+    let relative = identity.strip_prefix(&algorithm_root).map_err(|_| {
+        format!(
+            "Runtime artifact slot escapes content store: slot={} target={}",
+            slot.display(),
+            identity.display()
+        )
+    })?;
+    let mut components = relative.components();
+    let digest_valid = components
+        .next()
+        .and_then(|component| component.as_os_str().to_str())
+        .is_some_and(|digest| {
+            digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+        });
+    let binary_matches = components
+        .next()
+        .is_some_and(|component| component.as_os_str() == binary);
+    if !digest_valid || !binary_matches || components.next().is_some() {
+        return Err(format!(
+            "Runtime artifact slot identity drift: slot={} target={}",
+            slot.display(),
+            identity.display()
+        ));
+    }
+    Ok(Some(identity))
 }
 
 fn temporary_runtime_artifact_path(target: &Path) -> PathBuf {
@@ -474,84 +766,6 @@ fn atomic_replace_runtime_artifact(staged: &Path, target: &Path) -> Result<(), S
         .map_err(|error| format!("failed to atomically publish {}: {error}", target.display()))
 }
 
-fn prepare_developer_artifact_publication_blocking(
-    developer_root: &Path,
-    source: &Path,
-    target: &Path,
-    artifact_kind: impl Into<String>,
-) -> Result<DeveloperArtifactPublicationPlan, String> {
-    let developer_root = std::fs::canonicalize(developer_root).map_err(|error| {
-        format!(
-            "canonicalize development artifact root {}: {error}",
-            developer_root.display()
-        )
-    })?;
-    let source_identity = std::fs::canonicalize(source).map_err(|error| {
-        format!(
-            "canonicalize development artifact source {}: {error}",
-            source.display()
-        )
-    })?;
-    if !source_identity.is_file() {
-        return Err(format!(
-            "development artifact source must be a file: {}",
-            source_identity.display()
-        ));
-    }
-    if !source_identity.starts_with(&developer_root) {
-        return Err(format!(
-            "development artifact source escapes configured root: source={} root={}",
-            source_identity.display(),
-            developer_root.display()
-        ));
-    }
-    if !target.is_absolute() {
-        return Err(format!(
-            "development artifact target must be absolute: {}",
-            target.display()
-        ));
-    }
-    let metadata = std::fs::metadata(&source_identity).map_err(|error| {
-        format!(
-            "inspect development artifact {}: {error}",
-            source_identity.display()
-        )
-    })?;
-    let modified_ns = metadata
-        .modified()
-        .ok()
-        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-        .map_or(0, |duration| duration.as_nanos());
-    let generation_input = format!(
-        "{}:{}:{}",
-        source_identity.display(),
-        metadata.len(),
-        modified_ns
-    );
-    let artifact_digest = blake3::hash(generation_input.as_bytes())
-        .to_hex()
-        .to_string();
-    let reference = RuntimeArtifactReference::new(
-        artifact_kind,
-        ArtifactOrigin::DevelopWorkspace,
-        source_identity.clone(),
-        String::new(),
-        Some(developer_root),
-    );
-    let mut reference = reference;
-    reference.identity = RuntimeBinaryIdentity::DeveloperSourceGeneration {
-        value: artifact_digest.clone(),
-        algorithm: "blake3-metadata-v1".to_owned(),
-    };
-    reference.validate()?;
-    Ok(DeveloperArtifactPublicationPlan {
-        source_identity,
-        target: target.to_path_buf(),
-        artifact_digest,
-        reference,
-    })
-}
-
 impl RuntimeArtifactCatalog {
     pub fn admit_reference(
         &self,
@@ -567,11 +781,19 @@ impl RuntimeArtifactCatalog {
                 if reference.checkout_root.as_deref() != Some(root.as_path()) {
                     return Err("development artifact checkout root drift".to_owned());
                 }
-                if !reference.executable_path.starts_with(root) {
+                let stable_slots = [runtime_root.join("bin"), runtime_root.join("profiles")];
+                if !stable_slots
+                    .iter()
+                    .any(|stable_root| reference.executable_path.starts_with(stable_root))
+                {
                     return Err(format!(
-                        "development artifact executable escapes configured root: {}",
+                        "development artifact executable is outside stable runtime slots: {}",
                         reference.executable_path.display()
                     ));
+                }
+                let content_store = runtime_root.join("artifacts").join("blake3-256");
+                if reference.executable_path.starts_with(&content_store) {
+                    return Err("content-store path cannot be an active executable".to_owned());
                 }
             }
             RuntimeArtifactMode::Release => {
@@ -591,9 +813,9 @@ impl RuntimeArtifactCatalog {
                         reference.executable_path.display()
                     ));
                 }
-                let digest_lattice = runtime_root.join("artifacts").join("blake3-256");
-                if reference.executable_path.starts_with(&digest_lattice) {
-                    return Err("digest lattice path cannot be an active executable".to_owned());
+                let content_store = runtime_root.join("artifacts").join("blake3-256");
+                if reference.executable_path.starts_with(&content_store) {
+                    return Err("content-store path cannot be an active executable".to_owned());
                 }
             }
         }

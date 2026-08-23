@@ -61,7 +61,7 @@ fn gix_sync_feature_contract_can_create_sha1_checkout_repository() {
 #[ignore = "networked developer live-corpus gate"]
 fn developer_live_worg_sync_is_pinned_and_reusable() {
     let lock_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../benchmarks/large-library-runtime-corpora.v1.json");
+        .join("../../benchmarks/large-library-runtime-corpora.json");
     let lock: serde_json::Value =
         serde_json::from_slice(&fs::read(&lock_path).expect("read shared live-corpus lock"))
             .expect("decode shared live-corpus lock");

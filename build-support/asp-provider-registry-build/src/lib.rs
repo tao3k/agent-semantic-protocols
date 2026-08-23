@@ -40,20 +40,20 @@ fn read_json(path: &Path) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-#[test]
-fn embeds_identity_register_without_provider_source_paths() {
+    #[test]
+    fn embeds_identity_register_without_provider_source_paths() {
         let root = std::env::temp_dir().join(format!("asp-registry-build-{}", std::process::id()));
         fs::create_dir_all(root.join("schemas")).unwrap();
         fs::write(
-        root.join("schemas/provider-register.json"),
-        r#"{"providers":[{"providerId":"asp-rust","languageId":"rust"}]}"#,
-    )
-    .unwrap();
-    let result = resolve_provider_register(&root).unwrap();
-    assert_eq!(result.input_paths.len(), 1);
-    let register: Value = serde_json::from_slice(&result.bytes).unwrap();
-    assert_eq!(register["providers"][0]["providerId"], "asp-rust");
-    assert!(register["providers"][0].get("descriptor").is_none());
+            root.join("schemas/provider-register.json"),
+            r#"{"providers":[{"providerId":"asp-rust","languageId":"rust"}]}"#,
+        )
+        .unwrap();
+        let result = resolve_provider_register(&root).unwrap();
+        assert_eq!(result.input_paths.len(), 1);
+        let register: Value = serde_json::from_slice(&result.bytes).unwrap();
+        assert_eq!(register["providers"][0]["providerId"], "asp-rust");
+        assert!(register["providers"][0].get("descriptor").is_none());
         let _ = fs::remove_dir_all(root);
     }
 }

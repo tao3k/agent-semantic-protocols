@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use agent_semantic_client_core::{ClientCacheFileHash, ProviderRegistryEvidence};
+use agent_semantic_client_core::{ClientCacheFileHash, RuntimeProviderProjectionEvidence};
 use agent_semantic_client_db::{
     ClientDbSourceIndexPath, ClientDbSourceIndexScopeFile, ClientDbSourceIndexSourceBlobs,
     source_index_file_hashes,
@@ -9,7 +9,7 @@ use agent_semantic_client_db::{
 pub(crate) async fn source_index_snapshot_from_files_async(
     index_root: &Path,
     files: &[ClientDbSourceIndexScopeFile],
-    registry: &ProviderRegistryEvidence,
+    registry: &RuntimeProviderProjectionEvidence,
 ) -> Result<
     (
         Vec<ClientCacheFileHash>,

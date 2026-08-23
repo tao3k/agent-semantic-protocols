@@ -146,6 +146,8 @@ pub async fn run_hook_process(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    #[cfg(unix)]
+    command.process_group(0);
     let mut child = command.spawn().map_err(HookTestKitError::Spawn)?;
     let mut stdin = child
         .stdin
@@ -185,8 +187,7 @@ pub async fn run_hook_process(
             stderr.map_err(HookTestKitError::Io)?,
         ),
         Err(_) => {
-            let _ = child.kill().await;
-            let _ = child.wait().await;
+            terminate_hook_process_tree(&mut child).await;
             return Err(HookTestKitError::Timeout {
                 timeout: spec.timeout,
             });
@@ -205,6 +206,32 @@ pub async fn run_hook_process(
         decision,
         elapsed: started.elapsed(),
     })
+}
+
+#[cfg(unix)]
+async fn terminate_hook_process_tree(child: &mut tokio::process::Child) {
+    let process_group = child
+        .id()
+        .filter(|pid| *pid > 0 && *pid <= i32::MAX as u32)
+        .map(|pid| pid as libc::pid_t);
+    if let Some(process_group) = process_group {
+        // SAFETY: the child was spawned as a process-group leader, and the
+        // validated positive pid is negated only to address that exact group.
+        let _ = unsafe { libc::kill(-process_group, libc::SIGTERM) };
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        // SAFETY: same validated process group as above; SIGKILL closes the
+        // timeout path even when a descendant ignores SIGTERM.
+        let _ = unsafe { libc::kill(-process_group, libc::SIGKILL) };
+    } else {
+        let _ = child.kill().await;
+    }
+    let _ = child.wait().await;
+}
+
+#[cfg(not(unix))]
+async fn terminate_hook_process_tree(child: &mut tokio::process::Child) {
+    let _ = child.kill().await;
+    let _ = child.wait().await;
 }
 
 pub async fn run_process_scenarios(

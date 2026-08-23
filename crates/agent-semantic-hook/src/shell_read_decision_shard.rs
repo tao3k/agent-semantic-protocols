@@ -56,7 +56,7 @@ impl CommandDecisionShard {
     fn select_entry<'a>(
         &'a self,
         command_tokens: &[String],
-    command_stages: Option<&[agent_semantic_shell_parser::CommandStage]>,
+        command_stages: Option<&[agent_semantic_shell_parser::CommandStage]>,
     ) -> Option<&'a ShellReadDecisionEntry> {
         if let Some(stages) = command_stages
             && let Some(selected) = self

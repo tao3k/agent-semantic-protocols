@@ -54,7 +54,7 @@ impl ClientHookConfig {
                 decision.fields.insert(
                     "hookPolicyKernelVersion".to_owned(),
                     serde_json::Value::String(
-                        crate::hook_policy_kernel::HOOK_POLICY_KERNEL_VERSION.to_owned(),
+                        crate::protocol::HOOK_POLICY_KERNEL_VERSION.to_owned(),
                     ),
                 );
                 decision.fields.insert(

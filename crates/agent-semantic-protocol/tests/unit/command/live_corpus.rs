@@ -1,10 +1,10 @@
 use agent_semantic_runtime::{
-    LiveCorpusGitCheckoutQualification, LiveCorpusLanguageExtensionEvidenceV1,
+    LiveCorpusGitCheckoutQualification, LiveCorpusLanguageExtensionEvidence,
 };
 use std::path::Path;
 
 use super::{
-    LiveCorpusExtensionAdmissionV1, LiveCorpusGitLockV1, LiveCorpusInputsV1, LiveCorpusLockEntryV1,
+    LiveCorpusExtensionAdmission, LiveCorpusGitLock, LiveCorpusInputs, LiveCorpusLockEntry,
     load_lock, materialized_source_identity, parse_materialize_request, parse_resource_request,
     publish_immutable_json, sync_usage, validate_extension_admission,
 };
@@ -46,21 +46,21 @@ fn materialized_source_identity_rejects_an_empty_runtime_root() {
     assert!(error.contains("empty canonical source root digest"));
 }
 
-fn corpus(admission: Option<LiveCorpusExtensionAdmissionV1>) -> LiveCorpusLockEntryV1 {
-    LiveCorpusLockEntryV1 {
+fn corpus(admission: Option<LiveCorpusExtensionAdmission>) -> LiveCorpusLockEntry {
+    LiveCorpusLockEntry {
         resource_id: "org.worg".to_string(),
         scenario_id: "org.worg-intent-matrix".to_string(),
         provider_id: "orgize".to_string(),
         language: "org".to_string(),
         repository: "bzg/worg".to_string(),
-        git: LiveCorpusGitLockV1 {
+        git: LiveCorpusGitLock {
             remote: "https://git.sr.ht/~bzg/worg".to_string(),
             revision: "1".repeat(40),
         },
         directory: "org-worg".to_string(),
         environment: "SANDTABLE_ORG_WORG_ROOT".to_string(),
         admission,
-        inputs: LiveCorpusInputsV1 {
+        inputs: LiveCorpusInputs {
             owner: "index.org".to_string(),
             query: "agenda".to_string(),
             dependency: "Org".to_string(),
@@ -70,7 +70,7 @@ fn corpus(admission: Option<LiveCorpusExtensionAdmissionV1>) -> LiveCorpusLockEn
 
 #[test]
 fn extension_admission_rejects_processor_shaped_corpus() {
-    let evidence = LiveCorpusLanguageExtensionEvidenceV1 {
+    let evidence = LiveCorpusLanguageExtensionEvidence {
         authority: "provider-project-resolution".to_string(),
         candidate_set_authority: "provider-registry-extension-index".to_string(),
         source_extensions: vec![".org".to_string()],
@@ -78,7 +78,7 @@ fn extension_admission_rejects_processor_shaped_corpus() {
         candidate_language_file_count: 200,
     };
     let error = validate_extension_admission(
-        &corpus(Some(LiveCorpusExtensionAdmissionV1 {
+        &corpus(Some(LiveCorpusExtensionAdmission {
             extension_authority: "provider-project-resolution".to_string(),
             minimum_matching_files: 100,
             minimum_matching_file_ratio: 0.8,
@@ -150,7 +150,7 @@ async fn qualify_args_reject_unknown_options_before_runtime_access() {
 #[test]
 fn repository_corpus_lock_is_the_materializer_contract() {
     let lock_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../benchmarks/large-library-runtime-corpora.v1.json");
+        .join("../../benchmarks/large-library-runtime-corpora.json");
     let lock = load_lock(&lock_path).expect("repository corpus lock must decode");
 
     assert_eq!(lock.corpora.len(), 17);

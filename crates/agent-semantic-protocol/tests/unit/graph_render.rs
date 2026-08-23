@@ -162,14 +162,16 @@ fn sample_graph_turbo_topology_request_packet() -> serde_json::Value {
 }
 
 #[test]
-fn graph_render_cli_rust_fallback_keeps_topology_edge_aliases_defined() {
+fn graph_turbo_rust_fallback_cannot_bypass_runtime_owner() {
     let packet_path = temp_packet_path();
+    let state_home = packet_path.with_extension("state");
     let bin_dir = std::env::temp_dir().join(format!(
         "agent-semantic-protocol-fallback-graph-bin-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&bin_dir);
     fs::create_dir_all(&bin_dir).unwrap();
+    fs::create_dir_all(&state_home).unwrap();
     let asp_copy = bin_dir.join(format!("asp{}", std::env::consts::EXE_SUFFIX));
     fs::copy(env!("CARGO_BIN_EXE_asp"), &asp_copy).unwrap();
     make_executable(&asp_copy);
@@ -181,6 +183,7 @@ fn graph_render_cli_rust_fallback_keeps_topology_edge_aliases_defined() {
 
     let output = Command::new(&asp_copy)
         .env("PATH", &bin_dir)
+        .env("ASP_STATE_HOME", &state_home)
         .args([
             "graph",
             "render",
@@ -194,27 +197,9 @@ fn graph_render_cli_rust_fallback_keeps_topology_edge_aliases_defined() {
 
     fs::remove_file(&packet_path).unwrap();
     let _ = fs::remove_dir_all(&bin_dir);
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(
-        stdout
-            .contains("S=submodule:workspace-member(languages/rust-lang-project-harness)!topology")
-    );
-    assert!(stdout.contains("W=workspace:root(.)!topology"));
-    assert!(stdout.contains("P=provider-root:language-root(rust:.)!topology"));
-    assert!(stdout.contains("S>{O:contains}"));
-    assert!(stdout.contains("W>{S:has_submodule,P:has_provider_root}"));
-    assert!(!stdout.contains("rank="));
-    assert!(!stdout.contains("frontier="));
-    assert!(!stdout.contains(
-        "S2=submodule:workspace-member(languages/typescript-lang-project-harness)!topology"
-    ));
-    assert!(!stdout.contains("S2:has_submodule"));
-    assert!(!stdout.contains("Q>{O:matches}"));
+    let _ = fs::remove_dir_all(&state_home);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("endpoint"));
 }
 
 #[test]
@@ -247,8 +232,9 @@ fn graph_render_cli_reads_packet_file() {
 }
 
 #[test]
-fn graph_render_cli_uses_asp_graph_turbo_for_turbo_request_packet() {
+fn graph_turbo_render_fails_closed_without_runtime_owner() {
     let packet_path = temp_packet_path();
+    let state_home = packet_path.with_extension("state");
     let args_path = temp_packet_path();
     let stdin_path = temp_packet_path();
     let bin_dir = std::env::temp_dir().join(format!(
@@ -257,6 +243,7 @@ fn graph_render_cli_uses_asp_graph_turbo_for_turbo_request_packet() {
     ));
     let _ = fs::remove_dir_all(&bin_dir);
     fs::create_dir_all(&bin_dir).unwrap();
+    fs::create_dir_all(&state_home).unwrap();
     let graph_turbo = bin_dir.join("asp-graph-turbo");
     fs::write(
         &graph_turbo,
@@ -277,6 +264,7 @@ fn graph_render_cli_uses_asp_graph_turbo_for_turbo_request_packet() {
         .env("PATH", prepend_path(&bin_dir))
         .env("ASP_GRAPH_TURBO_ARGS_OUT", &args_path)
         .env("ASP_GRAPH_TURBO_STDIN_OUT", &stdin_path)
+        .env("ASP_STATE_HOME", &state_home)
         .args([
             "graph",
             "render",
@@ -290,33 +278,17 @@ fn graph_render_cli_uses_asp_graph_turbo_for_turbo_request_packet() {
 
     fs::remove_file(&packet_path).unwrap();
     let _ = fs::remove_dir_all(&bin_dir);
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        String::from_utf8(output.stdout).unwrap(),
-        "[search-frontier] projection=ranked-frontier density=terse profile=owner-query algorithm=typed-ppr-diverse nodes=2\n\
-         I=query:parser kind=query action=lexical value=parser\n\
-         I=owner:cli kind=owner action=owner value=src/cli.rs\n"
-    );
-    assert_eq!(
-        fs::read_to_string(&args_path).unwrap(),
-        "rank\n-\n--format\njson\n"
-    );
-    assert!(
-        fs::read_to_string(&stdin_path)
-            .unwrap()
-            .contains("\"packetKind\":\"graph-turbo-request\"")
-    );
-    fs::remove_file(&args_path).unwrap();
-    fs::remove_file(&stdin_path).unwrap();
+    let _ = fs::remove_dir_all(&state_home);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("endpoint"));
+    let _ = fs::remove_file(&args_path);
+    let _ = fs::remove_file(&stdin_path);
 }
 
 #[test]
-fn graph_render_cli_prefers_sibling_asp_graph_turbo_without_path_lookup() {
+fn graph_turbo_sibling_cannot_bypass_runtime_owner() {
     let packet_path = temp_packet_path();
+    let state_home = packet_path.with_extension("state");
     let args_path = temp_packet_path();
     let stdin_path = temp_packet_path();
     let bin_dir = std::env::temp_dir().join(format!(
@@ -325,6 +297,7 @@ fn graph_render_cli_prefers_sibling_asp_graph_turbo_without_path_lookup() {
     ));
     let _ = fs::remove_dir_all(&bin_dir);
     fs::create_dir_all(&bin_dir).unwrap();
+    fs::create_dir_all(&state_home).unwrap();
     let asp_copy = bin_dir.join(format!("asp{}", std::env::consts::EXE_SUFFIX));
     fs::copy(env!("CARGO_BIN_EXE_asp"), &asp_copy).unwrap();
     make_executable(&asp_copy);
@@ -349,6 +322,7 @@ printf '%s\n' '{"schemaId":"agent.semantic-protocols.semantic-graph-turbo-result
         .env("PATH", "/usr/bin:/bin")
         .env("ASP_GRAPH_TURBO_ARGS_OUT", &args_path)
         .env("ASP_GRAPH_TURBO_STDIN_OUT", &stdin_path)
+        .env("ASP_STATE_HOME", &state_home)
         .args([
             "graph",
             "render",
@@ -362,27 +336,11 @@ printf '%s\n' '{"schemaId":"agent.semantic-protocols.semantic-graph-turbo-result
 
     fs::remove_file(&packet_path).unwrap();
     let _ = fs::remove_dir_all(&bin_dir);
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        String::from_utf8(output.stdout).unwrap(),
-        "[search-frontier] projection=ranked-frontier density=terse profile=owner-query algorithm=typed-ppr-diverse nodes=1\n\
-         I=query:sibling kind=query action=lexical value=sibling\n"
-    );
-    assert_eq!(
-        fs::read_to_string(&args_path).unwrap(),
-        "rank\n-\n--format\njson\n"
-    );
-    assert!(
-        fs::read_to_string(&stdin_path)
-            .unwrap()
-            .contains("\"packetKind\":\"graph-turbo-request\"")
-    );
-    fs::remove_file(&args_path).unwrap();
-    fs::remove_file(&stdin_path).unwrap();
+    let _ = fs::remove_dir_all(&state_home);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("endpoint"));
+    let _ = fs::remove_file(&args_path);
+    let _ = fs::remove_file(&stdin_path);
 }
 
 #[test]

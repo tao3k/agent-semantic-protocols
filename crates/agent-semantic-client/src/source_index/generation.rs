@@ -22,7 +22,7 @@ static GENERATION_TRANSACTION_ID: AtomicU64 = AtomicU64::new(0);
 /// Typed inputs for publishing one ordinary target-provider source envelope.
 pub struct TargetProviderSourceEnvelopePublicationRequestV1<'a> {
     pub collection_scope: super::collect::SourceIndexCollectionScope,
-    pub provider_registry: &'a agent_semantic_client_core::ProviderRegistrySnapshot,
+    pub provider_registry: &'a agent_semantic_client_core::RuntimeProviderProjection,
     pub artifact_root: &'a Path,
     pub project_root: &'a Path,
 }
@@ -30,7 +30,7 @@ pub struct TargetProviderSourceEnvelopePublicationRequestV1<'a> {
 /// Publish one provider-scoped source envelope without opening a complete
 /// workspace generation transaction.
 pub async fn publish_target_provider_source_envelope_v1(
-    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
+    runtime: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
     publication: TargetProviderSourceEnvelopePublicationRequestV1<'_>,
 ) -> Result<PathBuf, String> {
     let requested_provider = match &publication.collection_scope {
@@ -74,15 +74,38 @@ pub async fn publish_target_provider_source_envelope_v1(
             );
         }
     };
-    let snapshot = super::api::fresh_target_provider_source_index_snapshot_with_registry(
-        supervisor,
+    let collection = super::collect::collect_source_index_scope_with_runtime_service_async(
+        runtime,
         publication.project_root,
-        &requested_provider.language_id,
-        &requested_provider.provider_id,
-        &publication.collection_scope,
         publication.provider_registry,
+        &publication.collection_scope,
     )
     .await?;
+    if collection.files.is_empty()
+        || collection.files.iter().any(|file| {
+            file.language_id != requested_provider.language_id
+                || file.provider_id != requested_provider.provider_id
+        })
+    {
+        return Err(format!(
+            "target Runtime provider source scope is incomplete: languageId={} providerId={}",
+            requested_provider.language_id, requested_provider.provider_id
+        ));
+    }
+    let registry = publication
+        .provider_registry
+        .evidence(publication.project_root);
+    let (_, workspace_snapshot, source_snapshot, source_blobs) =
+        super::api::source_index_snapshot_from_files(
+            publication.project_root,
+            &collection.files,
+            &registry,
+        )?;
+    let snapshot = super::api::materialized_current_source_index_snapshot(
+        workspace_snapshot,
+        source_snapshot,
+        source_blobs,
+    )?;
     let normalized_extensions = requested_provider
         .source_extensions
         .iter()
@@ -155,7 +178,7 @@ pub struct WorkspaceSearchGenerationPublicationRequestV1<'a> {
     pub collection_scope: super::collect::SourceIndexCollectionScope,
     pub snapshot: &'a CurrentSourceIndexSnapshot,
     pub files: &'a [SourceIndexScopeFile],
-    pub registry_evidence: &'a agent_semantic_client_core::ProviderRegistryEvidence,
+    pub registry_evidence: &'a agent_semantic_client_core::RuntimeProviderProjectionEvidence,
     pub artifact_root: &'a Path,
     pub project_root: &'a Path,
     pub provider_id: &'a str,

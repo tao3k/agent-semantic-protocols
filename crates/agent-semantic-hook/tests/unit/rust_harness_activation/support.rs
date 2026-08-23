@@ -216,15 +216,7 @@ pub(super) fn write_state_home_provider_binary(
     provider_id: &str,
     binary: &str,
 ) -> PathBuf {
-    let registered = agent_semantic_hook::registered_provider_binary_v1(language_id);
-    let (provider_id, binary) = match registered {
-        Ok(registered) if registered.provider_id().as_str() == provider_id => (
-            registered.provider_id().as_str().to_owned(),
-            registered.binary().to_owned(),
-        ),
-        _ => (provider_id.to_owned(), binary.to_owned()),
-    };
-    write_state_home_provider_file(state_home, language_id, &provider_id, &binary, 0o755, false)
+    write_state_home_provider_file(state_home, language_id, provider_id, binary, 0o755, false)
 }
 
 fn write_state_home_provider_file(

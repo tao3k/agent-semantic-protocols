@@ -9,7 +9,7 @@ use super::endpoint_identity::{
     runtime_server_runtime_base_async,
 };
 use super::model::{
-    ENDPOINT_SCHEMA_ID, RuntimeServerEndpoint, SCHEMA_VERSION,
+    ENDPOINT_SCHEMA_ID, RuntimeServerEndpoint, RuntimeServerEndpointOwnerBinding, SCHEMA_VERSION,
     runtime_server_transport_contract_digest,
 };
 use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
@@ -21,6 +21,12 @@ unsafe extern "C" {
 }
 
 pub struct RuntimeServerElection {
+    _file: tokio::fs::File,
+}
+
+/// Serializes supervisor handoffs without contending with the daemon's
+/// lifetime-long owner election.
+pub struct RuntimeServerSupervisorTransaction {
     _file: tokio::fs::File,
 }
 
@@ -121,6 +127,56 @@ pub async fn read_runtime_server_supervisor_endpoint(
     Ok(Some(endpoint))
 }
 
+/// Reads only the stable lifecycle owner envelope from the canonical endpoint.
+///
+/// This is the fail-closed recovery path when the service endpoint cannot be
+/// decoded. Callers may use it to bind a live process to its owner receipt and
+/// retire that exact owner, but must never use it for data-plane admission.
+pub async fn read_runtime_server_endpoint_owner_binding(
+    state_home: &Path,
+) -> Result<Option<RuntimeServerEndpointOwnerBinding>, String> {
+    let endpoint_path = runtime_server_endpoint_path_async(state_home).await?;
+    let metadata = match tokio::fs::symlink_metadata(&endpoint_path).await {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "failed to inspect Runtime Server endpoint owner binding {}: {error}",
+                endpoint_path.display()
+            ));
+        }
+    };
+    if !metadata.file_type().is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.uid() != unsafe { getuid() }
+        || metadata.mode() & 0o777 != 0o600
+    {
+        return Err(format!(
+            "Runtime Server endpoint owner binding is not a private, non-symlink current-UID file: {}",
+            endpoint_path.display()
+        ));
+    }
+    let bytes = match tokio::fs::read(&endpoint_path).await {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "failed to read Runtime Server endpoint owner binding {}: {error}",
+                endpoint_path.display()
+            ));
+        }
+    };
+    let binding: RuntimeServerEndpointOwnerBinding =
+        serde_json::from_slice(&bytes).map_err(|error| {
+            format!(
+                "failed to decode Runtime Server endpoint owner binding {}: {error}",
+                endpoint_path.display()
+            )
+        })?;
+    binding.validate()?;
+    Ok(Some(binding))
+}
+
 pub async fn publish_runtime_server_endpoint(
     endpoint_path: &Path,
     endpoint: &RuntimeServerEndpoint,
@@ -209,6 +265,22 @@ pub async fn acquire_runtime_server_election(
 pub async fn try_acquire_runtime_server_election(
     state_home: &Path,
 ) -> Result<RuntimeServerElectionAttempt, String> {
+    let (file, lock_path) = open_runtime_server_election_file(state_home).await?;
+    match file.try_lock() {
+        Ok(()) => Ok(RuntimeServerElectionAttempt::Acquired(
+            RuntimeServerElection { _file: file },
+        )),
+        Err(fs4::TryLockError::WouldBlock) => Ok(RuntimeServerElectionAttempt::Contended),
+        Err(fs4::TryLockError::Error(error)) => Err(format!(
+            "failed to acquire Runtime Server election at {}: {error}",
+            lock_path.display()
+        )),
+    }
+}
+
+async fn open_runtime_server_election_file(
+    state_home: &Path,
+) -> Result<(tokio::fs::File, std::path::PathBuf), String> {
     let runtime_base = runtime_server_runtime_base_async(state_home).await?;
     tokio::fs::create_dir_all(&runtime_base)
         .await
@@ -231,33 +303,65 @@ pub async fn try_acquire_runtime_server_election(
                 lock_path.display()
             )
         })?;
-    match file.try_lock() {
-        Ok(()) => Ok(RuntimeServerElectionAttempt::Acquired(
-            RuntimeServerElection { _file: file },
-        )),
-        Err(fs4::TryLockError::WouldBlock) => Ok(RuntimeServerElectionAttempt::Contended),
-        Err(fs4::TryLockError::Error(error)) => Err(format!(
-            "failed to acquire Runtime Server election at {}: {error}",
-            lock_path.display()
-        )),
-    }
+    Ok((file, lock_path))
 }
 
+#[tracing::instrument(name = "asp.runtime.server_election.wait", skip_all)]
 pub async fn wait_for_runtime_server_election(
     state_home: &Path,
 ) -> Result<RuntimeServerElection, String> {
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
-    loop {
-        match try_acquire_runtime_server_election(state_home).await? {
-            RuntimeServerElectionAttempt::Acquired(election) => return Ok(election),
-            RuntimeServerElectionAttempt::Contended if tokio::time::Instant::now() < deadline => {
-                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-            }
-            RuntimeServerElectionAttempt::Contended => {
-                return Err("timed out waiting for Runtime Server election handoff".to_owned());
-            }
-        }
-    }
+    let started_at = std::time::Instant::now();
+    let (file, lock_path) = open_runtime_server_election_file(state_home).await?;
+    let file = tokio::task::spawn_blocking(move || {
+        file.lock().map_err(|error| {
+            format!(
+                "failed to await Runtime Server election at {}: {error}",
+                lock_path.display()
+            )
+        })?;
+        Ok::<_, String>(file)
+    })
+    .await
+    .map_err(|error| format!("Runtime Server election task failed: {error}"))??;
+    tracing::info!(
+        elapsed_micros = u64::try_from(started_at.elapsed().as_micros()).unwrap_or(u64::MAX),
+        "Runtime Server election acquired"
+    );
+    Ok(RuntimeServerElection { _file: file })
+}
+
+pub async fn acquire_runtime_server_supervisor_transaction(
+    state_home: &Path,
+) -> Result<RuntimeServerSupervisorTransaction, String> {
+    let runtime_base = runtime_server_runtime_base_async(state_home).await?;
+    tokio::fs::create_dir_all(&runtime_base)
+        .await
+        .map_err(|error| format!("failed to create Runtime Server directory: {error}"))?;
+    let lock_path = runtime_base.join("runtime-server.supervisor.lock");
+    let file = tokio::fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .await
+        .map_err(|error| {
+            format!(
+                "failed to open Runtime Server supervisor transaction {}: {error}",
+                lock_path.display()
+            )
+        })?;
+    let file = tokio::task::spawn_blocking(move || {
+        file.lock().map_err(|error| {
+            format!(
+                "failed to acquire Runtime Server supervisor transaction {}: {error}",
+                lock_path.display()
+            )
+        })?;
+        Ok::<_, String>(file)
+    })
+    .await
+    .map_err(|error| format!("Runtime Server supervisor transaction task failed: {error}"))??;
+    Ok(RuntimeServerSupervisorTransaction { _file: file })
 }
 
 pub async fn prepare_runtime_server_endpoint(
@@ -317,9 +421,10 @@ pub async fn prepare_runtime_server_endpoint_with_workspace_store_and_identity(
     artifact_catalog_digest: &str,
     owner_epoch: u64,
     binding_token: &str,
+    client_http_endpoint: &str,
 ) -> Result<RuntimeServerEndpoint, String> {
     let runtime_base = runtime_server_runtime_base_async(state_home).await?;
-    prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
+    let mut endpoint = prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
         &runtime_base,
         workspace_store_path,
         runtime_artifact_path,
@@ -329,7 +434,9 @@ pub async fn prepare_runtime_server_endpoint_with_workspace_store_and_identity(
         owner_epoch,
         binding_token,
     )
-    .await
+    .await?;
+    endpoint.client_http_endpoint = client_http_endpoint.to_owned();
+    Ok(endpoint)
 }
 
 pub async fn prepare_runtime_server_endpoint_in(
@@ -443,6 +550,7 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
         socket_path: socket_path.to_string_lossy().into_owned(),
         data_plane_socket_path: data_plane_socket_path.to_string_lossy().into_owned(),
         provider_plane_socket_path: provider_plane_socket_path.to_string_lossy().into_owned(),
+        client_http_endpoint: "http://127.0.0.1:1".to_owned(),
         workspace_store_path: workspace_store_path.to_string_lossy().into_owned(),
         status_memory_path: status_memory_path.to_string_lossy().into_owned(),
     })

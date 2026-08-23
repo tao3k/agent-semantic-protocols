@@ -41,10 +41,45 @@ authority is limited to:
 - the digest-addressed bootstrap and protocol entries;
 - a bounded input envelope and a stable hook event name.
 
-The bootstrap and =asp= MUST be published as one installer transaction under
-the global reconciliation writer. A development repair may delegate only to
+The bootstrap and =asp= MUST be published as one Runtime Artifact Mutation
+Transaction. Protocol carries that transaction guard through coupled receipt
+and configuration publication; it does not create a second writer lock. A
+development repair may delegate only to
 the canonical installer below the configured =[dev].root=. It MUST NOT call
 =asp sync=, fetch a repository, or reinterpret an unowned configuration file.
+
+The configured development root is build provenance, never executable
+residency. Development and release publication both copy the verified =asp=
+bytes into the same content-addressed State Home store. No stable Runtime
+slot may resolve into =target/=, a checkout, =~/.local/bin=, or ambient =PATH=.
+Deleting a build tree therefore cannot remove the installed Hook evaluator.
+
+Each binary identity owns exactly two retained atomic slots:
+
+- =runtime/profiles/<binary>/active= selects the current generation;
+- =runtime/profiles/<binary>/healthy= selects the last health-qualified
+  generation.
+
+=runtime/bin/<binary>= is only the stable public alias of =active=. The plugin
+launcher resolves =active= and then =healthy=; both point into
+=runtime/artifacts/blake3-256/<digest>/<binary>=. Garbage collection retains
+only generations reachable from these slots. A missing public alias or active
+generation therefore does not deadlock repair while an independently retained
+healthy generation exists, and the store consumes at most two binary
+generations per identity.
+
+The first verified publication seeds both slots with the same immutable
+baseline, so initial installation has no second copy and no missing recovery
+edge. Later publication advances only =active=. Only a successful Runtime
+health transition whose observed binary content digest equals the current
+active digest may then atomically promote =active= to =healthy=. A stale health
+receipt from a previous Runtime generation cannot qualify newer bytes.
+
+Publication, health promotion, reachability garbage collection, and coupled
+Protocol receipts share one non-blocking cross-process Runtime Artifact
+Mutation Transaction owned by the Runtime artifact store. A competing writer fails immediately with
+=reasonKind=artifact-publication-conflict=; it does not wait on a timeout and
+cannot interleave pointer movement with another writer's garbage collection.
 
 ** Warm path and ASP Server
 
@@ -170,15 +205,15 @@ reference, or no longer corresponds to the named clause.
 | configuration-independent entry | =crates/agent-semantic-protocol/src/hook_bootstrap.rs= |
 | bounded Tokio child ownership | =crates/agent-semantic-runtime/src/hook_process_runtime.rs= |
 | exact stdin replay | =hook_runtime_stdin::with_hook_stdin_override= |
-| digest-addressed single-binary publication | =protocol_binary::ensure_protocol_binary_installed= |
+| digest-addressed active/healthy publication | =runtime_artifact_catalog::publish_runtime_artifact= |
 | Codex command surface | user-level inline =~/.codex/config.toml= Hook dispatcher |
 | server generation reuse | =hook_runtime_generation_admission= |
 
 * Acceptance evidence
 
 - a stale matcher enum is detected before compatibility rewriting;
-- the configured development installer publishes a current binary and
-  bootstrap companion;
+- the configured development installer publishes an active/healthy slot pair
+  without a checkout-resident executable;
 - the original hook payload is replayed no more than once;
 - concurrent repair requests converge on one writer;
 - Stop remains completable after bounded repair failure;

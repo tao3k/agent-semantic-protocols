@@ -2,7 +2,6 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use super::agent_runtime::{HookClientAgentsConfig, HookClientResidentAgentConfig};
 use super::document::{
     CLIENT_HOOK_CONFIG_SCHEMA_ID, CLIENT_HOOK_CONFIG_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
     HOOK_PROTOCOL_VERSION, HookClientAgentOrgArtifactsArchiveWarningConfig,
@@ -19,20 +18,16 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
     )?;
     validate_agent_org_artifacts(config.agent_org_artifacts.as_ref())?;
     validate_recovery_prompt(&config.recovery_prompt)?;
-    validate_agent_session_messages(&config.agent_session_messages)?;
-    validate_language_providers(&config.language_providers)?;
-    validate_profiles(&config.profiles, &config.language_providers)?;
+    validate_profiles(&config.profiles)?;
     validate_rule_profile_references(&config.rules, &config.profiles)?;
-    validate_resident_agents(&config.agents.resident_agents)?;
-    validate_agent_placeholders(&config.agents)?;
     validate_command_profiles(&config.command_profiles)?;
-    validate_action_policies(&config.action_policies)?;
-    validate_rule_dispatches(&config.rules, &config.agents)?;
+    validate_capability_policies(&config.capability_policies)?;
+    validate_rule_dispatches(&config.rules)?;
     validate_unique_rule_ids(&config.rules)?;
     validate_rule_schema_shape(
         &config.rules,
         &config.command_profiles,
-        &config.action_policies,
+        &config.capability_policies,
     )
 }
 
@@ -94,23 +89,21 @@ fn validate_rule_profile_references(
     Ok(())
 }
 
-fn validate_action_policies(
-    policies: &[super::routing::HookClientActionPolicyConfig],
+fn validate_capability_policies(
+    policies: &[super::routing::HookClientCapabilityPolicyConfig],
 ) -> Result<(), String> {
     let mut ids = HashSet::new();
     for policy in policies {
-        validate_identifier("actionPolicies[].id", &policy.id)?;
+        validate_identifier("capabilityPolicies[].id", &policy.id)?;
         if !ids.insert(policy.id.as_str()) {
-            return Err(format!("duplicate action policy id `{}`", policy.id));
+            return Err(format!("duplicate capability policy id `{}`", policy.id));
         }
         if policy.action_any.is_empty()
-            && policy.effect_any.is_empty()
+            && policy.semantic_capability_any.is_empty()
             && policy.subject_kind_any.is_empty()
-            && policy.authority_any.is_empty()
-            && policy.authority_exclude_any.is_empty()
         {
             return Err(format!(
-                "action policy `{}` must declare at least one typed predicate axis",
+                "capability policy `{}` must declare at least one typed predicate axis",
                 policy.id
             ));
         }
@@ -120,7 +113,6 @@ fn validate_action_policies(
 
 fn validate_profiles(
     profiles: &BTreeMap<String, super::document::HookClientProfileConfig>,
-    language_providers: &[super::document::HookClientLanguageProviderConfig],
 ) -> Result<(), String> {
     for (profile_id, profile) in profiles {
         validate_non_empty(
@@ -156,94 +148,21 @@ fn validate_profiles(
         // Profiles form the declarative language catalog. Provider installation is
         // optional, so an unavailable profile remains valid and is inactive until
         // its matching language/provider descriptor is registered.
-        let _is_currently_registered = language_providers.iter().any(|provider| {
-            provider.language_id == profile.language_id
-                && provider.provider_id == profile.provider_id
-        });
     }
     Ok(())
 }
 
-fn validate_language_providers(
-    providers: &[super::document::HookClientLanguageProviderConfig],
-) -> Result<(), String> {
-    let mut identities = HashSet::new();
-    for provider in providers {
-        validate_identifier("languageProviders[].languageId", &provider.language_id)?;
-        validate_identifier("languageProviders[].providerId", &provider.provider_id)?;
-        if !identities.insert((provider.language_id.as_str(), provider.provider_id.as_str())) {
-            return Err(format!(
-                "duplicate languageProviders identity `{}/{}`",
-                provider.language_id, provider.provider_id
-            ));
-        }
-        if !provider.manifest_digest.starts_with("sha256:")
-            || provider.manifest_digest.len() <= "sha256:".len()
-        {
-            return Err(format!(
-                "languageProviders[{}/{}].manifestDigest must be a sha256 content identity",
-                provider.language_id, provider.provider_id
-            ));
-        }
-        if provider.source_extensions.is_empty() {
-            return Err(format!(
-                "languageProviders[{}/{}].sourceExtensions must not be empty",
-                provider.language_id, provider.provider_id
-            ));
-        }
-        validate_unique_values(
-            "languageProviders[].sourceExtensions[]",
-            &provider.source_extensions,
-        )?;
-        for extension in &provider.source_extensions {
-            if !extension.starts_with('.')
-                || extension.len() == 1
-                || extension.contains(['/', '\\'])
-                || extension.chars().any(char::is_whitespace)
-            {
-                return Err(format!(
-                    "languageProviders[{}/{}].sourceExtensions contains invalid extension `{extension}`",
-                    provider.language_id, provider.provider_id
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
-fn validate_rule_dispatches(
-    rules: &[HookClientRuleConfig],
-    agents: &HookClientAgentsConfig,
-) -> Result<(), String> {
+fn validate_rule_dispatches(rules: &[HookClientRuleConfig]) -> Result<(), String> {
     for rule in rules.iter().filter(|rule| rule.enabled) {
         let Some(dispatch) = rule.dispatch.as_ref() else {
             continue;
         };
         let prefix = format!("rules[{}].dispatch", rule.id);
         validate_identifier(&format!("{prefix}.role"), dispatch.role.as_str())?;
-        let resident_name = agents
-            .placeholders
-            .get(dispatch.role.as_str())
-            .ok_or_else(|| {
-                format!(
-                    "{prefix}.agent `{}` must name an agents.placeholders entry",
-                    dispatch.role.as_str()
-                )
-            })?;
         validate_non_empty(
             &format!("{prefix}.receiptKind"),
             dispatch.receipt_kind.as_str(),
         )?;
-        if !agents
-            .resident_agents
-            .iter()
-            .any(|agent| agent.enabled && agent.name == *resident_name)
-        {
-            return Err(format!(
-                "{prefix}.agent `{}` resolves to unavailable resident `{resident_name}`",
-                dispatch.role.as_str()
-            ));
-        }
     }
     Ok(())
 }
@@ -262,98 +181,6 @@ fn validate_recovery_prompt(config: &HookClientRecoveryPromptConfig) -> Result<(
         "recoveryPrompt.defaultAgentFlow",
         config.default_agent_flow.as_deref(),
     )
-}
-
-fn validate_agent_session_messages(
-    config: &super::document::HookClientAgentSessionMessagesConfig,
-) -> Result<(), String> {
-    validate_optional_non_empty(
-        "agentSessionMessages.sourceAccessCompactSubagent",
-        config.source_access_compact_subagent.as_deref(),
-    )?;
-    reject_legacy_flat_subagent_receipt_message(
-        "agentSessionMessages.sourceAccessCompactSubagent",
-        config.source_access_compact_subagent.as_deref(),
-    )
-}
-
-fn reject_legacy_flat_subagent_receipt_message(
-    field: &str,
-    message: Option<&str>,
-) -> Result<(), String> {
-    let Some(message) = message else {
-        return Ok(());
-    };
-    let normalized = message.to_ascii_lowercase();
-    let mentions_legacy_owner_read_next = normalized.contains("owner/read/next");
-    let mentions_legacy_selector_only_evidence = normalized.contains("selector-only")
-        && normalized.contains("[asp-search-subagent]")
-        && normalized.contains("evidence");
-    if mentions_legacy_owner_read_next || mentions_legacy_selector_only_evidence {
-        Err(format!(
-            "{field} uses the legacy flat subagent receipt contract; refresh hooks/config.toml so ASP search children return schema/intent/route/state/evidence/next graph-route receipts"
-        ))
-    } else {
-        Ok(())
-    }
-}
-
-fn validate_resident_agents(configs: &[HookClientResidentAgentConfig]) -> Result<(), String> {
-    let mut names = HashSet::new();
-    for config in configs {
-        if !names.insert(config.name.as_str()) {
-            return Err(format!(
-                "duplicate agents.residentAgents name `{}`",
-                config.name
-            ));
-        }
-        validate_resident_agent(config)?;
-    }
-    Ok(())
-}
-
-fn validate_resident_agent(config: &HookClientResidentAgentConfig) -> Result<(), String> {
-    validate_optional_non_empty("agents.residentAgents[].name", Some(config.name.as_str()))?;
-    validate_optional_non_empty("agents.residentAgents[].role", Some(config.role.as_str()))?;
-    if config.enabled {
-        validate_non_empty(
-            "agents.residentAgents[].codexAgentName",
-            &config.codex_agent_name,
-        )?;
-    } else if !config.codex_agent_name.is_empty() {
-        validate_optional_non_empty(
-            "agents.residentAgents[].codexAgentName",
-            Some(config.codex_agent_name.as_str()),
-        )?;
-    }
-    validate_non_empty_values("agents.residentAgents[].roles[]", &config.roles)?;
-    validate_unique_values("agents.residentAgents[].roles[]", &config.roles)?;
-    for role in &config.roles {
-        validate_binary_name("agents.residentAgents[].roles[]", role)?;
-    }
-    validate_non_empty_values("agents.residentAgents[].permissions[]", &config.permissions)?;
-    validate_unique_values("agents.residentAgents[].permissions[]", &config.permissions)?;
-    for permission in &config.permissions {
-        validate_session_permission("agents.residentAgents[].permissions[]", permission)?;
-    }
-    Ok(())
-}
-
-fn validate_agent_placeholders(config: &HookClientAgentsConfig) -> Result<(), String> {
-    for (placeholder, resident_name) in &config.placeholders {
-        validate_identifier("agents.placeholders key", placeholder)?;
-        validate_non_empty("agents.placeholders value", resident_name)?;
-        if !config
-            .resident_agents
-            .iter()
-            .any(|agent| agent.name == *resident_name)
-        {
-            return Err(format!(
-                "agents.placeholders.{placeholder} references missing resident `{resident_name}`"
-            ));
-        }
-    }
-    Ok(())
 }
 
 fn validate_command_profiles(configs: &[HookClientCommandProfileConfig]) -> Result<(), String> {
@@ -428,9 +255,9 @@ fn validate_unique_rule_ids(rules: &[HookClientRuleConfig]) -> Result<(), String
 fn validate_rule_schema_shape(
     rules: &[HookClientRuleConfig],
     profiles: &[HookClientCommandProfileConfig],
-    action_policies: &[super::routing::HookClientActionPolicyConfig],
+    capability_policies: &[super::routing::HookClientCapabilityPolicyConfig],
 ) -> Result<(), String> {
-    let action_policy_ids = action_policies
+    let capability_policy_ids = capability_policies
         .iter()
         .map(|policy| policy.id.as_str())
         .collect::<HashSet<_>>();
@@ -441,7 +268,7 @@ fn validate_rule_schema_shape(
         validate_optional_platform(rule.platform.as_deref())?;
         validate_unique_values("rules[].languageIds", &rule.language_ids)?;
         validate_identifiers("rules[].languageIds[]", &rule.language_ids)?;
-        validate_match_schema_shape(&rule.match_config, profiles, &action_policy_ids)?;
+        validate_match_schema_shape(&rule.match_config, profiles, &capability_policy_ids)?;
         if rule.terminal
             && !matches!(
                 rule.decision,
@@ -464,12 +291,6 @@ fn validate_rule_schema_shape(
                 rule.id
             ));
         }
-        if rule.decision_materializer.is_some() && !rule.routes.is_empty() {
-            return Err(format!(
-                "hook rule `{}` cannot combine decisionMaterializer with static routes",
-                rule.id
-            ));
-        }
         for route in &rule.routes {
             validate_route_schema_shape(route)?;
         }
@@ -480,19 +301,19 @@ fn validate_rule_schema_shape(
 fn validate_match_schema_shape(
     match_config: &HookClientRuleMatchConfig,
     profiles: &[HookClientCommandProfileConfig],
-    action_policy_ids: &HashSet<&str>,
+    capability_policy_ids: &HashSet<&str>,
 ) -> Result<(), String> {
     for (axis, references) in [
-        ("actionPolicyAll", &match_config.action_policy_all),
-        ("actionPolicyAny", &match_config.action_policy_any),
-        ("actionPolicyNone", &match_config.action_policy_none),
+        ("capabilityPolicyAll", &match_config.capability_policy_all),
+        ("capabilityPolicyAny", &match_config.capability_policy_any),
+        ("capabilityPolicyNone", &match_config.capability_policy_none),
     ] {
         validate_non_empty_values(&format!("rules[].match.{axis}[]"), references)?;
         validate_unique_values(&format!("rules[].match.{axis}"), references)?;
         for reference in references {
-            if !action_policy_ids.contains(reference.as_str()) {
+            if !capability_policy_ids.contains(reference.as_str()) {
                 return Err(format!(
-                    "rules[].match.{axis} references unknown action policy `{reference}`"
+                    "rules[].match.{axis} references unknown capability policy `{reference}`"
                 ));
             }
         }
@@ -791,15 +612,6 @@ fn validate_required_binary_name(field: &str, value: &str) -> Result<(), String>
         Ok(())
     } else {
         Err(format!("invalid {field} `{value}`"))
-    }
-}
-
-fn validate_session_permission(field: &str, value: &str) -> Result<(), String> {
-    match value {
-        "read-only" | "workspace-write" | "danger-full-access" => Ok(()),
-        _ => Err(format!(
-            "invalid {field} `{value}`; expected one of read-only, workspace-write, danger-full-access"
-        )),
     }
 }
 

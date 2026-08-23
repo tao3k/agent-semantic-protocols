@@ -1,19 +1,18 @@
 //! Installation owner for hook runtime and Codex plugin surfaces.
 
-use super::hook_runtime_codex_plugin::{CodexPluginScope, install_codex_plugin_hooks};
+use super::hook_runtime_codex_plugin::install_codex_plugin_hooks;
 use super::hook_runtime_skill::{
-    PluginSkillScope, install_agent_semantic_protocols_agent_config,
-    install_agent_semantic_protocols_plugin_skill, install_agent_semantic_protocols_skill,
+    install_agent_semantic_protocols_agent_config, install_agent_semantic_protocols_plugin_skill,
+    install_agent_semantic_protocols_skill,
 };
 use super::hook_runtime_subagent::{install_claude_resident_agents, subagent_model_arg};
 use super::{
     display_path, ensure_supported_client, flag_value, optional_flag_value, project_root_arg,
 };
-use crate::command::{ProtocolBinaryInstallPlan, ensure_protocol_binary_installed};
+use crate::command::{ProtocolBinaryInstallPlan, ensure_protocol_binary_installed_under_guard};
 use agent_semantic_hook::{
-    claude_hook_block, default_claude_settings_path, load_or_refresh_default_activation,
-    merge_claude_settings, remove_incompatible_hook_event_state, runtime_profiles_for_activation,
-    validate_claude_settings_json,
+    claude_hook_block, default_claude_settings_path, merge_claude_settings,
+    remove_incompatible_hook_event_state, validate_claude_settings_json,
 };
 use agent_semantic_runtime::project_runtime_state;
 use std::env;
@@ -32,14 +31,7 @@ pub(super) async fn run_install(args: &[String]) -> Result<(), String> {
     let project_root = project_root_arg(args)?;
     let subagent_model =
         subagent_model_arg(client, optional_flag_value(args, "--subagent-model")?)?;
-    run_install_for_client(
-        client,
-        project_root,
-        CodexPluginScope::Global,
-        Some(subagent_model),
-        "agent-install",
-    )
-    .await
+    run_install_for_client(client, project_root, Some(subagent_model), "agent-install").await
 }
 
 #[cfg(test)]
@@ -49,7 +41,6 @@ mod hook_runtime_install_tests;
 #[derive(Debug)]
 struct CodexPluginInstallRequest {
     project_root: PathBuf,
-    scope: CodexPluginScope,
 }
 
 fn parse_codex_plugin_install_args(args: &[String]) -> Result<CodexPluginInstallRequest, String> {
@@ -65,35 +56,19 @@ fn parse_codex_plugin_install_args(args: &[String]) -> Result<CodexPluginInstall
             .expect("clap supplies default project root"),
     )
     .map_err(|error| format!("failed to resolve plugin project root: {error}"))?;
-    let codex_plugin_scope = if matches.get_flag("project") {
-        CodexPluginScope::Project
-    } else {
-        CodexPluginScope::Global
-    };
-    Ok(CodexPluginInstallRequest {
-        project_root,
-        scope: codex_plugin_scope,
-    })
+    Ok(CodexPluginInstallRequest { project_root })
 }
 
 pub(in crate::command) async fn run_codex_plugin_install_args(
     args: &[String],
 ) -> Result<(), String> {
     let request = parse_codex_plugin_install_args(args)?;
-    run_install_for_client(
-        "codex",
-        request.project_root,
-        request.scope,
-        None,
-        "plugin-install",
-    )
-    .await
+    run_install_for_client("codex", request.project_root, None, "plugin-install").await
 }
 
 async fn run_install_for_client(
     client: &str,
     project_root: PathBuf,
-    codex_plugin_scope: CodexPluginScope,
     subagent_model: Option<String>,
     receipt_label: &str,
 ) -> Result<(), String> {
@@ -101,7 +76,7 @@ async fn run_install_for_client(
     ensure_supported_client(client)?;
     timings.mark("args");
     let runtime_state = project_runtime_state(&project_root)?;
-    let _reconciliation_guard =
+    let reconciliation_guard =
         crate::command::protocol_binary::ProtocolBinaryReconciliationGuard::acquire(
             &runtime_state.protocol_home,
         )?;
@@ -111,23 +86,20 @@ async fn run_install_for_client(
     let org_state_sync =
         crate::command::org_capture::require_materialized_org_state(&project_root)?;
     timings.mark("org-state");
-    let binary_install = ensure_protocol_binary_installed(&binary_install_plan).await?;
+    let binary_install =
+        ensure_protocol_binary_installed_under_guard(&binary_install_plan, &reconciliation_guard)
+            .await?;
     timings.mark("binary");
     let provider_binary_reconciliation =
     crate::command::install_provider_runtime_reconcile::reconcile_registered_provider_runtime_binaries(
         &runtime_state.runtime_bin_dir,
         &runtime_artifact_root,
         &runtime_state.provider_lock_dir,
+        &reconciliation_guard,
     )
     .await?;
     timings.mark("provider-binaries");
     let activation_path = runtime_state.activation_path.clone();
-    let activation_sync = load_or_refresh_default_activation(&activation_path, &project_root)?;
-    let activation_status = activation_sync.status;
-    let activation = activation_sync.activation;
-    timings.mark("activation");
-    let runtime_profiles = runtime_profiles_for_activation(&project_root, &activation)?;
-    timings.mark("runtime-profiles");
     let client_config_path = runtime_state
         .protocol_home
         .join("hooks")
@@ -148,9 +120,7 @@ async fn run_install_for_client(
     remove_incompatible_hook_event_state(&project_root)?;
     timings.mark("event-state");
     let (config_path, extra_config_receipt) = match client {
-        "codex" => {
-            install_codex_plugin_hooks(&project_root, codex_plugin_scope, &binary_install.path)?
-        }
+        "codex" => install_codex_plugin_hooks(&project_root, &binary_install.path)?,
         "claude" => install_claude_project_hooks(
             &project_root,
             subagent_model
@@ -168,18 +138,8 @@ async fn run_install_for_client(
         display_path(&project_root, &agent_config_path)
     };
     let installed_skill = Some(match client {
-        "codex" => install_agent_semantic_protocols_plugin_skill(
-            &project_root,
-            match codex_plugin_scope {
-                CodexPluginScope::Project => PluginSkillScope::Project,
-                CodexPluginScope::Global => PluginSkillScope::Global,
-            },
-            &activation,
-            &runtime_profiles,
-        )?,
-        "claude" => {
-            install_agent_semantic_protocols_skill(&project_root, &activation, &runtime_profiles)?
-        }
+        "codex" => install_agent_semantic_protocols_plugin_skill(&project_root)?,
+        "claude" => install_agent_semantic_protocols_skill(&project_root)?,
         _ => unreachable!("client support checked before install"),
     });
     timings.mark("skill");
@@ -225,9 +185,9 @@ async fn run_install_for_client(
         user_config_status.as_str()
     );
     println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} hookMatcherGeneration={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binarySourceGeneration={} generationAlgorithm=blake3-metadata-v1 binarySwitch=atomic providerBinariesMissing={} mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} hookMatcherGeneration={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binarySwitch=atomic providerBinariesMissing={} mode=updated",
         display_path(&project_root, &activation_path),
-        activation_status,
+        "server-register",
         user_config_receipt,
         hook_matcher_generation,
         active_artifact.receipt.artifact_root_digest().as_str(),

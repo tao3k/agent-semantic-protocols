@@ -1,12 +1,12 @@
 use super::build_exact_selector_projection_packet_v1;
-use crate::exact_selector_merkle::{ExactProjectionModeV1, canonical_content_digest_v1};
+use crate::exact_selector_merkle::{ExactProjectionModeV1, canonical_content_digest};
 
 #[test]
 fn builder_binds_source_parser_facts_and_projection_bytes() {
     use crate::canonical_item_identity::{CanonicalItemIdentity, CanonicalItemSelector};
 
-    let parser_digest = canonical_content_digest_v1(b"parser", &[b"rs-harness"]);
-    let query_pack_digest = canonical_content_digest_v1(b"query-pack", &[b"rust"]);
+    let parser_digest = canonical_content_digest(b"parser", &[b"rs-harness"]);
+    let query_pack_digest = canonical_content_digest(b"query-pack", &[b"rust"]);
     let structural_selector = "rust://src/lib.rs#item/function/example";
     let language_id =
         crate::exact_selector_projection_packet::ProjectionPacketLanguageIdV1::from("rust");

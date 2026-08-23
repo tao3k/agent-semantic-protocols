@@ -78,23 +78,26 @@ fn infer_agent_action_subject_kind(
     let normalized = normalize_source_selector(value);
     let leaf = value.rsplit(['/', '\\']).next().unwrap_or(value);
     let is_path_shaped = value.contains(['/', '\\']) && !value.chars().any(char::is_whitespace);
-    let registered_source_scope = registry.providers.iter().any(|provider| {
-        let ignored = std::iter::empty::<&String>().any(|prefix| {
-            normalized == prefix
-                || normalized
-                    .strip_prefix(prefix)
-                    .is_some_and(|suffix| suffix.starts_with('/'))
-        });
-        !ignored
-            && provider.package_roots.iter().any(|root| {
-                root == "."
-                    || normalized == root
-                    || normalized
-                        .strip_prefix(root)
-                        .is_some_and(|suffix| suffix.starts_with('/'))
-                    || contains_path_component_sequence(normalized, root)
-            })
-    });
+    let registered_source_scope =
+        crate::protocol_activation::provider_routing::hook_provider_projections(registry)
+            .iter()
+            .any(|provider| {
+                let ignored = std::iter::empty::<&String>().any(|prefix| {
+                    normalized == prefix
+                        || normalized
+                            .strip_prefix(prefix)
+                            .is_some_and(|suffix| suffix.starts_with('/'))
+                });
+                !ignored
+                    && provider.package_roots.iter().any(|root| {
+                        root == "."
+                            || normalized == root
+                            || normalized
+                                .strip_prefix(root)
+                                .is_some_and(|suffix| suffix.starts_with('/'))
+                            || contains_path_component_sequence(normalized, root)
+                    })
+            });
     if registered_source_scope
         && is_path_shaped
         && (value.ends_with(['/', '\\']) || !leaf.contains('.'))

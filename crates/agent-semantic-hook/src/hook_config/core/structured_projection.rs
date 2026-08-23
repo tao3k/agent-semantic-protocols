@@ -16,7 +16,7 @@ pub(super) fn match_source_operands(
         HookClientStructuredFilterGrammar::BoundedPathV1 => {
             crate::shell_parser::structured::classify_single_bounded_path_command(
                 command,
-        crate::shell_parser::structured::BoundedPathCommandSpec {
+                crate::shell_parser::structured::BoundedPathCommandSpec {
                     binary: &projection.binary,
                     optional_subcommand_any: &projection.optional_subcommand_any,
                     option_any: &projection.option_any,

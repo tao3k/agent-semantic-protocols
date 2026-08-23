@@ -151,6 +151,8 @@ async fn concurrent_runtime_status_wave(
     latencies
 }
 
+#[path = "runtime_server_control/election.rs"]
+mod election;
 #[path = "runtime_server_control/generation_admission.rs"]
 mod generation_admission;
 #[path = "runtime_server_control/performance.rs"]

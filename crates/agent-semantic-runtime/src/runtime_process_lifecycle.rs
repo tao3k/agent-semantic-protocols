@@ -131,11 +131,7 @@ pub async fn terminate(process_id: u32) -> Result<(), String> {
         let pid = i32::try_from(process_id).map_err(|e| e.to_string())?;
         // SAFETY: caller has already validated ownership; this is the bounded lifecycle signal.
         let result = unsafe { libc::kill(pid, libc::SIGTERM) };
-        if result == 0 {
-            Ok(())
-        } else {
-            Err(std::io::Error::last_os_error().to_string())
-        }
+        classify_kill_result(result, std::io::Error::last_os_error())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -145,12 +141,34 @@ pub async fn force_terminate(process_id: u32) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let pid = i32::try_from(process_id).map_err(|e| e.to_string())?;
         // SAFETY: caller has validated the owned process identity.
-        if unsafe { libc::kill(pid, libc::SIGKILL) } == 0 {
-            Ok(())
-        } else {
-            Err(std::io::Error::last_os_error().to_string())
-        }
+        let result = unsafe { libc::kill(pid, libc::SIGKILL) };
+        classify_kill_result(result, std::io::Error::last_os_error())
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+fn classify_kill_result(result: i32, error: std::io::Error) -> Result<(), String> {
+    if result == 0 || error.raw_os_error() == Some(libc::ESRCH) {
+        Ok(())
+    } else {
+        Err(error.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::classify_kill_result;
+
+    #[test]
+    fn missing_process_is_already_stopped() {
+        classify_kill_result(-1, std::io::Error::from_raw_os_error(libc::ESRCH)).unwrap();
+    }
+
+    #[test]
+    fn other_signal_errors_remain_fail_closed() {
+        let error = classify_kill_result(-1, std::io::Error::from_raw_os_error(libc::EPERM))
+            .unwrap_err();
+        assert!(!error.is_empty());
+    }
 }

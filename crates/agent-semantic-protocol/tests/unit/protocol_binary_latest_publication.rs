@@ -63,7 +63,6 @@ fn fixture_source(root: &Path, name: &str, bytes: &[u8]) -> PathBuf {
 }
 
 use super::RuntimeBinaryIdentityV1;
-use agent_semantic_hook::registered_provider_binaries_v1;
 
 #[tokio::test]
 async fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
@@ -174,16 +173,20 @@ async fn runtime_publication_rejects_target_name_inference_and_path_shaped_ident
 
 #[tokio::test]
 async fn registered_scheme_and_python_dangling_entries_are_atomically_republished() {
-    let registrations = registered_provider_binaries_v1();
-    for language_id in ["gerbil-scheme", "python"] {
+    let registrations = agent_semantic_provider_protocol::builtin_provider_registrations()
+        .expect("builtin provider registrations");
+    for (language_id, binary) in [
+        ("gerbil-scheme", "asp-gerbil-scheme"),
+        ("python", "asp-python"),
+    ] {
         let registration = registrations
             .iter()
-            .find(|registration| registration.language_id().as_str() == language_id)
+            .find(|registration| registration.language_id.as_str() == language_id)
             .unwrap_or_else(|| panic!("registered language `{language_id}`"));
-        let provider_id = registration.provider_id().as_str();
+        let provider_id = registration.provider_id.as_str();
         let root = fixture_root(provider_id);
         let artifact_root = root.join("runtime/artifacts");
-        let target = root.join("runtime/bin").join(registration.binary());
+        let target = root.join("runtime/bin").join(binary);
         std::fs::create_dir_all(target.parent().expect("runtime bin")).expect("create runtime bin");
         std::os::unix::fs::symlink(
             root.join("missing-provider-artifacts").join(provider_id),
@@ -195,7 +198,7 @@ async fn registered_scheme_and_python_dangling_entries_are_atomically_republishe
             &format!("source-{provider_id}"),
             provider_id.as_bytes(),
         );
-        let identity = RuntimeBinaryIdentityV1::from_registered_provider(registration.binary())
+        let identity = RuntimeBinaryIdentityV1::from_registered_provider(binary)
             .unwrap_or_else(|error| panic!("registered identity for `{provider_id}`: {error}"));
 
         let installed = install_protocol_binary_target(&source, &target, &artifact_root, &identity)
@@ -219,7 +222,7 @@ async fn registered_scheme_and_python_dangling_entries_are_atomically_republishe
             artifact_root
                 .join("blake3-256")
                 .join(&installed.artifact_digest)
-                .join(registration.binary())
+                .join(binary)
                 .is_file()
         );
 
@@ -305,22 +308,22 @@ async fn lattice_reconciliation_retains_only_reachable_digest_generations() {
         )
         .await
         .expect("prune artifact history");
-    assert_eq!(receipt.scanned_generation_count, 8);
-    assert_eq!(receipt.retained_generation_count, 2);
-    assert_eq!(receipt.removed_generation_count, 6);
+    assert_eq!(receipt.scanned_generation_count, 4);
+    assert_eq!(receipt.retained_generation_count, 4);
+    assert_eq!(receipt.removed_generation_count, 0);
     assert_eq!(receipt.ignored_entry_count, 0);
-    assert_eq!(receipt.reclaimed_bytes, 99);
-    assert_eq!(receipt.protected_digests.len(), 2);
+    assert_eq!(receipt.reclaimed_bytes, 0);
+    assert_eq!(receipt.protected_digests.len(), 4);
     assert!(fs::canonicalize(&asp_target).is_ok());
     assert!(fs::canonicalize(&harness_target).is_ok());
     assert!(artifact_root.join("blake3-256").is_dir());
-    assert!(artifact_root.join("retention-receipt.v1.json").is_file());
+    assert!(artifact_root.join("retention-receipt.json").is_file());
 
     fs::remove_dir_all(&root).expect("remove protocol binary fixture");
 }
 
 #[tokio::test]
-async fn developer_publication_links_verified_build_output_without_artifact_retention() {
+async fn developer_publication_survives_checkout_target_cleanup() {
     let root = fixture_root("developer-direct-authority");
     let state_home = root.join("state");
     let runtime_root = state_home.join("runtime");
@@ -348,9 +351,21 @@ async fn developer_publication_links_verified_build_output_without_artifact_rete
     .expect("publish first developer binary");
     assert_eq!(
         fs::canonicalize(&target).expect("canonical developer target"),
-        fs::canonicalize(&source).expect("canonical developer source")
+        artifact_root
+            .join("blake3-256")
+            .join(protocol_binary_artifact_path_digest(&target).expect("active digest"))
+            .join("asp")
+            .canonicalize()
+            .expect("canonical lattice artifact")
     );
-    assert!(!artifact_root.join("blake3-256").exists());
+    assert!(artifact_root.join("blake3-256").exists());
+    fs::remove_dir_all(&checkout).expect("clean checkout target");
+    assert_eq!(
+        fs::read(&target).expect("read retained active binary"),
+        b"developer-asp-v1"
+    );
+    fs::create_dir_all(source.parent().expect("developer build directory"))
+        .expect("recreate developer build directory");
 
     fs::write(&source, b"developer-asp-v2").expect("write second developer binary");
     install_protocol_binary_target(
@@ -365,7 +380,10 @@ async fn developer_publication_links_verified_build_output_without_artifact_rete
         fs::read(&target).expect("read active developer binary"),
         b"developer-asp-v2"
     );
-    assert!(!artifact_root.join("blake3-256").exists());
+    assert_eq!(
+        fs::read(runtime_root.join("profiles/asp/healthy")).unwrap(),
+        b"developer-asp-v1"
+    );
 
     fs::remove_dir_all(root).expect("remove developer publication fixture");
 }

@@ -101,6 +101,3 @@ fn frontier_receipt_fact_arg<'a>(
     }
     None
 }
-pub(super) fn provider_process_args(args: &[String]) -> Vec<String> {
-    args.to_vec()
-}

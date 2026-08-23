@@ -4,31 +4,32 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct QualificationPlanV1 {
+pub(super) struct QualificationPlan {
     pub(super) schema_id: String,
     pub(super) schema_version: String,
     pub(super) lock_path: PathBuf,
     pub(super) required_languages: Vec<String>,
     pub(super) resident_sample_count: usize,
-    pub(super) cases: Vec<QualificationCaseV1>,
+    pub(super) cases: Vec<QualificationCase>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct QualificationCaseV1 {
+pub(super) struct QualificationCase {
     pub(super) case_id: String,
     pub(super) resource_id: String,
+    pub(super) scenario_id: String,
     pub(super) language_id: String,
     pub(super) provider_id: String,
-    pub(super) search: QualificationSearchV1,
-    pub(super) query: QualificationQueryV1,
+    pub(super) search: QualificationSearch,
+    pub(super) query: QualificationQuery,
     pub(super) zero_match_terms: Vec<String>,
     pub(super) required_telemetry_events: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct QualificationSearchV1 {
+pub(super) struct QualificationSearch {
     pub(super) method: String,
     pub(super) terms: Vec<String>,
     pub(super) view: String,
@@ -38,7 +39,7 @@ pub(super) struct QualificationSearchV1 {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct QualificationQueryV1 {
+pub(super) struct QualificationQuery {
     pub(super) selector_strategy: String,
     pub(super) owner_view: String,
     pub(super) projection_scope: String,
@@ -62,6 +63,7 @@ pub(super) struct QualificationReceipt {
 pub(super) struct QualificationCaseReceipt {
     pub(super) case_id: String,
     pub(super) resource_id: String,
+    pub(super) scenario_id: String,
     pub(super) language_id: String,
     pub(super) provider_id: String,
     pub(super) revision: String,
@@ -72,17 +74,16 @@ pub(super) struct QualificationCaseReceipt {
     pub(super) search_elapsed_micros: u64,
     pub(super) resident_sample_count: usize,
     pub(super) search_resident_read_latency_micros:
-        super::resident_metrics::ResidentLatencyDistributionV1,
-    pub(super) search_service_latency_micros:
-        super::resident_metrics::ResidentLatencyDistributionV1,
-    pub(super) search_total_latency_micros: super::resident_metrics::ResidentLatencyDistributionV1,
+        super::resident_metrics::ResidentLatencyDistribution,
+    pub(super) search_service_latency_micros: super::resident_metrics::ResidentLatencyDistribution,
+    pub(super) search_total_latency_micros: super::resident_metrics::ResidentLatencyDistribution,
     pub(super) candidate_count: usize,
     pub(super) selector: String,
     pub(super) query_operation_id: String,
     pub(super) query_elapsed_micros: u64,
-    pub(super) exact_source_latency_micros: super::resident_metrics::ResidentLatencyDistributionV1,
+    pub(super) exact_source_latency_micros: super::resident_metrics::ResidentLatencyDistribution,
     pub(super) callable_skeleton_latency_micros:
-        super::resident_metrics::ResidentLatencyDistributionV1,
+        super::resident_metrics::ResidentLatencyDistribution,
     pub(super) merkle_owner_path: String,
     pub(super) merkle_source_blob_digest: String,
     pub(super) merkle_owner_subtree_digest: String,

@@ -46,6 +46,7 @@ pub(super) fn exact_query_command() -> Command {
         .arg(
             Arg::new("projection")
                 .long("projection")
+                .value_name("source|callable-skeleton")
                 .required(true)
                 .value_parser(["source", "callable-skeleton"])
                 .num_args(1),

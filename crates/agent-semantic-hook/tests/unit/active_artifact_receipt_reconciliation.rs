@@ -5,7 +5,7 @@ use super::{
     materialize_active_asp_artifact_receipt, rebind_active_asp_binary_receipt_if_present,
     verify_active_asp_artifact_receipt,
 };
-use crate::registered_provider_binaries_v1;
+use crate::{registered_language_ids, registered_provider_id};
 use agent_semantic_content_identity::active_artifact_merkle::{
     ActiveArtifactKind, ActiveAspArtifactReceipt,
 };
@@ -181,22 +181,24 @@ fn asp_binary_rebind_does_not_inherit_registered_provider_identities() {
         .expect("create activation parent");
     std::fs::write(&binary, b"asp-v1").expect("write binary");
 
-    let registrations = registered_provider_binaries_v1();
     let selected = ["gerbil-scheme", "python"]
         .into_iter()
         .map(|language_id| {
-            registrations
-                .iter()
-                .find(|registration| registration.language_id().as_str() == language_id)
-                .unwrap_or_else(|| panic!("registered language `{language_id}`"))
+            let registered_language = registered_language_ids()
+                .into_iter()
+                .find(|registered| registered.as_str() == language_id)
+                .unwrap_or_else(|| panic!("registered language `{language_id}`"));
+            let provider_id = registered_provider_id(language_id)
+                .unwrap_or_else(|| panic!("registered provider for `{language_id}`"));
+            (registered_language, provider_id)
         })
         .collect::<Vec<_>>();
     let providers = selected
         .iter()
-        .map(|registration| {
+        .map(|(language_id, provider_id)| {
             serde_json::json!({
-                "languageId": registration.language_id().as_str(),
-                "providerId": registration.provider_id().as_str(),
+                "languageId": language_id.as_str(),
+                "providerId": provider_id,
             })
         })
         .collect::<Vec<_>>();
@@ -207,21 +209,11 @@ fn asp_binary_rebind_does_not_inherit_registered_provider_identities() {
     )
     .expect("write activation");
 
-    let mut provider_paths = Vec::new();
-    for registration in &selected {
-        let provider_path = root.join("runtime/bin").join(registration.binary());
-        std::fs::write(&provider_path, registration.provider_id().as_str())
-            .expect("write registered provider binary");
-        provider_paths.push(provider_path);
-    }
     let binary_digest =
         agent_semantic_content_identity::file_content_digest_v1(&binary).expect("binary digest");
     let materialized =
         materialize_active_asp_artifact_receipt(&binary, &binary_digest, &activation)
             .expect("materialize registered provider receipt");
-    for provider_path in &provider_paths {
-        std::fs::remove_file(provider_path).expect("remove registered provider artifact");
-    }
 
     std::fs::write(&binary, b"asp-v2").expect("update binary");
     let changed_binary_digest =
@@ -235,12 +227,8 @@ fn asp_binary_rebind_does_not_inherit_registered_provider_identities() {
         &std::fs::read(&materialized.receipt_path).expect("read rebound receipt"),
     )
     .expect("decode rebound receipt");
-    for registration in selected {
-        let logical_path = format!(
-            "providers/{}/{}",
-            registration.language_id(),
-            registration.provider_id()
-        );
+    for (language_id, provider_id) in selected {
+        let logical_path = format!("providers/{}/{}", language_id, provider_id);
         assert!(
             receipt
                 .leaves()

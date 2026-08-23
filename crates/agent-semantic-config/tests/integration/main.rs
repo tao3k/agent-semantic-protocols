@@ -3,10 +3,8 @@ mod codex_plugin_config;
 
 #[path = "action_match_config.rs"]
 mod action_match_config;
-#[path = "default_read_effect_rule.rs"]
-mod default_read_effect_rule;
-#[path = "legacy_agent_action_contract.rs"]
-mod legacy_agent_action_contract;
+#[path = "default_registered_source_capability_rule.rs"]
+mod default_registered_source_capability_rule;
 #[path = "profile_rule_dsl.rs"]
 mod profile_rule_dsl;
 #[path = "wrapper_match_contract.rs"]

@@ -8,7 +8,7 @@ mod endpoint_validation;
 pub use endpoint_validation::validate_runtime_server_endpoint_for_state_home;
 mod listener;
 mod provider_endpoint;
-pub(crate) use provider_endpoint::provider_register_state_path;
+pub use provider_endpoint::provider_register_state_path;
 mod endpoint_identity;
 mod frame;
 mod model;
@@ -16,13 +16,14 @@ pub(crate) mod status_memory;
 
 pub use client::{call_runtime_server, ensure_runtime_server_workspace, reconcile_runtime_server};
 pub use endpoint::{
-    RuntimeServerElection, RuntimeServerElectionAttempt, acquire_runtime_server_election,
+    RuntimeServerElection, RuntimeServerElectionAttempt, RuntimeServerSupervisorTransaction,
+    acquire_runtime_server_election, acquire_runtime_server_supervisor_transaction,
     prepare_runtime_server_endpoint, prepare_runtime_server_endpoint_in,
     prepare_runtime_server_endpoint_with_workspace_store,
     prepare_runtime_server_endpoint_with_workspace_store_and_identity,
     publish_runtime_server_endpoint, read_runtime_server_endpoint,
-    read_runtime_server_supervisor_endpoint, try_acquire_runtime_server_election,
-    wait_for_runtime_server_election,
+    read_runtime_server_endpoint_owner_binding, read_runtime_server_supervisor_endpoint,
+    try_acquire_runtime_server_election, wait_for_runtime_server_election,
 };
 pub use endpoint_identity::{
     runtime_server_endpoint_path, runtime_server_endpoint_path_async, runtime_server_runtime_base,
@@ -38,8 +39,8 @@ pub use model::{
     AgentSessionControlPlaneState, GraphTurboResidentState, GraphTurboResidentStatus,
     RuntimeServerAgentSessionLifecycleState, RuntimeServerAgentSessionStatus,
     RuntimeServerControlReceipt, RuntimeServerControlRequest, RuntimeServerEndpoint,
-    RuntimeServerOperation, RuntimeServerRequestReadError, RuntimeServerState,
-    runtime_server_transport_contract_digest,
+    RuntimeServerEndpointOwnerBinding, RuntimeServerOperation, RuntimeServerRequestReadError,
+    RuntimeServerState, runtime_server_transport_contract_digest,
 };
 pub use status_memory::{
     RuntimeServerStatusMemoryMetrics, prewarm_runtime_server_status_memory,

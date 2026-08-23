@@ -26,7 +26,7 @@
             "operation": { "const": "initialize" },
             "providers": {
               "type": "array",
-              "items": { "$ref": "#/$defs/providerRegistration" }
+              "items": { "$ref": "#/$defs/providerIdentityRegistration" }
             }
           }
         },
@@ -36,7 +36,7 @@
           "required": ["operation", "provider"],
           "properties": {
             "operation": { "const": "register" },
-            "provider": { "$ref": "#/$defs/providerRegistration" }
+            "provider": { "$ref": "#/$defs/liveProviderRegistration" }
           }
         },
         {
@@ -64,7 +64,7 @@
       "type": "string",
       "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
     },
-    "providerRegistration": {
+    "providerIdentityRegistration": {
       "type": "object",
       "additionalProperties": false,
       "required": ["languageId", "providerId", "registration"],
@@ -73,9 +73,30 @@
         "providerId": { "$ref": "#/$defs/identity" },
         "registration": {
           "type": "object",
-          "required": ["languageId", "providerId"]
+          "additionalProperties": false,
+          "required": ["languageId", "providerId"],
+          "properties": {
+            "languageId": { "$ref": "#/$defs/identity" },
+            "providerId": { "$ref": "#/$defs/identity" }
+          }
         }
       }
+    },
+    "liveProviderRegistration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "providerId", "registration"],
+      "properties": {
+        "languageId": { "$ref": "#/$defs/identity" },
+        "providerId": { "$ref": "#/$defs/identity" },
+        "registration": { "$ref": "provider-registration.schema.json" }
+      }
+    },
+    "providerRegistration": {
+      "oneOf": [
+        { "$ref": "#/$defs/providerIdentityRegistration" },
+        { "$ref": "#/$defs/liveProviderRegistration" }
+      ]
     }
   }
 }

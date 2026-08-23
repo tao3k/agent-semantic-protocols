@@ -8,7 +8,7 @@
     "stage": "presentation"
   },
   "hookRoute": {
-    "configRuleId": "resident-testing-dispatch",
+    "configRuleId": "testing-role-dispatch",
     "targetAgentName": "asp_testing",
     "targetAgentRole": "asp_testing",
     "receiptKind": "asp-testing-execution-v1",

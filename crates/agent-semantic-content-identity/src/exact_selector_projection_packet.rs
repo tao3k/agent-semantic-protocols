@@ -170,7 +170,7 @@ pub fn build_exact_selector_projection_packet_v1(
         projection,
     } = input;
     let source_blob_digest = crate::exact_selector_merkle::blake3_content_digest_v1(source);
-    let parser_fact_digest = crate::exact_selector_merkle::canonical_content_digest_v1(
+    let parser_fact_digest = crate::exact_selector_merkle::canonical_content_digest(
         b"asp.parser-fact.v1",
         &[
             language_id.as_str().as_bytes(),

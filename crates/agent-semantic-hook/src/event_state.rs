@@ -99,7 +99,7 @@ pub struct HookSessionAgentRoute {
 
 fn should_preserve_parser_route_message(decision: &HookDecision) -> bool {
     !decision.routes.is_empty()
-        || decision.has_configured_resident_dispatch()
+        || decision.has_dispatch_choice_plane_role()
         || decision.fields.contains_key("agentSessionAction")
             && decision.fields.contains_key("agentSessionRoute")
 }
@@ -125,7 +125,7 @@ pub fn apply_repeated_deny_replay(
     let source_access_replay = is_source_access_replay_key(&replay_key);
     let preserve_parser_route_message = should_preserve_parser_route_message(decision);
     if source_access_replay && !preserve_parser_route_message {
-        insert_resident_recovery_action_fields(decision);
+        insert_choice_plane_recovery_action_fields(decision);
     }
     let compact_first_source_access_replay =
         source_access_replay && should_compact_source_access_deny_message(decision);
@@ -165,11 +165,11 @@ pub fn apply_repeated_deny_replay(
     Ok(true)
 }
 
-fn insert_resident_recovery_action_fields(decision: &mut HookDecision) {
+fn insert_choice_plane_recovery_action_fields(decision: &mut HookDecision) {
     decision
         .fields
         .entry("requiredAction".to_string())
-        .or_insert_with(|| Value::String("open-org-interactive-resident-agent-window".to_string()));
+        .or_insert_with(|| Value::String("open-org-interactive-choice-plane".to_string()));
     decision
         .fields
         .entry("nextAction".to_string())
@@ -181,7 +181,7 @@ fn insert_resident_recovery_action_fields(decision: &mut HookDecision) {
     decision
         .fields
         .entry("completionReceipt".to_string())
-        .or_insert_with(|| Value::String("resident-agent-host-action-receipt".to_string()));
+        .or_insert_with(|| Value::String("host-agent-action-receipt".to_string()));
     decision
         .fields
         .entry("agentWindowCommand".to_string())

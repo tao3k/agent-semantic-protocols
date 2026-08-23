@@ -3,7 +3,6 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use std::time::Duration;
 
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessSpec, ProviderProcessSupervisor, StdinMode,
@@ -15,17 +14,19 @@ use serde::Deserialize;
 mod receipt;
 pub(super) use receipt::record_registered_provider_workspace_install;
 
-const DEFAULT_WORKSPACE_BUILD_TIMEOUT: Duration = Duration::from_secs(15 * 60);
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ProviderWorkspaceInstallDescriptor {
+    #[serde(rename = "$schema")]
+    schema: String,
     schema_id: String,
     schema_version: String,
     schema_authority: String,
     language_id: String,
     provider_id: String,
     binary: String,
+    provider_registration: String,
+    schema_bundle_receipt: String,
     workspace_artifact: WorkspaceArtifactDescriptor,
     dependency_materialization: Option<WorkspaceCommandDescriptor>,
     workspace_build: WorkspaceBuildDescriptor,
@@ -80,6 +81,8 @@ struct WorkspaceCommandDescriptor {
 pub(super) struct BuiltProviderWorkspace {
     source_root: PathBuf,
     entrypoint: PathBuf,
+    pub(super) provider_registration:
+        agent_semantic_provider_protocol::ProviderRegistrationDocument,
     launch: Option<WorkspaceLaunchDescriptor>,
     runtime_dependencies: Vec<BuiltWorkspaceRuntimeDependency>,
 }
@@ -102,7 +105,7 @@ pub(super) struct PublishedProviderWorkspace {
 
 pub(super) async fn build_registered_provider_workspace(
     configured_dev_root: &Path,
-    registration: &agent_semantic_hook::ProviderDevelopmentRegistrationV1,
+    registration: &super::super::provider_install_registry::ProviderInstallRegistration,
 ) -> Result<BuiltProviderWorkspace, String> {
     let dev_root = configured_dev_root.canonicalize().map_err(|error| {
         format!(
@@ -111,15 +114,11 @@ pub(super) async fn build_registered_provider_workspace(
         )
     })?;
     let provider_source_root = dev_root
-        .join(&registration.development.source_root)
+        .join(&registration.source_root)
         .canonicalize()
         .map_err(|error| format!("canonicalize provider sourceRoot: {error}"))?;
     ensure_within(&provider_source_root, &dev_root, "provider sourceRoot")?;
-    let reference = registration
-        .development
-        .workspace_install
-        .as_deref()
-        .ok_or_else(|| "registered provider lacks development.workspaceInstall".to_string())?;
+    let reference = registration.workspace_install.as_str();
     validate_relative_path(Path::new(reference), false, "workspaceInstall")?;
     let descriptor_path = provider_source_root
         .join(reference)
@@ -136,6 +135,89 @@ pub(super) async fn build_registered_provider_workspace(
     )
     .map_err(|error| format!("decode {}: {error}", descriptor_path.display()))?;
     validate_descriptor(&descriptor, registration)?;
+
+    let descriptor_parent = descriptor_path.parent().ok_or_else(|| {
+        format!(
+            "workspace install descriptor has no parent directory: {}",
+            descriptor_path.display()
+        )
+    })?;
+    let schema_bundle_reference = Path::new(&descriptor.schema_bundle_receipt);
+    if schema_bundle_reference.is_absolute()
+        || schema_bundle_reference.as_os_str().is_empty()
+        || schema_bundle_reference
+            .components()
+            .any(|component| matches!(component, Component::RootDir | Component::Prefix(_)))
+    {
+        return Err(format!(
+            "schemaBundleReceipt must be relative to the workspace descriptor: {}",
+            descriptor.schema_bundle_receipt
+        ));
+    }
+    let schema_bundle_receipt_path = descriptor_parent
+        .join(schema_bundle_reference)
+        .canonicalize()
+        .map_err(|error| {
+            format!(
+                "resolve schemaBundleReceipt {}: {error}",
+                descriptor.schema_bundle_receipt
+            )
+        })?;
+    ensure_within(
+        &schema_bundle_receipt_path,
+        &provider_source_root,
+        "schema bundle receipt",
+    )?;
+    let schema_bundle_receipt =
+        agent_semantic_schema_manager::verify_bundle_receipt(&schema_bundle_receipt_path).await?;
+    if schema_bundle_receipt.language_id != descriptor.language_id {
+        return Err(format!(
+            "schema bundle receipt language drift: expected={} actual={}",
+            descriptor.language_id, schema_bundle_receipt.language_id
+        ));
+    }
+
+    let provider_registration_reference = Path::new(&descriptor.provider_registration);
+    validate_relative_path(
+        provider_registration_reference,
+        false,
+        "providerRegistration",
+    )?;
+    let provider_registration_path = descriptor_parent
+        .join(provider_registration_reference)
+        .canonicalize()
+        .map_err(|error| {
+            format!(
+                "failed to resolve providerRegistration {} relative to {}: {error}",
+                descriptor.provider_registration,
+                descriptor_parent.display()
+            )
+        })?;
+    ensure_within(
+        &provider_registration_path,
+        &provider_source_root,
+        "provider registration",
+    )?;
+    let provider_registration_value: serde_json::Value =
+        serde_json::from_slice(&fs::read(&provider_registration_path).map_err(|error| {
+            format!(
+                "read provider registration {}: {error}",
+                provider_registration_path.display()
+            )
+        })?)
+        .map_err(|error| {
+            format!(
+                "decode provider registration {}: {error}",
+                provider_registration_path.display()
+            )
+        })?;
+    let provider_registration = agent_semantic_provider_protocol::ProviderRegistrationDocument {
+        language_id: descriptor.language_id.clone(),
+        provider_id: descriptor.provider_id.clone(),
+        registration: provider_registration_value,
+    };
+    provider_registration.validate()?;
+    provider_registration.compiled_routes()?;
 
     let working_directory = repository_path(
         &dev_root,
@@ -227,6 +309,7 @@ pub(super) async fn build_registered_provider_workspace(
     Ok(BuiltProviderWorkspace {
         source_root,
         entrypoint,
+        provider_registration,
         launch: descriptor.workspace_artifact.launch,
         runtime_dependencies,
     })
@@ -312,7 +395,7 @@ fn resolve_runtime_dependencies(
 
 async fn run_workspace_command(
     stage: &str,
-    registration: &agent_semantic_hook::ProviderDevelopmentRegistrationV1,
+    registration: &super::super::provider_install_registry::ProviderInstallRegistration,
     dev_root: &Path,
     program: &str,
     args: &[String],
@@ -339,18 +422,16 @@ async fn run_workspace_command(
             stdin: StdinMode::Inherit,
             stdout: OutputMode::Tee,
             stderr: OutputMode::Tee,
-            limits: if limits.timeout().is_some() {
-                limits
-            } else {
-                limits.with_timeout(Some(DEFAULT_WORKSPACE_BUILD_TIMEOUT))
-            },
+            // Workspace builds are owned by the Tokio request future. Dropping the
+            // request cancels the supervised process tree; a fixed wall-clock timer
+            // is not a lifecycle authority and must not decide build correctness.
+            limits: limits.with_timeout(None),
         })
         .await
         .map_err(|error| {
             format!(
                 "registered provider {stage} gate failed: language={} provider={} error={error}",
-                registration.language_id.as_str(),
-                registration.provider_id.as_str()
+                registration.language_id, registration.provider_id
             )
         });
     supervisor.shutdown().await;
@@ -358,9 +439,7 @@ async fn run_workspace_command(
     if !output.status.success() {
         return Err(format!(
             "registered provider {stage} failed: language={} provider={} status={}",
-            registration.language_id.as_str(),
-            registration.provider_id.as_str(),
-            output.status
+            registration.language_id, registration.provider_id, output.status
         ));
     }
     Ok(())
@@ -370,8 +449,9 @@ pub(super) async fn publish_provider_workspace(
     protocol_home: &Path,
     stable_entry: &Path,
     binary_artifact_root: &Path,
-    registration: &agent_semantic_hook::ProviderDevelopmentRegistrationV1,
+    registration: &super::super::provider_install_registry::ProviderInstallRegistration,
     built: BuiltProviderWorkspace,
+    reconciliation_guard: &super::super::protocol_binary::ProtocolBinaryReconciliationGuard,
 ) -> Result<PublishedProviderWorkspace, String> {
     let publication_root = protocol_home
         .join("runtime/provider-artifacts")
@@ -455,13 +535,21 @@ pub(super) async fn publish_provider_workspace(
         super::super::protocol_binary::RuntimeBinaryIdentityV1::from_registered_provider(
             &registration.binary,
         )?;
-    let installed = super::super::protocol_binary::install_protocol_binary_target(
-        &launcher,
-        stable_entry,
-        binary_artifact_root,
-        &binary_identity,
-    )
-    .await?;
+    let checkout_root =
+        agent_semantic_runtime::runtime_artifact_catalog::load_runtime_developer_root(
+            protocol_home,
+        )?
+        .ok_or_else(|| "provider workspace publication requires Runtime dev mode".to_owned())?;
+    let installed =
+        super::super::protocol_binary::install_qualified_provider_staging_target_under_guard(
+            &launcher,
+            stable_entry,
+            binary_artifact_root,
+            &binary_identity,
+            checkout_root,
+            reconciliation_guard,
+        )
+        .await?;
     Ok(PublishedProviderWorkspace {
         source_root: built.source_root,
         artifact_root,
@@ -535,17 +623,21 @@ fn materialize_runtime_dependencies(
 
 fn validate_descriptor(
     descriptor: &ProviderWorkspaceInstallDescriptor,
-    registration: &agent_semantic_hook::ProviderDevelopmentRegistrationV1,
+    registration: &super::super::provider_install_registry::ProviderInstallRegistration,
 ) -> Result<(), String> {
-    if descriptor.schema_id != "agent.semantic-protocols.provider-workspace-install"
+    if descriptor.schema != "../schemas/provider-workspace-install.schema.json"
+        || descriptor.schema_id != "agent.semantic-protocols.provider-workspace-install"
         || descriptor.schema_version != "1"
         || descriptor.schema_authority
             != "https://tao3k.github.io/agent-semantic-protocols/schemas/"
     {
-        return Err("provider workspace install schema identity must be version 1".to_string());
+        return Err(
+            "provider workspace install must reference the canonical local schema with schema version 1"
+                .to_string(),
+        );
     }
-    if descriptor.language_id != registration.language_id.as_str()
-        || descriptor.provider_id != registration.provider_id.as_str()
+    if descriptor.language_id != registration.language_id
+        || descriptor.provider_id != registration.provider_id
         || descriptor.binary != registration.binary
     {
         return Err(format!(
@@ -553,8 +645,8 @@ fn validate_descriptor(
             descriptor.language_id,
             descriptor.provider_id,
             descriptor.binary,
-            registration.language_id.as_str(),
-            registration.provider_id.as_str(),
+            registration.language_id,
+            registration.provider_id,
             registration.binary
         ));
     }

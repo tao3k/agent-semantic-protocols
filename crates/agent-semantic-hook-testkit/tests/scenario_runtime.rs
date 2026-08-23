@@ -6,7 +6,9 @@ use std::{
     time::Duration,
 };
 
-use agent_semantic_hook_testkit::{HookScenario, HookTestKitError, run_scenarios_with};
+use agent_semantic_hook_testkit::{
+    HookProcessSpec, HookScenario, HookTestKitError, run_hook_process, run_scenarios_with,
+};
 use serde_json::json;
 
 fn scenario(index: usize) -> HookScenario {
@@ -65,4 +67,45 @@ async fn stuck_async_scenario_is_cancelled_at_its_deadline() {
     .await
     .expect_err("stuck scenario must time out");
     assert!(matches!(error, HookTestKitError::Timeout { .. }));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn timed_out_hook_kills_process_group() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().expect("temp dir");
+    let script = dir.path().join("hook.sh");
+    std::fs::write(
+        &script,
+        "#!/bin/sh\nsleep 30 &\nchild=$!\nprintf '%s' \"$child\" > \"$CHILD_PID_FILE\"\nwait \"$child\"\n",
+    )
+    .expect("write hook script");
+    let mut permissions = std::fs::metadata(&script)
+        .expect("script metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&script, permissions).expect("chmod hook script");
+
+    let pid_file = dir.path().join("child.pid");
+    let mut spec = HookProcessSpec::new(&script, dir.path());
+    spec.env
+        .push(("CHILD_PID_FILE".to_owned(), pid_file.display().to_string()));
+    spec.timeout = Duration::from_secs(2);
+    let result = run_hook_process(&spec, &json!({})).await;
+    assert!(matches!(result, Err(HookTestKitError::Timeout { .. })));
+
+    let child_pid: i32 = std::fs::read_to_string(pid_file)
+        .expect("child pid")
+        .parse()
+        .expect("valid child pid");
+    assert!(child_pid > 0);
+    for _ in 0..20 {
+        // SAFETY: signal 0 only probes the validated positive fixture pid.
+        if unsafe { libc::kill(child_pid, 0) } != 0 {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("descendant process survived timeout cleanup: {child_pid}");
 }

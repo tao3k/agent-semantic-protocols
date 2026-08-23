@@ -11,6 +11,8 @@ fn accepts_only_the_source_query_surface() {
         "query",
         "--selector",
         "rust://src/lib.rs#item/function/run",
+        "--projection",
+        "source",
     ]))
     .expect("typed exact query");
     assert_eq!(
@@ -24,7 +26,7 @@ fn generated_usage_exposes_only_the_source_surface() {
     let mut command = subject::exact_query_command();
     let usage = command.render_usage().to_string();
     assert!(usage.contains("--selector <selector>"));
-    assert!(!usage.contains("--projection"));
+    assert!(usage.contains("--projection <source|callable-skeleton>"));
     assert!(!usage.contains("--json"));
     assert!(!usage.contains("--code"));
     assert!(!usage.contains("--names-only"));
@@ -55,16 +57,15 @@ fn removed_names_only_flag_is_an_unknown_argument() {
 }
 
 #[test]
-fn removed_projection_flag_is_an_unknown_argument() {
+fn missing_projection_is_rejected_by_cli_admission() {
     let error = subject::parse_exact_query_args(&args(&[
         "query",
         "--selector",
         "rust://src/lib.rs#item/function/run",
-        "--projection",
-        "source",
     ]))
-    .expect_err("removed projection flag must fail before runtime I/O");
-    assert!(error.contains("unexpected argument '--projection'"));
+    .expect_err("missing projection must fail before runtime I/O");
+    assert!(error.contains("required arguments were not provided"));
+    assert!(error.contains("--projection <source|callable-skeleton>"));
 }
 
 #[test]

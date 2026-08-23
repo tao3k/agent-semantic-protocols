@@ -2,13 +2,11 @@
 
 mod agent_org_config;
 pub(crate) use agent_org_config::compile_agent_org_artifacts_config;
-mod asp_session_policy;
 mod core;
 mod core_load;
 
-pub use asp_session_policy::AspSessionPolicy;
 pub(crate) use core::HookPolicyCandidate;
-pub use core::{ClientHookConfig, ConfiguredResidentTarget, DurableHookConfigArtifact};
+pub use core::{ClientHookConfig, DurableHookConfigArtifact, MaterializedDecisionShards};
 pub use core_load::{
     default_client_config_path, default_client_config_projection_digest,
     default_client_config_template, hook_runtime_artifact_fingerprint, load_client_config,

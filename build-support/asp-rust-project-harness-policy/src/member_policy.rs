@@ -110,43 +110,21 @@ const CLIENT_DB_STABILITY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
     },
 ];
 
-const CLIENT_LOCAL_CLI_LATENCY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
-    AspRustProjectHarnessOwnerPolicy {
-        path: "src/backend.rs",
-        rationale: "local native backend fans out provider commands and aggregates captured Bytes output",
-    },
-];
-
-const CLIENT_LOCAL_CLI_STABILITY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
-    AspRustProjectHarnessOwnerPolicy {
-        path: "src/backend.rs",
-        rationale: "local native backend must preserve deterministic provider routing and error handling under repeated execution",
-    },
-];
-
 const CLIENT_LATENCY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
     AspRustProjectHarnessOwnerPolicy {
-        path: "src/provider_method.rs",
-        rationale: "provider method dispatch owns cache-hit, packet-first, and provider-exec latency",
+        path: "src/cli.rs",
+        rationale: "the thin client owns Runtime Server route submission and provider-register snapshot latency",
     },
     AspRustProjectHarnessOwnerPolicy {
-        path: "src/cache_replay/search_packet.rs",
-        rationale: "search packet replay renders compact stdout on the cache hot path",
-    },
-    AspRustProjectHarnessOwnerPolicy {
-        path: "src/search_history.rs",
+        path: "src/search_history",
         rationale: "search history audit uses Turso-backed artifact timelines and graph-turbo dispatch",
     },
 ];
 
 const CLIENT_STABILITY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
     AspRustProjectHarnessOwnerPolicy {
-        path: "src/provider_method.rs",
-        rationale: "provider method dispatch must degrade predictably across cache miss, provider failure, and timeout paths",
-    },
-    AspRustProjectHarnessOwnerPolicy {
-        path: "src/cache_replay/search_packet.rs",
-        rationale: "search packet replay must keep stable output shape under repeated cache generations",
+        path: "src/cli.rs",
+        rationale: "the thin client must fail closed when Runtime Server route authority is unavailable",
     },
 ];
 
@@ -182,14 +160,14 @@ const ASP_WORKSPACE_MEMBER_POLICIES: &[AspRustProjectHarnessMemberPolicy] = &[
         availability_stability_owners: CLIENT_DB_STABILITY_OWNERS,
     },
     AspRustProjectHarnessMemberPolicy {
-        package_name: "agent-semantic-client-local-cli",
-        crate_root: "crates/agent-semantic-client-local-cli",
-        cargo_check_advice_allow_explanation: "scope=agent-semantic-client-local-cli cargo-check advice; owner=agent-semantic-client-local-cli build gate; finding_category=advisory policy findings; why_safe_now=agent-semantic-client-local-cli keeps advisory findings visible while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
-        verification_label: Some("local native backend"),
+        package_name: "agent-semantic-client-server",
+        crate_root: "crates/agent-semantic-client-server",
+        cargo_check_advice_allow_explanation: "scope=agent-semantic-client-server cargo-check advice; owner=agent-semantic-client-server build gate; finding_category=advisory policy findings; why_safe_now=agent-semantic-client-server keeps advisory findings visible while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
+        verification_label: Some("ASP client server"),
         rule_severity_overrides: &[],
-        criterion_performance_verification: true,
-        latency_sensitive_performance_owners: CLIENT_LOCAL_CLI_LATENCY_OWNERS,
-        availability_stability_owners: CLIENT_LOCAL_CLI_STABILITY_OWNERS,
+        criterion_performance_verification: false,
+        latency_sensitive_performance_owners: &[],
+        availability_stability_owners: &[],
     },
     AspRustProjectHarnessMemberPolicy {
         package_name: "agent-semantic-client",

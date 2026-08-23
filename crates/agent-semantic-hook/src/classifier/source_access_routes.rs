@@ -11,10 +11,6 @@ use crate::{
 use super::decision::deny_for_action;
 use super::recovery::source_access_recovery_message;
 
-pub(crate) fn policy_direct_read_routes(matches: &[DirectReadMatch]) -> Vec<DecisionRoute> {
-    direct_read_routes(matches)
-}
-
 pub(super) fn classify_direct_read_action(
     registry: &HookRuntime,
     platform: &str,
@@ -176,11 +172,15 @@ pub(super) fn classify_direct_read_action(
         ));
     }
 
-    let inferred_execute_read = action.operation == OperationIntent::ShellCommand
-        && agent_action.is_some_and(|agent_action| {
-            agent_action.effect == crate::tool_action::AgentActionKind::Read
-        });
-    if action.operation != OperationIntent::DirectRead && !inferred_execute_read {
+    let inferred_execute_source_access = action.operation == OperationIntent::ShellCommand
+        && (profile.is_some()
+            || agent_action.is_some_and(|agent_action| {
+                agent_action
+                    .capabilities
+                    .iter()
+                    .any(|capability| capability.action == crate::action_ir::AgentActionKind::Read)
+            }));
+    if action.operation != OperationIntent::DirectRead && !inferred_execute_source_access {
         return None;
     }
 
@@ -211,7 +211,7 @@ pub(super) fn classify_direct_read_action(
             let unavailable = provider.is_none();
             let reason_kind = if unavailable {
                 ReasonKind::ActivationUnavailable
-            } else if inferred_execute_read {
+            } else if inferred_execute_source_access {
                 ReasonKind::BulkSourceDump
             } else {
                 ReasonKind::DirectSourceRead
@@ -224,7 +224,7 @@ pub(super) fn classify_direct_read_action(
             } else {
                 source_access_recovery_message(
                     platform,
-                    if inferred_execute_read {
+                    if inferred_execute_source_access {
                         "bulk-source-dump"
                     } else {
                         "direct-source-read"
@@ -266,8 +266,8 @@ pub(super) fn classify_direct_read_action(
         return None;
     }
 
-    if inferred_execute_read {
-        Some(derive_execute_read_decision(
+    if inferred_execute_source_access {
+        Some(derive_execute_source_access_decision(
             platform,
             event,
             action,
@@ -343,7 +343,7 @@ fn direct_source_read_decision(
     )
 }
 
-fn derive_execute_read_decision(
+fn derive_execute_source_access_decision(
     platform: &str,
     event: &str,
     action: &ToolAction,
@@ -395,9 +395,7 @@ pub(super) fn direct_read_routes(matches: &[DirectReadMatch]) -> Vec<DecisionRou
         .collect()
 }
 
-pub(crate) fn direct_read_language_ids(
-    matches: &[DirectReadMatch],
-) -> Vec<agent_semantic_config::LanguageId> {
+fn direct_read_language_ids(matches: &[DirectReadMatch]) -> Vec<agent_semantic_config::LanguageId> {
     matches
         .iter()
         .map(|matched| matched.provider.language_id.clone())

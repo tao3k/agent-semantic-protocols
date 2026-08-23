@@ -17,14 +17,14 @@ fn fixture_endpoint(root: &std::path::Path, owner_epoch: u64) -> RuntimeServerEn
         owner_epoch,
         owner_process_id: 0,
         runtime_artifact_path: "/runtime/asp".to_owned(),
-        runtime_binary_identity: RuntimeBinaryIdentity::DeveloperSourceGeneration {
+        runtime_binary_identity: RuntimeBinaryIdentity::Content {
             value: format!("runtime-{owner_epoch}"),
-            algorithm: "blake3-metadata-v1".to_owned(),
+            algorithm: "blake3-256".to_owned(),
         },
         monitor_capability: true,
-        observed_runtime_binary_identity: RuntimeBinaryIdentity::DeveloperSourceGeneration {
+        observed_runtime_binary_identity: RuntimeBinaryIdentity::Content {
             value: format!("runtime-{owner_epoch}"),
-            algorithm: "blake3-metadata-v1".to_owned(),
+            algorithm: "blake3-256".to_owned(),
         },
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "a".repeat(64)),

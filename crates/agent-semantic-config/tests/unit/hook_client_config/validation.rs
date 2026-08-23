@@ -1,7 +1,6 @@
 use super::{
     default_hook_client_config_file, load_asp_project_config_file, load_hook_client_config_file,
-    merge_asp_project_hook_config, projected_agent_routes, resident_agent, temp_root,
-    write_canonical_config_overlay,
+    merge_asp_project_hook_config, temp_root, write_canonical_config_overlay,
 };
 use std::fs;
 
@@ -17,7 +16,7 @@ fn missing_config_is_rejected() {
 }
 
 #[test]
-fn existing_config_without_agent_dispatch_does_not_require_agent_table() {
+fn existing_config_without_dispatch_accepts_direct_rules() {
     let root = temp_root("hook-client-missing-control-plane");
     let config_path = root.join("config.toml");
     fs::write(
@@ -32,7 +31,7 @@ decision = "deny"
 
     let config = load_hook_client_config_file(&config_path)
         .expect("rules without agent dispatch do not require an agent projection");
-    assert!(config.agents.resident_agents.is_empty());
+    assert_eq!(config.rules.len(), 1);
 
     let _ = fs::remove_dir_all(root);
 }
@@ -122,7 +121,7 @@ argv = ["asp", "rust"]
 }
 
 #[test]
-fn invalid_decision_materializer_is_rejected_by_config_layer() {
+fn unknown_rule_fields_are_rejected_by_config_layer() {
     let root = temp_root("hook-client-invalid-materializer");
     let config_path = root.join("config.toml");
     write_canonical_config_overlay(
@@ -131,18 +130,18 @@ fn invalid_decision_materializer_is_rejected_by_config_layer() {
 [[rules]]
 id = "deny-source-access"
 decision = "deny"
-decisionMaterializer = "legacy-source-classifier"
+obsoleteRuleField = "legacy-source-classifier"
 "#,
     );
 
     let error = load_hook_client_config_file(&config_path).expect_err("invalid materializer");
 
-    assert!(error.contains("legacy-source-classifier"), "{error}");
+    assert!(error.contains("obsoleteRuleField"), "{error}");
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
-fn decision_materializer_cannot_compete_with_static_routes() {
+fn unknown_rule_fields_are_rejected_before_route_validation() {
     let root = temp_root("hook-client-materializer-routes");
     let config_path = root.join("config.toml");
     write_canonical_config_overlay(
@@ -151,7 +150,7 @@ fn decision_materializer_cannot_compete_with_static_routes() {
 [[rules]]
 id = "deny-source-access"
 decision = "deny"
-decisionMaterializer = "source-access"
+obsoleteRuleField = "apply-patch"
 
 [[rules.routes]]
 providerId = "rs-harness"
@@ -162,10 +161,7 @@ argv = ["asp", "rust", "query"]
 
     let error = load_hook_client_config_file(&config_path).expect_err("ambiguous materializer");
 
-    assert!(
-        error.contains("cannot combine decisionMaterializer"),
-        "{error}"
-    );
+    assert!(error.contains("obsoleteRuleField"), "{error}");
     let _ = fs::remove_dir_all(root);
 }
 
@@ -286,71 +282,6 @@ decision = "allow"
         assert!(error.contains(expected), "{error}");
         let _ = fs::remove_dir_all(root);
     }
-}
-
-#[test]
-fn project_hook_declarations_replace_rules_but_reject_agent_identity_overlays() {
-    let root = temp_root("project-hook-stable-identity-merge");
-    let config_path = root.join(".agents/asp.toml");
-    fs::create_dir_all(config_path.parent().expect("config parent")).expect("config dir");
-    fs::write(
-        &config_path,
-        r#"
-[[hook.agents.residentAgents]]
-enabled = true
-name = "asp_explorer"
-role = "project_search"
-roles = ["subagent", "search"]
-permissions = ["read-only"]
-codexAgentName = "project_search"
-sessionLifetime = "resident"
-"#,
-    )
-    .expect("write project config");
-    let error = load_asp_project_config_file(&config_path)
-        .expect_err("project hook config cannot shadow the agent route registry");
-    assert!(error.contains("unknown field"), "{error}");
-    assert!(error.contains("agents"), "{error}");
-
-    fs::write(
-        &config_path,
-        r#"
-[[hook.rules]]
-id = "deny-agent-search-json"
-priority = 1200
-intent = "project-json-policy"
-decision = "allow"
-message = "Project policy replaces the complete managed rule."
-
-[hook.rules.match]
-commandContainsAny = ["--json"]
-"#,
-    )
-    .expect("write rule-only project config");
-
-    let project = load_asp_project_config_file(&config_path).expect("load project hook config");
-    let mut base = default_hook_client_config_file().expect("default config");
-    base.agents = toml::from_str::<toml::Value>(&projected_agent_routes())
-        .expect("agent route projection TOML")["agents"]
-        .clone()
-        .try_into()
-        .expect("typed agent route projection");
-    let merged = merge_asp_project_hook_config(base, project).expect("merge project declarations");
-
-    assert_eq!(merged.agents.resident_agents.len(), 2);
-    let explore = resident_agent(&merged, "asp_explorer");
-    assert_eq!(explore.role, "asp_explorer");
-    assert_eq!(explore.codex_agent_name, "asp_explorer");
-    let replaced = merged
-        .rules
-        .iter()
-        .filter(|rule| rule.id == "deny-agent-search-json")
-        .collect::<Vec<_>>();
-    assert_eq!(replaced.len(), 1);
-    assert_eq!(replaced[0].intent.as_deref(), Some("project-json-policy"));
-    assert!(replaced[0].decision_materializer.is_none());
-
-    let _ = fs::remove_dir_all(root);
 }
 
 #[test]

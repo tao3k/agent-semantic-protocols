@@ -1,7 +1,7 @@
 use agent_semantic_config::{HookClientActionKind, HookClientConfigFile, HookClientMatcherPolicy};
 
 #[test]
-fn git_source_read_rule_dispatches_to_testing_resident() {
+fn git_source_read_rule_dispatches_to_testing_role() {
     let config =
         toml::from_str::<HookClientConfigFile>(include_str!("../../templates/hooks/config.toml"))
             .expect("default hook config template should parse");
@@ -13,7 +13,7 @@ fn git_source_read_rule_dispatches_to_testing_resident() {
     let dispatch = rule
         .dispatch
         .as_ref()
-        .expect("git source read rule should declare a resident dispatch");
+        .expect("git source read rule should declare a Host testing-role dispatch");
 
     assert_eq!(dispatch.role.as_str(), "testing");
     assert_eq!(dispatch.receipt_kind.as_str(), "asp-testing-execution-v1");
@@ -32,7 +32,7 @@ fn source_deny_rules_have_one_explore_role_dispatch_for_the_choice_plane() {
 
     for rule_id in [
         "deny-uncontrolled-source-search-commands",
-        "deny-uncontrolled-source-materialization-commands",
+        "deny-raw-registered-source-action",
     ] {
         let rule = config
             .rules
@@ -58,7 +58,7 @@ fn default_template_uses_rule_local_matcher_policies() {
     let wrapped_rule = config
         .rules
         .iter()
-        .find(|rule| rule.id == "resident-testing-dispatch")
+        .find(|rule| rule.id == "testing-role-dispatch")
         .expect("wrapped command rule");
     assert_eq!(
         wrapped_rule.matcher_policies,
@@ -77,26 +77,17 @@ fn default_template_uses_rule_local_matcher_policies() {
         .find(|rule| rule.id == "deny-raw-registered-source-action")
         .expect("action-first source deny rule should exist");
     assert_eq!(
-        action_rule.match_config.action_policy_all,
-        ["raw-shell-read", "registered-language-source"]
+        action_rule.match_config.capability_policy_all,
+        ["opaque-shell-source-access", "registered-language-source"]
     );
-    let raw_shell_read = config
-        .action_policies
+    let opaque_shell_source_access = config
+        .capability_policies
         .iter()
-        .find(|policy| policy.id == "raw-shell-read")
-        .expect("raw-shell-read action policy");
+        .find(|policy| policy.id == "opaque-shell-source-access")
+        .expect("opaque shell source-access policy");
     assert_eq!(
-        raw_shell_read.action_any,
+        opaque_shell_source_access.action_any,
         vec![HookClientActionKind::Execute]
-    );
-    assert_eq!(raw_shell_read.effect_any, vec![HookClientActionKind::Read]);
-    assert!(action_rule.match_config.effect_rules.iter().any(|rule| {
-        rule.argv_prefix == ["git", "mv"] && rule.effect == HookClientActionKind::Edit
-    }));
-    assert!(
-        action_rule.match_config.effect_rules.iter().any(|rule| {
-            rule.argv_prefix == ["cat"] && rule.effect == HookClientActionKind::Read
-        })
     );
 }
 

@@ -34,14 +34,14 @@ degraded mode, compatibility executor, provider process launcher, cache owner,
 or lifecycle owner.  Server absence returns typed unavailable evidence; it
 never authorizes a one-shot provider command or local semantic execution.
 
-ASP Server owns workspace identity, provider admission, lazy activation,
+ASP Server owns workspace identity, provider admission, lazy client-server start,
 lifecycle, bounded concurrency, cancellation, immutable generation publication,
 cache identity, and OpenTelemetry receipts.  Each language client-server owns
 its native parser/compiler, language project model, provider-native facts, and
 execution of admitted typed operations.  Request clients own none of that
 mutable state.
 
-Provider activation is extension- and capability-driven.  ASP Server starts and
+Provider admission is extension- and capability-driven.  ASP Server starts and
 warms only the selected language client-server, publishes Ready only after the
 declared operation catalog and health receipt match, and drains idle clients
 under the same lifecycle authority.  Query handling never starts, repairs, or
@@ -190,11 +190,152 @@ admission, cancel or finish accepted work, stop the complete process group, and
 prove zero residual descendants.  A client disconnect cancels only its request
 scope and cannot restart, drain, or stop the provider.
 
+*** Provider route DSL and admission
+
+The route =routeId= is a globally dotted semantic identity.  The route =operation=
+is the exact provider operation key and MAY be either a single semantic segment
+(for example =query= or =projection-batch=) or a dotted semantic key (for example
+=search.owner=).  Runtime admission MUST compare the declared operation exactly;
+clients and servers MUST NOT add hidden aliasing or command-name normalization.
+
+A provider route is a typed semantic program owned by Runtime registration and
+its compiled route projection.  It is not an argv template, shell fragment, provider binary
+invocation, or client-specific command spelling.  The canonical Route DSL uses
+an unversioned schema identity and carries =schemaVersion: "1"= inside the
+document.  A route declares:
+
+- a stable =routeId= and semantic =operation=;
+- ASP Server as dispatch authority and a language/provider target identity;
+- closed, typed input slots with required/optional cardinality;
+- capability and generation-state admission requirements;
+- read/write effect, idempotency, cancellation, and concurrency semantics;
+- result and typed failure schema identities;
+- generation-pinned cache key inputs and cache authority;
+- OpenTelemetry span identity and the admissible non-source attributes.
+
+Literal argv tokens, positional interpolation, implicit environment lookup,
+provider-private fallback, and transport selection are not Route DSL
+semantics.  They are compiler projections.  One shared compiler validates slot
+closure, identity ownership, capability availability, result-schema existence,
+cache-key completeness, and absence of route cycles before a provider can
+become Ready.  Compilation produces two distinct artifacts:
+
+1. a Runtime dispatch projection consumed by ASP Server and the resident
+   provider transport; and
+2. an optional client rendering projection used by typed CLI or Hook guidance.
+
+Neither projection is an independent authority.  A client projection cannot
+launch a provider, select a fallback transport, weaken admission, reconstruct a
+missing owner, or change cache identity.  CLI facades such as =asp rust search=
+compile to the same admitted Route DSL operation used by other clients.
+
+The identity register owns only canonical =(languageId, providerId)= pairs.
+Provider registration owns Route DSL declarations and runtime capabilities.
+The live register owns the admitted, digest-bound compiled route projection.  ASP
+Server owns route instances, lifecycle, scheduling, cancellation, cache access,
+and telemetry.  Hook matcher publication consumes only the register-owned
+client projection; it never reads provider method descriptors or constructs
+provider argv.
+
+The provider query-pack descriptor always carries a stable descriptor identity,
+version, and language identity.  Its recipe set MAY be explicitly empty when a
+provider exposes no composition recipes.  An empty recipe set means that no
+recipe can be selected; it MUST NOT activate a hidden default, legacy query
+grammar, or provider-private fallback.
+
+*** Language plugin onboarding
+
+A language integration is one declarative provider plugin, not a branch in ASP
+Server and not a language-specific CLI adapter.  Its package MUST own a
+=provider-workspace-install= descriptor, one =provider-registration= document,
+the provider binary, and package-local copies of every shared schema referenced
+by those documents.  The workspace descriptor resolves the registration by a
+package-relative path.  The registration declares source discovery, Route DSL,
+query-pack identity, and exactly one =runtimeContract=.  ASP Server admits these
+documents through the same schema validator and lifecycle for every language;
+adding a language MUST NOT require a language match arm in the core server.
+
+The runtime contract is the sole provider wire authority.  It declares
+=http-json=, the shared =asp-client-server= lifecycle descriptor, and a closed
+set of operations whose request and response identities resolve to shared
+schemas.  Route DSL remains the Agent-facing semantic program and MUST NOT be
+used to reconstruct wire methods.  Provider code MAY use any native parser,
+compiler, scheduler, or internal cache, but it MUST expose the same bootstrap,
+health, request, cancellation, drain, and shutdown contract.  Provider stdout
+is reserved for the bootstrap JSON receipt until Ready; diagnostics and native
+runtime logs go to stderr.
+
+Each admitted provider has a dedicated process-group and request namespace.
+Provider state, in-flight limits, cache keys, cancellation tokens, failures,
+memory accounting, and OpenTelemetry attributes are scoped by provider,
+workspace generation, and request identity.  A provider failure MUST NOT drain,
+restart, invalidate, or expose the cache of another provider.  Shared transport
+and lifecycle code is a library/contract surface, never a shared mutable
+language runtime.  Lazy activation is triggered from registered source
+extensions and project markers, and idle drain is owned only by ASP Server.
+
+*** Downstream schema clients and DSLs
+
+Downstream clients consume the live compiled route projection and the
+=runtimeContract.operations= schema identities.  They do not inspect provider
+binaries, manifests, argv, environment variables, or language implementation
+details.  A client generator MAY produce Rust, TypeScript, Python, Julia,
+Gerbil, a DSL, or another language binding from those schemas, but every binding
+MUST preserve the same operation identity, request/response validation,
+cancellation scope, typed failure, generation pin, and trace context.
+
+A downstream DSL is a client-side composition language over admitted semantic
+routes.  It cannot create new provider operations, launch or stop a provider,
+select a private transport, weaken schema validation, bypass readiness, or
+change cache authority.  Compilation resolves each DSL step to a registered
+route and emits the same typed Runtime IPC request as any other client.  Thus a
+CLI, Hook, generated SDK, and DSL are interchangeable clients of one server
+architecture rather than compatibility layers or competing execution paths.
+
+Every route admission and completion emits a trace-correlated typed receipt.
+Live-corpus qualification must validate the same Route DSL through Scenarios
+and real provider execution for every supported language.  The qualification
+separates client rendering, Runtime IPC, ASP Server admission, provider service,
+cache/mmap access, and response projection latency.  A provider-local latency
+pass cannot substitute for the complete Agent-facing route latency gate.
+
+Runtime unavailability is a Tokio lifecycle transition, not a file fallback.
+The ASP client-server submits one typed ensure-runtime intent to the resident
+supervisor boundary.  Concurrent callers join the same kernel-backed election
+and the same start generation; they do not rebuild provider catalogs, spawn a
+provider directly, or poll endpoint files.  Election
+handoff awaits the asynchronous file-lock future.  Readiness and terminal
+failure are published through Tokio =watch=, per-request completion uses
+=oneshot=, bounded provider work uses =mpsc=, and shutdown/cancellation uses a
+Tokio cancellation signal.  Fixed sleep loops and second-scale correctness
+timeouts are forbidden.
+
+After Runtime becomes Ready, a language-trigger Hook sends only an
+=EnsureProviderRuntime= intent containing the admitted language/provider
+identity and workspace generation.  ASP Server performs single-flight lazy
+start, handshake, Route DSL registration and compilation, then atomically
+publishes the provider Ready receipt and compiled route generation.  A stopped
+provider returns to the immutable identity seed; it never restores an argv
+descriptor or a locally synthesized registration.  Operator stop remains an
+explicit terminal authority and is never silently overridden by lazy load.
+
 *** Provider workspace artifact admission
 
+After a provider-workspace-install receipt is committed, the provider-owned registration
+artifact MUST be submitted through the live provider Register operation before the
+provider-runtime handshake may publish Ready.  The Ready receipt MUST bind the same
+registrationDigest, artifactDigest, and compiled route operation set.
+
+The bootstrap order is normative: publish the qualified immutable provider artifact,
+commit its live Register generation, publish the workspace installed-artifact projection,
+then admit the provider-runtime handshake as Ready.  Workspace projection MUST NOT be a
+precondition for live Register, because that would make first registration depend on an
+already executable provider route.  A failure after live Register remains a non-Ready,
+retryable installation generation; it MUST NOT be reported as a completed installation.
+
 Development-provider installation MUST be driven by the selected provider's
-registered =provider-workspace-install= descriptor.  The shared provider
-manifest stores only the repository-relative descriptor reference; build
+registered =provider-workspace-install= descriptor.  The provider install
+register stores only the repository-relative descriptor reference; build
 commands, environment, artifact root, entrypoint, and optional launch adapter
 remain provider-owned.  ASP MUST NOT duplicate those language-specific facts
 in the root CLI or Justfile.
@@ -290,8 +431,8 @@ binary, and implementation names such as =rs-harness=, =py-harness=, or
 requests, receipts, cache keys, telemetry, or routing authority.  One shared
 implementation MAY serve several languages, but each language retains its own
 canonical provider identity; therefore Org and Markdown are =asp-org= and
-=asp-md= even when both use the same Orgize artifact.  Legacy provider IDs have
-no alias or compatibility lookup.
+=asp-md= even when both use the same Orgize artifact.  Provider identity lookup
+accepts only canonical IDs.
 
 ASP is agent-first rather than editor-first.  Its unit of authority is not an
 open document or one interactive client session; it is an isolated semantic
@@ -513,7 +654,7 @@ V1 assigns all provider runtime resolution, workspace mutation, generation
 admission, selector rebind, single-flight coordination, lifecycle completion,
 and timeout authority to the resident ASP Runtime Server.  CLI and Hook
 processes are typed clients only: they may parse public arguments and render
-receipts, but they MUST NOT construct provider runtimes, mutate activation or
+receipts, but they MUST NOT construct provider runtimes, mutate the live register or
 generation state, open mmap/generation pointers, coordinate daemon ownership,
 or treat elapsed performance thresholds as lifecycle correctness.
 
@@ -540,30 +681,28 @@ reported separately as telemetry and never change a successful typed state
 transition into a failure.
 
 Registered language runtime cold start is a Tokio Runtime Server operation, not
-a CLI activation-materialization operation.  The V1 client sends a typed
+a client-side materialization operation.  The client sends a typed
 =EnsureProviderRuntime= intent and consumes the daemon's provider-runtime
 receipt.  The daemon owns provider catalog selection, executable identity,
 single-flight startup, and transition from =cold= to =ready=.  A language
-query MUST NOT read a workspace-local active ASP artifact receipt, rebuild a
-full Hook activation, or validate the ASP/Graph Turbo binary merely to select
+query MUST NOT read a workspace-local active ASP artifact receipt, rebuild
+provider admission state, or validate the ASP/Graph Turbo binary merely to select
 one provider.  ASP binary and ranker artifacts are daemon-global authority;
 workspace state contains only workspace identity and generation references.
 
 =EnsureProviderRuntime= is a control-plane admission operation, never a process
-launch hidden inside a query.  The daemon validates the manifest's mandatory
+launch hidden inside a query.  The daemon validates the live registration's mandatory
 =runtimeContract=, starts and handshakes the resident provider actor once per
 catalog generation, then publishes its immutable Ready receipt through Tokio
 =watch=.  Search requests use only the actor's bounded =mpsc= mailbox and
 =oneshot= response channel.  If that receipt is absent or terminal, the query
 fails immediately with typed =asp-client-server-not-ready= evidence.
 
-Legacy =active-asp-artifact-receipt.v1.json= files are not an authority or a
-recovery input for provider queries.  Their digest failure MUST NOT be surfaced
-as =registered-language-runtime-unavailable=; removal of the legacy reader is
-the migration.  Provider readiness failures are typed Runtime control-plane
-states bound to =languageId= and the active provider catalog generation.
+Provider readiness evidence comes only from the live register generation and
+the resident client-server Ready receipt.  Failures are typed Runtime
+control-plane states bound to =languageId= and the register generation.
 
-The V1 Runtime data plane MUST model generation bootstrap separately from
+The Runtime data plane MUST model generation bootstrap separately from
 workspace mutation.  =EnsureRuntimeGenerationReady= is a distinct typed IPC
 operation owned by the Runtime daemon; it MUST NOT be encoded as a mutation
 whose =changedPaths= list happens to be empty.  Mutation operations continue to
@@ -582,7 +721,7 @@ source needed to establish that generation.  In particular,
 but MUST NOT be synthesized merely because the active artifact generation is
 older than the checkout.
 
-The V1 control plane is generation-independent.  A Host lifecycle event MUST
+The control plane is generation-independent.  A Host lifecycle event MUST
 reach a Runtime-owned admission operation even when the workspace has no active
 generation.  Runtime MUST atomically ensure the workspace generation and the
 durable Agent namespace before returning registration or resume state.  The CLI
@@ -600,12 +739,10 @@ sequence of descendant kind/identity segments.  Root item-kind validation MUST
 compare only the root selector.  A missing descendant in the admitted
 generation is a projection-availability failure, never a root kind mismatch.
 
-Persistent V1 receipts are normalized at their shared decode boundary.  A
-legacy receipt that omits a derivable materialization-root digest MUST be
-decoded by reconstructing that digest from its content identity; a supplied
-digest remains authoritative input and MUST fail validation when inconsistent.
-This pre-release migration remains V1 and does not introduce a parallel V2
-contract.
+Persistent receipts are normalized at their shared decode boundary and require
+the materialization-root digest.  The supplied digest is authoritative input
+and MUST fail validation when inconsistent.  Version identity remains in
+=schemaVersion: "1"= rather than the receipt namespace.
 
 Exact source and callable-skeleton projection are terminal consumers of the
 admitted active generation.  After a request has been classified as an exact
@@ -627,8 +764,8 @@ The executable invariant is refined by
 ASP Server MUST own this operation as a stateless Tokio service and dispatch the
 provider-neutral =search/owner-native= interface with source-byte authority
 bounded to that one requested owner.  The CLI is only a typed IPC client; it
-MUST NOT read the owner, spawn the provider, open a database, or construct an
-activation.  The service creates no Workspace generation, writes no cache, and
+MUST NOT read the owner, spawn the provider, open a database, or construct
+provider admission state.  The service creates no Workspace generation, writes no cache, and
 admits no exact source projection; it returns only canonical item selectors.
 Workspace or Provider generation availability therefore MUST NOT gate owner
 discovery, and a provider-local failure MUST NOT redirect the request through
@@ -649,8 +786,8 @@ that owner from the live workspace.
 Mutation evidence MUST be projected by workspace root before reaching a
 provider builder.  A nested workspace cannot receive a changed path owned only
 by its parent.  The builder overlays rebuilt changed owners and explicit
-tombstones onto the admitted active manifest, preserves validated unchanged
-owners, derives a complete successor manifest, and publishes that successor in
+tombstones onto the admitted active generation, preserves validated unchanged
+owners, derives a complete successor generation, and publishes that successor in
 one writer lane.  A partial changed-owner file set MUST NOT be published as a
 complete replacement generation.
 
@@ -737,7 +874,7 @@ generation with owner bytes but missing required provider projections is not
 admissible.
 
 Search and exact query are immutable consumers.  They MUST NOT invoke a
-provider, open or bootstrap Turso, refresh activation, write manifests, or
+provider, open or bootstrap Turso, mutate the live register, publish generations, or
 repair a generation.  Filesystem change observation and stale-generation
 reconciliation belong to the resident Tokio supervisor and the affected
 workspace writer lane.  Different workspaces reconcile independently; one
@@ -990,7 +1127,7 @@ repeat the failed owner-items command.  Its project and source-scope nodes come
 from the admitted Runtime Server generation; native candidates do not define
 workspace membership.
 
-Static hook activation declares provider capabilities only.  Git candidate
+The live Provider Register declares provider capabilities.  Git candidate
 identity, package-manager project resolution, source scope, selector inventory,
 and exact projection are one Runtime Server generation transaction.  No CLI,
 Hook, or Search adapter may independently infer workspace membership or open a
@@ -1005,7 +1142,7 @@ locator; an absent locator is a lifecycle admission error, not permission to
 fall back to byte hashing.
 
 =search owner <path> items= and exact-selector projection are distinct Runtime
-Server data-plane services.  Owner discovery MUST route before activation
+Server data-plane services.  Owner discovery MUST route without generation
 construction through the stateless Tokio owner-query service and MUST NOT
 require an admitted generation.  Exact-selector projection MUST consume the
 already admitted immutable generation without provider context, provider
@@ -1152,3 +1289,31 @@ languages, or method-inventory drift.  Registering another language adds one
 bounded index reference plus its provider-owned descriptor.  It MUST NOT add a
 language-specific branch to the CLI or a hard-coded language list to the Rust
 loader.
+
+** Runtime identity comes from the live Provider Register
+
+The ASP Server MUST derive Client Server admission from the atomically compiled
+live Provider Register and an immutable installed-artifact receipt.  Runtime
+contract and lifecycle receipts therefore bind a
+=registrationDigest= covering the live registration.  They MUST NOT carry a
+=manifestDigest= field or reuse a manifest-shaped snapshot as a registration
+container.
+
+An executable live registration MUST carry its source-inventory projection,
+search capabilities, query-pack descriptor, and compiled route DSL. The source
+inventory includes project/document resolution, source extensions, package
+roots, and config files. The ASP Server builds source-index admission directly
+from that atomic registration generation plus the immutable installed artifact.
+
+Live Corpus qualification binds each locked resource to its provider-owned
+=scenarioId=. The qualification plan and receipt carry the same =scenarioId=,
+and admission fails on any scenario/resource/language/provider drift. This makes
+Scenario evidence and full Live Corpus search/query evidence two required layers
+of one qualification rather than unrelated test suites. Both layers require the
+Tokio Runtime, synchronous mmap reads, zero Runtime work counters on resident
+reads, and terminal OpenTelemetry evidence.
+
+Provider workspace builds are Tokio request-owned operations.  Cancellation is
+the dropped request future propagated to the supervised process tree.  A fixed
+wall-clock timeout, including a large "safety" timeout, is not an admission or
+correctness mechanism and MUST NOT be installed by the workspace builder.

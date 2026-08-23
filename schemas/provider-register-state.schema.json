@@ -15,7 +15,7 @@
     "providers": {
       "type": "array",
       "items": {
-        "$ref": "provider-register-request.schema.json#/$defs/providerRegistration"
+        "$ref": "provider-register-request.schema.json#/$defs/liveProviderRegistration"
       }
     }
   }

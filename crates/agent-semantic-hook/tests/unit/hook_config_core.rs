@@ -1,4 +1,4 @@
-use super::compiled_rule::{CompiledHookRule, RuleMatch};
+use super::compiled_rule::RuleMatch;
 use crate::tool_action::{OperationIntent, ToolAction, ToolSurface};
 
 fn configured_projection_rule(
@@ -23,40 +23,11 @@ fn configured_projection_rule(
     .expect("compile configured projector rule")
 }
 
-#[test]
-fn source_expansion_rule_rejects_non_read_effect_contract() {
-    let mut config = toml::from_str::<agent_semantic_config::HookClientConfigFile>(
-        &crate::hook_config::default_client_config_template(),
-    )
-    .expect("default hook config should parse");
-    let rule_index = config
-        .rules
-        .iter()
-        .position(|rule| rule.id == "deny-raw-registered-source-action")
-        .expect("source deny rule should exist");
-    let mut rule = config.rules.remove(rule_index);
-    rule.match_config.effect_any = vec![agent_semantic_config::HookClientActionKind::Edit];
-    let agents = config.agents;
-
-    let error = match CompiledHookRule::try_from_with_agents(
-        rule,
-        &agents,
-        &[],
-        &config.action_policies,
-        agent_semantic_config::WrapperMatchMode::Enable,
-    ) {
-        Ok(_) => panic!("source expansion must require a typed read effect"),
-        Err(error) => error,
-    };
-    assert!(
-        error.contains("typed read effect"),
-        "unexpected compile error: {error}"
-    );
-}
-
 fn shell_action(command: &str) -> ToolAction {
     ToolAction {
         tool_name: "exec_command".to_string(),
+        host_payload: serde_json::json!({ "command": command }),
+        invocation_source: None,
         surface: ToolSurface::CodexShell,
         operation: OperationIntent::ShellCommand,
         command: Some(command.to_string()),
@@ -144,90 +115,34 @@ fn optional_subcommand_is_configured_for_toml_projection() {
     );
 }
 #[test]
-fn managed_template_serializes_provider_owned_language_extensions() {
+fn managed_template_serializes_declarative_language_profiles() {
     let template = crate::hook_config::default_client_config_template();
     let parsed: toml::Value = toml::from_str(&template).expect("managed hook config TOML");
-    let providers = parsed
-        .get("languageProviders")
-        .and_then(toml::Value::as_array)
-        .expect("languageProviders projection");
+    let profiles = parsed
+        .get("profiles")
+        .and_then(toml::Value::as_table)
+        .expect("declarative language profiles");
     for (language_id, provider_id, extension) in [
-        ("rust", "asp-rust", ".rs"),
-        ("typescript", "asp-typescript", ".ts"),
-        ("python", "asp-python", ".py"),
-        ("julia", "asp-julia", ".jl"),
-        ("gerbil-scheme", "asp-gerbil-scheme", ".ss"),
+        ("rust", "asp-rust", "rs"),
+        ("typescript", "asp-typescript", "ts"),
+        ("python", "asp-python", "py"),
+        ("julia", "asp-julia", "jl"),
+        ("gerbil-scheme", "asp-gerbil-scheme", "ss"),
     ] {
-        let provider = providers
-            .iter()
-            .find(|provider| {
-                provider.get("languageId").and_then(toml::Value::as_str) == Some(language_id)
-                    && provider.get("providerId").and_then(toml::Value::as_str) == Some(provider_id)
-            })
-            .unwrap_or_else(|| panic!("provider projection {language_id}/{provider_id}"));
-        assert!(
-            provider
-                .get("manifestDigest")
-                .and_then(toml::Value::as_str)
-                .is_some_and(|digest| digest.starts_with("sha256:"))
+        let profile = profiles
+            .get(language_id)
+            .unwrap_or_else(|| panic!("language profile {language_id}"));
+        assert_eq!(
+            profile.get("providerId").and_then(toml::Value::as_str),
+            Some(provider_id)
         );
         assert!(
-            provider
-                .get("sourceExtensions")
+            profile
+                .get("extensionAny")
                 .and_then(toml::Value::as_array)
                 .is_some_and(|extensions| extensions
                     .iter()
                     .any(|candidate| { candidate.as_str() == Some(extension) }))
         );
     }
-}
-
-#[test]
-fn matcher_publication_replaces_stale_disk_provider_identity() {
-    let project = std::env::temp_dir().join(format!(
-        "asp-hook-matcher-publication-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&project).expect("create temporary project");
-    let config_path = project.join("config.toml");
-    let mut document = toml::from_str::<toml::Value>(
-        &crate::hook_config::default_client_config_template(),
-    )
-    .expect("parse managed Hook config");
-    let providers = document
-        .get_mut("languageProviders")
-        .and_then(toml::Value::as_array_mut)
-        .expect("managed language provider projection");
-    for provider in providers {
-        provider
-            .as_table_mut()
-            .expect("provider table")
-            .insert(
-                "manifestDigest".to_owned(),
-                toml::Value::String(format!("sha256:{}", "0".repeat(64))),
-            );
-    }
-    std::fs::write(
-        &config_path,
-        toml::to_string(&document).expect("serialize stale Hook config"),
-    )
-    .expect("write stale Hook config");
-
-    let stale_error = crate::hook_config::load_client_config_for_project(
-        &config_path,
-        &project,
-    )
-    .expect_err("complete disk document must expose stale provider identity");
-    assert!(stale_error.contains("manifest drift"), "{stale_error}");
-
-    crate::hook_config::load_client_config_for_matcher_publication(
-        &config_path,
-        &project,
-    )
-    .expect("matcher publication must use embedded provider authority");
-    std::fs::remove_dir_all(&project).expect("remove temporary project");
 }

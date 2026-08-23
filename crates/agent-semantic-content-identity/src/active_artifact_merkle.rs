@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::exact_selector_merkle::{
-    ContentDigestV1, canonical_content_digest_v1, parse_content_digest_v1,
+    ContentDigestV1, canonical_content_digest, parse_content_digest_v1,
 };
 
 pub const ACTIVE_ASP_ARTIFACT_RECEIPT_SCHEMA_ID: &str =
@@ -340,7 +340,7 @@ pub fn active_artifact_root_digest_v1(
     let mut level = Vec::with_capacity(leaves.len());
     for leaf in leaves {
         validate_logical_path(leaf.logical_path())?;
-        level.push(canonical_content_digest_v1(
+        level.push(canonical_content_digest(
             b"asp.active-artifact-leaf.v1",
             &[
                 leaf.logical_path().as_bytes(),
@@ -354,7 +354,7 @@ pub fn active_artifact_root_digest_v1(
         let mut next = Vec::with_capacity(level.len().div_ceil(2));
         for pair in level.chunks(2) {
             if let [left, right] = pair {
-                next.push(canonical_content_digest_v1(
+                next.push(canonical_content_digest(
                     b"asp.active-artifact-node.v1",
                     &[left.as_str().as_bytes(), right.as_str().as_bytes()],
                 ));
@@ -365,7 +365,7 @@ pub fn active_artifact_root_digest_v1(
         level = next;
     }
     let inner_root = level.first().map(ContentDigestV1::as_str).unwrap_or("");
-    Ok(canonical_content_digest_v1(
+    Ok(canonical_content_digest(
         b"asp.active-artifact-root.v1",
         &[
             artifact_set_id.as_str().as_bytes(),
@@ -391,7 +391,7 @@ pub fn active_artifact_materialization_root_digest_v1(
             return Err(ActiveAspArtifactReceiptError::UnsortedOrDuplicateLeaves);
         }
         previous_path = Some(leaf.logical_path());
-        level.push(canonical_content_digest_v1(
+        level.push(canonical_content_digest(
             b"asp.active-artifact-materialization-leaf.v1",
             &[
                 leaf.logical_path().as_bytes(),
@@ -411,7 +411,7 @@ pub fn active_artifact_materialization_root_digest_v1(
         let mut next = Vec::with_capacity(level.len().div_ceil(2));
         for pair in level.chunks(2) {
             if let [left, right] = pair {
-                next.push(canonical_content_digest_v1(
+                next.push(canonical_content_digest(
                     b"asp.active-artifact-materialization-node.v1",
                     &[left.as_str().as_bytes(), right.as_str().as_bytes()],
                 ));
@@ -422,7 +422,7 @@ pub fn active_artifact_materialization_root_digest_v1(
         level = next;
     }
     let inner_root = level.first().map(ContentDigestV1::as_str).unwrap_or("");
-    Ok(canonical_content_digest_v1(
+    Ok(canonical_content_digest(
         b"asp.active-artifact-materialization-root.v1",
         &[
             artifact_set_id.as_str().as_bytes(),

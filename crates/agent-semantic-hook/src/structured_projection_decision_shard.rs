@@ -95,7 +95,7 @@ impl StructuredProjectionDecisionShard {
             let classification =
                 agent_semantic_shell_parser::structured::classify_single_bounded_path_tokens(
                     &key.command_tokens,
-        agent_semantic_shell_parser::structured::BoundedPathCommandSpec {
+                    agent_semantic_shell_parser::structured::BoundedPathCommandSpec {
                         binary: &entry.projection.binary,
                         optional_subcommand_any: &entry.projection.optional_subcommand_any,
                         option_any: &entry.projection.option_any,

@@ -12,14 +12,14 @@ async fn exact_source_projection_consumes_the_pretool_admitted_owner_change() {
     let runtime = ExactQueryRuntime::start(&root).await;
 
     runtime
-        .admit("alpha-initial", vec!["src/lib.rs".to_owned()])
+        .admit("alpha-initial", vec!["src/lib.rs".to_owned()], false)
         .await;
     let first = run_exact_selector_query(&root, &runtime.state_home).await;
     assert!(first.contains("let value = 1;"), "{first}");
 
     fs::write(&owner, "pub fn alpha() {\n    let value = 2;\n}\n").expect("write second source");
     runtime
-        .admit("alpha-pretool-rewrite", vec!["src/lib.rs".to_owned()])
+        .admit("alpha-pretool-rewrite", vec!["src/lib.rs".to_owned()], true)
         .await;
 
     let refresh_started = std::time::Instant::now();
@@ -61,7 +61,11 @@ async fn exact_source_projection_reconciles_unadmitted_owner_change_before_cache
     let runtime = ExactQueryRuntime::start(&root).await;
 
     runtime
-        .admit("alpha-initial-read-side", vec!["src/lib.rs".to_owned()])
+        .admit(
+            "alpha-initial-read-side",
+            vec!["src/lib.rs".to_owned()],
+            false,
+        )
         .await;
     let first = run_exact_selector_query(&root, &runtime.state_home).await;
     assert!(first.contains("let value = 1;"), "{first}");
@@ -111,7 +115,7 @@ async fn exact_selector_changed_and_moved_owner_never_requires_sync() {
     let runtime = ExactQueryRuntime::start(&root).await;
 
     runtime
-        .admit("live-owner-initial", vec!["src/lib.rs".to_owned()])
+        .admit("live-owner-initial", vec!["src/lib.rs".to_owned()], false)
         .await;
     let (initial, initial_elapsed) = run_exact_selector_query_for(
         &root,
@@ -154,7 +158,7 @@ async fn exact_selector_changed_and_moved_owner_never_requires_sync() {
 
     fs::write(&original_owner, "pub fn live_owner() -> u8 { 2 }\n").expect("rewrite live owner");
     runtime
-        .admit("live-owner-rewrite", vec!["src/lib.rs".to_owned()])
+        .admit("live-owner-rewrite", vec!["src/lib.rs".to_owned()], true)
         .await;
     let (changed, changed_elapsed) = run_exact_selector_query_for(
         &root,
@@ -175,6 +179,7 @@ async fn exact_selector_changed_and_moved_owner_never_requires_sync() {
         .admit(
             "live-owner-move",
             vec!["src/lib.rs".to_owned(), "src/moved.rs".to_owned()],
+            true,
         )
         .await;
     let (relocated, relocated_elapsed) = run_exact_selector_query_for(
@@ -426,33 +431,79 @@ impl ExactQueryRuntime {
         }
     }
 
-    async fn admit(&self, mutation_id: &str, changed_paths: Vec<String>) {
+    async fn admit(
+        &self,
+        mutation_id: &str,
+        changed_paths: Vec<String>,
+        require_generation_advance: bool,
+    ) {
         let session =
             agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::for_runtime_server(
                 &self.endpoint,
                 self.workspace_identity.clone(),
                 self.project_root.clone(),
             );
-        let admitted = session
-            .admit_runtime_generation(mutation_id, changed_paths)
+        let previous_generation_digest = session
+            .runtime_search_generation_authority()
             .await
-            .expect("admit exact-query fixture generation");
-        assert!(admitted.changed_path_count > 0, "{admitted:?}");
-        assert_eq!(
-            admitted.affected_workspace_count,
-            admitted.receipts.len(),
-            "{admitted:?}"
-        );
+            .ok()
+            .map(|authority| authority.generation_digest);
+        let expected_generation_digest = if previous_generation_digest.is_none() {
+            session
+                .admit_runtime_generation_for_read("rust", "asp-rust")
+                .await
+                .expect("admit initial exact-query fixture generation for read");
+            session
+                .runtime_search_generation_authority()
+                .await
+                .expect("read initial exact-query fixture authority")
+                .generation_digest
+        } else {
+            let admitted = session
+                .admit_runtime_generation(mutation_id, changed_paths)
+                .await
+                .expect("admit exact-query fixture mutation");
+            assert!(admitted.changed_path_count > 0, "{admitted:?}");
+            assert_eq!(
+                admitted.affected_workspace_count,
+                admitted.receipts.len(),
+                "{admitted:?}"
+            );
+            let receipt = admitted
+                .receipts
+                .first()
+                .expect("exact-query mutation affects one workspace");
+            let commit = receipt.commit.as_ref().unwrap_or_else(|| {
+                panic!(
+                    "exact-query mutation did not commit: state={:?} error={:?} failureStage={:?}",
+                    receipt.state, receipt.error, receipt.failure_stage
+                )
+            });
+            if require_generation_advance {
+                assert_ne!(
+                    previous_generation_digest.as_deref(),
+                    Some(commit.generation_digest.as_str()),
+                    "exact-query mutation reused its previous generation: {receipt:?}"
+                );
+            }
+            commit.generation_digest.clone()
+        };
         let authority = tokio::time::timeout(std::time::Duration::from_secs(5), async {
             loop {
                 if let Ok(authority) = session.runtime_search_generation_authority().await {
-                    break authority;
+                    if authority.generation_digest == expected_generation_digest {
+                        break authority;
+                    }
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(1)).await;
             }
         })
         .await
-        .expect("exact-query fixture generation reached terminal state");
+        .unwrap_or_else(|error| {
+            panic!(
+                "exact-query fixture mutation {mutation_id} did not publish {expected_generation_digest} from {previous_generation_digest:?}: {error:?}"
+            )
+        });
         assert_eq!(authority.workspace_identity, self.workspace_identity);
     }
 
@@ -485,35 +536,7 @@ async fn build_exact_query_generation_owner(
         ));
     };
     let structural_selector = format!("rust://{}#item/function/{item_name}", owner.owner_path);
-    let exact_selector = || {
-        serde_json::json!({
-            "schemaId": "asp.exact-structural-selector.v1",
-            "schemaVersion": "1",
-            "languageId": "rust",
-            "ownerPath": owner.owner_path,
-            "selector": structural_selector,
-            "generationIdentityDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "parserIdentityDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-            "queryPackDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-            "rootItemSelector": {
-                "schemaId": "asp.canonical-item-selector.v1",
-                "schemaVersion": "1",
-                "languageId": "rust",
-                "kind": "function",
-                "symbol": item_name,
-                "scopes": [],
-                "structuralSelector": structural_selector
-            },
-            "segments": []
-        })
-    };
-    let projection = serde_json::json!({
-        "schemaId": "agent.semantic-protocols.semantic-projection",
-        "schemaVersion": "1",
-        "projectionKind": "callable-skeleton",
-        "languageId": "rust",
-        "providerId": "asp-rust",
-        "rootSelector": exact_selector(),
+    let projection_payload = serde_json::json!({
         "rootNodeId": "callable:root",
         "callable": {
             "kind": "function",
@@ -525,32 +548,75 @@ async fn build_exact_query_generation_owner(
             "kind": "callable",
             "label": item_name,
             "order": 0,
-            "queryable": true,
-            "exactSelector": exact_selector(),
-            "languageFacts": {}
+            "queryable": false
         }],
         "relations": [],
         "cost": {
             "sourceBytes": owner.bytes.len(),
             "projectedBytes": owner.bytes.len(),
             "omittedBytes": 0
-        },
-        "languageFacts": {}
+        }
     });
+    let generation_identity_digest = "0".repeat(64);
+    let parser_identity_digest = "1".repeat(64);
+    let query_pack_digest = "2".repeat(64);
+    let mut evidence_hasher = blake3::Hasher::new();
+    evidence_hasher.update(b"asp.projection-evidence-context.v1\0");
+    for component in [
+        "rust",
+        "asp-rust",
+        generation_identity_digest.as_str(),
+        parser_identity_digest.as_str(),
+        query_pack_digest.as_str(),
+    ] {
+        evidence_hasher.update(&(component.len() as u64).to_le_bytes());
+        evidence_hasher.update(component.as_bytes());
+    }
+    let evidence_context_ref = format!("blake3-256:{}", evidence_hasher.finalize().to_hex());
+    let projection = agent_semantic_content_identity::semantic_projection::SemanticProjection::new(
+        "callable-skeleton",
+        "rust",
+        "asp-rust",
+        structural_selector.as_str(),
+        evidence_context_ref.clone(),
+        "agent.semantic-protocols.callable-skeleton",
+        projection_payload,
+    )
+    .map_err(|error| format!("build callable skeleton fixture: {error}"))?;
+    let mut projection = serde_json::to_value(projection)
+        .map_err(|error| format!("encode callable skeleton fixture: {error}"))?;
+    let typed_payload: agent_semantic_content_identity::callable_skeleton_projection::CallableSkeletonPayload =
+        serde_json::from_value(projection["payload"].clone())
+            .map_err(|error| format!("decode callable skeleton payload: {error}"))?;
+    let typed_payload_bytes = serde_json::to_vec(&typed_payload)
+        .map_err(|error| format!("encode callable skeleton payload: {error}"))?;
+    projection["payloadDigest"] =
+        format!("blake3-256:{}", blake3::hash(&typed_payload_bytes).to_hex()).into();
     owner.selectors = vec![
         agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot {
             selector: structural_selector,
             byte_start: 0,
             byte_end: owner.bytes.len(),
             derived_projections: vec![
-                agent_semantic_client_db::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot {
-                    projection_kind:
-                        agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::CallableSkeleton,
-                    bytes: serde_json::to_vec(&projection)
-                        .map_err(|error| format!("serialize callable skeleton fixture: {error}"))?,
-                    evidence_context: None,
-                },
-            ],
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot {
+                projection_kind:
+                    agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::CallableSkeleton,
+                bytes: serde_json::to_vec(&projection)
+                    .map_err(|error| format!("serialize callable skeleton fixture: {error}"))?,
+                evidence_context: Some(
+                    agent_semantic_content_identity::projection_evidence_context::ProjectionEvidenceContext {
+                        schema_id: "agent.semantic-protocols.projection-evidence-context".to_owned(),
+                        schema_version: "1".to_owned(),
+                        evidence_context_ref,
+                        language_id: "rust".to_owned(),
+                        provider_id: "asp-rust".to_owned(),
+                        generation_identity_digest,
+                        parser_identity_digest,
+                        query_pack_digest,
+                    },
+                ),
+            },
+        ],
         },
     ];
     Ok(owner)
@@ -590,7 +656,7 @@ async fn build_exact_query_generation(
         let selector_id = format!("rust://{owner_path}#item/function/{item_name}");
         let selector_receipt = agent_semantic_client_db::ClientDbSourceIndexSelector {
             owner_path: owner_path.into(),
-            provider_id: "rs-harness".into(),
+            provider_id: "asp-rust".into(),
             selector_id: selector_id.as_str().into(),
             symbol: Some(item_name.into()),
             kind: Some("function".into()),
@@ -613,7 +679,7 @@ async fn build_exact_query_generation(
             relations: Vec::new(),
             relative_path: owner_path.to_owned(),
             language_id: "rust".into(),
-            provider_id: "rs-harness".into(),
+            provider_id: "asp-rust".into(),
             text: source,
             selectors: vec![selector_receipt],
         });
@@ -696,7 +762,7 @@ fn exact_projection_record(
     source: &[u8],
 ) -> agent_semantic_content_identity::ExactSelectorProjectionRecordV1 {
     use agent_semantic_content_identity::exact_selector_merkle::{
-        ExactProjectionModeV1, blake3_content_digest_v1, canonical_content_digest_v1,
+        ExactProjectionModeV1, blake3_content_digest_v1, canonical_content_digest,
     };
     let source_digest = blake3_content_digest_v1(source);
     let tree = agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1::from_file_digests([(
@@ -705,11 +771,11 @@ fn exact_projection_record(
     )])
     .expect("exact-query workspace tree");
     let language_id = agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketLanguageIdV1::from("rust");
-    let provider_id = agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketProviderIdV1::from("rs-harness");
+    let provider_id = agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketProviderIdV1::from("asp-rust");
     let packet_owner = agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketOwnerPathV1::from(owner_path);
     let packet_selector = agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketStructuralSelectorV1::from(structural_selector);
-    let parser_identity = canonical_content_digest_v1(b"parser", &[b"rs-harness"]);
-    let query_pack_identity = canonical_content_digest_v1(b"query-pack", &[b"rust"]);
+    let parser_identity = canonical_content_digest(b"parser", &[b"asp-rust"]);
+    let query_pack_identity = canonical_content_digest(b"query-pack", &[b"rust"]);
     let canonical =
         agent_semantic_content_identity::CanonicalItemSelector::parse(structural_selector)
             .expect("canonical exact-query fixture selector");
@@ -739,5 +805,10 @@ fn temp_project_root(name: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("system clock before unix epoch")
         .as_nanos();
-    std::env::temp_dir().join(format!("asp-{name}-{nonce}"))
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("canonical workspace root")
+        .join("target/asp-test-workspaces")
+        .join(format!("asp-{name}-{nonce}"))
 }

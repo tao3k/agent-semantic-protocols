@@ -170,7 +170,7 @@ pub(super) fn owner_items_fixture_uses_native_transport(language_id: &str) -> bo
         .into_iter()
         .find(|manifest| manifest.language_id().as_str() == language_id)
         .unwrap_or_else(|| panic!("missing provider manifest for {language_id}"));
-    agent_semantic_hook::registered_provider_method_invocation_v1(
+    agent_semantic_hook::registered_provider_method_invocation(
         language_id,
         manifest.provider_id().as_str(),
         "search/owner-native",

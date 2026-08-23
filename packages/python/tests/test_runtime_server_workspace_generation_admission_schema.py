@@ -11,7 +11,7 @@ REPO_ROOT = Path(__file__).parents[3]
 SCHEMA_PATH = (
     REPO_ROOT
     / "schemas"
-    / "runtime-server-workspace-generation-admission.v1.schema.json"
+    / "runtime-server-workspace-generation-admission.schema.json"
 )
 CANDIDATE_SCHEMA_PATH = (
     REPO_ROOT / "schemas" / "repository-candidate-snapshot.v1.schema.json"
@@ -73,19 +73,19 @@ def mutation_validator() -> Draft202012Validator:
 
 
 def test_ready_admission_binds_repository_candidate_generation() -> None:
-    fixture = json.loads((FIXTURE_ROOT / "valid-ready.v1.json").read_text())
+    fixture = json.loads((FIXTURE_ROOT / "valid-ready.json").read_text())
     validator().validate(fixture)
 
 
 def test_ready_admission_requires_commit_evidence() -> None:
     fixture = json.loads(
-        (FIXTURE_ROOT / "invalid-ready-without-commit.v1.json").read_text()
+        (FIXTURE_ROOT / "invalid-ready-without-commit.json").read_text()
     )
     assert list(validator().iter_errors(fixture))
 
 
 def test_mutation_admission_resolves_candidate_bound_receipts() -> None:
     fixture = json.loads(
-        (MUTATION_FIXTURE_ROOT / "valid-multi-workspace.v1.json").read_text()
+        (MUTATION_FIXTURE_ROOT / "valid-multi-workspace.json").read_text()
     )
     mutation_validator().validate(fixture)

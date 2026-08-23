@@ -10,7 +10,6 @@ pub mod runtime_dev;
 
 pub use codex_plugin_config::codex_config_plugin_enabled;
 
-pub use hook_client_config::HookClientDecisionMaterializer;
 pub use hook_client_config::hook_client_contract_fingerprint;
 
 pub use hook_client_config::HookClientStructuredFormat;
@@ -19,26 +18,23 @@ mod semantic_identity;
 pub use semantic_identity::{LanguageId, ProviderId};
 
 pub use hook_client_config::{
-    AgentActionAuthorityRule, AgentActionEffectRule, AspProjectConfigFile,
-    AspProjectDiscoveryConfig, AspProjectHookConfig, CLIENT_HOOK_CONFIG_SCHEMA_ID,
-    CLIENT_HOOK_CONFIG_SCHEMA_VERSION, HookClientActionAuthority, HookClientActionKind,
-    HookClientActionPolicyConfig, HookClientActionSubjectKind, HookClientAgentFocusMode,
-    HookClientAgentOrgArtifactsArchiveWarningConfig, HookClientAgentOrgArtifactsConfig,
-    HookClientAgentRoleSelector, HookClientAgentSessionMessagesConfig, HookClientAgentsConfig,
-    HookClientCommandProfileConfig, HookClientCommandProfileRef, HookClientConfigDecision,
-    HookClientConfigFile, HookClientConfigReasonKind, HookClientConfigRouteKind,
-    HookClientConfigStdinMode, HookClientLanguageProviderConfig, HookClientLazyProviderPolicy,
+    AspProjectConfigFile, AspProjectDiscoveryConfig, AspProjectHookConfig,
+    CLIENT_HOOK_CONFIG_SCHEMA_ID, CLIENT_HOOK_CONFIG_SCHEMA_VERSION, HookClientActionKind,
+    HookClientActionSubjectKind, HookClientAgentOrgArtifactsArchiveWarningConfig,
+    HookClientAgentOrgArtifactsConfig, HookClientAgentRoleSelector,
+    HookClientCapabilityPolicyConfig, HookClientCommandProfileConfig, HookClientCommandProfileRef,
+    HookClientConfigDecision, HookClientConfigFile, HookClientConfigReasonKind,
+    HookClientConfigRouteKind, HookClientConfigStdinMode, HookClientLazyProviderPolicy,
     HookClientMatcherPolicy, HookClientProfileConfig, HookClientRecoveryPromptConfig,
-    HookClientResidentAgentConfig, HookClientRuleConfig, HookClientRuleDispatchConfig,
-    HookClientRuleDispatchTransport, HookClientRuleMatchConfig, HookClientRuleRouteConfig,
-    HookPolicyCoverageCase, HookPolicyCoveragePolarity, HookPolicyCoverageSettings,
-    HookPolicyCoverageSurface, WrapperMatchMode, default_hook_client_config_file,
-    default_hook_client_config_template, derive_hook_policy_coverage_cases,
-    expand_command_profile_prefixes, load_asp_project_config_file,
-    load_hook_client_config_declared_contract_fingerprint, load_hook_client_config_file,
-    load_hook_client_config_file_with_agents, load_hook_client_config_overlay_file,
-    load_hook_client_config_overlay_file_with_agents, merge_asp_project_hook_config,
-    mutate_path_outside_registered_extensions, render_hook_client_message_template,
+    HookClientRuleConfig, HookClientRuleDispatchConfig, HookClientRuleDispatchTransport,
+    HookClientRuleMatchConfig, HookClientRuleRouteConfig, HookPolicyCoverageCase,
+    HookPolicyCoveragePolarity, HookPolicyCoverageSettings, HookPolicyCoverageSurface,
+    WrapperMatchMode, default_hook_client_config_file, default_hook_client_config_template,
+    derive_hook_policy_coverage_cases, expand_command_profile_prefixes,
+    load_asp_project_config_file, load_hook_client_config_declared_contract_fingerprint,
+    load_hook_client_config_file, load_hook_client_config_overlay_file,
+    merge_asp_project_hook_config, mutate_path_outside_registered_extensions,
+    render_hook_client_message_template,
 };
 pub use hook_client_config::{
     HookClientStructuredFilterGrammar, HookClientStructuredProjectionMatchConfig,

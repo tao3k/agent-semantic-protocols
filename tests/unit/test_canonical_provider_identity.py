@@ -64,49 +64,39 @@ def test_provider_register_conforms_to_asp_schema() -> None:
 
 
 def test_external_provider_is_discovered_only_from_provider_register(tmp_path: Path) -> None:
-    registration = load("languages/rust-lang-project-harness/schemas/asp-registration.json")
-    provider = load("languages/rust-lang-project-harness/schemas/asp-provider.json")
-    registration["languageId"] = "external-test"
-    registration["providerId"] = "asp-external-test"
-    provider["languageId"] = "external-test"
-    provider["providerId"] = "asp-external-test"
-
-    registration_path = tmp_path / "asp-registration.json"
-    provider_path = tmp_path / "asp-provider.json"
     register_path = tmp_path / "provider-register.json"
-    registration_path.write_text(json.dumps(registration))
-    provider_path.write_text(json.dumps(provider))
+    identity = {
+        "languageId": "external-test",
+        "providerId": "asp-external-test",
+    }
     register_path.write_text(
         json.dumps(
             {
                 "schemaId": "agent.semantic-protocols.provider-register",
                 "schemaVersion": "1",
-                "providers": [
-                    {
-                        "languageId": "external-test",
-                        "providerId": "asp-external-test",
-                        "descriptor": {"$ref": "asp-registration.json"},
-                    }
-                ],
+                "providers": [identity],
             }
         )
     )
 
-    assert registered_provider_descriptors(register_path, tmp_path) == [provider]
+    register = json.loads(register_path.read_text())
+    assert register["providers"] == [identity]
+    assert "descriptor" not in register["providers"][0]
 
 
-def test_provider_register_descriptors_use_canonical_language_identity() -> None:
+def test_provider_register_uses_canonical_language_identity() -> None:
     manifest_validator = provider_id_validator("provider-manifest.schema.json")
     identity_validator = provider_identity_validator()
 
-    for descriptor in registered_provider_descriptors():
-        manifest_validator.validate(descriptor["providerId"])
-        identity_validator.validate(descriptor)
+    for identity in load("schemas/provider-register.json")["providers"]:
+        manifest_validator.validate(identity["providerId"])
+        identity_validator.validate(identity)
+        assert "descriptor" not in identity
 
 
 def test_live_corpus_lock_and_plan_derive_provider_id_from_language() -> None:
-    lock = load("benchmarks/large-library-runtime-corpora.v1.json")
-    plan = load("benchmarks/live-corpus-search-query-qualification.v1.json")
+    lock = load("benchmarks/large-library-runtime-corpora.json")
+    plan = load("benchmarks/live-corpus-search-query-qualification.json")
 
     locked = {
         entry["resourceId"]: f"asp-{entry['language']}"
@@ -131,7 +121,7 @@ def test_implementation_names_are_not_public_provider_ids() -> None:
         "orgize",
         "asp+rust",
     }
-    lock = load("benchmarks/large-library-runtime-corpora.v1.json")
+    lock = load("benchmarks/large-library-runtime-corpora.json")
     assert legacy.isdisjoint(entry["providerId"] for entry in lock["corpora"])
 
 
@@ -156,7 +146,7 @@ def test_every_public_contract_uses_the_canonical_provider_mapping() -> None:
         "provider-manifest.schema.json",
         "asp-client-server-request.v1.schema.json",
         "asp-client-server-response.v1.schema.json",
-        "asp-client-server-lifecycle-receipt.v1.schema.json",
+        "asp-client-server-lifecycle-receipt.schema.json",
     ):
         assert provider_identity_mapping(schema_name) == canonical
 

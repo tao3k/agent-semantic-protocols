@@ -28,9 +28,6 @@ fn current_thread_cpu_nanos() -> u128 {
 fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
     let root = temp_root("config-driven-match-engine-contract");
     let mut registry = crate::classifier::rust_registry();
-    registry
-        .providers
-        .push(crate::classifier::typescript_provider());
     let production_text =
         include_str!("../../../../../agent-semantic-config/templates/hooks/config.toml");
     let production =
@@ -116,10 +113,9 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
         .iter()
         .filter(|rule| {
             let match_config = rule.get("match");
-            rule.get("decisionMaterializer").is_some()
-                || match_config
-                    .and_then(|config| config.get("structuredProjection"))
-                    .is_some()
+            match_config
+                .and_then(|config| config.get("structuredProjection"))
+                .is_some()
                 || match_config
                     .and_then(|config| config.get("argvWorkspaceRegularFile"))
                     .and_then(toml::Value::as_bool)
@@ -319,60 +315,24 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
                         Some("asp session --agents choice-plane"),
                         "positive case changed the Org Agent window: {case_id}"
                     );
-                    assert!(
-                        decision_json["fields"]["targetAgentName"]
-                            .as_str()
-                            .is_some_and(|name| !name.is_empty()),
-                        "positive case omitted tag-selected typed agent: {case_id}"
-                    );
-                    assert!(
-                        decision_json["fields"]["targetAgentRole"]
-                            .as_str()
-                            .is_some_and(|role| !role.is_empty()),
-                        "positive case omitted tag-selected agent role: {case_id}"
-                    );
-                    assert!(
-                        decision_json["fields"]["targetAgentKind"]
-                            .as_str()
-                            .is_some_and(|kind| !kind.is_empty()),
-                        "positive case omitted declarative agent kind: {case_id}"
-                    );
-                    assert!(
-                        decision_json["fields"]["targetAgentDisplayRole"]
-                            .as_str()
-                            .is_some_and(|role| !role.is_empty()),
-                        "positive case omitted declarative display role: {case_id}"
-                    );
-                    assert!(
-                        decision_json["fields"]["targetAgentDescription"]
-                            .as_str()
-                            .is_some_and(|description| !description.is_empty()),
-                        "positive case omitted agent description: {case_id}"
+                    let target_role = decision_json["fields"]["targetAgentRole"]
+                        .as_str()
+                        .filter(|role| !role.is_empty())
+                        .expect("positive case omitted ChoicePlane target role");
+                    let receipt_kind = decision_json["fields"]["receiptKind"]
+                        .as_str()
+                        .filter(|receipt| !receipt.is_empty())
+                        .expect("positive case omitted ChoicePlane receipt kind");
+                    assert_eq!(
+                        decision_json["fields"]["agentSessionAction"].as_str(),
+                        Some("dispatch-choice-plane-role")
                     );
                     if decision_json["reasonKind"].as_str()
                         == Some("subagent-receipt-required")
                     {
-                        let mut expected_message = format!(
-                            "This operation is denied only in the current Agent; ASP remains available. Please use `asp session --agents choice-plane` to create or resume the {} `@{}` ({}; {}).",
-                            decision_json["fields"]["targetAgentKind"]
-                                .as_str()
-                                .expect("target agent kind"),
-                            decision_json["fields"]["targetAgentName"]
-                                .as_str()
-                                .expect("target agent name")
-                                .trim_start_matches('@'),
-                            decision_json["fields"]["targetAgentDisplayRole"]
-                                .as_str()
-                                .expect("target display role"),
-                            decision_json["fields"]["targetAgentDescription"]
-                                .as_str()
-                                .expect("target description"),
+                        let expected_message = format!(
+                            "role `{target_role}` and require receipt `{receipt_kind}`"
                         );
-                        if let Some(expected_command) = expected_command {
-                            expected_message.push_str("\nDenied command: `");
-                            expected_message.push_str(expected_command);
-                            expected_message.push_str("`.");
-                        }
         let actual_message = decision_json["message"]
             .as_str()
             .expect("positive dispatch message");
@@ -391,7 +351,13 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
             "positive case lost the shared dynamic dispatch guidance: {case_id}: {actual_message}"
         );
                     }
-                    for forbidden in ["receiptKind", "residentName"] {
+                    for forbidden in [
+                        "residentName",
+                        "targetAgentName",
+                        "targetAgentKind",
+                        "targetAgentDisplayRole",
+                        "targetAgentDescription",
+                    ] {
                         assert!(
                             decision_json["fields"].get(forbidden).is_none(),
                             "positive case preselected a resident through {forbidden}: {case_id}"
@@ -456,7 +422,7 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
                             command,
                             &[*binary],
                         ),
-        agent_semantic_shell_parser::BashCommandMatch::Parsed(
+                        agent_semantic_shell_parser::BashCommandMatch::Parsed(
                             agent_semantic_shell_parser::PrefixMatch::Matched
                         )
                     )

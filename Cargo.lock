@@ -64,9 +64,10 @@ dependencies = [
  "agent-semantic-artifacts",
  "agent-semantic-client-core",
  "agent-semantic-client-db",
- "agent-semantic-client-local-cli",
+ "agent-semantic-client-server",
  "agent-semantic-content-identity",
  "agent-semantic-hook",
+ "agent-semantic-provider-protocol",
  "agent-semantic-provider-transport",
  "agent-semantic-runtime",
  "agent-semantic-search",
@@ -107,6 +108,7 @@ version = "0.1.0"
 dependencies = [
  "agent-semantic-artifacts",
  "agent-semantic-client-core",
+ "agent-semantic-client-protocol",
  "agent-semantic-config",
  "agent-semantic-content-identity",
  "agent-semantic-context-product",
@@ -139,16 +141,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "agent-semantic-client-local-cli"
+name = "agent-semantic-client-protocol"
+version = "0.1.0"
+dependencies = [
+ "asp-rust-project-harness-policy",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "agent-semantic-client-server"
 version = "0.1.0"
 dependencies = [
  "agent-semantic-client-core",
- "agent-semantic-hook",
- "agent-semantic-provider-transport",
+ "agent-semantic-client-protocol",
+ "agent-semantic-http-json",
  "agent-semantic-runtime",
  "asp-rust-project-harness-policy",
- "bytes",
- "criterion",
  "serde",
  "serde_json",
  "tokio",
@@ -218,7 +227,23 @@ version = "0.1.0"
 dependencies = [
  "agent-semantic-hook",
  "asp-rust-project-harness-policy",
+ "jsonschema",
+ "libc",
  "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "agent-semantic-http-json"
+version = "0.1.0"
+dependencies = [
+ "asp-rust-project-harness-policy",
+ "bytes",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "serde_json",
  "tokio",
 ]
@@ -240,6 +265,8 @@ dependencies = [
  "agent-semantic-client",
  "agent-semantic-client-core",
  "agent-semantic-client-db",
+ "agent-semantic-client-protocol",
+ "agent-semantic-client-server",
  "agent-semantic-config",
  "agent-semantic-content-identity",
  "agent-semantic-context-product",
@@ -248,6 +275,7 @@ dependencies = [
  "agent-semantic-provider-protocol",
  "agent-semantic-provider-transport",
  "agent-semantic-runtime",
+ "agent-semantic-schema-manager",
  "agent-semantic-search",
  "agent-semantic-search-projection",
  "agent-semantic-tree-sitter",
@@ -257,7 +285,6 @@ dependencies = [
  "base64 0.22.1",
  "blake3",
  "clap",
- "fs2",
  "gix",
  "gix-config",
  "globset",
@@ -297,15 +324,13 @@ name = "agent-semantic-provider-transport"
 version = "0.1.0"
 dependencies = [
  "agent-semantic-content-identity",
+ "agent-semantic-http-json",
  "agent-semantic-provider-protocol",
  "base64 0.22.1",
  "bstr",
  "bytes",
  "criterion",
  "futures-util",
- "http-body-util",
- "hyper",
- "hyper-util",
  "libc",
  "memchr",
  "reqwest",
@@ -326,6 +351,7 @@ dependencies = [
  "agent-semantic-provider-transport",
  "blake3",
  "bytes",
+ "fs2",
  "gix",
  "gix-config",
  "libc",
@@ -338,6 +364,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent-semantic-schema-manager"
+version = "0.1.0"
+dependencies = [
+ "agent-semantic-content-identity",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "agent-semantic-search"
 version = "0.1.0"
 dependencies = [
@@ -346,6 +383,7 @@ dependencies = [
  "agent-semantic-client-db",
  "agent-semantic-content-identity",
  "agent-semantic-hook",
+ "agent-semantic-provider-protocol",
  "agent-semantic-provider-transport",
  "agent-semantic-runtime",
  "agent-semantic-search-projection",
@@ -4739,6 +4777,7 @@ name = "rust-lang-project-harness"
 version = "0.1.2"
 dependencies = [
  "agent-semantic-content-identity",
+ "agent-semantic-provider-protocol",
  "blake3",
  "cargo-lock",
  "cargo_toml",

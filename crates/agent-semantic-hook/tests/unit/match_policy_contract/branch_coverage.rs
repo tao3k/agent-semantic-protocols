@@ -15,12 +15,8 @@ const MATCH_ALTERNATIVE_FIELDS: &[&str] = &[
     "argvPatternAny",
     "commandProfileAny",
     "actionAny",
-    "effectAny",
     "subjectAny",
     "subjectKindAny",
-    "authorityAny",
-    "effectRules",
-    "authorityRules",
     "commandContainsAny",
     "argvPrefixAny",
     "leadingEnvironmentAssignmentAny",
@@ -98,9 +94,7 @@ fn alternative_values(value: &toml::Value) -> Vec<String> {
 
 fn looks_like_rule(table: &toml::map::Map<String, toml::Value>) -> bool {
     table.get("id").and_then(toml::Value::as_str).is_some()
-        && (table.contains_key("match")
-            || table.contains_key("decisionMaterializer")
-            || table.contains_key("reasonKind"))
+        && (table.contains_key("match") || table.contains_key("reasonKind"))
 }
 
 fn collect_rule_tables<'a>(
@@ -140,11 +134,7 @@ fn collect_fields(
                     format!("{path}.{field}")
                 };
                 if MATCH_ALTERNATIVE_FIELDS.contains(&field.as_str()) {
-                    let kind = if matches!(field.as_str(), "effectRules" | "authorityRules") {
-                        AtomKind::Derive
-                    } else {
-                        AtomKind::Predicate
-                    };
+                    let kind = AtomKind::Predicate;
                     for alternative in alternative_values(child) {
                         atoms.insert(CoverageKey {
                             rule_id: rule_id.to_owned(),
@@ -282,7 +272,7 @@ fn production_branch_atom_inventory_is_derived_from_the_template() {
     let policy = parse_production_policy();
     assert!(!policy.rules.is_empty(), "production policy has no rules");
     assert!(
-        policy.atoms.len() >= 150,
+        policy.atoms.len() >= policy.rules.len() * 5,
         "branch inventory is unexpectedly shallow ({} atoms):\n{}",
         policy.atoms.len(),
         policy
@@ -333,7 +323,7 @@ fn command_for_atom(atom: &CoverageKey, policy: &ProductionPolicy) -> String {
                 format!("{prefix} lexical --query classify_hook --workspace .")
             }
         }
-        "resident-testing-dispatch" => {
+        "testing-role-dispatch" => {
             if matcher == "match.commandProfileAny" {
                 let profile = value_after(alt, "profile").expect("profile alternative");
                 let category = value_after(alt, "category").expect("category alternative");
@@ -363,16 +353,12 @@ fn command_for_atom(atom: &CoverageKey, policy: &ProductionPolicy) -> String {
             }
         }
         "deny-agent-search-json" => {
-            format!("asp-typescript search lexical projectRoot owner tests {alt} .")
+            format!("asp typescript search lexical projectRoot owner tests {alt} --json .")
         }
         "route-read-to-asp-languages" => {
             format!("read {}", source_path_for(alt))
         }
-        "materialize-structured-document-read-action" => "read package.json".to_owned(),
-        "materialize-source-access-policy" => {
-            let contains = value_after(alt, "commandContainsAny").unwrap_or(alt);
-            format!("custom-reader '{contains}' src/app.ts")
-        }
+        "route-structured-document-read" => "read package.json".to_owned(),
         "allow-explicit-no-agent-host-bypass" => {
             format!("{alt} cargo test -p agent-semantic-hook")
         }
@@ -414,20 +400,6 @@ fn command_for_atom(atom: &CoverageKey, policy: &ProductionPolicy) -> String {
             };
             format!("{binary} '.' {file}")
         }
-        "deny-uncontrolled-source-materialization-commands" => {
-            let prefix = if matcher.ends_with("argvPrefixAny") {
-                alt
-            } else if atom.kind == AtomKind::Derive {
-                value_after(alt, "argvPrefix").unwrap_or("sed")
-            } else {
-                "sed"
-            };
-            if prefix == "sed" {
-                format!("sed -n '1,8p' {}", source_path_for(alt))
-            } else {
-                format!("{prefix} {}", source_path_for(alt))
-            }
-        }
         "deny-uncontrolled-git-metadata-reads" => {
             if matches!(alt, "git show --stat" | "git ls-tree") {
                 format!("{alt} HEAD")
@@ -447,35 +419,6 @@ fn command_for_atom(atom: &CoverageKey, policy: &ProductionPolicy) -> String {
 
 fn payload_for_atom(atom: &CoverageKey, policy: &ProductionPolicy) -> Value {
     let command = command_for_atom(atom, policy);
-    if atom.matcher.ends_with("authorityAny") {
-        let path = if atom.rule_id == "materialize-structured-document-read-action" {
-            "package.json"
-        } else {
-            "src/app.ts"
-        };
-        return match atom.alternative.as_str() {
-            "raw-host-action"
-                if matches!(
-                    atom.rule_id.as_str(),
-                    "route-read-to-asp-languages" | "materialize-structured-document-read-action"
-                ) =>
-            {
-                json!({
-                    "tool_name": "Read",
-                    "tool_input": {"file_path": path},
-                })
-            }
-            "raw-host-action" => json!({
-                "tool_name": "execute",
-                "tool_input": {"path": path, "command": command},
-            }),
-            "unknown" => json!({
-                "tool_name": "mystery_execute",
-                "tool_input": {"path": path, "command": command},
-            }),
-            _ => shell_surface("exec_command", "cmd", &command),
-        };
-    }
     match atom.rule_id.as_str() {
         "deny-raw-registered-source-search-action" => json!({
             "tool_name": "Grep",
@@ -488,7 +431,7 @@ fn payload_for_atom(atom: &CoverageKey, policy: &ProductionPolicy) -> Value {
             "tool_name": "Read",
             "tool_input": {"file_path": source_path_for(&atom.alternative)},
         }),
-        "materialize-structured-document-read-action" => json!({
+        "route-structured-document-read" => json!({
             "tool_name": "Read",
             "tool_input": {"file_path": "package.json"},
         }),
@@ -503,12 +446,8 @@ fn expected_winner(atom: &CoverageKey) -> Option<&str> {
     Some(atom.rule_id.as_str())
 }
 
-fn requires_low_level_derivation_witness(atom: &CoverageKey) -> bool {
-    atom.rule_id == "deny-raw-registered-source-action"
-        && atom.kind == AtomKind::Derive
-        && (atom.matcher.ends_with("authorityRules")
-            || atom.alternative.contains("effect=edit")
-            || atom.alternative.contains("argvPrefix=git show"))
+fn requires_low_level_derivation_witness(_atom: &CoverageKey) -> bool {
+    false
 }
 
 fn normalized_agent_action(decision: &agent_semantic_hook::HookDecision) -> &Value {
@@ -537,10 +476,6 @@ fn validate_atom_witness(
     let action = normalized_agent_action(decision);
     let expected_envelope = if atom.matcher.ends_with("actionAny") {
         Some(("action", atom.alternative.as_str()))
-    } else if atom.matcher.ends_with("effectAny") {
-        Some(("effect", atom.alternative.as_str()))
-    } else if atom.matcher.ends_with("authorityAny") {
-        Some(("authority", atom.alternative.as_str()))
     } else if atom.matcher.ends_with("subjectKindAny") {
         let subjects = action
             .get("subjects")
@@ -556,16 +491,6 @@ fn validate_atom_witness(
             ));
         }
         None
-    } else if atom.kind == AtomKind::Derive && atom.matcher.ends_with("effectRules") {
-        Some((
-            "effect",
-            value_after(&atom.alternative, "effect").expect("effect-rule value"),
-        ))
-    } else if atom.kind == AtomKind::Derive && atom.matcher.ends_with("authorityRules") {
-        Some((
-            "authority",
-            value_after(&atom.alternative, "authority").expect("authority-rule value"),
-        ))
     } else {
         None
     };
@@ -614,7 +539,7 @@ fn every_production_branch_atom_has_a_classifier_witness() {
         .collect::<BTreeSet<_>>();
     assert_eq!(
         low_level_expected.len(),
-        5,
+        0,
         "low-level derivation witness delegation drifted:\n{}",
         low_level_expected
             .iter()

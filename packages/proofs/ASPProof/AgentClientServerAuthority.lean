@@ -141,4 +141,55 @@ theorem readyCapabilityContractIsImmutable
     dynamicallyRegister state replacement = state := by
   simp [dynamicallyRegister, ready]
 
+inductive ClientAction where
+  | initialize
+  | request (method : String)
+  | cancel (requestId : String)
+  | shutdown
+  | exit
+deriving DecidableEq
+
+def clientLaunchesProvider : ClientAction → Bool
+  | _ => false
+
+theorem clientActionNeverLaunchesProvider
+    (action : ClientAction) :
+    clientLaunchesProvider action = false := by
+  cases action <;> rfl
+
+structure ClientCatalog where
+  generationDigest : String
+  workspaceGenerationDigest : String
+  methods : List String
+deriving DecidableEq
+
+def clientMethodAdmitted
+    (catalog : ClientCatalog)
+    (catalogGeneration workspaceGeneration method : String) : Bool :=
+  catalogGeneration == catalog.generationDigest &&
+    workspaceGeneration == catalog.workspaceGenerationDigest &&
+    catalog.methods.contains method
+
+theorem methodOutsideCatalogFailsClosed
+    (catalog : ClientCatalog)
+    (catalogGeneration workspaceGeneration method : String)
+    (missing : method ∉ catalog.methods) :
+    clientMethodAdmitted catalog catalogGeneration workspaceGeneration method = false := by
+  simp [clientMethodAdmitted, missing]
+
+theorem staleClientCatalogGenerationFailsClosed
+    (catalog : ClientCatalog)
+    (catalogGeneration workspaceGeneration method : String)
+    (stale : catalogGeneration ≠ catalog.generationDigest) :
+    clientMethodAdmitted catalog catalogGeneration workspaceGeneration method = false := by
+  simp [clientMethodAdmitted, stale]
+
+theorem clientCatalogAdmissionCannotLaunchProvider
+    (catalog : ClientCatalog)
+    (catalogGeneration workspaceGeneration method : String) :
+    clientMethodAdmitted catalog catalogGeneration workspaceGeneration method = true →
+      clientLaunchesProvider (.request method) = false := by
+  intro _
+  rfl
+
 end ASPProof.AgentClientServerAuthority

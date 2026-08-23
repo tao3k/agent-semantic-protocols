@@ -20,7 +20,7 @@ fn install_language_pinned_release_writes_runtime_bin_package_and_lock() {
 }
 
 #[test]
-fn install_language_rejects_embedded_document_surface_before_release_resolution() {
+fn install_language_rejects_non_installable_document_provider() {
     let root = temp_project_root();
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
@@ -43,7 +43,7 @@ fn install_language_rejects_embedded_document_surface_before_release_resolution(
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        receipt.contains("no installable programming-language provider is registered for `md`"),
+        receipt.contains("no installable provider is registered for `md`"),
         "{receipt}"
     );
 }
@@ -56,7 +56,7 @@ fn install_language_pinned_release_ignores_asp_toml_provider_bin() {
 
 #[test]
 #[cfg(unix)]
-fn install_binary_does_not_reconcile_language_providers_or_global_catalog() {
+fn install_binary_does_not_reconcile_provider_artifacts() {
     let root = temp_project_root();
     let state_home = root.join("state");
     let run = || {
@@ -89,11 +89,7 @@ fn install_binary_does_not_reconcile_language_providers_or_global_catalog() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("globalProviderCatalog=not-on-binary-install"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("runtimeServerReconcile=not-on-binary-install"),
+        stdout.contains("installedProviderArtifacts=not-on-binary-install"),
         "{stdout}"
     );
     assert!(
@@ -112,8 +108,7 @@ fn assert_install_pinned_release_writes_runtime_bin_package_and_lock() {
     let root = temp_project_root();
     let home = root.join("home");
     let release_dir = create_pinned_release_fixture(&root);
-    let workspace_decoy =
-        root.join("languages/rust-lang-project-harness/target/release/rs-harness");
+    let workspace_decoy = root.join("languages/rust-lang-project-harness/target/release/asp-rust");
     std::fs::create_dir_all(workspace_decoy.parent().expect("workspace decoy parent"))
         .expect("create workspace decoy parent");
     std::fs::write(&workspace_decoy, b"workspace-decoy\n").expect("write workspace decoy");
@@ -148,10 +143,10 @@ fn assert_install_pinned_release_writes_runtime_bin_package_and_lock() {
     assert!(stdout.contains("rev=v0.1.2"), "{stdout}");
 
     let runtime = home.join(".agent-semantic-protocols/runtime");
-    let bin = runtime.join("bin/rs-harness");
+    let bin = runtime.join("bin/asp-rust");
     let lock = receipt_path(&stdout, "lock");
     let lock_contents = std::fs::read_to_string(&lock).expect("read install lock");
-    let package_binary = provider_package_path(&lock_contents).join("rs-harness");
+    let package_binary = provider_package_path(&lock_contents).join("asp-rust");
     assert!(bin.is_file(), "missing runtime bin {}", bin.display());
     assert!(
         package_binary.is_file(),
@@ -197,7 +192,7 @@ fn assert_install_language_pinned_release_ignores_asp_toml_provider_bin() {
     std::fs::create_dir_all(root.join(".agents")).expect("create .agents");
     std::fs::write(
         root.join(".agents/asp.toml"),
-        "[languages.rust]\nbin = \"tools/rs-harness-config\"\n",
+        "[languages.rust]\nbin = \"tools/asp-rust-config\"\n",
     )
     .expect("write asp.toml");
 
@@ -230,19 +225,19 @@ fn assert_install_language_pinned_release_ignores_asp_toml_provider_bin() {
         "{stdout}"
     );
 
-    let bin = home.join(".agent-semantic-protocols/runtime/bin/rs-harness");
+    let bin = home.join(".agent-semantic-protocols/runtime/bin/asp-rust");
     assert!(
         bin.is_file(),
         "missing State Home runtime bin {}",
         bin.display()
     );
     assert!(
-        !root.join("tools/rs-harness-config").exists(),
+        !root.join("tools/asp-rust-config").exists(),
         "asp.toml language bin must not be an install target"
     );
     let lock = receipt_path(&stdout, "lock");
     let lock_contents = std::fs::read_to_string(&lock).expect("read install lock");
-    let package_binary = provider_package_path(&lock_contents).join("rs-harness");
+    let package_binary = provider_package_path(&lock_contents).join("asp-rust");
     assert_eq!(
         std::fs::read(&bin).expect("read configured provider"),
         std::fs::read(&package_binary).expect("read package provider"),
@@ -267,7 +262,7 @@ fn assert_install_language_pinned_release_ignores_asp_toml_provider_bin() {
 fn create_pinned_release_fixture(root: &Path) -> PathBuf {
     let release_dir = root.join("release");
     let payload_dir = release_dir.join("payload");
-    let binary = payload_dir.join("rs-harness");
+    let binary = payload_dir.join("asp-rust");
     std::fs::create_dir_all(&payload_dir).expect("create release payload dir");
     std::fs::write(
         &binary,
@@ -276,20 +271,20 @@ fn create_pinned_release_fixture(root: &Path) -> PathBuf {
     .expect("write fake provider binary");
     make_executable(&binary);
 
-    let archive = release_dir.join("rs-harness-x86_64-unknown-linux-gnu.tar.gz");
+    let archive = release_dir.join("asp-rust-x86_64-unknown-linux-gnu.tar.gz");
     let status = Command::new("tar")
         .arg("-czf")
         .arg(&archive)
         .arg("-C")
         .arg(&payload_dir)
-        .arg("rs-harness")
+        .arg("asp-rust")
         .status()
         .expect("create provider archive");
     assert!(status.success(), "tar failed with status {status}");
     let sha256 = sha256_file(&archive);
     std::fs::write(
-        release_dir.join("rs-harness-x86_64-unknown-linux-gnu.tar.gz.sha256"),
-        format!("{sha256}  rs-harness-x86_64-unknown-linux-gnu.tar.gz\n"),
+        release_dir.join("asp-rust-x86_64-unknown-linux-gnu.tar.gz.sha256"),
+        format!("{sha256}  asp-rust-x86_64-unknown-linux-gnu.tar.gz\n"),
     )
     .expect("write provider checksum");
     release_dir
@@ -310,12 +305,12 @@ fn create_gerbil_release_fixture(root: &Path, payload: &[u8]) -> PathBuf {
     let release_dir = root.join("release");
     let payload_dir = release_dir.join("payload");
     let bin_dir = payload_dir.join("bin");
-    let binary = bin_dir.join("gerbil-scheme-harness");
+    let binary = bin_dir.join("asp-gerbil-scheme");
     std::fs::create_dir_all(&bin_dir).expect("create Gerbil release bin dir");
     std::fs::write(&binary, payload).expect("write fake Gerbil provider binary");
     make_executable(&binary);
 
-    let archive = release_dir.join("gerbil-scheme-harness-x86_64-unknown-linux-gnu.tar.gz");
+    let archive = release_dir.join("asp-gerbil-scheme-x86_64-unknown-linux-gnu.tar.gz");
     let status = Command::new("tar")
         .arg("-czf")
         .arg(&archive)
@@ -327,8 +322,8 @@ fn create_gerbil_release_fixture(root: &Path, payload: &[u8]) -> PathBuf {
     assert!(status.success(), "tar failed with status {status}");
     let sha256 = sha256_file(&archive);
     std::fs::write(
-        release_dir.join("gerbil-scheme-harness-x86_64-unknown-linux-gnu.tar.gz.sha256"),
-        format!("{sha256}  gerbil-scheme-harness-x86_64-unknown-linux-gnu.tar.gz\n"),
+        release_dir.join("asp-gerbil-scheme-x86_64-unknown-linux-gnu.tar.gz.sha256"),
+        format!("{sha256}  asp-gerbil-scheme-x86_64-unknown-linux-gnu.tar.gz\n"),
     )
     .expect("write Gerbil provider checksum");
     release_dir
@@ -359,10 +354,10 @@ case "$url" in
 esac
 name="${url##*/}"
 case "$name" in
-  rs-harness-x86_64-unknown-linux-gnu.tar.gz|rs-harness-x86_64-unknown-linux-gnu.tar.gz.sha256)
+  asp-rust-x86_64-unknown-linux-gnu.tar.gz|asp-rust-x86_64-unknown-linux-gnu.tar.gz.sha256)
     cp "$ASP_TEST_RELEASE_DIR/$name" "$out"
     ;;
-  gerbil-scheme-harness-x86_64-unknown-linux-gnu.tar.gz|gerbil-scheme-harness-x86_64-unknown-linux-gnu.tar.gz.sha256)
+  asp-gerbil-scheme-x86_64-unknown-linux-gnu.tar.gz|asp-gerbil-scheme-x86_64-unknown-linux-gnu.tar.gz.sha256)
     cp "$ASP_TEST_RELEASE_DIR/$name" "$out"
     ;;
   *)

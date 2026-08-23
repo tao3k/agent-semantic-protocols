@@ -13,7 +13,7 @@ fn registered_provider_binary_exists(path: &Path) -> Result<bool, String> {
     }
 }
 
-fn registered_provider_binary_is_canonical_lattice_entry(
+fn registered_provider_binary_is_canonical_content_entry(
     path: &Path,
     artifact_root: &Path,
 ) -> Result<bool, String> {
@@ -22,7 +22,7 @@ fn registered_provider_binary_is_canonical_lattice_entry(
         Ok(_) => {
             let canonical = std::fs::canonicalize(path).map_err(|error| {
                 format!(
-                    "failed to resolve registered provider Lattice entry {}: {error}",
+                    "failed to resolve registered provider content entry {}: {error}",
                     path.display()
                 )
             })?;
@@ -42,7 +42,7 @@ fn registered_provider_binary_is_canonical_lattice_entry(
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(error) => Err(format!(
-            "failed to inspect registered provider Lattice profile {}: {error}",
+            "failed to inspect registered provider content profile {}: {error}",
             path.display()
         )),
     }
@@ -66,31 +66,36 @@ pub(super) async fn reconcile_registered_provider_runtime_binaries(
     runtime_bin_dir: &Path,
     artifact_root: &Path,
     provider_lock_dir: &Path,
+    reconciliation_guard: &super::protocol_binary::ProtocolBinaryReconciliationGuard,
 ) -> Result<RegisteredProviderBinaryReconciliation, String> {
-    let registrations = agent_semantic_hook::registered_provider_binaries_v1();
-    reconcile_registered_provider_runtime_binaries_from(
+    let registrations = super::provider_install_registry::provider_install_registrations()?;
+    reconcile_registered_provider_runtime_binaries_with_guard(
         &registrations,
         runtime_bin_dir,
         artifact_root,
         provider_lock_dir,
+        Some(reconciliation_guard),
     )
     .await
 }
 
-/// Reconciles the installed provider lattice and republishes its catalog before
+/// Reconciles the installed provider content store and republishes artifact receipts before
 /// the platform supervisor starts a new Runtime Server generation.
 ///
-/// The daemon remains a read-only, fail-closed catalog consumer. Repair lives
-/// in the explicit supervisor control path so a stale catalog cannot turn the
+/// The daemon remains a read-only, fail-closed artifact consumer. Repair lives
+/// in the explicit supervisor control path so a stale receipt cannot turn the
 /// platform supervisor into an endless restart loop.
-pub(crate) async fn reconcile_global_provider_catalog_for_runtime(
+pub(crate) async fn reconcile_installed_provider_artifacts_for_runtime(
     state_home: &Path,
-) -> Result<super::global_provider_catalog::GlobalProviderCatalogReadiness, String> {
+) -> Result<super::installed_provider_artifacts::InstalledProviderArtifactsReadiness, String> {
     let runtime_root = state_home.join("runtime");
+    let reconciliation_guard =
+        super::protocol_binary::ProtocolBinaryReconciliationGuard::acquire(state_home)?;
     let reconciliation = reconcile_registered_provider_runtime_binaries(
         &runtime_root.join("bin"),
         &runtime_root.join("artifacts"),
         &agent_semantic_runtime::provider_receipt_dir(state_home),
+        &reconciliation_guard,
     )
     .await?;
     publish_registered_provider_runtime_reconciliation(state_home, &reconciliation).await
@@ -99,29 +104,57 @@ pub(crate) async fn reconcile_global_provider_catalog_for_runtime(
 pub(crate) async fn publish_registered_provider_runtime_reconciliation(
     state_home: &Path,
     reconciliation: &RegisteredProviderBinaryReconciliation,
-) -> Result<super::global_provider_catalog::GlobalProviderCatalogReadiness, String> {
-    super::global_provider_catalog::publish_global_provider_catalog(
+) -> Result<super::installed_provider_artifacts::InstalledProviderArtifactsReadiness, String> {
+    super::installed_provider_artifacts::publish_installed_provider_artifacts(
         state_home,
         &reconciliation.provider_receipts,
     )?;
-    super::global_provider_catalog::read_global_provider_catalog_readiness(state_home)
+    super::installed_provider_artifacts::read_installed_provider_artifacts_readiness(state_home)
 }
 
-pub async fn prepare_runtime_server_provider_catalog(state_home: &Path) -> Result<(), String> {
-    reconcile_global_provider_catalog_for_runtime(state_home)
+pub async fn prepare_runtime_server_provider_artifacts(state_home: &Path) -> Result<(), String> {
+    reconcile_installed_provider_artifacts_for_runtime(state_home)
         .await
         .map(|_| ())
 }
 
+#[cfg(test)]
 async fn reconcile_registered_provider_runtime_binaries_from(
-    registrations: &[agent_semantic_hook::RegisteredProviderBinaryV1],
+    registrations: &[super::provider_install_registry::ProviderInstallRegistration],
     runtime_bin_dir: &Path,
     artifact_root: &Path,
     provider_lock_dir: &Path,
 ) -> Result<RegisteredProviderBinaryReconciliation, String> {
+    reconcile_registered_provider_runtime_binaries_with_guard(
+        registrations,
+        runtime_bin_dir,
+        artifact_root,
+        provider_lock_dir,
+        None,
+    )
+    .await
+}
+
+async fn reconcile_registered_provider_runtime_binaries_with_guard(
+    registrations: &[super::provider_install_registry::ProviderInstallRegistration],
+    runtime_bin_dir: &Path,
+    artifact_root: &Path,
+    provider_lock_dir: &Path,
+    reconciliation_guard: Option<&super::protocol_binary::ProtocolBinaryReconciliationGuard>,
+) -> Result<RegisteredProviderBinaryReconciliation, String> {
+    for directory in [runtime_bin_dir, artifact_root, provider_lock_dir] {
+        tokio::fs::create_dir_all(directory)
+            .await
+            .map_err(|error| {
+                format!(
+                    "create provider runtime directory {}: {error}",
+                    directory.display()
+                )
+            })?;
+    }
     let binary_names = registrations
         .iter()
-        .map(|registration| registration.binary().to_string())
+        .map(|registration| registration.binary.clone())
         .collect::<std::collections::BTreeSet<_>>();
     prune_stale_registered_provider_leaves(registrations, runtime_bin_dir, provider_lock_dir)
         .await?;
@@ -151,23 +184,18 @@ async fn reconcile_registered_provider_runtime_binaries_from(
                 .is_ok_and(|target| target.starts_with(developer_root));
             for registered_binary in registrations
                 .iter()
-                .filter(|registration| registration.binary() == binary_name)
+                .filter(|registration| registration.binary == *binary_name)
             {
                 // Developer authority is resolved from the current Schema
                 // Register/workspace descriptor before inspecting any
                 // persisted target or receipt. Persisted binaries are never
                 // candidates for developer publication.
                 generation_is_stale = true;
-                let registration = agent_semantic_hook::registered_provider_development_v1(
-                    registered_binary.language_id().as_str(),
-                )?;
-                let Some(workspace_install) = registration.development.workspace_install.as_deref()
-                else {
-                    continue;
-                };
+                let registration = registered_binary;
+                let workspace_install = registration.workspace_install.as_str();
                 match agent_semantic_runtime::provider_workspace_artifact::resolve_verified_provider_workspace_artifact(
                     developer_root,
-                    &registration.development.source_root,
+                    &registration.source_root,
                     workspace_install,
                     registration.language_id.as_str(),
                     registration.provider_id.as_str(),
@@ -207,13 +235,24 @@ async fn reconcile_registered_provider_runtime_binaries_from(
                     super::protocol_binary::RuntimeBinaryIdentityV1::from_registered_provider(
                         binary_name,
                     )?;
-                super::protocol_binary::install_protocol_binary_target(
-                    &source,
-                    &target,
-                    artifact_root,
-                    &binary_identity,
-                )
-                .await?;
+                if let Some(guard) = reconciliation_guard {
+                    super::protocol_binary::install_protocol_binary_target_under_guard(
+                        &source,
+                        &target,
+                        artifact_root,
+                        &binary_identity,
+                        guard,
+                    )
+                    .await?;
+                } else {
+                    super::protocol_binary::install_protocol_binary_target(
+                        &source,
+                        &target,
+                        artifact_root,
+                        &binary_identity,
+                    )
+                    .await?;
+                }
                 changed_count += 1;
                 reconciled_count += 1;
                 continue;
@@ -235,10 +274,10 @@ async fn reconcile_registered_provider_runtime_binaries_from(
             continue;
         }
         // Managed releases may only be migrated from the immutable artifact
-        // lattice.  Never treat an existing registered symlink outside the
+        // store. Never treat an existing registered symlink outside the
         // State Home as an install source; that would let an unmanaged path
         // cross the runtime trust boundary.
-        if registered_provider_binary_is_canonical_lattice_entry(&target, artifact_root)? {
+        if registered_provider_binary_is_canonical_content_entry(&target, artifact_root)? {
             reconciled_count += 1;
             continue;
         }
@@ -262,36 +301,40 @@ async fn reconcile_registered_provider_runtime_binaries_from(
         }
         let binary_identity =
             super::protocol_binary::RuntimeBinaryIdentityV1::from_registered_provider(binary_name)?;
-        super::protocol_binary::install_protocol_binary_target(
-            &target,
-            &target,
-            artifact_root,
-            &binary_identity,
-        )
-        .await?;
+        if let Some(guard) = reconciliation_guard {
+            super::protocol_binary::install_protocol_binary_target_under_guard(
+                &target,
+                &target,
+                artifact_root,
+                &binary_identity,
+                guard,
+            )
+            .await?;
+        } else {
+            super::protocol_binary::install_protocol_binary_target(
+                &target,
+                &target,
+                artifact_root,
+                &binary_identity,
+            )
+            .await?;
+        }
         binary_byte_reads += 1;
         changed_count += 1;
         reconciled_count += 1;
     }
-    if developer_root.is_some() {
-        agent_semantic_runtime::developer_artifact_cleanup::remove_developer_artifact_lattice(
-            runtime_bin_dir,
-            artifact_root,
-        )
-        .await?;
-    }
-    // Capture receipt currency only after the atomic publication and Developer
-    // lattice cleanup so stale artifact-backed receipts cannot enter the catalog.
+    // Capture receipt currency only after atomic publication so stale
+    // artifact-backed receipts cannot enter Runtime admission.
     let current_receipts = registrations
         .iter()
         .filter_map(|registration| {
             let receipt = super::install_provider_reconcile::read_provider_install_receipt(
-                registration.language_id().as_str(),
+                registration.language_id.as_str(),
                 provider_lock_dir,
             )
             .ok()?;
-            let binary_path = runtime_bin_dir.join(registration.binary());
-            if receipt.provider_id != registration.provider_id().as_str() {
+            let binary_path = runtime_bin_dir.join(&registration.binary);
+            if receipt.provider_id != registration.provider_id {
                 return None;
             }
             super::install_provider_reconcile::provider_install_receipt_matches_artifact(
@@ -314,18 +357,18 @@ async fn reconcile_registered_provider_runtime_binaries_from(
         let mut binary_reads = 0;
         let mut receipts = Vec::new();
         for registration in &receipt_registrations {
-            let binary_path = receipt_runtime_bin_dir.join(registration.binary());
+            let binary_path = receipt_runtime_bin_dir.join(&registration.binary);
             if !registered_provider_binary_exists(&binary_path)? {
                 continue;
             }
-            let lock_path = receipt_provider_lock_dir
-                .join(format!("{}.lock.toml", registration.language_id().as_str()));
+            let lock_path =
+                receipt_provider_lock_dir.join(format!("{}.lock.toml", registration.language_id));
             match std::fs::symlink_metadata(&lock_path) {
                 Ok(_) => {}
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                     if registered_provider_receipt_covers_binary(
                         &receipt_current,
-                        registration.binary(),
+                        &registration.binary,
                     ) {
                         continue;
                     }
@@ -341,16 +384,17 @@ async fn reconcile_registered_provider_runtime_binaries_from(
             }
             if let Some(receipt) = receipt_current
                 .iter()
-                .find(|receipt| receipt.language_id == registration.language_id().as_str())
+                .find(|receipt| receipt.language_id == registration.language_id)
             {
                 reconciled_count += 1;
                 receipts.push(receipt.clone());
                 continue;
             }
             let changed =
-                super::install_provider_reconcile::reconcile_provider_install_receipt_in_lock_dir(
-                    registration.language_id().as_str(),
+                super::install_provider_reconcile::reconcile_provider_install_receipt_for_path(
+                    registration.language_id.as_str(),
                     &receipt_provider_lock_dir,
+                    Some(&binary_path),
                     false,
                 )?;
             binary_reads += 1;
@@ -360,7 +404,7 @@ async fn reconcile_registered_provider_runtime_binaries_from(
             }
             receipts.push(
                 super::install_provider_reconcile::read_provider_install_receipt(
-                    registration.language_id().as_str(),
+                    registration.language_id.as_str(),
                     &receipt_provider_lock_dir,
                 )?,
             );
@@ -401,13 +445,13 @@ async fn reconcile_registered_provider_runtime_binaries_from(
 /// current Schema Register.  We inspect directory entries, never symlink
 /// targets, so a stale external link cannot cause deletion outside State Home.
 async fn prune_stale_registered_provider_leaves(
-    registrations: &[agent_semantic_hook::RegisteredProviderBinaryV1],
+    registrations: &[super::provider_install_registry::ProviderInstallRegistration],
     runtime_bin_dir: &Path,
     provider_lock_dir: &Path,
 ) -> Result<(), String> {
     let desired_languages = registrations
         .iter()
-        .map(|registration| registration.language_id().as_str().to_owned())
+        .map(|registration| registration.language_id.clone())
         .collect::<std::collections::BTreeSet<_>>();
     let mut receipts = tokio::fs::read_dir(provider_lock_dir)
         .await

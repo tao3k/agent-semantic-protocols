@@ -29,6 +29,8 @@ supportedTargets = [
 [languages.julia]
 repo = "JuliaCN/JuliaLangProjectHarness.jl"
 version = "v0.1.0"
+archivePrefix = "asp-julia-harness"
+archiveBinary = "asp-julia-harness"
 downloadBaseUrl = "https://github.com/JuliaCN/JuliaLangProjectHarness.jl/releases/download/v0.1.0"
 supportedTargets = [
   "x86_64-unknown-linux-gnu",
@@ -50,6 +52,8 @@ supportedTargets = [
 [languages.org]
 repo = "tao3k/orgize"
 version = "v0.10.0-alpha.10"
+archivePrefix = "orgize"
+archiveBinary = "orgize"
 downloadBaseUrl = "https://github.com/tao3k/orgize/releases/download/v0.10.0-alpha.10"
 supportedTargets = [
   "x86_64-unknown-linux-gnu",

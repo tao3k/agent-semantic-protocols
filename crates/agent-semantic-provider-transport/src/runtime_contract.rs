@@ -30,7 +30,7 @@ pub struct ProviderRuntimeContractReceipt {
     pub provider_id: String,
     pub language_id: String,
     pub artifact_digest: String,
-    pub manifest_digest: String,
+    pub registration_digest: String,
     pub contract_digest: String,
     pub transport: ProviderRuntimeContractTransport,
     pub operations: Vec<ProviderRuntimeContractOperation>,
@@ -41,7 +41,7 @@ impl ProviderRuntimeContractReceipt {
         provider_id: impl Into<String>,
         language_id: impl Into<String>,
         artifact_digest: impl Into<String>,
-        manifest_digest: impl Into<String>,
+        registration_digest: impl Into<String>,
         transport: ProviderRuntimeContractTransport,
         operations: Vec<ProviderRuntimeContractOperation>,
     ) -> Result<Self, String> {
@@ -51,7 +51,7 @@ impl ProviderRuntimeContractReceipt {
             provider_id: provider_id.into(),
             language_id: language_id.into(),
             artifact_digest: artifact_digest.into(),
-            manifest_digest: manifest_digest.into(),
+            registration_digest: registration_digest.into(),
             contract_digest: String::new(),
             transport,
             operations,
@@ -69,7 +69,7 @@ impl ProviderRuntimeContractReceipt {
             ("providerId", &self.provider_id),
             ("languageId", &self.language_id),
             ("artifactDigest", &self.artifact_digest),
-            ("manifestDigest", &self.manifest_digest),
+            ("registrationDigest", &self.registration_digest),
             ("contractDigest", &self.contract_digest),
         ] {
             if value.trim().is_empty() {
@@ -80,7 +80,7 @@ impl ProviderRuntimeContractReceipt {
         }
         for (field, digest) in [
             ("artifactDigest", &self.artifact_digest),
-            ("manifestDigest", &self.manifest_digest),
+            ("registrationDigest", &self.registration_digest),
             ("contractDigest", &self.contract_digest),
         ] {
             validate_digest(field, digest)?;
@@ -106,12 +106,12 @@ impl ProviderRuntimeContractReceipt {
         let expected_contract_digest = self.expected_contract_digest()?;
         if self.contract_digest != expected_contract_digest {
             return Err(format!(
-                "provider runtime contract receipt digest mismatch: expected={expected_contract_digest} actual={} providerId={} languageId={} artifactDigest={} manifestDigest={} transport={:?} operations={}",
+                "provider runtime contract receipt digest mismatch: expected={expected_contract_digest} actual={} providerId={} languageId={} artifactDigest={} registrationDigest={} transport={:?} operations={}",
                 self.contract_digest,
                 self.provider_id,
                 self.language_id,
                 self.artifact_digest,
-                self.manifest_digest,
+                self.registration_digest,
                 self.transport,
                 self.operations
                     .iter()
@@ -132,7 +132,7 @@ impl ProviderRuntimeContractReceipt {
             provider_id: &'a str,
             language_id: &'a str,
             artifact_digest: &'a str,
-            manifest_digest: &'a str,
+            registration_digest: &'a str,
             transport: &'a ProviderRuntimeContractTransport,
             operations: &'a [ProviderRuntimeContractOperation],
         }
@@ -142,14 +142,14 @@ impl ProviderRuntimeContractReceipt {
             provider_id: &self.provider_id,
             language_id: &self.language_id,
             artifact_digest: &self.artifact_digest,
-            manifest_digest: &self.manifest_digest,
+            registration_digest: &self.registration_digest,
             transport: &self.transport,
             operations: &self.operations,
         })
         .map_err(|error| format!("encode provider runtime contract receipt: {error}"))?;
         Ok(format!(
             "blake3-256:{}",
-            agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest_v1(
+            agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest(
                 DIGEST_DOMAIN,
                 &[&encoded],
             )

@@ -13,14 +13,14 @@ fn endpoint(root: &std::path::Path) -> RuntimeServerEndpoint {
         owner_epoch: 7,
         owner_process_id: 0,
         runtime_artifact_path: root.join("runtime/bin/asp").display().to_string(),
-        runtime_binary_identity: RuntimeBinaryIdentity::DeveloperSourceGeneration {
+        runtime_binary_identity: RuntimeBinaryIdentity::Content {
             value: format!("blake3-256:{}", "2".repeat(64)),
-            algorithm: "blake3-metadata-v1".to_owned(),
+            algorithm: "blake3-256".to_owned(),
         },
         monitor_capability: true,
-        observed_runtime_binary_identity: RuntimeBinaryIdentity::DeveloperSourceGeneration {
+        observed_runtime_binary_identity: RuntimeBinaryIdentity::Content {
             value: format!("blake3-256:{}", "2".repeat(64)),
-            algorithm: "blake3-metadata-v1".to_owned(),
+            algorithm: "blake3-256".to_owned(),
         },
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "3".repeat(64)),

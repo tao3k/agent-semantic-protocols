@@ -8,9 +8,14 @@ publish = false
 [dependencies]
 agent-semantic-hook = { path = "../agent-semantic-hook" }
 asp-rust-project-harness-policy = { path = "../../build-support/asp-rust-project-harness-policy" }
+libc.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+
+[dev-dependencies]
+jsonschema.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true

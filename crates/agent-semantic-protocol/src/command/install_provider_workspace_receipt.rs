@@ -1,5 +1,9 @@
 use std::path::Path;
 
+use agent_semantic_provider_protocol::{
+    ProviderRegisterOperation, ProviderRegisterRequest, ProviderRegisterResult,
+    ProviderRegistrationDocument,
+};
 use agent_semantic_runtime::{ensure_project_provider_lock_dir, project_runtime_state};
 
 use super::BuiltProviderWorkspace;
@@ -14,9 +18,10 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
     project_root: Option<&Path>,
     install_scope: &super::super::InstallScope,
     configured_dev_root: &Path,
-    registration: &agent_semantic_hook::ProviderDevelopmentRegistrationV1,
+    registration: &super::super::super::provider_install_registry::ProviderInstallRegistration,
     built: BuiltProviderWorkspace,
 ) -> Result<(), String> {
+    let live_registration = built.provider_registration.clone();
     let dev_root = configured_dev_root.canonicalize().map_err(|error| {
         format!(
             "failed to canonicalize configured [dev].root {}: {error}",
@@ -25,7 +30,7 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
     })?;
     validate_registration_identity(language_id, provider_id, registered_binary, registration)?;
     let provider_source_root = dev_root
-        .join(&registration.development.source_root)
+        .join(&registration.source_root)
         .canonicalize()
         .map_err(|error| format!("failed to canonicalize provider sourceRoot: {error}"))?;
     let runtime_state = project_runtime_state(project_root.unwrap_or(invocation_root))?;
@@ -47,6 +52,7 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
         &binary_artifact_root,
         registration,
         built,
+        &reconciliation_guard,
     )
     .await?;
     let installed_entrypoint_digest =
@@ -99,25 +105,19 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
             launcher_digest: Some(&launcher_digest),
         },
     )?;
-    let global_provider_catalog = publish_global_catalog_if_needed(
+    publish_live_provider_registration(&runtime_state.protocol_home, live_registration).await?;
+    let installed_provider_artifacts = publish_installed_artifacts_if_needed(
         &runtime_state.protocol_home,
         install_scope,
         &runtime_state.runtime_bin_dir,
         &runtime_state.provider_lock_dir,
         &binary_artifact_root,
+        &reconciliation_guard,
     )
     .await?;
     drop(reconciliation_guard);
-    let runtime_server_reconcile =
-        crate::server::runtime_server::reconcile_runtime_server_after_provider_catalog_change(
-            &runtime_state.protocol_home,
-            global_provider_catalog
-                .as_ref()
-                .is_some_and(|publication| publication.catalog_write),
-        )
-        .await?;
     println!(
-        "[asp-install] provider={} language={} scope={} installMode=develop-workspace-tree sourceKind=develop-workspace-tree devRoot={} target={} binary={} binarySourceGeneration={} generationAlgorithm=blake3-metadata-v1 artifactLeafCount={} artifactEntrypoint={} installedPath={} lock={} switch=atomic globalProviderCatalog={} globalProviderCatalogWrite={} runtimeServerReconcile={}",
+        "[asp-install] provider={} language={} scope={} installMode=develop-workspace-tree sourceKind=develop-workspace-tree devRoot={} target={} binary={} binaryContentDigest={} digestAlgorithm=blake3-256 artifactLeafCount={} artifactEntrypoint={} installedPath={} lock={} switch=atomic installedProviderArtifacts={} installedProviderArtifactsWrite={}",
         provider_id,
         language_id,
         scope,
@@ -129,35 +129,99 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
         published.artifact_entrypoint.display(),
         published.installed_path.display(),
         lock_path.display(),
-        global_provider_catalog
+        installed_provider_artifacts
             .as_ref()
-            .map(|publication| publication.catalog_generation.as_str())
+            .map(|publication| publication.generation.as_str())
             .unwrap_or("not-applicable"),
-        global_provider_catalog
+        installed_provider_artifacts
             .as_ref()
-            .is_some_and(|publication| publication.catalog_write),
-        runtime_server_reconcile,
+            .is_some_and(|publication| publication.artifact_write),
     );
     Ok(())
+}
+
+async fn publish_live_provider_registration(
+    state_home: &Path,
+    provider: ProviderRegistrationDocument,
+) -> Result<(), String> {
+    let endpoint =
+        agent_semantic_client_db::runtime_server_control::read_runtime_server_supervisor_endpoint(
+            state_home,
+        )
+        .await?
+        .ok_or_else(|| {
+            "Runtime Server endpoint is unavailable for provider registration".to_owned()
+        })?;
+    for _ in 0..3 {
+        let list = ProviderRegisterRequest {
+            schema_id: "agent.semantic-protocols.provider-register.request".to_owned(),
+            schema_version: "1".to_owned(),
+            expected_generation: None,
+            request: ProviderRegisterOperation::List,
+        };
+        let list = agent_semantic_client_db::runtime_provider_register_client::call_runtime_provider_register(
+            &endpoint,
+            &list,
+        )
+        .await?;
+        list.validate()?;
+        let generation = match list.result {
+            ProviderRegisterResult::Snapshot { snapshot } => snapshot.generation,
+            ProviderRegisterResult::GenerationConflict { actual_generation } => actual_generation,
+            ProviderRegisterResult::Rejected {
+                reason_kind,
+                message,
+            } => {
+                return Err(format!(
+                    "Runtime provider register list rejected: reasonKind={reason_kind} message={message}"
+                ));
+            }
+        };
+        let register = ProviderRegisterRequest {
+            schema_id: "agent.semantic-protocols.provider-register.request".to_owned(),
+            schema_version: "1".to_owned(),
+            expected_generation: Some(generation),
+            request: ProviderRegisterOperation::Register {
+                provider: provider.clone(),
+            },
+        };
+        let response = agent_semantic_client_db::runtime_provider_register_client::call_runtime_provider_register(
+            &endpoint,
+            &register,
+        )
+        .await?;
+        response.validate()?;
+        match response.result {
+            ProviderRegisterResult::Snapshot { .. } => return Ok(()),
+            ProviderRegisterResult::GenerationConflict { .. } => continue,
+            ProviderRegisterResult::Rejected {
+                reason_kind,
+                message,
+            } => {
+                return Err(format!(
+                    "Runtime provider registration rejected: reasonKind={reason_kind} message={message}"
+                ));
+            }
+        }
+    }
+    Err("Runtime provider registration generation remained contended after 3 attempts".to_owned())
 }
 
 fn validate_registration_identity(
     language_id: &str,
     provider_id: &str,
     registered_binary: &str,
-    registration: &agent_semantic_hook::ProviderDevelopmentRegistrationV1,
+    registration: &super::super::super::provider_install_registry::ProviderInstallRegistration,
 ) -> Result<(), String> {
-    if registration.provider_id.as_str() == provider_id
+    if registration.provider_id == provider_id
         && registration.binary == registered_binary
-        && registration.language_id.as_str() == language_id
+        && registration.language_id == language_id
     {
         return Ok(());
     }
     Err(format!(
         "ProviderRegistry workspace-install identity drift: language={} provider={} binary={} expectedLanguage={language_id} expectedProvider={provider_id} expectedBinary={registered_binary}",
-        registration.language_id.as_str(),
-        registration.provider_id.as_str(),
-        registration.binary
+        registration.language_id, registration.provider_id, registration.binary
     ))
 }
 
@@ -179,14 +243,17 @@ fn install_scope_and_lock<'a>(
     }
 }
 
-async fn publish_global_catalog_if_needed(
+async fn publish_installed_artifacts_if_needed(
     state_home: &Path,
     install_scope: &super::super::InstallScope,
     runtime_bin_dir: &Path,
     provider_lock_dir: &Path,
     binary_artifact_root: &Path,
-) -> Result<Option<crate::command::global_provider_catalog::GlobalProviderCatalogPublication>, String>
-{
+    reconciliation_guard: &super::super::super::protocol_binary::ProtocolBinaryReconciliationGuard,
+) -> Result<
+    Option<crate::command::installed_provider_artifacts::InstalledProviderArtifactsPublication>,
+    String,
+> {
     if !matches!(install_scope, super::super::InstallScope::Global) {
         return Ok(None);
     }
@@ -194,9 +261,10 @@ async fn publish_global_catalog_if_needed(
         runtime_bin_dir,
         binary_artifact_root,
         provider_lock_dir,
+        reconciliation_guard,
     )
     .await?;
-    super::super::super::global_provider_catalog::publish_global_provider_catalog(
+    super::super::super::installed_provider_artifacts::publish_installed_provider_artifacts(
         state_home,
         &provider_binaries.provider_receipts,
     )

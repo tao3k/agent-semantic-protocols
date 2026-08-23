@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use serde_json::Value;
 
 use super::agent_org_artifacts::with_agent_org_artifact_recovery;
-use super::decision::{allow, deny_for_action};
+use super::decision::allow;
 use crate::agent_dispatch_message::{AgentDispatchMessageFields, render_choice_plane_instruction};
 use crate::{
     ClientHookConfig, DecisionKind, HookDecision, HookRuntime, OperationIntent, ReasonKind,
@@ -13,8 +13,6 @@ use crate::{
 };
 
 use super::higher_priority_candidate;
-
-const RUNTIME_BINARY_POLICY_PRIORITY: i64 = 105_000;
 
 /// Named input for hook classification with optional client policy config.
 pub struct HookClassificationRequest<'a> {
@@ -46,17 +44,6 @@ pub fn classify_hook(
     })
 }
 
-fn normalized_agent_name(value: &str) -> &str {
-    value.trim().trim_start_matches('@')
-}
-
-fn dispatch_target_agent(decision: &HookDecision) -> Option<&str> {
-    ["targetAgentName", "residentChildName", "residentName"]
-        .iter()
-        .find_map(|field| decision.fields.get(*field))
-        .and_then(serde_json::Value::as_str)
-}
-
 fn dispatch_target_field<'a>(decision: &'a HookDecision, field: &str) -> Option<&'a str> {
     decision
         .fields
@@ -84,14 +71,34 @@ pub(super) fn resolve_dispatch_decision(
         .or_else(|| payload.get("agentId"))
         .and_then(serde_json::Value::as_str)
         .filter(|value| !value.trim().is_empty());
-    let target_agent = dispatch_target_agent(&decision);
-    if current_agent
-        .zip(current_agent_id)
-        .is_some_and(|(current, _)| {
-            target_agent.is_some_and(|target| {
-                normalized_agent_name(current) == normalized_agent_name(target)
+    let current_agent_role = payload
+        .get("agent_role")
+        .or_else(|| payload.get("agentRole"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty());
+    let target_role = dispatch_target_field(&decision, "targetAgentRole");
+    let current_agent_roles = payload
+        .get("agent_roles")
+        .or_else(|| payload.get("agentRoles"))
+        .and_then(serde_json::Value::as_array);
+    let role_matches = target_role.is_some_and(|target| {
+        current_agent_role.is_some_and(|role| role.eq_ignore_ascii_case(target))
+            || current_agent_roles.is_some_and(|roles| {
+                roles.iter().any(|role| {
+                    role.as_str()
+                        .is_some_and(|role| role.eq_ignore_ascii_case(target))
+                })
             })
-        })
+    });
+    let registration_verified = payload
+        .get("registration_verified")
+        .or_else(|| payload.get("registrationVerified"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    if registration_verified
+        && current_agent.is_some()
+        && current_agent_id.is_some()
+        && role_matches
     {
         decision.decision = DecisionKind::Allow;
         decision.reason_kind = ReasonKind::None;
@@ -111,19 +118,11 @@ pub(super) fn resolve_dispatch_decision(
         return decision;
     }
 
-    let target = target_agent.unwrap_or("the typed Agent returned by ChoicePlane");
-    let call_target = format!("@{}", target.trim_start_matches('@'));
-    let target_kind = dispatch_target_field(&decision, "targetAgentKind").unwrap_or("Subagent");
-    let target_role = dispatch_target_field(&decision, "targetAgentDisplayRole")
-        .or_else(|| dispatch_target_field(&decision, "targetAgentRole"))
-        .unwrap_or("configured");
-    let target_description = dispatch_target_field(&decision, "targetAgentDescription")
-        .unwrap_or("the configured typed execution Agent");
+    let target_role = target_role.unwrap_or("configured");
+    let receipt_kind = dispatch_target_field(&decision, "receiptKind").unwrap_or("unspecified");
     let dispatch_instruction = render_choice_plane_instruction(AgentDispatchMessageFields {
-        agent_kind: target_kind,
-        call_target: call_target.as_str(),
         role: target_role,
-        description: target_description,
+        receipt_kind,
     });
     if decision.message.trim().is_empty() {
         decision.message = dispatch_instruction;
@@ -205,49 +204,6 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
     let decision =
         with_agent_org_artifact_recovery(decision, request.config, &request.registry.project_root);
     let decision = with_hook_match_receipt(decision, request.payload, &actions, request.config);
-    enforce_org_choice_plane_boundary(decision)
-}
-
-pub(super) fn enforce_org_choice_plane_boundary(mut decision: HookDecision) -> HookDecision {
-    if decision.decision == DecisionKind::Allow {
-        return decision;
-    }
-    let interactive_recovery = decision.fields.contains_key("residentChildName")
-        || decision.fields.contains_key("targetAgentName")
-        || decision
-            .fields
-            .get("requiredAction")
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|action| action.contains("resident"));
-    if !interactive_recovery {
-        return decision;
-    }
-    for rust_owned_choice_field in [
-        "transport",
-        "residentName",
-        "residentChildName",
-        "targetAgentSelectionSource",
-        "canonicalTarget",
-        "agentSessionAction",
-        "receiptKind",
-        "commandDigest",
-    ] {
-        decision.fields.remove(rust_owned_choice_field);
-    }
-    for (field, value) in [
-        (
-            "requiredAction",
-            "open-org-interactive-resident-agent-window",
-        ),
-        ("nextAction", "run-asp-session-agent-window"),
-        ("agentWindowCommand", "asp session --agents choice-plane"),
-        ("choicePlaneOwner", "org-contract:agent-interactive"),
-    ] {
-        decision.fields.insert(
-            field.to_owned(),
-            serde_json::Value::String(value.to_owned()),
-        );
-    }
     decision
 }
 
@@ -487,190 +443,9 @@ pub(crate) fn default_allow_for_normalized_action(
     allow(platform, event, subject_for_action(action))
 }
 
-fn direct_executable_token_v1(command: &str) -> Option<&str> {
-    let mut tokens = command.split_whitespace();
-    let mut executable = tokens.next()?;
-    while shell_environment_assignment_v1(executable) {
-        executable = tokens.next()?;
-    }
-    if executable.is_empty()
-        || executable.bytes().any(|byte| {
-            matches!(
-                byte,
-                b'\'' | b'"' | b'`' | b'$' | b'\\' | b';' | b'|' | b'&' | b'<' | b'>' | b'(' | b')'
-            )
-        })
-    {
-        return None;
-    }
-    Some(executable)
-}
-
-fn shell_environment_assignment_v1(token: &str) -> bool {
-    let Some((name, _value)) = token.split_once('=') else {
-        return false;
-    };
-    let mut bytes = name.bytes();
-    let Some(first) = bytes.next() else {
-        return false;
-    };
-    (first == b'_' || first.is_ascii_alphabetic())
-        && bytes.all(|byte| byte == b'_' || byte.is_ascii_alphanumeric())
-}
-
-fn root_session_is_known_v1(payload: &Value) -> bool {
-    payload_string(payload, "session_id")
-        .or_else(|| payload_string(payload, "sessionId"))
-        .is_some_and(|session_id| !session_id.is_empty())
-}
-
-fn classify_runtime_binary_action_v1(
-    platform: &str,
-    event: &str,
-    payload: &Value,
-    action: &ToolAction,
-) -> Option<crate::hook_config::HookPolicyCandidate> {
-    if !root_session_is_known_v1(payload) {
-        return None;
-    }
-    let executable = direct_executable_token_v1(action.command.as_deref()?)?;
-    let crate::provider_registry::RuntimeBinaryClassificationV1::RegisteredProviderInternal(
-        registrations,
-    ) = crate::provider_registry::classify_runtime_executable_v1(executable)
-    else {
-        return None;
-    };
-
-    let language_ids = registrations
-        .iter()
-        .map(|registration| registration.language_id().clone())
-        .collect::<Vec<_>>();
-    let routes = registrations
-        .iter()
-        .map(|registration| crate::protocol::DecisionRoute {
-            language_id: registration.language_id().clone(),
-            provider_id: registration.provider_id().clone(),
-            binary: "asp".to_string(),
-            kind: crate::protocol::DecisionRouteKind::Query,
-            argv: vec![
-                "asp".to_string(),
-                registration.language_id().as_str().to_string(),
-            ],
-            stdin_mode: None,
-        })
-        .collect::<Vec<_>>();
-    let route_guide = registrations
-        .iter()
-        .map(|registration| format!("asp {}", registration.language_id().as_str()))
-        .collect::<Vec<_>>()
-        .join("; ");
-    let registered_binary = registrations
-        .first()
-        .map(|registration| registration.binary().to_string())
-        .unwrap_or_else(|| executable.to_string());
-    let denial =
-        crate::provider_registry::RuntimeBinaryAdmissionDenialV1::MissingDispatchCapability;
-    let mut decision = deny_for_action(
-        platform,
-        event,
-        super::decision::DenyForActionRequest {
-            reason_kind: ReasonKind::ProviderBinaryDirectExecution,
-            action,
-            language_ids,
-            subject: subject_for_action(action),
-            routes,
-            message: format!(
-                "registered provider-internal binary `{executable}` denied: root session is known but no server-verified ASP runtime dispatch capability is present. Use a registry-derived facade route: {route_guide}."
-            ),
-        },
-    );
-    decision.fields.insert(
-        "runtimeBinaryProfile".to_string(),
-        Value::String("provider-internal".to_string()),
-    );
-    decision.fields.insert(
-        "runtimeBinaryAdmissionDenial".to_string(),
-        Value::String(match denial {
-            crate::provider_registry::RuntimeBinaryAdmissionDenialV1::MissingDispatchCapability => {
-                "missing-dispatch-capability"
-            }
-            crate::provider_registry::RuntimeBinaryAdmissionDenialV1::DirectProviderInternal => {
-                "direct-provider-internal"
-            }
-            crate::provider_registry::RuntimeBinaryAdmissionDenialV1::UnregisteredRuntimeBinary => {
-                "unregistered-runtime-binary"
-            }
-        }
-        .to_string()),
-    );
-    decision.fields.insert(
-        "runtimeBinary".to_string(),
-        Value::String(registered_binary),
-    );
-    Some(crate::hook_config::HookPolicyCandidate {
-        priority: RUNTIME_BINARY_POLICY_PRIORITY,
-        terminal: false,
-        decision,
-    })
-}
-
 /// Evaluate the config-independent provider-binary admission before any
 /// config-compiled command shard. Its priority is higher than user policy, so a
 /// direct provider executable cannot be reinterpreted as a testing profile.
-pub fn runtime_binary_policy_decision_v1(
-    platform: &str,
-    event: &str,
-    payload: &Value,
-) -> Option<HookDecision> {
-    if event != "pre-tool" || !payload_may_target_runtime_binary_v1(payload) {
-        return None;
-    }
-    let actions = collect_payload_tool_actions(payload);
-    for action in &actions {
-        if let Some(candidate) = classify_runtime_binary_action_v1(platform, event, payload, action)
-        {
-            let mut decision = with_action_receipt_fields(candidate.decision, payload, &actions);
-            decision.fields.insert(
-                "hookMatcherProjection".to_owned(),
-                Value::String("runtime-binary-policy-v1".to_owned()),
-            );
-            decision.fields.insert(
-                "hookPolicySynchronousDependencies".to_owned(),
-                Value::Array(Vec::new()),
-            );
-            return Some(decision);
-        }
-    }
-    None
-}
-
-/// Reject the common non-provider command path before constructing a second
-/// shell AST. The provider registry remains the identity authority; this is
-/// only a constant-time negative gate for the config-independent kernel.
-fn payload_may_target_runtime_binary_v1(payload: &Value) -> bool {
-    if !root_session_is_known_v1(payload) {
-        return false;
-    }
-    let tool_input = payload
-        .get("tool_input")
-        .or_else(|| payload.get("toolInput"))
-        .or_else(|| payload.get("parameters"))
-        .or_else(|| payload.get("input"))
-        .or_else(|| payload.get("arguments"))
-        .unwrap_or(payload);
-    let command = tool_input
-        .get("command")
-        .or_else(|| tool_input.get("cmd"))
-        .and_then(Value::as_str);
-    let Some(executable) = command.and_then(direct_executable_token_v1) else {
-        return false;
-    };
-    matches!(
-        crate::provider_registry::classify_runtime_executable_v1(executable),
-        crate::provider_registry::RuntimeBinaryClassificationV1::RegisteredProviderInternal(_)
-    )
-}
-
 fn classify_tool_actions(
     request: &HookClassificationRequest<'_>,
     actions: &[ToolAction],
@@ -685,14 +460,8 @@ fn classify_tool_actions(
     let mut highest_denial = None;
     let mut highest_allow = None;
     for action in actions {
-        let runtime_candidate = classify_runtime_binary_action_v1(
-            request.platform,
-            request.event,
-            request.payload,
-            action,
-        );
         let config_candidate = config.classify_candidate(registry, platform, event, action);
-        let Some(candidate) = higher_priority_candidate(runtime_candidate, config_candidate) else {
+        let Some(candidate) = config_candidate else {
             continue;
         };
         if candidate.decision.decision == crate::DecisionKind::Allow && candidate.terminal {
@@ -708,20 +477,4 @@ fn classify_tool_actions(
         }
     }
     highest_denial.or(highest_allow)
-}
-
-pub(crate) fn materialize_apply_patch_decision(
-    registry: &HookRuntime,
-    platform: &str,
-    event: &str,
-    action: &ToolAction,
-    semantic_ast_patch_enabled: bool,
-) -> Option<HookDecision> {
-    super::apply_patch_policy::materialize_apply_patch_decision(
-        registry,
-        platform,
-        event,
-        action,
-        semantic_ast_patch_enabled,
-    )
 }

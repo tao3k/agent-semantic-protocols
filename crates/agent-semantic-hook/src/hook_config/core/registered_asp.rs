@@ -20,7 +20,13 @@ pub(super) fn match_registered_asp_command<'a>(
     let stages =
         crate::shell_parser::bash::parse_bash_command_candidates(action.command.as_deref()?)
             .ok()?;
-    for language_id in crate::provider_registry::registered_language_ids() {
+    let mut language_ids = Vec::new();
+    for projection in &runtime.policy_providers {
+        if !language_ids.contains(&projection.language_id) {
+            language_ids.push(projection.language_id.clone());
+        }
+    }
+    for language_id in language_ids {
         for pattern in patterns {
             let concrete_prefix = pattern
                 .iter()

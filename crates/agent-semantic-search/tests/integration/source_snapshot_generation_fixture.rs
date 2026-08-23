@@ -5,8 +5,9 @@ use agent_semantic_content_identity::{
     SourceSnapshotEvidence, SourceSnapshotKind, WorkspaceSnapshot, hash_blob,
 };
 
-const RUST_PROVIDER_MANIFEST: &[u8] =
-    include_bytes!("../../../../languages/rust-lang-project-harness/schemas/asp-provider.json");
+fn rust_provider_manifest() -> &'static [u8] {
+    agent_semantic_provider_protocol::builtin_provider_register_json().as_bytes()
+}
 
 pub(crate) struct CanonicalTestSnapshot {
     pub(crate) evidence: SourceSnapshotEvidence,
@@ -20,7 +21,7 @@ pub(crate) fn canonical_test_snapshot() -> CanonicalTestSnapshot {
     )]);
     let evidence = workspace.evidence(
         SourceSnapshotKind::Filesystem,
-        hash_blob(RUST_PROVIDER_MANIFEST).value,
+        hash_blob(rust_provider_manifest()).value,
     );
     let generation = ValidatedWorkspaceGenerationV1::new(WorkspaceGenerationEvidenceV1 {
         root_digest: evidence.root_digest.clone(),

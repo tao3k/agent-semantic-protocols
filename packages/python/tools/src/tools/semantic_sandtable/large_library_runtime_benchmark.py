@@ -23,7 +23,7 @@ from .scenario_io import discover_scenarios, load_scenario
 from .utils import string_list
 
 
-_CORPUS_MANIFEST = "benchmarks/large-library-runtime-corpora.v1.json"
+_CORPUS_MANIFEST = "benchmarks/large-library-runtime-corpora.json"
 LIVE_CORPUS_LANGUAGES = (
     "gerbil-scheme",
     "julia",

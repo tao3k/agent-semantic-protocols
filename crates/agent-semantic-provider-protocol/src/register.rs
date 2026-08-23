@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::{CompiledProviderRoute, ProviderRouteSpec};
+
 pub const PROVIDER_REGISTER_SCHEMA_VERSION: &str = "1";
 pub const PROVIDER_REGISTER_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.provider-register.request";
@@ -45,6 +47,29 @@ pub struct ProviderRegistrationDocument {
     pub registration: Value,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderSourceInventory {
+    pub package_roots: Vec<String>,
+    pub config_files: Vec<String>,
+    pub source_extensions: Vec<String>,
+    pub project_resolution: Option<ProviderProjectInventory>,
+    pub document_resolution: Option<ProviderDocumentInventory>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderProjectInventory {
+    pub entry_markers: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderDocumentInventory {
+    pub extensions: Vec<String>,
+    pub supports_git_candidates: bool,
+}
+
 impl ProviderRegistrationDocument {
     pub fn validate(&self) -> Result<(), String> {
         validate_identity("languageId", &self.language_id)?;
@@ -55,6 +80,81 @@ impl ProviderRegistrationDocument {
             .ok_or_else(|| "provider registration must be a JSON object".to_owned())?;
         validate_matching_field(registration, "languageId", &self.language_id)?;
         validate_matching_field(registration, "providerId", &self.provider_id)
+    }
+
+    /// Compile the provider-owned semantic routes carried by a live Register
+    /// operation. Built-in seed identities deliberately do not carry routes.
+    pub fn compiled_routes(&self) -> Result<Vec<CompiledProviderRoute>, String> {
+        self.validate()?;
+        self.validate_live_metadata()?;
+        let routes = self
+            .registration
+            .get("routes")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "live provider registration must declare routes".to_owned())?;
+        if routes.is_empty() {
+            return Err("live provider registration routes must not be empty".to_owned());
+        }
+        routes
+            .iter()
+            .map(|route| {
+                let spec: ProviderRouteSpec = serde_json::from_value(route.clone())
+                    .map_err(|error| format!("provider route is invalid: {error}"))?;
+                if spec.target.language_id != self.language_id
+                    || spec.target.provider_id != self.provider_id
+                {
+                    return Err(format!(
+                        "provider route target drift: expected {}/{}, got {}/{}",
+                        self.language_id,
+                        self.provider_id,
+                        spec.target.language_id,
+                        spec.target.provider_id
+                    ));
+                }
+                spec.compile().map_err(|error| error.to_string())
+            })
+            .collect()
+    }
+
+    pub fn namespace(&self) -> Result<&str, String> {
+        self.registration
+            .get("namespace")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "live provider registration must declare namespace".to_owned())
+    }
+
+    pub fn source_inventory(&self) -> Result<ProviderSourceInventory, String> {
+        let inventory = self
+            .registration
+            .get("sourceInventory")
+            .ok_or_else(|| "live provider registration must declare sourceInventory".to_owned())?
+            .clone();
+        let inventory: ProviderSourceInventory = serde_json::from_value(inventory)
+            .map_err(|error| format!("provider sourceInventory is invalid: {error}"))?;
+        if inventory.source_extensions.is_empty()
+            || (inventory.project_resolution.is_none() && inventory.document_resolution.is_none())
+        {
+            return Err(
+                "provider sourceInventory must declare extensions and at least one resolution capability"
+                    .to_owned(),
+            );
+        }
+        Ok(inventory)
+    }
+
+    pub fn registration_field(&self, field: &str) -> Result<&Value, String> {
+        self.registration
+            .get(field)
+            .ok_or_else(|| format!("live provider registration must declare {field}"))
+    }
+
+    fn validate_live_metadata(&self) -> Result<(), String> {
+        self.namespace()?;
+        self.source_inventory()?;
+        self.registration_field("searchCapabilities")?;
+        self.registration_field("queryPackDescriptor")?;
+        Ok(())
     }
 }
 
@@ -97,7 +197,9 @@ impl ProviderRegisterRequest {
                 }
                 reject_duplicate_providers(providers)
             }
-            ProviderRegisterOperation::Register { provider } => provider.validate(),
+            ProviderRegisterOperation::Register { provider } => {
+                provider.compiled_routes().map(|_| ())
+            }
             ProviderRegisterOperation::Unregister { provider_id } => {
                 validate_identity("providerId", provider_id)
             }
@@ -248,6 +350,57 @@ mod tests {
             registration: json!({
                 "languageId": language_id,
                 "providerId": provider_id,
+                "namespace": language_id,
+                "sourceInventory": {
+                    "packageRoots": [],
+                    "configFiles": [],
+                    "sourceExtensions": [format!(".{language_id}")],
+                    "projectResolution": {
+                        "entryMarkers": [format!("{language_id}.project")]
+                    },
+                    "documentResolution": null
+                },
+                "searchCapabilities": {
+                    "ownerItems": true,
+                    "semanticFacts": true,
+                    "dependencyTopology": false,
+                    "dependencyTopologyMetadata": false
+                },
+                "queryPackDescriptor": {},
+                "routes": [{
+                    "schemaId": "agent.semantic-protocols.provider-route",
+                    "schemaVersion": "1",
+                    "routeId": format!("{language_id}.search.owner"),
+                    "operation": "search.owner",
+                    "authority": "asp-server",
+                    "target": {
+                        "languageId": language_id,
+                        "providerId": provider_id
+                    },
+                    "inputs": [],
+                    "requirements": [],
+                    "effects": {
+                        "access": "read",
+                        "idempotent": true,
+                        "cancellable": true,
+                        "concurrency": "shared-read",
+                        "streaming": false
+                    },
+                    "output": {
+                        "schemaId": "agent.semantic-protocols.search-packet",
+                        "mediaType": "application/json"
+                    },
+                    "failureSchemaIds": ["agent.semantic-protocols.route-failure"],
+                    "cache": {
+                        "authority": "asp-server",
+                        "scope": "workspace",
+                        "keySlots": []
+                    },
+                    "telemetry": {
+                        "spanName": "asp.route.search.owner",
+                        "attributeSlots": []
+                    }
+                }]
             }),
         }
     }
@@ -295,6 +448,20 @@ mod tests {
                 "provider registration providerId `asp-rust` does not match `asp-python`"
                     .to_owned()
             )
+        );
+    }
+
+    #[test]
+    fn live_registration_requires_source_inventory_owned_by_the_client_server() {
+        let mut registration = provider("rust", "asp-rust");
+        registration
+            .registration
+            .as_object_mut()
+            .expect("registration object")
+            .remove("sourceInventory");
+        assert_eq!(
+            registration.compiled_routes(),
+            Err("live provider registration must declare sourceInventory".to_owned())
         );
     }
 

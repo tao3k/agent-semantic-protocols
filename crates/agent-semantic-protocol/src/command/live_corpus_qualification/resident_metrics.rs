@@ -2,7 +2,7 @@ use serde::Serialize;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct ResidentLatencyDistributionV1 {
+pub(super) struct ResidentLatencyDistribution {
     pub(super) sample_count: usize,
     pub(super) min_micros: u64,
     pub(super) p50_micros: u64,
@@ -25,13 +25,13 @@ pub(super) struct ResidentSearchOutcome {
 
 pub(super) fn resident_latency_distribution(
     mut samples: Vec<u64>,
-) -> Result<ResidentLatencyDistributionV1, String> {
+) -> Result<ResidentLatencyDistribution, String> {
     if samples.is_empty() {
         return Err("Live Corpus resident latency distribution is empty".to_owned());
     }
     samples.sort_unstable();
     let percentile = |percent: usize| samples[(samples.len() - 1) * percent / 100];
-    Ok(ResidentLatencyDistributionV1 {
+    Ok(ResidentLatencyDistribution {
         sample_count: samples.len(),
         min_micros: samples[0],
         p50_micros: percentile(50),

@@ -1,7 +1,10 @@
-# ASP Schema Manager
+# ASP Schema Audit
 
-`asp-schema-manager` audits the repository's JSON Schema registry without rewriting or
-deleting files. It reports reusable validation fragments, direct and transitive
+The Python `asp-schema-manager` package is a read-only audit consumer of the
+repository JSON Schema registry and Rust Schema Manager receipts.  The Rust
+`agent-semantic-schema-manager` crate and `asp schema materialize|verify` are the
+only schema bundle lifecycle authority.  Python never rewrites, copies, or
+deletes language-package schemas.  It reports reusable validation fragments, direct and transitive
 Rust use, unresolved references, and lifecycle recommendations.
 
 Schema families are contractual filename namespaces declared in

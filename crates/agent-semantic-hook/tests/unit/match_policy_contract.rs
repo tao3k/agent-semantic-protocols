@@ -43,14 +43,17 @@ fn canonical_config_covers_builtin_programming_native_read_matrix() {
     fs::write(&config_path, default_client_config_template()).expect("write config");
     fs::write(root.join("package.json"), r#"{"name":"fixture"}"#)
         .expect("write structured projection fixture");
+    let profiles = agent_semantic_config::default_hook_client_config_file()
+        .expect("canonical config")
+        .profiles;
     let config = agent_semantic_hook::load_client_config_for_project(&config_path, &root)
         .expect("compile config");
     let mut runtime = builtin_programming_runtime();
     runtime.project_root = root.to_string_lossy().into_owned();
     let mut count = 0usize;
-    for provider in &runtime.providers {
-        for extension in &provider.source_extensions {
-            let path = format!("src/witness{extension}");
+    for profile in profiles.values() {
+        for extension in &profile.extension_any {
+            let path = format!("src/witness.{extension}");
             let mut inputs = vec![json!({"type":"read", "path": path})];
             for key in [
                 "path",
@@ -85,7 +88,7 @@ fn canonical_config_covers_builtin_programming_native_read_matrix() {
                 );
                 assert_eq!(decision.decision, DecisionKind::Deny);
                 assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
-                assert_eq!(decision.language_ids, [provider.language_id.as_str()]);
+                assert_eq!(decision.language_ids, [profile.language_id.as_str()]);
                 assert!(
                     decision
                         .fields
@@ -96,7 +99,7 @@ fn canonical_config_covers_builtin_programming_native_read_matrix() {
                     decision
                         .routes
                         .iter()
-                        .any(|route| route.provider_id == provider.provider_id)
+                        .any(|route| route.provider_id == profile.provider_id.as_str())
                 );
                 count += 1;
             }
@@ -282,11 +285,6 @@ struct MatchCase {
 
 #[test]
 fn production_match_policy_contract() {
-    let typescript_provider = agent_semantic_hook::registered_provider_binary_v1("typescript")
-        .expect("registered TypeScript provider binary");
-    assert_eq!(typescript_provider.provider_id().as_str(), "asp-typescript");
-    assert_eq!(typescript_provider.binary(), "asp-typescript");
-
     let root = temp_project_root();
     fs::create_dir_all(&root).expect("create match-policy contract root");
     let config_path = root.join("config.toml");
@@ -306,33 +304,15 @@ fn production_match_policy_contract() {
 
     let mut runtime = registry();
     runtime.project_root = root.to_string_lossy().into_owned();
-    let direct_config =
-        agent_semantic_hook::load_client_config(&config_path).expect("load direct policy");
-    let direct_json_probe = classify(
-        &runtime,
-        &direct_config,
-        &shell("asp-typescript search lexical projectRoot owner tests --json ."),
-    );
-    assert_eq!(
-        direct_json_probe
-            .fields
-            .get("configRuleId")
-            .and_then(Value::as_str),
-        Some("deny-agent-search-json"),
-        "direct config load must preserve the AgentSearchJson materializer"
-    );
-    let capability_json_probe = classify(
-        &runtime,
-        &config,
-        &shell("asp-typescript search lexical projectRoot owner tests --json ."),
-    );
-    assert_eq!(
-        capability_json_probe
-            .fields
-            .get("configRuleId")
-            .and_then(Value::as_str),
-        Some("deny-agent-search-json"),
-        "capability-aware config loading must preserve the AgentSearchJson materializer"
+    config
+        .apply_language_provider_projection(&mut runtime)
+        .expect("apply declarative language profile projection");
+    assert!(
+        runtime
+            .policy_providers
+            .iter()
+            .any(|provider| provider.language_id == "typescript"),
+        "typescript profile must be projected from the declarative config"
     );
     let syntax_only_config = load_client_config_for_project_with_executable_capabilities(
         &config_path,
@@ -371,7 +351,7 @@ fn production_match_policy_contract() {
         MatchCase {
             name: "testing dispatch",
             payload: shell("cargo test --workspace"),
-            rule_id: "resident-testing-dispatch",
+            rule_id: "testing-role-dispatch",
             decision: DecisionKind::Deny,
             reason: ReasonKind::SubagentReceiptRequired,
         },
@@ -391,21 +371,21 @@ fn production_match_policy_contract() {
         MatchCase {
             name: "javascript inline source materialization",
             payload: shell("node -e 'require(\"fs\").readFileSync(\"src/app.ts\", \"utf8\")'"),
-            rule_id: "materialize-source-access-policy",
+            rule_id: "deny-raw-registered-source-action",
             decision: DecisionKind::Deny,
             reason: ReasonKind::BulkSourceDump,
         },
         MatchCase {
             name: "legacy python inline source materialization",
             payload: shell("python -c 'print(open(\"src/app.ts\").read())'"),
-            rule_id: "materialize-source-access-policy",
+            rule_id: "deny-raw-registered-source-action",
             decision: DecisionKind::Deny,
             reason: ReasonKind::BulkSourceDump,
         },
         MatchCase {
             name: "source materialization command",
             payload: shell("sed -n '1,8p' src/app.ts"),
-            rule_id: "deny-uncontrolled-source-materialization-commands",
+            rule_id: "deny-raw-registered-source-action",
             decision: DecisionKind::Deny,
             reason: ReasonKind::BulkSourceDump,
         },
@@ -453,7 +433,7 @@ fn production_match_policy_contract() {
                 "tool_name": "Read",
                 "tool_input": {"file_path": "package.json"},
             }),
-            rule_id: "materialize-structured-document-read-action",
+            rule_id: "route-structured-document-read",
             decision: DecisionKind::Deny,
             reason: ReasonKind::StructuredSourceRead,
         },
@@ -480,22 +460,10 @@ fn production_match_policy_contract() {
         },
         MatchCase {
             name: "agent search JSON",
-            payload: shell("asp-typescript search lexical projectRoot owner tests --json ."),
+            payload: shell("asp typescript search lexical projectRoot owner tests --json ."),
             rule_id: "deny-agent-search-json",
             decision: DecisionKind::Deny,
             reason: ReasonKind::AgentSearchJson,
-        },
-        MatchCase {
-            name: "apply patch materializer",
-            payload: json!({
-                "tool_name": "apply_patch",
-                "tool_input": {
-                    "patch": "*** Begin Patch\n*** Update File: src/app.ts\n@@\n-old\n+new\n*** End Patch\n"
-                },
-            }),
-            rule_id: "materialize-apply-patch-policy",
-            decision: DecisionKind::Deny,
-            reason: ReasonKind::SemanticAstPatchRequired,
         },
         MatchCase {
             name: "source access materializer",
@@ -503,7 +471,7 @@ fn production_match_policy_contract() {
                 "tool_name": "functions.exec_command",
                 "tool_input": {"cmd": "custom-reader '.read_text(' src/app.ts"},
             }),
-            rule_id: "materialize-source-access-policy",
+            rule_id: "deny-raw-registered-source-action",
             decision: DecisionKind::Deny,
             reason: ReasonKind::BulkSourceDump,
         },

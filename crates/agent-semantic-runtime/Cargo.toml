@@ -10,6 +10,7 @@ agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 blake3.workspace = true
 bytes = "1"
+fs2.workspace = true
 gix = { workspace = true, features = [
   "blocking-network-client",
   "blocking-http-transport-reqwest-rust-tls",

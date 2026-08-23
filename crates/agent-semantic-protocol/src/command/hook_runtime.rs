@@ -1,7 +1,7 @@
 //! Runtime for the `asp hook` command surface.
 
-#[path = "hook_runtime_agent_session_dispatch.rs"]
-mod hook_runtime_agent_session_dispatch;
+#[path = "hook_enablement_acceptance.rs"]
+mod hook_enablement_acceptance;
 #[path = "hook_runtime_cli_args.rs"]
 mod hook_runtime_cli_args;
 #[path = "hook_runtime_codex_plugin.rs"]
@@ -18,8 +18,6 @@ mod hook_runtime_host_lifecycle;
 mod hook_runtime_install;
 #[path = "hook_runtime_skill.rs"]
 mod hook_runtime_skill;
-#[path = "hook_runtime_source_access_materialize.rs"]
-mod hook_runtime_source_access_materialize;
 #[path = "hook_runtime_stdin.rs"]
 mod hook_runtime_stdin;
 #[path = "hook_runtime_subagent.rs"]
@@ -27,10 +25,10 @@ mod hook_runtime_subagent;
 #[path = "hook_runtime_workspace_mutation.rs"]
 mod hook_runtime_workspace_mutation;
 
-use super::{codex_enforcement_report, payload_indicates_subagent_context};
+use super::payload_indicates_subagent_context;
 use agent_semantic_hook::{
     HookClassificationRequest, HookDecision, classify_hook_with_config, default_client_config_path,
-    parse_payload,
+    materialize_source_access_deny_message, parse_payload,
 };
 use agent_semantic_runtime::project_state_paths;
 use hook_runtime_cli_args::{display_path, optional_flag_value};
@@ -38,7 +36,6 @@ use hook_runtime_decision_render::{emit_decision, emit_hook_runtime_failure};
 use hook_runtime_doctor::run_doctor;
 pub(super) use hook_runtime_install::run_codex_plugin_install_args;
 use hook_runtime_install::run_install;
-use hook_runtime_source_access_materialize::materialize_source_access_deny_message;
 const HOOK_DECISION_BUDGET_MICROS: u64 = 1_000;
 
 pub(crate) fn publish_hook_matcher_generation(
@@ -115,7 +112,7 @@ pub(crate) fn read_hook_input_bounded() -> Result<String, String> {
 }
 use agent_semantic_hook::hook_workspace_candidate;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub(super) async fn run_hook_runtime_args<I, S>(args: I) -> Result<(), String>
 where
@@ -128,13 +125,31 @@ where
 async fn run(args: Vec<String>) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("accept-host") => super::hook_host_acceptance::run_accept_host(&args[1..]),
-        Some("doctor") => run_doctor(&args[1..]),
+        Some("doctor") => run_doctor(&args[1..]).await,
+        Some("enablement") => hook_enablement_acceptance::run(&args[1..]).await,
         Some("install") => run_install(&args[1..]).await,
         Some("paths") => run_paths(&args[1..]),
+        Some("refresh") => run_refresh(&args[1..]).await,
         _ => Err(
-            "usage: asp hook <accept-host|install|doctor|paths|hook> --client codex".to_string(),
+            "usage: asp hook <accept-host|doctor|enablement|paths|refresh> --client codex"
+                .to_string(),
         ),
     }
+}
+
+async fn run_refresh(args: &[String]) -> Result<(), String> {
+    let project_root = project_root_arg(args)?;
+    let runtime_state = agent_semantic_runtime::project_runtime_state(&project_root)?;
+    let config_path = runtime_state.protocol_home.join("hooks/config.toml");
+    let status = crate::command::managed_hook_config::materialize(&config_path)?;
+    let generation =
+        hook_runtime_config_recovery::publish_hook_matcher_generation(&config_path, &project_root)?;
+    println!(
+        "[hook-refresh] binarySchemaVersion=1 generation={generation} config={} status={}",
+        config_path.display(),
+        status.as_str()
+    );
+    Ok(())
 }
 
 fn run_paths(args: &[String]) -> Result<(), String> {
@@ -247,6 +262,35 @@ fn insert_missing_or_blank(
         field.to_owned(),
         serde_json::Value::String(value.to_owned()),
     );
+}
+
+fn enrich_registered_host_agent_roles(
+    client: &str,
+    project_root: &Path,
+    payload: &mut serde_json::Value,
+) -> Result<(), String> {
+    if client != "codex" {
+        return Ok(());
+    }
+    let Some(agent_name) = string_field(payload, &["agent_type", "agentType"]) else {
+        return Ok(());
+    };
+    let Some(roles) = hook_runtime_host_lifecycle::registered_host_agent_roles(
+        project_root,
+        client,
+        agent_name.as_str(),
+    )?
+    else {
+        return Ok(());
+    };
+    let Some(object) = payload.as_object_mut() else {
+        return Ok(());
+    };
+    object.insert(
+        "agent_roles".to_owned(),
+        serde_json::Value::Array(roles.into_iter().map(serde_json::Value::String).collect()),
+    );
+    Ok(())
 }
 
 #[cfg(test)]
@@ -405,6 +449,7 @@ async fn run_hook_with_input(
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| PathBuf::from("."));
     let project_root = hook_workspace_candidate(&payload, &payload_root);
+    enrich_registered_host_agent_roles(client, &project_root, &mut payload)?;
     let registration_receipt =
         crate::multi_agent_session::register_child_session_from_host_payload(
             &project_root,
@@ -484,11 +529,14 @@ async fn run_hook_with_input(
         let hook_config = config
             .as_mut()
             .ok_or_else(|| "Hook matcher loaded neither config nor decision shard".to_owned())?;
-        hook_runtime_config_recovery::move_language_provider_projection(
-            hook_config,
-            &mut runtime,
-            &config_path,
-        )?;
+        hook_config
+            .move_language_provider_projection(&mut runtime)
+            .map_err(|error| {
+                format!(
+                    "Hook language provider projection is invalid for {}: {error}",
+                    config_path.display()
+                )
+            })?;
         classify_hook_with_config(HookClassificationRequest {
             registry: &runtime,
             config: hook_config,
@@ -501,19 +549,6 @@ async fn run_hook_with_input(
     // a second shell parse solely to choose a stronger denial reason. Allow is
     // the only decision that can cross the provider-binary authority boundary;
     // preserve the config-independent registry policy there before emission.
-    if decision.decision == agent_semantic_hook::DecisionKind::Allow {
-        if let Some(mut runtime_binary_decision) =
-            agent_semantic_hook::runtime_binary_policy_decision_v1(client, event, &payload)
-        {
-            annotate_hook_decision_budget(
-                &mut runtime_binary_decision,
-                hook_started,
-                hook_cpu_started_micros,
-            );
-            publish_hook_decision_before_emit(&project_root, &mut runtime_binary_decision);
-            return emit_decision(emit, &runtime_binary_decision);
-        }
-    }
     if let Some(key) = &direct_read_key {
         if decision.subject.tool_name.as_deref() != Some(key.tool_name.as_str()) {
             decision.subject.tool_name = Some(key.tool_name.clone());
@@ -540,7 +575,6 @@ async fn run_hook_with_input(
     annotate_payload_context(&mut decision, &payload);
     if projection.is_none() {
         materialize_source_access_deny_message(&mut decision);
-        hook_runtime_agent_session_dispatch::materialize_org_choice_plane_reference(&mut decision);
     }
     let materialized_micros = hook_started.elapsed().as_micros();
     if trace_enabled {
@@ -566,8 +600,7 @@ async fn run_hook_with_input(
 fn annotate_payload_context(decision: &mut HookDecision, payload: &serde_json::Value) {
     let dispatch_relevant = decision.reason_kind
         == agent_semantic_hook::ReasonKind::SubagentReceiptRequired
-        || decision.fields.contains_key("targetAgentName")
-        || decision.fields.contains_key("residentChildName");
+        || decision.has_dispatch_choice_plane_role();
     if dispatch_relevant {
         annotate_host_root_session_identity(
             &mut decision.fields,

@@ -45,7 +45,7 @@ fn args(values: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn accept_host_doctor_and_paths_delegate_to_hook_runtime() {
+fn lifecycle_commands_delegate_to_hook_runtime() {
     assert_eq!(
         hook::forwarded_hook_args(&args(&[
             "accept-host",
@@ -75,6 +75,10 @@ fn accept_host_doctor_and_paths_delegate_to_hook_runtime() {
         hook::forwarded_hook_args(&args(&["paths", "."])).unwrap(),
         args(&["paths", "."])
     );
+    assert_eq!(
+        hook::forwarded_hook_args(&args(&["enablement", ".", "--json"])).unwrap(),
+        args(&["enablement", ".", "--json"])
+    );
 }
 
 #[test]
@@ -85,6 +89,7 @@ fn help_requests_do_not_forward_to_hook_runtime() {
     for values in [
         &["accept-host", "--help"][..],
         &["doctor", "-h"][..],
+        &["enablement", "--help"][..],
         &["paths", "--help"][..],
         &["event", "--help"][..],
     ] {
@@ -93,6 +98,7 @@ fn help_requests_do_not_forward_to_hook_runtime() {
     for values in [
         &["accept-host", "--help"][..],
         &["doctor", "-h"][..],
+        &["enablement", "--help"][..],
         &["paths", "--help"][..],
     ] {
         assert!(hook::is_lifecycle_help_request(&args(values)), "{values:?}");
@@ -246,9 +252,10 @@ fn install_binary_help_is_non_mutating() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("Usage: asp install binary --target <PATH>"),
+        stdout.contains("Usage: asp install binary"),
         "stdout: {stdout}"
     );
+    assert!(!stdout.contains("--target"), "stdout: {stdout}");
     assert!(!root.join(".codex/config.toml").exists());
     assert!(
         !root

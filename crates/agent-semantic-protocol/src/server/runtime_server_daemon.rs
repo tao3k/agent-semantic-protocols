@@ -12,7 +12,11 @@ use super::{
 };
 
 async fn serve_runtime_search_requests(
-    runtime_provider_catalog: crate::command::global_provider_catalog::RuntimeProviderCatalog,
+    state_home: std::path::PathBuf,
+    mut runtime_provider_catalog: crate::command::installed_provider_artifacts::RuntimeProviderArtifacts,
+    provider_register: std::sync::Arc<
+        agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
+    >,
     mut requests: tokio::sync::mpsc::Receiver<
         agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceRequest,
     >,
@@ -36,7 +40,6 @@ async fn serve_runtime_search_requests(
     }
 
     let mut runtimes = std::collections::BTreeMap::<String, ResidentProviderRuntime>::new();
-    let mut provider_backoff = std::collections::BTreeMap::<String, tokio::time::Instant>::new();
     let mut tasks = tokio::task::JoinSet::new();
     while let Some(request) = requests.recv().await {
         match request {
@@ -46,32 +49,47 @@ async fn serve_runtime_search_requests(
                 response,
             } => {
                 let result = async {
-                    let launch =
-                        runtime_provider_catalog.runtime_launch(&project_root, &language_id)?;
-                    if let Some(next_retry) = provider_backoff.get(&launch.key) {
-                        if *next_retry > tokio::time::Instant::now() {
-                            return Err(format!("provider-runtime-backoff: key={} nextRetryAt={:?}", launch.key, next_retry));
+                    runtime_provider_catalog =
+                        crate::command::installed_provider_artifacts::load_runtime_provider_artifacts(
+                            &state_home,
+                        )
+                        .await?;
+                    let launch = runtime_provider_catalog.runtime_launch(
+                        &project_root,
+                        &language_id,
+                        &provider_register,
+                    )?;
+                    let stale_keys = runtimes
+                        .iter()
+                        .filter(|(key, runtime)| {
+                            super::runtime_provider_refresh::provider_runtime_is_stale(
+                            key,
+                            &runtime.expected_receipt.language_id,
+                            &runtime.expected_receipt.provider_id,
+                            &launch.key,
+                            &launch.expected_receipt.language_id,
+                            &launch.expected_receipt.provider_id,
+                        )
+                        })
+                        .map(|(key, _)| key.clone())
+                        .collect::<Vec<_>>();
+                    for stale_key in stale_keys {
+                        if let Some(stale_runtime) = runtimes.remove(&stale_key) {
+                            stale_runtime.authority.shutdown().await?;
                         }
-                        provider_backoff.remove(&launch.key);
                     }
                     if let Some(runtime) = runtimes.get(&launch.key) {
                         return runtime_state_receipt(runtime);
                     }
-                    let launch_key = launch.key.clone();
-                    let authority = match launch.spec {
-            crate::command::global_provider_catalog::RuntimeProviderLaunchSpec::HttpServer(
-                spec,
-            ) => {
-                let peer = match agent_semantic_provider_transport::AspClientServerPeer::start(spec).await {
+                    let authority = {
+                let peer = match agent_semantic_provider_transport::AspClientServerPeer::start(launch.spec).await {
                     Ok(peer) => peer,
                     Err(error) => {
-                        provider_backoff.insert(launch_key.clone(), tokio::time::Instant::now() + std::time::Duration::from_secs(5));
-                        return Err(format!("provider-runtime-unavailable: {error}"));
+                        return Err(format!("state=provider-runtime-terminal reasonKind=asp-client-server-start-failed languageId={language_id} error={error}"));
                     }
                 };
                 agent_semantic_provider_transport::spawn_provider_runtime_peer_actor(256, peer)
-            }
-        };
+            };
                     let runtime = ResidentProviderRuntime {
                         authority,
                         expected_receipt: launch.expected_receipt,
@@ -89,8 +107,11 @@ async fn serve_runtime_search_requests(
                 response,
             } => {
                 let result = (|| {
-                    let launch =
-                        runtime_provider_catalog.runtime_launch(&project_root, &language_id)?;
+                    let launch = runtime_provider_catalog.runtime_launch(
+                        &project_root,
+                        &language_id,
+                        &provider_register,
+                    )?;
                     let runtime = runtimes.get(&launch.key).ok_or_else(|| {
                         format!(
                             "asp-client-server-not-ready: state=absent languageId={language_id}"
@@ -106,8 +127,11 @@ async fn serve_runtime_search_requests(
                 response,
             } => {
                 let result = (|| {
-                    let launch =
-                        runtime_provider_catalog.runtime_launch(&project_root, &language_id)?;
+                    let launch = runtime_provider_catalog.runtime_launch(
+                        &project_root,
+                        &language_id,
+                        &provider_register,
+                    )?;
                     let runtime = runtimes.get(&launch.key).ok_or_else(|| {
                         format!(
                             "asp-client-server-not-ready: state=absent languageId={language_id}"
@@ -155,8 +179,11 @@ async fn serve_runtime_search_requests(
                 response,
             } => {
                 let result = (|| {
-                    let launch =
-                        runtime_provider_catalog.runtime_launch(&project_root, &language_id)?;
+                    let launch = runtime_provider_catalog.runtime_launch(
+                        &project_root,
+                        &language_id,
+                        &provider_register,
+                    )?;
                     runtimes.remove(&launch.key).ok_or_else(|| {
                         format!(
                             "asp-client-server-not-ready: state=absent languageId={language_id}"
@@ -198,8 +225,21 @@ async fn serve_runtime_search_requests(
                 response,
             } => {
                 let result = (|| {
-                    let launch =
-                        runtime_provider_catalog.runtime_launch(&project_root, &language_id)?;
+                    let launch = runtime_provider_catalog.runtime_launch(
+                        &project_root,
+                        &language_id,
+                        &provider_register,
+                    )?;
+                    if !launch
+                        .expected_receipt
+                        .operations
+                        .iter()
+                        .any(|registered| registered.operation == operation)
+                    {
+                        return Err(format!(
+                            "state=route-missing reasonKind=operation-not-in-runtime-contract languageId={language_id} operation={operation}"
+                        ));
+                    }
                     let runtime = runtimes.get(&launch.key).ok_or_else(|| {
                         format!(
                             "asp-client-server-not-ready: state=absent languageId={language_id}"
@@ -208,7 +248,15 @@ async fn serve_runtime_search_requests(
                     match runtime.authority.client().current() {
                         agent_semantic_provider_transport::ProviderRuntimeActorState::Ready(
                             receipt,
-                        ) if receipt == runtime.expected_receipt => Ok(runtime.authority.client()),
+                        ) if receipt == runtime.expected_receipt => {
+                            if receipt.provider_id != launch.expected_receipt.provider_id {
+                                return Err(format!(
+                                    "state=route-target-drift reasonKind=runtime-provider-identity-mismatch operation={operation} expectedProviderId={} actualProviderId={}",
+                                    launch.expected_receipt.provider_id, receipt.provider_id
+                                ));
+                            }
+                            Ok(runtime.authority.client())
+                        }
                         agent_semantic_provider_transport::ProviderRuntimeActorState::Ready(_) => {
                             Err(format!(
                                 "provider-runtime-contract-drift: languageId={language_id}"
@@ -220,11 +268,21 @@ async fn serve_runtime_search_requests(
                     }
                 })();
                 tasks.spawn(async move {
+                    let mut response = response;
                     let result = match result {
-                        Ok(runtime) => runtime
-                            .request(operation, payload)
-                            .await
-                            .map(|payload| payload.to_vec()),
+                        Ok(runtime) => {
+                            let request = match runtime.begin_request(operation, payload).await {
+                                Ok(request) => request,
+                                Err(error) => {
+                                    let _ = response.send(Err(error));
+                                    return;
+                                }
+                            };
+                            tokio::select! {
+                                result = request => result.map(|payload| payload.to_vec()),
+                                _ = response.closed() => return,
+                            }
+                        }
                         Err(error) => Err(error),
                     };
                     let _ = response.send(result);
@@ -238,8 +296,11 @@ async fn serve_runtime_search_requests(
                 response,
             } => {
                 let result = (|| {
-                    let launch =
-                        runtime_provider_catalog.runtime_launch(&project_root, &language_id)?;
+                    let launch = runtime_provider_catalog.runtime_launch(
+                        &project_root,
+                        &language_id,
+                        &provider_register,
+                    )?;
                     let runtime = runtimes.get(&launch.key).ok_or_else(|| {
                         format!(
                             "asp-client-server-not-ready: state=absent languageId={language_id}"
@@ -282,10 +343,10 @@ async fn serve_runtime_search_requests(
                             ));
                         }
                     }
-                    let (registry, _) = crate::command::global_provider_catalog::
-                        runtime_provider_registry_snapshot(
-                            &project_root,
+                    let (registry, _) = crate::command::installed_provider_artifacts::
+                        runtime_source_index_provider_projection(
                             &runtime_provider_catalog,
+                            &provider_register,
                         )?;
                     Ok((runtime.authority.client(), registry))
                 })();
@@ -314,43 +375,11 @@ async fn serve_runtime_search_requests(
                 args,
                 response,
             } => {
-                let runtime = (|| {
-                    let launch =
-                        runtime_provider_catalog.runtime_launch(&project_root, &language_id)?;
-                    let runtime = runtimes.get(&launch.key).ok_or_else(|| {
-                        format!(
-                            "asp-client-server-not-ready: state=absent languageId={language_id}"
-                        )
-                    })?;
-                    match runtime.authority.client().current() {
-                        agent_semantic_provider_transport::ProviderRuntimeActorState::Ready(
-                            receipt,
-                        ) if receipt == runtime.expected_receipt => Ok(runtime.authority.client()),
-                        agent_semantic_provider_transport::ProviderRuntimeActorState::Ready(_) => {
-                            Err(format!(
-                                "provider-runtime-contract-drift: languageId={language_id}"
-                            ))
-                        }
-                        state => Err(format!(
-                            "asp-client-server-not-ready: languageId={language_id} state={state:?}"
-                        )),
-                    }
-                })();
-                tasks.spawn(async move {
-                    let result = match runtime {
-                        Ok(runtime) => {
-                            crate::command::run_runtime_server_tree_sitter_query(
-                                &language_id,
-                                &args,
-                                &project_root,
-                                runtime,
-                            )
-                            .await
-                        }
-                        Err(error) => Err(error),
-                    };
-                    let _ = response.send(result);
-                });
+                let _ = response.send(Err(format!(
+                    "state=provider-route-required reasonKind=workspace-tree-sitter-cli-removed languageId={language_id} projectRoot={} args={}",
+                    project_root.display(),
+                    args.len()
+                )));
             }
         }
         while tasks.try_join_next().is_some() {}
@@ -388,9 +417,10 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     let election = agent_semantic_client_db::wait_for_runtime_server_election(&state_home)
         .await
         .map_err(|error| format!("failed to acquire Runtime Server election: {error}"))?;
-    crate::command::reconcile_global_provider_catalog_for_runtime(state_home).await?;
+    crate::command::reconcile_installed_provider_artifacts_for_runtime(state_home).await?;
     let runtime_provider_catalog =
-        crate::command::global_provider_catalog::load_runtime_provider_catalog(&state_home).await?;
+        crate::command::installed_provider_artifacts::load_runtime_provider_artifacts(&state_home)
+            .await?;
     let (owner_epoch, binding_token) = daemon_identity().await?;
     let workspace_store =
         agent_semantic_client_db::runtime_server_workspace::prepare_runtime_server_workspace_store(
@@ -406,6 +436,15 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         )
         .await?;
     let runtime_binary_identity = runtime_artifact_identity.identity();
+    let client_http_listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .await
+        .map_err(|error| format!("failed to bind ASP Client Protocol HTTP endpoint: {error}"))?;
+    let client_http_endpoint = format!(
+        "http://{}",
+        client_http_listener
+            .local_addr()
+            .map_err(|error| format!("failed to resolve ASP Client Protocol endpoint: {error}"))?
+    );
     let artifact_catalog =
         agent_semantic_runtime::runtime_artifact_catalog::load_runtime_artifact_catalog(
             &state_home,
@@ -420,8 +459,20 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         &artifact_catalog.digest(),
         owner_epoch,
         &binding_token,
+        &client_http_endpoint,
     )
     .await?;
+    let provider_register_state_path =
+        agent_semantic_client_db::runtime_server_control::provider_register_state_path(
+            std::path::Path::new(&endpoint.provider_plane_socket_path),
+        )?;
+    let provider_register = std::sync::Arc::new(
+        agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister::from_seed_with_store(
+            agent_semantic_provider_protocol::builtin_provider_registrations()?,
+            provider_register_state_path,
+        )
+        .await?,
+    );
     let socket_path = PathBuf::from(&endpoint.socket_path);
     let data_plane_socket_path = PathBuf::from(&endpoint.data_plane_socket_path);
     let telemetry_socket_path = runtime_server_telemetry_socket_path(&state_home)?;
@@ -455,26 +506,28 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         .await?;
     let lifecycle_bus = agent_semantic_client_db::runtime_telemetry_bus::RuntimeTelemetryBus::new();
     let provider_catalog_generation =
-        crate::command::global_provider_catalog::read_runtime_provider_catalog_readiness(
+        crate::command::installed_provider_artifacts::read_installed_provider_artifacts_readiness(
             &state_home,
         )?
-        .catalog_generation;
+        .generation;
     let (runtime_search_service, runtime_search_requests) =
         agent_semantic_client_db::runtime_search_service::runtime_search_service_channel();
     let generation_builder_catalog = provider_catalog_generation.clone();
     let generation_builder_runtime_catalog = runtime_provider_catalog.clone();
+    let generation_builder_provider_register = std::sync::Arc::clone(&provider_register);
     let generation_builder_runtime_search = runtime_search_service.clone();
     let generation_builder: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateBuilder =
     std::sync::Arc::new(move |_workspace_identity, project_root, changed_paths, provider_target| {
         let provider_catalog_generation = generation_builder_catalog.clone();
         let runtime_provider_catalog = generation_builder_runtime_catalog.clone();
+        let provider_register = std::sync::Arc::clone(&generation_builder_provider_register);
         let runtime_search_service = generation_builder_runtime_search.clone();
         Box::pin(async move {
             let changed_path_count = changed_paths.len();
             let (registry, current_catalog_generation) =
-                crate::command::global_provider_catalog::runtime_provider_registry_snapshot(
-                    &project_root,
+                crate::command::installed_provider_artifacts::runtime_source_index_provider_projection(
                     &runtime_provider_catalog,
+                    &provider_register,
                 )?;
             if current_catalog_generation != provider_catalog_generation {
                 return Err(format!(
@@ -556,17 +609,19 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         });
     let owner_builder_catalog = provider_catalog_generation.clone();
     let owner_builder_runtime_catalog = runtime_provider_catalog.clone();
+    let owner_builder_provider_register = std::sync::Arc::clone(&provider_register);
     let owner_builder_runtime_search = runtime_search_service.clone();
     let owner_projection_builder: agent_semantic_client_db::runtime_server_admission::WorkspaceOwnerProjectionBuilder =
         std::sync::Arc::new(move |workspace_identity, project_root, owner_path| {
         let provider_catalog_generation = owner_builder_catalog.clone();
         let runtime_provider_catalog = owner_builder_runtime_catalog.clone();
+        let provider_register = std::sync::Arc::clone(&owner_builder_provider_register);
         let runtime_search_service = owner_builder_runtime_search.clone();
             Box::pin(async move {
                 let (registry, current_catalog_generation) =
-        crate::command::global_provider_catalog::runtime_provider_registry_snapshot(
-            &project_root,
+        crate::command::installed_provider_artifacts::runtime_source_index_provider_projection(
             &runtime_provider_catalog,
+            &provider_register,
         )?;
                 if current_catalog_generation != provider_catalog_generation {
                     return Err(format!(
@@ -608,7 +663,9 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         });
     let mut runtime_search_tasks = tokio::task::JoinSet::new();
     runtime_search_tasks.spawn(serve_runtime_search_requests(
+        state_home.to_path_buf(),
         runtime_provider_catalog.clone(),
+        std::sync::Arc::clone(&provider_register),
         runtime_search_requests,
     ));
     let endpoint_path =
@@ -625,6 +682,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     )
     .await
     .map_err(|error| format!("failed to bind and publish Runtime Server: {error}"))?
+    .with_provider_register(provider_register)
     .with_event_sender(diagnostic_events)
     .with_runtime_telemetry_sender(lifecycle_bus.sender.clone())
     .with_workspace_generation_and_owner_builders_and_catalog(
@@ -633,6 +691,35 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         admission_catalog,
     )
     .with_runtime_search_service(runtime_search_service);
+    let client_workspace_registry = std::sync::Arc::clone(server.workspace_registry());
+    let client_catalog_registry = std::sync::Arc::clone(&client_workspace_registry);
+    let client_catalog_provider_register = std::sync::Arc::clone(&provider_register);
+    let client_dispatcher = std::sync::Arc::new(RuntimeAspClientDispatcher::new(
+        runtime_search_service.clone(),
+        client_workspace_registry,
+        std::sync::Arc::clone(&provider_register),
+    ));
+    let client_http_service = std::sync::Arc::new(
+        agent_semantic_client_server::AspClientProtocolHttpService::new(
+            client_dispatcher,
+            move |workspace_identity| {
+                let (_, generation_digest) =
+                    client_catalog_registry.unique_resident_scope(workspace_identity)?;
+                client_catalog_provider_register.client_protocol_catalog(
+                    generation_digest,
+                    vec![agent_semantic_client_protocol::ClientTransport::HttpJson],
+                )
+            },
+        ),
+    );
+    let (client_http_shutdown, client_http_shutdown_receiver) = tokio::sync::watch::channel(false);
+    let mut client_http_task = tokio::spawn(
+        agent_semantic_client_server::serve_asp_client_protocol_http(
+            client_http_listener,
+            client_http_shutdown_receiver,
+            client_http_service,
+        ),
+    );
     // The monitor owns the in-process cancellation capability.  It must never
     // call the server's public IPC endpoint to control the same generation.
     let monitor_shutdown = server.shutdown_handle();
@@ -663,7 +750,33 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         }
         identity_monitor.shutdown().await;
     });
-    let server_result = server.serve().await.map(|_| ());
+    let client_failure_shutdown = server.shutdown_handle();
+    let mut server_task = tokio::spawn(server.serve());
+    let server_result = tokio::select! {
+        result = &mut server_task => result
+            .map_err(|error| format!("Runtime Server task failed: {error}"))?
+            .map(|_| ()),
+        result = &mut client_http_task => {
+            client_failure_shutdown.shutdown();
+            let http_result = result
+                .map_err(|error| format!("ASP Client Protocol HTTP task failed: {error}"))?;
+            let server_result = server_task
+                .await
+                .map_err(|error| format!("Runtime Server task failed after client HTTP failure: {error}"))?;
+            match http_result {
+                Ok(()) => server_result.and_then(|_| {
+                    Err("ASP Client Protocol HTTP service stopped before Runtime Server".to_owned())
+                }),
+                Err(error) => Err(error),
+            }
+        }
+    };
+    let _ = client_http_shutdown.send(true);
+    if !client_http_task.is_finished() {
+        client_http_task
+            .await
+            .map_err(|error| format!("ASP Client Protocol HTTP task failed: {error}"))??;
+    }
     let identity_change = identity_change_receiver.try_recv().ok();
     monitor.abort();
     // Once the accept loop has stopped, all independent resident services are

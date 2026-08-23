@@ -397,12 +397,12 @@ fn decision(run_id: &str, index: usize) -> HookDecision {
 }
 
 #[test]
-fn configured_resident_dispatch_requires_complete_canonical_fields() {
-    let mut decision = decision("configured-resident-dispatch", 0);
-    assert!(!decision.has_configured_resident_dispatch());
+fn dispatch_choice_plane_role_requires_complete_canonical_fields() {
+    let mut decision = decision("dispatch-choice-plane-role", 0);
+    assert!(!decision.has_dispatch_choice_plane_role());
 
-    insert_configured_resident_dispatch(&mut decision);
-    assert!(decision.has_configured_resident_dispatch());
+    insert_dispatch_choice_plane_role(&mut decision);
+    assert!(decision.has_dispatch_choice_plane_role());
     let serialized = serde_json::to_value(&decision).expect("serialize configured dispatch");
     assert!(
         serialized.get("interactiveCommand").is_none(),
@@ -413,18 +413,16 @@ fn configured_resident_dispatch_requires_complete_canonical_fields() {
         "receiptKind".to_string(),
         serde_json::Value::String(String::new()),
     );
-    assert!(!decision.has_configured_resident_dispatch());
+    assert!(!decision.has_dispatch_choice_plane_role());
 }
 
-fn insert_configured_resident_dispatch(decision: &mut HookDecision) {
+fn insert_dispatch_choice_plane_role(decision: &mut HookDecision) {
     for (field, value) in [
-        ("agentSessionAction", "dispatch-configured-resident"),
-        ("transport", "resident-agent"),
-        ("residentName", "asp_testing"),
+        ("agentSessionAction", "dispatch-choice-plane-role"),
+        ("transport", "host-agent"),
         ("receiptKind", "asp-testing-execution-v1"),
-        ("targetAgentName", "asp_testing"),
-        ("targetAgentRole", "asp_testing"),
-        ("configRuleId", "resident-testing-dispatch"),
+        ("targetAgentRole", "testing"),
+        ("configRuleId", "testing-role-dispatch"),
         ("commandDigest", "sha256:test-command"),
         ("sessionId", "root-session-test"),
     ] {
@@ -440,7 +438,7 @@ fn latest_session_route_is_read_only_and_config_selected() {
     let _state_home = AspStateHomeGuard::activate_isolated();
     let project_root = unique_project_root();
     let mut unrelated = decision("unrelated-route", 0);
-    insert_configured_resident_dispatch(&mut unrelated);
+    insert_dispatch_choice_plane_role(&mut unrelated);
     unrelated.fields.insert(
         "sessionId".to_string(),
         Value::String("another-root".to_string()),
@@ -448,7 +446,7 @@ fn latest_session_route_is_read_only_and_config_selected() {
     append_hook_event_state(&project_root, &unrelated).expect("append unrelated route");
 
     let mut selected = decision("selected-route", 1);
-    insert_configured_resident_dispatch(&mut selected);
+    insert_dispatch_choice_plane_role(&mut selected);
     for preselected_field in [
         "transport",
         "residentName",
@@ -474,7 +472,7 @@ fn latest_session_route_is_read_only_and_config_selected() {
         .expect("read route")
         .expect("configured route");
     assert_eq!(route.command_digest.as_deref(), Some("sha256:test-command"));
-    assert_eq!(route.config_rule_id, "resident-testing-dispatch");
+    assert_eq!(route.config_rule_id, "testing-role-dispatch");
     assert_eq!(route.root_session_id, "root-session-test");
     assert_eq!(route.subject_command.as_deref(), Some("cargo test"));
 
@@ -488,7 +486,7 @@ fn source_access_replay_preserves_configured_resident_dispatch() {
     let mut decision = decision("configured-resident-replay", 0);
     let original_message = "Route the exact command to ASP Testing.".to_string();
     decision.message = original_message.clone();
-    insert_configured_resident_dispatch(&mut decision);
+    insert_dispatch_choice_plane_role(&mut decision);
 
     assert!(
         !agent_semantic_hook::apply_repeated_deny_replay(&project_root, &mut decision).unwrap()

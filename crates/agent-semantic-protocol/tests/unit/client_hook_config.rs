@@ -162,19 +162,11 @@ fn invalid_client_config_auto_refresh_repairs_without_blocking_tool_use() {
 }
 
 #[test]
-fn missing_resident_route_auto_refreshes_then_routes_search_to_codex_profile() {
-    let root = temp_project_root("client-config-missing-resident-route");
+fn missing_hook_config_auto_refreshes_then_routes_search_to_host_role() {
+    let root = temp_project_root("client-config-missing-host-role");
     let activation_path = root.join("activation.json");
     std::fs::write(&activation_path, root_owned_rust_activation_json(&root))
         .expect("write activation");
-    write_config(
-        &root,
-        r#"
-[agents]
-residentAgents = []
-"#,
-    );
-
     let decision = run_hook_decision(
         &root,
         &activation_path,
@@ -192,14 +184,21 @@ residentAgents = []
         decision["reasonKind"], "subagent-receipt-required",
         "{decision}"
     );
-    assert_eq!(decision["fields"]["targetAgentName"], "asp_explorer");
-    assert_eq!(decision["fields"]["residentChildName"], "asp-explore");
+    assert_eq!(decision["fields"]["targetAgentRole"], "explore");
+    assert_eq!(
+        decision["fields"]["receiptKind"],
+        "asp-explore-search-v1"
+    );
+    assert_eq!(
+        decision["fields"]["agentSessionAction"],
+        "dispatch-choice-plane-role"
+    );
+    assert_eq!(decision["fields"]["transport"], "host-agent");
     assert_eq!(
         decision["fields"]["configRuleId"],
         "registered-asp-reasoning-search"
     );
     assert_eq!(decision["fields"]["intent"], "reasoning-search");
-    assert_eq!(decision["fields"]["residentName"], "asp-explore");
     assert_eq!(decision["fields"]["registeredLanguageId"], "rust");
     assert_eq!(decision["fields"]["hookConfigStatus"], "refreshed-by-hook");
     assert!(

@@ -3,15 +3,15 @@
 use std::path::{Path, PathBuf};
 
 use super::contract::{
-    QualificationCaseReceipt, QualificationCaseV1, QualificationPlanV1, QualificationReceipt,
+    QualificationCase, QualificationCaseReceipt, QualificationPlan, QualificationReceipt,
 };
 pub(super) use super::resident_metrics::{
     ResidentSearchOutcome, require_resident_sample_budget, require_zero_runtime_work,
     resident_latency_distribution,
 };
 use crate::command::live_corpus::{
-    LiveCorpusQualificationV1, live_corpus_git_repository_paths, live_corpus_lock_digest,
-    load_lock, resolve_state_home, unique_resource,
+    LiveCorpusQualification, live_corpus_git_repository_paths, live_corpus_lock_digest, load_lock,
+    resolve_state_home, unique_resource,
 };
 use agent_semantic_client_core::LanguageId;
 use agent_semantic_client_db::runtime_server_workspace::{
@@ -22,7 +22,7 @@ use agent_semantic_content_identity::{
     semantic_projection::{SEMANTIC_PROJECTION_SCHEMA_ID, SemanticProjection},
 };
 
-const DEFAULT_PLAN_PATH: &str = "benchmarks/live-corpus-search-query-qualification.v1.json";
+const DEFAULT_PLAN_PATH: &str = "benchmarks/live-corpus-search-query-qualification.json";
 
 #[derive(Debug)]
 pub(super) struct QualifyArgs {
@@ -72,7 +72,7 @@ pub(crate) async fn run(args: &[String]) -> Result<(), String> {
             args.plan_path.display()
         )
     })?;
-    let plan = serde_json::from_slice::<QualificationPlanV1>(&plan_bytes)
+    let plan = serde_json::from_slice::<QualificationPlan>(&plan_bytes)
         .map_err(|error| format!("failed to decode Live Corpus qualification plan: {error}"))?;
     validate_plan(&plan)?;
     let lock_bytes = std::fs::read(&plan.lock_path).map_err(|error| {
@@ -91,10 +91,15 @@ pub(crate) async fn run(args: &[String]) -> Result<(), String> {
     let mut receipts = Vec::with_capacity(cases.len());
     for case in cases {
         let corpus = unique_resource(&lock.corpora, &case.resource_id)?;
-        if corpus.language.as_str() != case.language_id || corpus.provider_id != case.provider_id {
+        if corpus.scenario_id != case.scenario_id
+            || corpus.language.as_str() != case.language_id
+            || corpus.provider_id != case.provider_id
+        {
             return Err(format!(
-                "Live Corpus qualification identity drift: resource={} planLanguage={} lockLanguage={} planProvider={} lockProvider={}",
+                "Live Corpus qualification identity drift: resource={} planScenario={} lockScenario={} planLanguage={} lockLanguage={} planProvider={} lockProvider={}",
                 case.resource_id,
+                case.scenario_id,
+                corpus.scenario_id,
                 case.language_id,
                 corpus.language,
                 case.provider_id,
@@ -109,7 +114,6 @@ pub(crate) async fn run(args: &[String]) -> Result<(), String> {
         let current_pointer = state_home
             .join("artifacts")
             .join("live-corpus")
-            .join("v1")
             .join("by-resource")
             .join(&case.resource_id)
             .join("current");
@@ -121,7 +125,7 @@ pub(crate) async fn run(args: &[String]) -> Result<(), String> {
             )
         })?;
         let qualification_path = artifact_dir.join("qualification.json");
-        let qualification = serde_json::from_slice::<LiveCorpusQualificationV1>(
+        let qualification = serde_json::from_slice::<LiveCorpusQualification>(
             &std::fs::read(&qualification_path).map_err(|error| {
                 format!(
                     "failed to read Live Corpus immutable qualification {}: {error}",
@@ -204,7 +208,7 @@ pub(crate) async fn run(args: &[String]) -> Result<(), String> {
 async fn qualify_case(
     endpoint: &agent_semantic_client_db::RuntimeServerEndpoint,
     project_root: &Path,
-    case: QualificationCaseV1,
+    case: QualificationCase,
     resident_sample_count: usize,
     revision: String,
     git_tree: String,
@@ -574,7 +578,7 @@ async fn qualify_case(
     let merkle_read_result = session.read_runtime_merkle_owner(merkle_owner_path).await?;
     let merkle_telemetry_digest = merkle_read_result.evidence.telemetry_digest.clone();
     let merkle_read = merkle_read_result.value;
-    let merkle_receipt = agent_semantic_client_db::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofQualificationReceiptV1::qualified(
+    let merkle_receipt = agent_semantic_client_db::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofQualificationReceipt::qualified(
         agent_semantic_client_db::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofEvidenceLayer::LiveCorpus,
         case.case_id.clone(),
         Some(case.resource_id.clone()),
@@ -647,6 +651,7 @@ async fn qualify_case(
     Ok(QualificationCaseReceipt {
         case_id: case.case_id,
         resource_id: case.resource_id,
+        scenario_id: case.scenario_id,
         language_id: case.language_id,
         provider_id: case.provider_id,
         revision,
@@ -747,7 +752,7 @@ async fn resident_search(
     })
 }
 
-fn validate_plan(plan: &QualificationPlanV1) -> Result<(), String> {
+fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
     if plan.schema_id != "agent.semantic-protocols.live-corpus-search-query-qualification-plan"
         || plan.schema_version != "1"
     {
@@ -823,9 +828,9 @@ fn parse_args(args: &[String]) -> Result<QualifyArgs, String> {
 }
 
 fn select_qualification_cases(
-    cases: Vec<QualificationCaseV1>,
+    cases: Vec<QualificationCase>,
     resource_id: Option<&str>,
-) -> Result<Vec<QualificationCaseV1>, String> {
+) -> Result<Vec<QualificationCase>, String> {
     let Some(resource_id) = resource_id else {
         return Ok(cases);
     };

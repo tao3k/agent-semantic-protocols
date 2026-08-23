@@ -23,7 +23,7 @@ pub(super) async fn run_resident_exact_query(
             }
             crate::resident_exact_projection::ResidentExactProjection::Miss(miss) => {
                 crate::exact_projection_trace::stage("mmap-resident-miss", started);
-                let provider_id = registered_provider_id(language_id)?;
+                let provider_id = canonical_provider_id(language_id)?;
                 let resolution = crate::exact_projection_diagnostic::resolution_from_facts(
                     crate::exact_projection_diagnostic::ProviderExactResolutionFacts {
                         language_id: language_id.to_owned(),
@@ -69,10 +69,15 @@ async fn resident_exact_projection(
     .await
 }
 
-fn registered_provider_id(language_id: &str) -> Result<String, String> {
-    agent_semantic_hook::schema_registry_provider_manifests()
-        .iter()
-        .find(|manifest| manifest.language_id().as_str() == language_id)
-        .map(|manifest| manifest.provider_id().as_str().to_owned())
-        .ok_or_else(|| format!("no registered provider manifest for language {language_id}"))
+fn canonical_provider_id(language_id: &str) -> Result<String, String> {
+    if language_id.is_empty()
+        || !language_id
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    {
+        return Err(format!(
+            "invalid canonical language identity: {language_id}"
+        ));
+    }
+    Ok(format!("asp-{language_id}"))
 }

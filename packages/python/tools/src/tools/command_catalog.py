@@ -91,13 +91,6 @@ COMMANDS: tuple[CommandSpec, ...] = (
         "Infer search rounds and subagent microbursts from cached ASP artifacts.",
     ),
     CommandSpec(
-        ("schema", "profiles"),
-        "tools.schema_profiles",
-        "main",
-        "argv",
-        "Validate language package schema downsync profiles.",
-    ),
-    CommandSpec(
         ("syntax", "real-evidence"),
         "tools.syntax_real_evidence",
         "main",

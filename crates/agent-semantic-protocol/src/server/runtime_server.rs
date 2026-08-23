@@ -7,6 +7,8 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+#[path = "runtime_provider_refresh.rs"]
+mod runtime_provider_refresh;
 #[path = "runtime_server_daemon.rs"]
 mod runtime_server_daemon;
 #[path = "runtime_server_stop.rs"]
@@ -300,35 +302,6 @@ async fn restart_runtime_server_at(
         cleanup_endpoint(&state_home, &endpoint).await?;
     }
     super::runtime_server_wire_adapter::ensure_runtime_server(state_home, true).await
-}
-
-/// Reconcile a resident Runtime after its immutable provider catalog changed.
-///
-/// Provider installation never starts a Runtime that was not already running.
-/// When an owner is resident, however, it must not retain the superseded
-/// catalog digest: the Runtime control plane drains that owner and waits for a
-/// replacement to publish readiness before the install receipt is returned.
-pub(crate) async fn reconcile_runtime_server_after_provider_catalog_change(
-    state_home: &Path,
-    catalog_write: bool,
-) -> Result<&'static str, String> {
-    if !catalog_write {
-        return Ok("current");
-    }
-    let endpoint_path =
-        agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(
-            state_home,
-        )
-        .await?;
-    if !tokio::fs::try_exists(&endpoint_path)
-        .await
-        .map_err(|error| format!("inspect Runtime Server endpoint after catalog write: {error}"))?
-    {
-        return Ok("not-running");
-    }
-    restart_runtime_server_at(state_home).await?;
-    await_healthy_runtime_server_after_spawn().await?;
-    Ok("restarted")
 }
 
 pub(crate) async fn reconcile_runtime_server_for_healthcheck(

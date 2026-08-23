@@ -155,56 +155,24 @@ fn command_shard_covers_every_configured_profile_and_rule_pattern_without_litera
             "prefix={prefix:?}"
         );
         if expected.reason_kind == crate::ReasonKind::SubagentReceiptRequired {
-            let target_agent = actual
+            let target_role = actual
                 .fields
-                .get("targetAgentName")
+                .get("targetAgentRole")
                 .and_then(serde_json::Value::as_str)
-                .expect("dispatch decision projects its config-owned target agent");
-            let typed_payload = serde_json::json!({
-                "tool_name": "Bash",
-                "session_id": "config-derived-command-shard-root",
-                "agent_id": target_agent,
-                "agent_type": target_agent,
-                "is_subagent": true,
-                "tool_input": { "command": command },
-            });
-            let raw = crate::CommandDecisionShard::select(&shard, &tokens)
-                .expect("decode typed command-profile shard")
-                .expect("typed command prefix has a shard decision");
-            let typed = crate::rebind_command_decision_to_payload(raw, &typed_payload);
+                .expect("dispatch decision projects its ChoicePlane target role");
+            assert!(!target_role.is_empty());
             assert_eq!(
-                typed.decision,
-                crate::DecisionKind::Allow,
-                "prefix={prefix:?}"
+                actual.fields.get("agentSessionAction"),
+                Some(&serde_json::json!("dispatch-choice-plane-role"))
             );
-            assert_eq!(
-                typed.fields.get("dispatchSatisfied"),
-                Some(&serde_json::json!(true))
+            assert!(
+                actual
+                    .fields
+                    .get("receiptKind")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|value| !value.is_empty())
             );
+            assert!(!actual.fields.contains_key("targetAgentName"));
         }
     }
-}
-
-#[test]
-fn runtime_binary_policy_preempts_config_command_profile_shard() {
-    let payload = serde_json::json!({
-        "session_id": "runtime-binary-policy-root",
-        "tool_name": "Bash",
-        "tool_input": { "command": "asp-rust check" },
-    });
-    let decision = crate::runtime_binary_policy_decision_v1("codex", "pre-tool", &payload)
-        .expect("registered provider binary owns a config-independent fast decision");
-    assert_eq!(decision.decision, crate::DecisionKind::Deny);
-    assert_eq!(
-        decision.reason_kind,
-        crate::ReasonKind::ProviderBinaryDirectExecution
-    );
-    assert_eq!(
-        decision.fields["hookMatcherProjection"],
-        "runtime-binary-policy-v1"
-    );
-    assert_eq!(
-        decision.fields["hookPolicySynchronousDependencies"],
-        serde_json::json!([])
-    );
 }

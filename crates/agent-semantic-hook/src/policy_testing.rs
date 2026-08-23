@@ -190,9 +190,14 @@ pub fn combinatorial_positional_shell_witnesses(
     strategy: HookPolicyCombinatorialStrategy,
 ) -> Result<Vec<HookPolicyWitness>, String> {
     let extensions = config
-        .language_providers
-        .iter()
-        .flat_map(|provider| provider.source_extensions.iter().cloned())
+        .profiles
+        .values()
+        .flat_map(|profile| {
+            profile
+                .extension_any
+                .iter()
+                .map(|extension| format!(".{extension}"))
+        })
         .collect::<std::collections::BTreeSet<_>>();
     combinatorial_policy_witnesses(config, strategy)?
         .into_iter()

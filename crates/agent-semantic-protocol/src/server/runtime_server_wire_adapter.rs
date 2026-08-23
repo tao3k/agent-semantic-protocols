@@ -12,7 +12,7 @@ pub(crate) async fn ensure_runtime_server(
     state_home: &Path,
     explicit: bool,
 ) -> Result<Option<RuntimeServerSpawnReceipt>, String> {
-    crate::prepare_runtime_server_provider_catalog(state_home).await?;
+    crate::prepare_runtime_server_provider_artifacts(state_home).await?;
     let request = supervisor_request(state_home).await?;
     let outcome = agent_semantic_client_db::runtime_server_supervisor::RuntimeServerSupervisor
         .ensure_runtime_server(request, explicit)

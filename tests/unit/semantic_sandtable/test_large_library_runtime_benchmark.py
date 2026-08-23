@@ -36,7 +36,7 @@ _SCHEMA = (
 _CORPUS_SCHEMA = (
     _ROOT / "schemas/semantic-sandtable-large-library-corpora.v1.schema.json"
 )
-_CORPUS_MANIFEST = _ROOT / "benchmarks/large-library-runtime-corpora.v1.json"
+_CORPUS_MANIFEST = _ROOT / "benchmarks/large-library-runtime-corpora.json"
 _PROVIDER_REGISTRY = _ROOT / "schemas/semantic-language-registry.providers.v1.json"
 
 

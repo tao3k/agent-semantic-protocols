@@ -19,7 +19,7 @@ LIVE_CORPUS = json.loads(
     ).read_text()
 )
 LIVE_CORPUS_LOCK = json.loads(
-    (ROOT / "benchmarks/large-library-runtime-corpora.v1.json").read_text()
+    (ROOT / "benchmarks/large-library-runtime-corpora.json").read_text()
 )
 VALIDATOR = Draft202012Validator(SCHEMA)
 

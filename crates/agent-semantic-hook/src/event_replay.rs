@@ -114,14 +114,6 @@ pub(crate) fn compact_source_access_deny_message(
         {
             return message;
         }
-        if let Some(message) = render_compact_source_access_template(
-            decision,
-            "sourceAccessCompactRepeatedMessage",
-            &reason,
-            recovery_ref,
-        ) {
-            return message;
-        }
         return format!(
             "ASP denied source access again (`{reason}`). Open the canonical Org-backed ChoicePlane with `asp session --agents choice-plane` and execute its admitted host-native action.\nrecoveryRef={recovery_ref}"
         );
@@ -133,50 +125,13 @@ pub(crate) fn compact_source_access_deny_message(
         .and_then(Value::as_bool)
         .unwrap_or(false)
     {
-        if let Some(message) = render_compact_source_access_template(
-            decision,
-            "sourceAccessCompactSubagentMessage",
-            &reason,
-            recovery_ref,
-        ) {
-            return message;
-        }
         return format!(
-            "ASP denied source access (`{reason}`) inside the configured resident agent. Use ASP query/search routes and return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next; do not return source bodies, snippets, or line-range selectors.\nrecoveryRef={recovery_ref}"
+            "ASP denied source access (`{reason}`) inside a delegated Agent. Use ASP query/search routes and return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next; do not return source bodies, snippets, or line-range selectors.\nrecoveryRef={recovery_ref}"
         );
     }
 
-    if let Some(message) = render_compact_source_access_template(
-        decision,
-        "sourceAccessCompactMessage",
-        &reason,
-        recovery_ref,
-    ) {
-        return message;
-    }
     format!(
         "ASP denied source access (`{reason}`). Open the canonical Org-backed ChoicePlane with `asp session --agents choice-plane` and execute its admitted host-native action.\nrecoveryRef={recovery_ref}"
-    )
-}
-
-fn render_compact_source_access_template(
-    decision: &HookDecision,
-    field: &str,
-    reason: &str,
-    recovery_ref: &str,
-) -> Option<String> {
-    let template = decision.fields.get(field)?.as_str()?;
-    let resident_child_name = decision
-        .fields
-        .get("residentChildName")
-        .and_then(Value::as_str)?;
-    Some(
-        template
-            .replace("{{reason}}", reason)
-            .replace("{{recoveryRef}}", recovery_ref)
-            .replace("{{residentChildName}}", resident_child_name)
-            .trim()
-            .to_string(),
     )
 }
 

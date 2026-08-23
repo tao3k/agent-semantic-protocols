@@ -4,13 +4,12 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use agent_semantic_client_core::{
-    ClientCacheFileHash, LanguageId, ProjectContext, ProviderId, ProviderRegistryEvidence,
-    ProviderRegistrySnapshot,
+    ClientCacheFileHash, ProjectContext, RuntimeProviderProjection,
+    RuntimeProviderProjectionEvidence,
 };
 use agent_semantic_client_db::source_index_file_hashes;
 use sha2::{Digest as _, Sha256};
 
-use super::collect::collect_source_index_files;
 use super::model::SourceIndexScopeFile;
 use super::provider_envelope::{
     ProviderSourceEnvelopeLookupRequestV1,
@@ -18,7 +17,7 @@ use super::provider_envelope::{
 };
 
 pub(super) fn provider_scope_digest(
-    registry: &ProviderRegistryEvidence,
+    registry: &RuntimeProviderProjectionEvidence,
     files: &[SourceIndexScopeFile],
 ) -> String {
     let mut scope = files
@@ -47,7 +46,7 @@ pub(super) fn provider_scope_digest(
 pub(super) fn source_index_snapshot_from_files(
     index_root: &Path,
     files: &[SourceIndexScopeFile],
-    registry: &ProviderRegistryEvidence,
+    registry: &RuntimeProviderProjectionEvidence,
 ) -> Result<
     (
         Vec<ClientCacheFileHash>,
@@ -121,66 +120,11 @@ pub struct CurrentSourceIndexSnapshot {
     pub source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs,
 }
 
-/// Canonical workspace-relative owner path used by source-index acquisition.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SourceIndexOwnerPath(String);
-
-impl SourceIndexOwnerPath {
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<String> for SourceIndexOwnerPath {
-    fn from(value: String) -> Self {
-        Self(value)
-    }
-}
-
-impl From<&str> for SourceIndexOwnerPath {
-    fn from(value: &str) -> Self {
-        Self(value.to_string())
-    }
-}
-
-/// Capture the current content-authoritative source snapshot used by both
-/// source-index rebuild and lookup.
-pub async fn current_source_index_snapshot(
-    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
-    project_root: &Path,
-) -> Result<CurrentSourceIndexSnapshot, String> {
-    let provider_registry = ProviderRegistrySnapshot::load(project_root)?;
-    current_source_index_snapshot_with_registry(supervisor, project_root, &provider_registry).await
-}
-
-/// Capture a workspace-search snapshot from complete provider-owned coverage.
-///
-/// Missing provider owners fail closed; activation scope is never merged into
-/// the provider snapshot.
-pub async fn current_workspace_search_source_index_snapshot(
-    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
-    project_root: &Path,
-) -> Result<CurrentSourceIndexSnapshot, String> {
-    let provider_registry = ProviderRegistrySnapshot::load(project_root)?;
-    let registry = provider_registry.evidence(project_root);
-    let files = super::collect::collect_workspace_search_source_index_files(
-        supervisor,
-        project_root,
-        &provider_registry,
-        &super::collect::SourceIndexCollectionScope::CompleteGeneration,
-    )
-    .await?;
-    let (_, workspace_snapshot, source_snapshot, source_blobs) =
-        source_index_snapshot_from_files(project_root, &files, &registry)?;
-    materialized_current_source_index_snapshot(workspace_snapshot, source_snapshot, source_blobs)
-}
-
 pub fn current_provider_source_index_snapshot_with_registry(
     project_root: &Path,
     language_id: &agent_semantic_client_core::LanguageId,
     provider_id: &agent_semantic_client_core::ProviderId,
-    provider_registry: &ProviderRegistrySnapshot,
+    provider_registry: &RuntimeProviderProjection,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     let project_context = ProjectContext::resolve(project_root)?;
     current_provider_source_index_snapshot_at_artifact_root_with_registry(
@@ -197,30 +141,7 @@ pub fn current_provider_source_index_snapshot_with_registry(
 /// Capture the current worktree snapshot for exactly one registered provider.
 ///
 /// This is the rootDepth=0 query boundary. It performs no envelope
-/// publication, CAS write, database bootstrap, or activation synchronization.
-pub async fn current_live_provider_source_index_snapshot_with_registry(
-    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
-    project_root: &Path,
-    language_id: &agent_semantic_client_core::LanguageId,
-    provider_id: &agent_semantic_client_core::ProviderId,
-    provider_registry: &ProviderRegistrySnapshot,
-) -> Result<CurrentSourceIndexSnapshot, String> {
-    let registry = provider_registry.evidence(project_root);
-    let files = collect_source_index_files(
-        supervisor,
-        project_root,
-        provider_registry,
-        &super::collect::SourceIndexCollectionScope::TargetProvider {
-            language_id: language_id.clone(),
-            provider_id: provider_id.clone(),
-        },
-    )
-    .await?;
-    let (_, workspace_snapshot, source_snapshot, source_blobs) =
-        source_index_snapshot_from_files(project_root, &files, &registry)?;
-    materialized_current_source_index_snapshot(workspace_snapshot, source_snapshot, source_blobs)
-}
-
+/// publication, CAS write, database bootstrap, or provider admission mutation.
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PublishedProviderSourceEnvelope {
@@ -402,150 +323,6 @@ fn normalized_envelope_relative_path(path: &str) -> Result<PathBuf, String> {
     Ok(normalized)
 }
 
-pub(super) async fn fresh_target_provider_source_index_snapshot_with_registry(
-    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
-    project_root: &Path,
-    language_id: &agent_semantic_client_core::LanguageId,
-    provider_id: &agent_semantic_client_core::ProviderId,
-    collection_scope: &super::collect::SourceIndexCollectionScope,
-    provider_registry: &ProviderRegistrySnapshot,
-) -> Result<CurrentSourceIndexSnapshot, String> {
-    let registry = provider_registry.evidence(project_root);
-    let files = collect_source_index_files(
-        supervisor,
-        project_root,
-        provider_registry,
-        collection_scope,
-    )
-    .await?;
-    if files.is_empty()
-        || files
-            .iter()
-            .any(|file| &file.language_id != language_id || &file.provider_id != provider_id)
-    {
-        return Err(format!(
-            "target provider source-scope output is incomplete: languageId={} providerId={}",
-            language_id, provider_id
-        ));
-    }
-    let (_, workspace_snapshot, source_snapshot, source_blobs) =
-        source_index_snapshot_from_files(project_root, &files, &registry)?;
-    materialized_current_source_index_snapshot(workspace_snapshot, source_snapshot, source_blobs)
-}
-
-/// Capture a content-authoritative, one-owner snapshot for an exact query.
-///
-/// Exact reads are an owner-scoped evidence projection. They must not rebuild
-/// the workspace source index or scan unrelated owners before invoking the
-/// live parser.
-pub fn current_source_index_snapshot_for_owner(
-    project_root: &Path,
-    owner_path: impl Into<SourceIndexOwnerPath>,
-    language_id: impl Into<LanguageId>,
-    provider_id: impl Into<ProviderId>,
-) -> Result<CurrentSourceIndexSnapshot, String> {
-    let owner_path = owner_path.into();
-    let language_id = language_id.into();
-    let provider_id = provider_id.into();
-    let provider_registry = ProviderRegistrySnapshot::load(project_root)?;
-    current_source_index_snapshot_for_owner_with_registry(
-        project_root,
-        owner_path.as_str(),
-        language_id.as_str(),
-        provider_id.as_str(),
-        &provider_registry,
-    )
-}
-
-fn current_source_index_snapshot_for_owner_with_registry(
-    project_root: &Path,
-    owner_path: &str,
-    language_id: &str,
-    provider_id: &str,
-    provider_registry: &ProviderRegistrySnapshot,
-) -> Result<CurrentSourceIndexSnapshot, String> {
-    let registry = provider_registry.evidence(project_root);
-    let owner_path = explicit_snapshot_owner_path(project_root, owner_path)?;
-    let files = [SourceIndexScopeFile {
-        path: owner_path,
-        language_id: LanguageId::from(language_id),
-        provider_id: ProviderId::from(provider_id),
-        projection_coverage:
-            agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
-        selector_receipts: Vec::new(),
-        relations: Vec::new(),
-    }];
-    let (_, workspace_snapshot, source_snapshot, source_blobs) =
-        source_index_snapshot_from_files(project_root, &files, &registry)?;
-    materialized_current_source_index_snapshot(workspace_snapshot, source_snapshot, source_blobs)
-}
-
-fn explicit_snapshot_owner_path(project_root: &Path, owner_path: &str) -> Result<PathBuf, String> {
-    let mut normalized = PathBuf::new();
-    for component in Path::new(owner_path).components() {
-        match component {
-            std::path::Component::Normal(component) => normalized.push(component),
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir
-            | std::path::Component::RootDir
-            | std::path::Component::Prefix(_) => {
-                return Err(format!(
-                    "exact source owner escaped workspace namespace: ownerPath={owner_path} reasonKind=owner-outside-workspace"
-                ));
-            }
-        }
-    }
-    if normalized.as_os_str().is_empty() {
-        return Err(
-            "exact source owner path is empty: reasonKind=owner-not-in-worktree".to_string(),
-        );
-    }
-    let canonical_root = project_root.canonicalize().map_err(|error| {
-        format!(
-            "failed to resolve exact source workspace {}: {error}",
-            project_root.display()
-        )
-    })?;
-    let source_path = project_root.join(&normalized);
-    let canonical_source = source_path.canonicalize().map_err(|error| {
-        format!(
-            "exact source owner is not available in workspace: ownerPath={} reasonKind=owner-not-in-worktree error={error}",
-            normalized.display()
-        )
-    })?;
-    if !canonical_source.starts_with(&canonical_root) {
-        return Err(format!(
-            "exact source owner escaped workspace namespace: ownerPath={} reasonKind=owner-outside-workspace",
-            normalized.display()
-        ));
-    }
-    if !source_path.is_file() {
-        return Err(format!(
-            "exact source owner is not a file: ownerPath={} reasonKind=owner-not-in-worktree",
-            normalized.display()
-        ));
-    }
-    Ok(normalized)
-}
-
-pub(crate) async fn current_source_index_snapshot_with_registry(
-    supervisor: &agent_semantic_provider_transport::ProviderProcessSupervisor,
-    project_root: &Path,
-    provider_registry: &ProviderRegistrySnapshot,
-) -> Result<CurrentSourceIndexSnapshot, String> {
-    let registry = provider_registry.evidence(project_root);
-    let files = collect_source_index_files(
-        supervisor,
-        project_root,
-        provider_registry,
-        &super::collect::SourceIndexCollectionScope::CompleteGeneration,
-    )
-    .await?;
-    let (_, workspace_snapshot, source_snapshot, source_blobs) =
-        source_index_snapshot_from_files(project_root, &files, &registry)?;
-    materialized_current_source_index_snapshot(workspace_snapshot, source_snapshot, source_blobs)
-}
-
 pub(super) fn source_index_trace(stage: &str, started: Instant) {
     if std::env::var_os("ASP_SOURCE_INDEX_TRACE").is_some() {
         eprintln!(
@@ -556,19 +333,9 @@ pub(super) fn source_index_trace(stage: &str, started: Instant) {
     }
 }
 
-#[path = "activation_snapshot.rs"]
-mod activation_snapshot;
 #[cfg(test)]
 #[path = "../../tests/unit/source_index_api.rs"]
 mod tests;
-pub use activation_snapshot::{
-    CurrentSourceIndexOwnerFromActivationRequest,
-    current_provider_source_index_snapshot_from_activation,
-    current_source_index_snapshot_for_owner_from_activation,
-    current_source_index_snapshot_from_activation,
-    ensure_provider_source_index_snapshot_from_activation,
-    provider_source_snapshot_envelope_path_from_activation,
-};
 pub(crate) fn materialized_current_source_index_snapshot(
     workspace_snapshot: agent_semantic_content_identity::WorkspaceSnapshot,
     source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
