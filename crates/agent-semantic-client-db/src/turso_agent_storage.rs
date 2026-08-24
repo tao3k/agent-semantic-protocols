@@ -8,12 +8,14 @@ use crate::storage_contract::{
 };
 use crate::turso_mvcc_store::{TursoMvccEvent, TursoMvccStore, TursoMvccStoreConfig};
 
+/// Backend-neutral agent storage adapter over the sharded Turso MVCC store.
 #[derive(Clone)]
 pub struct TursoMvccAgentStorage {
     store: TursoMvccStore,
 }
 
 impl TursoMvccAgentStorage {
+    /// Open the underlying bounded-concurrency MVCC authority.
     pub async fn open(config: TursoMvccStoreConfig) -> Result<Self, StorageError> {
         let store = TursoMvccStore::open(config)
             .await
@@ -21,6 +23,7 @@ impl TursoMvccAgentStorage {
         Ok(Self { store })
     }
 
+    /// Borrow the typed Turso store for explicit maintenance operations.
     pub fn store(&self) -> &TursoMvccStore {
         &self.store
     }
@@ -176,21 +179,21 @@ impl AgentStorage for TursoMvccAgentStorage {
 }
 
 fn classify_typed_turso_storage_error(
-    error: crate::turso_mvcc_typed::TursoMvccWriteError,
+    error: crate::turso_mvcc_store::TursoMvccWriteError,
 ) -> StorageError {
     let code = match error.code {
-        crate::turso_mvcc_typed::TursoMvccWriteErrorCode::InvalidRequest => {
+        crate::turso_mvcc_store::TursoMvccWriteErrorCode::InvalidRequest => {
             StorageErrorCode::InvalidRequest
         }
-        crate::turso_mvcc_typed::TursoMvccWriteErrorCode::Busy => StorageErrorCode::Busy,
-        crate::turso_mvcc_typed::TursoMvccWriteErrorCode::BusySnapshot => {
+        crate::turso_mvcc_store::TursoMvccWriteErrorCode::Busy => StorageErrorCode::Busy,
+        crate::turso_mvcc_store::TursoMvccWriteErrorCode::BusySnapshot => {
             StorageErrorCode::SnapshotConflict
         }
-        crate::turso_mvcc_typed::TursoMvccWriteErrorCode::DuplicateIdentity => {
+        crate::turso_mvcc_store::TursoMvccWriteErrorCode::DuplicateIdentity => {
             StorageErrorCode::DuplicateIdentity
         }
-        crate::turso_mvcc_typed::TursoMvccWriteErrorCode::Io => StorageErrorCode::Io,
-        crate::turso_mvcc_typed::TursoMvccWriteErrorCode::Backend => StorageErrorCode::Backend,
+        crate::turso_mvcc_store::TursoMvccWriteErrorCode::Io => StorageErrorCode::Io,
+        crate::turso_mvcc_store::TursoMvccWriteErrorCode::Backend => StorageErrorCode::Backend,
     };
     StorageError {
         code,

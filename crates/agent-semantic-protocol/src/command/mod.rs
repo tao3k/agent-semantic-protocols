@@ -23,9 +23,9 @@ mod install_binary_config_admission;
 mod install_provider;
 mod install_provider_archive;
 mod install_provider_development;
-mod provider_install_receipt;
 mod install_provider_release;
 pub(crate) mod installed_provider_artifacts;
+mod provider_install_receipt;
 
 mod install_provider_target;
 mod live_corpus;

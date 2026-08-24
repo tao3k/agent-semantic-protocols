@@ -124,9 +124,8 @@ impl AspClientServerHttpClient {
             .await
             .map_err(|error| format!("read ASP Client Server response: {error}"))?;
         if !status.is_success() {
-            let body_prefix = String::from_utf8_lossy(
-                &response_body[..response_body.len().min(4096)],
-            );
+            let body_prefix =
+                String::from_utf8_lossy(&response_body[..response_body.len().min(4096)]);
             return Err(format!(
                 "reasonKind=asp-client-server-http-status status={status} bodyPrefix={body_prefix:?}"
             ));
@@ -290,8 +289,7 @@ impl AspClientServerPeer {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             .saturating_add(1);
         let request_id = format!("provider-http-{request_id}");
-        let request =
-            ProviderRuntimeRequestFrame::new(&request_id, operation.as_str(), &payload)?;
+        let request = ProviderRuntimeRequestFrame::new(&request_id, operation.as_str(), &payload)?;
         let request = serde_json::to_vec(&request)
             .map_err(|error| format!("encode provider HTTP server request: {error}"))?;
         let request_prefix = String::from_utf8_lossy(&request)
@@ -300,7 +298,8 @@ impl AspClientServerPeer {
             .collect::<String>();
         let response = if request.len() <= MAX_PROVIDER_HTTP_REQUEST_FRAME_BYTES {
             let request_path = self.request_path.clone();
-            self.http_json("POST", &request_path, Some(&request)).await?
+            self.http_json("POST", &request_path, Some(&request))
+                .await?
         } else {
             self.send_streamed_request(&request_id, &request).await?
         };

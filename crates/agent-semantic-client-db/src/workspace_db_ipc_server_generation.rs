@@ -355,8 +355,9 @@ pub(super) fn submit_mutation(
     }
     if queued {
         let admission_task = std::sync::Arc::clone(&generation_admission);
-        let task = tokio::spawn(async move {
-            let _submission = SubmittedMutationGuard(key);
+        let task_key = key.clone();
+        let task = async move {
+            let _submission = SubmittedMutationGuard(task_key);
             let project_root_path = std::path::Path::new(&project_root);
             let result =
                 match crate::runtime_server_admission::discover_workspace_generation_candidate(
@@ -386,8 +387,14 @@ pub(super) fn submit_mutation(
                     "[runtime-server-generation-submission] status=failed code={code} error={message}"
                 );
             }
-        });
-        generation_admission.track_submission_task(task);
+        };
+        if let Err(message) = generation_admission.submit_background_mutation(task) {
+            SUBMITTED_MUTATIONS.remove(&key);
+            return WorkspaceDbIpcResult::Failed {
+                code: "runtime-server-generation-admission-unavailable".to_owned(),
+                message,
+            };
+        }
     }
     WorkspaceDbIpcResult::RuntimeGenerationMutationSubmission { receipt }
 }
@@ -531,8 +538,8 @@ pub(crate) async fn admit_generation_for_read(
     generation_admission: Option<&std::sync::Arc<WorkspaceGenerationAdmission>>,
     workspace_identity: &str,
     project_root: String,
-    language_id: String,
-    provider_id: String,
+    language_id: agent_semantic_client_core::LanguageId,
+    provider_id: agent_semantic_client_core::ProviderId,
 ) -> WorkspaceDbIpcResult {
     let project_root_path = PathBuf::from(&project_root);
     let Some(generation_admission) = generation_admission else {
@@ -571,8 +578,8 @@ pub(crate) async fn admit_generation_for_read(
         .admit_artifact_publication_with_mode_and_wait(
             workspace_identity.to_owned(),
             project_root_path,
-            language_id,
-            provider_id,
+            language_id.into_string(),
+            provider_id.into_string(),
             admission_build_mode,
         )
         .await

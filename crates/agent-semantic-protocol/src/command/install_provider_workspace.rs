@@ -127,7 +127,12 @@ pub(super) async fn build_registered_provider_workspace(
     let descriptor_schema_path = descriptor_parent
         .join(&descriptor.schema)
         .canonicalize()
-        .map_err(|error| format!("resolve provider workspace schema {}: {error}", descriptor.schema))?;
+        .map_err(|error| {
+            format!(
+                "resolve provider workspace schema {}: {error}",
+                descriptor.schema
+            )
+        })?;
     ensure_within(
         &descriptor_schema_path,
         &provider_source_root,

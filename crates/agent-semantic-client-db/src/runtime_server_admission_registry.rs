@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::runtime_server_admission::{
     AdmissionEntry, WorkspaceGenerationAdmissionKey, WorkspaceGenerationAdmissionReceipt,
-    WorkspaceMutationIdentity, dispatcher,
+    WorkspaceMutationIdentity,
 };
 
 enum AdmissionRegistryCommand {
@@ -22,7 +22,9 @@ pub(super) struct AdmissionRegistry {
     snapshot: tokio::sync::watch::Receiver<
         Arc<std::collections::HashMap<WorkspaceGenerationAdmissionKey, Arc<AdmissionEntry>>>,
     >,
-    task: Arc<tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    task:
+        Arc<tokio::sync::Mutex<Option<crate::runtime_server_runtime::RuntimeServerOwnedTask<()>>>>,
+    task_scope: crate::runtime_server_runtime::RuntimeServerTaskScope,
 }
 
 impl AdmissionRegistry {
@@ -38,35 +40,40 @@ impl AdmissionRegistry {
         // immutable snapshot per drained batch.
         let (commands, mut receiver) = tokio::sync::mpsc::channel(capacity.max(1));
         let server_entries_for_actor = Arc::clone(&server_entries);
-        let task = dispatcher::spawn_admission_authority(async move {
-            while let Some(command) = receiver.recv().await {
-                let mut batch = vec![command];
-                while let Ok(command) = receiver.try_recv() {
-                    batch.push(command);
-                }
-                let mut shutdown = None;
-                for command in batch {
-                    match command {
-                        AdmissionRegistryCommand::Shutdown(completed) => {
-                            receiver.close();
-                            shutdown = Some(completed);
-                            break;
+        let task_scope =
+            crate::runtime_server_runtime::RuntimeServerTaskScope::new("generation-registry");
+        let task = task_scope
+            .spawn("generation-registry-actor", async move {
+                while let Some(command) = receiver.recv().await {
+                    let mut batch = vec![command];
+                    while let Ok(command) = receiver.try_recv() {
+                        batch.push(command);
+                    }
+                    let mut shutdown = None;
+                    for command in batch {
+                        match command {
+                            AdmissionRegistryCommand::Shutdown(completed) => {
+                                receiver.close();
+                                shutdown = Some(completed);
+                                break;
+                            }
                         }
                     }
+                    if let Some(completed) = shutdown {
+                        let entry_count = server_entries_for_actor.len();
+                        let _ = completed.send(entry_count);
+                        break;
+                    }
                 }
-                if let Some(completed) = shutdown {
-                    let entry_count = server_entries_for_actor.len();
-                    let _ = completed.send(entry_count);
-                    break;
-                }
-            }
-        });
+            })
+            .expect("new generation-registry task scope accepts its owner task");
         Self {
             entries: server_entries,
             snapshot_sender,
             commands,
             snapshot,
             task: Arc::new(tokio::sync::Mutex::new(Some(task))),
+            task_scope,
         }
     }
 
@@ -113,9 +120,11 @@ impl AdmissionRegistry {
             return Ok(0);
         }
         let _actor_entry_count = receipt.await.unwrap_or(0);
+        self.task_scope.begin_drain();
         if let Some(task) = self.task.lock().await.take() {
-            let _ = task.await;
+            task.join().await?;
         }
+        self.task_scope.finish(0)?;
         Ok(self.entries.len())
     }
 }

@@ -116,6 +116,7 @@ where
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Aggregate persisted-row counts exposed by the client DB diagnostics surface.
 pub struct ClientDbSummary {
     pub generation_count: u32,
     pub syntax_row_generation_count: u32,
@@ -225,6 +226,7 @@ pub struct ClientDbProviderCommandSelectionInput {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Validated provider command identity persisted for Runtime Server activation.
 pub struct ClientDbProviderCommandSelection {
     pub manifest_id: ClientDbProviderManifestId,
     pub manifest_digest: ClientDbProviderManifestDigest,

@@ -197,7 +197,8 @@ impl WorkspaceGenerationPublisher {
         generation: std::sync::Arc<WorkspaceMemoryGeneration>,
         previous_epoch_readable: bool,
     ) -> Result<WorkspaceGenerationSnapshot, String> {
-        self.publish_inner(generation, previous_epoch_readable).await
+        self.publish_inner(generation, previous_epoch_readable)
+            .await
     }
 
     async fn publish_inner(

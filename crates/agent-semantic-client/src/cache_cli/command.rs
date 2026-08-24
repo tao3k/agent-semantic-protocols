@@ -129,7 +129,7 @@ async fn run_source_index_lookup(
         limit: spec.limit,
     })
     .await?;
-    if result.candidates.is_empty() {
+    if result.hits.is_empty() {
         println!(
             "noOutput reason=source-index-{} query={} indexRoot={} route=runtime-server",
             result.state.as_str(),
@@ -138,52 +138,32 @@ async fn run_source_index_lookup(
         );
     } else {
         println!(
-            "[asp-cache-source-index] status={} route=runtime-server indexRoot={} query={} candidates={} snapshotRoot={} providerDigest={} indexArtifactDigest={} rawSourceStored=false",
+            "[asp-cache-source-index] status={} route=runtime-server indexRoot={} query={} hits={} generationDigest={} rootDigest={} providerDigest={} indexArtifactDigest={} rawSourceStored=false",
             result.state.as_str(),
             spec.index_root.display(),
             spec.query,
-            result.candidates.len(),
-            result
-                .source_snapshot
-                .as_ref()
-                .map_or("-", |snapshot| snapshot.root_digest.as_str()),
-            result
-                .source_snapshot
-                .as_ref()
-                .map_or("-", |snapshot| snapshot.provider_digest.as_str()),
-            result.index_artifact_digest.as_deref().unwrap_or("-")
+            result.hits.len(),
+            result.generation_digest,
+            result.root_digest,
+            result.provider_digest,
+            result.index_artifact_digest,
         );
-        for candidate in &result.candidates {
+        for hit in &result.hits {
             println!(
-                "|candidate path={} language={} provider={} kind={} lines={} queryKeys={} selectorSymbol={} selectorKind={}",
-                candidate.path,
-                candidate
-                    .language_id
-                    .as_ref()
-                    .map_or("-", LanguageId::as_str),
-                candidate
-                    .provider_id
-                    .as_ref()
-                    .map_or("-", |provider| provider.as_str()),
-                candidate.source_kind.as_str(),
-                candidate
-                    .line_count
-                    .map(|count| count.to_string())
-                    .unwrap_or_else(|| "-".to_owned()),
-                candidate
-                    .query_keys
+                "|hit ownerPath={} language={} tier={} lines={} queryKeys={} selector={} score={}",
+                hit.owner_path,
+                hit.language_id.as_ref().map_or("-", String::as_str),
+                hit.projection_tier.as_str(),
+                hit.line_count,
+                hit.query_keys
                     .iter()
-                    .map(|key| key.as_str())
+                    .map(String::as_str)
                     .collect::<Vec<_>>()
                     .join(","),
-                candidate
-                    .selector_symbol
-                    .as_ref()
-                    .map_or("-", |symbol| symbol.as_str()),
-                candidate
-                    .selector_kind
-                    .as_ref()
-                    .map_or("-", |kind| kind.as_str())
+                hit.selector.as_deref().unwrap_or("-"),
+                hit.score
+                    .map(|score| score.to_string())
+                    .unwrap_or_else(|| "-".to_owned()),
             );
         }
     }
@@ -196,11 +176,14 @@ async fn run_source_index_lookup(
             "indexRoot": spec.index_root,
             "query": spec.query,
             "limit": spec.limit,
-            "sourceSnapshot": result.source_snapshot,
+            "generationDigest": result.generation_digest,
+            "rootDigest": result.root_digest,
+            "providerDigest": result.provider_digest,
             "indexArtifactDigest": result.index_artifact_digest,
             "rawSourceStored": false,
             "databaseOpensByClient": 0,
-            "candidates": result.candidates,
+            "workCounters": result.work_counters,
+            "hits": result.hits,
         });
         eprintln!("{receipt}");
     }

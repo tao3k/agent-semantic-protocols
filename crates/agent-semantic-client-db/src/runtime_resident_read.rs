@@ -1,6 +1,5 @@
 use std::path::Path;
 
-use crate::ClientDbSourceIndexLookupResult;
 use crate::runtime_server_opentelemetry::{
     RuntimePerformanceObservation, try_record_to_active_runtime,
 };
@@ -89,7 +88,7 @@ impl RuntimeResidentReadClient {
         query: &str,
         language_id: Option<&agent_semantic_client_core::LanguageId>,
         limit: u32,
-    ) -> Result<ClientDbSourceIndexLookupResult, String> {
+    ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
         self.search_projection
             .read_source_index(query, language_id, limit)
     }

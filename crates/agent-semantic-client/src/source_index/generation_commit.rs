@@ -54,8 +54,8 @@ impl PreparedSourceIndexGeneration {
 
     pub(super) fn into_runtime_server_build(
         self,
-    ) -> agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuild {
-        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuild::new(
+    ) -> agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateBuild {
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateBuild::new(
             self.candidate,
             self.refresh_request,
             self.materialization,

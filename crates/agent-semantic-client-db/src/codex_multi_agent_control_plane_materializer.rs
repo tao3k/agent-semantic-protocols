@@ -7,6 +7,7 @@ use agent_semantic_context_product::codex_multi_agent_v2_control_plane::{
     CodexAgentNodeProjection, CodexControlPlaneFreshness, CodexControlPlaneMaterialization,
     CodexMultiAgentV2ControlPlaneProjection,
 };
+use std::collections::BTreeSet;
 
 use crate::agent_session_registry::{
     AgentSessionRecord, agent_session_message_target_is_live_bound,
@@ -77,19 +78,24 @@ pub(crate) fn materialize_codex_multi_agent_control_plane(
     let generation = current
         .map(|projection| projection.materialization.generation.saturating_add(1))
         .unwrap_or(1);
-    let mut evidence_refs = vec![format!(
-        "agent-session-registry://{project_id}/{root_session_id}?digest={source_digest}"
-    )];
-    for record in &records {
-        if let Some(reference) = record.last_evidence_ref() {
-            evidence_refs.push(reference.to_owned());
-        }
-        if let Some(reference) = record.model_evidence_ref.as_ref() {
-            evidence_refs.push(reference.as_str().to_owned());
-        }
-    }
-    evidence_refs.sort();
-    evidence_refs.dedup();
+    let registry_evidence_ref =
+        format!("agent-session-registry://{project_id}/{root_session_id}?digest={source_digest}");
+    let evidence_refs = std::iter::once(registry_evidence_ref)
+        .chain(
+            records
+                .iter()
+                .filter_map(AgentSessionRecord::last_evidence_ref)
+                .map(str::to_owned),
+        )
+        .chain(
+            records
+                .iter()
+                .filter_map(|record| record.model_evidence_ref.as_deref())
+                .map(str::to_owned),
+        )
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
 
     let agents = records
         .iter()

@@ -245,126 +245,170 @@ impl ClientDbEngine {
         F: FnOnce(&mut ClientDbEngineWriteSession) -> Result<ClientDbTurso07ReplayCoverage, String>,
     {
         let target_client_dir = target_client_dir.as_ref().to_path_buf();
-        let parent = target_client_dir.parent().ok_or_else(|| {
-            format!(
-                "Turso 0.7 project client dir has no parent: `{}`",
-                target_client_dir.display()
-            )
-        })?;
-        fs::create_dir_all(parent).map_err(|error| {
-            format!(
-                "failed to create Turso 0.7 migration parent `{}`: {error}",
-                parent.display()
-            )
-        })?;
-        if target_client_dir.exists() {
-            if !target_client_dir.is_dir() {
-                return Err(format!(
-                    "Turso 0.7 migration target is not a directory: `{}`",
-                    target_client_dir.display()
-                ));
-            }
-            if fs::read_dir(&target_client_dir)
-                .map_err(|error| {
-                    format!(
-                        "failed to inspect Turso 0.7 migration target `{}`: {error}",
-                        target_client_dir.display()
-                    )
-                })?
-                .next()
-                .transpose()
-                .map_err(|error| {
-                    format!(
-                        "failed to inspect Turso 0.7 migration target entry `{}`: {error}",
-                        target_client_dir.display()
-                    )
-                })?
-                .is_some()
-            {
-                return Err(format!(
-                    "Turso 0.7 migration target must be absent or empty: `{}`",
-                    target_client_dir.display()
-                ));
-            }
-        }
-        let staging_client_dir = parent.join(format!(
-            ".turso-0.7-staging-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_err(|error| format!("failed to timestamp Turso 0.7 staging dir: {error}"))?
-                .as_nanos()
+        let parent = prepare_turso_migration_target(&target_client_dir)?;
+        let staging_client_dir = turso_migration_staging_path(&parent)?;
+        let replay_coverage = replay_turso_migration_staging(&staging_client_dir, replay)?;
+        validate_turso_migration_staging(&staging_client_dir, &replay_coverage)?;
+        promote_turso_migration_staging(&staging_client_dir, &target_client_dir)?;
+        Ok(turso_migration_report(target_client_dir, replay_coverage))
+    }
+}
+
+fn prepare_turso_migration_target(target_client_dir: &Path) -> Result<PathBuf, String> {
+    let parent = target_client_dir.parent().ok_or_else(|| {
+        format!(
+            "Turso 0.7 project client dir has no parent: `{}`",
+            target_client_dir.display()
+        )
+    })?;
+    fs::create_dir_all(parent).map_err(|error| {
+        format!(
+            "failed to create Turso 0.7 migration parent `{}`: {error}",
+            parent.display()
+        )
+    })?;
+    if !target_client_dir.exists() {
+        return Ok(parent.to_path_buf());
+    }
+    if !target_client_dir.is_dir() {
+        return Err(format!(
+            "Turso 0.7 migration target is not a directory: `{}`",
+            target_client_dir.display()
         ));
-        let mut writer = Self::open_write_session_client_dir(&staging_client_dir)?;
-        let replay_coverage = match replay(&mut writer) {
-            Ok(coverage) => coverage,
-            Err(error) => {
-                drop(writer);
-                cleanup_staging_client_dir(&staging_client_dir);
-                return Err(format!("failed to replay Turso 0.7 staging DB: {error}"));
-            }
-        };
-        let validation_errors = replay_coverage.validation_errors();
-        drop(writer);
-        evict_turso_client_dir(&staging_client_dir)?;
-        if !validation_errors.is_empty() {
-            let _ = fs::remove_dir_all(&staging_client_dir);
-            return Err(format!(
-                "Turso 0.7 staging DB is incomplete; unverified v1 replayers: {}",
-                validation_errors.join(",")
-            ));
-        }
-        let staging_db_path = Self::turso_path_for_client_dir(&staging_client_dir);
-        let staging_format_receipt_path =
-            super::turso::turso_0_7_format_receipt_path(&staging_db_path);
-        let staging_search_projection_db_path =
-            super::turso::turso_search_projection_db_path(&staging_db_path);
-        let staging_search_projection_format_receipt_path =
-            super::turso::turso_0_7_format_receipt_path(&staging_search_projection_db_path);
-        if !staging_db_path.is_file()
-            || !staging_format_receipt_path.is_file()
-            || !staging_search_projection_db_path.is_file()
-            || !staging_search_projection_format_receipt_path.is_file()
-        {
-            let _ = fs::remove_dir_all(&staging_client_dir);
-            return Err(
-                "Turso 0.7 staging DB is missing a database file or physical-format receipt"
-                    .to_string(),
-            );
-        }
-        let staging_migration_receipt_path =
-            staging_db_path.with_file_name(TURSO_0_7_MIGRATION_RECEIPT_FILE);
-        write_migration_receipt(&staging_migration_receipt_path, &replay_coverage)?;
-        if target_client_dir.exists() {
-            fs::remove_dir(&target_client_dir).map_err(|error| {
-                format!(
-                    "failed to remove empty Turso 0.7 migration target `{}`: {error}",
-                    target_client_dir.display()
-                )
-            })?;
-        }
-        fs::rename(&staging_client_dir, &target_client_dir).map_err(|error| {
+    }
+    let has_entry = fs::read_dir(target_client_dir)
+        .map_err(|error| {
             format!(
-                "failed to atomically promote Turso 0.7 staging dir `{}` to `{}`: {error}",
-                staging_client_dir.display(),
+                "failed to inspect Turso 0.7 migration target `{}`: {error}",
+                target_client_dir.display()
+            )
+        })?
+        .next()
+        .transpose()
+        .map_err(|error| {
+            format!(
+                "failed to inspect Turso 0.7 migration target entry `{}`: {error}",
+                target_client_dir.display()
+            )
+        })?
+        .is_some();
+    if has_entry {
+        return Err(format!(
+            "Turso 0.7 migration target must be absent or empty: `{}`",
+            target_client_dir.display()
+        ));
+    }
+    Ok(parent.to_path_buf())
+}
+
+fn turso_migration_staging_path(parent: &Path) -> Result<PathBuf, String> {
+    Ok(parent.join(format!(
+        ".turso-0.7-staging-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| format!("failed to timestamp Turso 0.7 staging dir: {error}"))?
+            .as_nanos()
+    )))
+}
+
+fn replay_turso_migration_staging<F>(
+    staging_client_dir: &Path,
+    replay: F,
+) -> Result<ClientDbTurso07ReplayCoverage, String>
+where
+    F: FnOnce(&mut ClientDbEngineWriteSession) -> Result<ClientDbTurso07ReplayCoverage, String>,
+{
+    let mut writer = ClientDbEngine::open_write_session_client_dir(staging_client_dir)?;
+    let replay_coverage = match replay(&mut writer) {
+        Ok(coverage) => coverage,
+        Err(error) => {
+            drop(writer);
+            cleanup_staging_client_dir(staging_client_dir);
+            return Err(format!("failed to replay Turso 0.7 staging DB: {error}"));
+        }
+    };
+    let validation_errors = replay_coverage.validation_errors();
+    drop(writer);
+    evict_turso_client_dir(staging_client_dir)?;
+    if validation_errors.is_empty() {
+        Ok(replay_coverage)
+    } else {
+        let _ = fs::remove_dir_all(staging_client_dir);
+        Err(format!(
+            "Turso 0.7 staging DB is incomplete; unverified v1 replayers: {}",
+            validation_errors.join(",")
+        ))
+    }
+}
+
+fn validate_turso_migration_staging(
+    staging_client_dir: &Path,
+    replay_coverage: &ClientDbTurso07ReplayCoverage,
+) -> Result<(), String> {
+    let staging_db_path = ClientDbEngine::turso_path_for_client_dir(staging_client_dir);
+    let format_receipt = super::turso::turso_0_7_format_receipt_path(&staging_db_path);
+    let search_db = super::turso::turso_search_projection_db_path(&staging_db_path);
+    let search_receipt = super::turso::turso_0_7_format_receipt_path(&search_db);
+    if ![
+        &staging_db_path,
+        &format_receipt,
+        &search_db,
+        &search_receipt,
+    ]
+    .into_iter()
+    .all(|path| path.is_file())
+    {
+        let _ = fs::remove_dir_all(staging_client_dir);
+        return Err(
+            "Turso 0.7 staging DB is missing a database file or physical-format receipt".to_owned(),
+        );
+    }
+    write_migration_receipt(
+        &staging_db_path.with_file_name(TURSO_0_7_MIGRATION_RECEIPT_FILE),
+        replay_coverage,
+    )
+}
+
+fn promote_turso_migration_staging(
+    staging_client_dir: &Path,
+    target_client_dir: &Path,
+) -> Result<(), String> {
+    if target_client_dir.exists() {
+        fs::remove_dir(target_client_dir).map_err(|error| {
+            format!(
+                "failed to remove empty Turso 0.7 migration target `{}`: {error}",
                 target_client_dir.display()
             )
         })?;
-        let db_path = Self::turso_path_for_client_dir(&target_client_dir);
-        let format_receipt_path = super::turso::turso_0_7_format_receipt_path(&db_path);
-        let search_projection_db_path = super::turso::turso_search_projection_db_path(&db_path);
-        let search_projection_format_receipt_path =
-            super::turso::turso_0_7_format_receipt_path(&search_projection_db_path);
-        let migration_receipt_path = db_path.with_file_name(TURSO_0_7_MIGRATION_RECEIPT_FILE);
-        Ok(ClientDbTurso07MigrationReport {
-            target_client_dir,
-            db_path,
-            format_receipt_path,
-            search_projection_db_path,
-            search_projection_format_receipt_path,
-            migration_receipt_path,
-            replay_coverage,
-        })
+    }
+    fs::rename(staging_client_dir, target_client_dir).map_err(|error| {
+        format!(
+            "failed to atomically promote Turso 0.7 staging dir `{}` to `{}`: {error}",
+            staging_client_dir.display(),
+            target_client_dir.display()
+        )
+    })
+}
+
+fn turso_migration_report(
+    target_client_dir: PathBuf,
+    replay_coverage: ClientDbTurso07ReplayCoverage,
+) -> ClientDbTurso07MigrationReport {
+    let db_path = ClientDbEngine::turso_path_for_client_dir(&target_client_dir);
+    let format_receipt_path = super::turso::turso_0_7_format_receipt_path(&db_path);
+    let search_projection_db_path = super::turso::turso_search_projection_db_path(&db_path);
+    let search_projection_format_receipt_path =
+        super::turso::turso_0_7_format_receipt_path(&search_projection_db_path);
+    let migration_receipt_path = db_path.with_file_name(TURSO_0_7_MIGRATION_RECEIPT_FILE);
+    ClientDbTurso07MigrationReport {
+        target_client_dir,
+        db_path,
+        format_receipt_path,
+        search_projection_db_path,
+        search_projection_format_receipt_path,
+        migration_receipt_path,
+        replay_coverage,
     }
 }
 
@@ -556,35 +600,35 @@ fn write_active_migration_marker(
 }
 
 fn database_authority_files(client_dir: &Path) -> Result<Vec<PathBuf>, String> {
-    let mut files = Vec::new();
-    for entry in fs::read_dir(client_dir).map_err(|error| {
-        format!(
-            "failed to inspect Turso client dir `{}`: {error}",
-            client_dir.display()
-        )
-    })? {
-        let entry = entry.map_err(|error| {
+    let mut files = fs::read_dir(client_dir)
+        .map_err(|error| {
             format!(
-                "failed to inspect Turso client entry in `{}`: {error}",
+                "failed to inspect Turso client dir `{}`: {error}",
                 client_dir.display()
             )
-        })?;
-        let path = entry.path();
-        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        if path.is_file()
-            && (name.starts_with("facts.")
-                || name.starts_with("search-projection.")
-                || name == "client.turso"
-                || name == "client.turso-wal"
-                || name == "client.db-log")
-        {
-            files.push(path);
-        }
-    }
+        })?
+        .map(|entry| {
+            entry.map(|value| value.path()).map_err(|error| {
+                format!(
+                    "failed to inspect Turso client entry in `{}`: {error}",
+                    client_dir.display()
+                )
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    files.retain(|path| is_database_authority_file(path));
     files.sort();
     Ok(files)
+}
+
+fn is_database_authority_file(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    path.is_file()
+        && (name.starts_with("facts.")
+            || name.starts_with("search-projection.")
+            || matches!(name, "client.turso" | "client.turso-wal" | "client.db-log"))
 }
 
 fn move_database_authority(

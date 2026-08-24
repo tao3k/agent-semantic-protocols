@@ -153,9 +153,8 @@ impl ResidentSourceIndex {
                 scores
             });
         let mut ranked = scores.into_iter().collect::<Vec<_>>();
-        ranked.sort_unstable_by(|left, right| {
-            right.1.cmp(&left.1).then_with(|| left.0.cmp(right.0))
-        });
+        ranked
+            .sort_unstable_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(right.0)));
         ranked.truncate(limit as usize);
         ranked
             .into_iter()

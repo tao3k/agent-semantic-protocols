@@ -9,6 +9,33 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::watch;
 
+fn validate_runtime_server_bind_authorities(
+    endpoint: &RuntimeServerEndpoint,
+    workspace_store: &crate::runtime_server_workspace::RuntimeServerWorkspaceStore,
+    artifact_catalog: &agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog,
+) -> Result<(), String> {
+    endpoint.validate()?;
+    if Path::new(&endpoint.workspace_store_path) != workspace_store.root() {
+        return Err(format!(
+            "Runtime Server endpoint workspace store authority mismatch: endpoint={} server={}",
+            endpoint.workspace_store_path,
+            workspace_store.root().display()
+        ));
+    }
+    if endpoint.artifact_mode != artifact_catalog.mode_label()
+        || endpoint.artifact_catalog_digest != artifact_catalog.digest()
+    {
+        return Err(format!(
+            "Runtime Server endpoint artifact catalog mismatch: endpointMode={} runtimeMode={} endpointDigest={} runtimeDigest={}",
+            endpoint.artifact_mode,
+            artifact_catalog.mode_label(),
+            endpoint.artifact_catalog_digest,
+            artifact_catalog.digest()
+        ));
+    }
+    Ok(())
+}
+
 impl RuntimeServer {
     pub async fn serve(self) -> Result<RuntimeServerExit, String> {
         let workspace_registry = std::sync::Arc::clone(&self.workspace_registry);
@@ -78,25 +105,23 @@ impl RuntimeServer {
             agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog,
         >,
     ) -> Result<Self, String> {
-        endpoint.validate()?;
-        if Path::new(&endpoint.workspace_store_path) != workspace_store.root() {
-            return Err(format!(
-                "Runtime Server endpoint workspace store authority mismatch: endpoint={} server={}",
-                endpoint.workspace_store_path,
-                workspace_store.root().display()
-            ));
-        }
-        if endpoint.artifact_mode != artifact_catalog.mode_label()
-            || endpoint.artifact_catalog_digest != artifact_catalog.digest()
-        {
-            return Err(format!(
-                "Runtime Server endpoint artifact catalog mismatch: endpointMode={} runtimeMode={} endpointDigest={} runtimeDigest={}",
-                endpoint.artifact_mode,
-                artifact_catalog.mode_label(),
-                endpoint.artifact_catalog_digest,
-                artifact_catalog.digest()
-            ));
-        }
+        validate_runtime_server_bind_authorities(
+            &endpoint,
+            &workspace_store,
+            artifact_catalog.as_ref(),
+        )?;
+        Self::bind_validated_artifact_catalog(endpoint, registry, workspace_store, artifact_catalog)
+            .await
+    }
+
+    async fn bind_validated_artifact_catalog(
+        endpoint: RuntimeServerEndpoint,
+        registry: Arc<WorkspaceDbRegistry>,
+        workspace_store: crate::runtime_server_workspace::RuntimeServerWorkspaceStore,
+        artifact_catalog: Arc<
+            agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog,
+        >,
+    ) -> Result<Self, String> {
         let listener = bind_runtime_server_listener(Path::new(&endpoint.socket_path))?;
         let data_listener =
             bind_runtime_server_listener(Path::new(&endpoint.data_plane_socket_path))?;

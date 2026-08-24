@@ -21,8 +21,6 @@ use agent_semantic_client_db::{
     ClientDbSourceIndexSelector, ClientDbSourceIndexSource, source_index_import_with_file_hashes,
 };
 
-#[path = "engine_source_index/exact_selector_projection.rs"]
-mod exact_selector_projection;
 pub use agent_semantic_client_db::ClientDbSourceIndexImport;
 
 #[path = "engine_source_index/merkle_overlay_refresh.rs"]

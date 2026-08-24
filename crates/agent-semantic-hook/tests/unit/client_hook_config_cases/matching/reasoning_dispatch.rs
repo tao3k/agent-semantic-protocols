@@ -25,18 +25,14 @@ fn current_thread_cpu_nanos() -> u128 {
 }
 
 #[test]
-fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
+fn config_rule_scenarios_enforce_composition_witnesses_and_dominance() {
     let root = temp_root("config-driven-match-engine-contract");
     let mut registry = crate::classifier::rust_registry();
-    let production_text =
-        include_str!("../../../../../agent-semantic-config/templates/hooks/config.toml");
-    let production =
-        toml::from_str::<toml::Value>(production_text).expect("production hook config");
     let config_path = root.join("config.toml");
     let default_document = agent_semantic_hook::default_client_config_template();
-    let mut production_document =
+    let production_document =
         toml::from_str::<toml::Value>(&default_document).expect("production hook config document");
-    production_document["rules"] = production["rules"].clone();
+    let production = production_document.clone();
     fs::write(
         &config_path,
         toml::to_string(&production_document).expect("serialize production hook config"),
@@ -250,6 +246,35 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
             .iter()
             .find(|candidate| candidate["id"].as_str() == Some(rule_id))
             .expect("covered production rule");
+        let production_rule_json =
+            serde_json::to_value(production_rule).expect("production rule JSON projection");
+        for predicate in rule["ruleComposition"]
+            .as_array()
+            .expect("rule composition predicates")
+        {
+            let pointer = predicate["pointer"]
+                .as_str()
+                .expect("coverage JSON pointer");
+            let actual = production_rule_json.pointer(pointer).unwrap_or_else(|| {
+                panic!("{rule_id} coverage pointer does not resolve: {pointer}")
+            });
+            if let Some(expected) = predicate.get("contains") {
+                let expected = serde_json::to_value(expected).expect("coverage contains value");
+                assert!(
+                    actual
+                        .as_array()
+                        .is_some_and(|values| values.contains(&expected)),
+                    "{rule_id} coverage predicate failed: pointer={pointer} expectedContains={expected} actual={actual}"
+                );
+            }
+            if let Some(expected) = predicate.get("equals") {
+                let expected = serde_json::to_value(expected).expect("coverage equals value");
+                assert_eq!(
+                    actual, &expected,
+                    "{rule_id} coverage predicate failed: pointer={pointer}"
+                );
+            }
+        }
         let expected_decision = production_rule["decision"]
             .as_str()
             .expect("production decision");

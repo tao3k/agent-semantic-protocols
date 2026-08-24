@@ -10,15 +10,17 @@
     "operationId",
     "status",
     "languageId",
-    "readState",
+    "generationDigest",
+    "rootDigest",
+    "providerDigest",
+    "indexArtifactDigest",
     "candidateCount",
     "selectors",
-    "statusCode",
-    "stdout",
-    "stderr",
+    "ownerPaths",
     "residentReadElapsedMicros",
     "serviceElapsedMicros",
-    "elapsedMicros"
+    "elapsedMicros",
+    "workCounters"
   ],
   "properties": {
     "schemaId": {
@@ -26,46 +28,46 @@
     },
     "schemaVersion": { "const": "1" },
     "operationId": { "type": "string", "minLength": 1 },
-    "status": { "enum": ["matches", "no-matches", "failed"] },
+    "status": { "enum": ["matches", "no-matches"] },
     "languageId": { "type": "string", "minLength": 1 },
-    "readState": {
-      "enum": ["empty-index", "hit", "miss"]
+    "generationDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
     },
+    "rootDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "providerDigest": { "type": "string", "minLength": 1 },
+    "indexArtifactDigest": { "type": "string", "minLength": 1 },
     "candidateCount": { "type": "integer", "minimum": 0 },
     "selectors": {
       "type": "array",
       "uniqueItems": true,
       "items": { "type": "string", "minLength": 1 }
     },
-    "statusCode": { "type": "integer" },
-    "stdout": {
+    "ownerPaths": {
       "type": "array",
-      "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
     },
-    "stderr": {
-      "type": "array",
-      "items": { "type": "integer", "minimum": 0, "maximum": 255 }
-    },
-    "rootDigest": { "type": "string", "minLength": 1 },
-    "providerDigest": { "type": "string", "minLength": 1 },
-    "indexArtifactDigest": { "type": "string", "minLength": 1 },
     "residentReadElapsedMicros": { "type": "integer", "minimum": 0 },
     "serviceElapsedMicros": { "type": "integer", "minimum": 0 },
     "elapsedMicros": { "type": "integer", "minimum": 0 },
-    "failure": {
+    "workCounters": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["reasonKind", "message"],
+      "required": [
+        "databaseReadCount",
+        "filesystemReadCount",
+        "providerProcessCount",
+        "socketOperationCount",
+        "schedulerTaskCount"
+      ],
       "properties": {
-        "reasonKind": { "type": "string", "minLength": 1 },
-        "message": { "type": "string", "minLength": 1 }
+        "databaseReadCount": { "const": 0 },
+        "filesystemReadCount": { "const": 0 },
+        "providerProcessCount": { "const": 0 },
+        "socketOperationCount": { "const": 0 },
+        "schedulerTaskCount": { "const": 0 }
       }
     }
-  },
-  "allOf": [
-    {
-      "if": { "properties": { "status": { "const": "failed" } } },
-      "then": { "required": ["failure"] }
-    }
-  ]
+  }
 }

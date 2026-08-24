@@ -258,10 +258,9 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
         |_| runtime_state.runtime_bin_dir.join(&provider_binary),
     );
     let artifact_root = runtime_state.protocol_home.join("runtime/artifacts");
-    let publication_guard =
-        super::protocol_binary::ProtocolBinaryReconciliationGuard::acquire(
-            &runtime_state.protocol_home,
-        )?;
+    let publication_guard = super::protocol_binary::ProtocolBinaryReconciliationGuard::acquire(
+        &runtime_state.protocol_home,
+    )?;
     let published = super::protocol_binary::install_protocol_binary_target_under_guard(
         &installed_entrypoint,
         &stable_entry,

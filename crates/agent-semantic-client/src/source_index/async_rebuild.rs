@@ -147,7 +147,10 @@ pub async fn prepare_runtime_server_workspace_generation_with_runtime_service_as
     project_root: PathBuf,
     snapshot: RuntimeProviderProjection,
     collection_scope: SourceIndexCollectionScope,
-) -> Result<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuild, String> {
+) -> Result<
+    agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateBuild,
+    String,
+> {
     let trace_started = Instant::now();
     let context = SourceIndexRefreshContext::resolve(&project_root)?;
     trace("context-resolved", trace_started);

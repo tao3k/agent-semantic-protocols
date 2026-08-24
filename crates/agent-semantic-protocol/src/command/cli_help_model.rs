@@ -24,10 +24,6 @@ const ROOT_COMMANDS: &[(&str, &str)] = &[
         "live-corpus",
         "Qualify and publish provider live-corpus artifacts",
     ),
-    (
-        "source-access",
-        "Inspect hook-owned source egress decisions",
-    ),
     ("ast-patch", "Verify or render parser-owned AST patches"),
     ("graph", "Render ASP evidence graphs"),
     ("fd", "Run the ASP fd compatibility surface"),

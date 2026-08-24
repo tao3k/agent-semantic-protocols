@@ -4,9 +4,8 @@ use std::{borrow::Cow, path::Path};
 
 use super::{
     AgentOrgArtifactsArchiveWarning, AgentOrgArtifactsRecovery, ClientHookConfig, CompiledHookRule,
-    CompiledRecoveryPromptConfig, DURABLE_HOOK_MATCHER_SCHEMA_ID,
-    DURABLE_HOOK_MATCHER_SCHEMA_VERSION, DurableHookConfigArtifact, HookClientConfigFile,
-    HookRuntime, ToolAction, compile_agent_org_artifacts_config,
+    DURABLE_HOOK_MATCHER_SCHEMA_ID, DURABLE_HOOK_MATCHER_SCHEMA_VERSION, DurableHookConfigArtifact,
+    HookClientConfigFile, HookRuntime, ToolAction, compile_agent_org_artifacts_config,
 };
 use crate::hook_config::core::implementation::profile_provider_projection::{
     extend_profile_provider_projections, extend_registered_provider_route_projections,
@@ -155,14 +154,6 @@ impl ClientHookConfig {
             .expect("compiled rule index always contains the wildcard platform")
     }
 
-    pub(crate) fn semantic_ast_patch_enabled(&self) -> bool {
-        !self.semantic_ast_patch_disabled
-    }
-
-    pub(crate) fn recovery_prompt(&self) -> &CompiledRecoveryPromptConfig {
-        &self.recovery_prompt
-    }
-
     pub(crate) fn agent_org_artifacts_recovery(
         &self,
         project_root: impl AsRef<Path>,
@@ -293,18 +284,6 @@ impl ClientHookConfig {
                     Some(action.paths.as_slice()),
                     structured_source_operands.as_deref(),
                 );
-                if let Some(decision) = crate::classifier::materialize_source_access_decision(
-                    runtime,
-                    platform,
-                    event,
-                    action,
-                    agent_action.as_ref(),
-                    Some(profile),
-                    self.semantic_ast_patch_enabled(),
-                    self.recovery_prompt(),
-                ) {
-                    return Some(finalize_materialized(decision));
-                }
                 continue;
             }
             let candidate = crate::hook_config::HookPolicyCandidate {
@@ -465,9 +444,7 @@ fn compile_resolved_config(
         policy_generation_digest,
         provider_projections,
         contract_fingerprint,
-        semantic_ast_patch_disabled: !semantic_ast_patch_enabled,
         agent_org_artifacts: compile_agent_org_artifacts_config(config.agent_org_artifacts)?,
-        recovery_prompt: config.recovery_prompt.into(),
     })
 }
 
@@ -515,25 +492,6 @@ fn compile_rule_candidate_index(rules: &[CompiledHookRule]) -> super::RuleCandid
 }
 
 impl ClientHookConfig {
-    /// Recompile the resolved policy with every configured lazy executable
-    /// capability present. Conformance validates declarative rule semantics;
-    /// it must not turn an optional binary missing from the doctor's PATH into
-    /// a policy mismatch.
-    pub(crate) fn match_policy_conformance_config(&self) -> Result<Self, String> {
-        let source = self
-            .source_config
-            .clone()
-            .ok_or_else(|| "match-policy conformance requires source-compiled config".to_owned())?;
-        let capabilities = source
-            .rules
-            .iter()
-            .filter(|rule| rule.enabled)
-            .filter_map(|rule| rule.match_config.structured_projection.as_ref())
-            .map(|projection| projection.binary.clone())
-            .collect::<std::collections::BTreeSet<_>>();
-        compile_resolved_config(source, None, None, Some(&capabilities))
-    }
-
     /// Return the normalized config and already-compiled matcher automata as one typed artifact.
     pub fn durable_snapshot_config(&self) -> DurableHookConfigArtifact {
         let config = self

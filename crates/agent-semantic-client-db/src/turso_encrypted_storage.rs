@@ -5,11 +5,13 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+/// Schema identifier for encrypted-file verification receipts.
 pub const TURSO_ENCRYPTION_FILE_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.client-db.turso-encryption-file-receipt.v1";
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
+/// Supported Turso at-rest encryption cipher.
 pub enum TursoEncryptionCipher {
     Aegis256,
     Aes256Gcm,
@@ -34,9 +36,11 @@ impl TursoEncryptionCipher {
 }
 
 #[derive(Clone, Eq, PartialEq)]
+/// Validated hexadecimal key whose debug representation is always redacted.
 pub struct TursoEncryptionKey(String);
 
 impl TursoEncryptionKey {
+    /// Parse a key whose length is valid for the selected cipher.
     pub fn from_hex(
         cipher: TursoEncryptionCipher,
         hex_key: impl Into<String>,
@@ -64,6 +68,7 @@ impl fmt::Debug for TursoEncryptionKey {
 }
 
 #[derive(Clone)]
+/// Path, cipher, and redacted key for an encrypted local profile.
 pub struct TursoEncryptedProfileConfig {
     pub path: PathBuf,
     pub cipher: TursoEncryptionCipher,
@@ -83,6 +88,7 @@ impl fmt::Debug for TursoEncryptedProfileConfig {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// File-level evidence that persisted bytes do not expose a plaintext probe.
 pub struct TursoEncryptionFileReceipt {
     schema_id: TursoEncryptionFileReceiptSchemaId,
     cipher: TursoEncryptionCipher,
@@ -93,24 +99,26 @@ pub struct TursoEncryptionFileReceipt {
     plaintext_probe_present: bool,
 }
 
+struct TursoEncryptionFileReceiptInput {
+    schema_id: TursoEncryptionFileReceiptSchemaId,
+    cipher: TursoEncryptionCipher,
+    database_bytes: u64,
+    wal_bytes: u64,
+    shm_bytes: u64,
+    plaintext_probe_len: usize,
+    plaintext_probe_present: bool,
+}
+
 impl TursoEncryptionFileReceipt {
-    pub fn new(
-        schema_id: TursoEncryptionFileReceiptSchemaId,
-        cipher: TursoEncryptionCipher,
-        database_bytes: u64,
-        wal_bytes: u64,
-        shm_bytes: u64,
-        plaintext_probe_len: usize,
-        plaintext_probe_present: bool,
-    ) -> Self {
+    fn new(input: TursoEncryptionFileReceiptInput) -> Self {
         Self {
-            schema_id,
-            cipher,
-            database_bytes,
-            wal_bytes,
-            shm_bytes,
-            plaintext_probe_len,
-            plaintext_probe_present,
+            schema_id: input.schema_id,
+            cipher: input.cipher,
+            database_bytes: input.database_bytes,
+            wal_bytes: input.wal_bytes,
+            shm_bytes: input.shm_bytes,
+            plaintext_probe_len: input.plaintext_probe_len,
+            plaintext_probe_present: input.plaintext_probe_present,
         }
     }
 
@@ -157,6 +165,7 @@ impl TursoEncryptionFileReceipt {
     }
 }
 
+/// Open encrypted Turso database and its file-verification owner.
 pub struct TursoEncryptedStorage {
     _database: turso::Database,
     connection: turso::Connection,
@@ -165,6 +174,7 @@ pub struct TursoEncryptedStorage {
 }
 
 impl TursoEncryptedStorage {
+    /// Open an encrypted local database from a validated profile.
     pub async fn open(config: TursoEncryptedProfileConfig) -> Result<Self, String> {
         let path = config.path.to_string_lossy();
         let database = turso::Builder::new_local(path.as_ref())
@@ -187,10 +197,12 @@ impl TursoEncryptedStorage {
         })
     }
 
+    /// Open a connection to the encrypted database.
     pub fn connection(&self) -> turso::Connection {
         self.connection.clone()
     }
 
+    /// Flush encrypted storage and inspect its persisted file surfaces.
     pub async fn flush_and_measure(
         &self,
         plaintext_probe: &[u8],
@@ -208,13 +220,15 @@ impl TursoEncryptedStorage {
                 .into_iter()
                 .any(|bytes| contains_subslice(bytes, plaintext_probe));
         Ok(TursoEncryptionFileReceipt::new(
-            TURSO_ENCRYPTION_FILE_RECEIPT_SCHEMA_ID.into(),
-            self.cipher,
-            database.len() as u64,
-            wal.len() as u64,
-            shm.len() as u64,
-            plaintext_probe.len(),
-            plaintext_probe_present,
+            TursoEncryptionFileReceiptInput {
+                schema_id: TURSO_ENCRYPTION_FILE_RECEIPT_SCHEMA_ID.into(),
+                cipher: self.cipher,
+                database_bytes: database.len() as u64,
+                wal_bytes: wal.len() as u64,
+                shm_bytes: shm.len() as u64,
+                plaintext_probe_len: plaintext_probe.len(),
+                plaintext_probe_present,
+            },
         ))
     }
 }
@@ -235,6 +249,7 @@ fn contains_subslice(haystack: &[u8], needle: &[u8]) -> bool {
             .windows(needle.len())
             .any(|window| window == needle)
 }
+/// Typed schema identity carried by an encryption file receipt.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct TursoEncryptionFileReceiptSchemaId(String);
@@ -246,6 +261,7 @@ impl From<&str> for TursoEncryptionFileReceiptSchemaId {
 }
 
 impl TursoEncryptionFileReceiptSchemaId {
+    /// Borrow the schema identifier.
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }

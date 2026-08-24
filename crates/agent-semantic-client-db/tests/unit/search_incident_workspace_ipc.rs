@@ -13,13 +13,13 @@ use super::{record_workspace_ipc_terminal, workspace_ipc_terminal_context};
 
 fn selector_request(workspace_identity: &str) -> WorkspaceDbIpcRequest {
     WorkspaceDbIpcRequest {
-        schema_id: WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID.to_owned(),
+        schema_id: WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID.into(),
         schema_version: WORKSPACE_DB_OWNER_SCHEMA_VERSION.to_owned(),
         workspace_identity: workspace_identity.to_owned(),
         transport_contract_digest: "transport".to_owned(),
         owner_epoch: 1,
-        binding_token: "binding".to_owned(),
-        request_id: format!("request-{workspace_identity}"),
+        binding_token: "binding".into(),
+        request_id: format!("request-{workspace_identity}").into(),
         operation: WorkspaceDbIpcOperation::ReadRuntimeSelector {
             project_root: "/workspace".to_owned(),
             language_id: serde_json::from_str("\"rust\"").expect("typed language id"),

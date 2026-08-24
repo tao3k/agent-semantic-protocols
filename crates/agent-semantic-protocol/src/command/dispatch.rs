@@ -172,7 +172,7 @@ fn arg_option_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
 }
 
 fn usage() -> String {
-    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|agent|install|paths|healthcheck|server|schema|workspace-db|live-corpus|source-access|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
+    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|agent|install|paths|healthcheck|server|schema|workspace-db|live-corpus|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
 }
 
 async fn run_client_command(args: Vec<String>) -> Result<(), String> {

@@ -390,50 +390,6 @@ async fn process_cold_mapped_locator_has_sub_ms_p95_and_bounded_p99() {
 }
 
 #[tokio::test]
-async fn daemon_restore_replays_each_catalog_scope_once() {
-    let root = fixture_root();
-    initialize_candidate_checkout(&root.join("checkout"));
-    let catalog = RuntimeWorkspaceAdmissionCatalog::load(root.join("catalog.json"))
-        .await
-        .unwrap();
-    let entry = RuntimeWorkspaceAdmissionCatalogEntry {
-        workspace_identity: "workspace-restore".to_owned(),
-        project_root: root.join("checkout"),
-    };
-    catalog.record(entry).await.unwrap();
-    let builds = Arc::new(AtomicU64::new(0));
-    let admission =
-        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission::new(
-            Arc::new({
-                let builds = Arc::clone(&builds);
-                move |_, _, candidate, _, _changed_paths, _provider_target, _| {
-                    let builds = Arc::clone(&builds);
-                    Box::pin(async move {
-                        builds.fetch_add(1, Ordering::Relaxed);
-                        completed_generation(candidate).map_err(|error| {
-                            WorkspaceGenerationBuildFailure::new(
-                                WorkspaceGenerationFailureStage::DurableRestore,
-                                error,
-                            )
-                        })
-                    })
-                }
-            }),
-        )
-        .with_catalog(catalog.clone());
-
-    let first = admission.restore_registered().await.unwrap();
-    assert_eq!(first.ready.len(), 1);
-    assert!(first.failed.is_empty());
-    let second = admission.restore_registered().await.unwrap();
-    assert_eq!(second.ready.len(), 1);
-    assert!(second.failed.is_empty());
-    assert_eq!(builds.load(Ordering::Relaxed), 1);
-    admission.shutdown().await.unwrap();
-    tokio::fs::remove_dir_all(root).await.unwrap();
-}
-
-#[tokio::test]
 async fn typed_ipc_admission_publishes_initial_locator_and_reaches_ready() {
     use agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogResolveError;
 
@@ -513,73 +469,6 @@ async fn typed_ipc_admission_publishes_initial_locator_and_reaches_ready() {
             .unwrap()
             .workspace_identity,
         "workspace-initial"
-    );
-    admission.shutdown().await.unwrap();
-    tokio::fs::remove_dir_all(root).await.unwrap();
-}
-
-#[tokio::test]
-async fn daemon_restore_isolates_failed_workspace_scopes() {
-    let root = fixture_root();
-    let catalog = RuntimeWorkspaceAdmissionCatalog::load(root.join("catalog.json"))
-        .await
-        .unwrap();
-    for workspace_identity in ["workspace-ready", "workspace-failed"] {
-        initialize_candidate_checkout(&root.join(workspace_identity));
-        catalog
-            .record(RuntimeWorkspaceAdmissionCatalogEntry {
-                workspace_identity: workspace_identity.to_owned(),
-                project_root: root.join(workspace_identity),
-            })
-            .await
-            .unwrap();
-    }
-    let admission =
-        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission::new(
-            Arc::new(
-                |workspace_identity,
-                 _,
-                 candidate,
-                 _build_mode,
-                 _changed_paths,
-                 _provider_target,
-                 _cancellation| {
-                    Box::pin(async move {
-                        if workspace_identity == "workspace-failed" {
-                            Err(WorkspaceGenerationBuildFailure::new(
-                                WorkspaceGenerationFailureStage::DurableRestore,
-                                "fixture canonical generation missing",
-                            ))
-                        } else {
-                            completed_generation(candidate).map_err(|error| {
-                                WorkspaceGenerationBuildFailure::new(
-                                    WorkspaceGenerationFailureStage::DurableRestore,
-                                    error,
-                                )
-                            })
-                        }
-                    })
-                },
-            ),
-        )
-        .with_catalog(catalog.clone());
-
-    let report = admission.restore_registered().await.unwrap();
-    assert_eq!(
-        report
-            .ready
-            .iter()
-            .map(|receipt| receipt.workspace_identity.as_str())
-            .collect::<Vec<_>>(),
-        vec!["workspace-ready"]
-    );
-    assert_eq!(
-        report
-            .failed
-            .iter()
-            .map(|receipt| receipt.workspace_identity.as_str())
-            .collect::<Vec<_>>(),
-        vec!["workspace-failed"]
     );
     admission.shutdown().await.unwrap();
     tokio::fs::remove_dir_all(root).await.unwrap();

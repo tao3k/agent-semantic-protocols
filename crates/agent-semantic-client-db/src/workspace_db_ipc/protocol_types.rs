@@ -6,9 +6,9 @@ use agent_semantic_client_core::LanguageId;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ClientDbSourceIndexLookupResult, ProviderIncrementalOwnerSnapshot,
-    ProviderIncrementalOwnerWrite, ProviderIncrementalScoped, ProviderIncrementalWriteReceipt,
-    ProviderOwnerBatchProbeReceipt, ProviderOwnerBatchProbeRequest, ProviderOwnerInventoryWrite,
+    ProviderIncrementalOwnerSnapshot, ProviderIncrementalOwnerWrite, ProviderIncrementalScoped,
+    ProviderIncrementalWriteReceipt, ProviderOwnerBatchProbeReceipt,
+    ProviderOwnerBatchProbeRequest, ProviderOwnerInventoryWrite,
     ProviderOwnerInventoryWriteReceipt, ProviderOwnerProbe, ProviderTreeSitterContinuation,
     ProviderTreeSitterOwnerResult, ProviderTreeSitterOwnerWriteReceipt,
     ProviderTreeSitterQueryIdentity, ProviderTreeSitterQueryRead, TursoResidentSelectorQuery,
@@ -20,15 +20,76 @@ use crate::workspace_db_ipc::{
     RuntimeGraphFactsRead, deserialize_changed_paths, deserialize_mutation_id,
 };
 
+/// Request-time work counters proving that a resident read performed no cold I/O.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RuntimeResidentReadWorkCounters {
+pub struct WorkspaceIpcResidentReadWorkCounters {
     pub database_opens: u64,
     pub filesystem_reads: u64,
     pub provider_spawns: u64,
     pub control_socket_roundtrips: u64,
 }
 
+/// Terminal classification for a Runtime-resident read without string dispatch.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RuntimeResidentReadState {
+    SourceIndex,
+    Projection,
+    ProjectionMissing,
+    ProjectionScopeOmitted,
+    Owner,
+    SparseOwner,
+    OwnerMissing,
+    GenerationMissing,
+    Other,
+}
+
+impl RuntimeResidentReadState {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::SourceIndex => "source-index",
+            Self::Projection => "projection",
+            Self::ProjectionMissing => "projection-missing",
+            Self::ProjectionScopeOmitted => "projection-scope-omitted",
+            Self::Owner => "owner",
+            Self::SparseOwner => "sparse-owner",
+            Self::OwnerMissing => "owner-missing",
+            Self::GenerationMissing => "generation-missing",
+            Self::Other => "other",
+        }
+    }
+
+    pub(crate) const fn telemetry_surface(self) -> &'static str {
+        match self {
+            Self::SourceIndex => "runtime-resident-source-index",
+            Self::Owner | Self::SparseOwner | Self::OwnerMissing | Self::GenerationMissing => {
+                "runtime-resident-merkle-owner"
+            }
+            Self::Projection
+            | Self::ProjectionMissing
+            | Self::ProjectionScopeOmitted
+            | Self::Other => "runtime-resident-exact-projection",
+        }
+    }
+}
+
+/// Completion state committed by the resident-read telemetry side lane.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RuntimeResidentReadTerminalState {
+    Success,
+}
+
+impl RuntimeResidentReadTerminalState {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Success => "success",
+        }
+    }
+}
+
+/// Generation-bound latency and zero-cold-work evidence for one resident read.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeResidentReadEvidence {
@@ -38,26 +99,38 @@ pub struct RuntimeResidentReadEvidence {
     pub workspace_identity: String,
     pub generation_digest: String,
     pub root_digest: String,
-    pub read_state: String,
+    pub read_state: RuntimeResidentReadState,
     pub elapsed_micros: u64,
-    pub work_counters: RuntimeResidentReadWorkCounters,
-    pub terminal_state: String,
+    pub work_counters: WorkspaceIpcResidentReadWorkCounters,
+    pub terminal_state: RuntimeResidentReadTerminalState,
     pub telemetry_digest: String,
 }
 
-pub fn resident_read_terminal_digest(
-    operation_id: &str,
-    surface: &str,
-    workspace_identity: &str,
-    generation_digest: &str,
-    root_digest: &str,
-    read_state: &str,
-    elapsed_micros: u64,
-    terminal_state: &str,
+pub(crate) struct RuntimeResidentReadTerminalDigestInput<'a> {
+    pub operation_id: &'a str,
+    pub surface: &'a str,
+    pub workspace_identity: &'a str,
+    pub generation_digest: &'a str,
+    pub root_digest: &'a str,
+    pub read_state: RuntimeResidentReadState,
+    pub elapsed_micros: u64,
+    pub terminal_state: RuntimeResidentReadTerminalState,
+}
+
+pub(crate) fn resident_read_terminal_digest(
+    input: &RuntimeResidentReadTerminalDigestInput<'_>,
 ) -> String {
     use sha2::Digest;
     let canonical = format!(
-        "{operation_id}|{surface}|{workspace_identity}|{generation_digest}|{root_digest}|{read_state}|{elapsed_micros}|{terminal_state}"
+        "{}|{}|{}|{}|{}|{}|{}|{}",
+        input.operation_id,
+        input.surface,
+        input.workspace_identity,
+        input.generation_digest,
+        input.root_digest,
+        input.read_state.as_str(),
+        input.elapsed_micros,
+        input.terminal_state.as_str(),
     );
     format!("sha256:{:x}", sha2::Sha256::digest(canonical.as_bytes()))
 }
@@ -76,12 +149,14 @@ impl RuntimeResidentReadEvidence {
     }
 }
 
+/// A typed resident value paired with its execution evidence.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeResidentReadResult<T> {
     pub value: T,
     pub evidence: RuntimeResidentReadEvidence,
 }
 
+/// Runtime-owned cache/index control intent; it never authorizes a client fallback.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(
     tag = "action",
@@ -141,6 +216,7 @@ impl RuntimeCacheControlRequest {
     }
 }
 
+/// Bounded authority scope affected by Runtime invalidation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RuntimeCacheInvalidationScope {
@@ -149,6 +225,7 @@ pub enum RuntimeCacheInvalidationScope {
     SyntaxRows,
 }
 
+/// Fail-closed policy used when an owner delta cannot be admitted incrementally.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RuntimeCacheOwnerDeltaFallbackPolicy {
@@ -156,6 +233,7 @@ pub enum RuntimeCacheOwnerDeltaFallbackPolicy {
     FullGeneration,
 }
 
+/// Publication state of the Runtime-owned generation cache.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RuntimeCacheGenerationState {
@@ -166,6 +244,7 @@ pub enum RuntimeCacheGenerationState {
     Invalidated,
 }
 
+/// Receipt returned by the single Runtime cache-control authority.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeCacheControlReceipt {
@@ -180,9 +259,11 @@ pub struct RuntimeCacheControlReceipt {
     pub failure: Option<String>,
 }
 
+/// Schema identity for a typed resident Merkle-owner read.
 pub const RUNTIME_MERKLE_OWNER_READ_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-merkle-owner-read-request";
 
+/// Normalized owner path request evaluated against a resident Merkle generation.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeMerkleOwnerReadRequest {
@@ -288,11 +369,6 @@ pub enum WorkspaceDbIpcOperation {
         project_root: String,
         language_id: LanguageId,
     },
-    ProjectTreeSitterQuery {
-        project_root: String,
-        language_id: LanguageId,
-        args: Vec<String>,
-    },
     ReadRuntimeSearchGenerationAuthority {
         project_root: String,
     },
@@ -312,8 +388,8 @@ pub enum WorkspaceDbIpcOperation {
     },
     AdmitRuntimeGenerationForRead {
         project_root: String,
-        language_id: String,
-        provider_id: String,
+        language_id: agent_semantic_client_core::LanguageId,
+        provider_id: agent_semantic_client_core::ProviderId,
     },
     AdmitRuntimeGeneration {
         #[serde(deserialize_with = "deserialize_mutation_id")]
@@ -342,11 +418,11 @@ pub enum WorkspaceDbIpcOperation {
         operation: AgentSessionRegistryIpcOperation,
     },
     RefreshCodexMultiAgentControlPlane {
-        project_id: String,
-        root_session_id: String,
+        project_id: crate::agent_session_registry::AgentSessionProjectId,
+        root_session_id: crate::agent_session_registry::AgentSessionRootSessionId,
     },
     ReadCodexMultiAgentControlPlane {
-        root_session_id: String,
+        root_session_id: crate::agent_session_registry::AgentSessionRootSessionId,
     },
     WriteProviderIncrementalOwner {
         request: ProviderIncrementalOwnerWrite,
@@ -397,17 +473,81 @@ pub enum WorkspaceDbIpcOperation {
     },
 }
 
+macro_rules! workspace_ipc_identifier {
+    ($(#[$meta:meta])* $name:ident) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+        #[serde(transparent)]
+        pub struct $name(String);
+
+        impl $name {
+            #[must_use]
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+
+            #[must_use]
+            pub fn into_string(self) -> String {
+                self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(value: &str) -> Self {
+                Self(value.to_owned())
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str(self.as_str())
+            }
+        }
+
+        impl PartialEq<&str> for $name {
+            fn eq(&self, other: &&str) -> bool {
+                self.as_str() == *other
+            }
+        }
+
+        impl PartialEq<String> for $name {
+            fn eq(&self, other: &String) -> bool {
+                self.as_str() == other
+            }
+        }
+    };
+}
+
+workspace_ipc_identifier!(
+    /// Schema identity carried by a workspace IPC envelope.
+    WorkspaceDbIpcSchemaId
+);
+workspace_ipc_identifier!(
+    /// Capability token binding a request to one published Runtime owner epoch.
+    WorkspaceDbIpcBindingToken
+);
+workspace_ipc_identifier!(
+    /// Correlation identity shared by one workspace IPC request and response.
+    WorkspaceDbIpcRequestId
+);
+
 /// Versioned request envelope; it cannot carry SQL, paths, or Turso handles.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceDbIpcRequest {
-    pub schema_id: String,
+    pub schema_id: WorkspaceDbIpcSchemaId,
     pub schema_version: String,
     pub workspace_identity: String,
     pub transport_contract_digest: String,
     pub owner_epoch: u64,
-    pub binding_token: String,
-    pub request_id: String,
+    pub binding_token: WorkspaceDbIpcBindingToken,
+    pub request_id: WorkspaceDbIpcRequestId,
     pub operation: WorkspaceDbIpcOperation,
 }
 
@@ -425,7 +565,7 @@ pub enum WorkspaceDbIpcResult {
         receipt: RuntimeCacheControlReceipt,
     },
     SourceIndex {
-        lookup: ClientDbSourceIndexLookupResult,
+        lookup: agent_semantic_search_projection::ResidentSearchReadyResult,
         evidence: RuntimeResidentReadEvidence,
     },
     RuntimeGraphFacts {
@@ -507,13 +647,10 @@ pub enum WorkspaceDbIpcResult {
         owner: crate::runtime_server_workspace::WorkspaceOwnerSnapshot,
     },
     ProviderRuntime {
-        runtime: serde_json::Value,
+        runtime: agent_semantic_provider_transport::AspClientServerLifecycleReceipt,
     },
     ProviderSearch {
-        receipt: crate::runtime_search_service::RuntimeProviderSearchReceipt,
-    },
-    TreeSitterQuery {
-        rendered: Option<String>,
+        receipt: agent_semantic_search_projection::RuntimeProviderSearchReceipt,
     },
     RuntimeSearchGenerationAuthority {
         authority: Option<crate::runtime_server_workspace::WorkspaceSearchGenerationAuthority>,
@@ -527,6 +664,7 @@ pub enum WorkspaceDbIpcResult {
     },
 }
 
+/// Typed lookup admitted against the already-published resident source index.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceDbSourceIndexLookupRequest {
@@ -541,19 +679,23 @@ pub struct WorkspaceDbSourceIndexLookupRequest {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceDbIpcResponse {
-    pub schema_id: String,
+    pub schema_id: WorkspaceDbIpcSchemaId,
     pub schema_version: String,
     pub workspace_identity: String,
     pub transport_contract_digest: String,
     pub owner_epoch: u64,
-    pub request_id: String,
+    pub request_id: WorkspaceDbIpcRequestId,
     pub result: WorkspaceDbIpcResult,
 }
 
+/// Schema identity for the Runtime Server workspace endpoint publication.
 pub const WORKSPACE_DB_OWNER_ENDPOINT_SCHEMA_ID: &str =
     "agent.semantic-protocols.workspace-db-owner-endpoint.v1";
+/// Schema identity for typed workspace data-plane requests.
 pub const WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.workspace-db-owner-request.v1";
+/// Schema identity for typed workspace data-plane responses.
 pub const WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID: &str =
     "agent.semantic-protocols.workspace-db-owner-response.v1";
+/// Schema version carried inside each workspace IPC envelope.
 pub const WORKSPACE_DB_OWNER_SCHEMA_VERSION: &str = "1";

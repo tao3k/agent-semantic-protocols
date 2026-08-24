@@ -360,16 +360,12 @@ pub async fn read_runtime_server_agent_sessions(
     Ok(reader.read()?.agent_sessions.clone())
 }
 
-pub fn resolve_runtime_server_agent_session_status(
-    sessions: &[super::RuntimeServerAgentSessionStatus],
+fn validate_observed_session<'a>(
+    sessions: &'a [super::RuntimeServerAgentSessionStatus],
     workspace_id: &str,
     observed_session_id: Option<&str>,
     observed_root_session_id: Option<&str>,
-    name: &str,
-) -> Result<super::AgentSessionControlPlaneState, String> {
-    if name.trim().is_empty() {
-        return Err("session control-plane route requires a non-empty registered name".to_owned());
-    }
+) -> Result<Option<&'a super::RuntimeServerAgentSessionStatus>, String> {
     let observed = observed_session_id
         .and_then(|session_id| sessions.iter().find(|entry| entry.session_id == session_id));
     if let Some(record) = observed
@@ -388,21 +384,28 @@ pub fn resolve_runtime_server_agent_session_status(
             record.session_id, record.root_session_id,
         ));
     }
-    let root_session_id = observed
-        .map(|record| record.root_session_id.clone())
-        .or_else(|| observed_root_session_id.map(str::to_owned));
-    let Some(root_session_id) = root_session_id else {
-        return Ok(super::AgentSessionControlPlaneState {
-            project_id: None,
-            root_session_id: None,
-            name: name.to_owned(),
-            state: "blocked".to_owned(),
-            generation: 0,
-            reason_kind: Some("root-session-identity-required".to_owned()),
-            host_binding: None,
-        });
-    };
-    let project_id = observed
+    Ok(observed)
+}
+
+fn missing_root_session_state(name: &str) -> super::AgentSessionControlPlaneState {
+    super::AgentSessionControlPlaneState {
+        project_id: None,
+        root_session_id: None,
+        name: name.to_owned(),
+        state: "blocked".to_owned(),
+        generation: 0,
+        reason_kind: Some("root-session-identity-required".to_owned()),
+        host_binding: None,
+    }
+}
+
+fn resolve_session_project_id(
+    sessions: &[super::RuntimeServerAgentSessionStatus],
+    observed: Option<&super::RuntimeServerAgentSessionStatus>,
+    workspace_id: &str,
+    root_session_id: &str,
+) -> String {
+    observed
         .map(|record| record.project_id.clone())
         .or_else(|| {
             sessions
@@ -413,15 +416,30 @@ pub fn resolve_runtime_server_agent_session_status(
                 })
                 .map(|entry| entry.project_id.clone())
         })
-        .unwrap_or_else(|| workspace_id.to_owned());
-    let record = sessions.iter().find(|entry| {
+        .unwrap_or_else(|| workspace_id.to_owned())
+}
+
+fn find_named_session<'a>(
+    sessions: &'a [super::RuntimeServerAgentSessionStatus],
+    workspace_id: &str,
+    project_id: &str,
+    root_session_id: &str,
+    name: &str,
+) -> Option<&'a super::RuntimeServerAgentSessionStatus> {
+    sessions.iter().find(|entry| {
         entry.workspace_identity == workspace_id
             && entry.project_id == project_id
             && entry.root_session_id == root_session_id
             && entry.name == name
-    });
-    let host_binding = record.and_then(|entry| entry.host_binding.clone());
-    let live_exact_binding = record.is_some_and(|entry| {
+    })
+}
+
+fn has_live_exact_binding(
+    record: Option<&super::RuntimeServerAgentSessionStatus>,
+    root_session_id: &str,
+    name: &str,
+) -> bool {
+    record.is_some_and(|entry| {
         matches!(
             entry.lifecycle_state,
             super::RuntimeServerAgentSessionLifecycleState::Routable
@@ -433,7 +451,7 @@ pub fn resolve_runtime_server_agent_session_status(
                 && binding
                     .get("rootSessionId")
                     .and_then(serde_json::Value::as_str)
-                    == Some(root_session_id.as_str())
+                    == Some(root_session_id)
                 && binding
                     .get("hostChildId")
                     .and_then(serde_json::Value::as_str)
@@ -452,37 +470,71 @@ pub fn resolve_runtime_server_agent_session_status(
                     == Some("live")
                 && binding.get("routable").and_then(serde_json::Value::as_bool) == Some(true)
         })
+    })
+}
+
+fn resolved_session_state(
+    record: Option<&super::RuntimeServerAgentSessionStatus>,
+    live_exact_binding: bool,
+) -> String {
+    match record.map(|entry| &entry.lifecycle_state) {
+        Some(super::RuntimeServerAgentSessionLifecycleState::Routable) if live_exact_binding => {
+            "registered".to_owned()
+        }
+        Some(super::RuntimeServerAgentSessionLifecycleState::Routable)
+        | Some(super::RuntimeServerAgentSessionLifecycleState::Stopped) => "resumable".to_owned(),
+        Some(super::RuntimeServerAgentSessionLifecycleState::Achieved) => "achieved".to_owned(),
+        Some(super::RuntimeServerAgentSessionLifecycleState::Invalid) => "blocked".to_owned(),
+        None => "registration-required".to_owned(),
+    }
+}
+
+fn session_resume_reason(
+    record: Option<&super::RuntimeServerAgentSessionStatus>,
+    live_exact_binding: bool,
+) -> Option<String> {
+    let is_routable = record.is_some_and(|entry| {
+        matches!(
+            entry.lifecycle_state,
+            super::RuntimeServerAgentSessionLifecycleState::Routable
+        )
     });
+    (is_routable && !live_exact_binding).then(|| "registered-namespace-needs-resume".to_owned())
+}
+
+pub fn resolve_runtime_server_agent_session_status(
+    sessions: &[super::RuntimeServerAgentSessionStatus],
+    workspace_id: &str,
+    observed_session_id: Option<&str>,
+    observed_root_session_id: Option<&str>,
+    name: &str,
+) -> Result<super::AgentSessionControlPlaneState, String> {
+    if name.trim().is_empty() {
+        return Err("session control-plane route requires a non-empty registered name".to_owned());
+    }
+    let observed = validate_observed_session(
+        sessions,
+        workspace_id,
+        observed_session_id,
+        observed_root_session_id,
+    )?;
+    let root_session_id = observed
+        .map(|record| record.root_session_id.clone())
+        .or_else(|| observed_root_session_id.map(str::to_owned));
+    let Some(root_session_id) = root_session_id else {
+        return Ok(missing_root_session_state(name));
+    };
+    let project_id = resolve_session_project_id(sessions, observed, workspace_id, &root_session_id);
+    let record = find_named_session(sessions, workspace_id, &project_id, &root_session_id, name);
+    let host_binding = record.and_then(|entry| entry.host_binding.clone());
+    let live_exact_binding = has_live_exact_binding(record, &root_session_id, name);
     Ok(super::AgentSessionControlPlaneState {
         project_id: Some(project_id),
         root_session_id: Some(root_session_id),
         name: name.to_owned(),
-        state: match record.map(|entry| &entry.lifecycle_state) {
-            Some(super::RuntimeServerAgentSessionLifecycleState::Routable)
-                if live_exact_binding =>
-            {
-                "registered".to_owned()
-            }
-            Some(super::RuntimeServerAgentSessionLifecycleState::Routable) => {
-                "resumable".to_owned()
-            }
-            Some(super::RuntimeServerAgentSessionLifecycleState::Stopped) => "resumable".to_owned(),
-            Some(super::RuntimeServerAgentSessionLifecycleState::Achieved) => "achieved".to_owned(),
-            Some(super::RuntimeServerAgentSessionLifecycleState::Invalid) => "blocked".to_owned(),
-            None => "registration-required".to_owned(),
-        },
+        state: resolved_session_state(record, live_exact_binding),
         generation: record.map(|entry| entry.physical_generation).unwrap_or(0),
-        reason_kind: if record.is_some_and(|entry| {
-            matches!(
-                entry.lifecycle_state,
-                super::RuntimeServerAgentSessionLifecycleState::Routable
-            )
-        }) && !live_exact_binding
-        {
-            Some("registered-namespace-needs-resume".to_owned())
-        } else {
-            None
-        },
+        reason_kind: session_resume_reason(record, live_exact_binding),
         host_binding,
     })
 }

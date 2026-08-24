@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -434,37 +434,9 @@ impl WorkspaceSearchGenerationDataPlaneClient {
         query: &str,
         language_id: Option<&agent_semantic_client_core::LanguageId>,
         limit: u32,
-    ) -> Result<crate::ClientDbSourceIndexLookupResult, String> {
-        let result = self.resident_source_index.query(
-            query,
-            language_id.map(|value| value.as_str()),
-            limit,
-        )?;
-        Ok(crate::ClientDbSourceIndexLookupResult {
-            db_path: PathBuf::new(),
-            state: if result.hits.is_empty() {
-                crate::ClientDbSourceIndexLookupState::Miss
-            } else {
-                crate::ClientDbSourceIndexLookupState::Hit
-            },
-            candidates: result
-                .hits
-                .into_iter()
-                .map(|candidate| crate::ClientDbSourceIndexCandidate {
-                    path: candidate.owner_path.into(),
-                    language_id: language_id.cloned(),
-                    provider_id: None,
-                    source_kind: crate::ClientDbSourceIndexSourceKind::File,
-                    line_count: Some(candidate.line_count),
-                    query_keys: candidate.query_keys.into_iter().map(Into::into).collect(),
-                    selector_symbol: None,
-                    selector_kind: None,
-                    selector_projection: None,
-                })
-                .collect(),
-            source_snapshot: Some(self.authority.source_snapshot.clone()),
-            index_artifact_digest: Some(result.index_artifact_digest),
-        })
+    ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
+        self.resident_source_index
+            .query(query, language_id.map(|value| value.as_str()), limit)
     }
 
     pub fn parser_owned_callable_selector_pairs(
@@ -635,7 +607,6 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             relations,
         )
     }
-
 }
 
 fn section(
@@ -655,16 +626,15 @@ fn section(
 fn encode_string_list(values: &[String]) -> Result<Vec<u8>, String> {
     let count = u32::try_from(values.len())
         .map_err(|_| "workspace search string-list count exceeds u32".to_owned())?;
-    values.iter().try_fold(
-        count.to_le_bytes().to_vec(),
-        |mut output, value| {
+    values
+        .iter()
+        .try_fold(count.to_le_bytes().to_vec(), |mut output, value| {
             let length = u32::try_from(value.len())
                 .map_err(|_| "workspace search string length exceeds u32".to_owned())?;
             output.extend_from_slice(&length.to_le_bytes());
             output.extend_from_slice(value.as_bytes());
             Ok(output)
-        },
-    )
+        })
 }
 
 fn decode_string_list(bytes: &[u8]) -> Result<Vec<String>, String> {

@@ -381,7 +381,10 @@ pub(super) fn publish_current_installed_provider_artifacts(
         runtime_receipt.installed_path = canonical_artifact;
         runtime_receipt.execution_command_digest =
             agent_semantic_hook::provider_execution_command_digest(
-                &[runtime_receipt.installed_path.to_string_lossy().into_owned()],
+                &[runtime_receipt
+                    .installed_path
+                    .to_string_lossy()
+                    .into_owned()],
                 &runtime_receipt.installed_entrypoint_digest,
             )?;
         receipts.push(runtime_receipt);

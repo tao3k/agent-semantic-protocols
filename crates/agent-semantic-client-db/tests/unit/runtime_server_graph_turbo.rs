@@ -136,10 +136,17 @@ async fn graph_turbo_lease_miss_rejects_before_python_builder() {
     );
 
     let error = session
-        .evaluate_graph_turbo(serde_json::json!({
-            "snapshotDigest": "stale-snapshot",
-            "workspaceGenerationRootDigest": "stale-generation"
-        }))
+        .evaluate_graph_turbo(
+            agent_semantic_search_projection::GraphTurboEvaluationRequest::from_value(
+                serde_json::json!({
+                    "schemaId": "agent.semantic-protocols.semantic-graph-turbo-request",
+                    "schemaVersion": "1",
+                    "snapshotDigest": "stale-snapshot",
+                    "workspaceGenerationRootDigest": "stale-generation"
+                }),
+            )
+            .expect("typed Graph Turbo request"),
+        )
         .await
         .expect_err("Graph Turbo request without an active generation must fail closed");
     assert!(

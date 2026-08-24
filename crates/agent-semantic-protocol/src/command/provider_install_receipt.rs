@@ -20,8 +20,10 @@ pub(super) fn provider_install_receipt_matches_artifact(
     let metadata_digest =
         agent_semantic_content_identity::file_artifact_metadata_digest_v1(installed_path)?;
     let content_digest = agent_semantic_content_identity::file_content_digest_v1(installed_path)?;
-    Ok(metadata_digest.as_str() == receipt.installed_entrypoint_metadata_digest
-        && content_digest.as_str() == receipt.installed_entrypoint_digest)
+    Ok(
+        metadata_digest.as_str() == receipt.installed_entrypoint_metadata_digest
+            && content_digest.as_str() == receipt.installed_entrypoint_digest,
+    )
 }
 
 pub(super) fn read_provider_install_receipt(

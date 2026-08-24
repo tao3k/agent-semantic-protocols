@@ -238,7 +238,9 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                     "search" => {
                         let started = tokio::time::Instant::now();
                         let params: AspClientSearchRequest = serde_json::from_value(params)
-                            .map_err(|error| format!("decode ASP client search request: {error}"))?;
+                            .map_err(|error| {
+                                format!("decode ASP client search request: {error}")
+                            })?;
                         params.validate_schema_identity()?;
                         if params.operation.is_empty() {
                             return Err("ASP client search operation must not be empty".to_owned());
@@ -246,10 +248,11 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                         let language =
                             agent_semantic_client_core::LanguageId::try_from(language_id.as_str())
                                 .map_err(|error| format!("decode language id: {error}"))?;
-                        let lookup =
-                            generation
-                                .resident()
-                                .read_source_index(&params.query, Some(&language), 100)?;
+                        let lookup = generation.resident().read_source_index(
+                            &params.query,
+                            Some(&language),
+                            100,
+                        )?;
                         let elapsed_micros = elapsed_micros(started);
                         record_runtime_route_performance(
                             &telemetry_sender,
@@ -262,8 +265,16 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                             &params.operation,
                             elapsed_micros,
                         )?;
-                        let receipt = agent_semantic_client_db::runtime_search_service::build_runtime_provider_search_receipt(
-                            request.request_id.as_str().to_owned(), language, lookup, elapsed_micros, Vec::new())?;
+                        let receipt = agent_semantic_search::build_runtime_provider_search_receipt(
+                            request.request_id.as_str().to_owned(),
+                            language,
+                            vec![agent_semantic_search::RuntimeSearchSource::once(
+                                "resident", lookup,
+                            )],
+                            elapsed_micros,
+                            Vec::new(),
+                        )
+                        .await?;
                         serde_json::to_value(receipt)
                             .map_err(|error| format!("encode search receipt: {error}"))
                     }
@@ -301,10 +312,9 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                         let projection_kind = agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::try_from(
                             params.projection.as_str(),
                         )?;
-                        let projection = generation.resident().read_runtime_selector(
-                            projection_kind,
-                            &params.selector,
-                        )?;
+                        let projection = generation
+                            .resident()
+                            .read_runtime_selector(projection_kind, &params.selector)?;
                         record_runtime_route_performance(
                             &telemetry_sender,
                             request.workspace_identity.as_str(),

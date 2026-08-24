@@ -60,7 +60,7 @@ fn builtin_materialization_rule_is_permanent_and_source_scoped() {
 }
 
 #[test]
-fn action_first_rule_denies_parser_projected_shell_path_reads() {
+fn opaque_registered_source_access_denies_without_inventing_read() {
     let config = ClientHookConfig::default();
     let registry = crate::classifier::rust_registry();
 
@@ -102,10 +102,10 @@ fn action_first_rule_denies_parser_projected_shell_path_reads() {
         assert!(
             host_action["semanticCapabilities"]
                 .as_array()
-                .is_some_and(|capabilities| capabilities.iter().any(|capability| {
-                    capability["action"] == "read" && capability["evidence"] == "shell-path-operand"
-                })),
-            "{command}: {host_action}"
+                .is_some_and(|capabilities| capabilities
+                    .iter()
+                    .all(|capability| { capability["action"] != "read" })),
+            "opaque path operands must not invent Read capability: {command}: {host_action}"
         );
         assert!(
             matches!(
@@ -187,7 +187,7 @@ fn action_first_rule_denies_parser_projected_shell_path_reads() {
         event: "pre-tool",
         payload: &json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "rtk read README.md"}
+            "tool_input": {"command": "rtk read Cargo.lock"}
         }),
     });
     assert_eq!(non_source.decision, DecisionKind::Allow);

@@ -7,12 +7,13 @@ use agent_semantic_loop::{
     RunCommitStore, StateHead,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 use crate::{
     storage_contract::{StorageError, StorageErrorCode},
     turso_mvcc_partition::{
-        TursoMvccExpectedHead, TursoMvccPartitionCommit, TursoMvccPartitionCommitOutcome,
-        TursoMvccPartitionHead, TursoMvccPartitionRecord,
+        TursoMvccExpectedHead, TursoMvccPartitionAlias, TursoMvccPartitionCommit,
+        TursoMvccPartitionCommitOutcome, TursoMvccPartitionHead, TursoMvccPartitionRecord,
     },
     turso_mvcc_store::TursoMvccStore,
 };
@@ -46,6 +47,17 @@ struct StateHeadDigestProjection<'a> {
     state_digest: &'a Digest,
     event_log_digest: &'a Digest,
     last_event_sequence: u64,
+}
+
+struct PreparedInitialization {
+    state: UncheckedContextProductStateV1,
+    authority_receipt: StateAuthorityReceipt,
+    initial_capabilities:
+        Vec<agent_semantic_loop::search_capability::UncheckedSearchLoopCapabilityV1>,
+    search_loop_runtime:
+        Option<agent_semantic_loop::search_runtime::UncheckedSearchLoopRuntimeBindingV1>,
+    commit: TursoMvccPartitionCommit,
+    aliases: Vec<TursoMvccPartitionAlias>,
 }
 
 impl TursoMvccContextRunStore {
@@ -138,106 +150,19 @@ impl TursoMvccContextRunStore {
         >,
         issued_at_ms: u64,
     ) -> Result<RunCommitReceipt, StorageError> {
-        state.validate().map_err(contract_error)?;
-        if state.revision != 0
-            || state.previous_state_digest.is_some()
-            || state.last_event_sequence != 0
-        {
-            return Err(invalid(
-                "initial context state must be revision and sequence zero",
-            ));
-        }
-        let authority_receipt = authority_receipt(&self.authority_id, &state, issued_at_ms)?;
-        for capability in &initial_capabilities {
-            validate_capability_binding(capability, &state)?;
-        }
-        if let Some(runtime) = &search_loop_runtime {
-            validate_runtime_binding(runtime, &state, &authority_receipt)?;
-        }
-        let mutations = initial_capabilities
-            .into_iter()
-            .map(|capability| {
-                agent_semantic_loop::search_capability::SearchLoopCapabilityMutation::Issue(
-                    Box::new(capability),
-                )
-            })
-            .collect::<Vec<_>>();
-        let mut initial_capabilities = Vec::new();
-        agent_semantic_loop::search_capability::apply_capability_mutations(
-            &mut initial_capabilities,
-            &mutations,
-        )
-        .map_err(|error| invalid(format!("invalid initial search-loop capability: {error}")))?;
-        let search_loop_runtime = search_loop_runtime
-            .map(agent_semantic_loop::search_runtime::SearchLoopRuntimeBindingV1::into_unchecked);
-        let projection = encode_projection(
-            &state,
-            &authority_receipt,
-            &initial_capabilities,
-            search_loop_runtime.as_ref(),
+        let prepared = prepare_initialization(
+            &self.authority_id,
+            state,
+            initial_capabilities,
+            search_loop_runtime,
+            issued_at_ms,
         )?;
-        let state_head = state_head(&state);
-        let commit = TursoMvccPartitionCommit {
-            partition_key: partition_key(&state.run_id),
-            expected: None,
-            next_revision: 0,
-            next_head_digest: head_guard_digest(&state_head)?.as_str().to_string(),
-            next_projection: projection,
-            records: Vec::new(),
-            committed_at_ms: safe_i64(issued_at_ms, "issuedAtMs")?,
-        };
-        let aliases = search_loop_runtime
-            .as_ref()
-            .map(|runtime| {
-                agent_semantic_loop::search_runtime::SearchLoopRuntimeBindingV1::validate(
-                    runtime.clone(),
-                )
-                .map_err(|error| invalid(format!("invalid search-loop runtime binding: {error}")))
-                .and_then(|runtime| {
-                    crate::turso_mvcc_partition::TursoMvccPartitionAlias::parse(
-                        "search-loop",
-                        runtime.loop_id().as_str(),
-                    )
-                    .map_err(invalid)
-                })
-            })
-            .transpose()?
-            .into_iter()
-            .collect::<Vec<_>>();
-        match self
+        let outcome = self
             .store
-            .compare_and_append_partition_with_aliases(&commit, &aliases)
+            .compare_and_append_partition_with_aliases(&prepared.commit, &prepared.aliases)
             .await
-            .map_err(backend)?
-        {
-            TursoMvccPartitionCommitOutcome::Committed(_) => {
-                Ok(RunCommitReceipt { authority_receipt })
-            }
-            TursoMvccPartitionCommitOutcome::Conflict(Some(observed)) => {
-                let observed_projection: ContextRunProjection =
-                    serde_json::from_slice(&observed.projection).map_err(|error| {
-                        backend(format!("failed to decode context run projection: {error}"))
-                    })?;
-                let observed = decode_head(&observed)?;
-                if observed.state == state
-                    && observed_projection.search_loop_capabilities == initial_capabilities
-                    && observed_projection.search_loop_runtime == search_loop_runtime
-                {
-                    Ok(RunCommitReceipt {
-                        authority_receipt: observed.authority_receipt,
-                    })
-                } else {
-                    Err(StorageError::new(
-                        StorageErrorCode::DuplicateIdentity,
-                        false,
-                        "context run is already initialized with a different state",
-                    ))
-                }
-            }
-            TursoMvccPartitionCommitOutcome::Conflict(None) => Err(invalid(
-                "MVCC initialization conflicted without an observed partition head",
-            )),
-        }
+            .map_err(backend)?;
+        resolve_initialization_outcome(prepared, outcome)
     }
 }
 
@@ -334,6 +259,163 @@ impl RunCommitStore for TursoMvccContextRunStore {
 #[path = "../tests/unit/context_run_mvcc.rs"]
 mod tests;
 
+fn prepare_initialization(
+    authority_id: &ProtocolId,
+    state: UncheckedContextProductStateV1,
+    capabilities: Vec<agent_semantic_loop::search_capability::SearchLoopCapabilityV1>,
+    runtime: Option<agent_semantic_loop::search_runtime::SearchLoopRuntimeBindingV1>,
+    issued_at_ms: u64,
+) -> Result<PreparedInitialization, StorageError> {
+    validate_initial_state(&state)?;
+    let authority_receipt = authority_receipt(authority_id, &state, issued_at_ms)?;
+    let initial_capabilities = materialize_initial_capabilities(capabilities, &state)?;
+    if let Some(runtime) = &runtime {
+        validate_runtime_binding(runtime, &state, &authority_receipt)?;
+    }
+    let search_loop_runtime = runtime
+        .map(agent_semantic_loop::search_runtime::SearchLoopRuntimeBindingV1::into_unchecked);
+    let commit = build_initial_commit(
+        &state,
+        &authority_receipt,
+        &initial_capabilities,
+        search_loop_runtime.as_ref(),
+        issued_at_ms,
+    )?;
+    let aliases = initial_runtime_aliases(search_loop_runtime.as_ref())?;
+    Ok(PreparedInitialization {
+        state,
+        authority_receipt,
+        initial_capabilities,
+        search_loop_runtime,
+        commit,
+        aliases,
+    })
+}
+
+fn validate_initial_state(state: &UncheckedContextProductStateV1) -> Result<(), StorageError> {
+    state.validate().map_err(contract_error)?;
+    if state.revision != 0
+        || state.previous_state_digest.is_some()
+        || state.last_event_sequence != 0
+    {
+        return Err(invalid(
+            "initial context state must be revision and sequence zero",
+        ));
+    }
+    Ok(())
+}
+
+fn materialize_initial_capabilities(
+    capabilities: Vec<agent_semantic_loop::search_capability::SearchLoopCapabilityV1>,
+    state: &UncheckedContextProductStateV1,
+) -> Result<
+    Vec<agent_semantic_loop::search_capability::UncheckedSearchLoopCapabilityV1>,
+    StorageError,
+> {
+    for capability in &capabilities {
+        validate_capability_binding(capability, state)?;
+    }
+    let mutations = capabilities
+        .into_iter()
+        .map(|capability| {
+            agent_semantic_loop::search_capability::SearchLoopCapabilityMutation::Issue(Box::new(
+                capability,
+            ))
+        })
+        .collect::<Vec<_>>();
+    let mut materialized = Vec::new();
+    agent_semantic_loop::search_capability::apply_capability_mutations(
+        &mut materialized,
+        &mutations,
+    )
+    .map_err(|error| invalid(format!("invalid initial search-loop capability: {error}")))?;
+    Ok(materialized)
+}
+
+fn build_initial_commit(
+    state: &UncheckedContextProductStateV1,
+    authority_receipt: &StateAuthorityReceipt,
+    initial_capabilities: &[agent_semantic_loop::search_capability::UncheckedSearchLoopCapabilityV1],
+    search_loop_runtime: Option<
+        &agent_semantic_loop::search_runtime::UncheckedSearchLoopRuntimeBindingV1,
+    >,
+    issued_at_ms: u64,
+) -> Result<TursoMvccPartitionCommit, StorageError> {
+    let projection = encode_projection(
+        state,
+        authority_receipt,
+        initial_capabilities,
+        search_loop_runtime,
+    )?;
+    Ok(TursoMvccPartitionCommit {
+        partition_key: partition_key(&state.run_id),
+        expected: None,
+        next_revision: 0,
+        next_head_digest: head_guard_digest(&state_head(state))?.as_str().to_string(),
+        next_projection: projection,
+        records: Vec::new(),
+        committed_at_ms: safe_i64(issued_at_ms, "issuedAtMs")?,
+    })
+}
+
+fn initial_runtime_aliases(
+    runtime: Option<&agent_semantic_loop::search_runtime::UncheckedSearchLoopRuntimeBindingV1>,
+) -> Result<Vec<TursoMvccPartitionAlias>, StorageError> {
+    runtime
+        .map(|runtime| {
+            agent_semantic_loop::search_runtime::SearchLoopRuntimeBindingV1::validate(
+                runtime.clone(),
+            )
+            .map_err(|error| invalid(format!("invalid search-loop runtime binding: {error}")))
+            .and_then(|runtime| {
+                TursoMvccPartitionAlias::parse("search-loop", runtime.loop_id().as_str())
+                    .map_err(invalid)
+            })
+        })
+        .transpose()
+        .map(|alias| alias.into_iter().collect())
+}
+
+fn resolve_initialization_outcome(
+    prepared: PreparedInitialization,
+    outcome: TursoMvccPartitionCommitOutcome,
+) -> Result<RunCommitReceipt, StorageError> {
+    match outcome {
+        TursoMvccPartitionCommitOutcome::Committed(_) => Ok(RunCommitReceipt {
+            authority_receipt: prepared.authority_receipt,
+        }),
+        TursoMvccPartitionCommitOutcome::Conflict(Some(observed)) => {
+            resolve_existing_initialization(prepared, observed)
+        }
+        TursoMvccPartitionCommitOutcome::Conflict(None) => Err(invalid(
+            "MVCC initialization conflicted without an observed partition head",
+        )),
+    }
+}
+
+fn resolve_existing_initialization(
+    prepared: PreparedInitialization,
+    observed: TursoMvccPartitionHead,
+) -> Result<RunCommitReceipt, StorageError> {
+    let observed_projection: ContextRunProjection = serde_json::from_slice(&observed.projection)
+        .map_err(|error| backend(format!("failed to decode context run projection: {error}")))?;
+    let observed = decode_head(&observed)?;
+    if observed.state == prepared.state
+        && observed_projection.search_loop_capabilities == prepared.initial_capabilities
+        && observed_projection.search_loop_runtime == prepared.search_loop_runtime
+    {
+        Ok(RunCommitReceipt {
+            authority_receipt: observed.authority_receipt,
+        })
+    } else {
+        Err(StorageError::new(
+            StorageErrorCode::DuplicateIdentity,
+            false,
+            "context run is already initialized with a different state",
+        ))
+    }
+}
+
 fn validate_run_commit(commit: &RunCommit) -> Result<(), StorageError> {
     let expected = commit.expected();
     let next = commit.next_state();
@@ -353,6 +435,7 @@ fn validate_run_commit(commit: &RunCommit) -> Result<(), StorageError> {
             "context run commit does not extend the expected state head",
         ));
     }
+    let mut event_ids = BTreeSet::new();
     for (offset, event) in commit.events().iter().enumerate() {
         let expected_sequence = expected.last_event_sequence + offset as u64 + 1;
         if event.run_id() != &expected.run_id || event.sequence() != expected_sequence {
@@ -360,10 +443,7 @@ fn validate_run_commit(commit: &RunCommit) -> Result<(), StorageError> {
                 "context run event identity or sequence is not contiguous",
             ));
         }
-        if commit.events()[..offset]
-            .iter()
-            .any(|prior| prior.event_id() == event.event_id())
-        {
+        if !event_ids.insert(event.event_id()) {
             return Err(invalid(
                 "context run commit contains duplicate event identity",
             ));

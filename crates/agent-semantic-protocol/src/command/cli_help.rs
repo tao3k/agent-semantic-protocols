@@ -388,12 +388,6 @@ pub(crate) fn selected_command(args: &[String]) -> Command {
     }
 }
 
-fn source_access_command() -> Command {
-    Command::new("source-access")
-        .bin_name("asp source-access")
-        .about("Inspect Hook-owned source egress decisions")
-}
-
 fn selected_command_default(args: &[String]) -> Command {
     let first = args.first().map(String::as_str);
     let second = args.get(1).map(String::as_str);
@@ -426,7 +420,6 @@ fn selected_command_default(args: &[String]) -> Command {
         (Some("graph"), _) => graph_command(),
         (Some("search"), _) => facade_leaf_command("search", "asp search"),
         (Some("query"), _) => facade_leaf_command("query", "asp query"),
-        (Some("source-access"), _) => source_access_command(),
         (Some(document), Some(command))
             if is_document_facade(document)
                 && DOCUMENT_COMMANDS

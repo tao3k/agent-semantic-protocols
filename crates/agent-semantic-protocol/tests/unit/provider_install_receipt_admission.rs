@@ -9,8 +9,8 @@ fn provider_receipt_requires_content_and_metadata_identity() {
     std::fs::create_dir_all(&root).expect("create receipt admission fixture");
     let artifact = root.join("asp-rust");
     std::fs::write(&artifact, b"asp-rust-provider").expect("write provider artifact");
-    let content = agent_semantic_content_identity::file_content_digest_v1(&artifact)
-        .expect("content digest");
+    let content =
+        agent_semantic_content_identity::file_content_digest_v1(&artifact).expect("content digest");
     let metadata = agent_semantic_content_identity::file_artifact_metadata_digest_v1(&artifact)
         .expect("metadata digest");
     let mut receipt = agent_semantic_runtime::ProviderInstallReceipt {

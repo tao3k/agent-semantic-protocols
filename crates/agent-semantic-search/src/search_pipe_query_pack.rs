@@ -396,7 +396,11 @@ fn append_unique_clauses(clauses: &mut Vec<String>, candidates: Vec<String>) {
         .iter()
         .cloned()
         .collect::<std::collections::BTreeSet<_>>();
-    clauses.extend(candidates.into_iter().filter(|clause| seen.insert(clause.clone())));
+    clauses.extend(
+        candidates
+            .into_iter()
+            .filter(|clause| seen.insert(clause.clone())),
+    );
 }
 
 #[must_use]
@@ -675,8 +679,7 @@ fn resolve_semantic_facts_intent(
         .collect::<Vec<_>>();
     for term in &terms {
         for (intent_axis, role_mask, term_index) in &indexed_axes {
-            if *role_mask != 0 && *role_mask & semantic_fact_role_bit(term.role) == 0
-            {
+            if *role_mask != 0 && *role_mask & semantic_fact_role_bit(term.role) == 0 {
                 continue;
             }
             if !term_index.contains(term.lower.as_str()) {

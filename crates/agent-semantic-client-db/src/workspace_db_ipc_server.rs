@@ -1,170 +1,21 @@
+//! Runtime Server workspace data-plane router.
+//!
+//! The parent owns framing, request admission, drain, and terminal response.
+//! Child modules own disjoint operation families: exact projection, generation,
+//! resident owner/read, graph evaluation, cache control, agent sessions, and
+//! Codex control-plane projection. Children return typed results and cannot
+//! create listeners, Runtime generations, or alternative lifecycle owners.
+
 use std::path::Path;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use tokio::io::BufStream;
-use tokio::net::{UnixListener, UnixStream};
+use tokio::net::UnixStream;
 
 use crate::workspace_db_ipc::{
-    WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID, WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID,
-    WORKSPACE_DB_OWNER_SCHEMA_VERSION, WorkspaceDbIpcOperation, WorkspaceDbIpcRequest,
-    WorkspaceDbIpcResponse, WorkspaceDbIpcResult, WorkspaceDbOwnerEndpoint,
+    WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID, WORKSPACE_DB_OWNER_SCHEMA_VERSION,
+    WorkspaceDbIpcOperation, WorkspaceDbIpcRequest, WorkspaceDbIpcResult,
 };
 use crate::{ProviderSearchWorkspaceSession, WorkspaceDbRegistry};
-
-/// Serve one real workspace-session operation through the unique owner registry.
-pub async fn serve_one_workspace_db_session_request(
-    listener: &UnixListener,
-    endpoint: &WorkspaceDbOwnerEndpoint,
-    registry: &WorkspaceDbRegistry,
-) -> Result<(), String> {
-    let (mut stream, _) = listener
-        .accept()
-        .await
-        .map_err(|error| format!("failed to accept workspace owner session request: {error}"))?;
-    serve_workspace_db_session_stream(&mut stream, endpoint, registry)
-        .await
-        .map(|_| ())
-}
-
-async fn serve_workspace_db_session_stream(
-    stream: &mut UnixStream,
-    endpoint: &WorkspaceDbOwnerEndpoint,
-    registry: &WorkspaceDbRegistry,
-) -> Result<bool, String> {
-    while let Some(request) = read_optional_frame::<WorkspaceDbIpcRequest>(&mut *stream).await? {
-        let shutdown_requested = matches!(request.operation, WorkspaceDbIpcOperation::Shutdown);
-        let result = if request.schema_id != WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID {
-            WorkspaceDbIpcResult::Failed {
-                code: "workspace-owner-request-schema-id-mismatch".to_owned(),
-                message: format!(
-                    "request schema_id must be {:?}, got {:?}",
-                    WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID, request.schema_id
-                ),
-            }
-        } else if request.schema_version != WORKSPACE_DB_OWNER_SCHEMA_VERSION {
-            WorkspaceDbIpcResult::Failed {
-                code: "workspace-owner-request-schema-version-mismatch".to_owned(),
-                message: format!(
-                    "request schema_version must be {:?}, got {:?}",
-                    WORKSPACE_DB_OWNER_SCHEMA_VERSION, request.schema_version
-                ),
-            }
-        } else if request.workspace_identity != endpoint.workspace_identity
-            || request.transport_contract_digest != endpoint.transport_contract_digest
-            || request.owner_epoch != endpoint.owner_epoch
-            || request.binding_token != endpoint.binding_token
-        {
-            WorkspaceDbIpcResult::Failed {
-                code: "workspace-owner-binding-mismatch".to_owned(),
-                message:
-                    "request workspace, transport contract, epoch, or token does not match owner"
-                        .to_owned(),
-            }
-        } else if shutdown_requested {
-            WorkspaceDbIpcResult::ShutdownAccepted
-        } else {
-            dispatch::dispatch_workspace_db_session_operation(
-                registry,
-                &request.workspace_identity,
-                request.operation,
-            )
-            .await
-        };
-        let shutdown_accepted =
-            shutdown_requested && matches!(&result, WorkspaceDbIpcResult::ShutdownAccepted);
-        write_frame(
-            &mut *stream,
-            &WorkspaceDbIpcResponse {
-                schema_id: WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID.to_owned(),
-                schema_version: WORKSPACE_DB_OWNER_SCHEMA_VERSION.to_owned(),
-                workspace_identity: endpoint.workspace_identity.clone(),
-                transport_contract_digest: endpoint.transport_contract_digest.clone(),
-                owner_epoch: endpoint.owner_epoch,
-                request_id: request.request_id,
-                result,
-            },
-        )
-        .await?;
-        if shutdown_accepted {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-pub async fn serve_workspace_db_session_until_shutdown(
-    listener: &UnixListener,
-    endpoint: &WorkspaceDbOwnerEndpoint,
-    registry: Arc<WorkspaceDbRegistry>,
-    last_activity_epoch_seconds: Arc<AtomicU64>,
-    mut shutdown: tokio::sync::watch::Receiver<bool>,
-) -> Result<(), String> {
-    let mut sessions = tokio::task::JoinSet::new();
-    let connection_supervisor =
-        crate::runtime_server_runtime::RuntimeServerConnectionSupervisor::for_current_runtime(
-            "workspace-db-ipc",
-        );
-    loop {
-        if *shutdown.borrow() {
-            sessions.abort_all();
-            return Ok(());
-        }
-        tokio::select! {
-            changed = shutdown.changed() => {
-                match changed {
-                    Ok(()) if *shutdown.borrow() => {
-                        sessions.abort_all();
-                        return Ok(());
-                    }
-                    Ok(()) => {}
-                    Err(_) => {
-                        sessions.abort_all();
-                        return Ok(());
-                    }
-                }
-            }
-            accepted = listener.accept(), if connection_supervisor.has_capacity() => {
-                let (mut stream, _) = accepted
-                    .map_err(|error| format!("failed to accept workspace owner session request: {error}"))?;
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map(|duration| duration.as_secs())
-                    .unwrap_or(0);
-                last_activity_epoch_seconds.store(now, Ordering::Relaxed);
-                let endpoint = endpoint.clone();
-                let registry = Arc::clone(&registry);
-                let connection_lease = connection_supervisor
-                    .try_admit()
-                    .expect("capacity guard must admit one workspace IPC connection");
-                sessions.spawn(async move {
-                    let result = serve_workspace_db_session_stream(&mut stream, &endpoint, &registry).await;
-                    (connection_lease, result)
-                });
-            }
-            completed = sessions.join_next(), if !sessions.is_empty() => {
-                match completed {
-                    Some(Ok((_connection_lease, Ok(true)))) => {
-                        sessions.abort_all();
-                        return Ok(());
-                    }
-                    Some(Ok((_connection_lease, Ok(false)))) => {}
-                    Some(Ok((_connection_lease, Err(client_error)))) => {
-                        eprintln!(
-                            "[runtime-server-workspace-client] status=failed workspaceIdentity={} error={client_error}",
-                            endpoint.workspace_identity
-                        );
-                    }
-                    Some(Err(error)) => {
-                        return Err(format!("workspace owner session task failed: {error}"));
-                    }
-                    None => {}
-                }
-            }
-        }
-    }
-}
 
 pub(crate) async fn admitted_or_bootstrap_workspace(
     registry: &WorkspaceDbRegistry,
@@ -227,38 +78,37 @@ mod graph_turbo;
 mod cache_control;
 #[path = "workspace_db_ipc_server_codex_control_plane.rs"]
 mod codex_control_plane;
-/// Serve workspace-scoped data-plane requests through the single Runtime Server.
-///
-/// Unlike the removed per-workspace owner transport, the endpoint authenticates
-/// the daemon while each request carries the workspace identity used to select
-/// the server-resident registry entry.
-pub async fn serve_runtime_server_workspace_stream(
-    stream: UnixStream,
-    endpoint: &crate::runtime_server_control::RuntimeServerEndpoint,
-    registry: &WorkspaceDbRegistry,
-    memory_registry: &std::sync::Arc<
-        crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
-    >,
-    generation_admission: Option<
-        &std::sync::Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>,
-    >,
-    graph_turbo_evaluation_builder: Option<&crate::runtime_server::GraphTurboEvaluationBuilder>,
-    runtime_search_service: Option<&crate::runtime_search_service::RuntimeSearchServiceHandle>,
-    agent_session_registry_owner: Option<&std::sync::Arc<crate::AgentSessionRegistry>>,
-    session_control_plane_runtime_registry: &std::sync::Arc<
-        crate::SessionControlPlaneRuntimeRegistry,
-    >,
-    agent_session_status: Option<
-        &crate::runtime_server_agent_session_status::AgentSessionStatusHandle,
-    >,
-    codex_multi_agent_control_plane_owner: &std::sync::Arc<
+pub(crate) struct RuntimeServerWorkspaceStreamContext<'a> {
+    pub(crate) endpoint: &'a crate::runtime_server_control::RuntimeServerEndpoint,
+    pub(crate) registry: &'a WorkspaceDbRegistry,
+    pub(crate) memory_registry:
+        &'a std::sync::Arc<crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry>,
+    pub(crate) generation_admission:
+        Option<&'a std::sync::Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>>,
+    pub(crate) graph_turbo_evaluation_builder:
+        Option<&'a crate::runtime_server::GraphTurboEvaluationBuilder>,
+    pub(crate) runtime_search_service:
+        Option<&'a crate::runtime_search_service::RuntimeSearchServiceHandle>,
+    pub(crate) agent_session_registry_owner:
+        Option<&'a std::sync::Arc<crate::AgentSessionRegistry>>,
+    pub(crate) session_control_plane_runtime_registry:
+        &'a std::sync::Arc<crate::SessionControlPlaneRuntimeRegistry>,
+    pub(crate) agent_session_status:
+        Option<&'a crate::runtime_server_agent_session_status::AgentSessionStatusHandle>,
+    pub(crate) codex_multi_agent_control_plane_owner: &'a std::sync::Arc<
         crate::codex_multi_agent_control_plane_owner::CodexMultiAgentControlPlaneOwner,
     >,
-    telemetry_sender: Option<&crate::runtime_telemetry_bus::RuntimeTelemetryBusSender>,
-    drain: tokio::sync::watch::Receiver<bool>,
+    pub(crate) telemetry_sender:
+        Option<&'a crate::runtime_telemetry_bus::RuntimeTelemetryBusSender>,
+    pub(crate) drain: tokio::sync::watch::Receiver<bool>,
+}
+
+/// Serve one workspace-scoped data-plane stream through the single Runtime Server.
+pub(crate) async fn serve_runtime_server_workspace_stream(
+    stream: UnixStream,
+    context: RuntimeServerWorkspaceStreamContext<'_>,
 ) -> Result<(), String> {
-    serve_runtime_server_workspace_stream_inner(
-        stream,
+    let RuntimeServerWorkspaceStreamContext {
         endpoint,
         registry,
         memory_registry,
@@ -270,36 +120,8 @@ pub async fn serve_runtime_server_workspace_stream(
         agent_session_status,
         codex_multi_agent_control_plane_owner,
         telemetry_sender,
-        drain,
-    )
-    .await
-}
-
-async fn serve_runtime_server_workspace_stream_inner(
-    stream: UnixStream,
-    endpoint: &crate::runtime_server_control::RuntimeServerEndpoint,
-    registry: &WorkspaceDbRegistry,
-    memory_registry: &std::sync::Arc<
-        crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
-    >,
-    generation_admission: Option<
-        &std::sync::Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>,
-    >,
-    graph_turbo_evaluation_builder: Option<&crate::runtime_server::GraphTurboEvaluationBuilder>,
-    runtime_search_service: Option<&crate::runtime_search_service::RuntimeSearchServiceHandle>,
-    agent_session_registry_owner: Option<&std::sync::Arc<crate::AgentSessionRegistry>>,
-    session_control_plane_runtime_registry: &std::sync::Arc<
-        crate::SessionControlPlaneRuntimeRegistry,
-    >,
-    agent_session_status: Option<
-        &crate::runtime_server_agent_session_status::AgentSessionStatusHandle,
-    >,
-    codex_multi_agent_control_plane_owner: &std::sync::Arc<
-        crate::codex_multi_agent_control_plane_owner::CodexMultiAgentControlPlaneOwner,
-    >,
-    telemetry_sender: Option<&crate::runtime_telemetry_bus::RuntimeTelemetryBusSender>,
-    mut drain: tokio::sync::watch::Receiver<bool>,
-) -> Result<(), String> {
+        mut drain,
+    } = context;
     let mut stream = BufStream::new(stream);
     loop {
         let request = tokio::select! {
@@ -411,7 +233,7 @@ async fn serve_runtime_server_workspace_stream_inner(
                             let (generation_digest, root_digest, read_state) =
                                 resident_read::selector_identity(&read);
                             let evidence = resident_read::evidence(
-                                request.request_id.clone(),
+                                request.request_id.as_str().to_owned(),
                                 request.workspace_identity.clone(),
                                 generation_digest,
                                 root_digest,
@@ -464,9 +286,9 @@ async fn serve_runtime_server_workspace_stream_inner(
                     {
                         Ok(lookup) => {
                             let owner_paths = lookup
-                                .candidates
+                                .hits
                                 .iter()
-                                .map(|candidate| candidate.path.as_str().to_owned())
+                                .map(|hit| hit.owner_path.clone())
                                 .collect::<Vec<_>>();
                             match memory_registry
                                 .read_projection_parser_owned_callable_selector_pairs(
@@ -480,13 +302,18 @@ async fn serve_runtime_server_workspace_stream_inner(
                                         .as_micros()
                                         .min(u128::from(u64::MAX))
                                         as u64;
-                                    match crate::runtime_search_service::build_runtime_provider_search_receipt(
+                                    match agent_semantic_search::build_runtime_provider_search_receipt(
                                         operation_id.clone(),
                                         language_id.clone(),
-                                        lookup,
+                                        vec![agent_semantic_search::RuntimeSearchSource::once(
+                                            "resident",
+                                            lookup,
+                                        )],
                                         resident_read_elapsed_micros,
                                         parser_owned_selector_pairs,
-                                    ) {
+                                    )
+                                    .await
+                                    {
                                         Ok(receipt) => {
                                             WorkspaceDbIpcResult::ProviderSearch { receipt }
                                         }
@@ -553,14 +380,10 @@ async fn serve_runtime_server_workspace_stream_inner(
                             let counters = memory_registry
                                 .data_plane_counters()
                                 .delta_since(&counters_before);
-                            let (generation_digest, root_digest, read_state) = match &read {
-                            crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead::Projection { generation_digest, root_digest, .. } => (generation_digest.clone(), root_digest.clone(), "projection"),
-                            crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead::ProjectionMissing { generation_digest, root_digest, .. } => (generation_digest.clone(), root_digest.clone(), "projection-missing"),
-                            crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead::ProjectionScopeOmitted { generation_digest, root_digest, .. } => (generation_digest.clone(), root_digest.clone(), "projection-scope-omitted"),
-                            _ => (String::new(), String::new(), "other"),
-                        };
+                            let (generation_digest, root_digest, read_state) =
+                                resident_read::selector_identity(&read);
                             let evidence = resident_read::evidence(
-                                request.request_id.clone(),
+                                request.request_id.as_str().to_owned(),
                                 request.workspace_identity.clone(),
                                 generation_digest,
                                 root_digest,
@@ -592,7 +415,7 @@ async fn serve_runtime_server_workspace_stream_inner(
                     match resident_owner::read_runtime_owner(
                         memory_registry,
                         &request.workspace_identity,
-                        request.request_id.clone(),
+                        request.request_id.as_str().to_owned(),
                         project_root,
                         owner_path,
                         telemetry_sender,
@@ -609,23 +432,9 @@ async fn serve_runtime_server_workspace_stream_inner(
                     resident_read::read_merkle_owner(
                         memory_registry,
                         &request.workspace_identity,
-                        &request.request_id,
+                        request.request_id.as_str(),
                         merkle_request,
                         telemetry_sender,
-                    )
-                    .await
-                }
-                WorkspaceDbIpcOperation::ProjectTreeSitterQuery {
-                    project_root,
-                    language_id,
-                    args,
-                } => {
-                    exact_projection::tree_sitter_query(
-                        runtime_search_service,
-                        &request.workspace_identity,
-                        project_root,
-                        language_id,
-                        args,
                     )
                     .await
                 }
@@ -638,7 +447,7 @@ async fn serve_runtime_server_workspace_stream_inner(
                         runtime_search_service,
                         memory_registry.as_ref(),
                         generation_admission,
-                        request.request_id.clone(),
+                        request.request_id.as_str().to_owned(),
                         &request.workspace_identity,
                         project_root,
                         language_id,
@@ -920,11 +729,11 @@ async fn serve_runtime_server_workspace_stream_inner(
                             let (generation_digest, root_digest) =
                                 resident_read::source_index_identity(&lookup, authority);
                             let evidence = resident_read::evidence(
-                                request.request_id.clone(),
+                                request.request_id.as_str().to_owned(),
                                 request.workspace_identity.clone(),
                                 generation_digest,
                                 root_digest,
-                                "source-index",
+                                crate::workspace_db_ipc::RuntimeResidentReadState::SourceIndex,
                                 evidence_started,
                                 resident_read::counters(counters),
                             );
@@ -951,7 +760,7 @@ async fn serve_runtime_server_workspace_stream_inner(
                 } => {
                     let publication = memory_registry
                         .publish_owner_overlay(
-                            request.request_id.clone(),
+                            request.request_id.as_str().to_owned(),
                             request.workspace_identity.clone(),
                             Path::new(&project_root),
                             owner,
@@ -971,7 +780,7 @@ async fn serve_runtime_server_workspace_stream_inner(
                 } => {
                     let publication = memory_registry
                         .tombstone_owner_overlay(
-                            request.request_id.clone(),
+                            request.request_id.as_str().to_owned(),
                             request.workspace_identity.clone(),
                             Path::new(&project_root),
                             owner_path,
@@ -992,7 +801,7 @@ async fn serve_runtime_server_workspace_stream_inner(
                 } => {
                     let publication = memory_registry
                         .relocate_owner_overlay(
-                            request.request_id.clone(),
+                            request.request_id.as_str().to_owned(),
                             request.workspace_identity.clone(),
                             Path::new(&project_root),
                             previous_owner_path,
@@ -1027,14 +836,14 @@ async fn serve_runtime_server_workspace_stream_inner(
             &mut stream,
             endpoint,
             request.workspace_identity,
-            request.request_id,
+            request.request_id.as_str().to_owned(),
             result,
         )
         .await?;
     }
 }
 
-use crate::workspace_db_ipc::{read_optional_frame, write_frame};
+use crate::workspace_db_ipc::read_optional_frame;
 
 #[path = "workspace_db_ipc_server_resident_owner.rs"]
 mod resident_owner;

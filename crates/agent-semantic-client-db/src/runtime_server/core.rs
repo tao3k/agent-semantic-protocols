@@ -710,18 +710,20 @@ impl RuntimeServer {
                                 connections.spawn(async move {
                                     let result = crate::workspace_db_ipc_server::serve_runtime_server_workspace_stream(
                                         stream,
-                                        &endpoint,
-                                        &registry,
-                                        &memory_registry,
-                                        generation_admission.as_ref(),
-                                        graph_turbo_evaluation_builder.as_ref(),
-                                        runtime_search_service_for_connection.as_ref(),
-                                        agent_session_registry_owner.as_ref(),
-            &session_control_plane_runtime_registry,
-            agent_session_status.as_ref(),
-                                        &codex_multi_agent_control_plane_owner,
-                                        telemetry_sender.as_ref(),
-                                        connection_drain,
+                                        crate::workspace_db_ipc_server::RuntimeServerWorkspaceStreamContext {
+                                            endpoint: &endpoint,
+                                            registry: &registry,
+                                            memory_registry: &memory_registry,
+                                            generation_admission: generation_admission.as_ref(),
+                                            graph_turbo_evaluation_builder: graph_turbo_evaluation_builder.as_ref(),
+                                            runtime_search_service: runtime_search_service_for_connection.as_ref(),
+                                            agent_session_registry_owner: agent_session_registry_owner.as_ref(),
+                                            session_control_plane_runtime_registry: &session_control_plane_runtime_registry,
+                                            agent_session_status: agent_session_status.as_ref(),
+                                            codex_multi_agent_control_plane_owner: &codex_multi_agent_control_plane_owner,
+                                            telemetry_sender: telemetry_sender.as_ref(),
+                                            drain: connection_drain,
+                                        },
                                     )
                                     .await
                                     .map(|()| false);

@@ -698,7 +698,10 @@ async fn build_exact_query_generation_owner(
 async fn build_exact_query_generation(
     workspace_identity: String,
     project_root: PathBuf,
-) -> Result<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuild, String> {
+) -> Result<
+    agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateBuild,
+    String,
+> {
     use sha2::Digest as _;
 
     let candidate = agent_semantic_client_db::runtime_server_admission::discover_workspace_generation_candidate(
@@ -817,7 +820,7 @@ async fn build_exact_query_generation(
         Vec::new(),
     )?;
     Ok(
-        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuild::new(
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateBuild::new(
             candidate,
             agent_semantic_client_db::ClientDbSourceIndexRefreshRequest {
                 import,

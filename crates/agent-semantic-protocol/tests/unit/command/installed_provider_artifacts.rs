@@ -155,8 +155,8 @@ fn guarded_install_publication_is_atomic_and_rejects_receipt_drift() {
     let stable = runtime_bin_dir.join("asp-rust");
     std::fs::write(&artifact, b"asp-rust-provider").expect("write provider CAS artifact");
     std::os::unix::fs::symlink(&artifact, &stable).expect("publish stable provider entry");
-    let content = agent_semantic_content_identity::file_content_digest_v1(&stable)
-        .expect("content digest");
+    let content =
+        agent_semantic_content_identity::file_content_digest_v1(&stable).expect("content digest");
     let metadata = agent_semantic_content_identity::file_artifact_metadata_digest_v1(&stable)
         .expect("metadata digest");
     let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
@@ -164,10 +164,9 @@ fn guarded_install_publication_is_atomic_and_rejects_receipt_drift() {
         &content,
     )
     .expect("execution command digest");
-    let registration = crate::command::provider_install_registry::provider_install_registration(
-        "rust",
-    )
-    .expect("registered Rust provider");
+    let registration =
+        crate::command::provider_install_registry::provider_install_registration("rust")
+            .expect("registered Rust provider");
     let receipt_path = receipt_dir.join("rust.lock.toml");
     let receipt = format!(
         "schemaId = \"asp.provider-install-lock.v1\"\nlanguage = \"rust\"\nprovider = \"{}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{}\"\ninstalledEntrypointMetadataDigest = \"{}\"\nexecutionCommandDigest = \"{}\"\n",
@@ -197,7 +196,9 @@ fn guarded_install_publication_is_atomic_and_rejects_receipt_drift() {
     assert_eq!(document.providers[0].language_id, "rust");
     assert_eq!(
         Path::new(&document.providers[0].materialized_path),
-        artifact.canonicalize().expect("canonical provider artifact")
+        artifact
+            .canonicalize()
+            .expect("canonical provider artifact")
     );
 
     std::fs::write(

@@ -6,8 +6,7 @@ use agent_semantic_client_db::{
     ClientDbLiveSourceIndexFacts, ClientDbSourceIndexClientDirLookupRequest,
     ClientDbSourceIndexImport, ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest,
     ClientDbSourceIndexLookupState, ClientDbSourceIndexOwner, ClientDbSourceIndexRefreshRequest,
-    build_source_index_import,
-    client_db_source_index_generation_id_for_snapshot,
+    build_source_index_import, client_db_source_index_generation_id_for_snapshot,
 };
 use std::fs;
 use std::path::{Path, PathBuf};

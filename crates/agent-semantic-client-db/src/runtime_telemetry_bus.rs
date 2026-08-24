@@ -19,15 +19,15 @@ pub struct ResidentReadTerminalContext {
     pub workspace_identity: String,
     pub generation_digest: String,
     pub root_digest: String,
-    pub read_state: String,
+    pub read_state: crate::workspace_db_ipc::RuntimeResidentReadState,
     pub elapsed_micros: u64,
-    pub work_counters: crate::workspace_db_ipc::RuntimeResidentReadWorkCounters,
+    pub work_counters: crate::workspace_db_ipc::WorkspaceIpcResidentReadWorkCounters,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResidentReadTerminalOutcome {
-    pub terminal_state: String,
+    pub terminal_state: crate::workspace_db_ipc::RuntimeResidentReadTerminalState,
 }
 
 #[derive(Clone)]
@@ -105,18 +105,17 @@ impl RuntimeTelemetryBusSender {
         if context.operation_id.trim().is_empty() || context.surface.trim().is_empty() {
             return Err("resident read telemetry requires operationId and surface".to_owned());
         }
-        if outcome.terminal_state.trim().is_empty() {
-            return Err("resident read telemetry requires terminalState".to_owned());
-        }
         let digest = crate::workspace_db_ipc::resident_read_terminal_digest(
-            &context.operation_id,
-            &context.surface,
-            &context.workspace_identity,
-            &context.generation_digest,
-            &context.root_digest,
-            &context.read_state,
-            context.elapsed_micros,
-            &outcome.terminal_state,
+            &crate::workspace_db_ipc::RuntimeResidentReadTerminalDigestInput {
+                operation_id: &context.operation_id,
+                surface: &context.surface,
+                workspace_identity: &context.workspace_identity,
+                generation_digest: &context.generation_digest,
+                root_digest: &context.root_digest,
+                read_state: context.read_state,
+                elapsed_micros: context.elapsed_micros,
+                terminal_state: outcome.terminal_state,
+            },
         );
         self.resident_reads.insert(
             (context.operation_id.clone(), context.surface.clone()),

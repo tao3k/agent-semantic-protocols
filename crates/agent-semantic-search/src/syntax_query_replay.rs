@@ -107,10 +107,7 @@ pub fn render_semantic_tree_sitter_query_stdout(packet: &Value) -> Option<String
     render_semantic_tree_sitter_query_matches(packet, matches)
 }
 
-fn render_semantic_tree_sitter_query_matches(
-    packet: &Value,
-    matches: &[Value],
-) -> Option<String> {
+fn render_semantic_tree_sitter_query_matches(packet: &Value, matches: &[Value]) -> Option<String> {
     let query = packet.get("query")?;
     let query_fields = query.get("fields");
     let language_id = string_field(packet, "languageId").unwrap_or("unknown");

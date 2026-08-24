@@ -60,15 +60,31 @@ fn capabilities(decision: &Value) -> Vec<Value> {
 }
 
 #[test]
-fn shell_path_operands_project_read_without_command_name_guessing() {
+fn shell_path_operands_do_not_invent_read_capabilities() {
     let decision = classify(&runtime("."), "unknown-consumer src/lib.rs");
     assert_eq!(decision["decision"], "deny");
     assert!(capabilities(&decision).iter().any(|capability| {
         capability["action"] == "execute" && capability["evidence"] == "host-invocation"
     }));
-    assert!(capabilities(&decision).iter().any(|capability| {
-        capability["action"] == "read" && capability["evidence"] == "shell-path-operand"
-    }));
+    assert!(
+        !capabilities(&decision)
+            .iter()
+            .any(|capability| capability["action"] == "read")
+    );
+}
+
+#[test]
+fn shell_path_operand_mutation_is_not_a_structured_document_read() {
+    let decision = classify(&runtime("."), "git add -u -- policy.toml");
+    assert_ne!(
+        decision["fields"]["configRuleId"],
+        "route-shell-structured-document-read"
+    );
+    assert!(
+        !capabilities(&decision)
+            .iter()
+            .any(|capability| capability["action"] == "read")
+    );
 }
 
 #[test]
@@ -116,7 +132,7 @@ fn raw_structured_shell_read_is_denied_by_action_and_path_rule() {
         .expect("structured fixture");
     let decision = classify(
         &runtime(root.path().to_str().expect("utf-8 root")),
-        "unknown-consumer policy.json",
+        "unknown-consumer < policy.json",
     );
     assert_eq!(decision["decision"], "deny");
     assert_eq!(
@@ -125,7 +141,7 @@ fn raw_structured_shell_read_is_denied_by_action_and_path_rule() {
     );
     assert_eq!(decision["reasonKind"], "structured-source-read");
     assert!(capabilities(&decision).iter().any(|capability| {
-        capability["action"] == "read" && capability["evidence"] == "shell-path-operand"
+        capability["action"] == "read" && capability["evidence"] == "shell-redirection"
     }));
 }
 

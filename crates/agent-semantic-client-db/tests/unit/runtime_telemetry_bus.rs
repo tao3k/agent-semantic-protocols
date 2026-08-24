@@ -3,7 +3,7 @@ use agent_semantic_client_db::runtime_telemetry_bus::{
     CAPACITY, ResidentReadTerminalContext, ResidentReadTerminalOutcome, RuntimeTelemetryBus,
     RuntimeTelemetryEvent,
 };
-use agent_semantic_client_db::workspace_db_ipc::RuntimeResidentReadWorkCounters;
+use agent_semantic_client_db::workspace_db_ipc::WorkspaceIpcResidentReadWorkCounters;
 
 fn event(transition: &str, state: &str) -> RuntimeLifecycleEvent {
     RuntimeLifecycleEvent {
@@ -29,9 +29,10 @@ async fn exact_selector_terminal_projects_query_runtime_latency() {
         workspace_identity: "workspace-1".to_owned(),
         generation_digest: "blake3-256:generation".to_owned(),
         root_digest: "blake3-256:root".to_owned(),
-        read_state: "hit".to_owned(),
+        read_state:
+            agent_semantic_client_db::workspace_db_ipc::RuntimeResidentReadState::Projection,
         elapsed_micros: 9,
-        work_counters: RuntimeResidentReadWorkCounters {
+        work_counters: WorkspaceIpcResidentReadWorkCounters {
             database_opens: 0,
             filesystem_reads: 0,
             provider_spawns: 0,
@@ -57,7 +58,7 @@ async fn exact_selector_terminal_projects_query_runtime_latency() {
         .try_record_resident_read_terminal(
             context,
             ResidentReadTerminalOutcome {
-                terminal_state: "success".to_owned(),
+                terminal_state: agent_semantic_client_db::workspace_db_ipc::RuntimeResidentReadTerminalState::Success,
             },
         )
         .expect("resident Query terminal enters the Runtime telemetry bus");

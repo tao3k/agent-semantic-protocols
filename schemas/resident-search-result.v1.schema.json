@@ -4,21 +4,21 @@
   "title": "Resident Search Result V1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaId", "schemaVersion", "state", "hits", "workCounters"],
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "generationDigest",
+    "rootDigest",
+    "providerDigest",
+    "indexArtifactDigest",
+    "hits",
+    "workCounters"
+  ],
   "properties": {
     "schemaId": { "const": "agent.semantic-protocols.resident-search-result" },
     "schemaVersion": { "const": "1" },
-    "state": {
-      "enum": [
-        "Ready",
-        "ActiveGenerationRequired",
-        "CapabilityUnavailable",
-        "ProviderContractMismatch",
-        "GenerationCorrupt",
-        "Cancelled",
-        "AuthorityClosed"
-      ]
-    },
+    "state": { "const": "Ready" },
     "generationDigest": {
       "type": "string",
       "pattern": "^blake3-256:[0-9a-f]{64}$"
@@ -33,24 +33,8 @@
       "type": "array",
       "items": { "$ref": "#/$defs/hit" }
     },
-    "workCounters": { "$ref": "#/$defs/workCounters" },
-    "error": { "type": "string", "minLength": 1 }
+    "workCounters": { "$ref": "#/$defs/workCounters" }
   },
-  "allOf": [
-    {
-      "if": { "properties": { "state": { "const": "Ready" } } },
-      "then": {
-        "required": [
-          "generationDigest",
-          "rootDigest",
-          "providerDigest",
-          "indexArtifactDigest"
-        ],
-        "not": { "required": ["error"] }
-      },
-      "else": { "required": ["error"], "properties": { "hits": { "maxItems": 0 } } }
-    }
-  ],
   "$defs": {
     "hit": {
       "type": "object",

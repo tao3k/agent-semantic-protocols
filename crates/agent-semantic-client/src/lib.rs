@@ -29,8 +29,8 @@ pub use agent_semantic_runtime::{
 };
 pub use cli::{run_cli_args, run_cli_from_env};
 pub use source_index::{
-    SourceIndexCandidate, SourceIndexLookupResult,
-    SourceIndexLookupState, SourceIndexRefreshReport, SourceIndexSourceKind,
+    SourceIndexCandidate, SourceIndexLookupResult, SourceIndexLookupState,
+    SourceIndexRefreshReport, SourceIndexSourceKind,
 };
 pub use syntax_query_preflight::validate_syntax_query_request as validate_client_syntax_query_request;
 

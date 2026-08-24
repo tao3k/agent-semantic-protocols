@@ -126,23 +126,8 @@ fn runtime_server_status_requires_drain(
 }
 
 #[cfg(test)]
-mod lifecycle_transition_tests {
-    use super::runtime_server_status_requires_drain;
-    use crate::runtime_server_control::RuntimeServerState;
-
-    #[test]
-    fn a_published_draining_state_never_emits_a_second_drain_request() {
-        assert!(!runtime_server_status_requires_drain(
-            &RuntimeServerState::Draining
-        ));
-        assert!(runtime_server_status_requires_drain(
-            &RuntimeServerState::Starting
-        ));
-        assert!(runtime_server_status_requires_drain(
-            &RuntimeServerState::Healthy
-        ));
-    }
-}
+#[path = "../tests/unit/runtime_server_supervisor_lifecycle_transition.rs"]
+mod lifecycle_transition_tests;
 
 async fn retire_undecodable_endpoint_owner(request: &SupervisorRequest) -> Result<bool, String> {
     let Some(owner) =
@@ -262,17 +247,18 @@ impl RuntimeServerSupervisor {
                         classify_endpoint_owner(&request.state_home, &endpoint).await?
                             == crate::runtime_server_lifecycle_coordinator::OwnerClassification::Live
                     }
-                    Err(_) => {
-                        terminate_endpoint_owner(&request.state_home, &endpoint, false).await?
-                            == crate::runtime_server_lifecycle_coordinator::OwnerClassification::Live
-                    }
+                    Err(_) => terminate_endpoint_owner(&request.state_home, &endpoint, false)
+                        .await?
+                        == crate::runtime_server_lifecycle_coordinator::OwnerClassification::Live,
                 };
                 let exit = if owner_was_live {
-                    Some(crate::runtime_server_lifecycle::await_owner_exit(
-                        &request.state_home,
-                        endpoint.owner_epoch,
+                    Some(
+                        crate::runtime_server_lifecycle::await_owner_exit(
+                            &request.state_home,
+                            endpoint.owner_epoch,
+                        )
+                        .await?,
                     )
-                    .await?)
                 } else {
                     crate::runtime_server_lifecycle::read_owner_exit_for(
                         &request.state_home,

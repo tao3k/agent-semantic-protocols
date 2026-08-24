@@ -83,12 +83,23 @@ const PROVIDER_TRANSPORT_STABILITY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] =
 
 const SEARCH_LATENCY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
     AspRustProjectHarnessOwnerPolicy {
-        path: "src/dynamic_overlay",
-        rationale: "dynamic overlay search/query routing sits on repeated agent search hot paths",
+        path: "src/resident_source_index.rs",
+        rationale: "resident shallow and owner-local search lookup sits on every warm search hot path",
     },
     AspRustProjectHarnessOwnerPolicy {
-        path: "src/turso_overlay_search.rs",
-        rationale: "Turso-backed overlay search must remain subsecond under dynamic agent query fanout",
+        path: "src/graph_owner_rank.rs",
+        rationale: "owner candidate ranking must remain below the warm search latency gate",
+    },
+    AspRustProjectHarnessOwnerPolicy {
+        path: "src/search_generation_segment.rs",
+        rationale: "immutable generation segment validation gates resident search admission",
+    },
+];
+
+const SEARCH_PROJECTION_LATENCY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
+    AspRustProjectHarnessOwnerPolicy {
+        path: "src/resident_search_result.rs",
+        rationale: "language-neutral resident result construction and zero-I/O proof are on the warm search boundary",
     },
 ];
 
@@ -217,6 +228,16 @@ const ASP_WORKSPACE_MEMBER_POLICIES: &[AspRustProjectHarnessMemberPolicy] = &[
         rule_severity_overrides: &[],
         criterion_performance_verification: false,
         latency_sensitive_performance_owners: SEARCH_LATENCY_OWNERS,
+        availability_stability_owners: &[],
+    },
+    AspRustProjectHarnessMemberPolicy {
+        package_name: "agent-semantic-search-projection",
+        crate_root: "crates/agent-semantic-search-projection",
+        cargo_check_advice_allow_explanation: "scope=agent-semantic-search-projection cargo-check advice; owner=search projection build gate; finding_category=advisory policy findings; why_safe_now=the projection package keeps advisory findings visible while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
+        verification_label: Some("search projection"),
+        rule_severity_overrides: &[],
+        criterion_performance_verification: false,
+        latency_sensitive_performance_owners: SEARCH_PROJECTION_LATENCY_OWNERS,
         availability_stability_owners: &[],
     },
     AspRustProjectHarnessMemberPolicy {

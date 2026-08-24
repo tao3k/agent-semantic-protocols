@@ -411,37 +411,37 @@ fn decode_catalog(bytes: &[u8]) -> Result<BTreeSet<RuntimeWorkspaceAdmissionCata
         return Err("Runtime Server workspace admission catalog schema mismatch".to_owned());
     }
     let mut entries = BTreeSet::new();
+    let mut root_owners = BTreeMap::<PathBuf, String>::new();
+    let mut workspace_roots = BTreeMap::<String, PathBuf>::new();
     for entry in document.entries {
         entry.validate()?;
-        if entries
-            .iter()
-            .any(|existing: &RuntimeWorkspaceAdmissionCatalogEntry| {
-                existing.project_root == entry.project_root
-                    && existing.workspace_identity != entry.workspace_identity
-            })
+        if root_owners
+            .get(&entry.project_root)
+            .is_some_and(|identity| identity != &entry.workspace_identity)
         {
             return Err(format!(
                 "Runtime Server workspace admission catalog contains a root identity conflict: projectRoot={}",
                 entry.project_root.display()
             ));
         }
-        if entries
-            .iter()
-            .any(|existing: &RuntimeWorkspaceAdmissionCatalogEntry| {
-                existing.workspace_identity == entry.workspace_identity
-                    && existing.project_root != entry.project_root
-            })
+        if workspace_roots
+            .get(&entry.workspace_identity)
+            .is_some_and(|root| root != &entry.project_root)
         {
             return Err(format!(
                 "Runtime Server workspace admission catalog maps one workspace identity to multiple roots: workspaceIdentity={}",
                 entry.workspace_identity
             ));
         }
+        let project_root = entry.project_root.clone();
+        let workspace_identity = entry.workspace_identity.clone();
         if !entries.insert(entry) {
             return Err(
                 "Runtime Server workspace admission catalog contains duplicates".to_owned(),
             );
         }
+        root_owners.insert(project_root.clone(), workspace_identity.clone());
+        workspace_roots.insert(workspace_identity, project_root);
     }
     Ok(entries)
 }

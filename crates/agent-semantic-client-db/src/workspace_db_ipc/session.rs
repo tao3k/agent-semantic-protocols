@@ -1,3 +1,5 @@
+//! Typed client session for the single ASP Runtime Server workspace endpoint.
+
 use super::{
     NEXT_WORKSPACE_DB_IPC_CLIENT_ID, WorkspaceDbSessionBinding, WorkspaceDbSessionProfile,
     types::{
@@ -6,17 +8,16 @@ use super::{
         WorkspaceDbIpcResponse, WorkspaceDbIpcResult, WorkspaceDbSourceIndexLookupRequest,
     },
 };
-use crate::workspace_db_endpoint::WorkspaceDbOwnerEndpoint;
 use crate::workspace_db_ipc::{
     MutationWorkspaceLane, read_frame, resident_state, runtime_server_data_connect_error,
     workspace_db_ipc_read_lane_capacity, write_frame,
 };
 use crate::{
-    ClientDbSourceIndexLookupResult, ProviderIncrementalScoped, ProviderOwnerInventoryWrite,
-    ProviderOwnerInventoryWriteReceipt, ProviderTreeSitterContinuation,
-    ProviderTreeSitterOwnerResult, ProviderTreeSitterOwnerWriteReceipt,
-    ProviderTreeSitterQueryIdentity, ProviderTreeSitterQueryRead, TursoResidentSelectorQuery,
-    TursoResidentSelectorRead, WorkspaceDbWriteFinishMode, WorkspaceDbWriteFinishReceipt,
+    ProviderIncrementalScoped, ProviderOwnerInventoryWrite, ProviderOwnerInventoryWriteReceipt,
+    ProviderTreeSitterContinuation, ProviderTreeSitterOwnerResult,
+    ProviderTreeSitterOwnerWriteReceipt, ProviderTreeSitterQueryIdentity,
+    ProviderTreeSitterQueryRead, TursoResidentSelectorQuery, TursoResidentSelectorRead,
+    WorkspaceDbWriteFinishMode, WorkspaceDbWriteFinishReceipt,
 };
 use std::path::{Path, PathBuf};
 use tokio::{io::BufStream, net::UnixStream};
@@ -26,14 +27,10 @@ use tokio::{io::BufStream, net::UnixStream};
 /// This is deliberately local to IPC. It is not a process-startup or
 /// generation-admission budget, and a timeout never authorizes repair.
 const SEARCH_DATA_PLANE_IO_BUDGET: std::time::Duration = std::time::Duration::from_millis(500);
-/// Per-operation deadline for the stateful incremental Tree-sitter query.
-///
-/// Unlike immutable data-plane reads this operation advances Runtime-owned
-/// query state, so it has a distinct budget and must never be retried locally.
-const TREE_SITTER_QUERY_IO_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 const RUNTIME_HEALTH_IO_BUDGET: std::time::Duration = std::time::Duration::from_millis(500);
 
 #[derive(Debug)]
+/// Capability-scoped Runtime Server client; it owns no generation or provider lifecycle.
 pub struct WorkspaceDbIpcSession {
     pub(in crate::workspace_db_ipc) endpoint: WorkspaceDbSessionBinding,
     pub(in crate::workspace_db_ipc) shared: std::sync::Arc<WorkspaceDbIpcSessionState>,
@@ -76,10 +73,6 @@ impl WorkspaceDbIpcSession {
         })
     }
 
-    pub(super) fn from_binding(endpoint: WorkspaceDbSessionBinding) -> Self {
-        Self::from_binding_with_profile(endpoint, WorkspaceDbSessionProfile::Full)
-    }
-
     pub(in crate::workspace_db_ipc) fn from_binding_with_profile(
         endpoint: WorkspaceDbSessionBinding,
         profile: WorkspaceDbSessionProfile,
@@ -88,20 +81,6 @@ impl WorkspaceDbIpcSession {
             endpoint,
             shared: Self::new_state(profile),
         }
-    }
-
-    pub fn new(endpoint: WorkspaceDbOwnerEndpoint) -> Self {
-        Self::from_binding(WorkspaceDbSessionBinding {
-            workspace_identity: endpoint.workspace_identity,
-            project_root: None,
-            transport_contract_digest: endpoint.transport_contract_digest,
-            owner_epoch: endpoint.owner_epoch,
-            runtime_binary_path: endpoint.runtime_binary_path,
-            runtime_binary_digest: endpoint.runtime_binary_digest,
-            binding_token: endpoint.binding_token,
-            socket_path: endpoint.socket_path,
-            generation_pointer_path: None,
-        })
     }
 
     pub fn for_runtime_server(
@@ -323,23 +302,6 @@ impl WorkspaceDbIpcSession {
                 }
             };
         }
-        if is_tree_sitter_data_plane_operation(&operation) {
-            return match tokio::time::timeout(
-                TREE_SITTER_QUERY_IO_BUDGET,
-                self.call_operation_inner(operation),
-            )
-            .await
-            {
-                Ok(result) => result,
-                Err(_) => {
-                    self.discard_idle_connection_lanes();
-                    Err(format!(
-                        "runtime-tree-sitter-query-timeout: Runtime-owned incremental query exceeded {}ms",
-                        TREE_SITTER_QUERY_IO_BUDGET.as_millis()
-                    ))
-                }
-            };
-        }
         self.call_operation_inner(operation).await
     }
 
@@ -353,13 +315,13 @@ impl WorkspaceDbIpcSession {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let request_id = format!("workspace-db-ipc-{}-{sequence}", self.shared.client_id);
         let request = WorkspaceDbIpcRequest {
-            schema_id: WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID.to_owned(),
+            schema_id: WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID.into(),
             schema_version: WORKSPACE_DB_OWNER_SCHEMA_VERSION.to_owned(),
             workspace_identity: self.endpoint.workspace_identity.clone(),
             transport_contract_digest: self.endpoint.transport_contract_digest.clone(),
             owner_epoch: self.endpoint.owner_epoch,
-            binding_token: self.endpoint.binding_token.clone(),
-            request_id: request_id.clone(),
+            binding_token: self.endpoint.binding_token.clone().into(),
+            request_id: request_id.clone().into(),
             operation,
         };
         let first_lane = sequence as usize % self.shared.lanes.len();
@@ -475,14 +437,6 @@ fn is_search_data_plane_read(operation: &WorkspaceDbIpcOperation) -> bool {
     )
 }
 
-fn is_tree_sitter_data_plane_operation(operation: &WorkspaceDbIpcOperation) -> bool {
-    matches!(
-        operation,
-        WorkspaceDbIpcOperation::ProjectTreeSitterQuery { .. }
-            | WorkspaceDbIpcOperation::ReadTreeSitterInventory { .. }
-    )
-}
-
 impl WorkspaceDbIpcSession {
     pub fn workspace_identity(&self) -> &str {
         self.endpoint.workspace_identity.as_str()
@@ -544,7 +498,9 @@ impl WorkspaceDbIpcSession {
         &self,
         request: &WorkspaceDbSourceIndexLookupRequest,
     ) -> Result<
-        crate::workspace_db_ipc::RuntimeResidentReadResult<ClientDbSourceIndexLookupResult>,
+        crate::workspace_db_ipc::RuntimeResidentReadResult<
+            agent_semantic_search_projection::ResidentSearchReadyResult,
+        >,
         String,
     > {
         let mut request = request.clone();
@@ -571,7 +527,7 @@ impl WorkspaceDbIpcSession {
     pub async fn read_source_index(
         &self,
         request: &WorkspaceDbSourceIndexLookupRequest,
-    ) -> Result<ClientDbSourceIndexLookupResult, String> {
+    ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
         match self
             .call_operation(WorkspaceDbIpcOperation::ReadRuntimeSourceIndex {
                 request: request.clone(),
@@ -584,27 +540,6 @@ impl WorkspaceDbIpcSession {
             }
             WorkspaceDbIpcResult::Failed { code, message } => Err(format!("{code}: {message}")),
             _ => Err("Runtime Server returned an unexpected source-index result".to_owned()),
-        }
-    }
-
-    pub async fn project_tree_sitter_query(
-        &self,
-        project_root: &std::path::Path,
-        language_id: &str,
-        args: &[String],
-    ) -> Result<Option<String>, String> {
-        match self
-            .call_operation(WorkspaceDbIpcOperation::ProjectTreeSitterQuery {
-                project_root: project_root.to_string_lossy().into_owned(),
-                language_id: language_id.into(),
-                args: args.to_vec(),
-            })
-            .await?
-        {
-            WorkspaceDbIpcResult::TreeSitterQuery { rendered } => Ok(rendered),
-            _ => {
-                Err("Runtime Server IPC returned an unexpected Tree-sitter query result".to_owned())
-            }
         }
     }
 
@@ -651,7 +586,7 @@ impl WorkspaceDbIpcSession {
         operation_id: impl Into<String>,
         language_id: agent_semantic_client_core::LanguageId,
         args: Vec<String>,
-    ) -> Result<crate::runtime_search_service::RuntimeProviderSearchReceipt, String> {
+    ) -> Result<agent_semantic_search_projection::RuntimeProviderSearchReceipt, String> {
         let project_root = self
             .endpoint
             .project_root

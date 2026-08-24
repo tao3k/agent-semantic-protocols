@@ -4,8 +4,6 @@ pub(super) use super::common::{
     with_direct_dispatch_roles,
 };
 
-#[path = "matching/default_witnesses.rs"]
-mod default_witnesses;
 #[path = "matching/materialization.rs"]
 mod materialization;
 #[path = "matching/policy_merge.rs"]

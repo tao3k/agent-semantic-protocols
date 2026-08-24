@@ -313,9 +313,11 @@ impl WorkspaceGenerationLease {
             state,
             candidates,
             source_snapshot: Some(generation.source_snapshot.clone()),
-            index_artifact_digest: Some(agent_semantic_search_projection::source_index_artifact_digest(
-                &generation.source_snapshot,
-            )),
+            index_artifact_digest: Some(
+                agent_semantic_search_projection::source_index_artifact_digest(
+                    &generation.source_snapshot,
+                ),
+            ),
         })
     }
 }

@@ -17,6 +17,7 @@ const INSERT_EVENT_SQL: [&str; 4] = [
     "INSERT INTO asp_mvcc_event_3 (partition_key, event_id, payload, created_at_ms) VALUES (?1, ?2, ?3, ?4)",
 ];
 
+/// Stable classification for one typed MVCC write failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TursoMvccWriteErrorCode {
     InvalidRequest,
@@ -27,6 +28,7 @@ pub enum TursoMvccWriteErrorCode {
     Backend,
 }
 
+/// Typed MVCC write failure with explicit retry eligibility.
 #[derive(Debug)]
 pub struct TursoMvccWriteError {
     pub code: TursoMvccWriteErrorCode,
@@ -43,6 +45,7 @@ impl fmt::Display for TursoMvccWriteError {
 impl std::error::Error for TursoMvccWriteError {}
 
 impl TursoMvccStore {
+    /// Append one validated batch with bounded Tokio-based conflict retries.
     pub async fn append_batch_typed(
         &self,
         events: &[TursoMvccEvent],

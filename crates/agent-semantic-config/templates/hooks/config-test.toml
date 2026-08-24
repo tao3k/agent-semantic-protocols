@@ -13,11 +13,21 @@ wrapperTemplates = [
 [performance]
 maxMatcherMicros = 1000
 
+# Each entry is one production Rule contract:
+# - `id` is the expected winning rule.
+# - `ruleComposition` asserts the exact matcher-policy, match axis, dispatch,
+#   terminal, or profile clauses that this scenario is intended to exercise.
+# - positive/negative payloads are witnesses, never alternate rule definitions.
 [[rules]]
 id = "allow-explicit-no-agent-host-bypass"
+ruleComposition = [
+  { pointer = "/terminal", equals = true },
+  { pointer = "/match/leadingEnvironmentAssignmentAny", contains = "ASP_NO_AGENT=1" },
+]
 positiveCommands = [
   "ASP_NO_AGENT=1 rg -n owner src/lib.rs",
   "TRACE=1 ASP_NO_AGENT=1 cargo test -p agent-semantic-hook",
+  "ASP_NO_AGENT=1 /usr/bin/env -u SDKROOT ASP_PROVIDER_ARTIFACT_ROOT=build/workspace-provider GERBIL_PATH=.gerbil GERBIL_LOADPATH=.gerbil/lib GERBIL_GXC=/opt/homebrew/bin/gxc GERBIL_GSC=/Users/guangtao/.local/bin/gsc GERBIL_GCC=/usr/bin/clang /usr/bin/time -p /opt/homebrew/bin/gxi build.ss",
 ]
 negativeCommands = [
   "NOT_ASP_NO_AGENT=1 rg -n owner src/lib.rs",
@@ -29,6 +39,11 @@ wrapperExemption = "the bypass predicate is intentionally bounded to the first s
 
 [[rules]]
 id = "registered-asp-reasoning-search"
+ruleComposition = [
+  { pointer = "/matcherPolicies", contains = "wrapped_command" },
+  { pointer = "/match/argvPatternAny", contains = ["asp", "<registered-language>", "search"] },
+  { pointer = "/dispatch/role", equals = "explore" },
+]
 positiveCommands = [
   "asp rust search owner crates/agent-semantic-hook/src/lib.rs items --query capability --workspace . --view seeds",
   "env ASP_NO_AGENT=1 asp rust search pipe HookDecision --workspace . --view seeds",
@@ -45,6 +60,11 @@ negativeCommands = [
 
 [[rules]]
 id = "testing-role-dispatch"
+ruleComposition = [
+  { pointer = "/matcherPolicies", contains = "wrapped_command" },
+  { pointer = "/match/commandProfileAny", contains = { profile = "rust-cargo", category = "testing" } },
+  { pointer = "/dispatch/role", equals = "testing" },
+]
 positiveCommands = [
   "cargo test -p agent-semantic-hook --lib",
   "cargo check -p agent-semantic-hook",
@@ -77,7 +97,30 @@ negativeCommands = [
 ]
 
 [[rules]]
+id = "gerbil-build-role-dispatch"
+ruleComposition = [
+  { pointer = "/matcherPolicies", contains = "wrapped_command" },
+  { pointer = "/match/commandProfileAny", contains = { profile = "gerbil-gxi", category = "building" } },
+  { pointer = "/match/argvSourceGlobAny", contains = "*.ss" },
+  { pointer = "/dispatch/role", equals = "testing" },
+]
+positiveCommands = [
+  "/usr/bin/env -u SDKROOT ASP_PROVIDER_ARTIFACT_ROOT=build/workspace-provider GERBIL_PATH=.gerbil GERBIL_LOADPATH=.gerbil/lib GERBIL_GXC=/opt/homebrew/bin/gxc GERBIL_GSC=/Users/guangtao/.local/bin/gsc GERBIL_GCC=/usr/bin/clang /usr/bin/time -p /opt/homebrew/bin/gxi build.ss",
+  "organization-local-wrapper --profile ci /opt/homebrew/bin/gxi tests/compile-provider.ss",
+]
+negativeCommands = [
+  "/opt/homebrew/bin/gxi build.scm",
+  "/opt/homebrew/bin/gxi --help",
+  "/opt/homebrew/bin/gxc build.ss",
+]
+
+[[rules]]
 id = "deny-raw-registered-source-search-action"
+ruleComposition = [
+  { pointer = "/match/capabilityPolicyAll", contains = "raw-host-search" },
+  { pointer = "/match/capabilityPolicyAll", contains = "registered-language-source" },
+  { pointer = "/dispatch/role", equals = "explore" },
+]
 positiveTools = [
   { name = "command_execution", input = { commandActions = [{ type = "search", command = "rg -n -g '*.rs' HookDecision crates/agent-semantic-hook/src", query = "HookDecision", path = "crates/agent-semantic-hook/src" }] } },
 ]
@@ -88,6 +131,11 @@ wrapperExemption = "host search is a typed action; shell wrappers belong to deny
 
 [[rules]]
 id = "deny-raw-registered-source-action"
+ruleComposition = [
+  { pointer = "/match/capabilityPolicyAll", contains = "opaque-shell-source-access" },
+  { pointer = "/match/capabilityPolicyAll", contains = "registered-language-source" },
+  { pointer = "/profilesList", contains = "gerbil-scheme" },
+]
 positiveCommands = [
   "read crates/agent-semantic-hook/src/lib.rs",
 ]
@@ -97,17 +145,28 @@ negativeCommands = [
 
 [[rules]]
 id = "deny-agent-search-json"
+ruleComposition = [
+  { pointer = "/matcherPolicies", contains = "wrapped_command" },
+  { pointer = "/match/commandContainsAny", contains = "--json" },
+]
 positiveCommands = ["asp rust search pipe Effect --workspace . --json", "asp typescript search pipe Effect --workspace . --json"]
 negativeCommands = ["asp healthcheck --json", "asp paths --json"]
 
 [[rules]]
 id = "route-read-to-asp-languages"
+ruleComposition = [
+  { pointer = "/actions", contains = "read" },
+  { pointer = "/profilesList", contains = "org" },
+  { pointer = "/profilesList", contains = "markdown" },
+]
 positiveTools = [
   { name = "Read", input = { file_path = "crates/agent-semantic-hook/src/lib.rs" } },
   { name = "Read", input = { file_path = "languages/python-lang-project-harness/src/python_lang_parser/_native_numeric_loops.py" } },
   { name = "Read", input = { file_path = "languages/typescript-lang-project-harness/src/reasoning-tree/owner-dependency.ts" } },
   { name = "Read", input = { file_path = "languages/JuliaLangProjectHarness.jl/src/runner.jl" } },
   { name = "Read", input = { file_path = "languages/gerbil-scheme-language-project-harness/src/building/observability.ss" } },
+  { name = "Read", input = { file_path = "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org" } },
+  { name = "Read", input = { file_path = "README.md" } },
 ]
 negativeTools = [
   { name = "Read", input = { file_path = "Cargo.lock" } },
@@ -117,6 +176,11 @@ wrapperExemption = "host read is a typed action, not a shell command"
 
 [[rules]]
 id = "route-structured-document-read"
+ruleComposition = [
+  { pointer = "/actions", contains = "read" },
+  { pointer = "/match/pathGlobAny", contains = "*.json" },
+  { pointer = "/dispatch/role", equals = "explore" },
+]
 positiveTools = [
   { name = "Read", input = { file_path = "schemas/semantic-hook-match-scenario.v1.schema.json" } },
   { name = "Read", input = { file_path = "crates/agent-semantic-config/templates/hooks/config.toml" } },
@@ -128,17 +192,26 @@ wrapperExemption = "host read is a typed action, not a shell command"
 
 [[rules]]
 id = "route-shell-structured-document-read"
+ruleComposition = [
+  { pointer = "/match/capabilityPolicyAll", contains = "shell-read" },
+  { pointer = "/match/pathGlobAny", contains = "*.toml" },
+]
 positiveCommands = [
-  "unknown-consumer schemas/semantic-hook-match-scenario.v1.schema.json",
-  "unknown-consumer crates/agent-semantic-config/templates/hooks/config.toml",
+  "unknown-consumer < schemas/semantic-hook-match-scenario.v1.schema.json",
+  "unknown-consumer < crates/agent-semantic-config/templates/hooks/config.toml",
 ]
 negativeCommands = [
   "jq -r '.properties.expected' schemas/semantic-hook-match-scenario.v1.schema.json",
   "jq . schemas/semantic-hook-match-scenario.v1.schema.json",
+  "git add -u -- crates/agent-semantic-config/templates/hooks/config.toml",
 ]
 
 [[rules]]
 id = "deny-uncontrolled-source-search-commands"
+ruleComposition = [
+  { pointer = "/matcherPolicies", contains = "wrapped_command" },
+  { pointer = "/match/argvPrefixAny", contains = ["rg"] },
+]
 positiveCommands = ["rg HookDecision Cargo.lock", "git ls-files Cargo.lock"]
 negativeCommands = [
   "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source",
@@ -146,6 +219,11 @@ negativeCommands = [
 
 [[rules]]
 id = "allow-bounded-json-projection"
+ruleComposition = [
+  { pointer = "/terminal", equals = true },
+  { pointer = "/match/structuredProjection/binary", equals = "jq" },
+]
+conformanceCommand = "jq -c '.package.name' package.json"
 positiveCommands = [
   "jq -r '.properties.expected' schemas/semantic-hook-match-scenario.v1.schema.json",
   "jq -c '.properties.expected' schemas/semantic-hook-match-scenario.v1.schema.json",
@@ -160,6 +238,11 @@ negativeCommands = [
 
 [[rules]]
 id = "allow-bounded-toml-projection"
+ruleComposition = [
+  { pointer = "/terminal", equals = true },
+  { pointer = "/match/structuredProjection/binary", equals = "yq" },
+]
+conformanceCommand = "yq eval '.package.name' Cargo.toml"
 positiveCommands = [
   "yq -p=toml '.rules[0].id' crates/agent-semantic-config/templates/hooks/config.toml",
   "yq eval -p=toml '.rules[0].priority' crates/agent-semantic-config/templates/hooks/config.toml",
@@ -170,6 +253,11 @@ negativeCommands = [
 
 [[rules]]
 id = "deny-unbounded-structured-projection"
+ruleComposition = [
+  { pointer = "/match/commandAny", contains = "jq" },
+  { pointer = "/match/argvStructuredDocumentFile", equals = true },
+]
+conformanceCommand = "jq '.' package.json"
 positiveCommands = [
   "jq . schemas/semantic-hook-match-scenario.v1.schema.json",
   "yq '.' crates/agent-semantic-config/templates/hooks/config.toml",
@@ -181,11 +269,19 @@ negativeCommands = [
 
 [[rules]]
 id = "deny-uncontrolled-git-metadata-reads"
+ruleComposition = [
+  { pointer = "/matcherPolicies", contains = "wrapped_command" },
+  { pointer = "/match/argvPrefixAny", contains = ["git", "diff", "--check"] },
+]
 positiveCommands = ["git diff --check", "git show --stat HEAD", "git ls-tree -r HEAD"]
 negativeCommands = ["git show HEAD", "git diff", "git status --short"]
 
 [[rules]]
 id = "deny-uncontrolled-git-source-reads"
+ruleComposition = [
+  { pointer = "/matcherPolicies", contains = "wrapped_command" },
+  { pointer = "/match/argvPrefixAny", contains = ["git", "show"] },
+]
 positiveCommands = [
   "git show HEAD",
   "git show HEAD:crates/agent-semantic-hook/src/lib.rs",

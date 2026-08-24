@@ -1,3 +1,5 @@
+//! Sharded Turso MVCC store; child modules isolate maintenance and typed write retry policy.
+
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -7,11 +9,9 @@ mod maintenance;
 #[path = "turso_mvcc_typed.rs"]
 mod typed;
 
-pub use maintenance::{
-    TURSO_MVCC_MAINTENANCE_RECEIPT_SCHEMA_ID, TursoMvccMaintenanceReceipt,
-};
-pub use typed::{TursoMvccWriteError, TursoMvccWriteErrorCode};
+pub use maintenance::{TURSO_MVCC_MAINTENANCE_RECEIPT_SCHEMA_ID, TursoMvccMaintenanceReceipt};
 use std::time::Duration;
+pub use typed::{TursoMvccWriteError, TursoMvccWriteErrorCode};
 
 const DEFAULT_CONNECTION_LANES: usize = 4;
 const DEFAULT_BUSY_TIMEOUT_MS: u64 = 5_000;
@@ -185,6 +185,7 @@ struct TursoMvccInsertRowsPerStatement(usize);
 #[serde(transparent)]
 struct TursoMvccFeatureState(bool);
 
+/// Effective bounded-concurrency and storage-feature receipt for the MVCC store.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoMvccOptimizationReceipt {
@@ -279,6 +280,7 @@ impl TursoMvccOptimizationReceipt {
     }
 }
 
+/// Terminal counters for one bounded MVCC batch append.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoMvccBatchWriteReceipt {
@@ -312,6 +314,7 @@ pub struct TursoMvccStore {
 }
 
 impl TursoMvccStore {
+    /// Open the sharded store and initialize its bounded connection lanes.
     pub async fn open(config: TursoMvccStoreConfig) -> Result<Self, String> {
         validate_config(&config)?;
         ensure_parent_directory(&config.path)?;
@@ -361,6 +364,7 @@ impl TursoMvccStore {
         })
     }
 
+    /// Return the effective concurrency and durability settings.
     pub fn optimization_receipt(&self) -> TursoMvccOptimizationReceipt {
         TursoMvccOptimizationReceipt {
             insert_rows_per_statement: TursoMvccInsertRowsPerStatement(INSERT_ROWS_PER_STATEMENT),
@@ -381,6 +385,7 @@ impl TursoMvccStore {
         }
     }
 
+    /// Append one batch using the configured bounded retry policy.
     pub async fn append_batch(
         &self,
         events: &[TursoMvccEvent],
@@ -441,6 +446,7 @@ impl TursoMvccStore {
         ))
     }
 
+    /// Read the ordered events for one exact MVCC partition.
     pub async fn read_partition(&self, partition_key: &str) -> Result<Vec<TursoMvccEvent>, String> {
         let shard = event_shard(partition_key);
         let lane_index = shard % self.inner.lanes.len();

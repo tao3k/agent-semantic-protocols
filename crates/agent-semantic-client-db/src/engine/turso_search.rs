@@ -23,8 +23,6 @@ pub struct TursoClientDbSearchDocument {
 /// Snapshot-bound search projection lookup state.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TursoClientDbSearchState {
-    EmptyIndex,
-    ColdRequired,
     Hit,
     Miss,
 }
@@ -50,9 +48,11 @@ pub struct TursoClientDbSearchHit {
 pub async fn replace_turso_search_document_generation(
     db_path: &Path,
     namespace: &str,
+    route: &agent_semantic_search_projection::SemanticSearchRouteDecision,
     source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     documents: &[TursoClientDbSearchDocument],
 ) -> Result<usize, String> {
+    route.validate_database_route()?;
     let connection = connect_turso_search_projection_db_for_write(db_path).await?;
     replace_turso_search_document_generation_with_connection(
         &connection,
@@ -219,14 +219,16 @@ pub(super) async fn replace_turso_search_document_generation_with_connection(
     Ok(documents.len())
 }
 
-/// Search one active root-bound projection generation with FTS-first routing.
+/// Search one active root-bound shallow projection generation with FTS-first routing.
 pub async fn search_turso_documents(
     db_path: &Path,
     namespace: &str,
+    route: &agent_semantic_search_projection::SemanticSearchRouteDecision,
     source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     query: &str,
     limit: u32,
 ) -> Result<TursoClientDbSearchResult, String> {
+    route.validate_database_route()?;
     if limit == 0 || query.trim().is_empty() {
         return Ok(TursoClientDbSearchResult {
             state: TursoClientDbSearchState::Miss,
@@ -234,6 +236,15 @@ pub async fn search_turso_documents(
         });
     }
     let connection = connect_turso_search_projection_db_read_only(db_path).await?;
+    validate_turso_search_generation(&connection, namespace, source_snapshot).await?;
+    search_admitted_turso_documents(&connection, namespace, source_snapshot, query, limit).await
+}
+
+async fn validate_turso_search_generation(
+    connection: &turso::Connection,
+    namespace: &str,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+) -> Result<(), String> {
     let mut generation_rows = connection
         .query(
             "SELECT snapshot_root, provider_digest
@@ -248,10 +259,9 @@ pub async fn search_turso_documents(
         .await
         .map_err(|error| format!("failed to read Turso search projection generation: {error}"))?
     else {
-        return Ok(TursoClientDbSearchResult {
-            state: TursoClientDbSearchState::EmptyIndex,
-            hits: Vec::new(),
-        });
+        return Err(format!(
+            "Turso search route has no published generation: namespace={namespace}"
+        ));
     };
     let active_root = generation
         .get::<String>(0)
@@ -262,11 +272,24 @@ pub async fn search_turso_documents(
     if active_root != source_snapshot.root_digest
         || active_provider_digest != source_snapshot.provider_digest
     {
-        return Ok(TursoClientDbSearchResult {
-            state: TursoClientDbSearchState::ColdRequired,
-            hits: Vec::new(),
-        });
+        return Err(format!(
+            "Turso search generation identity drift: namespace={namespace} expectedRoot={} activeRoot={} expectedProvider={} activeProvider={}",
+            source_snapshot.root_digest,
+            active_root,
+            source_snapshot.provider_digest,
+            active_provider_digest,
+        ));
     }
+    Ok(())
+}
+
+async fn search_admitted_turso_documents(
+    connection: &turso::Connection,
+    namespace: &str,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+    query: &str,
+    limit: u32,
+) -> Result<TursoClientDbSearchResult, String> {
     let mut hits = Vec::new();
     if let Some(fts_query) = turso_fts_query(query) {
         let fts_result = collect_turso_search_hits(CollectTursoSearchHitsRequest {
@@ -359,24 +382,20 @@ async fn collect_turso_search_hits(
         .await
         .map_err(|error| format!("failed to read Turso search row: {error}"))?
     {
-        let document_id = row
-            .get::<String>(0)
-            .map_err(|error| format!("failed to read Turso document id: {error}"))?;
-        let entity_id = row
-            .get::<Option<String>>(1)
-            .map_err(|error| format!("failed to read Turso entity id: {error}"))?;
-        let selector = row
-            .get::<Option<String>>(2)
-            .map_err(|error| format!("failed to read Turso selector: {error}"))?;
-        let document = row
-            .get::<String>(3)
-            .map_err(|error| format!("failed to read Turso document body: {error}"))?;
         hits.push(TursoClientDbSearchHit {
             source,
-            document_id,
-            entity_id,
-            selector,
-            document,
+            document_id: row
+                .get::<String>(0)
+                .map_err(|error| format!("failed to read Turso document id: {error}"))?,
+            entity_id: row
+                .get::<Option<String>>(1)
+                .map_err(|error| format!("failed to read Turso entity id: {error}"))?,
+            selector: row
+                .get::<Option<String>>(2)
+                .map_err(|error| format!("failed to read Turso selector: {error}"))?,
+            document: row
+                .get::<String>(3)
+                .map_err(|error| format!("failed to read Turso document body: {error}"))?,
         });
     }
     Ok(())

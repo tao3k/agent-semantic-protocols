@@ -327,7 +327,7 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
         source.clone(),
     );
     let generation = session
-        .admit_runtime_generation_for_read(&corpus.language, &corpus.provider_id)
+        .admit_runtime_generation_for_read(corpus.language.as_str(), corpus.provider_id.as_str())
         .await?;
     let materialized_source =
         materialized_source_identity(checkout, generation.source_root_digest)?;

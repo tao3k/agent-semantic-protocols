@@ -11,7 +11,6 @@ use agent_semantic_client_core::{
 use serde::Serialize;
 use serde_json::json;
 
-use crate::structural_index::parse_structural_index_packet_import;
 use crate::types::{
     ClientDbArtifactEdge, ClientDbArtifactEvent, ClientDbArtifactGraphCompactRender,
     ClientDbArtifactRepairChainFrame, ClientDbArtifactRoot, ClientDbProofReceipt,
@@ -20,7 +19,6 @@ use crate::types::{
 };
 
 use super::contract::{ClientDbBackend, ClientDbEngineBackend, ClientDbEngineFeatures};
-use super::source_index_facade::persist_structural_index_read_model_at_path;
 use super::turso::{TursoClientDbEngineBackend, TursoClientDbEngineReport};
 use super::turso_artifact::{lookup_turso_artifact_events, upsert_turso_artifact_events};
 use super::turso_artifact_graph::{
@@ -282,13 +280,6 @@ pub struct ClientDbEngineSourceIndexReadModelReport {
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
 }
 
-/// DB Engine receipt for projecting a structural-index import into Turso read models.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClientDbEngineStructuralIndexReadModelReport {
-    pub search_document_count: usize,
-}
-
 impl ClientDbEngine {
     /// Resolve the DB Engine descriptor from State Core without mutating runtime state.
     ///
@@ -495,26 +486,6 @@ impl ClientDbEngine {
             bootstrap_turso_client_db(&db_path).await?;
             prune_turso_cache_generations_to_manifest(&db_path, &manifest).await?;
             upsert_turso_cache_generations(&db_path, &manifest)
-                .await
-                .map(|_| ())
-        })
-    }
-
-    /// Import one structural-index refresh packet through the active DB Engine backend.
-    pub fn import_semantic_structural_index_refresh_packet_from_client_dir(
-        client_dir: impl AsRef<Path>,
-        generation: &ClientCacheGeneration,
-        packet_bytes: &[u8],
-        source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
-    ) -> Result<(), String> {
-        let client_dir = client_dir.as_ref().to_path_buf();
-        prepare_client_dir_for_write(&client_dir)?;
-        let import = parse_structural_index_packet_import(generation, packet_bytes)?;
-        let db_path = Self::turso_path_for_client_dir(&client_dir);
-        let source_snapshot = source_snapshot.clone();
-        block_on_db_engine_async(async move {
-            bootstrap_turso_client_db(&db_path).await?;
-            persist_structural_index_read_model_at_path(&db_path, &import, &source_snapshot)
                 .await
                 .map(|_| ())
         })

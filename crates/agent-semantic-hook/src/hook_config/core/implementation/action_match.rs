@@ -156,20 +156,6 @@ impl AgentActionMatch {
             .iter()
             .flat_map(agent_semantic_shell_parser::command_stage_behavior_facts)
             .collect::<Vec<_>>();
-        if agent_action.host.action == crate::action_ir::AgentActionKind::Execute {
-            let invocation_operands = command_stages
-                .iter()
-                .flat_map(|stage| stage.words().iter().skip(1).cloned())
-                .collect::<Vec<_>>();
-            if !crate::source_selector::project_shell_subject_paths(registry, &invocation_operands)
-                .is_empty()
-            {
-                agent_action.add_capability(crate::action_ir::SemanticCapability {
-                    action: crate::action_ir::AgentActionKind::Read,
-                    evidence: crate::action_ir::SemanticCapabilityEvidence::ShellPathOperand,
-                });
-            }
-        }
         if include_subjects {
             let mut subject_paths = if let Some(source_operands) = structured_source_operands {
                 source_operands.to_vec()

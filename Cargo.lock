@@ -115,6 +115,7 @@ dependencies = [
  "agent-semantic-context-product",
  "agent-semantic-loop",
  "agent-semantic-provider-protocol",
+ "agent-semantic-provider-transport",
  "agent-semantic-runtime",
  "agent-semantic-search",
  "agent-semantic-search-projection",
@@ -238,6 +239,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "toml 0.9.12+spec-1.1.0",
 ]
 
 [[package]]
@@ -388,6 +390,7 @@ dependencies = [
  "agent-semantic-client-server",
  "agent-semantic-provider-protocol",
  "agent-semantic-provider-transport",
+ "agent-semantic-search",
  "prost",
  "serde",
  "serde_json",
@@ -437,6 +440,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tokio",
+ "tokio-stream",
  "toml 0.9.12+spec-1.1.0",
  "which 8.0.4",
 ]
@@ -447,6 +451,7 @@ version = "0.1.0"
 dependencies = [
  "agent-semantic-content-identity",
  "asp-rust-project-harness-policy",
+ "jsonschema",
  "serde",
  "serde_json",
 ]

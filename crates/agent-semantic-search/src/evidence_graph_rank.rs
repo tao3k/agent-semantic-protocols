@@ -6,7 +6,18 @@ use std::collections::BTreeSet;
 macro_rules! evidence_graph_rank_text {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
-        #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+        #[derive(
+            Clone,
+            Debug,
+            Eq,
+            Hash,
+            Ord,
+            PartialEq,
+            PartialOrd,
+            serde::Deserialize,
+            serde::Serialize,
+        )]
+        #[serde(transparent)]
         pub struct $name(String);
 
         impl $name {

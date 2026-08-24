@@ -2,18 +2,17 @@ mod active_generation;
 mod canonical;
 mod contract;
 pub(in crate::engine) mod core;
-pub(in crate::engine) mod exact_projection_store;
 pub(in crate::engine) mod generation_snapshot;
 pub use active_generation::{
     ClientDbActiveSourceIndexGeneration, active_turso_source_index_generation,
 };
+pub(in crate::engine) use contract::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION;
 pub use generation_snapshot::{
     ClientDbActiveGenerationSourceBlob, ClientDbActiveGenerationSourceBlobs,
     ClientDbSourceIndexGenerationOwner, ClientDbSourceIndexGenerationRelation,
     ClientDbSourceIndexGenerationSnapshot, ClientDbSourceIndexSelectorFact,
     active_turso_source_index_generation_blobs, latest_turso_source_index_generation_snapshot,
 };
-pub(in crate::engine) use contract::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION;
 mod facts;
 mod generation_clone;
 mod materialization;

@@ -1,7 +1,6 @@
-use std::{collections::BTreeSet, sync::Arc, time::Duration};
+//! Typed MVCC partition heads, records, aliases, and compare-and-append operations.
 
-use serde::{Deserialize, Serialize};
-use tokio_stream::StreamExt;
+use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
 use crate::{
     turso_mvcc_partition_sql::{
@@ -10,7 +9,9 @@ use crate::{
     },
     turso_mvcc_store::TursoMvccStore,
 };
+use serde::{Deserialize, Serialize};
 
+/// Committed head metadata for one exact MVCC partition.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoMvccPartitionHead {
@@ -22,6 +23,7 @@ pub struct TursoMvccPartitionHead {
     pub committed_at_ms: i64,
 }
 
+/// Optional compare-and-append precondition for a partition head.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoMvccExpectedHead {
@@ -52,6 +54,7 @@ struct TursoMvccRecordKind(String);
 #[serde(transparent)]
 struct TursoMvccRecordPayload(Vec<u8>);
 
+/// Immutable record appended to one MVCC partition revision.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoMvccPartitionRecord {
@@ -61,6 +64,7 @@ pub struct TursoMvccPartitionRecord {
 }
 
 impl TursoMvccPartitionRecord {
+    /// Construct a validated non-empty partition record.
     pub fn new(
         record_id: impl Into<String>,
         record_kind: impl Into<String>,
@@ -80,22 +84,26 @@ impl TursoMvccPartitionRecord {
         })
     }
 
+    /// Return the stable record identity.
     #[must_use]
     pub fn record_id(&self) -> &str {
         &self.record_id.0
     }
 
+    /// Return the semantic record kind.
     #[must_use]
     pub fn record_kind(&self) -> &str {
         &self.record_kind.0
     }
 
+    /// Borrow the encoded record payload.
     #[must_use]
     pub fn payload(&self) -> &[u8] {
         &self.payload.0
     }
 }
 
+/// Atomic compare-and-append request for one partition revision.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TursoMvccPartitionCommit {
     pub partition_key: String,
@@ -107,6 +115,7 @@ pub struct TursoMvccPartitionCommit {
     pub committed_at_ms: i64,
 }
 
+/// Validated secondary lookup key for one partition.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TursoMvccPartitionAlias {
     alias_namespace: String,
@@ -114,6 +123,7 @@ pub struct TursoMvccPartitionAlias {
 }
 
 impl TursoMvccPartitionAlias {
+    /// Parse and validate an alias namespace and key.
     pub fn parse(
         alias_namespace: impl Into<String>,
         alias_key: impl Into<String>,
@@ -128,15 +138,18 @@ impl TursoMvccPartitionAlias {
         })
     }
 
+    /// Return the validated alias namespace.
     pub fn alias_namespace(&self) -> &str {
         &self.alias_namespace
     }
 
+    /// Return the validated alias key.
     pub fn alias_key(&self) -> &str {
         &self.alias_key
     }
 }
 
+/// Terminal receipt for one successful partition commit.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoMvccPartitionCommitReceipt {
@@ -147,12 +160,14 @@ pub struct TursoMvccPartitionCommitReceipt {
     pub snapshot_conflict_count: usize,
 }
 
+/// Result of an atomic partition compare-and-append attempt.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TursoMvccPartitionCommitOutcome {
     Committed(TursoMvccPartitionCommitReceipt),
     Conflict(Option<TursoMvccPartitionHead>),
 }
 
+/// One partition record with its committed sequence and timestamp.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoMvccStoredPartitionRecord {
@@ -165,32 +180,39 @@ pub struct TursoMvccStoredPartitionRecord {
 }
 
 impl TursoMvccStoredPartitionRecord {
+    /// Return the owning partition key.
     pub fn partition_key(&self) -> &str {
         self.partition_key.as_str()
     }
 
+    /// Return the commit sequence within the partition.
     pub fn sequence(&self) -> u64 {
         self.sequence
     }
 
+    /// Return the stable record identity.
     pub fn record_id(&self) -> &str {
         self.record_id.as_str()
     }
 
+    /// Return the semantic record kind.
     pub fn record_kind(&self) -> &str {
         self.record_kind.as_str()
     }
 
+    /// Borrow the encoded record payload.
     pub fn payload(&self) -> &[u8] {
         self.payload.as_slice()
     }
 
+    /// Return the commit timestamp in Unix milliseconds.
     pub fn committed_at_ms(&self) -> i64 {
         self.committed_at_ms
     }
 }
 
 impl TursoMvccStore {
+    /// Load the current committed head for one exact partition.
     pub async fn load_partition_head(
         &self,
         partition_key: &str,
@@ -201,6 +223,7 @@ impl TursoMvccStore {
         select_head(&connection, partition_key).await
     }
 
+    /// Resolve an alias and load the corresponding current partition head.
     pub async fn load_partition_head_by_alias(
         &self,
         alias_namespace: &str,
@@ -213,6 +236,7 @@ impl TursoMvccStore {
         select_head_by_alias(&connection, alias_namespace, alias_key).await
     }
 
+    /// Read committed records from an exact sequence boundary.
     pub async fn read_partition_records(
         &self,
         partition_key: &str,
@@ -223,6 +247,7 @@ impl TursoMvccStore {
         read_records(&connection, partition_key).await
     }
 
+    /// Atomically compare and append one partition revision.
     pub async fn compare_and_append_partition(
         &self,
         commit: &TursoMvccPartitionCommit,
@@ -231,6 +256,7 @@ impl TursoMvccStore {
             .await
     }
 
+    /// Atomically compare and append while publishing validated aliases.
     pub async fn compare_and_append_partition_with_aliases(
         &self,
         commit: &TursoMvccPartitionCommit,
@@ -246,37 +272,35 @@ impl TursoMvccStore {
         }
         let lane = partition_lane(self, &commit.partition_key);
         let connection = lane.lock_owned().await;
-        let retry = tokio_stream::iter(0..self.inner.retry_attempts)
-            .fold(PartitionAppendRetry::default(), |mut retry, attempt| async {
-                if retry.terminal.is_some() {
-                    return retry;
+        let mut retry = PartitionAppendRetry::default();
+        for attempt in 0..self.inner.retry_attempts {
+            match compare_and_append_once(&connection, commit, aliases).await {
+                Ok(AttemptOutcome::Committed(head)) => {
+                    retry.terminal = Some(Ok(TursoMvccPartitionCommitOutcome::Committed(
+                        TursoMvccPartitionCommitReceipt {
+                            head,
+                            committed_records: commit.records.len(),
+                            retry_count: attempt,
+                            busy_count: retry.busy_count,
+                            snapshot_conflict_count: retry.snapshot_conflict_count,
+                        },
+                    )));
                 }
-                match compare_and_append_once(&connection, commit, aliases).await {
-                    Ok(AttemptOutcome::Committed(head)) => {
-                        retry.terminal = Some(Ok(TursoMvccPartitionCommitOutcome::Committed(
-                            TursoMvccPartitionCommitReceipt {
-                                head,
-                                committed_records: commit.records.len(),
-                                retry_count: attempt,
-                                busy_count: retry.busy_count,
-                                snapshot_conflict_count: retry.snapshot_conflict_count,
-                            },
-                        )));
-                    }
-                    Ok(AttemptOutcome::Conflict(head)) => {
-                        retry.terminal = Some(Ok(TursoMvccPartitionCommitOutcome::Conflict(head)));
-                    }
-                    Err(AttemptError::Retryable { message, snapshot }) => {
-                        retry.busy_count += usize::from(!snapshot);
-                        retry.snapshot_conflict_count += usize::from(snapshot);
-                        retry.last_retryable_error = Some(message);
-                        tokio::time::sleep(retry_delay(attempt)).await;
-                    }
-                    Err(AttemptError::Fatal(message)) => retry.terminal = Some(Err(message)),
+                Ok(AttemptOutcome::Conflict(head)) => {
+                    retry.terminal = Some(Ok(TursoMvccPartitionCommitOutcome::Conflict(head)));
                 }
-                retry
-            })
-            .await;
+                Err(AttemptError::Retryable { message, snapshot }) => {
+                    retry.busy_count += usize::from(!snapshot);
+                    retry.snapshot_conflict_count += usize::from(snapshot);
+                    retry.last_retryable_error = Some(message);
+                    tokio::time::sleep(retry_delay(attempt)).await;
+                }
+                Err(AttemptError::Fatal(message)) => retry.terminal = Some(Err(message)),
+            }
+            if retry.terminal.is_some() {
+                break;
+            }
+        }
         retry.terminal.unwrap_or_else(|| {
             Err(format!(
                 "{} after {} Turso MVCC partition transaction attempts",
@@ -288,6 +312,7 @@ impl TursoMvccStore {
         })
     }
 
+    /// Resolve one validated alias to its canonical partition key.
     pub async fn resolve_partition_alias(
         &self,
         alias_namespace: &str,

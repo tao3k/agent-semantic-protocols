@@ -1,6 +1,4 @@
-use crate::{
-    ValidatedSortedRecordTable, encode_sorted_record_table,
-};
+use crate::{ValidatedSortedRecordTable, encode_sorted_record_table};
 
 #[test]
 fn sorted_record_table_reads_one_value_without_materializing_the_table() {

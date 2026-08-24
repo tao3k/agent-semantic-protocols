@@ -21,8 +21,8 @@ use agent_semantic_client_db::turso_sync_storage::{
         TursoSyncProfileConfig {
             path,
         mode: TursoSyncProfileMode::Remote {
-            remote_url: "http://127.0.0.1:1".to_owned(),
-            auth_token: "fixed-test-token".to_owned(),
+            remote_url: "http://127.0.0.1:1".into(),
+            auth_token: "fixed-test-token".into(),
             bootstrap_if_empty: false,
         },
             operation_timeout: Duration::from_millis(100),
@@ -34,8 +34,8 @@ use agent_semantic_client_db::turso_sync_storage::{
         let result = TursoSyncStorage::open(TursoSyncProfileConfig {
             path: temp_db("invalid"),
         mode: TursoSyncProfileMode::Remote {
-            remote_url: String::new(),
-            auth_token: String::new(),
+            remote_url: String::new().into(),
+            auth_token: String::new().into(),
             bootstrap_if_empty: false,
         },
             operation_timeout: Duration::from_millis(100),

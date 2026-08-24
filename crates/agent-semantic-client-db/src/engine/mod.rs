@@ -48,11 +48,9 @@ pub(crate) mod turso_statement;
 mod turso_syntax;
 
 pub use contract::{ClientDbBackend, ClientDbEngineDurability, ClientDbEngineFeatures};
+pub use facade::ClientDbEngineSourceIndexReadModelReport;
 pub use facade::{
     ClientDbEngine, ClientDbEngineReadSession, ClientDbEngineReport, ClientDbEngineWriteSession,
-};
-pub use facade::{
-    ClientDbEngineSourceIndexReadModelReport, ClientDbEngineStructuralIndexReadModelReport,
 };
 pub use session_control_plane::{
     SessionControlPlaneAgentRegistration, SessionControlPlaneDelegationProposal,

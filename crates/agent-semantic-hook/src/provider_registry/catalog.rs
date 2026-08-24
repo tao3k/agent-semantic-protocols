@@ -9,8 +9,14 @@ fn provider_register_json() -> &'static str {
 }
 
 pub fn semantic_registry_digest() -> String {
-    let digest = <sha2::Sha256 as sha2::Digest>::digest(provider_register_json().as_bytes());
-    format!("sha256:{digest:x}")
+    static DIGEST: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    DIGEST
+        .get_or_init(|| {
+            let digest =
+                <sha2::Sha256 as sha2::Digest>::digest(provider_register_json().as_bytes());
+            format!("sha256:{digest:x}")
+        })
+        .clone()
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

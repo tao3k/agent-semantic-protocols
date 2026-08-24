@@ -209,24 +209,11 @@ pub fn overlay_active_source_index_import(
         ));
     }
 
-    let file_hashes = overlay_file_hashes(
-        active,
-        partial,
-        changed_owner_paths,
-        removed_owner_paths,
-    );
-    let (owners, selectors) = overlay_owner_facts(
-        active,
-        partial,
-        changed_owner_paths,
-        removed_owner_paths,
-    )?;
-    let relations = overlay_relations(
-        active,
-        partial,
-        changed_owner_paths,
-        removed_owner_paths,
-    );
+    let file_hashes =
+        overlay_file_hashes(active, partial, changed_owner_paths, removed_owner_paths);
+    let (owners, selectors) =
+        overlay_owner_facts(active, partial, changed_owner_paths, removed_owner_paths)?;
+    let relations = overlay_relations(active, partial, changed_owner_paths, removed_owner_paths);
     let source_blobs = overlay_source_blobs(
         active_blobs,
         partial,
@@ -280,7 +267,13 @@ fn overlay_owner_facts(
     partial: &ClientDbSourceIndexImport,
     changed_owner_paths: &BTreeSet<String>,
     removed_owner_paths: &BTreeSet<String>,
-) -> Result<(Vec<ClientDbSourceIndexOwner>, Vec<ClientDbSourceIndexSelector>), String> {
+) -> Result<
+    (
+        Vec<ClientDbSourceIndexOwner>,
+        Vec<ClientDbSourceIndexSelector>,
+    ),
+    String,
+> {
     let mut owners = Vec::new();
     let mut selectors = Vec::new();
     for owner in active.owners.iter().filter(|owner| {

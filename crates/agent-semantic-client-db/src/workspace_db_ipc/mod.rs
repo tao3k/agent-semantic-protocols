@@ -11,8 +11,6 @@ pub use protocol::{
 mod provider_owner;
 mod runtime_generation;
 mod runtime_locator;
-#[path = "../workspace_db_ipc_server_single_request.rs"]
-mod server_single_request;
 mod session_pool;
 pub(crate) mod transport;
 mod validation;
@@ -25,30 +23,27 @@ use validation::{
     deserialize_changed_paths, deserialize_mutation_id, workspace_db_ipc_read_lane_capacity,
 };
 
-pub use crate::try_acquire_workspace_db_owner_election;
-pub use server_single_request::serve_one_workspace_db_ipc_request;
 pub use agent_session_registry::{
-    AgentHostExecutionObservationIpc, AgentHostLifecycleEventIpc, AgentHostLifecycleEventKind,
-    AgentHostNonMatchIpc, AgentSessionModelObservationIpc, AgentSessionRegisterIpcRequest,
+    AgentHostEventId, AgentHostExecutionObservationIpc, AgentHostLifecycleEventIpc,
+    AgentHostLifecycleEventKind, AgentHostNamespaceId, AgentHostNonMatchIpc, AgentHostProfileId,
+    AgentHostRouteKey, AgentHostSandboxMode, AgentHostTranscriptPath,
+    AgentSessionModelObservationIpc, AgentSessionRegisterIpcRequest,
     AgentSessionRegistryIpcOperation, AgentSessionRegistryIpcResult,
 };
 pub use graph_facts::{RuntimeGraphFactSource, RuntimeGraphFactsRead};
 pub use protocol::{
     RuntimeCacheControlReceipt, RuntimeCacheControlRequest, RuntimeCacheGenerationState,
     RuntimeCacheInvalidationScope, RuntimeCacheOwnerDeltaFallbackPolicy,
-    RuntimeResidentReadEvidence, RuntimeResidentReadResult, RuntimeResidentReadWorkCounters,
-    WORKSPACE_DB_OWNER_ENDPOINT_SCHEMA_ID, WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID,
-    WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID, WORKSPACE_DB_OWNER_SCHEMA_VERSION,
-    WorkspaceDbIpcOperation, WorkspaceDbIpcRequest, WorkspaceDbIpcResponse, WorkspaceDbIpcResult,
-    WorkspaceDbIpcSession, WorkspaceDbOwnerEndpoint, WorkspaceDbOwnerRetirement,
-    WorkspaceDbSourceIndexLookupRequest, bind_workspace_db_owner, cache_control_via_runtime_server,
-    connect_runtime_server_workspace_session, prepare_workspace_db_owner_endpoint,
-    read_source_index_via_runtime_server, remove_stale_workspace_db_owner_socket,
-    resident_read_terminal_digest, serve_one_workspace_db_session_request,
-    try_retire_workspace_db_owner_endpoint, workspace_db_owner_runtime_base,
-    workspace_db_owner_transport_contract_digest,
+    RuntimeResidentReadEvidence, RuntimeResidentReadResult, RuntimeResidentReadState,
+    RuntimeResidentReadTerminalState, WORKSPACE_DB_OWNER_ENDPOINT_SCHEMA_ID,
+    WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID, WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID,
+    WORKSPACE_DB_OWNER_SCHEMA_VERSION, WorkspaceDbIpcBindingToken, WorkspaceDbIpcOperation,
+    WorkspaceDbIpcRequest, WorkspaceDbIpcRequestId, WorkspaceDbIpcResponse, WorkspaceDbIpcResult,
+    WorkspaceDbIpcSchemaId, WorkspaceDbIpcSession, WorkspaceDbSourceIndexLookupRequest,
+    WorkspaceIpcResidentReadWorkCounters, cache_control_via_runtime_server,
+    connect_runtime_server_workspace_session, read_source_index_via_runtime_server,
 };
+pub(crate) use protocol::{RuntimeResidentReadTerminalDigestInput, resident_read_terminal_digest};
 pub use transport::{
-    HOST_LOCAL_IPC_PERMISSION_DENIED_REASON_KIND, call_workspace_db_owner,
-    is_host_local_ipc_permission_denied,
+    HOST_LOCAL_IPC_PERMISSION_DENIED_REASON_KIND, is_host_local_ipc_permission_denied,
 };

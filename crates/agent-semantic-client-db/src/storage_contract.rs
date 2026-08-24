@@ -11,18 +11,24 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Mutex;
 
+/// Schema identifier for atomic session event batches.
 pub const SESSION_EVENT_BATCH_SCHEMA_ID: &str = "asp.storage-session-event-batch.v1";
+/// Schema identifier for terminal batch write receipts.
 pub const SESSION_EVENT_BATCH_RECEIPT_SCHEMA_ID: &str =
     "asp.storage-session-event-batch-write-receipt.v1";
+/// Maximum rows accepted in one atomic event batch.
 pub const MAX_SESSION_EVENT_BATCH_ROWS: usize = 1_024;
+/// Maximum rows returned by one keyset page.
 pub const MAX_KEYSET_PAGE_LIMIT: usize = 1_000;
 
+/// Sendable backend-neutral storage operation future.
 pub type StorageFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, StorageError>> + Send + 'a>>;
 
 type SessionEventPartitions = BTreeMap<String, BTreeMap<(i64, String), SessionEvent>>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+/// Declared concurrency and checkpoint profile for one storage operation.
 pub enum StorageOptimizationProfile {
     CompatibilityImmediate,
     MvccConcurrent,
@@ -31,6 +37,7 @@ pub enum StorageOptimizationProfile {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+/// Transaction isolation mechanism required by a storage profile.
 pub enum StorageTransactionMode {
     Immediate,
     Concurrent,
@@ -38,6 +45,7 @@ pub enum StorageTransactionMode {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+/// Authority that durably owns one storage result.
 pub enum StorageAuthorityKind {
     Local,
     RemoteSync,
@@ -46,6 +54,7 @@ pub enum StorageAuthorityKind {
 
 macro_rules! storage_value_type {
     ($name:ident) => {
+        #[doc = concat!("Typed storage contract value `", stringify!($name), "`.")]
         #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
         #[serde(transparent)]
         pub struct $name(String);
@@ -111,6 +120,7 @@ storage_value_type!(StorageSloMatrixReceiptSchemaId);
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// Exact repository/workspace/session/agent partition identity.
 pub struct StoragePartitionKey {
     pub repo_id: StorageRepoId,
     pub workspace_id: StorageWorkspaceId,
@@ -120,6 +130,7 @@ pub struct StoragePartitionKey {
 }
 
 impl StoragePartitionKey {
+    /// Encode the partition as an unambiguous length-delimited key.
     pub fn canonical_key(&self) -> String {
         [
             ("repo", self.repo_id.as_str()),
@@ -154,6 +165,7 @@ impl StoragePartitionKey {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// Immutable agent session event stored in one partition.
 pub struct SessionEvent {
     pub event_id: StorageSessionEventId,
     pub turn_id: StorageTurnId,
@@ -164,6 +176,7 @@ pub struct SessionEvent {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// Bounded conflict retry policy for explicit storage writes.
 pub struct StorageRetryPolicy {
     pub(crate) max_attempts: u32,
     pub(crate) base_delay_ms: u64,
@@ -183,6 +196,7 @@ impl Default for StorageRetryPolicy {
 }
 
 impl StorageRetryPolicy {
+    /// Validate retry bounds before any operation starts.
     pub fn validate(&self) -> Result<(), StorageError> {
         if self.max_attempts == 0 {
             return Err(StorageError::invalid_request(
@@ -200,6 +214,7 @@ impl StorageRetryPolicy {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// Atomic, typed session event batch and its storage profile.
 pub struct SessionEventBatch {
     pub schema_id: String,
     pub batch_id: String,
@@ -211,6 +226,7 @@ pub struct SessionEventBatch {
 }
 
 impl SessionEventBatch {
+    /// Validate schema, partition, identities, size, and profile compatibility.
     pub fn validate(&self) -> Result<(), StorageError> {
         if self.schema_id != SESSION_EVENT_BATCH_SCHEMA_ID {
             return Err(StorageError::invalid_request(format!(
@@ -261,6 +277,7 @@ impl SessionEventBatch {
         }
     }
 
+    /// Compute the deterministic digest of the validated execution request.
     pub fn execution_digest(&self) -> Result<String, StorageError> {
         let bytes = serde_json::to_vec(self).map_err(|error| {
             StorageError::backend(format!("serialize storage batch digest input: {error}"))
@@ -276,6 +293,7 @@ impl SessionEventBatch {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+/// Terminal state of one requested storage transaction.
 pub enum StorageTransactionState {
     Committed,
     Aborted,
@@ -284,6 +302,7 @@ pub enum StorageTransactionState {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// Terminal evidence for one atomic session event batch write.
 pub struct SessionEventBatchWriteReceipt {
     pub schema_id: StorageReceiptSchemaId,
     pub batch_id: StorageSessionEventBatchId,
@@ -306,6 +325,7 @@ pub struct SessionEventBatchWriteReceipt {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// Stable composite continuation cursor for session event pagination.
 pub struct SessionEventCursor {
     pub created_at_ms: i64,
     pub event_id: String,
@@ -313,6 +333,7 @@ pub struct SessionEventCursor {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// Bounded keyset page request for one exact storage partition.
 pub struct SessionEventPageRequest {
     pub partition: StoragePartitionKey,
     pub after: Option<SessionEventCursor>,
@@ -320,6 +341,7 @@ pub struct SessionEventPageRequest {
 }
 
 impl SessionEventPageRequest {
+    /// Validate partition identity and page bounds.
     pub fn validate(&self) -> Result<(), StorageError> {
         self.partition.validate()?;
         if self.limit == 0 || self.limit > MAX_KEYSET_PAGE_LIMIT {
@@ -333,11 +355,13 @@ impl SessionEventPageRequest {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// Ordered session events and an optional continuation cursor.
 pub struct SessionEventPage {
     pub items: Vec<SessionEvent>,
     pub next: Option<SessionEventCursor>,
 }
 
+/// Stable failure category shared by every agent storage backend.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum StorageErrorCode {
@@ -352,6 +376,7 @@ pub enum StorageErrorCode {
     Backend,
 }
 
+/// Typed backend-neutral storage failure with explicit retry eligibility.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageError {
@@ -361,22 +386,27 @@ pub struct StorageError {
 }
 
 impl StorageError {
+    /// Construct a non-retryable request validation failure.
     pub fn invalid_request(message: impl Into<String>) -> Self {
         Self::new(StorageErrorCode::InvalidRequest, false, message)
     }
 
+    /// Construct a non-retryable duplicate identity failure.
     pub fn duplicate_identity(message: impl Into<String>) -> Self {
         Self::new(StorageErrorCode::DuplicateIdentity, false, message)
     }
 
+    /// Construct a non-retryable unsupported profile failure.
     pub fn unsupported_profile(message: impl Into<String>) -> Self {
         Self::new(StorageErrorCode::UnsupportedProfile, false, message)
     }
 
+    /// Construct a non-retryable backend failure.
     pub fn backend(message: impl Into<String>) -> Self {
         Self::new(StorageErrorCode::Backend, false, message)
     }
 
+    /// Construct an explicitly classified storage failure.
     pub fn new(code: StorageErrorCode, retryable: bool, message: impl Into<String>) -> Self {
         Self {
             code,
@@ -394,12 +424,15 @@ impl std::fmt::Display for StorageError {
 
 impl std::error::Error for StorageError {}
 
+/// Backend-neutral atomic event storage contract for agent sessions.
 pub trait AgentStorage: Send + Sync {
+    /// Atomically append a validated session event batch.
     fn append_session_events_atomically<'a>(
         &'a self,
         batch: &'a SessionEventBatch,
     ) -> StorageFuture<'a, SessionEventBatchWriteReceipt>;
 
+    /// List one bounded, deterministic page of session events.
     fn list_session_events<'a>(
         &'a self,
         request: &'a SessionEventPageRequest,
@@ -407,6 +440,7 @@ pub trait AgentStorage: Send + Sync {
 }
 
 #[derive(Default)]
+/// Deterministic in-memory implementation used by contract tests and ephemeral owners.
 pub struct InMemoryAgentStorage {
     partitions: Mutex<SessionEventPartitions>,
 }

@@ -102,8 +102,10 @@ fn old_cli_exact_and_generation_data_planes_are_not_declared() {
 #[test]
 fn search_db_facade_is_tokio_native_without_a_sync_bridge() {
     let facade = include_str!("../../../agent-semantic-client-db/src/engine/search_facade.rs");
-    assert!(facade.contains("pub async fn search_source_index_documents_from_client_dir"));
-    assert!(facade.contains("pub async fn search_structural_index_documents_from_client_dir"));
+    assert!(facade.contains("pub async fn search_documents"));
+    assert!(facade.contains("SemanticSearchRouteDecision"));
+    assert!(!facade.contains("search_source_index_documents"));
+    assert!(!facade.contains("search_structural_index_documents"));
     for forbidden in ["block_on_db_engine", "std::thread", "thread::sleep"] {
         assert!(
             !facade.contains(forbidden),

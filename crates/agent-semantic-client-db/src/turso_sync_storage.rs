@@ -1,3 +1,5 @@
+//! Explicit local/remote Turso synchronization outside the warm search/query data path.
+
 use std::fmt;
 use std::future::Future;
 use std::path::PathBuf;
@@ -6,14 +8,17 @@ use std::time::{Duration, Instant};
 use agent_semantic_content_identity::hash_blob;
 use serde::{Deserialize, Serialize};
 
+/// Schema identifier emitted by remote sync operation receipts.
 pub const TURSO_SYNC_OPERATION_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.client-db.turso-sync-operation-receipt.v1";
+/// Default network-operation budget for explicit remote synchronization.
 pub const DEFAULT_TURSO_SYNC_OPERATION_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn default_turso_sync_operation_timeout() -> Duration {
     DEFAULT_TURSO_SYNC_OPERATION_TIMEOUT
 }
 
+/// Storage path, backend mode, and explicit network budget for a sync profile.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoSyncProfileConfig {
@@ -23,17 +28,75 @@ pub struct TursoSyncProfileConfig {
     pub operation_timeout: Duration,
 }
 
+/// Remote Turso endpoint selected by one sync profile.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct TursoSyncRemoteUrl(String);
+
+impl TursoSyncRemoteUrl {
+    /// Borrow the endpoint as accepted by the Turso builder.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for TursoSyncRemoteUrl {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for TursoSyncRemoteUrl {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+/// Authentication credential for one remote Turso sync profile.
+#[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct TursoSyncAuthToken(String);
+
+impl fmt::Debug for TursoSyncAuthToken {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("TursoSyncAuthToken([REDACTED])")
+    }
+}
+
+impl TursoSyncAuthToken {
+    /// Borrow the credential only at the Turso builder boundary.
+    #[must_use]
+    pub fn expose_secret(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for TursoSyncAuthToken {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for TursoSyncAuthToken {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+/// Selects either local-only storage or an explicitly configured remote sync peer.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum TursoSyncProfileMode {
     Local,
     Remote {
-        remote_url: String,
-        auth_token: String,
+        remote_url: TursoSyncRemoteUrl,
+        auth_token: TursoSyncAuthToken,
         bootstrap_if_empty: bool,
     },
 }
 
+/// One explicit synchronization operation.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TursoSyncOperation {
@@ -43,6 +106,7 @@ pub enum TursoSyncOperation {
     Stats,
 }
 
+/// Terminal outcome of an explicit synchronization operation.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TursoSyncOperationOutcome {
@@ -52,6 +116,7 @@ pub enum TursoSyncOperationOutcome {
     Failed,
 }
 
+/// Remote sync counters returned with a stats receipt.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoSyncStatsReceipt {
@@ -65,6 +130,7 @@ pub struct TursoSyncStatsReceipt {
     pub revision: Option<String>,
 }
 
+/// Typed terminal receipt for one explicit remote sync operation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoSyncOperationReceipt {
@@ -79,12 +145,14 @@ pub struct TursoSyncOperationReceipt {
 }
 
 impl TursoSyncOperationReceipt {
+    /// Return the terminal outcome without exposing backend details.
     #[must_use]
     pub const fn outcome(&self) -> TursoSyncOperationOutcome {
         self.outcome
     }
 }
 
+/// Stable failure category for opening or operating synchronized storage.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TursoSyncStorageErrorCode {
     InvalidConfiguration,
@@ -93,6 +161,7 @@ pub enum TursoSyncStorageErrorCode {
     Timeout,
 }
 
+/// Typed error returned by the synchronized storage boundary.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TursoSyncStorageError {
     pub code: TursoSyncStorageErrorCode,
@@ -107,6 +176,7 @@ impl fmt::Display for TursoSyncStorageError {
 
 impl std::error::Error for TursoSyncStorageError {}
 
+/// Explicit Turso synchronization owner, separate from the warm search/query path.
 pub struct TursoSyncStorage {
     backend: TursoSyncBackend,
     operation_timeout: Duration,
@@ -153,6 +223,7 @@ macro_rules! stats_receipt {
 }
 
 impl TursoSyncStorage {
+    /// Open the configured local or remote-sync backend.
     pub async fn open(config: TursoSyncProfileConfig) -> Result<Self, TursoSyncStorageError> {
         if config.operation_timeout.is_zero() {
             return Err(TursoSyncStorageError {
@@ -183,7 +254,9 @@ impl TursoSyncStorage {
                 auth_token,
                 bootstrap_if_empty,
             } => {
-                if remote_url.trim().is_empty() || auth_token.trim().is_empty() {
+                if remote_url.as_str().trim().is_empty()
+                    || auth_token.expose_secret().trim().is_empty()
+                {
                     return Err(TursoSyncStorageError {
                         code: TursoSyncStorageErrorCode::InvalidConfiguration,
                         message: "remote URL and auth token must be non-empty".to_owned(),
@@ -192,8 +265,8 @@ impl TursoSyncStorage {
                 let database = await_turso_operation(
                     operation_timeout,
                     turso::sync::Builder::new_remote(path.as_ref())
-                        .with_remote_url(&remote_url)
-                        .with_auth_token(&auth_token)
+                        .with_remote_url(remote_url.as_str())
+                        .with_auth_token(auth_token.expose_secret())
                         .bootstrap_if_empty(bootstrap_if_empty)
                         .build(),
                 )
@@ -214,6 +287,7 @@ impl TursoSyncStorage {
         })
     }
 
+    /// Open a database connection through the selected backend.
     pub async fn connect(&self) -> Result<turso::Connection, TursoSyncStorageError> {
         match &self.backend {
             TursoSyncBackend::Local(database) => {
@@ -236,6 +310,7 @@ impl TursoSyncStorage {
         }
     }
 
+    /// Push local changes to the explicitly configured remote peer.
     pub async fn push(&self) -> TursoSyncOperationReceipt {
         let started = Instant::now();
         let TursoSyncBackend::Remote(database) = &self.backend else {
@@ -255,6 +330,7 @@ impl TursoSyncStorage {
         }
     }
 
+    /// Pull remote changes into the local synchronized database.
     pub async fn pull(&self) -> TursoSyncOperationReceipt {
         let started = Instant::now();
         let TursoSyncBackend::Remote(database) = &self.backend else {
@@ -284,6 +360,7 @@ impl TursoSyncStorage {
         }
     }
 
+    /// Checkpoint the remote synchronization log.
     pub async fn checkpoint(&self) -> TursoSyncOperationReceipt {
         let started = Instant::now();
         let checkpoint = match &self.backend {
@@ -313,6 +390,7 @@ impl TursoSyncStorage {
         }
     }
 
+    /// Read synchronization statistics from the remote backend.
     pub async fn stats(&self) -> TursoSyncOperationReceipt {
         let started = Instant::now();
         let TursoSyncBackend::Remote(database) = &self.backend else {

@@ -73,12 +73,41 @@
         }
       }
     },
+    "ruleCompositionPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pointer"],
+      "properties": {
+        "pointer": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "contains": {},
+        "equals": {}
+      },
+      "oneOf": [
+        { "required": ["contains"] },
+        { "required": ["equals"] }
+      ]
+    },
     "rule": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id"],
+      "required": ["id", "ruleComposition"],
       "properties": {
         "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ruleComposition": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/ruleCompositionPredicate"
+          }
+        },
+        "conformanceCommand": {
           "type": "string",
           "minLength": 1
         },

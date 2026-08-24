@@ -6,6 +6,28 @@ use crate::{SearchProjectionError, SemanticSearchPacketV1};
 pub const SEMANTIC_GRAPH_TURBO_RESULT_SCHEMA_ID: &str =
     "agent.semantic-protocols.semantic-graph-turbo-result";
 pub const SEMANTIC_GRAPH_TURBO_RESULT_SCHEMA_VERSION: &str = "1";
+pub const SEMANTIC_GRAPH_TURBO_REQUEST_SCHEMA_ID: &str =
+    "agent.semantic-protocols.semantic-graph-turbo-request";
+
+#[derive(Clone, Debug)]
+pub struct GraphTurboEvaluationRequest {
+    value: Value,
+}
+
+impl GraphTurboEvaluationRequest {
+    pub fn from_value(value: Value) -> Result<Self, SearchProjectionError> {
+        let object = value.as_object().ok_or_else(|| {
+            SearchProjectionError::InvalidPacket("graph-turbo request must be an object".to_owned())
+        })?;
+        require_exact_string(object, "schemaId", SEMANTIC_GRAPH_TURBO_REQUEST_SCHEMA_ID)?;
+        require_exact_string(object, "schemaVersion", "1")?;
+        Ok(Self { value })
+    }
+
+    pub fn into_value(self) -> Value {
+        self.value
+    }
+}
 
 pub trait SearchProjectionSource {
     fn as_value(&self) -> &Value;
@@ -62,6 +84,10 @@ impl GraphTurboResultPacketV1 {
             value,
             semantic_digest: format!("blake3-256:{}", hash.value),
         })
+    }
+
+    pub fn into_value(self) -> Value {
+        self.value
     }
 }
 

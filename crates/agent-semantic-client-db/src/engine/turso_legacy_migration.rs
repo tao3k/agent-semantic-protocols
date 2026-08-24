@@ -488,12 +488,16 @@ fn table_family(name: &str) -> Option<MigrationFamily> {
         name,
         "asp_search_projection_generation" | "asp_search_projection_document"
     ) {
-        Some(MigrationFamily::StructuralIndex)
+        // Pre-route projection rows have no storage-profile or planner-decision
+        // identity. They cannot be admitted into the server-first search plane.
+        Some(MigrationFamily::RetiredDerivedProjection)
     } else if name == "asp_cache_generation" {
         Some(MigrationFamily::CacheManifest)
     } else if name == "asp_syntax_query_replay" {
         Some(MigrationFamily::SyntaxQuery)
-    } else if name.starts_with("asp_source_index_") || name == "asp_exact_selector_projection_v1" {
+    } else if name == "asp_exact_selector_projection_v1" {
+        Some(MigrationFamily::RetiredDerivedProjection)
+    } else if name.starts_with("asp_source_index_") {
         Some(MigrationFamily::SourceIndex)
     } else if matches!(
         name,
@@ -533,23 +537,27 @@ fn ensure_target_covers_source_tables(
     target_fact_tables: &[MigrationTable],
     target_search_tables: &[MigrationTable],
 ) -> Result<(), String> {
-    let mut missing = Vec::new();
-    for source in source_tables {
-        if source.family == MigrationFamily::RetiredDerivedProjection {
-            continue;
-        }
-        let target_tables = if source.family == MigrationFamily::StructuralIndex {
-            target_search_tables
-        } else {
-            target_fact_tables
-        };
-        if !target_tables
-            .iter()
-            .any(|target| target.name == source.name)
-        {
-            missing.push(source.name.clone());
-        }
-    }
+    let target_fact_names = target_fact_tables
+        .iter()
+        .map(|table| table.name.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let target_search_names = target_search_tables
+        .iter()
+        .map(|table| table.name.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let missing = source_tables
+        .iter()
+        .filter(|source| source.family != MigrationFamily::RetiredDerivedProjection)
+        .filter(|source| {
+            let target_names = if source.family == MigrationFamily::StructuralIndex {
+                &target_search_names
+            } else {
+                &target_fact_names
+            };
+            !target_names.contains(source.name.as_str())
+        })
+        .map(|source| source.name.clone())
+        .collect::<Vec<_>>();
     if missing.is_empty() {
         Ok(())
     } else {

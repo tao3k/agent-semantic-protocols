@@ -59,7 +59,6 @@ pub mod seqlock_json_memory;
 mod source_index;
 pub mod storage_contract;
 pub mod storage_performance_receipt;
-mod structural_index;
 mod syntax_query;
 pub mod turso_agent_storage;
 pub mod turso_cdc_storage;
@@ -84,20 +83,8 @@ mod turso_mvcc_partition_sql;
 pub mod turso_mvcc_store;
 pub mod turso_sync_storage;
 mod types;
-mod workspace_db_endpoint;
-pub use workspace_db_endpoint::WorkspaceDbOwnerEndpoint;
-pub use workspace_db_endpoint::{
-    bind_workspace_db_owner, prepare_workspace_db_owner_endpoint, workspace_db_owner_runtime_base,
-    workspace_db_owner_transport_contract_digest,
-};
-pub use workspace_db_owner_election::{
-    WorkspaceDbOwnerRetirement, remove_stale_workspace_db_owner_socket,
-    try_acquire_workspace_db_owner_election, try_retire_workspace_db_owner_endpoint,
-};
 pub mod workspace_db_ipc;
-pub use workspace_db_ipc_server::serve_workspace_db_session_until_shutdown;
 mod workspace_db_ipc_server;
-pub mod workspace_db_owner_election;
 pub use types::ClientDbProviderCommandSelectionInput;
 pub use workspace_db_ipc::WorkspaceDbIpcSession;
 
@@ -139,9 +126,8 @@ pub use engine::{
     ProviderTreeSitterQueryReceipt,
 };
 pub use engine::{
-    ClientDbEngineSourceIndexReadModelReport, ClientDbEngineStructuralIndexReadModelReport,
-    TURSO_BOOTSTRAP_TABLE, TursoClientDbSearchDocument, TursoClientDbSearchHit,
-    TursoClientDbSearchResult, TursoClientDbSearchState,
+    ClientDbEngineSourceIndexReadModelReport, TURSO_BOOTSTRAP_TABLE, TursoClientDbSearchDocument,
+    TursoClientDbSearchHit, TursoClientDbSearchResult, TursoClientDbSearchState,
 };
 pub use source_index::{
     CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
@@ -162,8 +148,8 @@ pub use source_index::{
     ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexSelectorSymbol,
     ClientDbSourceIndexSource, ClientDbSourceIndexSourceBlobs, ClientDbSourceIndexSourceKind,
     ClientDbSourceIndexStats, ClientDbSourceIndexStructuralSelector, assemble_source_index_import,
-    build_source_index_import,
-    client_db_source_index_file_count, client_db_source_index_generation_id_for_snapshot,
+    build_source_index_import, client_db_source_index_file_count,
+    client_db_source_index_generation_id_for_snapshot,
     client_db_source_index_registry_evidence_hash, client_db_source_index_scope_dir_evidence_hash,
     overlay_active_source_index_import, source_index_file_hashes,
     source_index_import_with_file_hashes, source_index_relative_path, source_index_scope_dirs,
@@ -171,13 +157,6 @@ pub use source_index::{
 pub use source_index::{
     ClientDbExactSelectorProjectionV1, ClientDbExactSelectorWarmHitV1,
     ExactSelectorMerkleLookupKeyV1, ExactSelectorMerkleMissV1, ExactSelectorWarmSideEffectsV1,
-};
-pub use structural_index::{
-    ClientDbStructuralDependencyUsage, ClientDbStructuralHash, ClientDbStructuralIndexImport,
-    ClientDbStructuralIndexLookup, ClientDbStructuralIndexRefreshPlan,
-    ClientDbStructuralIndexStats, ClientDbStructuralKind, ClientDbStructuralLocator,
-    ClientDbStructuralName, ClientDbStructuralOwner, ClientDbStructuralPath,
-    ClientDbStructuralQueryKey, ClientDbStructuralSource, ClientDbStructuralSymbol,
 };
 pub use types::{
     AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION, ClientDbArtifactEdge, ClientDbArtifactEvent,

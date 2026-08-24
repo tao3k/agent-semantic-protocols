@@ -4,10 +4,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 const SEARCH_REQUEST: &str = "agent.semantic-protocols.runtime-provider-search-request";
-const SEARCH_RECEIPT: &str = "agent.semantic-protocols.runtime-provider-search-receipt";
 const CLIENT_SEARCH_REQUEST: &str = "agent.semantic-protocols.asp-client-search-request";
-const CLIENT_EXACT_QUERY_REQUEST: &str =
-    "agent.semantic-protocols.asp-client-exact-query-request";
+const CLIENT_EXACT_QUERY_REQUEST: &str = "agent.semantic-protocols.asp-client-exact-query-request";
 const CLIENT_OWNER_SEARCH_REQUEST: &str =
     "agent.semantic-protocols.asp-client-owner-search-request";
 const EXACT_REQUEST: &str = "agent.semantic-protocols.provider-native-exact-request";
@@ -53,33 +51,6 @@ pub struct RuntimeProviderSearchRequest {
     pub language_id: String,
     pub scope: String,
     pub query_plan: Value,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct RuntimeProviderSearchReceipt {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub operation_id: String,
-    pub status: String,
-    pub language_id: String,
-    pub read_state: String,
-    pub candidate_count: usize,
-    pub selectors: Vec<String>,
-    pub status_code: i32,
-    pub stdout: Vec<u8>,
-    pub stderr: Vec<u8>,
-    #[serde(default)]
-    pub root_digest: Option<String>,
-    #[serde(default)]
-    pub provider_digest: Option<String>,
-    #[serde(default)]
-    pub index_artifact_digest: Option<String>,
-    pub resident_read_elapsed_micros: u64,
-    pub service_elapsed_micros: u64,
-    pub elapsed_micros: u64,
-    #[serde(default)]
-    pub failure: Option<Value>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -203,7 +174,6 @@ macro_rules! validate_schema_identity {
     };
 }
 validate_schema_identity!(RuntimeProviderSearchRequest, SEARCH_REQUEST);
-validate_schema_identity!(RuntimeProviderSearchReceipt, SEARCH_RECEIPT);
 validate_schema_identity!(AspClientSearchRequest, CLIENT_SEARCH_REQUEST);
 validate_schema_identity!(AspClientExactQueryRequest, CLIENT_EXACT_QUERY_REQUEST);
 validate_schema_identity!(AspClientOwnerSearchRequest, CLIENT_OWNER_SEARCH_REQUEST);

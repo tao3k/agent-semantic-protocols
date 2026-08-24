@@ -5,13 +5,13 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 
 pub use candidate::{
-    WorkspaceGenerationBuild, WorkspaceGenerationBuildCompletion, WorkspaceGenerationBuildFailure,
+    WorkspaceGenerationBuildCompletion, WorkspaceGenerationBuildFailure,
     WorkspaceGenerationBuildFuture, WorkspaceGenerationBuildMode, WorkspaceGenerationBuilder,
-    WorkspaceGenerationCandidateBuildFuture, WorkspaceGenerationCandidateBuilder,
-    WorkspaceGenerationCandidateIdentity, WorkspaceGenerationFailureStage,
-    WorkspaceGenerationProviderTarget, WorkspaceOwnerProjectionBuildFuture,
-    WorkspaceOwnerProjectionBuilder, discover_workspace_generation_candidate,
-    record_workspace_generation_candidate,
+    WorkspaceGenerationCandidateBuild, WorkspaceGenerationCandidateBuildFuture,
+    WorkspaceGenerationCandidateBuilder, WorkspaceGenerationCandidateIdentity,
+    WorkspaceGenerationFailureStage, WorkspaceGenerationProviderTarget,
+    WorkspaceOwnerProjectionBuildFuture, WorkspaceOwnerProjectionBuilder,
+    discover_workspace_generation_candidate, record_workspace_generation_candidate,
 };
 pub use mutation::{
     WORKSPACE_GENERATION_MUTATION_ADMISSION_RECEIPT_SCHEMA_ID,
@@ -40,8 +40,6 @@ mod query_coverage;
 mod query_demand;
 #[path = "runtime_server_admission_registry.rs"]
 mod registry;
-#[path = "runtime_server_admission_restore.rs"]
-mod restore;
 
 use entry_authority::AdmissionEntryAuthority;
 use query_coverage::QueryTargetCoverage;
@@ -65,9 +63,7 @@ pub enum WorkspaceGenerationAdmissionState {
     Cancelled,
 }
 
-pub use contract::{
-    WorkspaceGenerationAdmissionMode, WorkspaceGenerationAdmissionTrigger,
-};
+pub use contract::{WorkspaceGenerationAdmissionMode, WorkspaceGenerationAdmissionTrigger};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -148,26 +144,6 @@ impl WorkspaceGenerationCommitReceipt {
         }
         Ok(())
     }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct WorkspaceGenerationRestoreReport {
-    pub ready: Vec<WorkspaceGenerationAdmissionReceipt>,
-    pub failed: Vec<WorkspaceGenerationRestoreFailure>,
-}
-
-fn registered_workspace_restore_concurrency() -> usize {
-    std::thread::available_parallelism()
-        .map(std::num::NonZeroUsize::get)
-        .unwrap_or(2)
-        .min(2)
-        .max(1)
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WorkspaceGenerationRestoreFailure {
-    pub workspace_identity: String,
-    pub error: String,
 }
 
 impl WorkspaceGenerationAdmissionReceipt {
@@ -328,7 +304,7 @@ impl WorkspaceGenerationAdmission {
         let catalog = catalog.clone();
         let telemetry_sender = self.telemetry_sender.clone();
         let workspace_identity = entry.workspace_identity;
-        self.track_submission_task(tokio::spawn(async move {
+        self.submit_background_mutation(async move {
             if catalog.publish_resident_snapshot().await.is_err() {
                 let _ = telemetry_sender.try_send_transition(
                     crate::runtime_server_opentelemetry::RuntimeLifecycleEvent {
@@ -345,7 +321,7 @@ impl WorkspaceGenerationAdmission {
                     },
                 );
             }
-        }));
+        })?;
         Ok(())
     }
 
@@ -376,8 +352,14 @@ impl WorkspaceGenerationAdmission {
         self
     }
 
-    pub fn track_submission_task(&self, task: tokio::task::JoinHandle<()>) {
-        self.build_dispatcher.track(task);
+    /// Admit mutation work into the generation authority's owned dispatcher.
+    pub fn submit_background_mutation(
+        &self,
+        task: impl std::future::Future<Output = ()> + Send + 'static,
+    ) -> Result<(), String> {
+        self.build_dispatcher.spawn(Box::pin(task)).map_err(|_| {
+            "Runtime generation admission dispatcher is not accepting mutations".to_owned()
+        })
     }
 
     pub async fn admit(
@@ -475,7 +457,8 @@ impl WorkspaceGenerationAdmission {
                 admission_mode,
                 provider_target.clone(),
                 cold_target_paths,
-            );
+            )
+            .await;
             return Ok(receipt);
         }
         self.admit_existing(
@@ -629,11 +612,12 @@ impl WorkspaceGenerationAdmission {
             admission_mode,
             provider_target,
             cold_target_paths,
-        );
+        )
+        .await;
         Ok(receipt)
     }
 
-    fn spawn_build(
+    async fn spawn_build(
         &self,
         entry: Arc<AdmissionEntry>,
         workspace_identity: String,
@@ -816,7 +800,7 @@ impl WorkspaceGenerationAdmission {
             failed.error =
                 Some("workspace generation admission dispatcher is unavailable".to_owned());
             entry.receipt.send_replace(failed);
-            entry.lane.complete_now();
+            entry.lane.complete().await;
             self.changes.notify_waiters();
         }
     }

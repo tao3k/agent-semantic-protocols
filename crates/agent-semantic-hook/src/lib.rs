@@ -54,7 +54,6 @@ pub use provider_registry::ProviderDevelopmentRegistration;
 pub use provider_registry::registered_language_ids;
 pub use provider_registry::{materialize_provider_routes, semantic_registry_digest};
 mod execute_rule_facts;
-pub mod source_access;
 mod source_selector;
 mod tool_action;
 
@@ -106,10 +105,7 @@ pub(crate) use hook_config_agent_org::{
 };
 pub use hook_config_global::default_global_client_config_path;
 pub(crate) use hook_recovery_prompt::CompiledRecoveryPromptConfig;
-pub use match_policy_conformance::{
-    MatchPolicyConformanceReport, evaluate_match_policy_conformance,
-    validate_match_policy_rule_coverage,
-};
+pub use match_policy_conformance::validate_match_policy_rule_coverage;
 pub use protocol::{
     ActionPolicy, AgentHookError, CANONICAL_SCHEMA_AUTHORITY, CommandTemplate, DecisionKind,
     DecisionRoute, DecisionRouteKind, DecisionSubject, HOOK_ACTIVATION_SCHEMA_ID,
@@ -119,7 +115,6 @@ pub use protocol::{
     parse_payload, render_platform_response, subagent_deny_message,
 };
 pub use protocol_activation::digest::provider_manifest_digest;
-pub(crate) use protocol_activation::protocol_activation_manifest::SourceSelectorKind;
 pub use protocol_activation::protocol_activation_manifest::{
     ActivatedProvider, ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy,
     HookActivation, HookProviderProjection, HookRuntime, ProviderExecution, ProviderManifest,
@@ -130,7 +125,7 @@ pub use protocol_activation::protocol_activation_manifest::{
 };
 pub use provider_manifest::project_agent_config_path;
 pub use shell_read_decision_shard::CommandDecisionShard;
-pub(crate) use source_selector::{SourceSelectorMatch, collect_source_selector_matches};
+pub(crate) use source_selector::collect_source_selector_matches;
 pub use structured_projection_decision_shard::StructuredProjectionDecisionShard;
 pub use tool_action::workspace_mutation_paths;
 pub(crate) use tool_action::{

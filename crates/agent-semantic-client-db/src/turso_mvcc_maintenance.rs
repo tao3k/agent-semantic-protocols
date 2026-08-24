@@ -3,13 +3,13 @@
 use std::path::Path;
 use std::time::Instant;
 
-use serde::{Deserialize, Serialize};
-use tokio_stream::StreamExt;
-
 use crate::turso_mvcc_store::TursoMvccStore;
+use serde::{Deserialize, Serialize};
 
+/// Schema identifier for an observable MVCC maintenance receipt.
 pub const TURSO_MVCC_MAINTENANCE_RECEIPT_SCHEMA_ID: &str = "asp.turso-mvcc-maintenance-receipt.v1";
 
+/// Durable file-size and cache-flush evidence for one maintenance pass.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoMvccMaintenanceReceipt {
@@ -27,16 +27,19 @@ pub struct TursoMvccMaintenanceReceipt {
 }
 
 impl TursoMvccMaintenanceReceipt {
+    /// Report whether the store uses passive checkpoint ownership.
     #[must_use]
     pub const fn passive_checkpoint(&self) -> bool {
         self.passive_checkpoint
     }
 
+    /// Return the durable main database size in bytes.
     #[must_use]
     pub const fn database_bytes(&self) -> u64 {
         self.database_bytes
     }
 
+    /// Return the observed WAL size in bytes.
     #[must_use]
     pub const fn wal_bytes(&self) -> u64 {
         self.wal_bytes
@@ -51,14 +54,12 @@ impl TursoMvccStore {
     /// keeps that observability gap explicit instead of fabricating a count.
     pub async fn flush_and_measure(&self) -> Result<TursoMvccMaintenanceReceipt, String> {
         let started = Instant::now();
-        let cache_flush_count = tokio_stream::iter(&self.inner.lanes)
-            .fold(Ok(0_usize), |flushed, lane| async move {
-                let flushed = flushed?;
-                let connection = lane.lock().await;
-                connection.cacheflush().map_err(|error| error.to_string())?;
-                Ok::<usize, String>(flushed + 1)
-            })
-            .await?;
+        let mut cache_flush_count = 0_usize;
+        for lane in &self.inner.lanes {
+            let connection = lane.lock().await;
+            connection.cacheflush().map_err(|error| error.to_string())?;
+            cache_flush_count += 1;
+        }
 
         let database_bytes = file_bytes(&self.inner.path);
         let wal_bytes = suffixed_file_bytes(&self.inner.path, "-wal")

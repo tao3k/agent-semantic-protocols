@@ -44,9 +44,12 @@ enum AdmissionEntryCommand {
 
 #[derive(Clone)]
 pub(super) struct AdmissionEntryAuthority {
-    commands: tokio::sync::mpsc::UnboundedSender<AdmissionEntryCommand>,
+    commands: tokio::sync::mpsc::Sender<AdmissionEntryCommand>,
     state: tokio::sync::watch::Receiver<AdmissionEntryState>,
-    task: std::sync::Arc<tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    task: std::sync::Arc<
+        tokio::sync::Mutex<Option<crate::runtime_server_runtime::RuntimeServerOwnedTask<()>>>,
+    >,
+    task_scope: crate::runtime_server_runtime::RuntimeServerTaskScope,
 }
 
 impl AdmissionEntryAuthority {
@@ -69,8 +72,11 @@ impl AdmissionEntryAuthority {
             );
         }
         let (state_sender, state) = tokio::sync::watch::channel(initial);
-        let (commands, mut receiver) = tokio::sync::mpsc::unbounded_channel();
-        let task = super::dispatcher::spawn_admission_authority(async move {
+        let (commands, mut receiver) = tokio::sync::mpsc::channel(64);
+        let task_scope = crate::runtime_server_runtime::RuntimeServerTaskScope::new(
+            "generation-admission-entry",
+        );
+        let task = task_scope.spawn("generation-admission-entry-actor", async move {
             let mut current = initial;
             let mut mutation_claims = mutation_claims;
             let mut pending_mutations = std::collections::VecDeque::new();
@@ -167,11 +173,12 @@ impl AdmissionEntryAuthority {
                     }
                 }
             }
-        });
+        }).expect("new admission-entry task scope accepts its owner task");
         Self {
             commands,
             state,
             task: std::sync::Arc::new(tokio::sync::Mutex::new(Some(task))),
+            task_scope,
         }
     }
 
@@ -183,6 +190,7 @@ impl AdmissionEntryAuthority {
         let (completed, receipt) = tokio::sync::oneshot::channel();
         self.commands
             .send(AdmissionEntryCommand::StartBuild(completed))
+            .await
             .map_err(|_| "workspace generation admission entry authority is closed".to_owned())?;
         receipt.await.map_err(|_| {
             "workspace generation admission entry closed without a start receipt".to_owned()
@@ -203,6 +211,7 @@ impl AdmissionEntryAuthority {
                 candidate,
                 completed,
             })
+            .await
             .map_err(|_| "workspace generation admission entry authority is closed".to_owned())?;
         receipt.await.map_err(|_| {
             "workspace generation admission entry closed without a mutation claim receipt"
@@ -214,6 +223,7 @@ impl AdmissionEntryAuthority {
         let (completed, receipt) = tokio::sync::oneshot::channel();
         self.commands
             .send(AdmissionEntryCommand::ClearPending(completed))
+            .await
             .map_err(|_| "workspace generation admission entry authority is closed".to_owned())?;
         receipt.await.map_err(|_| {
             "workspace generation admission entry closed without a reset receipt".to_owned()
@@ -230,6 +240,7 @@ impl AdmissionEntryAuthority {
                 mutation,
                 completed,
             })
+            .await
             .map_err(|_| "workspace generation admission entry authority is closed".to_owned())?;
         receipt.await.map_err(|_| {
             "workspace generation admission entry closed without an enqueue receipt".to_owned()
@@ -242,6 +253,7 @@ impl AdmissionEntryAuthority {
         let (completed, receipt) = tokio::sync::oneshot::channel();
         self.commands
             .send(AdmissionEntryCommand::TakeNextMutation(completed))
+            .await
             .map_err(|_| "workspace generation admission entry authority is closed".to_owned())?;
         receipt.await.map_err(|_| {
             "workspace generation admission entry closed without a dequeue receipt".to_owned()
@@ -252,6 +264,7 @@ impl AdmissionEntryAuthority {
         let (completed, receipt) = tokio::sync::oneshot::channel();
         self.commands
             .send(AdmissionEntryCommand::BeginClaimed { attempt, completed })
+            .await
             .map_err(|_| "workspace generation admission entry authority is closed".to_owned())?;
         receipt.await.map_err(|_| {
             "workspace generation admission entry closed without a claimed start receipt".to_owned()
@@ -263,17 +276,11 @@ impl AdmissionEntryAuthority {
         if self
             .commands
             .send(AdmissionEntryCommand::Complete(completed))
+            .await
             .is_ok()
         {
             let _ = receipt.await;
         }
-    }
-
-    pub(super) fn complete_now(&self) {
-        let (completed, _) = tokio::sync::oneshot::channel();
-        let _ = self
-            .commands
-            .send(AdmissionEntryCommand::Complete(completed));
     }
 
     pub(super) async fn shutdown(&self) {
@@ -281,12 +288,15 @@ impl AdmissionEntryAuthority {
         if self
             .commands
             .send(AdmissionEntryCommand::Shutdown(completed))
+            .await
             .is_ok()
         {
             let _ = receipt.await;
         }
         if let Some(task) = self.task.lock().await.take() {
-            let _ = task.await;
+            self.task_scope.begin_drain();
+            let _ = task.join().await;
+            let _ = self.task_scope.finish(0);
         }
     }
 }

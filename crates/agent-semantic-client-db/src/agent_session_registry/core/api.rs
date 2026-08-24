@@ -60,11 +60,11 @@ impl AgentSessionRegistry {
             .ok_or_else(|| "host-execution-observation-requires-host-binding".to_owned())?;
         binding.insert(
             "hostChildId".to_owned(),
-            observation.child_session_id.clone().into(),
+            serde_json::Value::String(observation.child_session_id.as_str().to_owned()),
         );
         binding.insert(
             "agentInstanceId".to_owned(),
-            observation.child_session_id.clone().into(),
+            serde_json::Value::String(observation.child_session_id.as_str().to_owned()),
         );
         binding.insert("lifecycleState".to_owned(), "live".into());
         binding.insert("routable".to_owned(), true.into());
@@ -149,30 +149,24 @@ impl AgentSessionRegistry {
         if let Some(result) = self.runtime_operation(
             crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::Register {
                 request: crate::workspace_db_ipc::AgentSessionRegisterIpcRequest {
-                    project_id: request.project_id.as_str().to_owned(),
-                    root_session_id: request.root_session_id.as_str().to_owned(),
-                    session_id: request.session_id.as_str().to_owned(),
-                    message_target_id: request
-                        .message_target_id
-                        .as_ref()
-                        .map(|value| value.as_str().to_owned()),
-                    parent_session_id: request
-                        .parent_session_id
-                        .as_ref()
-                        .map(|value| value.as_str().to_owned()),
-                    name: request.name.as_str().to_owned(),
-                    role: request.role.as_str().to_owned(),
+                    project_id: request.project_id.clone(),
+                    root_session_id: request.root_session_id.clone(),
+                    session_id: request.session_id.clone(),
+                    message_target_id: request.message_target_id.clone(),
+                    parent_session_id: request.parent_session_id.clone(),
+                    name: request.name.clone(),
+                    role: request.role.clone(),
                     model_observation: request.model_observation.map(|observation| {
                         crate::workspace_db_ipc::AgentSessionModelObservationIpc {
-                            model: observation.model.to_owned(),
-                            source: observation.source.as_str().to_owned(),
+                            model: observation.model.into(),
+                            source: observation.source.as_str().into(),
                             observed_at: observation.observed_at,
-                            evidence_ref: observation.evidence_ref.map(str::to_owned),
+                            evidence_ref: observation.evidence_ref.map(Into::into),
                         }
                     }),
-                    status: request.status.as_str().to_owned(),
+                    status: request.status.clone(),
                     expires_at: request.expires_at,
-                    metadata_json: request.metadata_json.as_str().to_owned(),
+                    metadata_json: request.metadata_json.clone(),
                     now: request.now,
                 },
             },
@@ -286,8 +280,8 @@ impl AgentSessionRegistry {
         match self
             .runtime_operation_async(
                 crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::ReadControlPlaneSnapshot {
-                    project_id,
-                    root_session_id,
+                    project_id: project_id.into(),
+                    root_session_id: root_session_id.into(),
                 },
             )
             .await?
@@ -319,11 +313,9 @@ impl AgentSessionRegistry {
         let project_id = project_id.into();
         if let Some(result) = self.runtime_operation(
             crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::Query {
-                project_id: project_id.as_str().to_owned(),
-                root_session_id: root_session_id
-                    .as_ref()
-                    .map(|value| value.as_str().to_owned()),
-                name: name.as_ref().map(|value| value.as_str().to_owned()),
+                project_id: project_id.clone(),
+                root_session_id: root_session_id.clone(),
+                name: name.clone(),
             },
         )? {
             return match result {
@@ -377,8 +369,8 @@ impl AgentSessionRegistry {
         let session_id = session_id.into();
         if let Some(result) = self.runtime_operation(
             crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionById {
-                project_id: project_id.as_str().to_owned(),
-                session_id: session_id.as_str().to_owned(),
+                project_id: project_id.clone(),
+                session_id: session_id.clone(),
             },
         )? {
             return match result {
@@ -407,9 +399,9 @@ impl AgentSessionRegistry {
         let name = name.into();
         if let Some(result) = self.runtime_operation(
             crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionByName {
-                project_id: project_id.as_str().to_owned(),
-                root_session_id: root_session_id.as_str().to_owned(),
-                name: name.as_str().to_owned(),
+                project_id: project_id.clone(),
+                root_session_id: root_session_id.clone(),
+                name: name.clone(),
             },
         )? {
             return match result {
@@ -441,12 +433,12 @@ impl AgentSessionRegistry {
     ) -> Result<AgentSessionDispatchClaimResult, String> {
         if let Some(result) = self.runtime_operation(
             crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::ClaimDispatch {
-                project_id: request.project_id.to_owned(),
-                root_session_id: request.root_session_id.to_owned(),
-                name: request.name.to_owned(),
-                dispatch_identity: request.dispatch_identity.to_owned(),
-                command_digest: request.command_digest.to_owned(),
-                delivery_target_override: request.delivery_target_override.map(str::to_owned),
+                project_id: request.project_id.into(),
+                root_session_id: request.root_session_id.into(),
+                name: request.name.into(),
+                dispatch_identity: request.dispatch_identity.into(),
+                command_digest: request.command_digest.into(),
+                delivery_target_override: request.delivery_target_override.map(Into::into),
                 now: request.now,
             },
         )? {
@@ -469,12 +461,12 @@ impl AgentSessionRegistry {
     ) -> Result<AgentSessionDispatchLeaseRecord, String> {
         if let Some(result) = self.runtime_operation(
             crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::CompleteDispatch {
-                project_id: request.project_id.to_owned(),
-                root_session_id: request.root_session_id.to_owned(),
-                name: request.name.to_owned(),
-                dispatch_identity: request.dispatch_identity.to_owned(),
-                command_digest: request.command_digest.to_owned(),
-                evidence_ref: request.evidence_ref.to_owned(),
+                project_id: request.project_id.into(),
+                root_session_id: request.root_session_id.into(),
+                name: request.name.into(),
+                dispatch_identity: request.dispatch_identity.into(),
+                command_digest: request.command_digest.into(),
+                evidence_ref: request.evidence_ref.into(),
                 now: request.now,
             },
         )? {
@@ -543,9 +535,9 @@ impl AgentSessionRegistry {
         let status = status.into();
         if let Some(result) = self.runtime_operation(
             crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::UpdateStatus {
-                project_id: project_id.as_str().to_owned(),
-                session_id: session_id.as_str().to_owned(),
-                status: status.as_str().to_owned(),
+                project_id: project_id.clone(),
+                session_id: session_id.clone(),
+                status: status.clone(),
                 now,
             },
         )? {
@@ -588,8 +580,8 @@ impl AgentSessionRegistry {
         let session_id = session_id.into();
         if let Some(result) = self.runtime_operation(
             crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SetArchivedStatus {
-                project_id: project_id.as_str().to_owned(),
-                session_id: session_id.as_str().to_owned(),
+                project_id: project_id.clone(),
+                session_id: session_id.clone(),
                 archived: true,
                 now,
             },
@@ -622,8 +614,8 @@ impl AgentSessionRegistry {
         let session_id = session_id.into();
         if let Some(result) = self.runtime_operation(
             crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SetArchivedStatus {
-                project_id: project_id.as_str().to_owned(),
-                session_id: session_id.as_str().to_owned(),
+                project_id: project_id.clone(),
+                session_id: session_id.clone(),
                 archived: false,
                 now,
             },
@@ -672,8 +664,8 @@ impl AgentSessionRegistry {
         let session_id = session_id.into();
         if let Some(result) = self.runtime_operation(
             crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionIsRetired {
-                project_id: project_id.as_str().to_owned(),
-                session_id: session_id.as_str().to_owned(),
+                project_id: project_id.clone(),
+                session_id: session_id.clone(),
             },
         )? {
             return match result {
@@ -712,7 +704,7 @@ impl AgentSessionRegistry {
         let session_id = session_id.into();
         if let Some(result) = self.runtime_operation(
             crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionByIdAnyProject {
-                session_id: session_id.as_str().to_owned(),
+                session_id: session_id.clone(),
             },
         )? {
             return match result {
@@ -738,13 +730,13 @@ impl AgentSessionRegistry {
         let root_session_id = root_session_id.into();
         if let Some(result) = self.runtime_operation(
             crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::ProjectIdForRootSessionId {
-                root_session_id: root_session_id.as_str().to_owned(),
+                root_session_id: root_session_id.clone(),
             },
         )? {
             return match result {
                 crate::workspace_db_ipc::AgentSessionRegistryIpcResult::ProjectId {
                     project_id,
-                } => Ok(project_id),
+                } => Ok(project_id.map(|project_id| project_id.into_string())),
                 _ => Err(
                     "Runtime Server returned an unexpected root-session project result".to_owned(),
                 ),

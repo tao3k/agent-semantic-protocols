@@ -49,6 +49,90 @@ where
     result
 }
 
+enum MutationOwnerProjection {
+    Owner(crate::runtime_server_workspace::WorkspaceOwnerSnapshot),
+    Tombstone(String),
+}
+
+async fn project_mutation_owner(
+    owner_projection_builder: &crate::runtime_server_admission::WorkspaceOwnerProjectionBuilder,
+    workspace_identity: &str,
+    project_root: &std::path::Path,
+    changed_path: &std::path::Path,
+) -> Result<MutationOwnerProjection, WorkspaceGenerationBuildFailure> {
+    let owner_path = changed_path
+        .strip_prefix(project_root)
+        .map_err(|_| {
+            WorkspaceGenerationBuildFailure::new(
+                crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
+                format!(
+                    "changed owner is outside Runtime workspace: workspace={} owner={}",
+                    project_root.display(),
+                    changed_path.display()
+                ),
+            )
+        })?
+        .to_string_lossy()
+        .replace('\\', "/");
+    let exists = tokio::fs::try_exists(changed_path).await.map_err(|error| {
+        WorkspaceGenerationBuildFailure::new(
+            crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
+            format!("failed to inspect changed owner: owner={owner_path} error={error}"),
+        )
+    })?;
+    if !exists {
+        return Ok(MutationOwnerProjection::Tombstone(owner_path));
+    }
+    owner_projection_builder(
+        workspace_identity.to_owned(),
+        project_root.to_path_buf(),
+        owner_path,
+    )
+    .await
+    .map(MutationOwnerProjection::Owner)
+    .map_err(|error| {
+        WorkspaceGenerationBuildFailure::new(
+            crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
+            error,
+        )
+    })
+}
+
+async fn project_mutation_owners(
+    owner_projection_builder: &crate::runtime_server_admission::WorkspaceOwnerProjectionBuilder,
+    workspace_identity: &str,
+    project_root: &std::path::Path,
+    changed_paths: &std::collections::BTreeSet<std::path::PathBuf>,
+) -> Result<
+    (
+        Vec<crate::runtime_server_workspace::WorkspaceOwnerSnapshot>,
+        Vec<String>,
+    ),
+    WorkspaceGenerationBuildFailure,
+> {
+    use tokio_stream::StreamExt;
+
+    tokio_stream::iter(changed_paths)
+        .then(|changed_path| {
+            project_mutation_owner(
+                owner_projection_builder,
+                workspace_identity,
+                project_root,
+                changed_path,
+            )
+        })
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .try_fold((Vec::new(), Vec::new()), |mut projected, item| {
+            match item? {
+                MutationOwnerProjection::Owner(owner) => projected.0.push(owner),
+                MutationOwnerProjection::Tombstone(owner_path) => projected.1.push(owner_path),
+            }
+            Ok(projected)
+        })
+}
+
 pub(crate) async fn publish_mutation_generation(
     owner_projection_builder: &crate::runtime_server_admission::WorkspaceOwnerProjectionBuilder,
     memory_registry: &std::sync::Arc<
@@ -63,47 +147,13 @@ pub(crate) async fn publish_mutation_generation(
     crate::runtime_server_admission::WorkspaceGenerationBuildCompletion,
     WorkspaceGenerationBuildFailure,
 > {
-    let mut owners = Vec::new();
-    let mut tombstones = Vec::new();
-    for changed_path in changed_paths {
-        let owner_path = changed_path
-            .strip_prefix(project_root)
-            .map_err(|_| {
-                WorkspaceGenerationBuildFailure::new(
-                    crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
-                    format!(
-                        "changed owner is outside Runtime workspace: workspace={} owner={}",
-                        project_root.display(),
-                        changed_path.display()
-                    ),
-                )
-            })?
-            .to_string_lossy()
-            .replace('\\', "/");
-        if tokio::fs::try_exists(changed_path).await.map_err(|error| {
-            WorkspaceGenerationBuildFailure::new(
-                crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
-                format!("failed to inspect changed owner: owner={owner_path} error={error}"),
-            )
-        })? {
-            owners.push(
-                owner_projection_builder(
-                    workspace_identity.to_owned(),
-                    project_root.to_path_buf(),
-                    owner_path,
-                )
-                .await
-                .map_err(|error| {
-                    WorkspaceGenerationBuildFailure::new(
-                        crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
-                        error,
-                    )
-                })?,
-            );
-        } else {
-            tombstones.push(owner_path);
-        }
-    }
+    let (owners, tombstones) = project_mutation_owners(
+        owner_projection_builder,
+        workspace_identity,
+        project_root,
+        changed_paths,
+    )
+    .await?;
     let base_generation_digest = memory_registry
         .lease(workspace_identity, project_root)
         .map_err(|error| WorkspaceGenerationBuildFailure::new(

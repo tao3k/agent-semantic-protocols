@@ -88,7 +88,9 @@ fn document_provider_workspace_descriptors_have_independent_schema_receipts() {
     ] {
         let descriptor: ProviderWorkspaceInstallDescriptor =
             serde_json::from_str(source).expect("decode document provider workspace descriptor");
-        descriptor.validate().expect("validate document provider workspace descriptor");
+        descriptor
+            .validate()
+            .expect("validate document provider workspace descriptor");
         descriptor
             .validate_registration_identity(language_id, provider_id, binary)
             .expect("document provider workspace identity");

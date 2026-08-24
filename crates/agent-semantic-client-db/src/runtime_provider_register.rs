@@ -316,7 +316,14 @@ impl RuntimeProviderRegister {
         if matches!(request.request, ProviderRegisterOperation::List) {
             return Ok(snapshot_response(self.snapshot()));
         }
+        self.apply_mutation(operation, request).await
+    }
 
+    async fn apply_mutation(
+        &self,
+        operation: &'static str,
+        request: ProviderRegisterRequest,
+    ) -> Result<ProviderRegisterResponse, String> {
         let expected_generation = request
             .expected_generation
             .ok_or_else(|| "provider register mutations require expectedGeneration".to_owned())?;

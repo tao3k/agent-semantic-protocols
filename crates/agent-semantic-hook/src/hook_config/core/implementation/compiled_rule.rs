@@ -44,9 +44,7 @@ pub struct ClientHookConfig {
     provider_projections:
         Vec<crate::protocol_activation::protocol_activation_manifest::HookProviderProjection>,
     contract_fingerprint: Option<String>,
-    semantic_ast_patch_disabled: bool,
     agent_org_artifacts: CompiledAgentOrgArtifactsConfig,
-    recovery_prompt: CompiledRecoveryPromptConfig,
 }
 
 #[derive(Debug)]
@@ -467,11 +465,6 @@ impl RuleMatch {
             return false;
         }
         let candidate = std::path::Path::new(path);
-        if crate::match_policy_conformance::synthetic_match_environment_active()
-            && matches!(path, "package.json" | "Cargo.toml")
-        {
-            return self.matches_configured_document_format(candidate);
-        }
         let candidate = if candidate.is_absolute() {
             candidate.to_path_buf()
         } else {

@@ -1,5 +1,6 @@
 use super::{
-    ProviderSourceInventoryAdapter, SourceIndexCollectionScope, retain_explicit_owner_files,
+    ProviderSourceInventorySelection, SourceIndexCollectionScope,
+    provider_applicability_is_required, retain_explicit_owner_files,
     select_provider_source_inventory_adapter,
 };
 
@@ -26,13 +27,8 @@ fn inventory_capabilities(
 fn exact_project_entry_selects_project_adapter_when_both_capabilities_are_declared() {
     let capabilities = inventory_capabilities(Some(vec!["gerbil.pkg"]), Some(true));
     assert_eq!(
-        select_provider_source_inventory_adapter(
-            &capabilities,
-            "gerbil-scheme",
-            "asp-gerbil-scheme",
-            |path| path == "gerbil.pkg",
-        ),
-        Ok(ProviderSourceInventoryAdapter::ProjectResolution)
+        select_provider_source_inventory_adapter(&capabilities, |path| path == "gerbil.pkg",),
+        ProviderSourceInventorySelection::ProjectResolution
     );
 }
 
@@ -40,50 +36,57 @@ fn exact_project_entry_selects_project_adapter_when_both_capabilities_are_declar
 fn absent_project_entry_selects_declared_document_adapter_before_invocation() {
     let capabilities = inventory_capabilities(Some(vec!["gerbil.pkg"]), Some(true));
     assert_eq!(
-        select_provider_source_inventory_adapter(
-            &capabilities,
-            "gerbil-scheme",
-            "asp-gerbil-scheme",
-            |_| false,
-        ),
-        Ok(ProviderSourceInventoryAdapter::GitDocumentCandidates)
+        select_provider_source_inventory_adapter(&capabilities, |_| false,),
+        ProviderSourceInventorySelection::GitDocumentCandidates
     );
 }
 
 #[test]
-fn absent_project_entry_without_document_capability_fails_closed() {
+fn absent_project_entry_without_document_capability_is_not_applicable() {
     let capabilities = inventory_capabilities(Some(vec!["Cargo.toml"]), None);
-    let error =
-        select_provider_source_inventory_adapter(&capabilities, "rust", "asp-rust", |_| false)
-            .expect_err("missing declared adapter must fail closed");
-    assert!(error.contains("reasonKind=provider-source-inventory-capability-unavailable"));
+    assert_eq!(
+        select_provider_source_inventory_adapter(&capabilities, |_| false,),
+        ProviderSourceInventorySelection::NotApplicable {
+            reason_kind: "provider-source-inventory-capability-unavailable",
+        }
+    );
 }
 
 #[test]
-fn document_adapter_without_git_candidate_support_fails_closed() {
+fn document_adapter_without_git_candidate_support_is_not_applicable() {
     let capabilities = inventory_capabilities(None, Some(false));
-    let error = select_provider_source_inventory_adapter(
-        &capabilities,
-        "gerbil-scheme",
-        "asp-gerbil-scheme",
-        |_| false,
-    )
-    .expect_err("document adapter precondition must fail closed");
-    assert!(error.contains("reasonKind=provider-document-resolution-git-candidates-unsupported"));
+    assert_eq!(
+        select_provider_source_inventory_adapter(&capabilities, |_| false,),
+        ProviderSourceInventorySelection::NotApplicable {
+            reason_kind: "provider-document-resolution-git-candidates-unsupported",
+        }
+    );
 }
 
 #[test]
 fn provider_identity_does_not_force_project_adapter_without_declared_marker() {
     let capabilities = inventory_capabilities(Some(vec!["gerbil.pkg"]), Some(true));
     assert_eq!(
-        select_provider_source_inventory_adapter(
-            &capabilities,
-            "gerbil-scheme",
-            "asp-gerbil-scheme",
-            |_| false,
-        ),
-        Ok(ProviderSourceInventoryAdapter::GitDocumentCandidates)
+        select_provider_source_inventory_adapter(&capabilities, |_| false,),
+        ProviderSourceInventorySelection::GitDocumentCandidates
     );
+}
+
+#[test]
+fn complete_generation_skips_not_applicable_providers_but_targeting_stays_fail_closed() {
+    assert!(!provider_applicability_is_required(
+        &SourceIndexCollectionScope::CompleteGeneration
+    ));
+    assert!(!provider_applicability_is_required(
+        &SourceIndexCollectionScope::ExplicitOwners {
+            owner_paths: vec!["build.ss".to_owned()],
+        }
+    ));
+    assert!(provider_applicability_is_required(
+        &SourceIndexCollectionScope::TargetProviderId {
+            provider_id: agent_semantic_client_core::ProviderId::new("asp-rust"),
+        }
+    ));
 }
 
 fn scope_file(path: std::path::PathBuf) -> agent_semantic_client_db::ClientDbSourceIndexScopeFile {

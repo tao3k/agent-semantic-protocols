@@ -19,10 +19,7 @@ fn exact_and_ranked_queries_use_only_the_resident_generation() {
                 "runtime-server".to_owned(),
                 vec!["crates/runtime.rs".to_owned()],
             ),
-            (
-                "runtime".to_owned(),
-                vec!["crates/runtime.rs".to_owned()],
-            ),
+            ("runtime".to_owned(), vec!["crates/runtime.rs".to_owned()]),
         ]),
         BTreeMap::from([(
             "crates/runtime.rs".to_owned(),
@@ -34,8 +31,7 @@ fn exact_and_ranked_queries_use_only_the_resident_generation() {
             },
         )]),
         source_snapshot(),
-        "blake3-256:1111111111111111111111111111111111111111111111111111111111111111"
-            .to_owned(),
+        "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
     );
 
     let exact = index.query("runtime-server", Some("rust"), 10).unwrap();
@@ -56,8 +52,7 @@ fn a_published_empty_generation_is_a_miss_not_a_cold_or_db_state() {
         BTreeMap::new(),
         BTreeMap::new(),
         source_snapshot(),
-        "blake3-256:1111111111111111111111111111111111111111111111111111111111111111"
-            .to_owned(),
+        "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
     );
 
     let result = index.query("missing", None, 10).unwrap();
@@ -73,6 +68,9 @@ fn durable_navigation_keys_are_path_shallow_and_never_source_text() {
     let keys = resident_navigation_keys("packages/runtime/search/src/router.rs");
 
     assert!(keys.iter().any(|key| key == "router"));
-    assert!(keys.iter().any(|key| key == "packages/runtime/search/src/router.rs"));
+    assert!(
+        keys.iter()
+            .any(|key| key == "packages/runtime/search/src/router.rs")
+    );
     assert!(!keys.iter().any(|key| key == "DynamicOverlaySearch"));
 }

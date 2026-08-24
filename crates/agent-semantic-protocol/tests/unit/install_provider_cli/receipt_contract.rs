@@ -128,7 +128,9 @@ fn default_develop_receipt_install_publishes_installed_artifacts_atomically() {
         materialized_path.display()
     );
     assert_eq!(
-        materialized_path.file_name().and_then(std::ffi::OsStr::to_str),
+        materialized_path
+            .file_name()
+            .and_then(std::ffi::OsStr::to_str),
         Some("asp-rust"),
         "installed artifact identity must retain the provider binary name"
     );

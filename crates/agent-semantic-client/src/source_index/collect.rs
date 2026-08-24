@@ -92,6 +92,14 @@ fn provider_project_resolution_collection_scope(
     }
 }
 
+fn provider_applicability_is_required(scope: &SourceIndexCollectionScope) -> bool {
+    matches!(
+        scope,
+        SourceIndexCollectionScope::TargetProvider { .. }
+            | SourceIndexCollectionScope::TargetProviderId { .. }
+    )
+}
+
 pub(crate) struct SourceIndexCollectionReceipt {
     pub(crate) files: Vec<agent_semantic_client_db::ClientDbSourceIndexScopeFile>,
     pub(crate) project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
@@ -100,19 +108,18 @@ pub(crate) struct SourceIndexCollectionReceipt {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ProviderSourceInventoryAdapter {
+enum ProviderSourceInventorySelection {
     ProjectResolution,
     GitDocumentCandidates,
+    NotApplicable { reason_kind: &'static str },
 }
 
-fn provider_source_inventory_adapter(
+fn provider_source_inventory_selection(
     provider: &agent_semantic_client_core::RuntimeProvider,
     candidates: &agent_semantic_runtime::git::RepositoryCandidateSnapshot,
-) -> Result<ProviderSourceInventoryAdapter, String> {
+) -> ProviderSourceInventorySelection {
     select_provider_source_inventory_adapter(
         &provider.source_inventory_capabilities,
-        provider.language_id.as_str(),
-        provider.provider_id.as_str(),
         |entry_marker| {
             candidates
                 .candidates
@@ -124,32 +131,28 @@ fn provider_source_inventory_adapter(
 
 fn select_provider_source_inventory_adapter(
     capabilities: &agent_semantic_client_core::ProviderSourceInventoryCapabilities,
-    language_id: &str,
-    provider_id: &str,
     has_candidate_path: impl Fn(&str) -> bool,
-) -> Result<ProviderSourceInventoryAdapter, String> {
+) -> ProviderSourceInventorySelection {
     if let Some(project_resolution) = capabilities.project_resolution.as_ref() {
         if project_resolution
             .entry_markers
             .iter()
             .any(|entry_marker| has_candidate_path(entry_marker))
         {
-            return Ok(ProviderSourceInventoryAdapter::ProjectResolution);
+            return ProviderSourceInventorySelection::ProjectResolution;
         }
     }
     if let Some(document_resolution) = capabilities.document_resolution.as_ref() {
         if document_resolution.supports_git_candidates {
-            return Ok(ProviderSourceInventoryAdapter::GitDocumentCandidates);
+            return ProviderSourceInventorySelection::GitDocumentCandidates;
         }
-        return Err(format!(
-            "reasonKind=provider-document-resolution-git-candidates-unsupported languageId={} providerId={}",
-            language_id, provider_id
-        ));
+        return ProviderSourceInventorySelection::NotApplicable {
+            reason_kind: "provider-document-resolution-git-candidates-unsupported",
+        };
     }
-    Err(format!(
-        "reasonKind=provider-source-inventory-capability-unavailable languageId={} providerId={} detail=no declared capability satisfies the Runtime candidate snapshot",
-        language_id, provider_id
-    ))
+    ProviderSourceInventorySelection::NotApplicable {
+        reason_kind: "provider-source-inventory-capability-unavailable",
+    }
 }
 
 pub(crate) async fn collect_source_index_scope_with_runtime_service_async(
@@ -211,11 +214,23 @@ async fn collect_source_index_scope_with_executor_async(
         let provider = provider.clone();
         let repository_candidates = repository_candidates.clone();
         let collection_scope = provider_project_resolution_collection_scope(scope);
+        let provider_is_required = provider_applicability_is_required(scope);
         let executor = executor.clone();
         providers.spawn(async move {
+            let selection =
+                provider_source_inventory_selection(&provider, &repository_candidates);
+            if let ProviderSourceInventorySelection::NotApplicable { reason_kind } = selection {
+                if provider_is_required {
+                    return Err(format!(
+                        "reasonKind={} languageId={} providerId={} detail=no declared capability satisfies the Runtime candidate snapshot",
+                        reason_kind, provider.language_id, provider.provider_id
+                    ));
+                }
+                return Ok::<_, String>((provider, None, None));
+            }
             let (receipt, project_resolution) =
-                match provider_source_inventory_adapter(&provider, &repository_candidates)? {
-                ProviderSourceInventoryAdapter::ProjectResolution => {
+                match selection {
+                ProviderSourceInventorySelection::ProjectResolution => {
                     let package_root_path = std::path::PathBuf::from(&provider.binary);
                         let resolution = match executor {
                             ProviderScopeExecutor::RuntimeService(runtime) => {
@@ -261,7 +276,9 @@ async fn collect_source_index_scope_with_executor_async(
                     else {
                         return Ok::<_, String>((
                             provider,
-                            agent_semantic_client_server::ProviderProjectResolutionFiles::Unsupported,
+                            Some(
+                                agent_semantic_client_server::ProviderProjectResolutionFiles::Unsupported,
+                            ),
                             None,
                         ));
                     };
@@ -282,14 +299,17 @@ async fn collect_source_index_scope_with_executor_async(
                         Some(admitted),
                     )
                 }
-                ProviderSourceInventoryAdapter::GitDocumentCandidates => {
+                ProviderSourceInventorySelection::GitDocumentCandidates => {
                     (
                         document_scope_files(&project_root, &provider, &repository_candidates),
                         None,
                     )
                 }
+                ProviderSourceInventorySelection::NotApplicable { .. } => unreachable!(
+                    "not-applicable provider inventory is handled before provider dispatch"
+                ),
             };
-            Ok::<_, String>((provider, receipt, project_resolution))
+            Ok::<_, String>((provider, Some(receipt), project_resolution))
         });
     }
     let mut files = Vec::new();
@@ -297,7 +317,9 @@ async fn collect_source_index_scope_with_executor_async(
     while let Some(result) = providers.join_next().await {
         let (provider, receipt, project_resolution) =
             result.map_err(|error| format!("provider scope task failed: {error}"))??;
-        append_provider_scope_files(&mut files, &provider, receipt)?;
+        if let Some(receipt) = receipt {
+            append_provider_scope_files(&mut files, &provider, receipt)?;
+        }
         if let Some(project_resolution) = project_resolution {
             project_resolutions.push(project_resolution);
         }

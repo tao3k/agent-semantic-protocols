@@ -1,3 +1,5 @@
+//! Runtime-owned, generation-pinned workspace project-resolution actor.
+
 use std::{
     collections::HashSet,
     future::Future,
@@ -8,12 +10,16 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot};
 
+/// Schema identity for project-resolution control requests.
 pub const WORKSPACE_PROJECT_RESOLUTION_CONTROL_SCHEMA_ID: &str =
     "agent.semantic-protocols.workspace-project-resolution-control";
+/// Schema identity for project-resolution terminal receipts.
 pub const WORKSPACE_PROJECT_RESOLUTION_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.workspace-project-resolution-receipt";
+/// Version carried inside project-resolution schemas and receipts.
 pub const WORKSPACE_PROJECT_RESOLUTION_SCHEMA_VERSION: &str = "1";
 
+/// Stable repository, worktree, and root identity for one workspace actor.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceResolutionIdentity {
@@ -22,6 +28,7 @@ pub struct WorkspaceResolutionIdentity {
     pub workspace_root_digest: String,
 }
 
+/// Provider-owned project entry that participates in scope resolution.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectEntryInput {
@@ -30,6 +37,7 @@ pub struct ProjectEntryInput {
     pub content_digest: String,
 }
 
+/// Package-manager input that participates in dependency resolution.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PackageManagerInput {
@@ -37,6 +45,7 @@ pub struct PackageManagerInput {
     pub content_digest: String,
 }
 
+/// Immutable inputs for one project-resolution generation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectResolutionInputs {
@@ -45,6 +54,7 @@ pub struct ProjectResolutionInputs {
     pub package_manager_inputs: Vec<PackageManagerInput>,
 }
 
+/// Published package graph and source-scope generation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceResolutionGeneration {
@@ -56,6 +66,7 @@ pub struct WorkspaceResolutionGeneration {
     pub resolved_source_scope_artifact: String,
 }
 
+/// Explicit lifecycle state of the workspace project-resolution actor.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WorkspaceProjectResolutionState {
@@ -71,6 +82,7 @@ pub enum WorkspaceProjectResolutionState {
     Failed,
 }
 
+/// Typed terminal reason for project-resolution failure.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WorkspaceProjectResolutionFailureKind {
@@ -85,6 +97,7 @@ pub enum WorkspaceProjectResolutionFailureKind {
     DaemonUnavailable,
 }
 
+/// Failure evidence and safe next action emitted by project resolution.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceProjectResolutionFailure {
@@ -92,6 +105,7 @@ pub struct WorkspaceProjectResolutionFailure {
     pub next: String,
 }
 
+/// Terminal observation of one workspace project-resolution operation.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceProjectResolutionReceipt {
@@ -106,6 +120,7 @@ pub struct WorkspaceProjectResolutionReceipt {
     pub failure: Option<WorkspaceProjectResolutionFailure>,
 }
 
+/// Typed control envelope admitted by the workspace actor.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceProjectResolutionControl {
@@ -115,6 +130,7 @@ pub struct WorkspaceProjectResolutionControl {
     pub operation: WorkspaceProjectResolutionOperation,
 }
 
+/// Closed operation set accepted by workspace project resolution.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(
     tag = "kind",
@@ -139,6 +155,7 @@ pub enum WorkspaceProjectResolutionOperation {
     ObserveGeneration,
 }
 
+/// Owned asynchronous resolution result returned by a provider resolver.
 pub type ProjectResolutionFuture = Pin<
     Box<
         dyn Future<
@@ -147,7 +164,9 @@ pub type ProjectResolutionFuture = Pin<
     >,
 >;
 
+/// Provider-neutral resolver used by the Runtime-owned project-resolution actor.
 pub trait WorkspaceProjectResolver: Send + Sync + 'static {
+    /// Resolve one immutable input set into the next generation.
     fn resolve(
         &self,
         inputs: ProjectResolutionInputs,
@@ -156,6 +175,7 @@ pub trait WorkspaceProjectResolver: Send + Sync + 'static {
 }
 
 #[derive(Clone)]
+/// Bounded request handle for one Runtime-owned workspace resolution actor.
 pub struct WorkspaceProjectResolutionHandle {
     sender: mpsc::Sender<ActorRequest>,
     workspace_identity: WorkspaceResolutionIdentity,
@@ -163,7 +183,8 @@ pub struct WorkspaceProjectResolutionHandle {
 }
 
 struct WorkspaceProjectResolutionLifecycle {
-    task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    task: Mutex<Option<crate::runtime_server_runtime::RuntimeServerOwnedTask<()>>>,
+    task_scope: crate::runtime_server_runtime::RuntimeServerTaskScope,
 }
 
 impl Drop for WorkspaceProjectResolutionLifecycle {
@@ -177,6 +198,7 @@ impl Drop for WorkspaceProjectResolutionLifecycle {
 }
 
 impl WorkspaceProjectResolutionHandle {
+    /// Submit one typed control operation to the owned actor.
     pub async fn execute_control(
         &self,
         control: WorkspaceProjectResolutionControl,
@@ -227,6 +249,7 @@ impl WorkspaceProjectResolutionHandle {
         }
     }
 
+    /// Attach a session to the shared workspace generation.
     pub async fn attach_session(
         &self,
         session_identity: impl Into<String>,
@@ -235,6 +258,7 @@ impl WorkspaceProjectResolutionHandle {
             .await
     }
 
+    /// Detach a session without retiring generations used by other sessions.
     pub async fn detach_session(
         &self,
         session_identity: impl Into<String>,
@@ -243,6 +267,7 @@ impl WorkspaceProjectResolutionHandle {
             .await
     }
 
+    /// Publish changed project inputs and resolve only when identity changed.
     pub async fn refresh_inputs(
         &self,
         inputs: ProjectResolutionInputs,
@@ -250,6 +275,7 @@ impl WorkspaceProjectResolutionHandle {
         self.request(ActorOperation::RefreshInputs(inputs)).await
     }
 
+    /// Read the currently served source scope for an attached session.
     pub async fn current_scope(
         &self,
         session_identity: impl Into<String>,
@@ -258,12 +284,15 @@ impl WorkspaceProjectResolutionHandle {
             .await
     }
 
+    /// Observe the current generation without changing actor state.
     pub async fn observe_generation(&self) -> WorkspaceProjectResolutionReceipt {
         self.request(ActorOperation::ObserveGeneration).await
     }
 
+    /// Stop and join the actor, then prove its Runtime task scope drained.
     pub async fn shutdown(&self) -> Result<(), String> {
         let _ = self.request(ActorOperation::Shutdown).await;
+        self.lifecycle.task_scope.begin_drain();
         let task = self
             .lifecycle
             .task
@@ -271,9 +300,9 @@ impl WorkspaceProjectResolutionHandle {
             .map_err(|_| "workspace project-resolution lifecycle lock poisoned".to_owned())?
             .take();
         if let Some(task) = task {
-            task.await
-                .map_err(|error| format!("workspace project-resolution actor failed: {error}"))?;
+            task.join().await?;
         }
+        self.lifecycle.task_scope.finish(0)?;
         Ok(())
     }
 
@@ -293,25 +322,32 @@ impl WorkspaceProjectResolutionHandle {
     }
 }
 
+/// Admit one workspace project-resolution actor into an owned Runtime task scope.
 pub fn spawn_workspace_project_resolution_actor(
     workspace_identity: WorkspaceResolutionIdentity,
     resolver: Arc<dyn WorkspaceProjectResolver>,
-) -> WorkspaceProjectResolutionHandle {
+) -> Result<WorkspaceProjectResolutionHandle, String> {
     let queue_capacity = crate::runtime_concurrency::RuntimeConcurrencyPlan::current()
         .writer_queue_capacity()
         .clamp(16, 256);
     let (sender, receiver) = mpsc::channel(queue_capacity);
-    let task = tokio::spawn(run_actor(
-        WorkspaceProjectResolutionActor::new(workspace_identity.clone(), resolver),
-        receiver,
-    ));
-    WorkspaceProjectResolutionHandle {
+    let task_scope =
+        crate::runtime_server_runtime::RuntimeServerTaskScope::new("workspace-project-resolution");
+    let task = task_scope.spawn(
+        "workspace-project-resolution-actor",
+        run_actor(
+            WorkspaceProjectResolutionActor::new(workspace_identity.clone(), resolver),
+            receiver,
+        ),
+    )?;
+    Ok(WorkspaceProjectResolutionHandle {
         sender,
         workspace_identity,
         lifecycle: Arc::new(WorkspaceProjectResolutionLifecycle {
             task: Mutex::new(Some(task)),
+            task_scope,
         }),
-    }
+    })
 }
 
 struct WorkspaceProjectResolutionActor {

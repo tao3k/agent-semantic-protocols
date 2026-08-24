@@ -178,21 +178,12 @@ async fn insert_typed_fixtures(connection: &turso::Connection) {
         .expect("insert NULL/real/integer/text production row");
     connection
         .execute(
-            "INSERT INTO asp_exact_selector_projection_v1 (
-                language_id, workspace_root_digest, owner_path, owner_subtree_digest,
-                source_blob_digest, parser_identity_digest, query_pack_digest,
-                structural_selector, projection_mode, record_json
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO asp_source_index_blob_v1 (
+                content_digest, size_bytes, source_bytes
+             ) VALUES (?1, ?2, ?3)",
             vec![
-                Value::Text("rust".into()),
-                Value::Text("workspace-digest".into()),
-                Value::Text("src/lib.rs".into()),
-                Value::Text("subtree-digest".into()),
                 Value::Text("blob-digest".into()),
-                Value::Text("parser-digest".into()),
-                Value::Text("query-pack-digest".into()),
-                Value::Text("rust://src/lib.rs#item/function/run".into()),
-                Value::Text("source".into()),
+                Value::Integer(19),
                 Value::Blob(br#"{"kind":"function"}"#.to_vec()),
             ],
         )
@@ -275,9 +266,9 @@ async fn assert_typed_roundtrip(connection: &turso::Connection) {
 
     let mut blobs = connection
         .query(
-            "SELECT record_json FROM asp_exact_selector_projection_v1
-             WHERE owner_path = ?1",
-            ["src/lib.rs"],
+            "SELECT source_bytes FROM asp_source_index_blob_v1
+             WHERE content_digest = ?1",
+            ["blob-digest"],
         )
         .await
         .expect("query BLOB row");

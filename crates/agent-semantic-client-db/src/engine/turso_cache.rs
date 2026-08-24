@@ -390,19 +390,44 @@ pub async fn prune_turso_cache_generations_to_manifest(
     }
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_client_cache_schema(&connection).await?;
-    let mut keep_keys = std::collections::HashSet::new();
-    for generation in &manifest.generations {
-        let Some(export_method) = generation.export_method.as_deref() else {
-            continue;
-        };
-        keep_keys.insert((
-            normalized_project_root(Path::new(&generation.project_root))?,
-            generation.language_id.as_str().to_string(),
-            generation.provider_id.as_str().to_string(),
-            export_method.to_string(),
-            generation.generation_id.clone(),
-        ));
+    let keep_keys = manifest_cache_generation_keys(manifest)?;
+    let delete_keys = cache_generation_delete_keys(&connection, &keep_keys).await?;
+    if delete_keys.is_empty() {
+        return Ok(());
     }
+    delete_cache_generation_keys(&connection, delete_keys).await
+}
+
+type CacheGenerationPruneKey = (String, String, String, String, CacheGenerationId);
+
+fn manifest_cache_generation_keys(
+    manifest: &ClientCacheManifest,
+) -> Result<std::collections::HashSet<CacheGenerationPruneKey>, String> {
+    manifest
+        .generations
+        .iter()
+        .filter_map(|generation| {
+            generation
+                .export_method
+                .as_deref()
+                .map(|export_method| (generation, export_method))
+        })
+        .map(|(generation, export_method)| {
+            Ok((
+                normalized_project_root(Path::new(&generation.project_root))?,
+                generation.language_id.as_str().to_owned(),
+                generation.provider_id.as_str().to_owned(),
+                export_method.to_owned(),
+                generation.generation_id.clone(),
+            ))
+        })
+        .collect()
+}
+
+async fn cache_generation_delete_keys(
+    connection: &turso::Connection,
+    keep_keys: &std::collections::HashSet<CacheGenerationPruneKey>,
+) -> Result<Vec<CacheGenerationPruneKey>, String> {
     let mut rows = run_turso_operation(
         || async {
             connection
@@ -448,11 +473,15 @@ pub async fn prune_turso_cache_generations_to_manifest(
             delete_keys.push(key);
         }
     }
-    if delete_keys.is_empty() {
-        return Ok(());
-    }
+    Ok(delete_keys)
+}
+
+async fn delete_cache_generation_keys(
+    connection: &turso::Connection,
+    delete_keys: Vec<CacheGenerationPruneKey>,
+) -> Result<(), String> {
     execute_turso_statement(
-        &connection,
+        connection,
         "BEGIN TRANSACTION",
         "failed to begin Turso cache prune transaction",
     )
@@ -467,7 +496,7 @@ pub async fn prune_turso_cache_generations_to_manifest(
         Ok(statement) => statement,
         Err(error) => {
             let _ = execute_turso_statement(
-                &connection,
+                connection,
                 "ROLLBACK",
                 "failed to rollback Turso cache prune transaction after prepare",
             )
@@ -491,7 +520,7 @@ pub async fn prune_turso_cache_generations_to_manifest(
         Ok(statement) => statement,
         Err(error) => {
             let _ = execute_turso_statement(
-                &connection,
+                connection,
                 "ROLLBACK",
                 "failed to rollback Turso cache prune transaction after generation prepare",
             )
@@ -515,7 +544,7 @@ pub async fn prune_turso_cache_generations_to_manifest(
             "failed to prune Turso active-generation pointer",
         ) {
             let _ = execute_turso_statement(
-                &connection,
+                connection,
                 "ROLLBACK",
                 "failed to rollback Turso cache prune transaction after pointer delete",
             )
@@ -534,7 +563,7 @@ pub async fn prune_turso_cache_generations_to_manifest(
             "failed to prune Turso cache generation",
         ) {
             let _ = execute_turso_statement(
-                &connection,
+                connection,
                 "ROLLBACK",
                 "failed to rollback Turso cache prune transaction after delete",
             )
@@ -543,7 +572,7 @@ pub async fn prune_turso_cache_generations_to_manifest(
         }
     }
     execute_turso_statement(
-        &connection,
+        connection,
         "COMMIT",
         "failed to commit Turso cache prune transaction",
     )

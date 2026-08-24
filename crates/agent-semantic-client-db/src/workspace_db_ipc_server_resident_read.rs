@@ -1,7 +1,9 @@
 use tokio::time::Instant;
 
-use crate::ClientDbSourceIndexLookupResult;
-use crate::workspace_db_ipc::{RuntimeResidentReadEvidence, RuntimeResidentReadWorkCounters};
+use crate::workspace_db_ipc::{
+    RuntimeResidentReadEvidence, RuntimeResidentReadState, RuntimeResidentReadTerminalState,
+    WorkspaceIpcResidentReadWorkCounters,
+};
 
 pub(super) fn record_terminal(
     telemetry_sender: Option<&crate::runtime_telemetry_bus::RuntimeTelemetryBusSender>,
@@ -66,12 +68,12 @@ pub(super) async fn read_merkle_owner(
                     generation_digest,
                     root_digest,
                     ..
-                } => (generation_digest.clone(), root_digest.clone(), "owner"),
+                } => (generation_digest.clone(), root_digest.clone(), RuntimeResidentReadState::Owner),
                 crate::runtime_server_workspace::WorkspaceRuntimeMerkleOwnerRead::OwnerMissing {
                     generation_digest,
                     root_digest,
                     ..
-                } => (generation_digest.clone(), root_digest.clone(), "owner-missing"),
+                } => (generation_digest.clone(), root_digest.clone(), RuntimeResidentReadState::OwnerMissing),
             };
             let evidence = evidence(
                 request_id.to_owned(),
@@ -100,7 +102,7 @@ pub(super) async fn read_merkle_owner(
 }
 
 pub(super) fn source_index_identity(
-    lookup: &ClientDbSourceIndexLookupResult,
+    lookup: &agent_semantic_search_projection::ResidentSearchReadyResult,
     authority: Result<crate::runtime_server_workspace::WorkspaceSearchGenerationAuthority, String>,
 ) -> (String, String) {
     authority
@@ -110,25 +112,22 @@ pub(super) fn source_index_identity(
                 authority.owner_merkle_root_digest,
             )
         })
-        .unwrap_or_else(|_| {
-            let root = lookup
-                .source_snapshot
-                .as_ref()
-                .map(|snapshot| snapshot.root_digest.to_string())
-                .unwrap_or_default();
-            (String::new(), root)
-        })
+        .unwrap_or_else(|_| (lookup.generation_digest.clone(), lookup.root_digest.clone()))
 }
 
 pub(super) fn selector_identity(
     read: &crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead,
-) -> (String, String, &'static str) {
+) -> (String, String, RuntimeResidentReadState) {
     match read {
         crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead::Projection {
             generation_digest,
             root_digest,
             ..
-        } => (generation_digest.clone(), root_digest.clone(), "projection"),
+        } => (
+            generation_digest.clone(),
+            root_digest.clone(),
+            RuntimeResidentReadState::Projection,
+        ),
         crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead::ProjectionMissing {
             generation_digest,
             root_digest,
@@ -136,7 +135,7 @@ pub(super) fn selector_identity(
         } => (
             generation_digest.clone(),
             root_digest.clone(),
-            "projection-missing",
+            RuntimeResidentReadState::ProjectionMissing,
         ),
         crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead::ProjectionScopeOmitted {
             generation_digest,
@@ -145,16 +144,20 @@ pub(super) fn selector_identity(
         } => (
             generation_digest.clone(),
             root_digest.clone(),
-            "projection-scope-omitted",
+            RuntimeResidentReadState::ProjectionScopeOmitted,
         ),
-        _ => (String::new(), String::new(), "other"),
+        _ => (
+            String::new(),
+            String::new(),
+            RuntimeResidentReadState::Other,
+        ),
     }
 }
 
 pub(super) fn counters(
     counters: crate::runtime_server_workspace::RuntimeDataPlaneCounters,
-) -> RuntimeResidentReadWorkCounters {
-    RuntimeResidentReadWorkCounters {
+) -> WorkspaceIpcResidentReadWorkCounters {
+    WorkspaceIpcResidentReadWorkCounters {
         database_opens: counters.database_opens,
         filesystem_reads: counters.filesystem_reads,
         provider_spawns: counters.provider_spawns,
@@ -167,9 +170,9 @@ pub(super) fn evidence(
     workspace_identity: String,
     generation_digest: String,
     root_digest: String,
-    read_state: &str,
+    read_state: RuntimeResidentReadState,
     started: Instant,
-    counters: RuntimeResidentReadWorkCounters,
+    counters: WorkspaceIpcResidentReadWorkCounters,
 ) -> RuntimeResidentReadEvidence {
     let mut result = RuntimeResidentReadEvidence {
         schema_id: "agent.semantic-protocols.runtime-resident-read-evidence".to_owned(),
@@ -178,10 +181,10 @@ pub(super) fn evidence(
         workspace_identity,
         generation_digest,
         root_digest,
-        read_state: read_state.to_owned(),
+        read_state,
         elapsed_micros: started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64,
         work_counters: counters,
-        terminal_state: "success".to_owned(),
+        terminal_state: RuntimeResidentReadTerminalState::Success,
         telemetry_digest: String::new(),
     };
     result.telemetry_digest = telemetry_digest(&result);
@@ -190,18 +193,16 @@ pub(super) fn evidence(
 
 fn telemetry_digest(evidence: &RuntimeResidentReadEvidence) -> String {
     crate::workspace_db_ipc::resident_read_terminal_digest(
-        &evidence.operation_id,
-        match evidence.read_state.as_str() {
-            "source-index" => "runtime-resident-source-index",
-            "owner" | "owner-missing" => "runtime-resident-merkle-owner",
-            _ => "runtime-resident-exact-projection",
+        &crate::workspace_db_ipc::RuntimeResidentReadTerminalDigestInput {
+            operation_id: &evidence.operation_id,
+            surface: evidence.read_state.telemetry_surface(),
+            workspace_identity: &evidence.workspace_identity,
+            generation_digest: &evidence.generation_digest,
+            root_digest: &evidence.root_digest,
+            read_state: evidence.read_state,
+            elapsed_micros: evidence.elapsed_micros,
+            terminal_state: evidence.terminal_state,
         },
-        &evidence.workspace_identity,
-        &evidence.generation_digest,
-        &evidence.root_digest,
-        &evidence.read_state,
-        evidence.elapsed_micros,
-        &evidence.terminal_state,
     )
 }
 
@@ -215,12 +216,12 @@ pub(super) async fn write_response(
     crate::workspace_db_ipc::write_frame(
         stream,
         &crate::workspace_db_ipc::WorkspaceDbIpcResponse {
-            schema_id: crate::workspace_db_ipc::WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID.to_owned(),
+            schema_id: crate::workspace_db_ipc::WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID.into(),
             schema_version: crate::workspace_db_ipc::WORKSPACE_DB_OWNER_SCHEMA_VERSION.to_owned(),
             workspace_identity,
             transport_contract_digest: endpoint.transport_contract_digest.clone(),
             owner_epoch: endpoint.owner_epoch,
-            request_id,
+            request_id: request_id.into(),
             result,
         },
     )

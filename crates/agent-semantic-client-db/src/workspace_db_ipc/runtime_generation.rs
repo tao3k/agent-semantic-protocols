@@ -164,7 +164,7 @@ impl WorkspaceDbIpcSession {
     pub async fn resolve_provider_runtime(
         &self,
         language_id: agent_semantic_client_core::LanguageId,
-    ) -> Result<serde_json::Value, String> {
+    ) -> Result<agent_semantic_provider_transport::AspClientServerLifecycleReceipt, String> {
         match self
             .call_operation(WorkspaceDbIpcOperation::ResolveProviderRuntime {
                 project_root: self.runtime_project_root()?.display().to_string(),
@@ -417,8 +417,8 @@ impl WorkspaceDbIpcSession {
 
     pub async fn admit_runtime_generation_for_read(
         &self,
-        language_id: impl Into<String>,
-        provider_id: impl Into<String>,
+        language_id: impl Into<agent_semantic_client_core::LanguageId>,
+        provider_id: impl Into<agent_semantic_client_core::ProviderId>,
     ) -> Result<crate::runtime_server_workspace::WorkspaceRecoveryReceipt, String> {
         let project_root = self.runtime_project_root()?.display().to_string();
         let result = self
@@ -639,14 +639,14 @@ impl WorkspaceDbIpcSession {
 
     pub async fn evaluate_graph_turbo(
         &self,
-        message: serde_json::Value,
-    ) -> Result<serde_json::Value, String> {
+        request: agent_semantic_search_projection::GraphTurboEvaluationRequest,
+    ) -> Result<agent_semantic_search_projection::GraphTurboResultPacketV1, String> {
         let expected_workspace_identity = self.workspace_identity().to_owned();
         let expected_project_root = self.runtime_project_root()?.display().to_string();
         let result = self
             .call_operation(WorkspaceDbIpcOperation::EvaluateGraphTurbo {
                 project_root: expected_project_root.clone(),
-                message,
+                message: request.into_value(),
             })
             .await?;
         match result {
@@ -657,7 +657,8 @@ impl WorkspaceDbIpcSession {
             } if workspace_identity == expected_workspace_identity
                 && project_root == expected_project_root =>
             {
-                Ok(receipt)
+                agent_semantic_search_projection::GraphTurboResultPacketV1::from_value(receipt)
+                    .map_err(|error| format!("invalid Graph Turbo evaluation receipt: {error}"))
             }
             WorkspaceDbIpcResult::GraphTurboEvaluation {
                 workspace_identity,

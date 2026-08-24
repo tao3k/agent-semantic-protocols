@@ -626,11 +626,10 @@ async fn turso_source_index_lookup_schema_current(
     connection: &turso::Connection,
     requested_scope: Option<&TursoSourceIndexLookupRequestScope>,
 ) -> Result<bool, String> {
-    let mut rows =
-        match requested_scope {
-            Some(scope) => connection
-                .query(
-                    "SELECT 1
+    let mut rows = match requested_scope {
+        Some(scope) => connection
+            .query(
+                "SELECT 1
                      FROM asp_source_index_layout_v1
                      WHERE project_root = ?1
                        AND schema_id = ?2
@@ -638,26 +637,26 @@ async fn turso_source_index_lookup_schema_current(
                        AND term_projection_version = ?4
                        AND token_projection_generation_id <> ''
                      LIMIT 1",
-                    (
-                        scope.project_root.as_str(),
-                        scope.schema_id.as_str(),
-                        scope.schema_version.as_str(),
-                        crate::engine::turso_source_index::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,
-                    ),
-                )
-                .await,
-            None => connection
-                .query(
-                    "SELECT 1
+                (
+                    scope.project_root.as_str(),
+                    scope.schema_id.as_str(),
+                    scope.schema_version.as_str(),
+                    crate::engine::turso_source_index::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,
+                ),
+            )
+            .await,
+        None => connection
+            .query(
+                "SELECT 1
                      FROM asp_source_index_layout_v1
                      WHERE term_projection_version = ?1
                        AND token_projection_generation_id <> ''
                      LIMIT 1",
-                    (crate::engine::turso_source_index::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,),
-                )
-                .await,
-        }
-        .map_err(|error| format!("failed to inspect Turso source-index layout: {error}"))?;
+                (crate::engine::turso_source_index::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,),
+            )
+            .await,
+    }
+    .map_err(|error| format!("failed to inspect Turso source-index layout: {error}"))?;
     Ok(rows
         .next()
         .await

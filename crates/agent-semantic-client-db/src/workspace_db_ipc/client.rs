@@ -1,7 +1,9 @@
+//! Typed northbound helpers that connect only to the published Runtime Server endpoint.
+
 use super::{WorkspaceDbIpcSession, WorkspaceDbSourceIndexLookupRequest};
-use crate::ClientDbSourceIndexLookupResult;
 use std::path::{Path, PathBuf};
 
+/// Connect a typed client session to the published Runtime Server workspace endpoint.
 pub async fn connect_runtime_server_workspace_session(
     project_root: &Path,
 ) -> Result<WorkspaceDbIpcSession, String> {
@@ -43,9 +45,10 @@ pub async fn connect_runtime_server_workspace_session(
     ))
 }
 
+/// Read the already-published resident source index without local repair or fallback.
 pub async fn read_source_index_via_runtime_server(
     request: WorkspaceDbSourceIndexLookupRequest,
-) -> Result<ClientDbSourceIndexLookupResult, String> {
+) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
     let session = connect_runtime_server_workspace_session(&request.project_root).await?;
     session.read_source_index(&request).await
 }

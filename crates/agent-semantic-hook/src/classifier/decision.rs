@@ -1,11 +1,8 @@
-//! Shared hook decision constructors for classifier routes.
-
-use serde_json::Value;
+use std::collections::BTreeMap;
 
 use crate::{
-    DecisionKind, DecisionRoute, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
-    HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
-    ReasonKind, ToolAction,
+    DecisionKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID, HOOK_DECISION_SCHEMA_VERSION,
+    HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision, ReasonKind,
 };
 
 pub(super) fn allow(platform: &str, event: &str, subject: DecisionSubject) -> HookDecision {
@@ -14,82 +11,14 @@ pub(super) fn allow(platform: &str, event: &str, subject: DecisionSubject) -> Ho
         schema_version: HOOK_DECISION_SCHEMA_VERSION,
         protocol_id: HOOK_PROTOCOL_ID,
         protocol_version: HOOK_PROTOCOL_VERSION,
-        platform: platform.to_string(),
-        event: event.to_string(),
+        platform: platform.to_owned(),
+        event: event.to_owned(),
         decision: DecisionKind::Allow,
         reason_kind: ReasonKind::None,
         language_ids: Vec::new(),
         subject,
         routes: Vec::new(),
-        message: "Allowed by semantic agent hook runtime.".to_string(),
-        fields: std::collections::BTreeMap::new(),
-    }
-}
-
-pub(super) struct DenyForActionRequest<'a> {
-    pub(super) reason_kind: ReasonKind,
-    pub(super) action: &'a ToolAction,
-    pub(super) language_ids: Vec<agent_semantic_config::LanguageId>,
-    pub(super) subject: DecisionSubject,
-    pub(super) routes: Vec<DecisionRoute>,
-    pub(super) message: String,
-}
-
-pub(super) fn deny_for_action(
-    platform: &str,
-    event: &str,
-    request: DenyForActionRequest<'_>,
-) -> HookDecision {
-    let DenyForActionRequest {
-        reason_kind,
-        action,
-        language_ids,
-        subject,
-        routes,
-        message,
-    } = request;
-    let mut decision = deny(
-        platform,
-        event,
-        reason_kind,
-        language_ids,
-        subject,
-        routes,
-        message,
-    );
-    decision.fields.insert(
-        "toolSurface".to_string(),
-        Value::String(action.surface.as_str().to_string()),
-    );
-    decision.fields.insert(
-        "operationIntent".to_string(),
-        Value::String(action.operation.as_str().to_string()),
-    );
-    decision
-}
-
-fn deny(
-    platform: &str,
-    event: &str,
-    reason_kind: ReasonKind,
-    language_ids: Vec<agent_semantic_config::LanguageId>,
-    subject: DecisionSubject,
-    routes: Vec<DecisionRoute>,
-    message: String,
-) -> HookDecision {
-    HookDecision {
-        schema_id: HOOK_DECISION_SCHEMA_ID,
-        schema_version: HOOK_DECISION_SCHEMA_VERSION,
-        protocol_id: HOOK_PROTOCOL_ID,
-        protocol_version: HOOK_PROTOCOL_VERSION,
-        platform: platform.to_string(),
-        event: event.to_string(),
-        decision: DecisionKind::Deny,
-        reason_kind,
-        language_ids,
-        subject,
-        routes,
-        message,
-        fields: std::collections::BTreeMap::new(),
+        message: "Allowed by semantic agent hook runtime.".to_owned(),
+        fields: BTreeMap::new(),
     }
 }

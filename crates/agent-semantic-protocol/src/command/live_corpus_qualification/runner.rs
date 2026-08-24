@@ -7,8 +7,8 @@ use super::contract::{
     QualificationReceipt,
 };
 pub(super) use super::resident_metrics::{
-    ResidentSearchOutcome, require_resident_sample_budget, require_zero_runtime_work,
-    resident_latency_distribution,
+    ResidentSearchOutcome, require_resident_sample_budget, require_zero_resident_search_work,
+    require_zero_workspace_ipc_work, resident_latency_distribution,
 };
 use crate::command::live_corpus::{
     LiveCorpusQualification, live_corpus_git_repository_paths, live_corpus_lock_digest, load_lock,
@@ -290,7 +290,7 @@ async fn qualify_case(
         format!("live-corpus-search-{}-cold-prime", case.case_id),
     )
     .await?;
-    require_zero_runtime_work(
+    require_zero_resident_search_work(
         &case.case_id,
         "search-cold-prime",
         0,
@@ -323,7 +323,7 @@ async fn qualify_case(
     search_service_latency_samples.push(search.service_elapsed_micros);
     let mut search_total_latency_samples = Vec::with_capacity(resident_sample_count);
     search_total_latency_samples.push(search.elapsed_micros);
-    require_zero_runtime_work(&case.case_id, "search", 0, &search.work_counters)?;
+    require_zero_resident_search_work(&case.case_id, "search", 0, &search.work_counters)?;
     if search.candidate_count < case.search.minimum_candidates {
         return Err(format!(
             "Live Corpus resident search returned too few candidates: case={} candidates={} minimum={}",
@@ -355,7 +355,7 @@ async fn qualify_case(
     }
     let mut exact_source_latency_samples = Vec::with_capacity(resident_sample_count);
     exact_source_latency_samples.push(query_elapsed_micros);
-    require_zero_runtime_work(
+    require_zero_workspace_ipc_work(
         &case.case_id,
         "exact-source",
         0,
@@ -410,7 +410,7 @@ async fn qualify_case(
     }
     let mut callable_skeleton_latency_samples = Vec::with_capacity(resident_sample_count);
     callable_skeleton_latency_samples.push(projection_elapsed_micros);
-    require_zero_runtime_work(
+    require_zero_workspace_ipc_work(
         &case.case_id,
         "callable-skeleton",
         0,
@@ -505,7 +505,7 @@ async fn qualify_case(
             search_sample.elapsed_micros,
             case.search.maximum_resident_micros,
         )?;
-        require_zero_runtime_work(
+        require_zero_resident_search_work(
             &case.case_id,
             "search",
             sample_index,
@@ -536,7 +536,7 @@ async fn qualify_case(
             exact_sample.evidence.elapsed_micros,
             case.query.maximum_resident_micros,
         )?;
-        require_zero_runtime_work(
+        require_zero_workspace_ipc_work(
             &case.case_id,
             "exact-source",
             sample_index,
@@ -576,7 +576,7 @@ async fn qualify_case(
             callable_sample.evidence.elapsed_micros,
             case.query.maximum_resident_micros,
         )?;
-        require_zero_runtime_work(
+        require_zero_workspace_ipc_work(
             &case.case_id,
             "callable-skeleton",
             sample_index,
@@ -726,11 +726,11 @@ async fn qualify_case(
         search_read_mode: "synchronous-mmap",
         search_read_work_counters:
             agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadWorkCounters {
-                database_read_count: search.work_counters.database_opens,
-                filesystem_read_count: search.work_counters.filesystem_reads,
-                provider_process_count: search.work_counters.provider_spawns,
-                scheduler_task_count: 0,
-                socket_operation_count: search.work_counters.control_socket_roundtrips,
+                database_read_count: search.work_counters.database_read_count,
+                filesystem_read_count: search.work_counters.filesystem_read_count,
+                provider_process_count: search.work_counters.provider_process_count,
+                scheduler_task_count: search.work_counters.scheduler_task_count,
+                socket_operation_count: search.work_counters.socket_operation_count,
             },
         exact_read_mode: "synchronous-mmap",
         exact_read_work_counters:
@@ -772,11 +772,10 @@ async fn resident_search(
     let receipt = session
         .provider_search(operation_id, language_id.clone(), args)
         .await?;
-    let observed_root = receipt
-        .root_digest
-        .as_deref()
-        .ok_or_else(|| "runtime-resident-search-source-snapshot-missing".to_owned())?
-        .to_string();
+    let observed_root = receipt.root_digest;
+    if observed_root.trim().is_empty() {
+        return Err("runtime-resident-search-root-digest-missing".to_owned());
+    }
     if observed_root != resident_root {
         return Err(format!(
             "runtime-resident-search-root-mismatch: expected={resident_root} observed={observed_root}"

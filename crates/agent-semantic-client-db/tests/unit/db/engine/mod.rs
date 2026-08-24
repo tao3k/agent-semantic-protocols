@@ -9,12 +9,6 @@ use agent_semantic_client_core::state_core::{ResolvedState, STATE_LAYOUT_VERSION
 use agent_semantic_client_core::{CacheExportMethod, ClientCacheManifest, LanguageId, ProviderId};
 use agent_semantic_client_core::{CacheGenerationId, SemanticSchemaId, SemanticSchemaVersion};
 use agent_semantic_client_db::{ClientDbArtifactEvent, ClientDbBackend, ClientDbEngine};
-use agent_semantic_client_db::{
-    ClientDbStructuralDependencyUsage, ClientDbStructuralIndexImport, ClientDbStructuralKind,
-    ClientDbStructuralLocator, ClientDbStructuralName, ClientDbStructuralOwner,
-    ClientDbStructuralPath, ClientDbStructuralQueryKey, ClientDbStructuralSource,
-    ClientDbStructuralSymbol,
-};
 use serde_json::json;
 
 include!("artifact_events.rs");

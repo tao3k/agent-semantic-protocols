@@ -18,7 +18,16 @@ use crate::runtime_server_workspace::{
 
 type ByteRange = (usize, usize);
 type OwnerRow = ([u8; 32], ByteRange, ByteRange, usize, usize, [u8; 32]);
-type SelectorRow = ([u8; 32], ByteRange, ByteRange, usize, usize, usize, usize, usize);
+type SelectorRow = (
+    [u8; 32],
+    ByteRange,
+    ByteRange,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+);
 type EvidenceContexts = std::collections::BTreeMap<String, Vec<u8>>;
 
 struct ProjectionRowSink<'a> {

@@ -8,8 +8,7 @@ use serde::Deserialize;
 pub const PROVIDER_WORKSPACE_INSTALL_SCHEMA_ID: &str =
     "agent.semantic-protocols.provider-workspace-install";
 pub const PROVIDER_WORKSPACE_INSTALL_SCHEMA_VERSION: &str = "1";
-pub const PROVIDER_WORKSPACE_INSTALL_SCHEMA_FILE: &str =
-    "provider-workspace-install.schema.json";
+pub const PROVIDER_WORKSPACE_INSTALL_SCHEMA_FILE: &str = "provider-workspace-install.schema.json";
 pub const PROVIDER_WORKSPACE_INSTALL_SCHEMA_AUTHORITY: &str =
     "https://tao3k.github.io/agent-semantic-protocols/schemas/";
 

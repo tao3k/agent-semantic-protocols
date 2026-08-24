@@ -11,6 +11,7 @@ mod model;
 mod packet;
 mod renderer;
 mod resident_search_result;
+mod storage_route;
 mod topology;
 
 pub use error::SearchProjectionError;
@@ -27,14 +28,21 @@ pub use renderer::{
 };
 pub use resident_search_result::{
     RESIDENT_SEARCH_RESULT_SCHEMA_ID, RESIDENT_SEARCH_RESULT_SCHEMA_VERSION,
+    RUNTIME_PROVIDER_SEARCH_RECEIPT_SCHEMA_ID, RUNTIME_PROVIDER_SEARCH_RECEIPT_SCHEMA_VERSION,
     ResidentSearchHit, ResidentSearchProjectionTier, ResidentSearchReadyResult,
-    ResidentSearchReadyState,
-    ResidentSearchWorkCounters,
+    ResidentSearchReadyState, ResidentSearchWorkCounters, RuntimeProviderSearchReceipt,
+};
+pub use storage_route::{
+    ProviderGraphEvidence, SEMANTIC_SEARCH_STORAGE_ROUTE_SCHEMA_ID,
+    SEMANTIC_SEARCH_STORAGE_ROUTE_SCHEMA_VERSION, SemanticMutationClass,
+    SemanticSearchAlgorithmEvidence, SemanticSearchQueryRoute, SemanticSearchRouteDecision,
+    SemanticSearchStorageClass, SemanticSearchStorageProfile, SemanticSharingScope,
 };
 pub use topology::{SEARCH_ROOT_ID, TERSE_GRAPH_MICRO_LEGEND, TopologyProjectionOptions};
 pub mod source;
 pub use renderer::RankedFrontierSearchProjectionRenderer;
 pub use source::{
-    GraphTurboResultPacketV1, SEMANTIC_GRAPH_TURBO_RESULT_SCHEMA_ID,
-    SEMANTIC_GRAPH_TURBO_RESULT_SCHEMA_VERSION, SearchProjectionSource,
+    GraphTurboEvaluationRequest, GraphTurboResultPacketV1, SEMANTIC_GRAPH_TURBO_REQUEST_SCHEMA_ID,
+    SEMANTIC_GRAPH_TURBO_RESULT_SCHEMA_ID, SEMANTIC_GRAPH_TURBO_RESULT_SCHEMA_VERSION,
+    SearchProjectionSource,
 };

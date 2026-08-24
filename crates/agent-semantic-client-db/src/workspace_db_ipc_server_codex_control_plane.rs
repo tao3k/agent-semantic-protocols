@@ -6,8 +6,8 @@ pub(super) async fn refresh(
     workspace_identity: &str,
     agent_session_registry_owner: Option<&Arc<crate::AgentSessionRegistry>>,
     owner: &Arc<crate::codex_multi_agent_control_plane_owner::CodexMultiAgentControlPlaneOwner>,
-    project_id: String,
-    root_session_id: String,
+    project_id: crate::agent_session_registry::AgentSessionProjectId,
+    root_session_id: crate::agent_session_registry::AgentSessionRootSessionId,
 ) -> WorkspaceDbIpcResult {
     let Some(agent_session_registry_owner) = agent_session_registry_owner else {
         return WorkspaceDbIpcResult::Failed {
@@ -23,11 +23,11 @@ pub(super) async fn refresh(
                 None,
             )
             .await?;
-        let current = owner.read(workspace_identity, &root_session_id).await;
+        let current = owner.read(workspace_identity, root_session_id.as_str()).await;
         let projection = crate::codex_multi_agent_control_plane_materializer::materialize_codex_multi_agent_control_plane(
             workspace_identity,
-            &project_id,
-            &root_session_id,
+            project_id.as_str(),
+            root_session_id.as_str(),
             records,
             current.as_deref(),
         )?;
@@ -46,10 +46,10 @@ pub(super) async fn refresh(
 pub(super) async fn read(
     workspace_identity: &str,
     owner: &Arc<crate::codex_multi_agent_control_plane_owner::CodexMultiAgentControlPlaneOwner>,
-    root_session_id: String,
+    root_session_id: crate::agent_session_registry::AgentSessionRootSessionId,
 ) -> WorkspaceDbIpcResult {
     let projection = owner
-        .read(workspace_identity, &root_session_id)
+        .read(workspace_identity, root_session_id.as_str())
         .await
         .map(|projection| projection.as_ref().clone());
     WorkspaceDbIpcResult::CodexMultiAgentControlPlane { projection }

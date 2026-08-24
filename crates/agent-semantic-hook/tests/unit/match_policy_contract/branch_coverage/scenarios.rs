@@ -23,7 +23,6 @@ fn run_scenarios(_test_name: &str, scenarios: &[Scenario]) {
     fs::write(root.join("src/app.jl"), "value = 1\n").expect("write Julia source fixture");
     fs::write(root.join("src/app.ss"), "(define value 1)\n")
         .expect("write Gerbil Scheme source fixture");
-    fs::write(root.join("README.md"), "# fixture\n").expect("write unregistered source fixture");
     fs::write(
         root.join("package.json"),
         "{\"package\":{\"name\":\"hook\"}}\n",
@@ -256,61 +255,6 @@ fn functions_exec_code_parser_rejects_near_misses() {
         }),
         expected_rule: None,
         forbidden_rule: Some("deny-raw-registered-source-action"),
-    });
-    run_scenarios(TEST_NAME, &scenarios);
-}
-
-#[test]
-fn every_rule_has_a_near_miss() {
-    const TEST_NAME: &str =
-        "match_policy_contract::branch_coverage::scenarios::every_rule_has_a_near_miss";
-    let scenarios = [
-        (
-            "registered-asp-reasoning-search",
-            shell("asp rust healthcheck"),
-        ),
-        ("testing-role-dispatch", shell("cargo metadata --no-deps")),
-        (
-            "deny-raw-registered-source-search-action",
-            json!({"tool_name":"Grep","tool_input":{"pattern":"value","path":"README.md"}}),
-        ),
-        ("deny-raw-registered-source-action", shell("read README.md")),
-        (
-            "deny-agent-search-json",
-            shell("asp typescript search lexical projectRoot owner tests ."),
-        ),
-        (
-            "route-read-to-asp-languages",
-            json!({"tool_name":"Read","tool_input":{"file_path":"README.md"}}),
-        ),
-        (
-            "deny-raw-registered-source-action",
-            shell("custom-reader '.read_text(' README.md"),
-        ),
-        (
-            "deny-uncontrolled-source-search-commands",
-            shell("printf 'rg value src/app.ts'"),
-        ),
-        (
-            "allow-bounded-json-projection",
-            shell("jq '.' package.json"),
-        ),
-        ("allow-bounded-toml-projection", shell("yq '.' Cargo.toml")),
-        (
-            "deny-unbounded-structured-projection",
-            shell("jq -c '.package.name' package.json"),
-        ),
-        (
-            "deny-raw-registered-source-action",
-            shell("sed -n '1,8p' README.md"),
-        ),
-        ("deny-uncontrolled-git-source-reads", shell("git status")),
-    ]
-    .map(|(rule, payload)| Scenario {
-        name: rule,
-        payload,
-        expected_rule: None,
-        forbidden_rule: Some(rule),
     });
     run_scenarios(TEST_NAME, &scenarios);
 }

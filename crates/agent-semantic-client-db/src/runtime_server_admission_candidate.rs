@@ -162,13 +162,13 @@ fn resident_non_git_candidate(
     }
 }
 
-pub struct WorkspaceGenerationBuild {
+pub struct WorkspaceGenerationCandidateBuild {
     pub candidate: WorkspaceGenerationCandidateIdentity,
     pub refresh: crate::ClientDbSourceIndexRefreshRequest,
     pub materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
 }
 
-impl WorkspaceGenerationBuild {
+impl WorkspaceGenerationCandidateBuild {
     pub fn new(
         candidate: WorkspaceGenerationCandidateIdentity,
         refresh: crate::ClientDbSourceIndexRefreshRequest,
@@ -292,8 +292,9 @@ impl WorkspaceGenerationBuildMode {
     }
 }
 
-pub type WorkspaceGenerationCandidateBuildFuture =
-    Pin<Box<dyn Future<Output = Result<WorkspaceGenerationBuild, String>> + Send + 'static>>;
+pub type WorkspaceGenerationCandidateBuildFuture = Pin<
+    Box<dyn Future<Output = Result<WorkspaceGenerationCandidateBuild, String>> + Send + 'static>,
+>;
 pub type WorkspaceGenerationCandidateBuilder = Arc<
     dyn Fn(
             String,

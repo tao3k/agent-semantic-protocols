@@ -392,6 +392,55 @@ impl ParserReadAuthorityRegistry {
         Self::default()
     }
 
+    async fn generation_cell(
+        &self,
+        key: &ParserWorkspaceKey,
+        expected: &Arc<CommittedParserGeneration>,
+    ) -> Result<Arc<ParserGenerationCell>, String> {
+        let resident = {
+            let entries = self.entries.read().await;
+            select_parser_generation_cell(entries.get(key), expected)?
+        };
+        if let Some(cell) = resident {
+            return Ok(cell);
+        }
+        let mut entries = self.entries.write().await;
+        if let Some(cell) = select_parser_generation_cell(entries.get(key), expected)? {
+            return Ok(cell);
+        }
+        let cell = Arc::new(ParserGenerationCell::new());
+        entries.insert(
+            key.clone(),
+            ParserWorkspaceEntry {
+                generation: expected.clone(),
+                cell: cell.clone(),
+            },
+        );
+        Ok(cell)
+    }
+
+    async fn load_generation<F, Fut>(
+        cell: Arc<ParserGenerationCell>,
+        expected: Arc<CommittedParserGeneration>,
+        ticket: u64,
+        load: F,
+    ) -> Result<Arc<ResidentParserGeneration>, String>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<LoadedParserGeneration, String>>,
+    {
+        cell.get_or_try_init(|| async move {
+            let loaded = load().await?;
+            loaded.validate_for(&expected)?;
+            Ok::<Arc<ResidentParserGeneration>, String>(Arc::new(ResidentParserGeneration {
+                loader_ticket: ticket,
+                loaded: Arc::new(loaded),
+            }))
+        })
+        .await
+        .cloned()
+    }
+
     pub async fn acquire<F, Fut>(
         &self,
         request: ParserReadRequest,
@@ -406,67 +455,8 @@ impl ParserReadAuthorityRegistry {
         let ticket = self.next_ticket.fetch_add(1, Ordering::Relaxed);
         let expected = request.generation;
         let key = request.workspace_key;
-        let cell = {
-            let entries = self.entries.read().await;
-            match entries.get(key.as_ref()) {
-                Some(entry) if entry.generation == expected => Some(entry.cell.clone()),
-                Some(entry) if entry.generation.generation_epoch > expected.generation_epoch => {
-                    return Err(
-                        "requested parser generation is older than the resident epoch".to_owned(),
-                    );
-                }
-                Some(entry) if entry.generation.generation_epoch == expected.generation_epoch => {
-                    return Err("parser generation digest drift at the same epoch".to_owned());
-                }
-                Some(_) | None => None,
-            }
-        };
-        let cell = match cell {
-            Some(cell) => cell,
-            None => {
-                let mut entries = self.entries.write().await;
-                match entries.get(key.as_ref()) {
-                    Some(entry) if entry.generation == expected => entry.cell.clone(),
-                    Some(entry)
-                        if entry.generation.generation_epoch > expected.generation_epoch =>
-                    {
-                        return Err(
-                            "requested parser generation is older than the resident epoch"
-                                .to_owned(),
-                        );
-                    }
-                    Some(entry)
-                        if entry.generation.generation_epoch == expected.generation_epoch =>
-                    {
-                        return Err("parser generation digest drift at the same epoch".to_owned());
-                    }
-                    Some(_) | None => {
-                        let cell = Arc::new(ParserGenerationCell::new());
-                        entries.insert(
-                            key.as_ref().clone(),
-                            ParserWorkspaceEntry {
-                                generation: expected.clone(),
-                                cell: cell.clone(),
-                            },
-                        );
-                        cell
-                    }
-                }
-            }
-        };
-
-        let expected_for_load = expected.clone();
-        let resident = cell
-            .get_or_try_init(|| async move {
-                let loaded = load().await?;
-                loaded.validate_for(&expected_for_load)?;
-                Ok::<Arc<ResidentParserGeneration>, String>(Arc::new(ResidentParserGeneration {
-                    loader_ticket: ticket,
-                    loaded: Arc::new(loaded),
-                }))
-            })
-            .await?
-            .clone();
+        let cell = self.generation_cell(key.as_ref(), &expected).await?;
+        let resident = Self::load_generation(cell, expected.clone(), ticket, load).await?;
         let performed_load = resident.loader_ticket == ticket;
         let authority = ParserReadAuthority::ready(
             expected.as_ref().clone(),
@@ -491,6 +481,22 @@ impl ParserReadAuthorityRegistry {
             .values()
             .filter(|entry| entry.cell.get().is_some())
             .count()
+    }
+}
+
+fn select_parser_generation_cell(
+    entry: Option<&ParserWorkspaceEntry>,
+    expected: &CommittedParserGeneration,
+) -> Result<Option<Arc<ParserGenerationCell>>, String> {
+    match entry {
+        Some(entry) if entry.generation.as_ref() == expected => Ok(Some(entry.cell.clone())),
+        Some(entry) if entry.generation.generation_epoch > expected.generation_epoch => {
+            Err("requested parser generation is older than the resident epoch".to_owned())
+        }
+        Some(entry) if entry.generation.generation_epoch == expected.generation_epoch => {
+            Err("parser generation digest drift at the same epoch".to_owned())
+        }
+        Some(_) | None => Ok(None),
     }
 }
 

@@ -16,10 +16,12 @@ const AFTER_PAGE_SQL: [&str; 4] = [
     "SELECT partition_key, event_id, payload, created_at_ms FROM asp_mvcc_event_3 WHERE partition_key = ?1 AND (created_at_ms > ?2 OR (created_at_ms = ?2 AND event_id > ?3)) ORDER BY created_at_ms, event_id LIMIT ?4",
 ];
 
+/// Exact partition key used by database-side pagination.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TursoMvccPartitionKey(String);
 
 impl TursoMvccPartitionKey {
+    /// Borrow the exact partition key.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -37,10 +39,12 @@ impl From<&str> for TursoMvccPartitionKey {
     }
 }
 
+/// Stable event identity used as the keyset tie breaker.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TursoMvccEventId(String);
 
 impl TursoMvccEventId {
+    /// Borrow the exact event identity.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -58,16 +62,19 @@ impl From<&str> for TursoMvccEventId {
     }
 }
 
+/// Composite continuation cursor for deterministic event ordering.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TursoMvccPageCursor {
     pub created_at_ms: i64,
     pub event_id: TursoMvccEventId,
 }
 
+/// Validated maximum number of records requested from one partition page.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TursoMvccPageLimit(usize);
 
 impl TursoMvccPageLimit {
+    /// Return the requested page size.
     pub const fn as_usize(self) -> usize {
         self.0
     }
@@ -79,6 +86,7 @@ impl From<usize> for TursoMvccPageLimit {
     }
 }
 
+/// Typed validation or backend failure from MVCC keyset pagination.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TursoMvccKeysetError(String);
 

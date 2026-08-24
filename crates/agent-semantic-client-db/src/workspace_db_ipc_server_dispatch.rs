@@ -11,9 +11,6 @@ pub(super) async fn dispatch_workspace_db_session_operation(
     operation: WorkspaceDbIpcOperation,
 ) -> WorkspaceDbIpcResult {
     let dispatched = match operation {
-        WorkspaceDbIpcOperation::ProjectTreeSitterQuery { .. } => Err(
-            "Tree-sitter queries are available only through the Runtime Server".to_owned(),
-        ),
         WorkspaceDbIpcOperation::Health => return WorkspaceDbIpcResult::Healthy,
         WorkspaceDbIpcOperation::Shutdown => return WorkspaceDbIpcResult::ShutdownAccepted,
         WorkspaceDbIpcOperation::CacheControl { .. } => Err(

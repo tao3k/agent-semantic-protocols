@@ -1,25 +1,14 @@
+//! Framed host-local transport for typed workspace DB owner requests.
+
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::net::UnixStream;
 
-use super::protocol::{
-    MAX_FRAME_BYTES, WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID, WORKSPACE_DB_OWNER_SCHEMA_VERSION,
-    WorkspaceDbIpcRequest, WorkspaceDbIpcResponse,
-};
-use crate::workspace_db_endpoint::WorkspaceDbOwnerEndpoint;
+use super::protocol::MAX_FRAME_BYTES;
 
-/// Connect, send one typed frame, and verify the response binding.
+/// Stable reason kind for host-local IPC permission denial.
 pub const HOST_LOCAL_IPC_PERMISSION_DENIED_REASON_KIND: &str = "host-local-ipc-permission-denied";
 
-pub fn workspace_owner_connect_error(error: std::io::Error) -> String {
-    if error.kind() == std::io::ErrorKind::PermissionDenied {
-        return format!(
-            "failed to connect workspace owner endpoint reasonKind={HOST_LOCAL_IPC_PERMISSION_DENIED_REASON_KIND} errorKind=permission-denied"
-        );
-    }
-    format!("failed to connect workspace owner endpoint: {error}")
-}
-
+/// Normalize a Runtime Server data-plane connection failure.
 pub fn runtime_server_data_connect_error(error: std::io::Error) -> String {
     if error.kind() == std::io::ErrorKind::PermissionDenied {
         return format!(
@@ -29,53 +18,12 @@ pub fn runtime_server_data_connect_error(error: std::io::Error) -> String {
     format!("failed to connect Runtime Server data endpoint: {error}")
 }
 
+/// Test whether a normalized transport failure is a host permission denial.
 pub fn is_host_local_ipc_permission_denied(error: &str) -> bool {
     let expected = format!("reasonKind={HOST_LOCAL_IPC_PERMISSION_DENIED_REASON_KIND}");
     error
         .split_ascii_whitespace()
         .any(|field| field == expected)
-}
-
-pub async fn call_workspace_db_owner(
-    endpoint: &WorkspaceDbOwnerEndpoint,
-    request: &WorkspaceDbIpcRequest,
-) -> Result<WorkspaceDbIpcResponse, String> {
-    let mut stream = UnixStream::connect(&endpoint.socket_path)
-        .await
-        .map_err(workspace_owner_connect_error)?;
-    write_frame(&mut stream, request).await?;
-    let response: WorkspaceDbIpcResponse = read_frame(&mut stream).await?;
-    if response.schema_id != WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID {
-        return Err(format!(
-            "workspace owner response schema_id drift: expected {:?}, got {:?}",
-            WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID, response.schema_id
-        ));
-    }
-    if response.schema_version != WORKSPACE_DB_OWNER_SCHEMA_VERSION {
-        return Err(format!(
-            "workspace owner response schema_version drift: expected {:?}, got {:?}",
-            WORKSPACE_DB_OWNER_SCHEMA_VERSION, response.schema_version
-        ));
-    }
-    if response.workspace_identity != endpoint.workspace_identity {
-        return Err(format!(
-            "workspace owner response workspace_identity drift: expected {:?}, got {:?}",
-            endpoint.workspace_identity, response.workspace_identity
-        ));
-    }
-    if response.owner_epoch != endpoint.owner_epoch {
-        return Err(format!(
-            "workspace owner response owner_epoch drift: expected {}, got {}",
-            endpoint.owner_epoch, response.owner_epoch
-        ));
-    }
-    if response.request_id != request.request_id {
-        return Err(format!(
-            "workspace owner response request_id drift: expected {:?}, got {:?}",
-            request.request_id, response.request_id
-        ));
-    }
-    Ok(response)
 }
 
 pub(crate) async fn read_frame<T: for<'de> Deserialize<'de>>(

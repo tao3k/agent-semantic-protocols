@@ -76,10 +76,7 @@ fn finish_record_table(
         .ok_or_else(|| "sorted record table total length overflow".to_owned())?;
     let mut encoded = Vec::with_capacity(total_len);
     encoded.extend_from_slice(SORTED_RECORD_TABLE_MAGIC);
-    write_u64(
-        &mut encoded,
-        checked_u64(entry_count, "record count")?,
-    );
+    write_u64(&mut encoded, checked_u64(entry_count, "record count")?);
     encoded.extend_from_slice(blake3::hash(&directory).as_bytes());
     write_u64(&mut encoded, checked_u64(total_len, "total length")?);
     encoded.extend_from_slice(&directory);

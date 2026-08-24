@@ -3,6 +3,9 @@
 pub const RESIDENT_SEARCH_RESULT_SCHEMA_ID: &str =
     "agent.semantic-protocols.resident-search-result";
 pub const RESIDENT_SEARCH_RESULT_SCHEMA_VERSION: &str = "1";
+pub const RUNTIME_PROVIDER_SEARCH_RECEIPT_SCHEMA_ID: &str =
+    "agent.semantic-protocols.runtime-provider-search-receipt";
+pub const RUNTIME_PROVIDER_SEARCH_RECEIPT_SCHEMA_VERSION: &str = "1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -11,9 +14,28 @@ pub enum ResidentSearchProjectionTier {
     OwnerLocalDynamic,
 }
 
+impl ResidentSearchProjectionTier {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ShallowNavigation => "shallow-navigation",
+            Self::OwnerLocalDynamic => "owner-local-dynamic",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum ResidentSearchReadyState {
     Ready,
+}
+
+impl ResidentSearchReadyState {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -64,6 +86,49 @@ pub struct ResidentSearchReadyResult {
     pub index_artifact_digest: String,
     pub hits: Vec<ResidentSearchHit>,
     pub work_counters: ResidentSearchWorkCounters,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RuntimeProviderSearchReceipt {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub operation_id: String,
+    pub status: String,
+    pub language_id: String,
+    pub generation_digest: String,
+    pub root_digest: String,
+    pub provider_digest: String,
+    pub index_artifact_digest: String,
+    pub candidate_count: usize,
+    pub selectors: Vec<String>,
+    pub owner_paths: Vec<String>,
+    pub resident_read_elapsed_micros: u64,
+    pub service_elapsed_micros: u64,
+    pub elapsed_micros: u64,
+    pub work_counters: ResidentSearchWorkCounters,
+}
+
+impl RuntimeProviderSearchReceipt {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_id != RUNTIME_PROVIDER_SEARCH_RECEIPT_SCHEMA_ID
+            || self.schema_version != RUNTIME_PROVIDER_SEARCH_RECEIPT_SCHEMA_VERSION
+            || self.operation_id.is_empty()
+            || self.language_id.is_empty()
+            || !matches!(self.status.as_str(), "matches" | "no-matches")
+            || !self.generation_digest.starts_with("blake3-256:")
+            || self.root_digest.is_empty()
+            || self.provider_digest.is_empty()
+            || self.index_artifact_digest.is_empty()
+            || self.elapsed_micros
+                != self
+                    .resident_read_elapsed_micros
+                    .saturating_add(self.service_elapsed_micros)
+        {
+            return Err("runtime provider search receipt identity is invalid".to_owned());
+        }
+        self.work_counters.validate_zero_io()
+    }
 }
 
 impl ResidentSearchReadyResult {

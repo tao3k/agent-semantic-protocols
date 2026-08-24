@@ -32,6 +32,7 @@ pub fn client_db_source_index_generation_id_for_snapshot(
     ))
 }
 
+/// Hash the provider registry fingerprint into canonical source-index evidence.
 #[must_use]
 pub fn client_db_source_index_registry_evidence_hash(
     registry_fingerprint: &str,
@@ -44,6 +45,7 @@ pub fn client_db_source_index_registry_evidence_hash(
     }
 }
 
+/// Build canonical directory-scope evidence for one relative source directory.
 #[must_use]
 pub fn client_db_source_index_scope_dir_evidence_hash(
     relative_dir: &str,

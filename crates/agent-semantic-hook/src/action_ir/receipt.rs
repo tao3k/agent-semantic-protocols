@@ -53,7 +53,6 @@ const fn semantic_capability_evidence_label(evidence: SemanticCapabilityEvidence
     match evidence {
         SemanticCapabilityEvidence::HostInvocation => "host-invocation",
         SemanticCapabilityEvidence::ShellRedirection => "shell-redirection",
-        SemanticCapabilityEvidence::ShellPathOperand => "shell-path-operand",
     }
 }
 

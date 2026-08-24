@@ -36,6 +36,16 @@ languageId = "gerbil-scheme"
 providerId = "asp-gerbil-scheme"
 extensionAny = ["ss", "ssi", "scm", "sld"]
 
+[profiles.org]
+languageId = "org"
+providerId = "asp-org"
+extensionAny = ["org"]
+
+[profiles.markdown]
+languageId = "md"
+providerId = "asp-md"
+extensionAny = ["md", "markdown"]
+
 [[commandProfiles]]
 id = "rust-cargo"
 languageIds = ["rust"]
@@ -103,6 +113,13 @@ languageIds = ["gerbil-scheme"]
 
 [commandProfiles.categories]
 testing = [["gxpkg", "test"]]
+
+[[commandProfiles]]
+id = "gerbil-gxi"
+languageIds = ["gerbil-scheme"]
+
+[commandProfiles.categories]
+building = [["gxi"]]
 
 # Reusable predicates over the normalized AgentAction envelope. Rules compose
 # these facts; they do not duplicate tool-name or provider-extension heuristics.
@@ -178,6 +195,31 @@ executionLane = "testing"
 blockedCommandClass = "testing"
 
 [[rules]]
+id = "gerbil-build-role-dispatch"
+matcherPolicies = ["wrapped_command"]
+priority = 90000
+intent = "test-build-command"
+decision = "deny"
+reasonKind = "subagent-receipt-required"
+message = "This Gerbil build is denied only in the current Agent; run it in the ASP Testing execution lane. {{agentDispatchMessage}}"
+event = "pre-tool"
+
+[rules.match]
+commandProfileAny = [
+  { profile = "gerbil-gxi", category = "building" },
+]
+argvSourceGlobAny = ["*.ss", "**/*.ss"]
+
+[rules.dispatch]
+transport = "host-agent"
+role = "testing"
+receiptKind = "asp-testing-execution-v1"
+
+[rules.fields]
+executionLane = "testing"
+blockedCommandClass = "building"
+
+[[rules]]
 id = "deny-raw-registered-source-search-action"
 enabled = true
 event = "pre-tool"
@@ -202,7 +244,7 @@ decision = "deny"
 reasonKind = "bulk-source-dump"
 message = "Raw semantic reads over registered language source are denied. Use parser-owned ASP search/query evidence."
 event = "pre-tool"
-profilesList = ["rust", "typescript", "python", "julia", "gerbil-scheme"]
+profilesList = ["rust", "typescript", "python", "julia", "gerbil-scheme", "org", "markdown"]
 
 [rules.match]
 capabilityPolicyAll = ["opaque-shell-source-access", "registered-language-source"]
@@ -243,7 +285,7 @@ commandContainsAny = ["--json"]
 id = "route-read-to-asp-languages"
 priority = 40000
 actions = ["read"]
-profilesList = ["rust", "typescript", "python", "julia", "gerbil-scheme"]
+profilesList = ["rust", "typescript", "python", "julia", "gerbil-scheme", "org", "markdown"]
 decision = "deny"
 message = "Registered {{languageId}} source reads are denied. Use the parser-owned ASP route below instead of raw Read."
 

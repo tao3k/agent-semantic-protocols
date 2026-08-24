@@ -57,22 +57,7 @@ impl Default for HookPolicy {
     }
 }
 
-impl HookPolicy {
-    pub(crate) fn blocks_direct_source_read(&self) -> bool {
-        action_blocks(self.direct_source_read)
-    }
-
-    pub(crate) fn blocks_raw_source_search(&self) -> bool {
-        action_blocks(self.raw_source_search)
-    }
-}
-
-fn action_blocks(action: ActionPolicy) -> bool {
-    match action {
-        ActionPolicy::Block => true,
-        ActionPolicy::Allow | ActionPolicy::Advisory => false,
-    }
-}
+impl HookPolicy {}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

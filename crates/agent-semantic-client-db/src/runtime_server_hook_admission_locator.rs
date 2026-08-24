@@ -339,22 +339,10 @@ pub struct RuntimeHookAdmissionLookupReceipt {
     pub session_construct_nanos: u64,
 }
 
-pub async fn connect_hook_workspace_session(
-    state_home: &Path,
+fn read_and_connect_hook_workspace_session(
+    reader: &RuntimeHookAdmissionLocatorReader,
     lookup_root: &Path,
-) -> Result<WorkspaceDbIpcSession, String> {
-    connect_hook_workspace_session_with_receipt(state_home, lookup_root)
-        .await
-        .map(|(session, _receipt)| session)
-}
-
-pub async fn connect_hook_workspace_session_with_receipt(
-    state_home: &Path,
-    lookup_root: &Path,
-) -> Result<(WorkspaceDbIpcSession, RuntimeHookAdmissionLookupReceipt), String> {
-    let open_started = std::time::Instant::now();
-    let (reader, opened) = locator_reader(&runtime_hook_admission_locator_path(state_home)).await?;
-    let locator_open_nanos = open_started.elapsed().as_nanos() as u64;
+) -> Result<(WorkspaceDbIpcSession, u64, u64), String> {
     let read_started = std::time::Instant::now();
     let (generation, document) = reader.read_document()?;
     document.validate_runtime_lookup()?;
@@ -373,7 +361,31 @@ pub async fn connect_hook_workspace_session_with_receipt(
         workspace.workspace_identity.clone(),
         workspace.canonical_project_root.clone(),
     );
-    let session_construct_nanos = session_started.elapsed().as_nanos() as u64;
+    Ok((
+        session,
+        document_read_nanos,
+        session_started.elapsed().as_nanos() as u64,
+    ))
+}
+
+pub async fn connect_hook_workspace_session(
+    state_home: &Path,
+    lookup_root: &Path,
+) -> Result<WorkspaceDbIpcSession, String> {
+    connect_hook_workspace_session_with_receipt(state_home, lookup_root)
+        .await
+        .map(|(session, _receipt)| session)
+}
+
+pub async fn connect_hook_workspace_session_with_receipt(
+    state_home: &Path,
+    lookup_root: &Path,
+) -> Result<(WorkspaceDbIpcSession, RuntimeHookAdmissionLookupReceipt), String> {
+    let open_started = std::time::Instant::now();
+    let (reader, opened) = locator_reader(&runtime_hook_admission_locator_path(state_home)).await?;
+    let locator_open_nanos = open_started.elapsed().as_nanos() as u64;
+    let (session, document_read_nanos, session_construct_nanos) =
+        read_and_connect_hook_workspace_session(&reader, lookup_root)?;
     Ok((
         session,
         RuntimeHookAdmissionLookupReceipt {

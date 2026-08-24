@@ -40,6 +40,159 @@ impl RuntimeServerControlReplayGuard {
     }
 }
 
+async fn ensure_control_workspace(
+    project_root: Option<&str>,
+    registry: &Arc<WorkspaceDbRegistry>,
+    generation_admission: Option<
+        &Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>,
+    >,
+) -> Result<Option<crate::runtime_server_control::WorkspaceGenerationControlReceipt>, String> {
+    let project_root = project_root
+        .map(std::path::Path::new)
+        .ok_or_else(|| "Runtime Server ensure-workspace request omitted project root".to_owned())?;
+    let workspace_generation = if let Some(admission) = generation_admission {
+        let workspace_identity = crate::AgentSessionRegistry::workspace_id(project_root)?;
+        let candidate =
+            crate::runtime_server_admission::discover_workspace_generation_candidate(project_root)
+                .await?;
+        let candidate_digest = candidate.candidate_generation.digest.clone();
+        let previous = admission
+            .current(&workspace_identity, project_root)
+            .map(|receipt| receipt.candidate_generation.digest);
+        let receipt = admission
+            .ensure(&workspace_identity, project_root, candidate)
+            .await?;
+        let active_generation_digest = receipt
+            .commit
+            .as_ref()
+            .map(|commit| commit.generation_digest.clone())
+            .unwrap_or_else(|| receipt.candidate_generation.digest.clone());
+        Some(
+            crate::runtime_server_control::WorkspaceGenerationControlReceipt {
+                workspace_identity,
+                previous_generation_digest: previous.clone(),
+                active_generation_digest,
+                candidate_digest,
+                generation_changed: previous.as_deref()
+                    != Some(receipt.candidate_generation.digest.as_str()),
+                state: format!("{:?}", receipt.state),
+            },
+        )
+    } else {
+        None
+    };
+    registry.bootstrap_workspace(project_root).await?;
+    Ok(workspace_generation)
+}
+
+async fn build_control_receipt(
+    request: RuntimeServerControlRequest,
+    endpoint: &RuntimeServerEndpoint,
+    registry: &Arc<WorkspaceDbRegistry>,
+    generation_admission: Option<
+        &Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>,
+    >,
+    lifecycle: &watch::Receiver<RuntimeServerState>,
+    graph_turbo_resident_status: Option<&GraphTurboResidentStatusHandle>,
+    replay_guard: &Arc<tokio::sync::Mutex<RuntimeServerControlReplayGuard>>,
+) -> Result<(RuntimeServerControlReceipt, bool), String> {
+    replay_guard.lock().await.admit(&request.request_id)?;
+    let restart = request.requires_restart(endpoint)?;
+    let generation = if request.operation
+        == crate::runtime_server_control::RuntimeServerOperation::EnsureWorkspace
+    {
+        ensure_control_workspace(
+            request.project_root.as_deref(),
+            registry,
+            generation_admission,
+        )
+        .await
+    } else {
+        Ok(None)
+    };
+    let entry_counts = registry.workspace_entry_counts();
+    let workspace_entry_count = entry_counts.slot_count.max(entry_counts.loaded_entry_count);
+    let mut receipt = control_receipt_for_state(
+        request.request_id,
+        endpoint,
+        *lifecycle.borrow(),
+        workspace_entry_count,
+        restart,
+        generation.as_ref().err(),
+    );
+    receipt.workspace_generation = generation.ok().flatten();
+    receipt.graph_turbo_resident = graph_turbo_resident_status.map(|status| status.snapshot());
+    Ok((receipt, restart))
+}
+
+fn control_receipt_for_state(
+    request_id: String,
+    endpoint: &RuntimeServerEndpoint,
+    lifecycle: RuntimeServerState,
+    workspace_entry_count: usize,
+    restart: bool,
+    ensure_failure: Option<&String>,
+) -> RuntimeServerControlReceipt {
+    if let Some(reason) = ensure_failure {
+        let mut receipt =
+            RuntimeServerControlReceipt::healthy(request_id, endpoint, workspace_entry_count);
+        receipt.state = RuntimeServerState::Degraded;
+        receipt.reason = Some(reason.clone());
+        return receipt;
+    }
+    if restart {
+        return RuntimeServerControlReceipt::draining(request_id, endpoint, workspace_entry_count);
+    }
+    if lifecycle == RuntimeServerState::Starting {
+        let mut receipt = RuntimeServerControlReceipt::starting(
+            request_id,
+            endpoint.runtime_binary_identity.clone(),
+            endpoint.artifact_mode.clone(),
+            endpoint.artifact_catalog_digest.clone(),
+            "workspace-generation-admission".to_owned(),
+        );
+        receipt.workspace_entry_count = workspace_entry_count;
+        return receipt;
+    }
+    RuntimeServerControlReceipt::healthy(request_id, endpoint, workspace_entry_count)
+}
+
+async fn process_control_requests(
+    requests: Vec<RuntimeServerControlRequest>,
+    endpoint: &RuntimeServerEndpoint,
+    registry: &Arc<WorkspaceDbRegistry>,
+    generation_admission: Option<
+        &Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>,
+    >,
+    lifecycle: &watch::Receiver<RuntimeServerState>,
+    graph_turbo_resident_status: Option<&GraphTurboResidentStatusHandle>,
+    replay_guard: &Arc<tokio::sync::Mutex<RuntimeServerControlReplayGuard>>,
+) -> Result<(Vec<RuntimeServerControlReceipt>, bool), String> {
+    use tokio_stream::StreamExt;
+
+    tokio_stream::iter(requests)
+        .then(|request| {
+            build_control_receipt(
+                request,
+                endpoint,
+                registry,
+                generation_admission,
+                lifecycle,
+                graph_turbo_resident_status,
+                replay_guard,
+            )
+        })
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .try_fold((Vec::new(), false), |mut batch, outcome| {
+            let (receipt, restart) = outcome?;
+            batch.0.push(receipt);
+            batch.1 |= restart;
+            Ok(batch)
+        })
+}
+
 pub(super) async fn serve_connection(
     mut stream: UnixStream,
     endpoint: RuntimeServerEndpoint,
@@ -64,117 +217,16 @@ pub(super) async fn serve_connection(
                 return Ok(false);
             }
         };
-        let mut restart = false;
-        let mut receipts = Vec::with_capacity(requests.len());
-        for request in requests {
-            replay_guard.lock().await.admit(&request.request_id)?;
-            let request_restart = request.requires_restart(&endpoint)?;
-            restart |= request_restart;
-            let mut workspace_generation = None;
-            let ensure_failure = if request.operation
-                == crate::runtime_server_control::RuntimeServerOperation::EnsureWorkspace
-            {
-                match request.project_root.as_deref() {
-                    Some(project_root) => {
-                        let project_root = std::path::Path::new(project_root);
-                        let admission_result = if let Some(admission) = &generation_admission {
-                            let workspace_identity =
-                                crate::AgentSessionRegistry::workspace_id(project_root);
-                            match workspace_identity {
-                                Ok(workspace_identity) => match crate::runtime_server_admission::discover_workspace_generation_candidate(project_root).await {
-                                    Ok(candidate) => {
-                                        let candidate_digest = candidate.candidate_generation.digest.clone();
-                                        let previous = admission
-                                            .current(&workspace_identity, project_root)
-                                            .map(|receipt| receipt.candidate_generation.digest);
-                                        match admission
-                                            .ensure(&workspace_identity, project_root, candidate)
-                                            .await
-                                        {
-                                            Ok(receipt) => {
-                                                let active_digest = receipt
-                                                    .commit
-                                                    .as_ref()
-                                                    .map(|commit| commit.generation_digest.clone())
-                                                    .unwrap_or_else(|| {
-                                                        receipt.candidate_generation.digest.clone()
-                                                    });
-                                                workspace_generation = Some(
-                                                    crate::runtime_server_control::WorkspaceGenerationControlReceipt {
-                                                        workspace_identity: workspace_identity.clone(),
-                                                        previous_generation_digest: previous.clone(),
-                                                        active_generation_digest: active_digest,
-                                                        candidate_digest,
-                                                        generation_changed: previous.as_deref()
-                                                            != Some(receipt.candidate_generation.digest.as_str()),
-                                                        state: format!("{:?}", receipt.state),
-                                                    },
-                                                );
-                                                Ok(())
-                                            }
-                                            Err(error) => Err(error),
-                                        }
-                                    }
-                                    Err(error) => Err(error),
-                                },
-                                Err(error) => Err(error),
-                            }
-                        } else {
-                            Ok(())
-                        };
-                        match admission_result {
-                            Ok(()) => registry.bootstrap_workspace(project_root).await.err(),
-                            Err(error) => Some(error),
-                        }
-                    }
-                    None => Some(
-                        "Runtime Server ensure-workspace request omitted project root".to_owned(),
-                    ),
-                }
-            } else {
-                None
-            };
-            let entry_counts = registry.workspace_entry_counts();
-            let workspace_entry_count =
-                entry_counts.slot_count.max(entry_counts.loaded_entry_count);
-            let mut receipt = if let Some(reason) = ensure_failure {
-                let mut receipt = RuntimeServerControlReceipt::healthy(
-                    request.request_id,
-                    &endpoint,
-                    workspace_entry_count,
-                );
-                receipt.state = RuntimeServerState::Degraded;
-                receipt.reason = Some(reason);
-                receipt
-            } else if request_restart {
-                RuntimeServerControlReceipt::draining(
-                    request.request_id,
-                    &endpoint,
-                    workspace_entry_count,
-                )
-            } else if *lifecycle.borrow() == RuntimeServerState::Starting {
-                let mut receipt = RuntimeServerControlReceipt::starting(
-                    request.request_id,
-                    endpoint.runtime_binary_identity.clone(),
-                    endpoint.artifact_mode.clone(),
-                    endpoint.artifact_catalog_digest.clone(),
-                    "workspace-generation-restore".to_owned(),
-                );
-                receipt.workspace_entry_count = workspace_entry_count;
-                receipt
-            } else {
-                RuntimeServerControlReceipt::healthy(
-                    request.request_id,
-                    &endpoint,
-                    workspace_entry_count,
-                )
-            };
-            receipt.workspace_generation = workspace_generation;
-            receipt.graph_turbo_resident = graph_turbo_resident_status
-                .as_ref()
-                .map(|status| status.snapshot());
-            receipts.push(receipt);
-        }
+        let (receipts, restart) = process_control_requests(
+            requests,
+            &endpoint,
+            &registry,
+            generation_admission.as_ref(),
+            &lifecycle,
+            graph_turbo_resident_status.as_ref(),
+            &replay_guard,
+        )
+        .await?;
         crate::runtime_server_runtime::within_connection_io_budget(
             "runtime-server-control-write",
             write_runtime_server_receipts(&mut stream, &receipts),

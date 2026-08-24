@@ -34,6 +34,7 @@
       "provider-native-exact-request.v1.schema.json",
       "provider-native-exact-response.v1.schema.json",
       "semantic-search-packet.v1.schema.json",
+      "semantic-search-storage-route.v1.schema.json",
       "semantic-query-packet.v1.schema.json",
       "semantic-exact-selector-receipt.v1.schema.json",
       "semantic-owner-item-evidence.v1.schema.json",

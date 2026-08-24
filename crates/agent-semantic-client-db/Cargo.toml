@@ -22,6 +22,7 @@ agent-semantic-content-identity.workspace = true
 agent-semantic-artifacts.workspace = true
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
+agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
@@ -43,10 +44,6 @@ libc.workspace = true
 [[test]]
 name = "runtime_server_opentelemetry_test"
 path = "tests/performance/runtime_server_opentelemetry_harness.rs"
-
-[[bench]]
-name = "turso_cache_hot_path"
-harness = false
 
 [[bench]]
 name = "turso_mvcc_concurrent_write"

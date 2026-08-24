@@ -87,7 +87,8 @@ fn inputs(candidate_generation: &str, manifest_digest: &str) -> ProjectResolutio
 #[tokio::test]
 async fn many_sessions_share_one_serving_generation() {
     let resolver = Arc::new(CountingResolver::new());
-    let daemon = spawn_workspace_project_resolution_actor(identity(), resolver);
+    let daemon = spawn_workspace_project_resolution_actor(identity(), resolver)
+        .expect("project-resolution actor starts");
     daemon.attach_session("session-a").await;
     daemon.attach_session("session-b").await;
 
@@ -108,7 +109,8 @@ async fn many_sessions_share_one_serving_generation() {
 #[tokio::test]
 async fn unchanged_package_inputs_reuse_memory_generation() {
     let resolver = Arc::new(CountingResolver::new());
-    let daemon = spawn_workspace_project_resolution_actor(identity(), resolver.clone());
+    let daemon = spawn_workspace_project_resolution_actor(identity(), resolver.clone())
+        .expect("project-resolution actor starts");
     daemon.attach_session("session-a").await;
 
     let first = daemon
@@ -124,7 +126,8 @@ async fn unchanged_package_inputs_reuse_memory_generation() {
 #[tokio::test]
 async fn failed_manifest_delta_never_replaces_last_good_generation() {
     let resolver = Arc::new(CountingResolver::new());
-    let daemon = spawn_workspace_project_resolution_actor(identity(), resolver);
+    let daemon = spawn_workspace_project_resolution_actor(identity(), resolver)
+        .expect("project-resolution actor starts");
     daemon.attach_session("session-a").await;
 
     let good = daemon
@@ -150,7 +153,8 @@ async fn failed_manifest_delta_never_replaces_last_good_generation() {
 async fn warm_generation_receipt_is_sub_millisecond_per_request() {
     let _performance = crate::test_support::performance_lock();
     let resolver = Arc::new(CountingResolver::new());
-    let daemon = spawn_workspace_project_resolution_actor(identity(), resolver);
+    let daemon = spawn_workspace_project_resolution_actor(identity(), resolver)
+        .expect("project-resolution actor starts");
     daemon.attach_session("session-a").await;
     daemon
         .refresh_inputs(inputs("git-index:1", "manifest:1"))
@@ -179,7 +183,8 @@ async fn warm_generation_receipt_is_sub_millisecond_per_request() {
 #[tokio::test]
 async fn typed_control_rejects_cross_workspace_requests() {
     let resolver = Arc::new(CountingResolver::new());
-    let daemon = spawn_workspace_project_resolution_actor(identity(), resolver);
+    let daemon = spawn_workspace_project_resolution_actor(identity(), resolver)
+        .expect("project-resolution actor starts");
     let receipt = daemon
         .execute_control(WorkspaceProjectResolutionControl {
             schema_id: WORKSPACE_PROJECT_RESOLUTION_CONTROL_SCHEMA_ID.to_owned(),

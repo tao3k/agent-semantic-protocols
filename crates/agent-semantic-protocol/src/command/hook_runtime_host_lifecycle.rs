@@ -41,7 +41,7 @@ async fn publish_host_lifecycle_event_locally(
     let namespace_key = lifecycle_event
         .namespace_id
         .strip_prefix("blake3-256:")
-        .unwrap_or(&lifecycle_event.namespace_id);
+        .unwrap_or(lifecycle_event.namespace_id.as_str());
     let authority_dir = state_home
         .join("hooks")
         .join("host-sessions")
@@ -286,30 +286,34 @@ pub(super) async fn record_host_lifecycle_event(
         host_event_id: format!(
             "blake3-256:{}",
             blake3::hash(event_identity.as_bytes()).to_hex()
-        ),
+        )
+        .into(),
         host_event_sequence: 0,
         namespace_id: format!(
             "blake3-256:{}",
             blake3::hash(namespace_identity.as_bytes()).to_hex()
-        ),
+        )
+        .into(),
         kind,
         platform: "codex".to_owned(),
-        project_id,
-        root_session_id: root_session_id.to_owned(),
-        parent_session_id,
-        child_session_id: child_session_id.to_owned(),
+        project_id: project_id.into(),
+        root_session_id: root_session_id.into(),
+        parent_session_id: parent_session_id.into(),
+        child_session_id: child_session_id.into(),
         host_task_name: agent_type.to_owned(),
         platform_host_agent_name: route.platform_host_agent_name.as_str().to_owned(),
-        route_key: route.route_key.as_str().to_owned(),
-        profile_id: route.profile_path.clone(),
+        route_key: route.route_key.as_str().into(),
+        profile_id: route.profile_path.clone().into(),
         role,
         model: model.to_owned(),
         model_digest: format!("blake3-256:{}", blake3::hash(model.as_bytes()).to_hex()),
         profile_digest,
-        sandbox_mode: sandbox_mode.to_owned(),
+        sandbox_mode: agent_semantic_client_db::workspace_db_ipc::AgentHostSandboxMode::try_from(
+            sandbox_mode,
+        )?,
         session_lifetime: route.session_lifetime.as_str().to_owned(),
         payload_digest,
-        transcript_path: string_field(payload, "transcript_path").map(str::to_owned),
+        transcript_path: string_field(payload, "transcript_path").map(Into::into),
         observed_at,
     };
     publish_host_lifecycle_event_locally(&state.state_home, &mut lifecycle_event).await?;

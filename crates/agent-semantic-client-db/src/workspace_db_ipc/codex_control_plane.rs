@@ -7,8 +7,8 @@ impl WorkspaceDbIpcSession {
     /// plane from its durable AgentSession Registry owner.
     pub async fn refresh_codex_multi_agent_control_plane(
         &self,
-        project_id: impl Into<String>,
-        root_session_id: impl Into<String>,
+        project_id: impl Into<crate::agent_session_registry::AgentSessionProjectId>,
+        root_session_id: impl Into<crate::agent_session_registry::AgentSessionRootSessionId>,
     ) -> Result<
         crate::codex_multi_agent_control_plane_owner::CodexControlPlanePublicationReceipt,
         String,
@@ -31,7 +31,7 @@ impl WorkspaceDbIpcSession {
 
     pub async fn read_codex_multi_agent_control_plane(
         &self,
-        root_session_id: impl Into<String>,
+        root_session_id: impl Into<crate::agent_session_registry::AgentSessionRootSessionId>,
     ) -> Result<Option<CodexMultiAgentV2ControlPlaneProjection>, String> {
         match self
             .call_operation(WorkspaceDbIpcOperation::ReadCodexMultiAgentControlPlane {

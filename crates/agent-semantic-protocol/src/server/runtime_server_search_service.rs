@@ -6,11 +6,12 @@ pub(super) async fn serve_runtime_search_requests(
     provider_register: std::sync::Arc<
         agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
     >,
-    mut requests: tokio::sync::mpsc::Receiver<
+    mut requests: tokio_stream::wrappers::ReceiverStream<
         agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceRequest,
     >,
 ) {
     use agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceRequest;
+    use tokio_stream::StreamExt;
 
     struct ResidentProviderRuntime {
         authority: agent_semantic_provider_transport::ProviderRuntimeActorAuthority,
@@ -19,18 +20,17 @@ pub(super) async fn serve_runtime_search_requests(
 
     fn runtime_state_receipt(
         runtime: &ResidentProviderRuntime,
-    ) -> Result<serde_json::Value, String> {
+    ) -> Result<agent_semantic_provider_transport::AspClientServerLifecycleReceipt, String> {
         let receipt = runtime
             .authority
             .client()
             .current_lifecycle(&runtime.expected_receipt)?;
-        serde_json::to_value(receipt)
-            .map_err(|error| format!("encode ASP Client Server lifecycle receipt: {error}"))
+        Ok(receipt)
     }
 
     let mut runtimes = std::collections::BTreeMap::<String, ResidentProviderRuntime>::new();
     let mut tasks = tokio::task::JoinSet::new();
-    while let Some(request) = requests.recv().await {
+    while let Some(request) = requests.next().await {
         match request {
             RuntimeSearchServiceRequest::ProviderRuntime {
                 project_root,
@@ -147,12 +147,7 @@ pub(super) async fn serve_runtime_search_requests(
                                         AspClientServerLifecycleReceipt::from_actor_state(
                                             &expected_receipt,
                                             agent_semantic_provider_transport::ProviderRuntimeActorState::Ready(receipt),
-                                        )
-                                        .and_then(|receipt| {
-                                            serde_json::to_value(receipt).map_err(|error| {
-                                                format!("encode provider runtime authority receipt: {error}")
-                                            })
-                                        }),
+                                        ),
                                     Err(error) => Err(error),
                                 },
                             }
@@ -193,11 +188,6 @@ pub(super) async fn serve_runtime_search_requests(
                                             &expected_receipt,
                                             agent_semantic_provider_transport::ProviderRuntimeActorState::Stopped,
                                         )
-                                })
-                                .and_then(|receipt| {
-                                    serde_json::to_value(receipt).map_err(|error| {
-                                        format!("encode provider runtime release receipt: {error}")
-                                    })
                                 })
                         }
                         Err(error) => Err(error),
@@ -352,19 +342,6 @@ pub(super) async fn serve_runtime_search_requests(
                     };
                     let _ = response.send(result);
                 });
-            }
-            RuntimeSearchServiceRequest::TreeSitterQuery {
-                workspace_identity: _,
-                project_root,
-                language_id,
-                args,
-                response,
-            } => {
-                let _ = response.send(Err(format!(
-                    "state=provider-route-required reasonKind=workspace-tree-sitter-cli-removed languageId={language_id} projectRoot={} args={}",
-                    project_root.display(),
-                    args.len()
-                )));
             }
         }
         while tasks.try_join_next().is_some() {}

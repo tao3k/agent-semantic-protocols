@@ -7,7 +7,7 @@ mod routes;
 pub use routes::{
     AspClientExactQueryRequest, AspClientOwnerSearchRequest, AspClientSearchRequest,
     ProviderNativeExactProjection, ProviderNativeExactRequest, ProviderNativeOwnerSearchRequest,
-    ProviderNativeOwnerSearchResponse, RuntimeProviderSearchReceipt, RuntimeProviderSearchRequest,
+    ProviderNativeOwnerSearchResponse, RuntimeProviderSearchRequest,
 };
 
 pub const CLIENT_PROTOCOL_ID: &str = "agent.semantic-protocols.client";

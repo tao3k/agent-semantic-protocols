@@ -42,9 +42,11 @@ mod pipe_source_index_projection;
 mod pipe_source_lexical_frame;
 mod prompt_output_replay;
 mod provider_candidate_annotations;
-mod resident_source_index;
 pub mod provider_relation_memory;
+mod resident_source_index;
+mod runtime_search_receipt;
 mod search_candidate;
+mod search_generation_segment;
 mod search_language_files;
 mod search_lexical_replay;
 mod search_overlay;
@@ -53,21 +55,23 @@ mod search_pipe_evidence;
 pub mod search_pipe_quality;
 mod search_pipe_query_pack;
 mod search_query_budget;
-mod search_generation_segment;
-mod sorted_record_table;
 mod search_subagent_receipt;
+mod sorted_record_table;
 
 mod source_index_rank;
+pub use agent_semantic_search_projection::source_index_artifact_digest;
 pub use source_index_rank::{
     SourceIndexRankReport, SourceIndexRankRequest, SourceIndexRankScore,
     SourceIndexRankedCandidate, rank_source_index_report,
 };
-pub use agent_semantic_search_projection::source_index_artifact_digest;
 pub mod syntax_query_replay;
 
 #[cfg(test)]
 #[path = "../tests/unit/resident_source_index.rs"]
 mod resident_source_index_tests;
+#[cfg(test)]
+#[path = "../tests/unit/runtime_search_receipt.rs"]
+mod runtime_search_receipt_tests;
 
 pub use document_candidates::{
     DocumentSearchCandidate, DocumentSearchCandidateCollection, DocumentSearchCandidateRequest,
@@ -83,8 +87,8 @@ pub use dynamic_overlay::{
     DynamicOverlayLane, QUERY_OVERLAY_ROUTE_SOURCE, SEARCH_OVERLAY_ROUTE_SOURCE,
 };
 pub use evidence_graph_rank::{
-    EvidenceGraphRankNode, EvidenceGraphRankScore, EvidenceGraphRankedNode,
-    evidence_graph_rank_terms, rank_evidence_graph_nodes,
+    EvidenceGraphNodeId, EvidenceGraphNodeKind, EvidenceGraphRankNode, EvidenceGraphRankScore,
+    EvidenceGraphRankedNode, evidence_graph_rank_terms, rank_evidence_graph_nodes,
 };
 pub use graph_candidate_projection::{
     GraphCandidateHotNodesRequest, GraphCandidateItemNodesRequest, GraphProjectionCandidate,
@@ -157,12 +161,20 @@ pub use provider_candidate_annotations::{
 pub use resident_source_index::{
     ResidentSourceIndex, ResidentSourceIndexSeed, resident_navigation_keys,
 };
-pub use search_candidate::{StructuralIndexSearchHit, structural_index_hit_to_search_candidate};
+pub use runtime_search_receipt::{
+    RUNTIME_SEARCH_SOURCE_CAPACITY, RUNTIME_SEARCH_SOURCE_LIMIT, RuntimeSearchResult,
+    RuntimeSearchSource, bounded_runtime_search_source, build_runtime_provider_search_receipt,
+};
 pub use search_candidate::{
     FieldHit, RankFeature, RankedSearchCandidate, SearchCandidate, SearchCandidateMergeReceipt,
     SearchStageReceipt, lexical_overlay_hit_to_search_candidate, merge_search_candidates,
     merge_search_candidates_with_receipt, search_candidate_has_executable_line_identity,
     source_index_candidate_to_search_candidate,
+};
+pub use search_candidate::{StructuralIndexSearchHit, structural_index_hit_to_search_candidate};
+pub use search_generation_segment::{
+    SearchGenerationSection, SearchGenerationSectionKind, SearchGenerationSectionRepresentation,
+    ValidatedSearchGenerationSegment, encode_search_generation_segment,
 };
 pub use search_language_files::{
     LanguageFileSpec, language_file_spec, language_neutral_search_file_spec,
@@ -204,15 +216,11 @@ pub use search_query_budget::{
     SearchQueryBudgetBlock, SearchQueryBudgetRequest, search_query_budget_block,
     search_query_terms, search_terms_budget_block, specific_search_term,
 };
-pub use search_generation_segment::{
-    SearchGenerationSection, SearchGenerationSectionKind, SearchGenerationSectionRepresentation,
-    ValidatedSearchGenerationSegment, encode_search_generation_segment,
-};
-pub use sorted_record_table::{ValidatedSortedRecordTable, encode_sorted_record_table};
 pub use search_subagent_receipt::{
     SEARCH_SUBAGENT_GRAPH_ROUTE_RECEIPT_SCHEMA, search_subagent_graph_route_receipt,
     search_subagent_graph_route_receipt_is_compact,
 };
+pub use sorted_record_table::{ValidatedSortedRecordTable, encode_sorted_record_table};
 pub use source_index_rank::{
     SourceIndexRankCandidate, rank_source_index_candidates, reorder_source_index_candidates,
     source_index_lookup_terms,

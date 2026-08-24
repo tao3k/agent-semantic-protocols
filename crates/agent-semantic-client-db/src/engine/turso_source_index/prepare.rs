@@ -184,19 +184,18 @@ pub(super) async fn prepare_turso_source_index_rows(
         &row_owner_paths,
     )?;
 
-    let (all_owner_rows, semantic_term_count) = {
-        let mut written_owner_paths = std::collections::BTreeSet::new();
-        let mut rows = Vec::with_capacity(row_owner_paths.len());
-        let mut semantic_term_count = 0;
-        for owner in &import.owners {
+    let (_, all_owner_rows, semantic_term_count) = import.owners.iter().try_fold(
+        (
+            std::collections::BTreeSet::new(),
+            Vec::with_capacity(row_owner_paths.len()),
+            0usize,
+        ),
+        |(mut written_owner_paths, mut rows, mut semantic_term_count), owner| {
             if !written_owner_paths.insert(owner.owner_path.as_str()) {
                 return Err(format!(
                     "failed to write Turso source-index owner: duplicate owner path={}",
                     owner.owner_path.as_str()
                 ));
-            }
-            if !row_owner_paths.contains(owner.owner_path.as_str()) {
-                continue;
             }
             let query_keys_json = serde_json::to_string(
                 &owner
@@ -234,17 +233,14 @@ pub(super) async fn prepare_turso_source_index_rows(
                 term_tokens_json,
                 selector_count: *selector_count,
             });
-        }
-        (rows, semantic_term_count)
-    };
+            Ok((written_owner_paths, rows, semantic_term_count))
+        },
+    )?;
     let changed_owner_paths = all_owner_rows
         .iter()
         .map(|row| row.owner_path.clone())
         .collect::<std::collections::BTreeSet<_>>();
-    let changed_owner_rows = all_owner_rows
-        .into_iter()
-        .filter(|row| changed_owner_paths.contains(row.owner_path.as_str()))
-        .collect();
+    let changed_owner_rows = all_owner_rows;
     let changed_selector_rows = import
         .selectors
         .iter()

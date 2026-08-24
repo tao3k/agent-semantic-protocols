@@ -324,10 +324,7 @@ impl<'a> ValidatedSearchGenerationSegment<'a> {
         )
     }
 
-    pub fn section_range(
-        &self,
-        kind: SearchGenerationSectionKind,
-    ) -> std::ops::Range<usize> {
+    pub fn section_range(&self, kind: SearchGenerationSectionKind) -> std::ops::Range<usize> {
         let descriptor = self
             .sections
             .iter()

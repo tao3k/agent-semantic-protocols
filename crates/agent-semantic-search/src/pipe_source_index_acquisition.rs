@@ -202,8 +202,7 @@ fn collect_admitted_source_index_acquisition(
         .collect::<Vec<_>>();
     let decision = if lookup.state == "generation-unavailable".into() && candidates.is_empty() {
         SearchPipeSourceIndexDecision::GenerationUnavailable
-    } else if intent_terms_all_path_like(intent) && lookup.state.as_str() == "miss"
-    {
+    } else if intent_terms_all_path_like(intent) && lookup.state.as_str() == "miss" {
         SearchPipeSourceIndexDecision::DeferBackend
     } else if candidates.is_empty() {
         SearchPipeSourceIndexDecision::Fallthrough

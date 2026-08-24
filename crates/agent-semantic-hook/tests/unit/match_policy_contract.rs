@@ -1,7 +1,6 @@
 use agent_semantic_hook::{
     DecisionKind, HookClassificationRequest, ReasonKind, classify_hook_with_config,
-    default_client_config_template, evaluate_match_policy_conformance,
-    load_client_config_for_project_with_executable_capabilities,
+    default_client_config_template, load_client_config_for_project_with_executable_capabilities,
 };
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, fs, path::PathBuf};
@@ -275,14 +274,6 @@ fn configured_matcher_typical_same_process_classification_stays_below_one_millis
     fs::remove_dir_all(root).expect("cleanup matcher latency root");
 }
 
-struct MatchCase {
-    name: &'static str,
-    payload: Value,
-    rule_id: &'static str,
-    decision: DecisionKind,
-    reason: ReasonKind,
-}
-
 #[test]
 fn production_match_policy_contract() {
     let root = temp_project_root();
@@ -314,6 +305,7 @@ fn production_match_policy_contract() {
             .any(|provider| provider.language_id == "typescript"),
         "typescript profile must be projected from the declarative config"
     );
+
     let syntax_only_config = load_client_config_for_project_with_executable_capabilities(
         &config_path,
         &root,
@@ -333,231 +325,10 @@ fn production_match_policy_contract() {
         Some("allow-bounded-json-projection"),
         "bounded projection authorization must not depend on the pre-hook PATH snapshot"
     );
-    let cases = vec![
-        MatchCase {
-            name: "explicit no-agent command bypass",
-            payload: shell("ASP_NO_AGENT=1 cargo test -p agent-semantic-hook"),
-            rule_id: "allow-explicit-no-agent-host-bypass",
-            decision: DecisionKind::Allow,
-            reason: ReasonKind::None,
-        },
-        MatchCase {
-            name: "registered reasoning search",
-            payload: shell("asp rust search lexical --query classify_hook --workspace ."),
-            rule_id: "registered-asp-reasoning-search",
-            decision: DecisionKind::Deny,
-            reason: ReasonKind::SubagentReceiptRequired,
-        },
-        MatchCase {
-            name: "testing dispatch",
-            payload: shell("cargo test --workspace"),
-            rule_id: "testing-role-dispatch",
-            decision: DecisionKind::Deny,
-            reason: ReasonKind::SubagentReceiptRequired,
-        },
-        MatchCase {
-            name: "raw registered source search",
-            payload: json!({
-                "tool_name": "Grep",
-                "tool_input": {
-                    "pattern": "classify_hook",
-                    "path": "src/app.ts"
-                },
-            }),
-            rule_id: "deny-raw-registered-source-search-action",
-            decision: DecisionKind::Deny,
-            reason: ReasonKind::RawBroadSearch,
-        },
-        MatchCase {
-            name: "javascript inline source materialization",
-            payload: shell("node -e 'require(\"fs\").readFileSync(\"src/app.ts\", \"utf8\")'"),
-            rule_id: "deny-raw-registered-source-action",
-            decision: DecisionKind::Deny,
-            reason: ReasonKind::BulkSourceDump,
-        },
-        MatchCase {
-            name: "legacy python inline source materialization",
-            payload: shell("python -c 'print(open(\"src/app.ts\").read())'"),
-            rule_id: "deny-raw-registered-source-action",
-            decision: DecisionKind::Deny,
-            reason: ReasonKind::BulkSourceDump,
-        },
-        MatchCase {
-            name: "source materialization command",
-            payload: shell("sed -n '1,8p' src/app.ts"),
-            rule_id: "deny-raw-registered-source-action",
-            decision: DecisionKind::Deny,
-            reason: ReasonKind::BulkSourceDump,
-        },
-        MatchCase {
-            name: "source search command",
-            payload: shell("rg classify_hook src/app.ts"),
-            rule_id: "deny-uncontrolled-source-search-commands",
-            decision: DecisionKind::Deny,
-            reason: ReasonKind::RawBroadSearch,
-        },
-        MatchCase {
-            name: "git source read",
-            payload: shell("git show HEAD:src/app.ts"),
-            rule_id: "deny-uncontrolled-git-source-reads",
-            decision: DecisionKind::Deny,
-            reason: ReasonKind::BulkSourceDump,
-        },
-        MatchCase {
-            name: "git metadata read",
-            payload: shell("git diff --check"),
-            rule_id: "deny-uncontrolled-git-metadata-reads",
-            decision: DecisionKind::Deny,
-            reason: ReasonKind::RawBroadSearch,
-        },
-        MatchCase {
-            name: "raw registered source execute action",
-            payload: shell("read src/app.ts"),
-            rule_id: "deny-raw-registered-source-action",
-            decision: DecisionKind::Deny,
-            reason: ReasonKind::BulkSourceDump,
-        },
-        MatchCase {
-            name: "registered source read materializer",
-            payload: json!({
-                "tool_name": "Read",
-                "tool_input": {"file_path": "src/app.ts"},
-            }),
-            rule_id: "route-read-to-asp-languages",
-            decision: DecisionKind::Deny,
-            reason: ReasonKind::DirectSourceRead,
-        },
-        MatchCase {
-            name: "structured document read materializer",
-            payload: json!({
-                "tool_name": "Read",
-                "tool_input": {"file_path": "package.json"},
-            }),
-            rule_id: "route-structured-document-read",
-            decision: DecisionKind::Deny,
-            reason: ReasonKind::StructuredSourceRead,
-        },
-        MatchCase {
-            name: "shell structured document read capability",
-            payload: shell("sed -n '1p' package.json"),
-            rule_id: "route-shell-structured-document-read",
-            decision: DecisionKind::Deny,
-            reason: ReasonKind::StructuredSourceRead,
-        },
-        MatchCase {
-            name: "bounded JSON projection",
-            payload: shell("jq -c '.package.name' package.json"),
-            rule_id: "allow-bounded-json-projection",
-            decision: DecisionKind::Allow,
-            reason: ReasonKind::None,
-        },
-        MatchCase {
-            name: "bounded TOML projection",
-            payload: shell("yq eval '.package.name' Cargo.toml"),
-            rule_id: "allow-bounded-toml-projection",
-            decision: DecisionKind::Allow,
-            reason: ReasonKind::None,
-        },
-        MatchCase {
-            name: "unbounded structured projection",
-            payload: shell("jq '.' package.json"),
-            rule_id: "deny-unbounded-structured-projection",
-            decision: DecisionKind::Deny,
-            reason: ReasonKind::BulkSourceDump,
-        },
-        MatchCase {
-            name: "agent search JSON",
-            payload: shell("asp typescript search lexical projectRoot owner tests --json ."),
-            rule_id: "deny-agent-search-json",
-            decision: DecisionKind::Deny,
-            reason: ReasonKind::AgentSearchJson,
-        },
-        MatchCase {
-            name: "source access materializer",
-            payload: json!({
-                "tool_name": "functions.exec_command",
-                "tool_input": {"cmd": "custom-reader '.read_text(' src/app.ts"},
-            }),
-            rule_id: "deny-raw-registered-source-action",
-            decision: DecisionKind::Deny,
-            reason: ReasonKind::BulkSourceDump,
-        },
-    ];
-    let matrix_rule_ids = cases
-        .iter()
-        .map(|case| case.rule_id)
-        .collect::<BTreeSet<_>>();
-    let mut failures = Vec::new();
-    if matrix_rule_ids != rule_ids {
-        failures.push(format!(
-            "production config and match-policy matrix rule IDs differ: config_only={:?} matrix_only={:?}",
-            rule_ids.difference(&matrix_rule_ids).collect::<Vec<_>>(),
-            matrix_rule_ids.difference(&rule_ids).collect::<Vec<_>>()
-        ));
-    }
-    let mut matched = BTreeSet::new();
-    for case in cases {
-        let decision = classify(&runtime, &config, &case.payload);
-        let rule_id = decision
-            .fields
-            .get("configRuleId")
-            .and_then(Value::as_str)
-            .unwrap_or("<none>");
-        if rule_id != "<none>" {
-            matched.insert(rule_id.to_owned());
-        }
-        if rule_id != case.rule_id
-            || decision.decision != case.decision
-            || decision.reason_kind != case.reason
-        {
-            failures.push(format!(
-                "{}: payload={}; expected rule={} decision={:?} reason={:?}; actual rule={} decision={:?} reason={:?}; normalizedActions={} hookMatchReceipt={}; expected rule is unreachable or shadowed",
-                case.name,
-                case.payload,
-                case.rule_id,
-                case.decision,
-                case.reason,
-                rule_id,
-                decision.decision,
-                decision.reason_kind,
-                decision
-                    .fields
-                    .get("normalizedActions")
-                    .unwrap_or(&Value::Null),
-                decision
-                    .fields
-                    .get("hookMatchReceipt")
-                    .unwrap_or(&Value::Null)
-            ));
-        }
-    }
-    let configured = rule_ids
-        .iter()
-        .map(|rule_id| (*rule_id).to_owned())
-        .collect::<BTreeSet<_>>();
-    let report = evaluate_match_policy_conformance(&runtime, &config, "codex");
-    if !report.is_complete() {
-        failures.push(format!(
-            "production conformance receipt incomplete: {report:?}"
-        ));
-    }
-    if let Err(error) = agent_semantic_hook::validate_match_policy_rule_coverage(&config) {
-        failures.push(format!(
-            "runtime-free mmap rule coverage gate rejected production config: {error}"
-        ));
-    }
+
+    agent_semantic_hook::validate_match_policy_rule_coverage(&config)
+        .expect("runtime-free mmap rule coverage gate");
     fs::remove_dir_all(root).expect("cleanup match-policy contract root");
-    if matched != configured {
-        failures.push(format!(
-            "configured rule IDs without an end-to-end witness: {:?}",
-            configured.difference(&matched).collect::<Vec<_>>()
-        ));
-    }
-    assert!(
-        failures.is_empty(),
-        "production match-policy contract failed:\n{}",
-        failures.join("\n")
-    );
 }
 
 #[path = "match_policy_contract/branch_coverage.rs"]

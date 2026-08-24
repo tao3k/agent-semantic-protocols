@@ -264,10 +264,7 @@ fn seed_plan_risk_factors(input: &GraphTurboSeedPlanInput<'_>) -> Vec<&'static s
     risk_factors
 }
 
-fn seed_plan_quality(
-    input: &GraphTurboSeedPlanInput<'_>,
-    risk_factors: &[&str],
-) -> &'static str {
+fn seed_plan_quality(input: &GraphTurboSeedPlanInput<'_>, risk_factors: &[&str]) -> &'static str {
     if input.seed_ids.is_empty() {
         "fail"
     } else if risk_factors.is_empty() {

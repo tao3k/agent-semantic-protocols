@@ -84,17 +84,15 @@ pub fn collect_search_pipe_auto_acquisition(
         Some(&source_index),
     );
     let lexical_candidates = match frame_route.acquisition_route {
-            crate::LexicalAcquisitionRoute::WarmOverlay => {
-                Some(source_index.discovery_candidates().to_vec())
-            }
-            crate::LexicalAcquisitionRoute::SourceIndexOwnerEvidence => Some(
-                crate::pipe_source_lexical_frame::source_index_owner_evidence_candidates(
-                    &source_index,
-                ),
-            ),
-            _ => None,
+        crate::LexicalAcquisitionRoute::WarmOverlay => {
+            Some(source_index.discovery_candidates().to_vec())
         }
-        .unwrap_or_default();
+        crate::LexicalAcquisitionRoute::SourceIndexOwnerEvidence => Some(
+            crate::pipe_source_lexical_frame::source_index_owner_evidence_candidates(&source_index),
+        ),
+        _ => None,
+    }
+    .unwrap_or_default();
     let candidate_source = match source_index.decision {
         SearchPipeSourceIndexDecision::QueryGate => "query-gate",
         SearchPipeSourceIndexDecision::GenerationUnavailable => "runtime-generation",

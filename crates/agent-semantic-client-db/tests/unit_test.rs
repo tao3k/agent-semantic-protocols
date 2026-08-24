@@ -107,8 +107,6 @@ mod turso_mvcc_partition;
 mod turso_source_index_materialization;
 #[path = "unit/workspace_db_ipc.rs"]
 mod workspace_db_ipc;
-#[path = "unit/workspace_db_owner_election.rs"]
-mod workspace_db_owner_election;
 #[path = "unit/workspace_db_registry.rs"]
 mod workspace_db_registry;
 #[path = "unit/workspace_project_resolution.rs"]

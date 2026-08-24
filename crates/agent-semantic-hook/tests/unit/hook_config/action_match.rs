@@ -135,7 +135,7 @@ fn host_execute_and_semantic_read_are_independent_predicate_axes() {
         "Bash".to_owned(),
     );
 
-    assert!(matcher.matches(&runtime(), &opaque, None));
+    assert!(!matcher.matches(&runtime(), &opaque, None));
     assert!(matcher.matches(&runtime(), &redirected, None));
 }
 

@@ -19,10 +19,10 @@ pub(super) async fn read_runtime_owner(
                 .data_plane_counters()
                 .delta_since(&counters_before);
             let (generation_digest, root_digest, read_state) = match &read {
-                crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead::Owner { generation_digest, root_digest, .. } => (generation_digest.clone(), root_digest.clone(), "owner"),
-                crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead::SparseProviderOwner { cache_digest, root_digest, .. } => (cache_digest.clone(), root_digest.clone(), "sparse-owner"),
-                crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead::OwnerMissing { generation_digest, root_digest } => (generation_digest.clone(), root_digest.clone(), "owner-missing"),
-                crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead::GenerationMissing => (String::new(), String::new(), "generation-missing"),
+                crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead::Owner { generation_digest, root_digest, .. } => (generation_digest.clone(), root_digest.clone(), crate::workspace_db_ipc::RuntimeResidentReadState::Owner),
+                crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead::SparseProviderOwner { cache_digest, root_digest, .. } => (cache_digest.clone(), root_digest.clone(), crate::workspace_db_ipc::RuntimeResidentReadState::SparseOwner),
+                crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead::OwnerMissing { generation_digest, root_digest } => (generation_digest.clone(), root_digest.clone(), crate::workspace_db_ipc::RuntimeResidentReadState::OwnerMissing),
+                crate::runtime_server_workspace::WorkspaceRuntimeOwnerRead::GenerationMissing => (String::new(), String::new(), crate::workspace_db_ipc::RuntimeResidentReadState::GenerationMissing),
             };
             let evidence = super::resident_read::evidence(
                 request_id,

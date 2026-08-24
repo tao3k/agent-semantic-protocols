@@ -426,10 +426,7 @@ impl TursoOpenTelemetrySpanExporter {
                 incident_transition,
                 transition_sequence,
             ) {
-                if matches!(
-                    incident_state.as_str(),
-                    "open" | "repairing" | "verification-pending" | "failed-verification"
-                ) {
+                if active_incident_state(&incident_state) {
                     transaction
                         .execute(
                             "INSERT INTO asp_otel_active_search_incident (
@@ -498,7 +495,7 @@ impl TursoOpenTelemetrySpanExporter {
                         })?;
                 }
             }
-            let pressure_present = [
+            let pressure_present = runtime_pressure_present([
                 process_resident_bytes,
                 process_peak_resident_bytes,
                 process_memory_budget_bytes,
@@ -512,9 +509,7 @@ impl TursoOpenTelemetrySpanExporter {
                 runtime_diagnostic_queue_depth,
                 runtime_diagnostic_queue_capacity,
                 runtime_dropped_diagnostics,
-            ]
-            .into_iter()
-            .any(|value| value.is_some());
+            ]);
             if pressure_present {
                 transaction
                     .execute(
@@ -834,6 +829,17 @@ async fn ensure_performance_span_columns(connection: &turso::Connection) -> Resu
         }
     }
     Ok(())
+}
+
+fn active_incident_state(state: &str) -> bool {
+    matches!(
+        state,
+        "open" | "repairing" | "verification-pending" | "failed-verification"
+    )
+}
+
+fn runtime_pressure_present(values: [Option<i64>; 13]) -> bool {
+    values.into_iter().any(|value| value.is_some())
 }
 
 fn span_attributes(attributes: &[KeyValue]) -> BTreeMap<String, serde_json::Value> {

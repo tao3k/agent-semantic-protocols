@@ -107,6 +107,73 @@ impl WorkspaceGenerationMutationAdmissionReceipt {
     }
 }
 
+struct ObservedWorkspaceMutationRequest {
+    mutation_id: String,
+    workspace_identity: String,
+    project_root: PathBuf,
+    changed_paths: std::collections::BTreeSet<PathBuf>,
+    candidate: super::WorkspaceGenerationCandidateIdentity,
+}
+
+impl ObservedWorkspaceMutationRequest {
+    fn new(
+        mutation_id: String,
+        workspace_identity: String,
+        project_root: PathBuf,
+        changed_paths: Vec<PathBuf>,
+        candidate: super::WorkspaceGenerationCandidateIdentity,
+    ) -> Result<Self, String> {
+        if mutation_id.trim().is_empty() {
+            return Err("workspace mutation admission id must be non-empty".to_owned());
+        }
+        if workspace_identity.trim().is_empty() {
+            return Err("workspace mutation admission identity must be non-empty".to_owned());
+        }
+        if !project_root.is_absolute() {
+            return Err("workspace mutation admission root must be absolute".to_owned());
+        }
+        let changed_paths = normalize_observed_changed_paths(&project_root, changed_paths)?;
+        Ok(Self {
+            mutation_id,
+            workspace_identity,
+            project_root,
+            changed_paths,
+            candidate,
+        })
+    }
+}
+
+fn normalize_observed_changed_paths(
+    project_root: &std::path::Path,
+    changed_paths: Vec<PathBuf>,
+) -> Result<std::collections::BTreeSet<PathBuf>, String> {
+    let changed_paths = changed_paths
+        .into_iter()
+        .map(|path| {
+            if path.components().any(|component| {
+                matches!(
+                    component,
+                    std::path::Component::CurDir | std::path::Component::ParentDir
+                )
+            }) {
+                return Err(format!(
+                    "workspace mutation admission path must be normalized: {}",
+                    path.display()
+                ));
+            }
+            Ok(if path.is_absolute() {
+                path
+            } else {
+                project_root.join(path)
+            })
+        })
+        .collect::<Result<std::collections::BTreeSet<_>, String>>()?;
+    if changed_paths.is_empty() {
+        return Err("workspace mutation admission requires changed paths".to_owned());
+    }
+    Ok(changed_paths)
+}
+
 impl WorkspaceGenerationAdmission {
     pub async fn admit_observed_mutation(
         &self,
@@ -116,17 +183,27 @@ impl WorkspaceGenerationAdmission {
         changed_paths: Vec<PathBuf>,
         candidate: super::WorkspaceGenerationCandidateIdentity,
     ) -> Result<WorkspaceGenerationMutationAdmissionReceipt, String> {
-        let mutation_id = mutation_id.into();
-        if mutation_id.trim().is_empty() {
-            return Err("workspace mutation admission id must be non-empty".to_owned());
-        }
-        let workspace_identity = workspace_identity.into();
-        if workspace_identity.trim().is_empty() {
-            return Err("workspace mutation admission identity must be non-empty".to_owned());
-        }
-        if !project_root.is_absolute() {
-            return Err("workspace mutation admission root must be absolute".to_owned());
-        }
+        let request = ObservedWorkspaceMutationRequest::new(
+            mutation_id.into(),
+            workspace_identity.into(),
+            project_root,
+            changed_paths,
+            candidate,
+        )?;
+        self.admit_observed_mutation_request(request).await
+    }
+
+    async fn admit_observed_mutation_request(
+        &self,
+        request: ObservedWorkspaceMutationRequest,
+    ) -> Result<WorkspaceGenerationMutationAdmissionReceipt, String> {
+        let ObservedWorkspaceMutationRequest {
+            mutation_id,
+            workspace_identity,
+            project_root,
+            changed_paths,
+            candidate,
+        } = request;
         if let Some(existing) = self.catalog.as_ref().and_then(|catalog| {
             catalog
                 .snapshot()
@@ -143,30 +220,6 @@ impl WorkspaceGenerationAdmission {
                 existing.project_root.display(),
                 project_root.display(),
             ));
-        }
-        let changed_paths = changed_paths
-            .into_iter()
-            .map(|path| {
-                if path.components().any(|component| {
-                    matches!(
-                        component,
-                        std::path::Component::CurDir | std::path::Component::ParentDir
-                    )
-                }) {
-                    return Err(format!(
-                        "workspace mutation admission path must be normalized: {}",
-                        path.display()
-                    ));
-                }
-                if path.is_absolute() {
-                    Ok(path)
-                } else {
-                    Ok(project_root.join(path))
-                }
-            })
-            .collect::<Result<std::collections::BTreeSet<_>, String>>()?;
-        if changed_paths.is_empty() {
-            return Err("workspace mutation admission requires changed paths".to_owned());
         }
         if self.catalog.is_none() {
             if let Some(outside) = changed_paths
@@ -469,7 +522,8 @@ impl WorkspaceGenerationAdmission {
                 crate::runtime_server_admission::WorkspaceGenerationAdmissionMode::IncrementalOverlay,
                 None,
                 Arc::default(),
-            );
+            )
+            .await;
             return Ok(receipt);
         }
 
@@ -575,7 +629,8 @@ impl WorkspaceGenerationAdmission {
                 crate::runtime_server_admission::WorkspaceGenerationAdmissionMode::IncrementalOverlay,
                 None,
                 Arc::default(),
-            );
+            )
+            .await;
             return Ok(accepted);
         }
 

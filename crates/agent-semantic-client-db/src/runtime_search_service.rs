@@ -1,55 +1,40 @@
 use std::path::PathBuf;
 
 use tokio::sync::{mpsc, oneshot};
+use tokio_stream::wrappers::ReceiverStream;
 
 use crate::runtime_server_workspace::WorkspaceOwnerSnapshot;
 
 const DEFAULT_QUEUE_CAPACITY: usize = 64;
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RuntimeProviderSearchReceipt {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub operation_id: String,
-    pub status: String,
-    pub language_id: String,
-    pub stdout: Vec<u8>,
-    pub stderr: Vec<u8>,
-    pub status_code: i32,
-    pub read_state: crate::source_index::ClientDbSourceIndexLookupState,
-    pub candidate_count: usize,
-    pub selectors: Vec<String>,
-    pub owner_paths: Vec<String>,
-    pub root_digest: Option<String>,
-    pub provider_digest: Option<String>,
-    pub index_artifact_digest: Option<String>,
-    pub resident_read_elapsed_micros: u64,
-    pub service_elapsed_micros: u64,
-    pub elapsed_micros: u64,
-    pub work_counters: crate::workspace_db_ipc::RuntimeResidentReadWorkCounters,
-}
-
 pub enum RuntimeSearchServiceRequest {
     ProviderRuntime {
         project_root: PathBuf,
         language_id: String,
-        response: oneshot::Sender<Result<serde_json::Value, String>>,
+        response: oneshot::Sender<
+            Result<agent_semantic_provider_transport::AspClientServerLifecycleReceipt, String>,
+        >,
     },
     ProviderRuntimeReady {
         project_root: PathBuf,
         language_id: String,
-        response: oneshot::Sender<Result<serde_json::Value, String>>,
+        response: oneshot::Sender<
+            Result<agent_semantic_provider_transport::AspClientServerLifecycleReceipt, String>,
+        >,
     },
     ProviderRuntimeAwaitReady {
         project_root: PathBuf,
         language_id: String,
-        response: oneshot::Sender<Result<serde_json::Value, String>>,
+        response: oneshot::Sender<
+            Result<agent_semantic_provider_transport::AspClientServerLifecycleReceipt, String>,
+        >,
     },
     ProviderRuntimeRelease {
         project_root: PathBuf,
         language_id: String,
-        response: oneshot::Sender<Result<serde_json::Value, String>>,
+        response: oneshot::Sender<
+            Result<agent_semantic_provider_transport::AspClientServerLifecycleReceipt, String>,
+        >,
     },
     ProviderOperation {
         project_root: PathBuf,
@@ -65,13 +50,6 @@ pub enum RuntimeSearchServiceRequest {
         owner_path: String,
         response: oneshot::Sender<Result<WorkspaceOwnerSnapshot, String>>,
     },
-    TreeSitterQuery {
-        workspace_identity: String,
-        project_root: PathBuf,
-        language_id: String,
-        args: Vec<String>,
-        response: oneshot::Sender<Result<Option<String>, String>>,
-    },
 }
 
 #[derive(Clone)]
@@ -81,116 +59,13 @@ pub struct RuntimeSearchServiceHandle {
 
 pub fn runtime_search_service_channel() -> (
     RuntimeSearchServiceHandle,
-    mpsc::Receiver<RuntimeSearchServiceRequest>,
+    ReceiverStream<RuntimeSearchServiceRequest>,
 ) {
     let (sender, receiver) = mpsc::channel(DEFAULT_QUEUE_CAPACITY);
-    (RuntimeSearchServiceHandle { sender }, receiver)
-}
-
-pub fn build_runtime_provider_search_receipt(
-    operation_id: String,
-    language_id: agent_semantic_client_core::LanguageId,
-    lookup: crate::source_index::ClientDbSourceIndexLookupResult,
-    resident_read_elapsed_micros: u64,
-    parser_owned_selector_pairs: Vec<(String, String)>,
-) -> Result<RuntimeProviderSearchReceipt, String> {
-    let started = std::time::Instant::now();
-    let read_state = lookup.state.clone();
-    match read_state {
-        crate::source_index::ClientDbSourceIndexLookupState::MissingDb => {
-            return Err("runtime-provider-search-source-index-missing".to_owned());
-        }
-        crate::source_index::ClientDbSourceIndexLookupState::ColdRequired => {
-            return Err("runtime-provider-search-source-index-resident-index-missing".to_owned());
-        }
-        crate::source_index::ClientDbSourceIndexLookupState::Busy => {
-            return Err("runtime-provider-search-source-index-busy".to_owned());
-        }
-        _ => {}
-    }
-
-    let stdout = if lookup.candidates.is_empty() {
-        format!(
-            "[search-frontier] state={:?} languageId={} candidates=0\n",
-            read_state, language_id
-        )
-        .into_bytes()
-    } else {
-        let mut rendered = lookup
-            .candidates
-            .iter()
-            .map(|candidate| candidate.path.to_string())
-            .collect::<Vec<_>>()
-            .join("\n")
-            .into_bytes();
-        rendered.push(b'\n');
-        rendered
-    };
-    let candidate_count = lookup.candidates.len();
-    let mut selector_pairs = lookup
-        .candidates
-        .iter()
-        .filter_map(|candidate| candidate.selector_projection.as_ref())
-        .map(|projection| {
-            (
-                projection.proof.structural_selector().to_owned(),
-                projection.proof.owner_path().to_owned(),
-            )
-        })
-        .collect::<Vec<_>>();
-    let mut seen_selectors = selector_pairs
-        .iter()
-        .map(|(selector, _)| selector.clone())
-        .collect::<std::collections::HashSet<_>>();
-    for pair in parser_owned_selector_pairs {
-        if seen_selectors.insert(pair.0.clone()) {
-            selector_pairs.push(pair);
-        }
-    }
-    let (selectors, owner_paths): (Vec<_>, Vec<_>) = selector_pairs.into_iter().unzip();
-    let (root_digest, provider_digest) = lookup
-        .source_snapshot
-        .as_ref()
-        .map(|snapshot| {
-            (
-                Some(snapshot.root_digest.clone()),
-                Some(snapshot.provider_digest.clone()),
-            )
-        })
-        .unwrap_or((None, None));
-    let service_elapsed_micros = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
-    let elapsed_micros = resident_read_elapsed_micros.saturating_add(service_elapsed_micros);
-
-    Ok(RuntimeProviderSearchReceipt {
-        schema_id: "agent.semantic-protocols.runtime-provider-search-receipt".to_owned(),
-        schema_version: "1".to_owned(),
-        operation_id,
-        status: if candidate_count == 0 {
-            "no-matches".to_owned()
-        } else {
-            "matches".to_owned()
-        },
-        language_id: language_id.to_string(),
-        stdout,
-        stderr: Vec::new(),
-        status_code: 0,
-        read_state,
-        candidate_count,
-        selectors,
-        owner_paths,
-        root_digest,
-        provider_digest,
-        index_artifact_digest: lookup.index_artifact_digest,
-        resident_read_elapsed_micros,
-        service_elapsed_micros,
-        elapsed_micros,
-        work_counters: crate::workspace_db_ipc::RuntimeResidentReadWorkCounters {
-            database_opens: 0,
-            filesystem_reads: 0,
-            provider_spawns: 0,
-            control_socket_roundtrips: 0,
-        },
-    })
+    (
+        RuntimeSearchServiceHandle { sender },
+        ReceiverStream::new(receiver),
+    )
 }
 
 #[cfg(test)]
@@ -202,7 +77,7 @@ impl RuntimeSearchServiceHandle {
         &self,
         project_root: PathBuf,
         language_id: String,
-    ) -> Result<serde_json::Value, String> {
+    ) -> Result<agent_semantic_provider_transport::AspClientServerLifecycleReceipt, String> {
         let (response, receipt) = oneshot::channel();
         self.sender
             .send(RuntimeSearchServiceRequest::ProviderRuntime {
@@ -226,7 +101,7 @@ impl RuntimeSearchServiceHandle {
         &self,
         project_root: PathBuf,
         language_id: String,
-    ) -> Result<serde_json::Value, String> {
+    ) -> Result<agent_semantic_provider_transport::AspClientServerLifecycleReceipt, String> {
         let (response, receipt) = oneshot::channel();
         self.sender
             .send(RuntimeSearchServiceRequest::ProviderRuntimeReady {
@@ -250,7 +125,7 @@ impl RuntimeSearchServiceHandle {
         &self,
         project_root: PathBuf,
         language_id: String,
-    ) -> Result<serde_json::Value, String> {
+    ) -> Result<agent_semantic_provider_transport::AspClientServerLifecycleReceipt, String> {
         let (response, receipt) = oneshot::channel();
         self.sender
             .send(RuntimeSearchServiceRequest::ProviderRuntimeAwaitReady {
@@ -274,7 +149,7 @@ impl RuntimeSearchServiceHandle {
         &self,
         project_root: PathBuf,
         language_id: String,
-    ) -> Result<serde_json::Value, String> {
+    ) -> Result<agent_semantic_provider_transport::AspClientServerLifecycleReceipt, String> {
         let (response, receipt) = oneshot::channel();
         self.sender
             .send(RuntimeSearchServiceRequest::ProviderRuntimeRelease {
@@ -355,34 +230,6 @@ impl RuntimeSearchServiceHandle {
             receipt,
             "provider-owner",
             "Runtime search service dropped the owner response",
-        )
-        .await
-    }
-
-    pub async fn tree_sitter_query(
-        &self,
-        workspace_identity: String,
-        project_root: PathBuf,
-        language_id: String,
-        args: Vec<String>,
-    ) -> Result<Option<String>, String> {
-        let (response, receipt) = oneshot::channel();
-        self.sender
-            .send(RuntimeSearchServiceRequest::TreeSitterQuery {
-                workspace_identity,
-                project_root,
-                language_id,
-                args,
-                response,
-            })
-            .await
-            .map_err(|_| {
-                "Runtime search service is not accepting Tree-sitter requests".to_owned()
-            })?;
-        self.await_receipt(
-            receipt,
-            "tree-sitter-query",
-            "Runtime search service dropped the Tree-sitter response",
         )
         .await
     }

@@ -2,15 +2,6 @@
 
 use std::path::PathBuf;
 
-pub use crate::{
-    WorkspaceDbOwnerEndpoint, bind_workspace_db_owner, prepare_workspace_db_owner_endpoint,
-    workspace_db_owner_runtime_base, workspace_db_owner_transport_contract_digest,
-};
-pub use crate::{
-    WorkspaceDbOwnerRetirement, remove_stale_workspace_db_owner_socket,
-    try_retire_workspace_db_owner_endpoint,
-};
-
 pub(super) const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 
 #[path = "client.rs"]
@@ -28,18 +19,17 @@ pub(super) use session::WorkspaceDbIpcSessionState;
 pub use types::{RUNTIME_MERKLE_OWNER_READ_REQUEST_SCHEMA_ID, RuntimeMerkleOwnerReadRequest};
 pub use types::{
     RuntimeCacheControlReceipt, RuntimeCacheControlRequest, RuntimeCacheGenerationState,
-    RuntimeCacheInvalidationScope, RuntimeCacheOwnerDeltaFallbackPolicy,
-    WORKSPACE_DB_OWNER_ENDPOINT_SCHEMA_ID, WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID,
-    WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID, WORKSPACE_DB_OWNER_SCHEMA_VERSION,
-    WorkspaceDbIpcOperation, WorkspaceDbIpcRequest, WorkspaceDbIpcResponse, WorkspaceDbIpcResult,
-    WorkspaceDbSourceIndexLookupRequest,
+    RuntimeCacheInvalidationScope, RuntimeCacheOwnerDeltaFallbackPolicy, RuntimeResidentReadState,
+    RuntimeResidentReadTerminalState, WORKSPACE_DB_OWNER_ENDPOINT_SCHEMA_ID,
+    WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID, WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID,
+    WORKSPACE_DB_OWNER_SCHEMA_VERSION, WorkspaceDbIpcBindingToken, WorkspaceDbIpcOperation,
+    WorkspaceDbIpcRequest, WorkspaceDbIpcRequestId, WorkspaceDbIpcResponse, WorkspaceDbIpcResult,
+    WorkspaceDbIpcSchemaId, WorkspaceDbSourceIndexLookupRequest,
 };
 pub use types::{
-    RuntimeResidentReadEvidence, RuntimeResidentReadResult, RuntimeResidentReadWorkCounters,
-    resident_read_terminal_digest,
+    RuntimeResidentReadEvidence, RuntimeResidentReadResult, WorkspaceIpcResidentReadWorkCounters,
 };
-
-pub use crate::workspace_db_ipc_server::serve_one_workspace_db_session_request;
+pub(crate) use types::{RuntimeResidentReadTerminalDigestInput, resident_read_terminal_digest};
 
 static NEXT_WORKSPACE_DB_IPC_CLIENT_ID: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(1);

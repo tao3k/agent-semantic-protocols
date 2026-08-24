@@ -178,6 +178,21 @@ impl RuntimeServerOpenTelemetry {
         database_path: std::path::PathBuf,
         ingress_socket_path: std::path::PathBuf,
         query_socket_path: std::path::PathBuf,
+        telemetry_receiver: crate::runtime_telemetry_bus::RuntimeTelemetryBusReceiver,
+    ) -> Result<Self, String> {
+        Self::start_with_telemetry_receiver_inner(
+            database_path,
+            ingress_socket_path,
+            query_socket_path,
+            telemetry_receiver,
+        )
+        .await
+    }
+
+    async fn start_with_telemetry_receiver_inner(
+        database_path: std::path::PathBuf,
+        ingress_socket_path: std::path::PathBuf,
+        query_socket_path: std::path::PathBuf,
         mut telemetry_receiver: crate::runtime_telemetry_bus::RuntimeTelemetryBusReceiver,
     ) -> Result<Self, String> {
         let scheduler_probe_started = tokio::time::Instant::now();

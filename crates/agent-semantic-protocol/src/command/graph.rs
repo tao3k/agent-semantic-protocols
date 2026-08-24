@@ -169,19 +169,17 @@ pub(super) async fn rank_graph_turbo_packet(
 ) -> Result<agent_semantic_search_projection::GraphTurboResultPacketV1, String> {
     let session =
         crate::server::runtime_server::runtime_server_workspace_session_async(project_root).await?;
-    let message = resident_graph_turbo_message(packet_bytes)?;
-    let value = session.evaluate_graph_turbo(message).await?;
-    agent_semantic_search_projection::GraphTurboResultPacketV1::from_value(value)
-        .map_err(|error| format!("Graph Turbo resident emitted invalid typed result: {error}"))
+    let request = resident_graph_turbo_message(packet_bytes)?;
+    session.evaluate_graph_turbo(request).await
 }
 
-fn resident_graph_turbo_message(packet_bytes: &[u8]) -> Result<serde_json::Value, String> {
+fn resident_graph_turbo_message(
+    packet_bytes: &[u8],
+) -> Result<agent_semantic_search_projection::GraphTurboEvaluationRequest, String> {
     let message = serde_json::from_slice::<serde_json::Value>(packet_bytes)
         .map_err(|error| format!("failed to decode typed Graph Turbo request: {error}"))?;
-    message
-        .is_object()
-        .then_some(message)
-        .ok_or_else(|| "Graph Turbo rank intent must be a JSON object".to_owned())
+    agent_semantic_search_projection::GraphTurboEvaluationRequest::from_value(message)
+        .map_err(|error| format!("invalid Graph Turbo rank intent: {error}"))
 }
 
 #[cfg(test)]

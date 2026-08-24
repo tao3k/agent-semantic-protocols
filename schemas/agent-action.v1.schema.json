@@ -41,7 +41,7 @@
       "properties": {
         "action": { "$ref": "#/$defs/actionKind" },
         "evidence": {
-          "enum": ["host-invocation", "shell-redirection", "shell-path-operand"]
+          "enum": ["host-invocation", "shell-redirection"]
         }
       }
     },

@@ -19,6 +19,7 @@ fn central_policy_registry_contains_migrated_member_crates() {
             "agent-semantic-protocol",
             "agent-semantic-provider-transport",
             "agent-semantic-search",
+            "agent-semantic-search-projection",
             "agent-semantic-schema-manager",
             "agent-semantic-tree-sitter",
             "agent-semantic-runtime",

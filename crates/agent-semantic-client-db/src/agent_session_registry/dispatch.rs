@@ -28,10 +28,10 @@ impl super::core::AgentSessionRegistry {
         let dispatch_identity = dispatch_identity.into();
         if let Some(result) = self.runtime_operation(
             crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::DispatchLease {
-                project_id: project_id.as_str().to_owned(),
-                root_session_id: root_session_id.as_str().to_owned(),
-                name: name.as_str().to_owned(),
-                dispatch_identity: dispatch_identity.as_str().to_owned(),
+                project_id: project_id.clone(),
+                root_session_id: root_session_id.clone(),
+                name: name.clone(),
+                dispatch_identity: dispatch_identity.clone(),
             },
         )? {
             return match result {
@@ -62,58 +62,87 @@ impl super::core::AgentSessionRegistry {
 pub fn derive_agent_session_dispatch_identity(
     input: super::types::AgentSessionDispatchIdentityInput<'_>,
 ) -> Result<super::types::AgentSessionDispatchDerivedIdentity, String> {
-    use sha2::Digest as _;
-
-    fn require_non_empty<'a>(value: &'a str, field: &str) -> Result<&'a str, String> {
-        let value = value.trim();
-        if value.is_empty() {
-            Err(format!("dispatch identity requires non-empty {field}"))
-        } else {
-            Ok(value)
-        }
-    }
-
-    fn update_text(hasher: &mut sha2::Sha256, value: &str) {
-        hasher.update((value.len() as u64).to_be_bytes());
-        hasher.update(value.as_bytes());
-    }
-
-    let root_session_id = require_non_empty(input.root_session_id, "root_session_id")?;
-    let name = require_non_empty(input.name, "name")?;
-    let canonical_target = require_non_empty(input.canonical_target, "canonical_target")?;
-    let receipt_kind = require_non_empty(input.receipt_kind, "receipt_kind")?;
-    if input.canonical_argv.is_empty()
-        || input
-            .canonical_argv
-            .iter()
-            .any(|argument| argument.is_empty())
-    {
-        return Err("dispatch identity requires a non-empty exact argv".to_string());
-    }
-
-    let canonical_command_json = serde_json::to_string(input.canonical_argv)
-        .map_err(|error| format!("failed to encode canonical dispatch argv: {error}"))?;
-    let command_digest = format!(
-        "{:x}",
-        sha2::Sha256::digest(canonical_command_json.as_bytes())
-    );
-    let mut identity_hasher = sha2::Sha256::new();
-    update_text(
-        &mut identity_hasher,
-        "agent.semantic-protocols.dispatch-identity.v1",
-    );
-    update_text(&mut identity_hasher, root_session_id);
-    update_text(&mut identity_hasher, name);
-    update_text(&mut identity_hasher, canonical_target);
-    update_text(&mut identity_hasher, receipt_kind);
-    update_text(&mut identity_hasher, &command_digest);
-    let dispatch_identity = format!("dispatch-v1:{:x}", identity_hasher.finalize());
+    let seed = DispatchIdentitySeed::try_from(input)?;
+    let dispatch_identity = hash_dispatch_identity(&seed);
 
     Ok(super::types::AgentSessionDispatchDerivedIdentity {
         dispatch_identity: dispatch_identity.into(),
-        command_digest: command_digest.into(),
-        canonical_command_json: canonical_command_json.into(),
+        command_digest: seed.command_digest.into(),
+        canonical_command_json: seed.canonical_command_json.into(),
     })
+}
+
+struct DispatchIdentitySeed<'a> {
+    root_session_id: &'a str,
+    name: &'a str,
+    canonical_target: &'a str,
+    receipt_kind: &'a str,
+    command_digest: String,
+    canonical_command_json: String,
+}
+
+impl<'a> TryFrom<super::types::AgentSessionDispatchIdentityInput<'a>> for DispatchIdentitySeed<'a> {
+    type Error = String;
+
+    fn try_from(
+        input: super::types::AgentSessionDispatchIdentityInput<'a>,
+    ) -> Result<Self, Self::Error> {
+        use sha2::Digest as _;
+
+        let root_session_id = require_dispatch_text(input.root_session_id, "root_session_id")?;
+        let name = require_dispatch_text(input.name, "name")?;
+        let canonical_target = require_dispatch_text(input.canonical_target, "canonical_target")?;
+        let receipt_kind = require_dispatch_text(input.receipt_kind, "receipt_kind")?;
+        if input.canonical_argv.is_empty()
+            || input
+                .canonical_argv
+                .iter()
+                .any(|argument| argument.is_empty())
+        {
+            return Err("dispatch identity requires a non-empty exact argv".to_string());
+        }
+        let canonical_command_json = serde_json::to_string(input.canonical_argv)
+            .map_err(|error| format!("failed to encode canonical dispatch argv: {error}"))?;
+        let command_digest = format!(
+            "{:x}",
+            sha2::Sha256::digest(canonical_command_json.as_bytes())
+        );
+        Ok(Self {
+            root_session_id,
+            name,
+            canonical_target,
+            receipt_kind,
+            command_digest,
+            canonical_command_json,
+        })
+    }
+}
+
+fn require_dispatch_text<'a>(value: &'a str, field: &str) -> Result<&'a str, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        Err(format!("dispatch identity requires non-empty {field}"))
+    } else {
+        Ok(value)
+    }
+}
+
+fn hash_dispatch_identity(seed: &DispatchIdentitySeed<'_>) -> String {
+    use sha2::Digest as _;
+
+    let mut hasher = sha2::Sha256::new();
+    for value in [
+        "agent.semantic-protocols.dispatch-identity.v1",
+        seed.root_session_id,
+        seed.name,
+        seed.canonical_target,
+        seed.receipt_kind,
+        &seed.command_digest,
+    ] {
+        hasher.update((value.len() as u64).to_be_bytes());
+        hasher.update(value.as_bytes());
+    }
+    format!("dispatch-v1:{:x}", hasher.finalize())
 }
 
 pub(super) async fn bootstrap_turso_agent_dispatch_schema(

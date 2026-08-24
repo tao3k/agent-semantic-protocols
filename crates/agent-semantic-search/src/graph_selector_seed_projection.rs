@@ -142,12 +142,10 @@ fn selector_seed_nodes(
             "languageId": request.language_id,
         }));
     }
-    if let (Some(selector), Some(selector_node_id)) =
-        (
-            identity.canonical_selector.as_ref(),
-            identity.selector_node_id.as_ref(),
-        )
-    {
+    if let (Some(selector), Some(selector_node_id)) = (
+        identity.canonical_selector.as_ref(),
+        identity.selector_node_id.as_ref(),
+    ) {
         nodes.push(json!({
             "id": selector_node_id,
             "kind": "item",
@@ -173,27 +171,21 @@ fn selector_seed_edges(identity: &GraphSelectorSeedIdentity) -> Vec<Value> {
             "serves_owner",
         ));
     }
-    if let (Some(owner_node_id), Some(selector_node_id)) =
-        (
-            identity.owner_node_id.as_ref(),
-            identity.selector_node_id.as_ref(),
-        )
-    {
+    if let (Some(owner_node_id), Some(selector_node_id)) = (
+        identity.owner_node_id.as_ref(),
+        identity.selector_node_id.as_ref(),
+    ) {
         edges.push(graph_edge(owner_node_id, selector_node_id, "owns_item"));
     }
-    if let (Some(query_node_id), Some(selector_node_id)) =
-        (
-            identity.query_node_id.as_ref(),
-            identity.selector_node_id.as_ref(),
-        )
-    {
+    if let (Some(query_node_id), Some(selector_node_id)) = (
+        identity.query_node_id.as_ref(),
+        identity.selector_node_id.as_ref(),
+    ) {
         edges.push(graph_edge(query_node_id, selector_node_id, "targets_item"));
-    } else if let (Some(query_node_id), Some(unresolved_selector_node_id)) =
-        (
-            identity.query_node_id.as_ref(),
-            identity.unresolved_selector_node_id.as_ref(),
-        )
-    {
+    } else if let (Some(query_node_id), Some(unresolved_selector_node_id)) = (
+        identity.query_node_id.as_ref(),
+        identity.unresolved_selector_node_id.as_ref(),
+    ) {
         edges.push(graph_edge(
             query_node_id,
             unresolved_selector_node_id,

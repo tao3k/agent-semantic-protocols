@@ -8,7 +8,6 @@ use agent_semantic_client_core::{
 };
 
 use crate::source_index::{ClientDbSourceIndexScopeFile, ClientDbSourceIndexStats};
-use crate::structural_index::parse_structural_index_packet_import;
 use crate::types::{
     ClientDbArtifactEvent, ClientDbGenerationHit, ClientDbProviderCommandSelection,
     ClientDbSyntaxQueryLookup, ClientDbSyntaxQueryReplay,
@@ -17,7 +16,6 @@ use crate::types::{
 use super::facade::{
     ClientDbEngineReadSession, ClientDbEngineWriteSession, block_on_db_engine_async,
 };
-use super::source_index_facade::persist_structural_index_read_model_at_path;
 use super::turso_artifact::{lookup_turso_artifact_events, upsert_turso_artifact_events};
 use super::turso_bootstrap::bootstrap_turso_client_db;
 use super::turso_cache::{
@@ -339,23 +337,6 @@ impl ClientDbEngineWriteSession {
         block_on_db_engine_async(async move {
             bootstrap_turso_client_db(&turso_db_path).await?;
             upsert_turso_syntax_query_replay(&turso_db_path, &generation, &packet_bytes).await
-        })
-    }
-
-    /// Import one structural-index refresh artifact through the DB Engine control adapter.
-    pub fn import_semantic_structural_index_refresh_packet(
-        &mut self,
-        generation: &ClientCacheGeneration,
-        packet_bytes: &[u8],
-        source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
-    ) -> Result<(), String> {
-        let import = parse_structural_index_packet_import(generation, packet_bytes)?;
-        let db_path = self.turso_db_path.clone();
-        let source_snapshot = source_snapshot.clone();
-        block_on_db_engine_async(async move {
-            persist_structural_index_read_model_at_path(&db_path, &import, &source_snapshot)
-                .await
-                .map(|_| ())
         })
     }
 

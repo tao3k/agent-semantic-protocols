@@ -6,11 +6,9 @@ use std::borrow::Cow;
 use crate::protocol::normalize_source_selector;
 
 use super::protocol_activation_manifest::{
-    ActivatedProvider, HookProviderProjection, HookRuntime, ProviderRoutePathContext,
-    ProviderSelectorMatch, SourceSelectorKind,
+    ActivatedProvider, HookProviderProjection, HookRuntime, ProviderSelectorMatch,
+    SourceSelectorKind,
 };
-
-use crate::protocol::{CommandTemplate, DecisionRoute, DecisionRouteKind};
 
 impl HookRuntime {
     pub(crate) fn providers_for_selector(&self, selector: &str) -> Vec<ProviderSelectorMatch> {
@@ -87,95 +85,6 @@ impl HookProviderProjection {
             .any(|config| selector.normalized.ends_with(config))
             .then_some(SourceSelectorKind::ExactPath)
     }
-
-    pub(crate) fn matches_search_token(&self, token: &str) -> bool {
-        let normalized = normalize_route_path(token);
-        let matcher = SourceSelectorMatcher::new(&normalized);
-        self.match_source_selector_with(&matcher).is_some()
-            || self.package_roots.iter().any(|root| {
-                let root = normalize_route_path(root);
-                let root = root.trim_end_matches('/');
-                !root.is_empty()
-                    && root != "."
-                    && (normalized == root || normalized.starts_with(&format!("{root}/")))
-            })
-    }
-
-    pub(crate) fn route_from_template(
-        &self,
-        kind: DecisionRouteKind,
-        template: &CommandTemplate,
-        path: Option<&str>,
-        query: Option<&str>,
-    ) -> DecisionRoute {
-        let route_context = path.map(|path| self.route_path_context(path));
-        let route_path = route_context
-            .as_ref()
-            .map(|context| context.selector.as_str())
-            .or(path)
-            .unwrap_or("");
-        let project_root = route_context
-            .as_ref()
-            .map(|context| context.project_root.as_str())
-            .unwrap_or_else(|| self.default_route_project_root());
-        let argv = template
-            .argv
-            .iter()
-            .map(|arg| {
-                arg.replace("{owner}", route_path)
-                    .replace("{query}", query.unwrap_or(""))
-                    .replace("{workspace}", project_root)
-            })
-            .collect::<Vec<_>>();
-        DecisionRoute {
-            language_id: self.language_id.clone(),
-            provider_id: self.provider_id.clone(),
-            binary: "asp".to_owned(),
-            kind,
-            argv,
-            stdin_mode: template.stdin_mode,
-        }
-    }
-
-    fn route_path_context(&self, path: &str) -> ProviderRoutePathContext {
-        let normalized = normalize_route_path(path);
-        let mut roots = self.package_roots.clone();
-        roots.sort_by(|left, right| right.len().cmp(&left.len()).then(left.cmp(right)));
-        for root in roots {
-            if root == "." {
-                continue;
-            }
-            if normalized == root {
-                return ProviderRoutePathContext {
-                    selector: ".".to_owned(),
-                    project_root: root,
-                };
-            }
-            if let Some(selector) = normalized.strip_prefix(&format!("{root}/")) {
-                return ProviderRoutePathContext {
-                    selector: selector.to_owned(),
-                    project_root: root,
-                };
-            }
-        }
-        ProviderRoutePathContext {
-            selector: normalized,
-            project_root: self.default_route_project_root().to_owned(),
-        }
-    }
-
-    fn default_route_project_root(&self) -> &str {
-        self.package_roots
-            .iter()
-            .find(|root| root.as_str() == ".")
-            .or_else(|| self.package_roots.first())
-            .map(String::as_str)
-            .unwrap_or(".")
-    }
-}
-
-fn normalize_route_path(path: &str) -> String {
-    path.replace('\\', "/").trim_start_matches("./").to_string()
 }
 
 struct SourceSelectorMatcher<'a> {

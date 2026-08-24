@@ -98,8 +98,8 @@ fn config(path: &Path, remote_url: &str) -> TursoSyncProfileConfig {
     TursoSyncProfileConfig {
         path: path.to_path_buf(),
         mode: TursoSyncProfileMode::Remote {
-            remote_url: remote_url.to_owned(),
-            auth_token: "local-sync-server".to_owned(),
+            remote_url: remote_url.into(),
+            auth_token: "local-sync-server".into(),
             bootstrap_if_empty: true,
         },
         operation_timeout: DEFAULT_TURSO_SYNC_OPERATION_TIMEOUT,

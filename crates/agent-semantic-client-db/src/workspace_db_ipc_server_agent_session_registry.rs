@@ -43,7 +43,10 @@ pub(super) async fn run_operation(
         }
         operation => operation,
     };
-    tokio::task::spawn_blocking(move || {
+    let task_scope = crate::runtime_server_runtime::RuntimeServerTaskScope::new(
+        "agent-session-registry-operation",
+    );
+    let task = task_scope.spawn_blocking("agent-session-registry-dispatch", move || {
         use crate::workspace_db_ipc::{
             AgentSessionRegistryIpcOperation as Operation,
             AgentSessionRegistryIpcResult as IpcResult,
@@ -164,7 +167,9 @@ pub(super) async fn run_operation(
                 session: registry.session_by_id_any_project(session_id)?,
             }),
             Operation::ProjectIdForRootSessionId { root_session_id } => Ok(IpcResult::ProjectId {
-                project_id: registry.project_id_for_root_session_id(root_session_id)?,
+                project_id: registry
+                    .project_id_for_root_session_id(root_session_id)?
+                    .map(Into::into),
             }),
             Operation::ClaimDispatch {
                 project_id,
@@ -222,9 +227,11 @@ pub(super) async fn run_operation(
                 )?,
             }),
         }
-    })
-    .await
-    .map_err(|error| format!("agent-session registry owner task failed: {error}"))?
+    })?;
+    task_scope.begin_drain();
+    let result = task.join().await?;
+    task_scope.finish(0)?;
+    result
 }
 
 fn record_host_lifecycle_event(
@@ -369,7 +376,7 @@ fn record_host_lifecycle_event(
                 project_id: event.project_id.clone().into(),
                 root_session_id: event.root_session_id.clone().into(),
                 session_id: event.child_session_id.clone().into(),
-                message_target_id: Some(event.child_session_id.clone().into()),
+                message_target_id: Some(event.child_session_id.as_str().into()),
                 parent_session_id: Some(event.parent_session_id.into()),
                 name: event.platform_host_agent_name.into(),
                 role: event.role.into(),

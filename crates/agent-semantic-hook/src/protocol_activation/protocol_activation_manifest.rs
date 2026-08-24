@@ -684,8 +684,3 @@ pub(crate) struct ProviderSelectorMatch {
     pub provider: HookProviderProjection,
     pub kind: SourceSelectorKind,
 }
-
-pub(crate) struct ProviderRoutePathContext {
-    pub(crate) selector: String,
-    pub(crate) project_root: String,
-}

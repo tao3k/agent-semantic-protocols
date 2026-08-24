@@ -2,7 +2,6 @@ use std::borrow::Cow;
 
 use crate::DecisionRoute;
 use crate::hook_recovery_prompt::CompiledRecoveryPromptConfig;
-use crate::protocol_activation::protocol_activation_manifest::HookProviderProjection;
 
 pub const HOOK_TRIGGER_PROMPT_FILE_NAME: &str = "hook_trigger_prompt.md";
 
@@ -11,17 +10,6 @@ const MANAGED_BEGIN: &str = "<!-- ASP-HOOK-TRIGGER-PROMPT:MANAGED-BEGIN -->";
 const MANAGED_END: &str = "<!-- ASP-HOOK-TRIGGER-PROMPT:MANAGED-END -->";
 const USER_EXTENSIONS_BEGIN: &str = "<!-- ASP-HOOK-TRIGGER-PROMPT:USER-EXTENSIONS-BEGIN -->";
 const USER_EXTENSIONS_END: &str = "<!-- ASP-HOOK-TRIGGER-PROMPT:USER-EXTENSIONS-END -->";
-
-pub(crate) fn source_access_recovery_message(
-    platform: &str,
-    reason: &str,
-    _providers: &[&HookProviderProjection],
-    routes: &[DecisionRoute],
-    _semantic_ast_patch_enabled: bool,
-    recovery_prompt: &CompiledRecoveryPromptConfig,
-) -> String {
-    default_hook_trigger_prompt_message_for_platform(platform, reason, routes, recovery_prompt)
-}
 
 pub fn hook_trigger_prompt_document() -> &'static str {
     HOOK_TRIGGER_PROMPT_MD

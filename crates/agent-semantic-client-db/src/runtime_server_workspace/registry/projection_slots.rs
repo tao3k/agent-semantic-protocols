@@ -177,7 +177,7 @@ impl RuntimeServerWorkspaceRegistry {
         query: &str,
         language_id: Option<&agent_semantic_client_core::LanguageId>,
         limit: u32,
-    ) -> Result<crate::ClientDbSourceIndexLookupResult, String> {
+    ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
         self.resident_search_projection_client(workspace_identity, project_root)?
             .read_source_index(query, language_id, limit)
     }

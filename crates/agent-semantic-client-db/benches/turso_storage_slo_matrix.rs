@@ -218,13 +218,14 @@ fn main() {
                 .expect("mixed-pressure latency samples"),
         },
         StorageFootprintReceipt {
-            resident_set_kib: resident_set_kib(),
-            database_bytes: maintenance.database_bytes(),
-            wal_bytes: maintenance.wal_bytes(),
+            resident_set_kib: resident_set_kib().into(),
+            database_bytes: maintenance.database_bytes().into(),
+            wal_bytes: maintenance.wal_bytes().into(),
             shm_bytes: file_len(&PathBuf::from(format!(
                 "{}-shm",
                 mvcc_path.to_string_lossy()
-            ))),
+            )))
+            .into(),
             passive_checkpoint: maintenance.passive_checkpoint(),
         },
     );

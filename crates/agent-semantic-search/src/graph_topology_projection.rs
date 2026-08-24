@@ -680,12 +680,14 @@ pub fn graph_submodule_owner_edges(workspace_root: &Path, owners: &[String]) -> 
     if submodule_paths.is_empty() {
         return Vec::new();
     }
-    let submodule_index = submodule_paths.iter().map(String::as_str).collect::<BTreeSet<_>>();
+    let submodule_index = submodule_paths
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
     let mut seen = BTreeSet::new();
     let mut edges = Vec::new();
     for owner in owners {
-        let Some(submodule_path) = deepest_indexed_owner_prefix(owner, &submodule_index)
-        else {
+        let Some(submodule_path) = deepest_indexed_owner_prefix(owner, &submodule_index) else {
             continue;
         };
         let key = format!("{submodule_path}:{owner}");

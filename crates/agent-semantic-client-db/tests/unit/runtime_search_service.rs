@@ -1,43 +1,58 @@
-use super::build_runtime_provider_search_receipt;
-use crate::source_index::{ClientDbSourceIndexLookupResult, ClientDbSourceIndexLookupState};
+use agent_semantic_search::{RuntimeSearchSource, build_runtime_provider_search_receipt};
+use agent_semantic_search_projection::{
+    RESIDENT_SEARCH_RESULT_SCHEMA_ID, RESIDENT_SEARCH_RESULT_SCHEMA_VERSION,
+    ResidentSearchReadyResult, ResidentSearchReadyState, ResidentSearchWorkCounters,
+};
 
-#[test]
-fn provider_search_missing_resident_index_is_typed() {
+fn resident_result(
+    generation_digest: &str,
+    root_digest: &str,
+    provider_digest: &str,
+    index_artifact_digest: &str,
+) -> ResidentSearchReadyResult {
+    ResidentSearchReadyResult {
+        schema_id: RESIDENT_SEARCH_RESULT_SCHEMA_ID.to_owned(),
+        schema_version: RESIDENT_SEARCH_RESULT_SCHEMA_VERSION.to_owned(),
+        state: ResidentSearchReadyState::Ready,
+        generation_digest: generation_digest.to_owned(),
+        root_digest: root_digest.to_owned(),
+        provider_digest: provider_digest.to_owned(),
+        index_artifact_digest: index_artifact_digest.to_owned(),
+        hits: Vec::new(),
+        work_counters: ResidentSearchWorkCounters::default(),
+    }
+}
+
+#[tokio::test]
+async fn provider_search_invalid_resident_generation_is_typed() {
     let error = build_runtime_provider_search_receipt(
         "op-resident-index".to_owned(),
         agent_semantic_client_core::LanguageId::new("gerbil"),
-        ClientDbSourceIndexLookupResult {
-            db_path: std::path::PathBuf::new(),
-            state: ClientDbSourceIndexLookupState::ColdRequired,
-            candidates: Vec::new(),
-            source_snapshot: None,
-            index_artifact_digest: None,
-        },
+        vec![RuntimeSearchSource::once(
+            "resident",
+            resident_result("", "root", "provider", "index"),
+        )],
         0,
         Vec::new(),
     )
+    .await
     .expect_err("missing resident source index must fail closed");
-    assert_eq!(
-        error,
-        "runtime-provider-search-source-index-resident-index-missing"
-    );
+    assert_eq!(error, "resident search result identity is invalid");
 }
 
-#[test]
-fn provider_search_receipt_exposes_runtime_timing_and_zero_external_work() {
+#[tokio::test]
+async fn provider_search_receipt_exposes_runtime_timing_and_zero_external_work() {
     let receipt = build_runtime_provider_search_receipt(
         "op-resident-miss".to_owned(),
         agent_semantic_client_core::LanguageId::new("rust"),
-        ClientDbSourceIndexLookupResult {
-            db_path: std::path::PathBuf::new(),
-            state: ClientDbSourceIndexLookupState::Miss,
-            candidates: Vec::new(),
-            source_snapshot: None,
-            index_artifact_digest: None,
-        },
+        vec![RuntimeSearchSource::once(
+            "resident",
+            resident_result("blake3-256:generation", "root", "provider", "index"),
+        )],
         7,
         Vec::new(),
     )
+    .await
     .expect("resident miss is a successful terminal search");
 
     assert_eq!(receipt.schema_version, "1");
@@ -45,10 +60,11 @@ fn provider_search_receipt_exposes_runtime_timing_and_zero_external_work() {
     assert!(receipt.elapsed_micros >= receipt.resident_read_elapsed_micros);
     assert!(receipt.selectors.is_empty());
     assert!(receipt.owner_paths.is_empty());
-    assert_eq!(receipt.work_counters.database_opens, 0);
-    assert_eq!(receipt.work_counters.filesystem_reads, 0);
-    assert_eq!(receipt.work_counters.provider_spawns, 0);
-    assert_eq!(receipt.work_counters.control_socket_roundtrips, 0);
+    assert_eq!(receipt.work_counters.database_read_count, 0);
+    assert_eq!(receipt.work_counters.filesystem_read_count, 0);
+    assert_eq!(receipt.work_counters.provider_process_count, 0);
+    assert_eq!(receipt.work_counters.socket_operation_count, 0);
+    assert_eq!(receipt.work_counters.scheduler_task_count, 0);
 }
 
 #[tokio::test]

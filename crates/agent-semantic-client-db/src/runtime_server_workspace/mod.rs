@@ -32,6 +32,11 @@ mod segment;
 mod selector_overlay;
 mod store;
 
+pub use agent_semantic_search::{
+    SearchGenerationSection, SearchGenerationSectionKind, SearchGenerationSectionRepresentation,
+    ValidatedSearchGenerationSegment, ValidatedSortedRecordTable, encode_search_generation_segment,
+    encode_sorted_record_table,
+};
 pub use client::{
     WorkspaceGenerationDataPlaneCacheReceipt, WorkspaceGenerationDataPlaneClient,
     WorkspaceGenerationDataPlaneOpen,
@@ -71,11 +76,6 @@ pub(crate) use search_generation_authority::{
 pub use search_index_projection::{
     WorkspaceSearchGenerationDataPlaneClient, encode_workspace_search_generation_segment,
     workspace_search_generation_segment_path,
-};
-pub use agent_semantic_search::{
-    SearchGenerationSection, SearchGenerationSectionKind, SearchGenerationSectionRepresentation,
-    ValidatedSearchGenerationSegment, encode_search_generation_segment,
-    ValidatedSortedRecordTable, encode_sorted_record_table,
 };
 pub use segment::{MappedWorkspaceGeneration, WorkspaceGenerationPublisher};
 pub use store::{

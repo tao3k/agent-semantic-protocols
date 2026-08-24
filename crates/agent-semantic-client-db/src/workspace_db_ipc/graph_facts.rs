@@ -2,13 +2,15 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Search-owned graph node identity selecting resident relation facts.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeGraphFactSource {
-    pub kind: String,
-    pub id: String,
+    pub kind: agent_semantic_search::EvidenceGraphNodeKind,
+    pub id: agent_semantic_search::EvidenceGraphNodeId,
 }
 
+/// Generation-bound graph relations read from the immutable Runtime projection.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeGraphFactsRead {

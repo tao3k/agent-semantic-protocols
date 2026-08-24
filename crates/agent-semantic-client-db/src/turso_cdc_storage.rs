@@ -4,13 +4,16 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+/// Schema identifier for one bounded CDC page receipt.
 pub const TURSO_CDC_PAGE_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.client-db.turso-cdc-page-receipt.v1";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Typed CDC configuration or backend failure.
 pub struct TursoCdcStorageError(String);
 
 impl TursoCdcStorageError {
+    /// Borrow the normalized error message.
     pub fn message(&self) -> &str {
         &self.0
     }
@@ -37,9 +40,11 @@ impl std::fmt::Display for TursoCdcStorageError {
 impl std::error::Error for TursoCdcStorageError {}
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Stable database change sequence identity.
 pub struct TursoCdcChangeId(i64);
 
 impl TursoCdcChangeId {
+    /// Return the database change sequence.
     pub const fn as_i64(self) -> i64 {
         self.0
     }
@@ -52,9 +57,11 @@ impl From<i64> for TursoCdcChangeId {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Bounded number of CDC records requested in one page.
 pub struct TursoCdcPageLimit(usize);
 
 impl TursoCdcPageLimit {
+    /// Return the requested page size.
     pub const fn as_usize(self) -> usize {
         self.0
     }
@@ -68,6 +75,7 @@ impl From<usize> for TursoCdcPageLimit {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
+/// Row-image detail captured by Turso CDC.
 pub enum TursoCdcCaptureMode {
     Id,
     Before,
@@ -88,6 +96,7 @@ impl TursoCdcCaptureMode {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Local database path, capture mode, and validated table owner.
 pub struct TursoCdcProfileConfig {
     pub path: PathBuf,
     pub mode: TursoCdcCaptureMode,
@@ -96,6 +105,7 @@ pub struct TursoCdcProfileConfig {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
+/// Normalized semantic kind of one CDC record.
 pub enum TursoCdcChangeKind {
     Delete,
     Update,
@@ -106,6 +116,7 @@ pub enum TursoCdcChangeKind {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// One normalized row or transaction change from Turso CDC.
 pub struct TursoCdcChange {
     pub change_id: i64,
     change_time: i64,
@@ -121,11 +132,13 @@ pub struct TursoCdcChange {
 
 impl TursoCdcChange {
     #[must_use]
+    /// Return the normalized change kind.
     pub const fn kind(&self) -> TursoCdcChangeKind {
         self.kind
     }
 
     #[must_use]
+    /// Return the affected table when the change is row-scoped.
     pub fn table_name(&self) -> Option<&str> {
         self.table_name.as_deref()
     }
@@ -133,6 +146,7 @@ impl TursoCdcChange {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Terminal receipt for one bounded, ordered CDC page.
 pub struct TursoCdcPageReceipt {
     schema_id: String,
     profile: String,
@@ -146,21 +160,25 @@ pub struct TursoCdcPageReceipt {
 
 impl TursoCdcPageReceipt {
     #[must_use]
+    /// Report whether another page is available.
     pub const fn has_more(&self) -> bool {
         self.has_more
     }
 
     #[must_use]
+    /// Return the continuation change identity when available.
     pub const fn next_change_id(&self) -> Option<i64> {
         self.next_change_id
     }
 
     #[must_use]
+    /// Borrow the normalized changes in this page.
     pub fn changes(&self) -> &[TursoCdcChange] {
         &self.changes
     }
 }
 
+/// Non-MVCC CDC owner with one long-lived Turso connection.
 pub struct TursoCdcStorage {
     _database: turso::Database,
     connection: turso::Connection,
@@ -169,6 +187,7 @@ pub struct TursoCdcStorage {
 }
 
 impl TursoCdcStorage {
+    /// Open and configure a CDC-enabled local database.
     pub async fn open(config: TursoCdcProfileConfig) -> Result<Self, String> {
         validate_table_name(&config.table_name)?;
         let path = config.path.to_string_lossy();
@@ -197,14 +216,17 @@ impl TursoCdcStorage {
         })
     }
 
+    /// Clone the CDC database connection handle.
     pub fn connection(&self) -> turso::Connection {
         self.connection.clone()
     }
 
+    /// Return the validated table owner.
     pub fn table_name(&self) -> &str {
         &self.table_name
     }
 
+    /// Read one bounded ordered CDC page after an optional change identity.
     pub async fn read_page(
         &self,
         after_change_id: Option<TursoCdcChangeId>,

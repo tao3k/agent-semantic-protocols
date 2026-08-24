@@ -177,19 +177,10 @@ pub async fn read_runtime_server_endpoint_owner_binding(
     Ok(Some(binding))
 }
 
-pub async fn publish_runtime_server_endpoint(
+fn runtime_endpoint_publication_payload(
     endpoint_path: &Path,
     endpoint: &RuntimeServerEndpoint,
-) -> Result<(), String> {
-    let parent = endpoint_path
-        .parent()
-        .ok_or_else(|| "Runtime Server endpoint path has no parent".to_owned())?;
-    tokio::fs::create_dir_all(parent).await.map_err(|error| {
-        format!(
-            "failed to create Runtime Server endpoint directory {}: {error}",
-            parent.display()
-        )
-    })?;
+) -> Result<(std::path::PathBuf, Vec<u8>), String> {
     let bytes = serde_json::to_vec(endpoint)
         .map_err(|error| format!("failed to encode Runtime Server endpoint: {error}"))?;
     let temporary_identity =
@@ -200,10 +191,17 @@ pub async fn publish_runtime_server_endpoint(
         endpoint.owner_epoch,
         &temporary_identity[..16]
     ));
-    let mut temporary_file = tokio::fs::OpenOptions::new()
+    Ok((temporary, bytes))
+}
+
+async fn create_secure_endpoint_temporary_file(
+    endpoint_path: &Path,
+    temporary: &Path,
+) -> Result<tokio::fs::File, String> {
+    let temporary_file = tokio::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(&temporary)
+        .open(temporary)
         .await
         .map_err(|error| {
             format!(
@@ -225,9 +223,18 @@ pub async fn publish_runtime_server_endpoint(
         .map_err(|error| {
             format!("failed to protect Runtime Server endpoint temporary file: {error}")
         })?;
-    if let Err(error) = tokio::io::AsyncWriteExt::write_all(&mut temporary_file, &bytes).await {
+    Ok(temporary_file)
+}
+
+async fn write_and_publish_runtime_endpoint(
+    endpoint_path: &Path,
+    temporary: &Path,
+    mut temporary_file: tokio::fs::File,
+    bytes: &[u8],
+) -> Result<(), String> {
+    if let Err(error) = tokio::io::AsyncWriteExt::write_all(&mut temporary_file, bytes).await {
         drop(temporary_file);
-        let _ = tokio::fs::remove_file(&temporary).await;
+        let _ = tokio::fs::remove_file(temporary).await;
         return Err(format!(
             "failed to write Runtime Server endpoint temporary file for {}: {error}",
             endpoint_path.display()
@@ -235,20 +242,38 @@ pub async fn publish_runtime_server_endpoint(
     }
     if let Err(error) = temporary_file.sync_all().await {
         drop(temporary_file);
-        let _ = tokio::fs::remove_file(&temporary).await;
+        let _ = tokio::fs::remove_file(temporary).await;
         return Err(format!(
             "failed to sync Runtime Server endpoint temporary file: {error}"
         ));
     }
     drop(temporary_file);
-    if let Err(error) = tokio::fs::rename(&temporary, endpoint_path).await {
-        let _ = tokio::fs::remove_file(&temporary).await;
+    if let Err(error) = tokio::fs::rename(temporary, endpoint_path).await {
+        let _ = tokio::fs::remove_file(temporary).await;
         return Err(format!(
             "failed to publish Runtime Server endpoint {}: {error}",
             endpoint_path.display()
         ));
     }
     Ok(())
+}
+
+pub async fn publish_runtime_server_endpoint(
+    endpoint_path: &Path,
+    endpoint: &RuntimeServerEndpoint,
+) -> Result<(), String> {
+    let parent = endpoint_path
+        .parent()
+        .ok_or_else(|| "Runtime Server endpoint path has no parent".to_owned())?;
+    tokio::fs::create_dir_all(parent).await.map_err(|error| {
+        format!(
+            "failed to create Runtime Server endpoint directory {}: {error}",
+            parent.display()
+        )
+    })?;
+    let (temporary, bytes) = runtime_endpoint_publication_payload(endpoint_path, endpoint)?;
+    let temporary_file = create_secure_endpoint_temporary_file(endpoint_path, &temporary).await?;
+    write_and_publish_runtime_endpoint(endpoint_path, &temporary, temporary_file, &bytes).await
 }
 
 pub async fn acquire_runtime_server_election(

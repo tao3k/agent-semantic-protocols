@@ -75,7 +75,6 @@ async fn reset_derived_generations_on_schema_contract_change(
         "asp_source_index_owner_v1",
         "asp_source_index_layout_v1",
         "asp_source_index_scope_v1",
-        "asp_exact_selector_projection_v1",
         "asp_source_index_blob_v1",
     ] {
         connection
@@ -228,29 +227,6 @@ pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
             token TEXT NOT NULL,
             owner_path TEXT NOT NULL,
             PRIMARY KEY (project_root, schema_id, schema_version, generation_id, token, owner_path)
-        )",
-        "CREATE TABLE IF NOT EXISTS asp_exact_selector_projection_v1 (
-            language_id TEXT NOT NULL,
-            workspace_root_digest TEXT NOT NULL,
-            owner_path TEXT NOT NULL,
-            owner_subtree_digest TEXT NOT NULL,
-            source_blob_digest TEXT NOT NULL,
-            parser_identity_digest TEXT NOT NULL,
-            query_pack_digest TEXT NOT NULL,
-            structural_selector TEXT NOT NULL,
-            projection_mode TEXT NOT NULL,
-            record_json TEXT NOT NULL,
-            PRIMARY KEY (
-                language_id,
-                workspace_root_digest,
-                owner_path,
-                owner_subtree_digest,
-                source_blob_digest,
-                parser_identity_digest,
-                query_pack_digest,
-                structural_selector,
-                projection_mode
-            )
         )",
     ] {
         execute_turso_statement(

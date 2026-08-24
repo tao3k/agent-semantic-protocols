@@ -19,8 +19,7 @@ pub(super) struct ResidentSearchOutcome {
     pub(super) candidate_count: usize,
     pub(super) selectors: Vec<String>,
     pub(super) owner_paths: Vec<String>,
-    pub(super) work_counters:
-        agent_semantic_client_db::workspace_db_ipc::RuntimeResidentReadWorkCounters,
+    pub(super) work_counters: agent_semantic_search_projection::ResidentSearchWorkCounters,
 }
 
 pub(super) fn resident_latency_distribution(
@@ -56,11 +55,34 @@ pub(super) fn require_resident_sample_budget(
     Ok(())
 }
 
-pub(super) fn require_zero_runtime_work(
+pub(super) fn require_zero_resident_search_work(
     case_id: &str,
     operation: &str,
     sample_index: usize,
-    counters: &agent_semantic_client_db::workspace_db_ipc::RuntimeResidentReadWorkCounters,
+    counters: &agent_semantic_search_projection::ResidentSearchWorkCounters,
+) -> Result<(), String> {
+    if counters.database_read_count != 0
+        || counters.filesystem_read_count != 0
+        || counters.provider_process_count != 0
+        || counters.socket_operation_count != 0
+    {
+        return Err(format!(
+            "Live Corpus warm resident search performed external work: case={case_id} operation={operation} sampleIndex={sample_index} databaseReads={} filesystemReads={} providerProcesses={} socketOperations={} schedulerTasks={}",
+            counters.database_read_count,
+            counters.filesystem_read_count,
+            counters.provider_process_count,
+            counters.socket_operation_count,
+            counters.scheduler_task_count,
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn require_zero_workspace_ipc_work(
+    case_id: &str,
+    operation: &str,
+    sample_index: usize,
+    counters: &agent_semantic_client_db::workspace_db_ipc::WorkspaceIpcResidentReadWorkCounters,
 ) -> Result<(), String> {
     if counters.database_opens != 0
         || counters.filesystem_reads != 0
@@ -68,11 +90,11 @@ pub(super) fn require_zero_runtime_work(
         || counters.control_socket_roundtrips != 0
     {
         return Err(format!(
-            "Live Corpus warm resident read performed external work: case={case_id} operation={operation} sampleIndex={sample_index} databaseOpens={} filesystemReads={} providerSpawns={} controlSocketRoundtrips={}",
+            "Live Corpus warm workspace IPC read performed external work: case={case_id} operation={operation} sampleIndex={sample_index} databaseOpens={} filesystemReads={} providerSpawns={} controlSocketRoundtrips={}",
             counters.database_opens,
             counters.filesystem_reads,
             counters.provider_spawns,
-            counters.control_socket_roundtrips
+            counters.control_socket_roundtrips,
         ));
     }
     Ok(())

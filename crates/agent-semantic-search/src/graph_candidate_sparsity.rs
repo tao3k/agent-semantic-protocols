@@ -22,7 +22,11 @@ pub fn select_sparse_graph_candidate_indices(
     let groups = candidate_indices_by_symbol(candidates);
     let max_depth = groups.iter().map(Vec::len).max().unwrap_or(0);
     (0..max_depth)
-        .flat_map(|depth| groups.iter().filter_map(move |group| group.get(depth).copied()))
+        .flat_map(|depth| {
+            groups
+                .iter()
+                .filter_map(move |group| group.get(depth).copied())
+        })
         .take(limit)
         .collect()
 }
