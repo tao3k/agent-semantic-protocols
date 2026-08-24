@@ -27,6 +27,22 @@
         "$ref": "#/$defs/commandProfile"
       }
     },
+    "profiles": {
+      "description": "Provider-owned source-extension policy projections used for registered-source classification.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/sourceProfile"
+      }
+    },
+    "providerRoutes": {
+      "description": "Build-generated provider facade identities derived from the canonical Provider Register. These identities admit parser-owned search/query routing without duplicating provider source policy.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/providerRouteIdentity"
+      }
+    },
     "capabilityPolicies": {
       "description": "Reusable predicates over SemanticCapability and subject facts. Rules compose predicates while retaining ownership of decisions and dispatch.",
       "type": "array",
@@ -115,6 +131,30 @@
             }
           }
         }
+      }
+    },
+    "sourceProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "providerId", "extensionAny"],
+      "properties": {
+        "languageId": { "type": "string", "minLength": 1 },
+        "providerId": { "type": "string", "minLength": 1 },
+        "extensionAny": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Za-z0-9]+$" }
+        }
+      }
+    },
+    "providerRouteIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "providerId"],
+      "properties": {
+        "languageId": { "type": "string", "minLength": 1 },
+        "providerId": { "type": "string", "minLength": 1 }
       }
     },
     "commandProfileRef": {
@@ -272,7 +312,7 @@
       }
     },
     "agentOrgArtifacts": {
-      "$ref": "semantic-agent-definitions.schema.json#/$defs/agentOrgArtifacts"
+      "$ref": "https://schemas.agent-semantic-protocols.dev/semantic-agent-definitions.schema.json#/$defs/agentOrgArtifacts"
     },
     "rule": {
       "type": "object",

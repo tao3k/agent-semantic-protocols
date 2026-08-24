@@ -1,5 +1,9 @@
 //! Qualify and atomically publish provider live-corpus artifacts.
 
+use agent_semantic_provider_protocol::{
+    ProviderRegisterOperation, ProviderRegisterRequest, ProviderRegisterResult,
+    ProviderRegistrationDocument,
+};
 use agent_semantic_runtime::{
     LiveCorpusArtifactIdentity, LiveCorpusGitCheckoutQualification,
     LiveCorpusLanguageExtensionEvidence, live_corpus_artifact_manifest, live_corpus_artifact_paths,
@@ -289,15 +293,12 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
     }
     emit_live_corpus_timing("git-status", &mut step_started);
 
-    let registration = agent_semantic_provider_protocol::builtin_provider_registrations()?
-        .into_iter()
-        .find(|registration| registration.language_id == corpus.language)
+    let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&state_home)?
         .ok_or_else(|| {
-            format!(
-                "no builtin provider registration for language {}",
-                corpus.language
-            )
+            "Live Corpus materialization requires a healthy Runtime Server".to_owned()
         })?;
+    let registration =
+        runtime_provider_registration(&endpoint.provider_plane_socket_path, corpus).await?;
     if registration.provider_id != corpus.provider_id {
         return Err(format!(
             "live corpus provider mismatch: lock={} registration={}",
@@ -315,10 +316,6 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
     emit_live_corpus_timing("provider-registration", &mut step_started);
     emit_live_corpus_timing("extension-evidence", &mut step_started);
 
-    let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&state_home)?
-        .ok_or_else(|| {
-            "Live Corpus materialization requires a healthy Runtime Server".to_owned()
-        })?;
     let workspace_identity =
         agent_semantic_client_core::state_core::ResolvedState::resolve(&source)?
             .workspace
@@ -408,6 +405,56 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+async fn runtime_provider_registration(
+    provider_plane_socket_path: &str,
+    corpus: &LiveCorpusLockEntry,
+) -> Result<ProviderRegistrationDocument, String> {
+    let request = ProviderRegisterRequest {
+        schema_id: agent_semantic_provider_protocol::PROVIDER_REGISTER_REQUEST_SCHEMA_ID.to_owned(),
+        schema_version: agent_semantic_provider_protocol::PROVIDER_REGISTER_SCHEMA_VERSION
+            .to_owned(),
+        expected_generation: None,
+        request: ProviderRegisterOperation::List,
+    };
+    let response = agent_semantic_provider_transport::grpc_session::call_runtime_provider_register(
+        provider_plane_socket_path,
+        &request,
+    )
+    .await?;
+    response.validate()?;
+    let snapshot = match response.result {
+        ProviderRegisterResult::Snapshot { snapshot } => snapshot,
+        ProviderRegisterResult::GenerationConflict { actual_generation } => {
+            return Err(format!(
+                "Runtime provider register list returned generation conflict: actualGeneration={actual_generation}"
+            ));
+        }
+        ProviderRegisterResult::Rejected {
+            reason_kind,
+            message,
+        } => {
+            return Err(format!(
+                "Runtime provider register list rejected: reasonKind={reason_kind} message={message}"
+            ));
+        }
+    };
+    snapshot.validate()?;
+    let generation = snapshot.generation;
+    let digest = snapshot.digest.clone();
+    snapshot
+        .providers
+        .into_iter()
+        .find(|provider| {
+            provider.language_id == corpus.language && provider.provider_id == corpus.provider_id
+        })
+        .ok_or_else(|| {
+            format!(
+                "Runtime provider register is missing live-corpus provider: language={} provider={} generation={} digest={}",
+                corpus.language, corpus.provider_id, generation, digest
+            )
+        })
 }
 
 fn emit_live_corpus_timing(step: &str, started: &mut std::time::Instant) {

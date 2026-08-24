@@ -86,12 +86,12 @@ pub(crate) async fn run_protocol_command_started(
 fn reject_agent_platform_json_output(args: &[String]) -> Result<(), String> {
     if !has_json_output_arg(args)
         || !agent_platform_session_active()
-        || explicit_non_agent_platform_output()
+        || explicit_no_agent_output()
         || is_agent_session_control_json_command(args)
     {
         return Ok(());
     }
-    Err("warning: --json output is disabled inside agent platform sessions because it is a debug/programmatic format. Normal ASP Explorer search uses compact output without `--json`. For explicit non-agent debug automation only, set ASP_NO_AGENT_PLATFORM=1 and filter the JSON with jq; this switch must not be used to bypass Hook policy."
+    Err("warning: --json output is disabled inside agent platform sessions because it is a debug/programmatic format. Normal ASP Explorer search uses compact output without `--json`. For explicit non-agent debug automation only, set ASP_NO_AGENT=1 and filter the JSON with jq. ASP_NO_AGENT is a complete Hook pass-through and must be used only for explicitly authorized recovery or automation."
         .to_string())
 }
 
@@ -114,8 +114,8 @@ fn agent_platform_session_active() -> bool {
         .any(|name| env_var_nonempty(name))
 }
 
-fn explicit_non_agent_platform_output() -> bool {
-    env_var_enabled("ASP_NO_AGENT_PLATFORM")
+fn explicit_no_agent_output() -> bool {
+    env_var_enabled("ASP_NO_AGENT")
 }
 
 fn env_var_nonempty(name: &str) -> bool {

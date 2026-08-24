@@ -33,15 +33,6 @@ async fn runtime_status_reports_daemon_owned_graph_turbo_resident() {
     .with_graph_turbo_resident_status(graph_turbo.clone());
     let server = tokio::spawn(server.serve());
 
-    call_runtime_server(
-        &endpoint,
-        RuntimeServerOperation::Reconcile,
-        endpoint.runtime_binary_identity.clone(),
-        "graph-turbo-prewarm".to_owned(),
-    )
-    .await
-    .expect("prewarm Graph Turbo resident status");
-
     let status = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Status,

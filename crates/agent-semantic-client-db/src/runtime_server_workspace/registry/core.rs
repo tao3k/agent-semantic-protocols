@@ -171,6 +171,10 @@ mod projection_slots;
 mod search_authority;
 
 impl RuntimeServerWorkspaceRegistry {
+    pub fn root(&self) -> &std::path::Path {
+        &self.root
+    }
+
     pub fn new(root: PathBuf) -> Result<Self, String> {
         let writer_capacity =
             crate::runtime_concurrency::RuntimeConcurrencyPlan::current().writer_queue_capacity();
@@ -330,6 +334,13 @@ impl RuntimeServerWorkspaceRegistry {
         &self,
     ) -> Result<Vec<crate::runtime_server_workspace::ResidentWorkspaceRetirementReceipt>, String>
     {
+        self.retire_inactive_inner().await
+    }
+
+    async fn retire_inactive_inner(
+        &self,
+    ) -> Result<Vec<crate::runtime_server_workspace::ResidentWorkspaceRetirementReceipt>, String>
+    {
         use crate::runtime_server_workspace::{
             RESIDENT_WORKSPACE_RETIREMENT_RECEIPT_SCHEMA_ID, ResidentWorkspaceRetirementReason,
             ResidentWorkspaceRetirementReceipt,
@@ -436,6 +447,10 @@ impl RuntimeServerWorkspaceRegistry {
     }
 
     pub async fn shutdown(&self) -> Result<RuntimeServerShutdownReceipt, String> {
+        self.shutdown_inner().await
+    }
+
+    async fn shutdown_inner(&self) -> Result<RuntimeServerShutdownReceipt, String> {
         let residents = self
             .entries
             .read()

@@ -14,17 +14,27 @@ fn every_registered_programming_language_exact_selector_enters_the_shared_exact_
             continue;
         }
 
-        let args = vec![
-            "query".to_string(),
-            "--selector".to_string(),
-            format!("{language_id}://src/example#item/function/example"),
-            "--projection".to_string(),
-            "source".to_string(),
-        ];
-        assert!(
-            is_provider_owned_structural_selector_query(language_id, &args),
-            "registered programming-language provider {language_id} escaped the shared exact route"
-        );
+        let selector = format!("{language_id}://src/example#item/function/example");
+        for args in [
+            vec![
+                "query".to_string(),
+                "--selector".to_string(),
+                selector.clone(),
+                "--projection".to_string(),
+                "source".to_string(),
+            ],
+            vec![
+                "query".to_string(),
+                selector.clone(),
+                "--projection".to_string(),
+                "source".to_string(),
+            ],
+        ] {
+            assert!(
+                is_provider_owned_structural_selector_query(language_id, &args),
+                "registered programming-language provider {language_id} escaped the shared exact route for {args:?}"
+            );
+        }
         covered += 1;
     }
 
@@ -32,4 +42,10 @@ fn every_registered_programming_language_exact_selector_enters_the_shared_exact_
         covered > 1,
         "expected multiple registered programming-language providers"
     );
+}
+
+#[test]
+fn non_selector_positional_query_does_not_enter_the_exact_route() {
+    let args = vec!["query".to_string(), "not-a-selector".to_string()];
+    assert!(!is_provider_owned_structural_selector_query("rust", &args));
 }

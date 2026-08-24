@@ -1,4 +1,9 @@
-use std::{collections::HashSet, future::Future, pin::Pin, sync::Arc};
+use std::{
+    collections::HashSet,
+    future::Future,
+    pin::Pin,
+    sync::{Arc, Mutex},
+};
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot};
@@ -154,6 +159,21 @@ pub trait WorkspaceProjectResolver: Send + Sync + 'static {
 pub struct WorkspaceProjectResolutionHandle {
     sender: mpsc::Sender<ActorRequest>,
     workspace_identity: WorkspaceResolutionIdentity,
+    lifecycle: Arc<WorkspaceProjectResolutionLifecycle>,
+}
+
+struct WorkspaceProjectResolutionLifecycle {
+    task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+}
+
+impl Drop for WorkspaceProjectResolutionLifecycle {
+    fn drop(&mut self) {
+        if let Ok(task) = self.task.get_mut()
+            && let Some(task) = task.take()
+        {
+            task.abort();
+        }
+    }
 }
 
 impl WorkspaceProjectResolutionHandle {
@@ -242,6 +262,21 @@ impl WorkspaceProjectResolutionHandle {
         self.request(ActorOperation::ObserveGeneration).await
     }
 
+    pub async fn shutdown(&self) -> Result<(), String> {
+        let _ = self.request(ActorOperation::Shutdown).await;
+        let task = self
+            .lifecycle
+            .task
+            .lock()
+            .map_err(|_| "workspace project-resolution lifecycle lock poisoned".to_owned())?
+            .take();
+        if let Some(task) = task {
+            task.await
+                .map_err(|error| format!("workspace project-resolution actor failed: {error}"))?;
+        }
+        Ok(())
+    }
+
     async fn request(&self, operation: ActorOperation) -> WorkspaceProjectResolutionReceipt {
         let (reply, receiver) = oneshot::channel();
         if self
@@ -266,13 +301,16 @@ pub fn spawn_workspace_project_resolution_actor(
         .writer_queue_capacity()
         .clamp(16, 256);
     let (sender, receiver) = mpsc::channel(queue_capacity);
-    tokio::spawn(run_actor(
+    let task = tokio::spawn(run_actor(
         WorkspaceProjectResolutionActor::new(workspace_identity.clone(), resolver),
         receiver,
     ));
     WorkspaceProjectResolutionHandle {
         sender,
         workspace_identity,
+        lifecycle: Arc::new(WorkspaceProjectResolutionLifecycle {
+            task: Mutex::new(Some(task)),
+        }),
     }
 }
 
@@ -363,6 +401,7 @@ impl WorkspaceProjectResolutionActor {
             }
             ActorOperation::ObserveGeneration => self.receipt(),
             ActorOperation::RefreshInputs(inputs) => self.refresh(inputs).await,
+            ActorOperation::Shutdown => self.receipt(),
         }
     }
 
@@ -412,6 +451,7 @@ enum ActorOperation {
     RefreshInputs(ProjectResolutionInputs),
     GetCurrentScope(String),
     ObserveGeneration,
+    Shutdown,
 }
 
 struct ActorRequest {
@@ -424,8 +464,17 @@ async fn run_actor(
     mut receiver: mpsc::Receiver<ActorRequest>,
 ) {
     while let Some(request) = receiver.recv().await {
-        let receipt = actor.apply(request.operation).await;
+        let shutdown = matches!(&request.operation, ActorOperation::Shutdown);
+        let receipt = if shutdown {
+            actor.receipt()
+        } else {
+            actor.apply(request.operation).await
+        };
         let _ = request.reply.send(receipt);
+        if shutdown {
+            receiver.close();
+            break;
+        }
     }
 }
 

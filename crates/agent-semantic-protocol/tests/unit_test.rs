@@ -42,10 +42,6 @@ mod hook_paths;
 mod install_provider_cli;
 #[path = "unit/paths_command.rs"]
 mod paths_command;
-#[path = "unit/provider_exact_diagnostic.rs"]
-mod provider_exact_diagnostic;
-#[path = "unit/provider_exact_query_args.rs"]
-mod provider_exact_query_args;
 #[path = "unit/command/provider_language_facade.rs"]
 mod provider_language_facade;
 #[path = "unit/provider_root_profile.rs"]
@@ -54,8 +50,6 @@ mod provider_root_profile;
 mod query_owner_freshness;
 #[path = "unit/rfc_search_frame.rs"]
 mod rfc_search_frame;
-#[path = "unit/runtime_provider_refresh.rs"]
-mod runtime_provider_refresh;
 #[path = "unit/runtime_server_query_purity.rs"]
 mod runtime_server_query_purity;
 #[path = "unit/runtime_server_restart_readiness.rs"]

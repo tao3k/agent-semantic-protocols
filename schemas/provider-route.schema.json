@@ -38,6 +38,9 @@
     "target": {
       "$ref": "#/$defs/target"
     },
+    "requestSchemaId": {
+      "$ref": "#/$defs/schemaId"
+    },
     "inputs": {
       "type": "array",
       "items": {

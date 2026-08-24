@@ -281,8 +281,20 @@ impl RuntimeServerWorkspaceRegistry {
         workspace_identity: impl Into<String>,
         materialization: crate::runtime_server_workspace::ValidatedWorkspaceCanonicalMaterialization,
     ) -> Result<WorkspaceRecoveryReceipt, String> {
-        let request_id = request_id.into();
-        let workspace_identity = workspace_identity.into();
+        self.admit_canonical_generation_resident_inner(
+            request_id.into(),
+            workspace_identity.into(),
+            materialization,
+        )
+        .await
+    }
+
+    async fn admit_canonical_generation_resident_inner(
+        &self,
+        request_id: String,
+        workspace_identity: String,
+        materialization: crate::runtime_server_workspace::ValidatedWorkspaceCanonicalMaterialization,
+    ) -> Result<WorkspaceRecoveryReceipt, String> {
         let project_root = std::path::Path::new(&materialization.as_materialization().project_root);
         let active = match self.ready_entry(&workspace_identity, project_root) {
             Ok(Some(entry)) => entry.current.borrow().clone(),
@@ -400,6 +412,22 @@ impl RuntimeServerWorkspaceRegistry {
     }
 
     pub async fn wait_canonical_generation_durable(
+        &self,
+        workspace_identity: &str,
+        project_root: &std::path::Path,
+        generation_digest: &str,
+        target_epoch: u64,
+    ) -> Result<(), String> {
+        self.wait_canonical_generation_durable_inner(
+            workspace_identity,
+            project_root,
+            generation_digest,
+            target_epoch,
+        )
+        .await
+    }
+
+    async fn wait_canonical_generation_durable_inner(
         &self,
         workspace_identity: &str,
         project_root: &std::path::Path,

@@ -176,6 +176,12 @@ pub struct WorkspaceGenerationDelta {
 
 impl WorkspaceGenerationDelta {
     pub fn validate(&self) -> Result<(), String> {
+        self.validate_identity_and_payload()?;
+        let tombstones = self.validate_tombstones()?;
+        self.validate_owner_tombstone_disjoint(&tombstones)
+    }
+
+    fn validate_identity_and_payload(&self) -> Result<(), String> {
         if self.schema_id != WORKSPACE_GENERATION_DELTA_SCHEMA_ID || self.schema_version != "1" {
             return Err("workspace generation delta schema identity mismatch".to_owned());
         }
@@ -186,12 +192,23 @@ impl WorkspaceGenerationDelta {
             return Err("workspace generation delta must contain at least one mutation".to_owned());
         }
         validate_owners(&self.owners)?;
+        Ok(())
+    }
+
+    fn validate_tombstones(&self) -> Result<std::collections::HashSet<&str>, String> {
         let mut tombstones = std::collections::HashSet::with_capacity(self.tombstones.len());
         for owner_path in &self.tombstones {
             if owner_path.trim().is_empty() || !tombstones.insert(owner_path.as_str()) {
                 return Err("workspace generation delta tombstones must be unique paths".to_owned());
             }
         }
+        Ok(tombstones)
+    }
+
+    fn validate_owner_tombstone_disjoint(
+        &self,
+        tombstones: &std::collections::HashSet<&str>,
+    ) -> Result<(), String> {
         if self
             .owners
             .iter()
@@ -481,6 +498,12 @@ impl WorkspaceMemoryGeneration {
 
     pub fn validate(&self) -> Result<(), String> {
         self.validate_evidence()?;
+        self.validate_selector_set_digest()?;
+        self.validate_memory_backend_digest()?;
+        self.validate_generation_digest()
+    }
+
+    fn validate_selector_set_digest(&self) -> Result<(), String> {
         let selector_set_digest = typed_digest(
             &self
                 .owners
@@ -491,6 +514,10 @@ impl WorkspaceMemoryGeneration {
         if self.selector_set_digest != selector_set_digest {
             return Err("workspace generation selector-set digest drift".to_owned());
         }
+        Ok(())
+    }
+
+    fn validate_memory_backend_digest(&self) -> Result<(), String> {
         let memory_backend_digest = typed_digest(&(
             &self.owners,
             &self.relations,
@@ -500,6 +527,10 @@ impl WorkspaceMemoryGeneration {
         if self.memory_backend_digest != memory_backend_digest {
             return Err("workspace generation MemoryBackend digest drift".to_owned());
         }
+        Ok(())
+    }
+
+    fn validate_generation_digest(&self) -> Result<(), String> {
         let generation_digest = typed_digest(&(
             &self.workspace_identity,
             &self.project_root,
@@ -568,6 +599,12 @@ pub struct WorkspaceGenerationSnapshot {
 
 impl WorkspaceGenerationSnapshot {
     pub fn validate(&self) -> Result<(), String> {
+        self.validate_snapshot_identity()?;
+        self.validate_snapshot_publication_state()?;
+        self.validate_snapshot_digests()
+    }
+
+    fn validate_snapshot_identity(&self) -> Result<(), String> {
         if self.schema_id != WORKSPACE_GENERATION_SCHEMA_ID || self.schema_version != "1" {
             return Err("workspace generation snapshot schema identity mismatch".to_owned());
         }
@@ -577,12 +614,20 @@ impl WorkspaceGenerationSnapshot {
         {
             return Err("workspace generation snapshot identity is incomplete".to_owned());
         }
+        Ok(())
+    }
+
+    fn validate_snapshot_publication_state(&self) -> Result<(), String> {
         if self.state != WorkspaceGenerationState::Ready || self.root_depth != [1, 0] {
             return Err("workspace generation snapshot is not publishable".to_owned());
         }
         if self.owner_count > self.leaf_count {
             return Err("workspace generation snapshot owner count exceeds leaf count".to_owned());
         }
+        Ok(())
+    }
+
+    fn validate_snapshot_digests(&self) -> Result<(), String> {
         validate_digest("generationDigest", &self.generation_digest)?;
         validate_digest("providerSchemaDigest", &self.provider_schema_digest)?;
         validate_digest("sourceRootDigest", &self.source_root_digest)?;

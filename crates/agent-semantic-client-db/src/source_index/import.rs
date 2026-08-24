@@ -76,19 +76,12 @@ pub fn source_index_import_with_file_hashes(
     request: ClientDbSourceIndexImportAssemblyRequest,
     file_hashes: Vec<ClientCacheFileHash>,
 ) -> Result<ClientDbSourceIndexImport, String> {
-    let cold_assembly_started = std::time::Instant::now();
     let file_hash_by_path = file_hashes
         .iter()
         .map(|file_hash| (file_hash.path.as_str(), file_hash))
         .collect::<BTreeMap<_, _>>();
     let mut import_files = Vec::with_capacity(request.files.len());
-    for (file_index, file) in request.files.iter().enumerate() {
-        ensure_source_index_cold_assembly_budget(
-            cold_assembly_started,
-            "file-read",
-            file_index,
-            request.files.len(),
-        )?;
+    for file in &request.files {
         let relative_path = source_index_relative_path(&request.project_root, &file.path);
         let Some(file_hash) = file_hash_by_path.get(relative_path.as_str()) else {
             return Err(format!("missing source index hash for {relative_path}"));
@@ -113,35 +106,34 @@ pub fn source_index_import_with_file_hashes(
             relations: file.relations.clone(),
         });
     }
-    build_source_index_import_from_started(
-        ClientDbSourceIndexImportRequest {
-            generation_id: request.generation_id,
-            project_root: request.project_root,
-            schema_id: request.schema_id,
-            schema_version: request.schema_version,
-            selector_source: request.selector_source,
-            file_hashes,
-            source_blobs: request.source_blobs,
-            files: import_files,
-        },
-        cold_assembly_started,
-    )
+    build_source_index_import_inner(ClientDbSourceIndexImportRequest {
+        generation_id: request.generation_id,
+        project_root: request.project_root,
+        schema_id: request.schema_id,
+        schema_version: request.schema_version,
+        selector_source: request.selector_source,
+        file_hashes,
+        source_blobs: request.source_blobs,
+        files: import_files,
+    })
 }
 
 /// Build the DB-owned source-index import packet from collected file facts.
 pub fn build_source_index_import(
     request: ClientDbSourceIndexImportRequest,
 ) -> Result<ClientDbSourceIndexImport, String> {
-    build_source_index_import_from_started(request, std::time::Instant::now())
+    build_source_index_import_inner(request)
 }
 
-const SOURCE_INDEX_COLD_ASSEMBLY_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
-
-fn build_source_index_import_from_started(
+fn build_source_index_import_inner(
     request: ClientDbSourceIndexImportRequest,
-    cold_assembly_started: std::time::Instant,
 ) -> Result<ClientDbSourceIndexImport, String> {
     let mut canonical_file_hashes = request.file_hashes.clone();
+    let file_hash_index_by_path = canonical_file_hashes
+        .iter()
+        .enumerate()
+        .map(|(index, file_hash)| (file_hash.path.clone(), index))
+        .collect::<BTreeMap<_, _>>();
     for file in &request.files {
         let owner_path = ClientDbSourceIndexPath::from(file.relative_path.clone());
         let source = request.source_blobs.get(&owner_path).ok_or_else(|| {
@@ -150,33 +142,24 @@ fn build_source_index_import_from_started(
                 owner_path.as_str()
             )
         })?;
-        let file_hash = canonical_file_hashes
-            .iter_mut()
-            .find(|file_hash| file_hash.path == file.relative_path)
+        let file_hash_index = file_hash_index_by_path
+            .get(file.relative_path.as_str())
             .ok_or_else(|| format!("missing source index hash for {}", file.relative_path))?;
+        let file_hash = &mut canonical_file_hashes[*file_hash_index];
         file_hash.sha256 = format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(source));
         file_hash.byte_len = source.len() as u64;
     }
-    let file_hash_by_path = canonical_file_hashes
-        .iter()
-        .map(|file_hash| (file_hash.path.as_str(), file_hash))
-        .collect::<BTreeMap<_, _>>();
     let mut owners = Vec::with_capacity(request.files.len());
     let mut selectors = Vec::with_capacity(request.files.len());
     let mut relations = Vec::new();
-    for (file_index, file) in request.files.iter().enumerate() {
-        ensure_source_index_cold_assembly_budget(
-            cold_assembly_started,
-            "owner-selector-assembly",
-            file_index,
-            request.files.len(),
-        )?;
-        let Some(file_hash) = file_hash_by_path.get(file.relative_path.as_str()) else {
+    for file in &request.files {
+        let Some(file_hash_index) = file_hash_index_by_path.get(file.relative_path.as_str()) else {
             return Err(format!(
                 "missing source index hash for {}",
                 file.relative_path
             ));
         };
+        let file_hash = &canonical_file_hashes[*file_hash_index];
         let relative_path = file_hash.path.clone();
         let line_count = source_line_count(&file.text);
         let query_keys = source_query_keys(&relative_path, &file.text);
@@ -266,24 +249,6 @@ fn relation_endpoints_are_selector_bound(
         }
         false
     })
-}
-
-fn ensure_source_index_cold_assembly_budget(
-    started: std::time::Instant,
-    stage: &str,
-    processed_files: usize,
-    total_files: usize,
-) -> Result<(), String> {
-    let elapsed = started.elapsed();
-    if elapsed < SOURCE_INDEX_COLD_ASSEMBLY_BUDGET {
-        return Ok(());
-    }
-
-    Err(format!(
-        "source-index cold assembly budget exhausted: stage={stage} budgetMs={} elapsedMs={} processedFiles={processed_files} totalFiles={total_files}",
-        SOURCE_INDEX_COLD_ASSEMBLY_BUDGET.as_millis(),
-        elapsed.as_millis(),
-    ))
 }
 
 /// Return the slash-normalized project-relative path used by source-index rows.

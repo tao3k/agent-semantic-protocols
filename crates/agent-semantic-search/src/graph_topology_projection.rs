@@ -134,9 +134,18 @@ pub fn graph_project_topology_projection(
     request: GraphTopologyProjectionRequest<'_>,
 ) -> GraphTopologyProjection {
     let mut projection = GraphTopologyProjection::default();
-    let language_id = request.language_id;
-    let workspace_root = request.workspace_root;
-    let candidates = request.candidates;
+    let (workspace_id, provider_id) =
+        append_workspace_and_provider_root(&mut projection, &request.language_id);
+    let submodule_paths = admitted_submodule_paths(&request);
+    append_submodule_topology(&mut projection, &workspace_id, &submodule_paths);
+    append_language_project_topology(&mut projection, &provider_id, &submodule_paths, &request);
+    projection
+}
+
+fn append_workspace_and_provider_root(
+    projection: &mut GraphTopologyProjection,
+    language_id: &GraphTopologyLanguageId,
+) -> (String, String) {
     let workspace_id = stable_graph_node_id("workspace", ".");
     projection.nodes.push(json!({
         "id": workspace_id.clone(),
@@ -159,25 +168,31 @@ pub fn graph_project_topology_projection(
         "path": ".",
         "confidence": "exact",
         "fields": {
-            "languageId": language_id,
+            "languageId": language_id.as_str(),
         },
     }));
     projection.edges.push(json!({
-        "source": workspace_id,
-        "target": provider_id,
+        "source": workspace_id.clone(),
+        "target": provider_id.clone(),
         "relation": "has_provider_root",
     }));
+    (workspace_id, provider_id)
+}
 
-    let submodule_paths = if request.include_repository_discovery {
-        graph_project_submodule_paths(workspace_root)
+fn admitted_submodule_paths(request: &GraphTopologyProjectionRequest<'_>) -> Vec<String> {
+    if request.include_repository_discovery {
+        graph_project_submodule_paths(request.workspace_root)
     } else {
         Vec::new()
-    };
-    let language_projects = request
-        .project_resolutions
-        .iter()
-        .filter(|admitted| admitted.resolution.language_id == language_id.as_str());
-    for submodule_path in &submodule_paths {
+    }
+}
+
+fn append_submodule_topology(
+    projection: &mut GraphTopologyProjection,
+    workspace_id: &str,
+    submodule_paths: &[String],
+) {
+    for submodule_path in submodule_paths {
         let submodule_id = stable_graph_node_id("submodule", submodule_path);
         projection.nodes.push(json!({
             "id": submodule_id.clone(),
@@ -197,18 +212,28 @@ pub fn graph_project_topology_projection(
             "relation": "has_submodule",
         }));
     }
+}
 
-    for admitted in language_projects {
+fn append_language_project_topology(
+    projection: &mut GraphTopologyProjection,
+    provider_id: &str,
+    submodule_paths: &[String],
+    request: &GraphTopologyProjectionRequest<'_>,
+) {
+    for admitted in request
+        .project_resolutions
+        .iter()
+        .filter(|admitted| admitted.resolution.language_id == request.language_id.as_str())
+    {
         append_admitted_project_resolution(
-            &mut projection,
-            &provider_id,
-            &language_id,
+            projection,
+            provider_id,
+            &request.language_id,
             admitted,
-            candidates,
-            &submodule_paths,
+            request.candidates,
+            submodule_paths,
         );
     }
-    projection
 }
 
 pub fn graph_owner_missing_topology_projection(
@@ -655,12 +680,11 @@ pub fn graph_submodule_owner_edges(workspace_root: &Path, owners: &[String]) -> 
     if submodule_paths.is_empty() {
         return Vec::new();
     }
+    let submodule_index = submodule_paths.iter().map(String::as_str).collect::<BTreeSet<_>>();
     let mut seen = BTreeSet::new();
     let mut edges = Vec::new();
     for owner in owners {
-        let Some(submodule_path) = submodule_paths
-            .iter()
-            .find(|submodule_path| graph_path_is_under(owner, submodule_path))
+        let Some(submodule_path) = deepest_indexed_owner_prefix(owner, &submodule_index)
         else {
             continue;
         };
@@ -674,6 +698,23 @@ pub fn graph_submodule_owner_edges(workspace_root: &Path, owners: &[String]) -> 
         }
     }
     edges
+}
+
+fn deepest_indexed_owner_prefix<'a>(
+    owner: &str,
+    submodule_index: &BTreeSet<&'a str>,
+) -> Option<&'a str> {
+    let mut prefix_end = owner.len();
+    loop {
+        let prefix = &owner[..prefix_end];
+        if let Some(indexed) = submodule_index.get(prefix) {
+            return Some(*indexed);
+        }
+        let Some(separator) = prefix.rfind('/') else {
+            return None;
+        };
+        prefix_end = separator;
+    }
 }
 
 pub fn graph_project_submodule_paths(workspace_root: &Path) -> Vec<String> {

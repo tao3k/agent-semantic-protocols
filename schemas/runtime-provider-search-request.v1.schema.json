@@ -15,7 +15,7 @@
   ],
   "properties": {
     "schemaId": {
-      "const": "agent.semantic-protocols.runtime-provider-search-request.v1"
+      "const": "agent.semantic-protocols.runtime-provider-search-request"
     },
     "schemaVersion": { "const": "1" },
     "operationId": { "type": "string", "minLength": 1 },

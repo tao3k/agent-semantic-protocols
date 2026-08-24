@@ -4,79 +4,18 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
+use agent_semantic_provider_protocol::{
+    ProviderWorkspaceInstallDescriptor, WorkspaceLaunchDescriptor,
+    WorkspaceRuntimeDependencyDescriptor,
+};
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessSpec, ProviderProcessSupervisor, StdinMode,
     provider_process_limits_from_environment,
 };
-use serde::Deserialize;
 
 #[path = "install_provider_workspace_receipt.rs"]
 mod receipt;
 pub(super) use receipt::record_registered_provider_workspace_install;
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct ProviderWorkspaceInstallDescriptor {
-    #[serde(rename = "$schema")]
-    schema: String,
-    schema_id: String,
-    schema_version: String,
-    schema_authority: String,
-    language_id: String,
-    provider_id: String,
-    binary: String,
-    provider_registration: String,
-    schema_bundle_receipt: String,
-    workspace_artifact: WorkspaceArtifactDescriptor,
-    dependency_materialization: Option<WorkspaceCommandDescriptor>,
-    workspace_build: WorkspaceBuildDescriptor,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct WorkspaceArtifactDescriptor {
-    root: String,
-    entrypoint: String,
-    launch: Option<WorkspaceLaunchDescriptor>,
-    #[serde(default)]
-    runtime_dependencies: Vec<WorkspaceRuntimeDependencyDescriptor>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct WorkspaceRuntimeDependencyDescriptor {
-    source: String,
-    target: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct WorkspaceLaunchDescriptor {
-    program: String,
-    args: Vec<String>,
-    program_relative_to_artifact: bool,
-    args_relative_to_artifact: bool,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct WorkspaceBuildDescriptor {
-    program: String,
-    args: Vec<String>,
-    working_directory: String,
-    source_snapshot_anchors: Vec<String>,
-    derived_paths: Vec<String>,
-    env: BTreeMap<String, String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct WorkspaceCommandDescriptor {
-    program: String,
-    args: Vec<String>,
-    working_directory: String,
-    env: BTreeMap<String, String>,
-}
 
 pub(super) struct BuiltProviderWorkspace {
     source_root: PathBuf,
@@ -85,6 +24,7 @@ pub(super) struct BuiltProviderWorkspace {
         agent_semantic_provider_protocol::ProviderRegistrationDocument,
     launch: Option<WorkspaceLaunchDescriptor>,
     runtime_dependencies: Vec<BuiltWorkspaceRuntimeDependency>,
+    _build_guard: agent_semantic_runtime::provider_workspace_artifact::ProviderWorkspaceBuildGuard,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -134,7 +74,12 @@ pub(super) async fn build_registered_provider_workspace(
             .map_err(|error| format!("read {}: {error}", descriptor_path.display()))?,
     )
     .map_err(|error| format!("decode {}: {error}", descriptor_path.display()))?;
-    validate_descriptor(&descriptor, registration)?;
+    descriptor.validate()?;
+    descriptor.validate_registration_identity(
+        &registration.language_id,
+        &registration.provider_id,
+        &registration.binary,
+    )?;
 
     let descriptor_parent = descriptor_path.parent().ok_or_else(|| {
         format!(
@@ -142,6 +87,9 @@ pub(super) async fn build_registered_provider_workspace(
             descriptor_path.display()
         )
     })?;
+    agent_semantic_schema_manager::SchemaManager::new(&dev_root)
+        .materialize(std::slice::from_ref(&descriptor.language_id))
+        .await?;
     let schema_bundle_reference = Path::new(&descriptor.schema_bundle_receipt);
     if schema_bundle_reference.is_absolute()
         || schema_bundle_reference.as_os_str().is_empty()
@@ -174,6 +122,28 @@ pub(super) async fn build_registered_provider_workspace(
         return Err(format!(
             "schema bundle receipt language drift: expected={} actual={}",
             descriptor.language_id, schema_bundle_receipt.language_id
+        ));
+    }
+    let descriptor_schema_path = descriptor_parent
+        .join(&descriptor.schema)
+        .canonicalize()
+        .map_err(|error| format!("resolve provider workspace schema {}: {error}", descriptor.schema))?;
+    ensure_within(
+        &descriptor_schema_path,
+        &provider_source_root,
+        "provider workspace schema",
+    )?;
+    let receipted_schema_path = schema_bundle_receipt_path
+        .parent()
+        .expect("schema bundle receipt has a parent")
+        .join(agent_semantic_provider_protocol::PROVIDER_WORKSPACE_INSTALL_SCHEMA_FILE)
+        .canonicalize()
+        .map_err(|error| format!("resolve receipted provider workspace schema: {error}"))?;
+    if descriptor_schema_path != receipted_schema_path {
+        return Err(format!(
+            "provider workspace schema is outside the receipted bundle: schema={} receipt={}",
+            descriptor_schema_path.display(),
+            schema_bundle_receipt_path.display()
         ));
     }
 
@@ -256,6 +226,14 @@ pub(super) async fn build_registered_provider_workspace(
             artifact_path.display()
         ));
     }
+    // One workspace builder owns the mutable provider output until the complete
+    // tree has been copied into the immutable CAS and the stable launcher has
+    // been atomically published. This is a cross-process lock; no provider
+    // script may race another installer on the declared derived path.
+    let build_guard =
+        agent_semantic_runtime::provider_workspace_artifact::acquire_provider_workspace_build_guard(
+            &artifact_path,
+        )?;
     if let Some(materialization) = descriptor.dependency_materialization.as_ref() {
         let materialization_cwd = repository_path(
             &dev_root,
@@ -271,6 +249,8 @@ pub(super) async fn build_registered_provider_workspace(
             &materialization.args,
             materialization_cwd,
             &materialization.env,
+            &materialization.remove_env,
+            &materialization.remove_env_prefixes,
         )
         .await?;
     }
@@ -282,6 +262,8 @@ pub(super) async fn build_registered_provider_workspace(
         &descriptor.workspace_build.args,
         working_directory,
         &descriptor.workspace_build.env,
+        &descriptor.workspace_build.remove_env,
+        &descriptor.workspace_build.remove_env_prefixes,
     )
     .await?;
     let source_root = artifact_path
@@ -312,6 +294,7 @@ pub(super) async fn build_registered_provider_workspace(
         provider_registration,
         launch: descriptor.workspace_artifact.launch,
         runtime_dependencies,
+        _build_guard: build_guard,
     })
 }
 
@@ -401,6 +384,8 @@ async fn run_workspace_command(
     args: &[String],
     cwd: PathBuf,
     environment: &BTreeMap<String, String>,
+    remove_environment: &[String],
+    remove_environment_prefixes: &[String],
 ) -> Result<(), String> {
     let env = environment
         .iter()
@@ -419,6 +404,8 @@ async fn run_workspace_command(
             args: args.to_vec(),
             cwd,
             env,
+            remove_env: remove_environment.iter().cloned().collect(),
+            remove_env_prefixes: remove_environment_prefixes.iter().cloned().collect(),
             stdin: StdinMode::Inherit,
             stdout: OutputMode::Tee,
             stderr: OutputMode::Tee,
@@ -617,48 +604,6 @@ fn materialize_runtime_dependencies(
                 target.display()
             )
         })?;
-    }
-    Ok(())
-}
-
-fn validate_descriptor(
-    descriptor: &ProviderWorkspaceInstallDescriptor,
-    registration: &super::super::provider_install_registry::ProviderInstallRegistration,
-) -> Result<(), String> {
-    if descriptor.schema != "../schemas/provider-workspace-install.schema.json"
-        || descriptor.schema_id != "agent.semantic-protocols.provider-workspace-install"
-        || descriptor.schema_version != "1"
-        || descriptor.schema_authority
-            != "https://tao3k.github.io/agent-semantic-protocols/schemas/"
-    {
-        return Err(
-            "provider workspace install must reference the canonical local schema with schema version 1"
-                .to_string(),
-        );
-    }
-    if descriptor.language_id != registration.language_id
-        || descriptor.provider_id != registration.provider_id
-        || descriptor.binary != registration.binary
-    {
-        return Err(format!(
-            "provider workspace install identity drift: language={} provider={} binary={} expectedLanguage={} expectedProvider={} expectedBinary={}",
-            descriptor.language_id,
-            descriptor.provider_id,
-            descriptor.binary,
-            registration.language_id,
-            registration.provider_id,
-            registration.binary
-        ));
-    }
-    if descriptor
-        .workspace_build
-        .source_snapshot_anchors
-        .is_empty()
-        || descriptor.workspace_build.derived_paths.is_empty()
-    {
-        return Err(
-            "provider workspace build requires source anchors and derived paths".to_string(),
-        );
     }
     Ok(())
 }

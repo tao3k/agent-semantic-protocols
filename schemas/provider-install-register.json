@@ -47,6 +47,24 @@
       "workspaceInstall": "provider/asp-provider-workspace-install.json",
       "buildBinding": "provider-workspace-install",
       "artifactDomain": "checkout"
+    },
+    {
+      "languageId": "org",
+      "providerId": "asp-org",
+      "binary": "asp-org",
+      "sourceRoot": "languages/orgize",
+      "workspaceInstall": "provider/asp-org-provider-workspace-install.json",
+      "buildBinding": "provider-workspace-install",
+      "artifactDomain": "checkout"
+    },
+    {
+      "languageId": "md",
+      "providerId": "asp-md",
+      "binary": "asp-md",
+      "sourceRoot": "languages/orgize",
+      "workspaceInstall": "provider/asp-md-provider-workspace-install.json",
+      "buildBinding": "provider-workspace-install",
+      "artifactDomain": "checkout"
     }
   ]
 }

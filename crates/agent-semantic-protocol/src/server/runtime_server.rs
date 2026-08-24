@@ -7,10 +7,12 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-#[path = "runtime_provider_refresh.rs"]
-mod runtime_provider_refresh;
 #[path = "runtime_server_daemon.rs"]
 mod runtime_server_daemon;
+#[path = "runtime_server_identity_handoff.rs"]
+mod runtime_server_identity_handoff;
+#[path = "runtime_server_search_service.rs"]
+mod runtime_server_search_service;
 #[path = "runtime_server_stop.rs"]
 mod runtime_server_stop;
 #[path = "runtime_server_telemetry_command.rs"]
@@ -81,15 +83,6 @@ pub(crate) async fn runtime_server_workspace_session_for_admission_async(
     .await
 }
 
-pub(crate) async fn runtime_server_stateless_search_session_async(
-    project_root: &Path,
-) -> Result<agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession, String> {
-    agent_semantic_client_db::workspace_db_ipc::connect_runtime_server_workspace_session(
-        project_root,
-    )
-    .await
-}
-
 pub(super) fn runtime_server_query_workspace_scope(
     project_root: &Path,
 ) -> Result<(String, PathBuf), String> {
@@ -124,27 +117,6 @@ pub(crate) async fn run_runtime_server_command(args: &[String]) -> Result<(), St
     }
 }
 
-pub(crate) async fn runtime_server_workspace_exact_projection_async(
-    project_root: &Path,
-    language_id: agent_semantic_client_core::LanguageId,
-    projection_kind: &str,
-    structural_selector: &str,
-) -> Result<agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead, String>
-{
-    let projection_kind =
-        agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind::try_from(
-            projection_kind,
-        )
-        .map_err(|error| format!("decode exact projection kind: {error}"))?;
-    super::runtime_server_generation_data_plane::runtime_server_workspace_exact_projection_async(
-        project_root,
-        language_id,
-        projection_kind,
-        structural_selector,
-    )
-    .await
-}
-
 async fn run_control_status() -> Result<(), String> {
     let state_home = state_home()?;
     let endpoint_path =
@@ -166,22 +138,7 @@ async fn run_control_status() -> Result<(), String> {
 }
 
 pub(super) async fn await_healthy_runtime_server_after_spawn() -> Result<(), String> {
-    const STARTUP_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
-    tokio::time::timeout(
-        STARTUP_DEADLINE,
-        await_healthy_runtime_server_after_spawn_inner(),
-    )
-    .await
-    .map_err(|_| {
-        serde_json::json!({
-            "schemaId": "agent.semantic-protocols.runtime-server-readiness",
-            "schemaVersion": "1",
-            "state": "failed",
-            "reasonKind": "runtime-server-readiness-deadline-exceeded",
-            "deadlineMillis": STARTUP_DEADLINE.as_millis(),
-        })
-        .to_string()
-    })?
+    await_healthy_runtime_server_after_spawn_inner().await
 }
 
 async fn await_healthy_runtime_server_after_spawn_inner() -> Result<(), String> {
@@ -189,8 +146,14 @@ async fn await_healthy_runtime_server_after_spawn_inner() -> Result<(), String> 
 
     let state_home = state_home()?;
     loop {
-        if let Some(exit) =
-            agent_semantic_client_db::runtime_server_lifecycle::read_latest_owner_exit(&state_home)
+        if let Some(owner) =
+            agent_semantic_client_db::runtime_server_lifecycle::read_owner_receipt(&state_home)
+                .await?
+            && let Some(exit) =
+                agent_semantic_client_db::runtime_server_lifecycle::read_owner_exit_for(
+                    &state_home,
+                    u64::from(owner.process_id),
+                )
                 .await?
         {
             return Err(serde_json::json!({
@@ -204,11 +167,66 @@ async fn await_healthy_runtime_server_after_spawn_inner() -> Result<(), String> 
             })
             .to_string());
         }
+        let endpoint_path =
+            agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(
+                &state_home,
+            )
+            .await?;
+        if let Ok(endpoint) = read_supervisor_endpoint(&endpoint_path).await {
+            if let Some(exit) =
+                agent_semantic_client_db::runtime_server_lifecycle::read_owner_exit_for(
+                    &state_home,
+                    endpoint.owner_epoch,
+                )
+                .await?
+            {
+                return Err(serde_json::json!({
+                    "schemaId": "agent.semantic-protocols.runtime-server-daemon-exit",
+                    "schemaVersion": "1",
+                    "state": "failed",
+                    "ownerEpoch": exit.owner_epoch,
+                    "cleanDrain": exit.clean_drain,
+                    "errors": exit.errors,
+                    "reasonKind": "runtime-server-daemon-terminal-before-readiness",
+                })
+                .to_string());
+            }
+        }
         let last_state = match observe_runtime_server_readiness(&state_home).await {
             Ok(receipt)
                 if receipt.state
                     == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy =>
             {
+                let endpoint_path = agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(
+                    &state_home,
+                )
+                .await?;
+                let endpoint = read_supervisor_endpoint(&endpoint_path).await?;
+                let active_path = tokio::fs::canonicalize(
+                    state_home.join("runtime/profiles/asp/active"),
+                )
+                .await
+                .map_err(|error| format!("failed to resolve active Runtime artifact: {error}"))?;
+                let active_digest = agent_semantic_content_identity::
+                    blake3_digest_from_canonical_artifact_path(&active_path)
+                    .ok_or_else(|| "active Runtime artifact is not digest-addressed".to_owned())?;
+                if endpoint.runtime_binary_identity.value() != active_digest {
+                    return Err(serde_json::json!({
+                        "schemaId": "agent.semantic-protocols.runtime-server-endpoint",
+                        "schemaVersion": "1",
+                        "state": "failed",
+                        "reasonKind": "runtime-artifact-digest-mismatch",
+                        "repair": "asp install binary",
+                    })
+                    .to_string());
+                }
+                agent_semantic_runtime::runtime_artifact_catalog::
+                    promote_active_runtime_artifact_to_healthy(
+                        &state_home,
+                        "asp",
+                        &active_digest,
+                    )
+                    .await?;
                 return Ok(());
             }
             Ok(receipt) => receipt.reason.unwrap_or_else(|| format!("{:?}", receipt.state)),
@@ -304,10 +322,10 @@ async fn restart_runtime_server_at(
     super::runtime_server_wire_adapter::ensure_runtime_server(state_home, true).await
 }
 
-pub(crate) async fn reconcile_runtime_server_for_healthcheck(
+pub(crate) async fn ensure_runtime_server_for_healthcheck(
     state_home: &Path,
 ) -> Result<RuntimeServerControlReceipt, String> {
-    super::runtime_server_wire_adapter::reconcile_healthy_runtime_server(state_home).await
+    super::runtime_server_wire_adapter::ensure_healthy_runtime_server(state_home).await
 }
 
 pub(crate) async fn observe_agent_facing_runtime_server(
@@ -417,9 +435,12 @@ async fn request_identity(seed: &str) -> Result<String, String> {
 
 async fn daemon_identity() -> Result<(u64, String), String> {
     let entropy = os_entropy().await?;
-    let mut epoch_bytes = [0_u8; 8];
-    epoch_bytes.copy_from_slice(&entropy[..8]);
-    let owner_epoch = u64::from_le_bytes(epoch_bytes).max(1);
+    // The supervisor publishes the child PID before the daemon can publish an
+    // endpoint.  Reuse that immutable process identity as the owner epoch so a
+    // pre-endpoint daemon failure has the same terminal key as the spawn
+    // receipt.  The supervisor removes stale terminal receipts before every
+    // spawn, so PID reuse cannot admit an earlier owner.
+    let owner_epoch = u64::from(std::process::id());
     Ok((owner_epoch, format!("{:x}", Sha256::digest(entropy))))
 }
 
@@ -434,8 +455,8 @@ async fn os_entropy() -> Result<[u8; 32], String> {
         .map_err(|error| format!("failed to read OS entropy: {error}"))?;
     Ok(entropy)
 }
-use super::runtime_server_endpoint_io::{
-    cleanup_endpoint, read_endpoint, read_supervisor_endpoint, remove_stale_socket,
+use agent_semantic_client_db::runtime_server_control::{
+    cleanup_endpoint, read_endpoint, read_supervisor_endpoint,
 };
 
 #[cfg(test)]

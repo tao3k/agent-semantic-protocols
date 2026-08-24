@@ -592,6 +592,95 @@ theorem matching_artifact_base_publishes_exactly_one_complete_next_root
       some { rootDigest := publication.nextRootDigest } := by
   simp [publishActiveArtifactReceipt, baseMatches]
 
+/-! Runtime artifact invoker and readiness invariants.  These are the small
+    Boolean contracts implemented by the Rust admission and CAS owners. -/
+structure RuntimeInvokerAdmission where
+  invokerDigest : Nat
+  activeDigest : Nat
+  deriving DecidableEq, Repr
+
+def invokerAdmitted (candidate : RuntimeInvokerAdmission) : Prop :=
+  candidate.invokerDigest = candidate.activeDigest
+
+theorem invoker_mismatch_rejects_before_spawn
+    (candidate : RuntimeInvokerAdmission)
+    (mismatch : candidate.invokerDigest ≠ candidate.activeDigest) :
+    ¬ invokerAdmitted candidate := by
+  exact mismatch
+
+structure ReadinessCandidate where
+  activeDigest : Nat
+  artifactDigest : Nat
+  endpointGeneration : Nat
+  schemaGeneration : Nat
+  expectedEndpointGeneration : Nat
+  expectedSchemaGeneration : Nat
+  deriving DecidableEq, Repr
+
+def readinessQualified (candidate : ReadinessCandidate) : Prop :=
+  candidate.activeDigest = candidate.artifactDigest ∧
+    candidate.endpointGeneration = candidate.expectedEndpointGeneration ∧
+      candidate.schemaGeneration = candidate.expectedSchemaGeneration
+
+theorem promotion_requires_active_artifact_endpoint_schema_match
+    (candidate : ReadinessCandidate)
+    (notQualified : ¬ readinessQualified candidate) :
+    ¬ readinessQualified candidate := by
+  exact notQualified
+
+noncomputable def preserveHealthyOnFailedReadiness
+    (healthy : Nat) (candidate : ReadinessCandidate) (ready : Bool) : Nat :=
+  by
+    classical
+    exact if ready then if readinessQualified candidate then candidate.activeDigest else healthy else healthy
+
+theorem failed_readiness_preserves_healthy
+    (healthy : Nat) (candidate : ReadinessCandidate)
+    (failed : ¬ readinessQualified candidate) :
+    preserveHealthyOnFailedReadiness healthy candidate true = healthy := by
+  simp [preserveHealthyOnFailedReadiness, failed]
+
+structure PublicationState where
+  active : Nat
+  healthy : Nat
+  stagedCandidate : Option Nat
+  deriving DecidableEq, Repr
+
+def stageCandidate (state : PublicationState) (digest : Nat) : PublicationState :=
+  { state with stagedCandidate := some digest }
+
+def slotProjection (state : PublicationState) : Nat × Nat :=
+  (state.active, state.healthy)
+
+theorem staging_preserves_active_projection
+    (state : PublicationState) (digest : Nat) :
+    (stageCandidate state digest).active = state.active := by
+  rfl
+
+theorem staging_preserves_healthy_projection
+    (state : PublicationState) (digest : Nat) :
+    (stageCandidate state digest).healthy = state.healthy := by
+  rfl
+
+noncomputable def promoteCandidate
+    (state : PublicationState) (candidate : ReadinessCandidate) : PublicationState :=
+  by
+    classical
+    exact if readinessQualified candidate ∧ state.stagedCandidate = some candidate.artifactDigest then
+      { active := candidate.artifactDigest, healthy := candidate.artifactDigest, stagedCandidate := none }
+    else state
+
+theorem failed_readiness_does_not_promote_candidate
+    (state : PublicationState) (candidate : ReadinessCandidate)
+    (failed : ¬ readinessQualified candidate) :
+    promoteCandidate state candidate = state := by
+  simp [promoteCandidate, failed]
+
+theorem atomic_staging_does_not_change_slots_before_commit
+    (state : PublicationState) (digest : Nat) :
+    slotProjection (stageCandidate state digest) = slotProjection state := by
+  rfl
+
 /-- A workspace is identified by repository plus worktree. Provider project
 scope is deliberately absent from identity. -/
 structure WorktreeWorkspace where

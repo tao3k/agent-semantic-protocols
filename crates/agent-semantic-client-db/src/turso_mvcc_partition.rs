@@ -1,6 +1,7 @@
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
 use serde::{Deserialize, Serialize};
+use tokio_stream::StreamExt;
 
 use crate::{
     turso_mvcc_partition_sql::{
@@ -245,41 +246,46 @@ impl TursoMvccStore {
         }
         let lane = partition_lane(self, &commit.partition_key);
         let connection = lane.lock_owned().await;
-        let mut busy_count = 0;
-        let mut snapshot_conflict_count = 0;
-        let mut last_retryable_error = None;
-
-        for attempt in 0..self.inner.retry_attempts {
-            match compare_and_append_once(&connection, commit, aliases).await {
-                Ok(AttemptOutcome::Committed(head)) => {
-                    return Ok(TursoMvccPartitionCommitOutcome::Committed(
-                        TursoMvccPartitionCommitReceipt {
-                            head,
-                            committed_records: commit.records.len(),
-                            retry_count: attempt,
-                            busy_count,
-                            snapshot_conflict_count,
-                        },
-                    ));
+        let retry = tokio_stream::iter(0..self.inner.retry_attempts)
+            .fold(PartitionAppendRetry::default(), |mut retry, attempt| async {
+                if retry.terminal.is_some() {
+                    return retry;
                 }
-                Ok(AttemptOutcome::Conflict(head)) => {
-                    return Ok(TursoMvccPartitionCommitOutcome::Conflict(head));
+                match compare_and_append_once(&connection, commit, aliases).await {
+                    Ok(AttemptOutcome::Committed(head)) => {
+                        retry.terminal = Some(Ok(TursoMvccPartitionCommitOutcome::Committed(
+                            TursoMvccPartitionCommitReceipt {
+                                head,
+                                committed_records: commit.records.len(),
+                                retry_count: attempt,
+                                busy_count: retry.busy_count,
+                                snapshot_conflict_count: retry.snapshot_conflict_count,
+                            },
+                        )));
+                    }
+                    Ok(AttemptOutcome::Conflict(head)) => {
+                        retry.terminal = Some(Ok(TursoMvccPartitionCommitOutcome::Conflict(head)));
+                    }
+                    Err(AttemptError::Retryable { message, snapshot }) => {
+                        retry.busy_count += usize::from(!snapshot);
+                        retry.snapshot_conflict_count += usize::from(snapshot);
+                        retry.last_retryable_error = Some(message);
+                        tokio::time::sleep(retry_delay(attempt)).await;
+                    }
+                    Err(AttemptError::Fatal(message)) => retry.terminal = Some(Err(message)),
                 }
-                Err(AttemptError::Retryable { message, snapshot }) => {
-                    busy_count += usize::from(!snapshot);
-                    snapshot_conflict_count += usize::from(snapshot);
-                    last_retryable_error = Some(message);
-                    tokio::time::sleep(retry_delay(attempt)).await;
-                }
-                Err(AttemptError::Fatal(message)) => return Err(message),
-            }
-        }
-        Err(format!(
-            "{} after {} Turso MVCC partition transaction attempts",
-            last_retryable_error
-                .unwrap_or_else(|| "Turso MVCC partition conflict persisted".to_string()),
-            self.inner.retry_attempts
-        ))
+                retry
+            })
+            .await;
+        retry.terminal.unwrap_or_else(|| {
+            Err(format!(
+                "{} after {} Turso MVCC partition transaction attempts",
+                retry
+                    .last_retryable_error
+                    .unwrap_or_else(|| "Turso MVCC partition conflict persisted".to_string()),
+                self.inner.retry_attempts
+            ))
+        })
     }
 
     pub async fn resolve_partition_alias(
@@ -303,6 +309,14 @@ enum AttemptOutcome {
 enum AttemptError {
     Retryable { message: String, snapshot: bool },
     Fatal(String),
+}
+
+#[derive(Default)]
+struct PartitionAppendRetry {
+    busy_count: usize,
+    snapshot_conflict_count: usize,
+    last_retryable_error: Option<String>,
+    terminal: Option<Result<TursoMvccPartitionCommitOutcome, String>>,
 }
 
 async fn compare_and_append_once(

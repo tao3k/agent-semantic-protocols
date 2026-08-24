@@ -329,6 +329,7 @@ pub enum ReasonKind {
     AgentSearchJson,
     SemanticAstPatchRequired,
     ReadOnlySubagentWrite,
+    SubagentCapabilityDenied,
     SubagentReceiptRequired,
     FocusedSubagentNestedStart,
 }
@@ -472,6 +473,18 @@ pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentH
     );
     match decision.decision {
         DecisionKind::Deny => {
+            if decision.platform == "codex" && decision.event == "permission-request" {
+                return Ok(json!({
+                    "hookSpecificOutput": {
+                        "hookEventName": "PermissionRequest",
+                        "decision": {
+                            "behavior": "deny",
+                            "message": message.as_ref(),
+                        },
+                    },
+                    "systemMessage": message.as_ref(),
+                }));
+            }
             return Ok(json!({
                 "hookSpecificOutput": {
                     "hookEventName": platform_hook_event_name(&decision.event),
@@ -500,6 +513,16 @@ pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentH
         }
         DecisionKind::Allow => {
             if decision.event == "permission-request" {
+                if decision.platform == "codex" {
+                    return Ok(json!({
+                        "hookSpecificOutput": {
+                            "hookEventName": "PermissionRequest",
+                            "decision": {
+                                "behavior": "allow",
+                            },
+                        }
+                    }));
+                }
                 return Ok(json!({
                     "hookSpecificOutput": {
                         "hookEventName": platform_hook_event_name(&decision.event),

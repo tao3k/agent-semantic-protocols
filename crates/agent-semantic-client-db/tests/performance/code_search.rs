@@ -6,7 +6,7 @@ use agent_semantic_client_db::{
     ClientDbLiveSourceIndexFacts, ClientDbSourceIndexClientDirLookupRequest,
     ClientDbSourceIndexImport, ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest,
     ClientDbSourceIndexLookupState, ClientDbSourceIndexOwner, ClientDbSourceIndexRefreshRequest,
-    build_source_index_import, client_db_source_index_artifact_digest,
+    build_source_index_import,
     client_db_source_index_generation_id_for_snapshot,
 };
 use std::fs;
@@ -563,7 +563,8 @@ fn code_search_merkle_memory_warm_path_is_a_strong_gate() {
         selectors: Vec::new(),
         source_blobs: Default::default(),
     };
-    let expected_artifact_digest = client_db_source_index_artifact_digest(&source_snapshot);
+    let expected_artifact_digest =
+        agent_semantic_search_projection::source_index_artifact_digest(&source_snapshot);
     let rust_language_id = LanguageId::from("rust");
 
     let warmup = ClientDbEngine::lookup_source_index_from_client_dir(

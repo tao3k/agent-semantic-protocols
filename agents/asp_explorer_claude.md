@@ -1,9 +1,9 @@
 ---
-name: asp_explorer
+name: asp-explorer
 description: ASP search/query evidence explorer.
 tools: Bash, Read, Glob, Grep
+disallowedTools: Write, Edit
 model: haiku
-permissionMode: plan
 maxTurns: 8
 ---
 

@@ -8,10 +8,11 @@ description = "Shared Tokio/Hyper HTTP JSON server runtime for ASP protocol bind
 [dependencies]
 bytes.workspace = true
 http-body-util = "0.1"
-hyper = { version = "1", features = ["http1", "server"] }
-hyper-util = { version = "0.1", features = ["tokio"] }
+hyper = { version = "1", features = ["client", "http1", "http2", "server"] }
+hyper-util.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+tokio-stream.workspace = true
 
 [dev-dependencies]
 asp-rust-project-harness-policy.workspace = true

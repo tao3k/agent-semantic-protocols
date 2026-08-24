@@ -465,6 +465,10 @@ fn latest_session_route_is_read_only_and_config_selected() {
         "choicePlaneOwner".to_owned(),
         Value::String("org-contract:agent-interactive".to_owned()),
     );
+    selected.fields.insert(
+        "denyEvidenceRef".to_owned(),
+        Value::String("/tmp/typed-deny-evidence.jsonl".to_owned()),
+    );
     selected.subject.command = Some("cargo test".to_owned());
     append_hook_event_state(&project_root, &selected).expect("append selected route");
 
@@ -475,6 +479,10 @@ fn latest_session_route_is_read_only_and_config_selected() {
     assert_eq!(route.config_rule_id, "testing-role-dispatch");
     assert_eq!(route.root_session_id, "root-session-test");
     assert_eq!(route.subject_command.as_deref(), Some("cargo test"));
+    assert_eq!(
+        route.deny_evidence_ref.as_deref(),
+        Some("/tmp/typed-deny-evidence.jsonl")
+    );
 
     fs::remove_dir_all(project_root).ok();
 }

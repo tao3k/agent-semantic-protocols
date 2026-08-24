@@ -1,6 +1,6 @@
 //! Public process execution contract for provider transport.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fmt;
 use std::io;
@@ -21,6 +21,10 @@ pub struct ProviderProcessSpec {
     pub cwd: PathBuf,
     /// Environment variables injected into the provider process.
     pub env: BTreeMap<String, String>,
+    /// Inherited environment variables removed before spawning the process.
+    pub remove_env: BTreeSet<String>,
+    /// Inherited environment-variable prefixes removed before spawning.
+    pub remove_env_prefixes: BTreeSet<String>,
     /// Provider stdin handling mode.
     pub stdin: StdinMode,
     /// Provider stdout handling mode.

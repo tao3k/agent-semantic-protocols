@@ -21,6 +21,11 @@ def test_every_locked_live_corpus_has_one_fixed_search_query_case() -> None:
 
     assert len(corpora) == 17
     assert len(cases) == 17
+    assert plan["clientProtocol"]["appliesToCaseCount"] == 17
+    assert plan["clientProtocol"]["transport"] == "http-json"
+    assert plan["clientProtocol"]["phases"] == [
+        "initialize", "catalog", "request", "cancel", "cancelled", "shutdown"
+    ]
 
     locked = {
         corpus["resourceId"]: (
@@ -61,3 +66,18 @@ def test_required_languages_are_exactly_the_locked_language_set() -> None:
         "rust",
         "typescript",
     }
+
+
+def test_client_protocol_contract_is_one_typed_runtime_lifecycle() -> None:
+    contract = load(PLAN_PATH)["clientProtocol"]
+    assert contract["protocolId"] == "agent.semantic-protocols.client"
+    assert contract["protocolVersion"] == "1"
+    assert contract["maximumResidentMicros"] == 1000
+    assert contract["requiredTelemetryEvents"] == [
+        "client_protocol_initialize",
+        "client_protocol_catalog",
+        "client_protocol_request",
+        "client_protocol_cancel",
+        "client_protocol_cancelled",
+        "client_protocol_shutdown",
+    ]

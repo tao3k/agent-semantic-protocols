@@ -5,7 +5,7 @@ use agent_semantic_client_db::{
     runtime_server::{RuntimeServer, RuntimeServerExit},
     runtime_server_control::{
         RuntimeServerOperation, RuntimeServerState, call_runtime_server,
-        prepare_runtime_server_endpoint_in, reconcile_runtime_server,
+        prepare_runtime_server_endpoint_in,
     },
 };
 
@@ -136,99 +136,6 @@ async fn live_owner_legacy_endpoint_fails_closed() {
     assert!(error.contains("owner is live"));
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn stable_supervisor_control_reconciles_stale_data_contract_without_install_wait() {
-    exercise_stable_supervisor_reconciliation(false).await;
-}
-
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "explicit isolated sub-millisecond supervisor control performance gate"]
-async fn stable_supervisor_control_is_sub_millisecond_at_p99() {
-    let _performance = crate::test_support::performance_lock();
-    exercise_stable_supervisor_reconciliation(true).await;
-}
-
-async fn exercise_stable_supervisor_reconciliation(enforce_latency: bool) {
-    let runtime_dir = tempfile::tempdir().expect("create isolated Runtime Server directory");
-    let catalog = fixture_catalog().await;
-    let endpoint = prepare_runtime_server_endpoint_in(
-        runtime_dir.path(),
-        &runtime_dir.path().join("asp"),
-        "blake3-256:running-runtime",
-        catalog.mode_label(),
-        &catalog.digest(),
-        41,
-        "supervisor-reconciliation-binding",
-    )
-    .await
-    .expect("prepare Runtime Server endpoint");
-    let server = RuntimeServer::bind_with_catalog(
-        endpoint.clone(),
-        Arc::new(WorkspaceDbRegistry::default()),
-        Arc::new(catalog),
-    )
-    .await
-    .expect("bind Runtime Server");
-    let server = tokio::spawn(server.serve());
-
-    let warm = call_runtime_server(
-        &endpoint,
-        RuntimeServerOperation::Reconcile,
-        endpoint.runtime_binary_identity.clone(),
-        "prewarm-supervisor-control".to_owned(),
-    )
-    .await
-    .expect("prewarm stable supervisor control lane");
-    assert_eq!(warm.state, RuntimeServerState::Healthy);
-
-    let sample_count = if enforce_latency { 4096 } else { 8 };
-    let mut samples = Vec::with_capacity(sample_count);
-    for index in 0..sample_count {
-        let started = tokio::time::Instant::now();
-        let receipt = call_runtime_server(
-            &endpoint,
-            RuntimeServerOperation::Reconcile,
-            endpoint.runtime_binary_identity.clone(),
-            format!("warm-supervisor-control-{index}"),
-        )
-        .await
-        .expect("warm supervisor reconcile no-op");
-        assert_eq!(receipt.state, RuntimeServerState::Healthy);
-        samples.push(started.elapsed());
-    }
-    samples.sort_unstable();
-    let p99 = samples[(samples.len() - 1) * 99 / 100];
-    if enforce_latency {
-        assert!(
-            p99 < Duration::from_millis(1),
-            "warm supervisor control p99 must remain sub-millisecond: {p99:?}"
-        );
-    }
-
-    let started = tokio::time::Instant::now();
-    let draining = reconcile_runtime_server(
-        &endpoint,
-        endpoint.runtime_binary_identity.value().to_owned(),
-        "blake3-256:next-data-plane-contract".to_owned(),
-        "stale-data-contract-reconcile".to_owned(),
-    )
-    .await
-    .expect("reconcile stale data contract through stable supervisor control plane");
-    let reconcile_latency = started.elapsed();
-    assert_eq!(draining.state, RuntimeServerState::Draining);
-    if enforce_latency {
-        assert!(
-            reconcile_latency < Duration::from_millis(1),
-            "stale supervisor reconcile must return before replacement and remain sub-millisecond: \
-             {reconcile_latency:?}"
-        );
-    }
-    assert_eq!(
-        server.await.expect("join Runtime Server").expect("serve"),
-        RuntimeServerExit::RestartRequested
-    );
-}
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn stale_generation_handoff_publishes_the_next_healthy_endpoint() {
     let _performance = crate::test_support::performance_lock();
@@ -269,10 +176,13 @@ async fn stale_generation_handoff_publishes_the_next_healthy_endpoint() {
     .expect("pre-stage second Runtime Server endpoint");
 
     let handoff_started = tokio::time::Instant::now();
-    let draining = reconcile_runtime_server(
+    let draining = call_runtime_server(
         &first_endpoint,
-        "blake3-256:generation-two".to_owned(),
-        first_endpoint.transport_contract_digest.clone(),
+        RuntimeServerOperation::Restart,
+        agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+            value: "blake3-256:generation-two".to_owned(),
+            algorithm: "blake3-256".to_owned(),
+        },
         "generation-handoff".to_owned(),
     )
     .await

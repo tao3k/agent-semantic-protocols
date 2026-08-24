@@ -9,6 +9,7 @@
     "schemaVersion",
     "lockPath",
     "requiredLanguages",
+    "clientProtocol",
     "residentSampleCount",
     "cases"
   ],
@@ -24,6 +25,7 @@
       "uniqueItems": true,
       "items": { "type": "string", "minLength": 1 }
     },
+    "clientProtocol": { "$ref": "#/$defs/clientProtocolContract" },
     "residentSampleCount": { "type": "integer", "minimum": 128 },
     "cases": {
       "type": "array",
@@ -32,6 +34,28 @@
     }
   },
   "$defs": {
+    "clientProtocolContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolId", "protocolVersion", "transport", "phases", "requiredTelemetryEvents", "appliesToCaseCount", "maximumResidentMicros", "sessionPolicy", "readyEffects", "forbiddenReadyEffects", "nonReadyDispatchCount", "residualTaskCount", "p50MaximumMicros", "p99MaximumMicros", "maxMaximumMicros"],
+      "properties": {
+        "protocolId": { "const": "agent.semantic-protocols.client" },
+        "protocolVersion": { "const": "1" },
+        "transport": { "const": "http-json" },
+        "phases": { "const": ["initialize", "catalog", "request", "cancel", "cancelled", "shutdown"] },
+        "requiredTelemetryEvents": { "const": ["client_protocol_initialize", "client_protocol_catalog", "client_protocol_request", "client_protocol_cancel", "client_protocol_cancelled", "client_protocol_shutdown"] },
+        "appliesToCaseCount": { "const": 17 },
+        "maximumResidentMicros": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "sessionPolicy": { "const": "one-initialize-per-session" },
+        "readyEffects": { "const": ["mpsc", "oneshot", "cancel", "response"] },
+        "forbiddenReadyEffects": { "const": ["process", "filesystem", "dbWrite", "generationMutation", "providerActivation", "controlPoll"] },
+        "nonReadyDispatchCount": { "const": 0 },
+        "residualTaskCount": { "const": 0 },
+        "p50MaximumMicros": { "const": 250 },
+        "p99MaximumMicros": { "const": 700 },
+        "maxMaximumMicros": { "const": 1000 }
+      }
+    },
     "case": {
       "type": "object",
       "additionalProperties": false,

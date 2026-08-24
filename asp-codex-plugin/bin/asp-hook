@@ -21,7 +21,7 @@ emit_unavailable() {
       printf '%s\n' "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"${reason}\"},\"systemMessage\":\"${reason}\"}"
       ;;
     permission-request)
-      printf '%s\n' "{\"hookSpecificOutput\":{\"hookEventName\":\"PermissionRequest\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"${reason}\"},\"systemMessage\":\"${reason}\"}"
+      printf '%s\n' "{\"hookSpecificOutput\":{\"hookEventName\":\"PermissionRequest\",\"decision\":{\"behavior\":\"deny\",\"message\":\"${reason}\"}},\"systemMessage\":\"${reason}\"}"
       ;;
     *)
       printf '%s\n' "{\"systemMessage\":\"${reason}\"}"

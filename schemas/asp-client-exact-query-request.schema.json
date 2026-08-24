@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp-client-exact-query-request.schema.json",
+  "title": "ASP Client Exact Query Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "selector", "projection"],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.asp-client-exact-query-request"
+    },
+    "schemaVersion": { "const": "1" },
+    "selector": { "type": "string", "minLength": 1 },
+    "projection": { "enum": ["source", "callable-skeleton"] }
+  }
+}

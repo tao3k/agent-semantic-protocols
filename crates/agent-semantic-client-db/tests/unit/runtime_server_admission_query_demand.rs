@@ -204,7 +204,7 @@ async fn provider_targeted_query_demand_keeps_language_scoped_coverage() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn same_request_wait_allows_build_past_connection_budget_before_admission_deadline() {
+async fn same_request_waits_for_terminal_generation_without_a_connection_budget() {
     let builds = Arc::new(AtomicUsize::new(0));
     let admission = Arc::new(WorkspaceGenerationAdmission::new(Arc::new({
         let builds = Arc::clone(&builds);
@@ -250,7 +250,7 @@ async fn same_request_wait_allows_build_past_connection_budget_before_admission_
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn same_request_wait_times_out_but_detached_build_reaches_ready() {
+async fn same_request_has_no_wall_clock_admission_deadline() {
     let builds = Arc::new(AtomicUsize::new(0));
     let admission = Arc::new(WorkspaceGenerationAdmission::new(Arc::new({
         let builds = Arc::clone(&builds);
@@ -258,7 +258,7 @@ async fn same_request_wait_times_out_but_detached_build_reaches_ready() {
             let builds = Arc::clone(&builds);
             Box::pin(async move {
                 builds.fetch_add(1, Ordering::AcqRel);
-                tokio::time::sleep(std::time::Duration::from_millis(900)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(90)).await;
                 completed(candidate)
             })
         }
@@ -272,6 +272,7 @@ async fn same_request_wait_times_out_but_detached_build_reaches_ready() {
     record_workspace_generation_candidate(project_root.clone(), candidate())
         .expect("record candidate");
 
+    let started = tokio::time::Instant::now();
     let result = crate::workspace_db_ipc_server::require_or_submit_terminal_generation_for_read(
         &registry,
         Some(&admission),
@@ -280,8 +281,9 @@ async fn same_request_wait_times_out_but_detached_build_reaches_ready() {
         Vec::new(),
     )
     .await
-    .expect_err("request exceeds admission deadline");
-    assert!(result.contains("exceeded the 800ms request budget"));
+    .expect_err("fixture has no resident publication");
+    assert!(!result.contains("request budget"));
+    assert!(started.elapsed() >= std::time::Duration::from_millis(80));
     assert_eq!(builds.load(Ordering::Acquire), 1);
     let ready = admission
         .wait_terminal(workspace_identity, &project_root)

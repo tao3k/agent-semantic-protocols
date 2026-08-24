@@ -21,8 +21,16 @@ sha2 = "0.10"
 tokio.workspace = true
 reqwest = { version = "0.13", default-features = false }
 tokio-stream = { version = "0.1", features = ["sync"] }
+tower.workspace = true
+hyper-util.workspace = true
 tokio-util = { version = "0.7", features = ["codec"] }
+prost.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true
 tracing = "0.1"
+
+[build-dependencies]
+tonic-prost-build.workspace = true
 
 [dev-dependencies]
 criterion = "0.8.2"

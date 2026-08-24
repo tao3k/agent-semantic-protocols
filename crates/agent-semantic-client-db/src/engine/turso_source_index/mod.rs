@@ -1,5 +1,6 @@
 mod active_generation;
 mod canonical;
+mod contract;
 pub(in crate::engine) mod core;
 pub(in crate::engine) mod exact_projection_store;
 pub(in crate::engine) mod generation_snapshot;
@@ -12,6 +13,7 @@ pub use generation_snapshot::{
     ClientDbSourceIndexGenerationSnapshot, ClientDbSourceIndexSelectorFact,
     active_turso_source_index_generation_blobs, latest_turso_source_index_generation_snapshot,
 };
+pub(in crate::engine) use contract::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION;
 mod facts;
 mod generation_clone;
 mod materialization;
@@ -29,6 +31,7 @@ mod readiness;
 mod relation;
 mod resident_selector;
 mod schema;
+mod selector_identity;
 mod source_blob;
 mod trace;
 

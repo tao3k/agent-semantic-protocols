@@ -28,8 +28,6 @@ mod restore;
 mod scope_path;
 mod search_generation_authority;
 mod search_index_projection;
-mod search_index_segment;
-mod search_index_table;
 mod segment;
 mod selector_overlay;
 mod store;
@@ -74,11 +72,11 @@ pub use search_index_projection::{
     WorkspaceSearchGenerationDataPlaneClient, encode_workspace_search_generation_segment,
     workspace_search_generation_segment_path,
 };
-pub use search_index_segment::{
+pub use agent_semantic_search::{
     SearchGenerationSection, SearchGenerationSectionKind, SearchGenerationSectionRepresentation,
     ValidatedSearchGenerationSegment, encode_search_generation_segment,
+    ValidatedSortedRecordTable, encode_sorted_record_table,
 };
-pub use search_index_table::{ValidatedSortedRecordTable, encode_sorted_record_table};
 pub use segment::{MappedWorkspaceGeneration, WorkspaceGenerationPublisher};
 pub use store::{
     RuntimeServerWorkspaceStore, prepare_runtime_server_workspace_store,

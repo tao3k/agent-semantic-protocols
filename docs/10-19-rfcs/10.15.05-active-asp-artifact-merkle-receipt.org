@@ -77,6 +77,15 @@ publish, while a matching base publishes exactly one complete successor root.
 
 * Lightweight verifier
 
+The Runtime invoker MUST fail closed when the executable that requests server
+startup is not the currently active digest-addressed artifact.  Verification
+uses the published executable identity receipt and filesystem metadata; it MUST
+NOT re-hash the large executable on every warm startup.  A mismatch returns the
+typed =invoker-artifact-not-active= failure and points to =asp install binary=.
+The active candidate may advance to readiness only after this check; a failed
+readiness check MUST preserve the previous healthy slot and MUST NOT silently
+spawn an older stable binary.
+
 Healthcheck is a read-only verifier, not a materializer.  It:
 
 1. resolves project state paths;
@@ -114,6 +123,12 @@ selection, digest selection, immutable target layout, or atomic pointer
 switching.
 
 * Performance gate
+
+The invoker-active check is metadata/path-digest based and belongs on the warm
+startup path without a full executable read.  Publication may use a same-volume
+hard link into the content store after Cargo's atomic rename, with copy/reflink
+fallback for unsupported filesystems; the content-addressed slot and receipt
+remain the sole authority.
 
 The warm health path has a 10 millisecond p95 process-internal budget after
 argument parsing.  Its receipt MUST report zero subprocesses, zero DB opens,

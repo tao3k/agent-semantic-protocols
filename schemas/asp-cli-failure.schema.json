@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agent-semantic-protocols:schema:asp-cli-failure",
+  "x-asp-schema-version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "reasonKind",
+    "failureLayer",
+    "osError",
+    "message",
+    "recovery",
+    "originalError"
+  ],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.cli-failure" },
+    "schemaVersion": { "const": 1 },
+    "state": { "const": "blocked" },
+    "reasonKind": { "const": "host-operation-not-permitted" },
+    "failureLayer": { "const": "asp-cli-startup-or-ipc-boundary" },
+    "osError": { "const": "EPERM" },
+    "message": { "type": "string", "minLength": 1 },
+    "recovery": { "type": "string", "minLength": 1 },
+    "originalError": { "type": "string", "minLength": 1 }
+  }
+}

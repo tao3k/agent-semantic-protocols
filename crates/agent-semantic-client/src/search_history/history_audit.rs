@@ -85,6 +85,8 @@ async fn run_graph_turbo_timeline(
         args,
         cwd,
         env: BTreeMap::new(),
+        remove_env: Default::default(),
+        remove_env_prefixes: Default::default(),
         stdin,
         stdout: OutputMode::Capture,
         stderr: OutputMode::Capture,

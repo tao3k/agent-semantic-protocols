@@ -190,7 +190,7 @@ def _run_catalog_query(
 
 def _automation_env() -> dict[str, str]:
     env = dict(os.environ)
-    env["ASP_NO_AGENT_PLATFORM"] = "1"
+    env["ASP_NO_AGENT"] = "1"
     return env
 
 

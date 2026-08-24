@@ -328,7 +328,7 @@ on an agent-facing path are a performance-contract violation.
 The canonical Runtime Server entry is a stable symlink to an immutable
 =runtime/artifacts/blake3-256/<digest>/asp= object.  Install verifies bytes
 before publishing that object and atomically switches the symlink.  Supervisor
-=status|reconcile|restart= derives the expected digest from the canonical
+=status|start|restart= derives the expected digest from the canonical
 artifact path identity; it MUST NOT read executable bytes.  In particular, a
 restart control frame is sent before the supervisor boundary and binary
 freshness cannot consume that boundary.  A regular mutable file at the

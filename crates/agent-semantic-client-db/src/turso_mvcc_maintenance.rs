@@ -4,6 +4,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
+use tokio_stream::StreamExt;
 
 use crate::turso_mvcc_store::TursoMvccStore;
 
@@ -50,12 +51,14 @@ impl TursoMvccStore {
     /// keeps that observability gap explicit instead of fabricating a count.
     pub async fn flush_and_measure(&self) -> Result<TursoMvccMaintenanceReceipt, String> {
         let started = Instant::now();
-        let mut cache_flush_count = 0_usize;
-        for lane in &self.inner.lanes {
-            let connection = lane.lock().await;
-            connection.cacheflush().map_err(|error| error.to_string())?;
-            cache_flush_count += 1;
-        }
+        let cache_flush_count = tokio_stream::iter(&self.inner.lanes)
+            .fold(Ok(0_usize), |flushed, lane| async move {
+                let flushed = flushed?;
+                let connection = lane.lock().await;
+                connection.cacheflush().map_err(|error| error.to_string())?;
+                Ok::<usize, String>(flushed + 1)
+            })
+            .await?;
 
         let database_bytes = file_bytes(&self.inner.path);
         let wal_bytes = suffixed_file_bytes(&self.inner.path, "-wal")

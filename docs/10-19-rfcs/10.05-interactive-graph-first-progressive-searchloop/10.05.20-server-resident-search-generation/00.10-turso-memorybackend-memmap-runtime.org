@@ -320,18 +320,18 @@ The read-pool size is adaptive.  A fixed global worker count is not an accepted
 contract: the daemon uses observed contention, available parallelism, and
 workspace pressure while preserving per-workspace isolation.
 
-Runtime Server lifecycle reconciliation prewarms its persistent control lanes
-to the current adaptive concurrency plan.  Lane allocation and Unix socket
-connection establishment are lifecycle work, not demand work charged to the
-next concurrent request wave.  Once reconciled, callers choose an existing lane
-with atomic load accounting; they MUST NOT take a pool-wide asynchronous lock
-or grow the connection pool on the request path.
+ASP Server lifecycle admission prewarms its persistent control lanes to the
+current adaptive concurrency plan.  Lane allocation and Unix socket connection
+establishment are lifecycle work, not demand work charged to the next
+concurrent request wave.  Callers choose an existing lane with atomic load
+accounting; they MUST NOT take a pool-wide asynchronous lock or grow the
+connection pool on the request path.
 
-The public =server reconcile= operation returns the typed receipt read from the
-reconciled daemon.  Merely asking launchd or systemd to start a process is not a
-successful reconciliation receipt and MUST NOT be rendered as a synthetic
-=starting= state.  Contract or artifact drift is closed only when the latest
-endpoint validates and the daemon reports =healthy=.
+There is no public =server reconcile= operation.  Idempotent =server start=
+closes process availability and returns evidence from the admitted daemon;
+=EnsureWorkspace= closes one workspace generation; =restart= performs an
+explicit generation replacement.  Merely asking launchd or systemd to start a
+process MUST NOT be rendered as a synthetic =healthy= state.
 
 The macOS service definition overrides launchd's ten-second default spawn
 throttle with the smallest supported positive interval.  The default is

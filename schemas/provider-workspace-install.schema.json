@@ -165,6 +165,12 @@
         "env": {
           "type": "object",
           "additionalProperties": { "type": "string" }
+        },
+        "removeEnv": {
+          "$ref": "#/$defs/environmentNames"
+        },
+        "removeEnvPrefixes": {
+          "$ref": "#/$defs/environmentPrefixes"
         }
       }
     },
@@ -196,7 +202,29 @@
         "env": {
           "type": "object",
           "additionalProperties": { "type": "string" }
+        },
+        "removeEnv": {
+          "$ref": "#/$defs/environmentNames"
+        },
+        "removeEnvPrefixes": {
+          "$ref": "#/$defs/environmentPrefixes"
         }
+      }
+    },
+    "environmentNames": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      }
+    },
+    "environmentPrefixes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
       }
     }
   }

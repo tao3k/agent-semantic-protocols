@@ -152,13 +152,19 @@ fn unavailable_enforcement_authority_is_a_host_protocol_deny() {
         let value: serde_json::Value =
             serde_json::from_str(&response).expect("typed unavailable deny JSON");
         assert_eq!(value["hookSpecificOutput"]["hookEventName"], host_event);
-        assert_eq!(value["hookSpecificOutput"]["permissionDecision"], "deny");
-        assert!(
-            value["hookSpecificOutput"]["additionalContext"]
-                .as_str()
-                .is_some_and(|context| context
-                    .contains("agent.semantic-protocols.hook-local-policy-unavailable")),
-            "{response}"
-        );
+        if event == "permission-request" {
+            assert_eq!(value["hookSpecificOutput"]["decision"]["behavior"], "deny");
+            assert!(value["hookSpecificOutput"]["decision"]["message"].is_string());
+            assert!(value["hookSpecificOutput"]["permissionDecision"].is_null());
+        } else {
+            assert_eq!(value["hookSpecificOutput"]["permissionDecision"], "deny");
+            assert!(
+                value["hookSpecificOutput"]["additionalContext"]
+                    .as_str()
+                    .is_some_and(|context| context
+                        .contains("agent.semantic-protocols.hook-local-policy-unavailable")),
+                "{response}"
+            );
+        }
     }
 }

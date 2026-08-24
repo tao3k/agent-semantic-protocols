@@ -64,6 +64,8 @@
         "semantic-ast-patch-required",
         "edit-before-prime",
         "changed-check-required",
+        "read-only-subagent-write",
+        "subagent-capability-denied",
         "subagent-receipt-required",
         "unsupported-platform",
         "policy"
@@ -344,6 +346,17 @@
         },
         "targetAgentSelectionSource": {
           "const": "choice-plane-role-signal"
+        },
+        "dispatchSatisfied": {
+          "type": "boolean",
+          "description": "True when a verified current child registration already satisfies the selected dispatch capability, so dispatch is idempotent and must not recurse."
+        },
+        "dispatchAdmission": {
+          "enum": [
+            "verified-registration-intent",
+            "verified-registration-role"
+          ],
+          "description": "Verified registration fact that established the dispatch fixed point. Intent authority is preferred after registration; role matching remains a selection receipt."
         },
         "hookConfigStatus": {
           "enum": [

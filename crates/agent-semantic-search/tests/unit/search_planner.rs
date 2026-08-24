@@ -5,9 +5,6 @@ use agent_semantic_search::file_locator::FileLocatorIndex;
 use agent_semantic_search::search_planner::{
     SearchPlannerRequest, SearchPlannerRoute, plan_search_route,
 };
-use agent_semantic_search::{
-    SourceIndexLookupRequest, SourceIndexPlannerLookupRequest, lookup_source_index_with_planner,
-};
 
 #[test]
 fn planner_routes_filename_query_to_file_locator_before_source_index() {
@@ -66,31 +63,4 @@ fn planner_file_locator_hot_path_stays_under_two_milliseconds() {
         elapsed.as_micros() < 2_000,
         "planner file locator hot path took {elapsed:?}, expected < 2ms"
     );
-}
-
-#[tokio::test]
-async fn source_index_adapter_uses_file_locator_on_cache_miss() {
-    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
-    let project_root = tempfile::tempdir().expect("project tempdir");
-    let locator = FileLocatorIndex::build(vec![PathBuf::from("src/search_planner.rs")]);
-
-    let lookup = lookup_source_index_with_planner(SourceIndexPlannerLookupRequest {
-        source_index: SourceIndexLookupRequest {
-            cache_project_root: project_root.path(),
-            indexed_project_root: project_root.path(),
-            language_id: None,
-            query: "search_planner.rs",
-            limit: 8,
-            source_snapshot: &fixture.evidence,
-        },
-        file_locator: Some(&locator),
-    })
-    .await
-    .expect("lookup with file locator planner");
-
-    assert_eq!(
-        lookup.state,
-        agent_semantic_client_db::ClientDbSourceIndexLookupState::Hit
-    );
-    assert_eq!(lookup.candidates[0].path, "src/search_planner.rs");
 }

@@ -7,6 +7,58 @@ const PROVIDER_WORKSPACE_INSTALL_SCHEMA_ID: &str =
     "agent.semantic-protocols.provider-workspace-install";
 const PROVIDER_WORKSPACE_INSTALL_SCHEMA_VERSION: &str = "1";
 
+pub struct ProviderWorkspaceBuildGuard {
+    file: std::fs::File,
+}
+
+impl Drop for ProviderWorkspaceBuildGuard {
+    fn drop(&mut self) {
+        let _ = fs2::FileExt::unlock(&self.file);
+    }
+}
+
+pub fn acquire_provider_workspace_build_guard(
+    artifact_path: &Path,
+) -> Result<ProviderWorkspaceBuildGuard, String> {
+    let parent = artifact_path.parent().ok_or_else(|| {
+        format!(
+            "provider workspace artifact has no lock parent: {}",
+            artifact_path.display()
+        )
+    })?;
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("create provider workspace lock parent: {error}"))?;
+    let file_name = artifact_path
+        .file_name()
+        .and_then(std::ffi::OsStr::to_str)
+        .ok_or_else(|| {
+            format!(
+                "provider workspace artifact has no normalized lock identity: {}",
+                artifact_path.display()
+            )
+        })?;
+    let lock_path = parent.join(format!(".{file_name}.workspace-build.lock"));
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(&lock_path)
+        .map_err(|error| {
+            format!(
+                "open provider workspace build lock {}: {error}",
+                lock_path.display()
+            )
+        })?;
+    fs2::FileExt::try_lock_exclusive(&file).map_err(|error| {
+        format!(
+            "state=provider-workspace-build-active reasonKind=provider-workspace-build-active artifact={} lock={} error={error}",
+            artifact_path.display(),
+            lock_path.display()
+        )
+    })?;
+    Ok(ProviderWorkspaceBuildGuard { file })
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedProviderWorkspaceArtifact {
     source_root: PathBuf,
@@ -296,7 +348,10 @@ fn ensure_within(
 
 #[cfg(test)]
 mod tests {
-    use super::{ProviderWorkspaceArtifactError, resolve_verified_provider_workspace_artifact};
+    use super::{
+        ProviderWorkspaceArtifactError, acquire_provider_workspace_build_guard,
+        resolve_verified_provider_workspace_artifact,
+    };
 
     fn descriptor(language_id: &str, artifact_root: &str) -> String {
         format!(
@@ -311,6 +366,19 @@ mod tests {
                 "workspaceBuild":{{"derivedPaths":["provider/target"]}}
             }}"#
         )
+    }
+
+    #[test]
+    fn workspace_build_guard_rejects_a_second_cross_process_writer() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let artifact = temp.path().join("build/workspace-provider");
+        let first = acquire_provider_workspace_build_guard(&artifact).expect("first build owner");
+        let error = acquire_provider_workspace_build_guard(&artifact)
+            .err()
+            .expect("second build owner must fail closed");
+        assert!(error.contains("reasonKind=provider-workspace-build-active"));
+        drop(first);
+        acquire_provider_workspace_build_guard(&artifact).expect("released build owner");
     }
 
     #[tokio::test]

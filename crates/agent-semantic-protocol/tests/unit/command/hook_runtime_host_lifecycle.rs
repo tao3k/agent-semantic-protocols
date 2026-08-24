@@ -52,7 +52,7 @@ async fn local_publication_does_not_require_runtime() {
     assert_eq!(lifecycle_event.host_event_sequence, 1);
     assert!(
         state_home
-            .join("hooks/host-sessions/test-namespace/authority.v1.json")
+            .join("hooks/host-sessions/test-namespace/authority.json")
             .is_file()
     );
     let _ = tokio::fs::remove_dir_all(state_home).await;
@@ -73,7 +73,7 @@ async fn duplicate_publication_is_idempotent() {
     assert_eq!(first.host_event_sequence, 1);
     assert_eq!(duplicate.host_event_sequence, 1);
     let authority =
-        tokio::fs::read(state_home.join("hooks/host-sessions/test-namespace/authority.v1.json"))
+        tokio::fs::read(state_home.join("hooks/host-sessions/test-namespace/authority.json"))
             .await
             .expect("authority must be readable");
     let authority: Value = serde_json::from_slice(&authority).expect("authority must be JSON");
@@ -96,5 +96,71 @@ async fn publication_sequence_is_monotonic() {
 
     assert_eq!(first.host_event_sequence, 1);
     assert_eq!(second.host_event_sequence, 2);
+    let _ = tokio::fs::remove_dir_all(state_home).await;
+}
+
+#[tokio::test]
+async fn publication_lock_contention_is_bounded() {
+    let state_home = isolated_state_home("bounded-lock-contention");
+    let authority_dir = state_home.join("hooks/host-sessions/test-namespace");
+    tokio::fs::create_dir_all(authority_dir.join(".publication-lock"))
+        .await
+        .expect("create contended publication lock");
+    let mut lifecycle_event = event("blake3-256:contended");
+    let started = std::time::Instant::now();
+
+    let error = tokio::time::timeout(
+        std::time::Duration::from_millis(500),
+        publish_host_lifecycle_event_locally(&state_home, &mut lifecycle_event),
+    )
+    .await
+    .expect("local publication lock acquisition must be bounded")
+    .expect_err("a live publication lock must fail closed");
+
+    assert!(error.contains("timed out acquiring Host lifecycle authority lock"));
+    assert!(started.elapsed() < std::time::Duration::from_millis(500));
+    let _ = tokio::fs::remove_dir_all(state_home).await;
+}
+
+#[tokio::test]
+async fn failed_publication_releases_its_lock() {
+    let state_home = isolated_state_home("failed-publication-cleanup");
+    let authority_dir = state_home.join("hooks/host-sessions/test-namespace");
+    tokio::fs::create_dir_all(&authority_dir)
+        .await
+        .expect("create authority directory");
+    tokio::fs::write(authority_dir.join("authority.json"), b"not-json")
+        .await
+        .expect("write corrupt authority fixture");
+    let mut lifecycle_event = event("blake3-256:decode-failure");
+
+    let error = publish_host_lifecycle_event_locally(&state_home, &mut lifecycle_event)
+        .await
+        .expect_err("corrupt authority must fail closed");
+
+    assert!(error.contains("failed to decode Host lifecycle authority"));
+    assert!(
+        !authority_dir.join(".publication-lock").exists(),
+        "publication failure leaked its lock"
+    );
+    let _ = tokio::fs::remove_dir_all(state_home).await;
+}
+
+#[tokio::test]
+async fn concurrent_publications_complete_with_one_monotonic_sequence() {
+    let state_home = isolated_state_home("concurrent-publication");
+    let mut first = event("blake3-256:concurrent-first");
+    let mut second = event("blake3-256:concurrent-second");
+
+    let (first_result, second_result) = tokio::join!(
+        publish_host_lifecycle_event_locally(&state_home, &mut first),
+        publish_host_lifecycle_event_locally(&state_home, &mut second),
+    );
+    first_result.expect("first concurrent publication");
+    second_result.expect("second concurrent publication");
+
+    let mut sequences = [first.host_event_sequence, second.host_event_sequence];
+    sequences.sort_unstable();
+    assert_eq!(sequences, [1, 2]);
     let _ = tokio::fs::remove_dir_all(state_home).await;
 }

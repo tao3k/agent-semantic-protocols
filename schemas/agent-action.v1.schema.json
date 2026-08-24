@@ -40,7 +40,9 @@
       "required": ["action", "evidence"],
       "properties": {
         "action": { "$ref": "#/$defs/actionKind" },
-        "evidence": { "enum": ["host-invocation", "shell-redirection"] }
+        "evidence": {
+          "enum": ["host-invocation", "shell-redirection", "shell-path-operand"]
+        }
       }
     },
     "subject": {

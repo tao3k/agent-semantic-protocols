@@ -300,7 +300,7 @@ is an explicit user/tool action outside Hook evaluation.
 A local matcher/configuration failure is not a Runtime Server failure. Its
 typed failure is =hook-local-policy-unavailable= with =schemaVersion: "1"= and
 =reasonKind=local-hook-policy-authority-unavailable=. It MUST NOT recommend
-=asp server reconcile=. The exact =asp hook doctor --client codex= command is
+=asp server start=. The exact =asp hook doctor --client codex= command is
 admitted by the configuration-independent bootstrap, as is =asp install
 binary=. The installer derives State Home and publishes verified bytes into the
 active/healthy artifact slots; callers do not select a target or digest path.
@@ -343,8 +343,8 @@ receipt.
 The canonical binary installer owns a coupled binary/config generation sync.
 Before it returns success it MUST publish the managed Hook config embedded in
 the installing executable and its ownership sidecar, then report both the
-binary generation and =hookConfigPublication=. Runtime Server reconcile is a
-later, independent best-effort step and is not an authority for this sync.
+binary generation and =hookConfigPublication=. Runtime Server availability is
+a separate server-owned lifecycle and is not an authority for this sync.
 
 When the one-shot Hook loader observes only a fingerprint mismatch on the
 canonical =$ASP_STATE_HOME/hooks/config.toml=, it MUST attempt one local

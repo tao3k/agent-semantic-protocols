@@ -1,5 +1,5 @@
 use super::canonical::turso_source_index_canonical_selectors_by_owner;
-use super::core::turso_source_index_selector_fingerprint;
+use super::selector_identity::turso_source_index_selector_fingerprint;
 use crate::engine::turso_statement::run_turso_operation;
 
 #[derive(Clone, Debug, PartialEq, Eq)]

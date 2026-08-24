@@ -189,6 +189,15 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
             "route-structured-document-read",
         ),
         (
+            "shell structured document read",
+            json!({
+                "tool_name": "Bash",
+                "tool_input": {"command": format!("unknown-consumer {json_document}")}
+            }),
+            DecisionKind::Deny,
+            "route-shell-structured-document-read",
+        ),
+        (
             "nested registered source read",
             json!({
                 "tool_name": "multi_tool_use.parallel",

@@ -27,22 +27,13 @@ mod graph_topology_projection;
 mod graph_turbo_resident_protocol;
 mod lexical_overlay;
 pub mod memory_search;
-pub mod memory_search_fixture;
-pub mod memory_search_resident;
-pub mod memory_search_turso;
 pub use memory_search::{
     MemorySearchGeneration, MemorySearchGenerationReceipt, MemorySearchItem,
     MemorySearchPerformanceReceipt, MemorySearchRequest, MemorySearchResolution,
     MemorySearchResolutionState, MemorySearchSourceLeaf,
 };
-pub use memory_search_fixture::{
-    MEMORY_SEARCH_FIXTURE_SCHEMA_ID, MEMORY_SEARCH_FIXTURE_SCHEMA_VERSION, MemorySearchFixture,
-};
-pub use memory_search_resident::MemorySearchResident;
-pub use memory_search_turso::{TursoMemorySearchBackend, TursoMemorySearchBinding};
 
 mod lexical_search_frame;
-mod owner_items_source_index_trace;
 mod pipe_candidates;
 mod pipe_source;
 mod pipe_source_document_acquisition;
@@ -51,6 +42,7 @@ mod pipe_source_index_projection;
 mod pipe_source_lexical_frame;
 mod prompt_output_replay;
 mod provider_candidate_annotations;
+mod resident_source_index;
 pub mod provider_relation_memory;
 mod search_candidate;
 mod search_language_files;
@@ -61,17 +53,21 @@ mod search_pipe_evidence;
 pub mod search_pipe_quality;
 mod search_pipe_query_pack;
 mod search_query_budget;
+mod search_generation_segment;
+mod sorted_record_table;
 mod search_subagent_receipt;
-mod source_index_lookup;
 
 mod source_index_rank;
 pub use source_index_rank::{
     SourceIndexRankReport, SourceIndexRankRequest, SourceIndexRankScore,
     SourceIndexRankedCandidate, rank_source_index_report,
 };
-mod structural_index_search;
+pub use agent_semantic_search_projection::source_index_artifact_digest;
 pub mod syntax_query_replay;
-mod turso_overlay_search;
+
+#[cfg(test)]
+#[path = "../tests/unit/resident_source_index.rs"]
+mod resident_source_index_tests;
 
 pub use document_candidates::{
     DocumentSearchCandidate, DocumentSearchCandidateCollection, DocumentSearchCandidateRequest,
@@ -131,11 +127,6 @@ pub use lexical_search_frame::{
     LexicalSearchFrameCandidate, LexicalSearchFrameRequest, LexicalSearchFrameRoute,
     plan_lexical_search_frame,
 };
-pub use owner_items_source_index_trace::{
-    OwnerItemsSourceIndexTrace, OwnerItemsSourceIndexTraceRender, OwnerItemsSourceIndexTraceStream,
-    owner_items_source_index_trace, render_owner_items_source_index_lookup_trace,
-    render_owner_items_source_index_trace, source_index_owner_query,
-};
 pub use pipe_candidates::{
     SearchPipeCandidate, SearchPipeCandidateCollection, SearchPipeCandidateRequest,
     collect_search_pipe_candidates,
@@ -163,7 +154,10 @@ pub use provider_candidate_annotations::{
     provider_candidate_annotation_nodes, provider_facts_envelope_from_stdout,
     provider_facts_envelope_from_value,
 };
-pub use search_candidate::structural_index_hit_to_search_candidate;
+pub use resident_source_index::{
+    ResidentSourceIndex, ResidentSourceIndexSeed, resident_navigation_keys,
+};
+pub use search_candidate::{StructuralIndexSearchHit, structural_index_hit_to_search_candidate};
 pub use search_candidate::{
     FieldHit, RankFeature, RankedSearchCandidate, SearchCandidate, SearchCandidateMergeReceipt,
     SearchStageReceipt, lexical_overlay_hit_to_search_candidate, merge_search_candidates,
@@ -210,35 +204,22 @@ pub use search_query_budget::{
     SearchQueryBudgetBlock, SearchQueryBudgetRequest, search_query_budget_block,
     search_query_terms, search_terms_budget_block, specific_search_term,
 };
+pub use search_generation_segment::{
+    SearchGenerationSection, SearchGenerationSectionKind, SearchGenerationSectionRepresentation,
+    ValidatedSearchGenerationSegment, encode_search_generation_segment,
+};
+pub use sorted_record_table::{ValidatedSortedRecordTable, encode_sorted_record_table};
 pub use search_subagent_receipt::{
     SEARCH_SUBAGENT_GRAPH_ROUTE_RECEIPT_SCHEMA, search_subagent_graph_route_receipt,
     search_subagent_graph_route_receipt_is_compact,
-};
-pub use source_index_lookup::{
-    SourceIndexLookupRequest, SourceIndexPlannerLookupRequest, lookup_source_index,
-    lookup_source_index_for_language, lookup_source_index_in_cache,
-    lookup_source_index_with_planner, rank_source_index_lookup_result,
-    search_pipe_source_index_lookup_from_client_result,
 };
 pub use source_index_rank::{
     SourceIndexRankCandidate, rank_source_index_candidates, reorder_source_index_candidates,
     source_index_lookup_terms,
 };
-pub use structural_index_search::{
-    TursoStructuralIndexCandidateRequest, TursoStructuralIndexSearchHit,
-    collect_turso_structural_index_ranked_candidates,
-    collect_turso_structural_index_ranked_candidates_async,
-    collect_turso_structural_index_ranked_candidates_from_engine_async,
-    search_turso_structural_index_documents,
-};
 pub use syntax_query_replay::{
     SyntaxQueryReplayCapture, SyntaxQueryRowsReplay, render_semantic_tree_sitter_query_rows_stdout,
     render_semantic_tree_sitter_query_stdout,
-};
-pub use turso_overlay_search::{
-    TursoOverlaySearchDocument, TursoOverlaySearchHit, TursoOverlaySearchScope,
-    bootstrap_turso_overlay_search_store, replace_turso_overlay_search_document_generation,
-    search_turso_overlay_documents,
 };
 
 #[cfg(test)]
@@ -272,9 +253,6 @@ mod graph_seed_decision_tests;
 #[cfg(test)]
 #[path = "../tests/unit/graph_topology_projection.rs"]
 mod graph_topology_projection_tests;
-#[cfg(test)]
-#[path = "../tests/unit/owner_items_source_index_trace.rs"]
-mod owner_items_source_index_trace_tests;
 #[cfg(test)]
 #[path = "../tests/unit/pipe_candidates.rs"]
 mod pipe_candidates_tests;

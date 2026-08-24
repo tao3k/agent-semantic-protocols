@@ -64,6 +64,7 @@ struct RuntimeTelemetryEnvelope {
 pub enum RuntimeTelemetryEvent {
     Lifecycle(RuntimeLifecycleEvent),
     SearchIncident(IncidentTelemetryEvent),
+    Performance(RuntimePerformanceObservation),
 }
 
 pub struct RuntimeTelemetryBus {
@@ -117,9 +118,33 @@ impl RuntimeTelemetryBusSender {
             context.elapsed_micros,
             &outcome.terminal_state,
         );
-        self.resident_reads
-            .insert((context.operation_id, context.surface), outcome);
+        self.resident_reads.insert(
+            (context.operation_id.clone(), context.surface.clone()),
+            outcome,
+        );
+        if let Some(observation) = context.into_performance_observation() {
+            self.try_record_performance(observation)?;
+        }
         Ok(digest)
+    }
+
+    pub fn try_record_performance(
+        &self,
+        observation: RuntimePerformanceObservation,
+    ) -> Result<(), String> {
+        let event = RuntimeTelemetryEvent::Performance(observation);
+        let sender = if self.has_pending_transition(&telemetry_order_key(&event)) {
+            &self.ordered
+        } else {
+            &self.terminal
+        };
+        sender
+            .try_send(RuntimeTelemetryEnvelope {
+                event,
+                _transition_permit: None,
+                pending_transition_key: None,
+            })
+            .map_err(|_| "Runtime performance telemetry queue is full or closed".to_owned())
     }
 
     pub fn resident_read_terminal_exists(&self, operation_id: &str, surface: &str) -> bool {
@@ -193,6 +218,9 @@ impl RuntimeTelemetryBusSender {
                 RuntimeTelemetryEvent::SearchIncident(_) => {
                     unreachable!("lifecycle send returned a different telemetry variant")
                 }
+                RuntimeTelemetryEvent::Performance(_) => {
+                    unreachable!("lifecycle send returned a different telemetry variant")
+                }
             })
     }
 
@@ -241,6 +269,9 @@ impl RuntimeTelemetryBusSender {
                 RuntimeTelemetryEvent::Lifecycle(_) => {
                     unreachable!("incident send returned a different telemetry variant")
                 }
+                RuntimeTelemetryEvent::Performance(_) => {
+                    unreachable!("incident send returned a different telemetry variant")
+                }
             })
     }
 
@@ -279,6 +310,37 @@ impl RuntimeTelemetryBusSender {
             .entry(key.to_owned())
             .and_modify(|count| *count += 1)
             .or_insert(1);
+    }
+}
+
+impl ResidentReadTerminalContext {
+    pub fn into_performance_observation(self) -> Option<RuntimePerformanceObservation> {
+        if self.surface != "runtime-resident-runtime-selector" {
+            return None;
+        }
+        let budget_micros = 1_000;
+        let budget_status = if self.elapsed_micros <= budget_micros {
+            "within-budget"
+        } else {
+            "budget-exceeded"
+        };
+        let mut observation = RuntimePerformanceObservation::new(
+            "query",
+            "runtime-selector-read",
+            self.elapsed_micros,
+            budget_micros,
+            budget_status,
+        );
+        observation.workspace_identity = Some(self.workspace_identity);
+        observation.generation_digest = Some(self.generation_digest);
+        observation.operation_id = Some(self.operation_id);
+        observation.requested_projection = Some("exact-selector".to_owned());
+        observation.memory_search_turso_opens = Some(self.work_counters.database_opens);
+        observation.memory_search_source_bytes_read = Some(self.work_counters.filesystem_reads);
+        observation.memory_search_provider_spawns = Some(self.work_counters.provider_spawns);
+        observation.memory_search_socket_connects =
+            Some(self.work_counters.control_socket_roundtrips);
+        Some(observation)
     }
 }
 
@@ -335,6 +397,11 @@ fn telemetry_order_key(event: &RuntimeTelemetryEvent) -> String {
             "incident:{}:{}",
             event.observation.identity.workspace_identity, event.observation.identity.incident_id
         ),
+        RuntimeTelemetryEvent::Performance(event) => format!(
+            "performance:{}:{}",
+            event.workspace_identity.as_deref().unwrap_or_default(),
+            event.operation_id.as_deref().unwrap_or_default()
+        ),
     }
 }
 
@@ -353,6 +420,7 @@ impl RuntimeTelemetryEvent {
         match self {
             Self::Lifecycle(event) => event.into_observation(),
             Self::SearchIncident(event) => incident_observation(event),
+            Self::Performance(event) => event,
         }
     }
 }

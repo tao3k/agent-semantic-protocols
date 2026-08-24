@@ -1,5 +1,7 @@
 //! Schema-backed search projection and rendering boundary.
 
+mod artifact_identity;
+pub use artifact_identity::source_index_artifact_digest;
 mod error;
 mod incremental_search_generation;
 pub use incremental_search_generation::{
@@ -8,6 +10,7 @@ pub use incremental_search_generation::{
 mod model;
 mod packet;
 mod renderer;
+mod resident_search_result;
 mod topology;
 
 pub use error::SearchProjectionError;
@@ -21,6 +24,12 @@ pub use packet::{
 };
 pub use renderer::{
     SearchProjectionRenderer, TopologySearchProjectionRenderer, render_search_topology_projection,
+};
+pub use resident_search_result::{
+    RESIDENT_SEARCH_RESULT_SCHEMA_ID, RESIDENT_SEARCH_RESULT_SCHEMA_VERSION,
+    ResidentSearchHit, ResidentSearchProjectionTier, ResidentSearchReadyResult,
+    ResidentSearchReadyState,
+    ResidentSearchWorkCounters,
 };
 pub use topology::{SEARCH_ROOT_ID, TERSE_GRAPH_MICRO_LEGEND, TopologyProjectionOptions};
 pub mod source;

@@ -25,23 +25,21 @@ pub mod parser_read_authority;
 mod runtime_concurrency;
 pub mod runtime_generation_cancellation;
 pub mod runtime_merkle_owner_proof_qualification;
+pub mod runtime_provider_catalog;
 pub mod runtime_provider_register;
-pub mod runtime_provider_register_client;
-mod runtime_provider_register_ipc;
 pub mod runtime_resident_read;
 pub mod runtime_search_service;
 pub mod runtime_server;
 pub mod runtime_server_admission;
 mod runtime_server_admission_builder_supervisor;
 pub mod runtime_server_admission_catalog;
-mod runtime_server_admission_contract;
-mod runtime_server_admission_registry;
 mod runtime_server_agent_control_plane;
 mod runtime_server_agent_session_status;
 pub mod runtime_server_control;
 pub mod runtime_server_lifecycle;
 pub mod runtime_server_lifecycle_coordinator;
 pub mod runtime_server_owner_receipt;
+pub mod runtime_server_publication;
 pub mod runtime_server_supervisor;
 pub use runtime_server_owner_receipt::{
     RuntimeServerDrainReceipt, RuntimeServerExitReceipt, RuntimeServerSpawnReceipt,
@@ -81,11 +79,9 @@ pub use runtime_server_control::{
 pub use turso_mvcc_keyset::{
     TursoMvccEventId, TursoMvccPageCursor, TursoMvccPageLimit, TursoMvccPartitionKey,
 };
-mod turso_mvcc_maintenance;
 pub mod turso_mvcc_partition;
 mod turso_mvcc_partition_sql;
 pub mod turso_mvcc_store;
-mod turso_mvcc_typed;
 pub mod turso_sync_storage;
 mod types;
 mod workspace_db_endpoint;
@@ -101,7 +97,6 @@ pub use workspace_db_owner_election::{
 pub mod workspace_db_ipc;
 pub use workspace_db_ipc_server::serve_workspace_db_session_until_shutdown;
 mod workspace_db_ipc_server;
-mod workspace_db_ipc_server_single_request;
 pub mod workspace_db_owner_election;
 pub use types::ClientDbProviderCommandSelectionInput;
 pub use workspace_db_ipc::WorkspaceDbIpcSession;
@@ -167,7 +162,7 @@ pub use source_index::{
     ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexSelectorSymbol,
     ClientDbSourceIndexSource, ClientDbSourceIndexSourceBlobs, ClientDbSourceIndexSourceKind,
     ClientDbSourceIndexStats, ClientDbSourceIndexStructuralSelector, assemble_source_index_import,
-    build_source_index_import, client_db_source_index_artifact_digest,
+    build_source_index_import,
     client_db_source_index_file_count, client_db_source_index_generation_id_for_snapshot,
     client_db_source_index_registry_evidence_hash, client_db_source_index_scope_dir_evidence_hash,
     overlay_active_source_index_import, source_index_file_hashes,

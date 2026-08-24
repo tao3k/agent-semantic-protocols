@@ -291,6 +291,8 @@ fn assert_fresh_asp_binary(binary: &Path) {
         .and_then(|metadata| metadata.modified())
         .expect("asp binary mtime");
     for source in [
+        "src/main.rs",
+        "src/hook_bootstrap.rs",
         "src/command/hook_runtime.rs",
         "src/command/hook_runtime_stdin.rs",
         "../agent-semantic-hook/src/event_state.rs",

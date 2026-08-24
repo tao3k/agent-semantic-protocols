@@ -7,6 +7,7 @@ use figment::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
+    fmt::Write as _,
     path::Path,
 };
 
@@ -23,6 +24,8 @@ pub(super) const HOOK_PROTOCOL_ID: &str = "agent.semantic-protocols.hook";
 pub(super) const HOOK_PROTOCOL_VERSION: &str = "1";
 
 const DEFAULT_HOOK_CLIENT_CONFIG_TEMPLATE: &str = include_str!("../../templates/hooks/config.toml");
+const REGISTERED_PROVIDER_ROUTE_IDENTITIES: &[(&str, &str)] =
+    include!(concat!(env!("OUT_DIR"), "/provider_route_identities.rs"));
 
 /// Parsed and validated project-local hook client config.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -49,6 +52,8 @@ pub struct HookClientConfigFile {
     #[serde(default)]
     pub profiles: BTreeMap<String, HookClientProfileConfig>,
     #[serde(default)]
+    pub provider_routes: Vec<HookClientProviderRouteIdentity>,
+    #[serde(default)]
     pub capability_policies: Vec<HookClientCapabilityPolicyConfig>,
     #[serde(default)]
     pub rules: Vec<HookClientRuleConfig>,
@@ -64,6 +69,57 @@ pub struct HookClientProfileConfig {
     pub language_id: String,
     pub provider_id: String,
     pub extension_any: Vec<String>,
+}
+
+/// Build-generated provider facade identity admitted for Hook search/query routing.
+///
+/// Source-extension policy remains in `profiles`; this identity list is derived
+/// from the canonical Provider Register so document and DSL providers do not
+/// require hand-maintained Hook branches.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientProviderRouteIdentity {
+    pub language_id: String,
+    pub provider_id: String,
+}
+
+fn registered_provider_routes_toml() -> String {
+    let mut rendered = String::new();
+    for (language_id, provider_id) in REGISTERED_PROVIDER_ROUTE_IDENTITIES {
+        writeln!(
+            rendered,
+            "[[providerRoutes]]\nlanguageId = {language_id:?}\nproviderId = {provider_id:?}\n"
+        )
+        .expect("render provider route identity TOML");
+    }
+    rendered
+}
+
+fn canonical_provider_route_identities() -> Vec<HookClientProviderRouteIdentity> {
+    REGISTERED_PROVIDER_ROUTE_IDENTITIES
+        .iter()
+        .map(
+            |(language_id, provider_id)| HookClientProviderRouteIdentity {
+                language_id: (*language_id).to_owned(),
+                provider_id: (*provider_id).to_owned(),
+            },
+        )
+        .collect()
+}
+
+fn admit_canonical_provider_routes(config: &mut HookClientConfigFile) -> Result<(), String> {
+    let canonical = canonical_provider_route_identities();
+    if config.provider_routes.is_empty() {
+        config.provider_routes = canonical;
+        return Ok(());
+    }
+    if config.provider_routes != canonical {
+        return Err(
+            "hook providerRoutes drift from the build-admitted canonical Provider Register"
+                .to_owned(),
+        );
+    }
+    Ok(())
 }
 
 /// Optional hook recovery prompt template and per-client agent-flow fragments.
@@ -248,6 +304,7 @@ pub struct HookClientAgentOrgArtifactsArchiveWarningConfig {
 
 /// Render the seed global hook config file.
 pub fn default_hook_client_config_template() -> String {
+    let provider_routes = registered_provider_routes_toml();
     DEFAULT_HOOK_CLIENT_CONFIG_TEMPLATE
         .replace(
             "@CLIENT_HOOK_CONFIG_SCHEMA_ID@",
@@ -263,12 +320,15 @@ pub fn default_hook_client_config_template() -> String {
             "@HOOK_CLIENT_CONTRACT_FINGERPRINT@",
             &hook_client_contract_fingerprint(),
         )
+        .replace("@REGISTERED_PROVIDER_ROUTES@", &provider_routes)
 }
 
 /// Parse the embedded default hook config template.
 pub fn default_hook_client_config_file() -> Result<HookClientConfigFile, String> {
-    toml::from_str(&default_hook_client_config_template())
-        .map_err(|error| format!("failed to parse default hook client config template: {error}"))
+    let mut config = toml::from_str(&default_hook_client_config_template())
+        .map_err(|error| format!("failed to parse default hook client config template: {error}"))?;
+    admit_canonical_provider_routes(&mut config)?;
+    Ok(config)
 }
 
 const HOOK_CLIENT_CONFIG_SCHEMA: &str =
@@ -277,6 +337,7 @@ const HOOK_CLIENT_CONFIG_SCHEMA: &str =
 /// Stable identity for the parser-visible hook config contract embedded in ASP.
 pub fn hook_client_contract_fingerprint() -> String {
     let mut hash = 0xcbf29ce484222325_u64;
+    let provider_routes = registered_provider_routes_toml();
     for component in [
         CLIENT_HOOK_CONFIG_SCHEMA_ID,
         CLIENT_HOOK_CONFIG_SCHEMA_VERSION,
@@ -285,6 +346,7 @@ pub fn hook_client_contract_fingerprint() -> String {
         env!("CARGO_PKG_VERSION"),
         HOOK_CLIENT_CONFIG_SCHEMA,
         DEFAULT_HOOK_CLIENT_CONFIG_TEMPLATE,
+        provider_routes.as_str(),
     ] {
         for byte in component.as_bytes().iter().copied().chain([0]) {
             hash ^= u64::from(byte);
@@ -305,7 +367,8 @@ pub fn render_hook_client_message_template(template: &str, values: &[(&str, &str
 
 /// Load, parse, and validate project-local hook config.
 pub fn load_hook_client_config_file(path: &Path) -> Result<HookClientConfigFile, String> {
-    let parsed = parse_hook_client_config_file(path)?;
+    let mut parsed = parse_hook_client_config_file(path)?;
+    admit_canonical_provider_routes(&mut parsed)?;
     validate_config(&parsed)?;
     Ok(parsed)
 }

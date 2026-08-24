@@ -109,15 +109,11 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
     let installed_provider_artifacts = publish_installed_artifacts_if_needed(
         &runtime_state.protocol_home,
         install_scope,
-        &runtime_state.runtime_bin_dir,
-        &runtime_state.provider_lock_dir,
-        &binary_artifact_root,
         &reconciliation_guard,
-    )
-    .await?;
+    )?;
     drop(reconciliation_guard);
     println!(
-        "[asp-install] provider={} language={} scope={} installMode=develop-workspace-tree sourceKind=develop-workspace-tree devRoot={} target={} binary={} binaryContentDigest={} digestAlgorithm=blake3-256 artifactLeafCount={} artifactEntrypoint={} installedPath={} lock={} switch=atomic installedProviderArtifacts={} installedProviderArtifactsWrite={}",
+        "[asp-install] provider={} language={} scope={} installMode=develop-workspace-tree sourceKind=develop-workspace-tree devRoot={} target={} binary={} binaryContentDigest={} digestAlgorithm=blake3-256 artifactLeafCount={} artifactEntrypoint={} installedPath={} lock={} switch=atomic installedProviderArtifacts={} installedProviderArtifactsWrite={} installedProviderArtifactsChangedLeaves={} installedProviderArtifactsElapsedMicros={}",
         provider_id,
         language_id,
         scope,
@@ -136,6 +132,12 @@ pub(in super::super) async fn record_registered_provider_workspace_install(
         installed_provider_artifacts
             .as_ref()
             .is_some_and(|publication| publication.artifact_write),
+        installed_provider_artifacts
+            .as_ref()
+            .map_or(0, |publication| publication.changed_leaf_count),
+        installed_provider_artifacts
+            .as_ref()
+            .map_or(0, |publication| publication.elapsed_micros),
     );
     Ok(())
 }
@@ -159,8 +161,8 @@ async fn publish_live_provider_registration(
             expected_generation: None,
             request: ProviderRegisterOperation::List,
         };
-        let list = agent_semantic_client_db::runtime_provider_register_client::call_runtime_provider_register(
-            &endpoint,
+        let list = agent_semantic_provider_transport::grpc_session::call_runtime_provider_register(
+            &endpoint.provider_plane_socket_path,
             &list,
         )
         .await?;
@@ -185,11 +187,12 @@ async fn publish_live_provider_registration(
                 provider: provider.clone(),
             },
         };
-        let response = agent_semantic_client_db::runtime_provider_register_client::call_runtime_provider_register(
-            &endpoint,
-            &register,
-        )
-        .await?;
+        let response =
+            agent_semantic_provider_transport::grpc_session::call_runtime_provider_register(
+                &endpoint.provider_plane_socket_path,
+                &register,
+            )
+            .await?;
         response.validate()?;
         match response.result {
             ProviderRegisterResult::Snapshot { .. } => return Ok(()),
@@ -243,12 +246,9 @@ fn install_scope_and_lock<'a>(
     }
 }
 
-async fn publish_installed_artifacts_if_needed(
+fn publish_installed_artifacts_if_needed(
     state_home: &Path,
     install_scope: &super::super::InstallScope,
-    runtime_bin_dir: &Path,
-    provider_lock_dir: &Path,
-    binary_artifact_root: &Path,
     reconciliation_guard: &super::super::super::protocol_binary::ProtocolBinaryReconciliationGuard,
 ) -> Result<
     Option<crate::command::installed_provider_artifacts::InstalledProviderArtifactsPublication>,
@@ -257,16 +257,9 @@ async fn publish_installed_artifacts_if_needed(
     if !matches!(install_scope, super::super::InstallScope::Global) {
         return Ok(None);
     }
-    let provider_binaries = super::super::reconcile_registered_provider_runtime_binaries(
-        runtime_bin_dir,
-        binary_artifact_root,
-        provider_lock_dir,
-        reconciliation_guard,
-    )
-    .await?;
-    super::super::super::installed_provider_artifacts::publish_installed_provider_artifacts(
+    super::super::super::installed_provider_artifacts::publish_current_installed_provider_artifacts(
         state_home,
-        &provider_binaries.provider_receipts,
+        reconciliation_guard,
     )
     .map(Some)
 }

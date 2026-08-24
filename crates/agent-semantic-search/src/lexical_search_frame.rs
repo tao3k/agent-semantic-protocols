@@ -11,12 +11,8 @@ pub enum LexicalAcquisitionRoute {
     SessionDynamicOverlay,
     /// Source index supplied owner/path evidence without bounded selector proof.
     SourceIndexOwnerEvidence,
-    /// Provider parser owner-items are required.
-    ProviderOwnerItems,
-    /// A bounded cold scan is required because warm evidence was missing.
-    BoundedColdScan,
-    /// Native finder fallback is the only available route.
-    DegradedFinder,
+    /// The Runtime has no admitted immutable generation for this query.
+    GenerationUnavailable,
 }
 
 impl LexicalAcquisitionRoute {
@@ -27,9 +23,7 @@ impl LexicalAcquisitionRoute {
             Self::WarmOverlay => "warm-overlay",
             Self::SessionDynamicOverlay => "session-dynamic-overlay",
             Self::SourceIndexOwnerEvidence => "source-index-owner-evidence",
-            Self::ProviderOwnerItems => "provider-owner-items",
-            Self::BoundedColdScan => "bounded-cold-scan",
-            Self::DegradedFinder => "degraded-finder",
+            Self::GenerationUnavailable => "generation-unavailable",
         }
     }
 }
@@ -57,8 +51,8 @@ pub enum LexicalEvidenceState {
     OwnerReady,
     ItemReady,
     TestReady,
-    NeedsColdScan,
-    Degraded,
+    QueryBundleRequired,
+    GenerationUnavailable,
 }
 
 impl LexicalEvidenceState {
@@ -68,8 +62,8 @@ impl LexicalEvidenceState {
             Self::OwnerReady => "owner-ready",
             Self::ItemReady => "item-ready",
             Self::TestReady => "test-ready",
-            Self::NeedsColdScan => "needs-cold-scan",
-            Self::Degraded => "degraded",
+            Self::QueryBundleRequired => "query-bundle-required",
+            Self::GenerationUnavailable => "generation-unavailable",
         }
     }
 }
@@ -108,8 +102,6 @@ pub struct LexicalSearchFrameRequest<'a> {
     pub warm_candidates: &'a [LexicalSearchFrameCandidate],
     pub session_candidates: &'a [LexicalSearchFrameCandidate],
     pub owner_candidates: &'a [LexicalSearchFrameCandidate],
-    pub provider_owner_item_available: bool,
-    pub cold_scan_allowed: bool,
 }
 
 /// Route selected by the lexical SearchFrame.
@@ -228,7 +220,7 @@ pub fn plan_lexical_search_frame(
         return lexical_route(
             &request,
             LexicalAcquisitionRoute::QueryBundleRequired,
-            LexicalEvidenceState::Degraded,
+            LexicalEvidenceState::QueryBundleRequired,
             "query-bundle-required",
             0,
             0,
@@ -272,37 +264,13 @@ pub fn plan_lexical_search_frame(
         );
     }
 
-    if request.provider_owner_item_available {
-        return lexical_route(
-            &request,
-            LexicalAcquisitionRoute::ProviderOwnerItems,
-            LexicalEvidenceState::OwnerReady,
-            "warm-miss",
-            1,
-            0,
-            &[],
-        );
-    }
-
-    if request.cold_scan_allowed {
-        return lexical_route(
-            &request,
-            LexicalAcquisitionRoute::BoundedColdScan,
-            LexicalEvidenceState::NeedsColdScan,
-            "warm-miss",
-            0,
-            0,
-            &[],
-        );
-    }
-
     lexical_route(
         &request,
-        LexicalAcquisitionRoute::DegradedFinder,
-        LexicalEvidenceState::Degraded,
-        "no-parser-facts",
+        LexicalAcquisitionRoute::GenerationUnavailable,
+        LexicalEvidenceState::GenerationUnavailable,
+        "generation-unavailable",
         0,
-        1,
+        0,
         &[],
     )
 }

@@ -36,9 +36,10 @@ positiveCommands = [
   "asp python search owner packages/python/project.py items --query policy --workspace . --view seeds",
   "asp julia search pipe runtime --workspace . --view seeds",
   "asp gerbil-scheme search owner src/main.ss items --query profile --workspace . --view seeds",
+  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source",
+  "asp python query --selector 'python://src/project.py#item/function/run' --workspace . --projection source",
 ]
 negativeCommands = [
-  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source",
   "asp healthcheck",
 ]
 
@@ -124,6 +125,17 @@ negativeTools = [
   { name = "Read", input = { file_path = "Cargo.lock" } },
 ]
 wrapperExemption = "host read is a typed action, not a shell command"
+
+[[rules]]
+id = "route-shell-structured-document-read"
+positiveCommands = [
+  "unknown-consumer schemas/semantic-hook-match-scenario.v1.schema.json",
+  "unknown-consumer crates/agent-semantic-config/templates/hooks/config.toml",
+]
+negativeCommands = [
+  "jq -r '.properties.expected' schemas/semantic-hook-match-scenario.v1.schema.json",
+  "jq . schemas/semantic-hook-match-scenario.v1.schema.json",
+]
 
 [[rules]]
 id = "deny-uncontrolled-source-search-commands"

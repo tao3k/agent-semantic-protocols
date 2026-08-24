@@ -3,7 +3,9 @@
 use std::env;
 
 use super::install_provider_cli_support::{has_help_flag, usage};
-use crate::command::{cli_help, hook_runtime, install_binary_config_admission, protocol_binary};
+use crate::command::{
+    agent_config_sync, cli_help, hook_runtime, install_binary_config_admission, protocol_binary,
+};
 
 pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
     if !args.is_empty() {
@@ -35,8 +37,9 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
         &runtime_state.activation_path,
     )?;
     drop(reconciliation_guard);
+    agent_config_sync::synchronize_embedded_agent_state_config(&runtime_state.protocol_home)?;
     println!(
-        "[asp-install-binary] binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic hookConfigPublication={} hookConfigCoupling=binary-content runtimeServerLifecycle=resident-owner reasonKind=none providerReconciliation=not-on-binary-install installedProviderArtifacts=not-on-binary-install developerIdentityReceipt={} installSource={}",
+        "[asp-install-binary] binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic hookConfigPublication={} hookConfigCoupling=binary-content agentConfigPublication=current agentConfigCoupling=binary-content runtimeServerLifecycle=resident-owner reasonKind=none providerReconciliation=not-on-binary-install installedProviderArtifacts=not-on-binary-install developerIdentityReceipt={} installSource={}",
         installed.path.display(),
         installed.status,
         installed.artifact_digest,

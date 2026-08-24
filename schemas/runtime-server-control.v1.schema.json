@@ -57,7 +57,7 @@
       ],
       "properties": {
         "schemaId": {
-          "const": "agent.semantic-protocols.runtime-server-endpoint.v1"
+          "const": "agent.semantic-protocols.runtime-server-endpoint"
         },
         "schemaVersion": {
           "const": "1"
@@ -396,7 +396,7 @@
       ],
       "properties": {
         "schemaId": {
-          "const": "agent.semantic-protocols.runtime-server-status-snapshot.v1"
+          "const": "agent.semantic-protocols.runtime-server-status-snapshot"
         },
         "schemaVersion": {
           "const": "1"
@@ -494,7 +494,7 @@
       ],
       "properties": {
         "schemaId": {
-          "const": "agent.semantic-protocols.runtime-server-control-request.v1"
+          "const": "agent.semantic-protocols.runtime-server-control-request"
         },
         "schemaVersion": {
           "const": "1"
@@ -502,7 +502,6 @@
         "operation": {
           "enum": [
             "status",
-            "reconcile",
             "restart"
           ]
         },
@@ -551,7 +550,7 @@
       ],
       "properties": {
         "schemaId": {
-          "const": "agent.semantic-protocols.runtime-server-control-receipt.v1"
+          "const": "agent.semantic-protocols.runtime-server-control-receipt"
         },
         "schemaVersion": {
           "const": "1"
@@ -586,6 +585,25 @@
         "workspaceEntryCount": {
           "type": "integer",
           "minimum": 0
+        },
+        "workspaceGeneration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "workspaceIdentity",
+            "activeGenerationDigest",
+            "candidateDigest",
+            "generationChanged",
+            "state"
+          ],
+          "properties": {
+            "workspaceIdentity": { "type": "string", "minLength": 1 },
+            "previousGenerationDigest": { "type": ["string", "null"] },
+            "activeGenerationDigest": { "type": "string", "minLength": 1 },
+            "candidateDigest": { "type": "string", "minLength": 1 },
+            "generationChanged": { "type": "boolean" },
+            "state": { "type": "string", "minLength": 1 }
+          }
         },
         "reason": {
           "type": "string"

@@ -28,7 +28,7 @@ struct PersistedProviderRegisterState {
 pub struct RuntimeProviderRegister {
     state: ArcSwap<RuntimeProviderRegisterState>,
     writer: tokio::sync::Mutex<()>,
-    builtin_providers: BTreeMap<String, ProviderRegistrationDocument>,
+    identity_constraints: BTreeMap<String, ProviderRegistrationDocument>,
     store_path: Option<PathBuf>,
 }
 
@@ -48,14 +48,14 @@ impl RuntimeProviderRegister {
         Self {
             state: ArcSwap::from_pointee(build_state(0, Vec::new()).expect("empty register")),
             writer: tokio::sync::Mutex::new(()),
-            builtin_providers: BTreeMap::new(),
+            identity_constraints: BTreeMap::new(),
             store_path: None,
         }
     }
 
     pub fn from_seed(providers: Vec<ProviderRegistrationDocument>) -> Result<Self, String> {
         validate_provider_set(&providers)?;
-        let builtin_providers = providers
+        let identity_constraints = providers
             .iter()
             .cloned()
             .map(|provider| (provider.provider_id.clone(), provider))
@@ -63,30 +63,40 @@ impl RuntimeProviderRegister {
         Ok(Self {
             state: ArcSwap::from_pointee(build_state(1, providers)?),
             writer: tokio::sync::Mutex::new(()),
-            builtin_providers,
+            identity_constraints,
             store_path: None,
         })
     }
 
     pub async fn from_seed_with_store(
-        builtin_providers: Vec<ProviderRegistrationDocument>,
+        identity_constraints: Vec<ProviderRegistrationDocument>,
         store_path: PathBuf,
     ) -> Result<Self, String> {
-        let mut register = Self::from_seed(builtin_providers)?;
-        let external_providers = read_external_providers(&store_path).await?;
-        for provider in &external_providers {
-            if register
-                .builtin_providers
-                .contains_key(&provider.provider_id)
+        let mut register = Self::from_seed(identity_constraints)?;
+        let installed_capabilities = read_external_providers(&store_path).await?;
+        for provider in &installed_capabilities {
+            if let Some(identity) = register.identity_constraints.get(&provider.provider_id)
+                && identity.language_id != provider.language_id
             {
                 return Err(format!(
-                    "persisted external provider `{}` conflicts with builtin authority",
-                    provider.provider_id
+                    "persisted provider `{}` violates builtin language identity `{}`",
+                    provider.provider_id, identity.language_id
                 ));
             }
         }
-        let mut providers = register.snapshot().providers.clone();
-        providers.extend(external_providers);
+        let mut providers = register
+            .snapshot()
+            .providers
+            .iter()
+            .cloned()
+            .map(|provider| (provider.provider_id.clone(), provider))
+            .collect::<BTreeMap<_, _>>();
+        providers.extend(
+            installed_capabilities
+                .into_iter()
+                .map(|provider| (provider.provider_id.clone(), provider)),
+        );
+        let mut providers = providers.into_values().collect::<Vec<_>>();
         providers.sort_by(|left, right| left.provider_id.cmp(&right.provider_id));
         validate_provider_set(&providers)?;
         register.state = ArcSwap::from_pointee(build_state(1, providers)?);
@@ -99,7 +109,7 @@ impl RuntimeProviderRegister {
     }
 
     /// Project the public, language-neutral client catalog from the same
-    /// immutable generation that owns live provider dispatch. This is a
+    /// immutable generation that owns installed provider capabilities. This is a
     /// read-only projection: clients cannot register, launch, or retire a
     /// provider through this contract.
     pub fn client_protocol_catalog(
@@ -120,13 +130,16 @@ impl RuntimeProviderRegister {
                     .flat_map(|routes| routes.iter())
                     .filter_map(move |route| {
                         let spec = route.spec();
-                        let (request_schema_id, response_schema_id) =
-                            runtime_contract_schemas(provider, &spec.operation)?;
+                        let request_schema_id =
+                            spec.request_schema_id.as_deref().or_else(|| {
+                                runtime_contract_schemas(provider, &spec.operation)
+                                    .map(|(request_schema_id, _)| request_schema_id)
+                            })?;
                         Some(ClientMethod {
                             method: spec.route_id.clone(),
                             route_id: spec.route_id.clone(),
                             request_schema_id: request_schema_id.to_owned(),
-                            response_schema_id: response_schema_id.to_owned(),
+                            response_schema_id: spec.output.schema_id.clone(),
                             error_schema_ids: spec.failure_schema_ids.clone(),
                             parameters: spec
                                 .inputs
@@ -171,9 +184,10 @@ impl RuntimeProviderRegister {
         self.state.load().routes.get(provider_id).map(Arc::clone)
     }
 
-    /// Resolve one public client method from the same register generation used
-    /// to publish the client catalog. Routes outside the provider runtime
-    /// contract are deliberately invisible and cannot reach dispatch.
+    /// Resolve one public ASP Client method from the same immutable Server-route
+    /// generation used to publish the client catalog. Provider runtime
+    /// operations are a separate southbound contract and do not gate these
+    /// northbound methods.
     pub fn resolve_client_method(
         &self,
         method: &str,
@@ -192,9 +206,7 @@ impl RuntimeProviderRegister {
             .flat_map(|(provider, routes)| {
                 routes.iter().filter_map(move |route| {
                     let spec = route.spec();
-                    (spec.route_id == method
-                        && runtime_contract_schemas(provider, &spec.operation).is_some())
-                    .then(|| {
+                    (spec.route_id == method).then(|| {
                         (
                             provider.language_id.clone(),
                             spec.operation.clone(),
@@ -205,20 +217,20 @@ impl RuntimeProviderRegister {
             });
         let resolved = matches.next().ok_or_else(|| {
             format!(
-                "state=route-missing reasonKind=method-not-in-live-runtime-contract method={method}"
+                "state=route-missing reasonKind=method-not-in-installed-server-routes method={method}"
             )
         })?;
         if matches.next().is_some() {
             return Err(format!(
-                "state=route-ambiguous reasonKind=multiple-live-client-methods method={method}"
+                "state=route-ambiguous reasonKind=multiple-installed-client-methods method={method}"
             ));
         }
         Ok(resolved)
     }
 
-    /// Return the unique live provider registration for one language. Seed
-    /// identities are excluded because they do not own executable routes.
-    pub fn live_registration(
+    /// Return the unique installed capability descriptor for one language.
+    /// Identity-only seeds are excluded because they are not executable.
+    pub fn installed_capability(
         &self,
         language_id: &str,
     ) -> Result<ProviderRegistrationDocument, String> {
@@ -228,12 +240,12 @@ impl RuntimeProviderRegister {
         });
         let provider = providers.next().ok_or_else(|| {
             format!(
-                "state=provider-missing reasonKind=language-not-in-live-register languageId={language_id}"
+                "state=provider-missing reasonKind=language-capability-not-installed languageId={language_id}"
             )
         })?;
         if providers.next().is_some() {
             return Err(format!(
-                "state=provider-ambiguous reasonKind=multiple-live-providers languageId={language_id}"
+                "state=provider-ambiguous reasonKind=multiple-installed-language-capabilities languageId={language_id}"
             ));
         }
         Ok(provider.clone())
@@ -241,7 +253,7 @@ impl RuntimeProviderRegister {
 
     /// Project every executable provider from one atomic register generation.
     /// Identity-only seeds are excluded because they are not Runtime clients.
-    pub fn live_registrations(&self) -> Vec<ProviderRegistrationDocument> {
+    pub fn installed_capabilities(&self) -> Vec<ProviderRegistrationDocument> {
         let state = self.state.load();
         state
             .snapshot
@@ -278,12 +290,12 @@ impl RuntimeProviderRegister {
             });
         let resolved = matches.next().ok_or_else(|| {
             format!(
-                "state=route-missing reasonKind=operation-not-in-live-register languageId={language_id} operation={operation}"
+                "state=route-missing reasonKind=operation-not-in-installed-capability languageId={language_id} operation={operation}"
             )
         })?;
         if matches.next().is_some() {
             return Err(format!(
-                "state=route-ambiguous reasonKind=multiple-live-provider-routes languageId={language_id} operation={operation}"
+                "state=route-ambiguous reasonKind=multiple-installed-provider-routes languageId={language_id} operation={operation}"
             ));
         }
         Ok(resolved)
@@ -338,7 +350,7 @@ impl RuntimeProviderRegister {
                     .collect();
             }
             ProviderRegisterOperation::Register { provider } => {
-                if let Some(identity) = self.builtin_providers.get(&provider.provider_id)
+                if let Some(identity) = self.identity_constraints.get(&provider.provider_id)
                     && identity.language_id != provider.language_id
                 {
                     return Ok(rejected_response(
@@ -352,7 +364,7 @@ impl RuntimeProviderRegister {
                 providers.insert(provider.provider_id.clone(), provider);
             }
             ProviderRegisterOperation::Unregister { provider_id } => {
-                if let Some(identity) = self.builtin_providers.get(&provider_id) {
+                if let Some(identity) = self.identity_constraints.get(&provider_id) {
                     providers.insert(provider_id, identity.clone());
                 } else {
                     providers.remove(&provider_id);
@@ -379,7 +391,7 @@ impl RuntimeProviderRegister {
                 next.snapshot
                     .providers
                     .iter()
-                    .filter(|provider| !self.builtin_providers.contains_key(&provider.provider_id))
+                    .filter(|provider| next.routes.contains_key(&provider.provider_id))
                     .cloned()
                     .collect(),
             )

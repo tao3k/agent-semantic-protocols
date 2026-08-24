@@ -332,37 +332,71 @@ pub fn search_pipe_next_query_pack_hint(
     {
         return None;
     }
+    Some(build_next_query_pack_hint(
+        descriptor,
+        context_terms,
+        owner_seed_terms,
+        concept_terms,
+    ))
+}
+
+fn build_next_query_pack_hint(
+    descriptor: SearchPipeQueryPackDescriptor<'_>,
+    context_terms: &[String],
+    owner_seed_terms: &[String],
+    concept_terms: &[String],
+) -> String {
     let mut clauses = vec![owner_seed_terms.join(" ")];
     let observed_terms = context_terms
         .iter()
         .chain(owner_seed_terms)
         .chain(concept_terms)
-        .collect::<Vec<_>>();
-    for recipe in descriptor.recipes {
-        let matches_term = |trigger: &String| {
-            observed_terms
-                .iter()
-                .any(|observed| observed.eq_ignore_ascii_case(trigger))
-        };
-        let matches = match recipe.trigger_match {
-            "all" => recipe.trigger_terms.iter().all(matches_term),
-            _ => recipe.trigger_terms.iter().any(matches_term),
-        };
-        if matches {
-            for clause in recipe.clauses {
-                let clause = clause.terms.join(" ");
-                if !clause.is_empty() && !clauses.contains(&clause) {
-                    clauses.push(clause);
-                }
-            }
-        }
-    }
+        .map(|term| term.to_ascii_lowercase())
+        .collect::<std::collections::BTreeSet<_>>();
+    let recipe_clauses = matching_recipe_clauses(descriptor.recipes, &observed_terms);
+    append_unique_clauses(&mut clauses, recipe_clauses);
     if clauses.len() == 1 && !context_terms.is_empty() {
         clauses.push(context_terms.join(" "));
     } else if clauses.len() == 1 && !concept_terms.is_empty() {
         clauses.push(concept_terms.join(" "));
     }
-    Some(clauses.join("|"))
+    clauses.join("|")
+}
+
+fn matching_recipe_clauses(
+    recipes: &[SearchPipeQueryPackRecipe<'_>],
+    observed_terms: &std::collections::BTreeSet<String>,
+) -> Vec<String> {
+    recipes
+        .iter()
+        .filter(|recipe| recipe_matches_observed_terms(recipe, observed_terms))
+        .flat_map(|recipe| recipe.clauses)
+        .map(|clause| clause.terms.join(" "))
+        .filter(|clause| !clause.is_empty())
+        .collect()
+}
+
+fn recipe_matches_observed_terms(
+    recipe: &SearchPipeQueryPackRecipe<'_>,
+    observed_terms: &std::collections::BTreeSet<String>,
+) -> bool {
+    let trigger_terms = recipe
+        .trigger_terms
+        .iter()
+        .map(|trigger| trigger.to_ascii_lowercase())
+        .collect::<std::collections::BTreeSet<_>>();
+    match recipe.trigger_match {
+        "all" => trigger_terms.is_subset(observed_terms),
+        _ => !trigger_terms.is_disjoint(observed_terms),
+    }
+}
+
+fn append_unique_clauses(clauses: &mut Vec<String>, candidates: Vec<String>) {
+    let mut seen = clauses
+        .iter()
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
+    clauses.extend(candidates.into_iter().filter(|clause| seen.insert(clause.clone())));
 }
 
 #[must_use]
@@ -585,14 +619,29 @@ pub fn search_pipe_semantic_facts_intent(
         .split_whitespace()
         .any(search_pipe_is_path_like_token)
     {
-        return SearchPipeSemanticFactsIntentDecision {
-            requested: false,
-            descriptor_id: descriptor.descriptor_id.to_owned(),
-            descriptor_version: descriptor.descriptor_version.to_owned(),
-            matched_axes: Vec::new(),
-            matched_terms: Vec::new(),
-        };
+        return empty_semantic_facts_intent(descriptor);
     }
+    resolve_semantic_facts_intent(language_id, query, query_pack_descriptor, descriptor)
+}
+
+fn empty_semantic_facts_intent(
+    descriptor: SearchPipeSemanticFactsDescriptor<'_>,
+) -> SearchPipeSemanticFactsIntentDecision {
+    SearchPipeSemanticFactsIntentDecision {
+        requested: false,
+        descriptor_id: descriptor.descriptor_id.to_owned(),
+        descriptor_version: descriptor.descriptor_version.to_owned(),
+        matched_axes: Vec::new(),
+        matched_terms: Vec::new(),
+    }
+}
+
+fn resolve_semantic_facts_intent(
+    language_id: SearchPipeLanguageId<'_>,
+    query: SearchPipeQueryText<'_>,
+    query_pack_descriptor: SearchPipeQueryPackDescriptor<'_>,
+    descriptor: SearchPipeSemanticFactsDescriptor<'_>,
+) -> SearchPipeSemanticFactsIntentDecision {
     let clauses = search_pipe_query_clauses(
         SearchPipeQueryClausesRequest::new(
             SearchPipeLanguageId::new((language_id).as_str()),
@@ -603,30 +652,40 @@ pub fn search_pipe_semantic_facts_intent(
     let terms = search_pipe_unique_query_terms(&clauses);
     let mut matched_axes = Vec::new();
     let mut matched_terms = Vec::new();
+    let mut seen_axes = std::collections::BTreeSet::new();
+    let mut seen_terms = std::collections::BTreeSet::new();
     let has_symbol_anchor = terms
         .iter()
         .any(|term| matches!(term.role, SearchPipeTermRole::Symbol));
-    for term in &terms {
-        for intent_axis in descriptor.intent_axes {
-            if !intent_axis.roles.is_empty()
-                && !intent_axis
-                    .roles
-                    .iter()
-                    .any(|role| semantic_fact_role_matches(*role, term.role))
-            {
-                continue;
-            }
-            if !intent_axis
+    let indexed_axes = descriptor
+        .intent_axes
+        .iter()
+        .map(|axis| {
+            let role_mask = axis
+                .roles
+                .iter()
+                .fold(0_u8, |mask, role| mask | semantic_fact_role_bit(*role));
+            let term_index = axis
                 .terms
                 .iter()
-                .any(|candidate| candidate.eq_ignore_ascii_case(&term.raw))
+                .map(|term| term.to_ascii_lowercase())
+                .collect::<std::collections::BTreeSet<_>>();
+            (axis, role_mask, term_index)
+        })
+        .collect::<Vec<_>>();
+    for term in &terms {
+        for (intent_axis, role_mask, term_index) in &indexed_axes {
+            if *role_mask != 0 && *role_mask & semantic_fact_role_bit(term.role) == 0
             {
                 continue;
             }
-            if !matched_axes.iter().any(|axis| axis == intent_axis.axis) {
+            if !term_index.contains(term.lower.as_str()) {
+                continue;
+            }
+            if seen_axes.insert(intent_axis.axis) {
                 matched_axes.push(intent_axis.axis.to_owned());
             }
-            if !matched_terms.iter().any(|matched| matched == &term.lower) {
+            if seen_terms.insert(term.lower.as_str()) {
                 matched_terms.push(term.lower.clone());
             }
         }
@@ -641,6 +700,12 @@ pub fn search_pipe_semantic_facts_intent(
     }
 }
 
-fn semantic_fact_role_matches(role: SearchPipeTermRole, term_role: SearchPipeTermRole) -> bool {
-    role == term_role
+const fn semantic_fact_role_bit(role: SearchPipeTermRole) -> u8 {
+    match role {
+        SearchPipeTermRole::Context => 1 << 0,
+        SearchPipeTermRole::Concept => 1 << 1,
+        SearchPipeTermRole::Symbol => 1 << 2,
+        SearchPipeTermRole::Literal => 1 << 3,
+        SearchPipeTermRole::DiagnosticCode => 1 << 4,
+    }
 }

@@ -225,6 +225,7 @@ fn latest_hook_session_agent_route_from_lines(lines: &[String]) -> Option<HookSe
             config_rule_id: required_event_string(&event, "/fields/configRuleId")?,
             deny_evidence_ref: event
                 .pointer("/fields/recoveryRef")
+                .or_else(|| event.pointer("/fields/denyEvidenceRef"))
                 .and_then(Value::as_str)
                 .map(str::to_owned),
             reason_kind: required_event_string(&event, "/reasonKind")?,

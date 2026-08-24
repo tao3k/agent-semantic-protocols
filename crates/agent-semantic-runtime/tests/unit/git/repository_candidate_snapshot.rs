@@ -115,6 +115,76 @@ fn git_snapshot_is_deterministic_and_excludes_ignored_files() {
 }
 
 #[test]
+fn entirely_untracked_workspace_member_directory_is_expanded_to_source_files() {
+    let fixture = Fixture::new("untracked-workspace-member");
+    fixture.git(&["init", "--quiet"]);
+    fixture.write(
+        "Cargo.toml",
+        "[workspace]\nmembers = [\"crates/runtime-server\"]\nresolver = \"2\"\n",
+    );
+    fixture.git(&["add", "Cargo.toml"]);
+    fixture.write(
+        "crates/runtime-server/Cargo.toml",
+        "[package]\nname = \"runtime-server\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    );
+    fixture.write(
+        "crates/runtime-server/src/lib.rs",
+        "pub fn runtime_server() {}\n",
+    );
+
+    let snapshot = discover_repository_candidate_snapshot(&fixture.root)
+        .expect("discover repository candidates")
+        .expect("Git snapshot exists");
+
+    for expected in [
+        "crates/runtime-server/Cargo.toml",
+        "crates/runtime-server/src/lib.rs",
+    ] {
+        let candidate = snapshot
+            .candidates
+            .iter()
+            .find(|candidate| candidate.path == Path::new(expected))
+            .unwrap_or_else(|| {
+                panic!("untracked workspace member source must be admitted: {expected}")
+            });
+        assert_eq!(candidate.state, RepositoryCandidateState::Untracked);
+        assert_eq!(
+            candidate.authority,
+            RepositoryCandidateAuthority::GitWorktree
+        );
+    }
+    assert_eq!(snapshot.metrics.worktree_addition_count, 2);
+}
+
+#[test]
+fn repository_workspace_candidate_contains_runtime_server_source() {
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let started = std::time::Instant::now();
+    let snapshot = discover_repository_candidate_snapshot(&workspace)
+        .expect("discover repository workspace candidates")
+        .expect("repository workspace has a Git candidate snapshot");
+    let elapsed = started.elapsed();
+
+    for expected in [
+        "crates/agent-semantic-runtime-server/Cargo.toml",
+        "crates/agent-semantic-runtime-server/src/runtime_asp_client.rs",
+    ] {
+        assert!(
+            snapshot
+                .candidates
+                .iter()
+                .any(|candidate| candidate.path == Path::new(expected)),
+            "workspace candidate snapshot omitted {expected}"
+        );
+    }
+    eprintln!(
+        "[repository-candidate-workspace] candidateCount={} elapsedMicros={}",
+        snapshot.candidates.len(),
+        elapsed.as_micros()
+    );
+}
+
+#[test]
 fn tracked_same_path_content_edit_advances_candidate_generation() {
     let fixture = Fixture::new("tracked-content-edit");
     fixture.git(&["init", "--quiet"]);

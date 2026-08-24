@@ -3,7 +3,7 @@ use agent_semantic_client_db::{
     CLIENT_DB_SOURCE_INDEX_SCHEMA_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, ClientDbEngine,
     ClientDbLiveSourceIndexFacts, ClientDbSourceIndexClientDirLookupRequest,
     ClientDbSourceIndexImport, ClientDbSourceIndexLookupState, ClientDbSourceIndexOwner,
-    client_db_source_index_artifact_digest, client_db_source_index_generation_id_for_snapshot,
+    client_db_source_index_generation_id_for_snapshot,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -56,7 +56,8 @@ fn live_source_index_hit_does_not_create_or_open_client_db() {
         }],
         selectors: Vec::new(),
     };
-    let expected_artifact_digest = client_db_source_index_artifact_digest(&source_snapshot);
+    let expected_artifact_digest =
+        agent_semantic_search_projection::source_index_artifact_digest(&source_snapshot);
     let rust_language_id = LanguageId::from("rust");
 
     let mut samples = Vec::with_capacity(128);

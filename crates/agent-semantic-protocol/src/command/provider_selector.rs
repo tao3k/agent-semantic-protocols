@@ -100,11 +100,19 @@ pub(super) fn is_provider_owned_structural_selector_query(
     {
         return false;
     }
-    let Some(selector) = option_value(args, "--selector") else {
+    let Some(selector) = exact_query_selector_argument(args) else {
         return false;
     };
     agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(selector)
         .is_ok_and(|selector| selector.language_id.as_str() == language_id)
+}
+
+pub(super) fn exact_query_selector_argument(args: &[String]) -> Option<&str> {
+    option_value(args, "--selector").or_else(|| {
+        args.get(1)
+            .filter(|selector| !selector.starts_with('-'))
+            .map(String::as_str)
+    })
 }
 
 pub(super) fn option_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {

@@ -9,8 +9,29 @@ pub(super) struct QualificationPlan {
     pub(super) schema_version: String,
     pub(super) lock_path: PathBuf,
     pub(super) required_languages: Vec<String>,
+    pub(super) client_protocol: ClientProtocolContract,
     pub(super) resident_sample_count: usize,
     pub(super) cases: Vec<QualificationCase>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ClientProtocolContract {
+    pub(super) protocol_id: String,
+    pub(super) protocol_version: String,
+    pub(super) transport: String,
+    pub(super) phases: Vec<String>,
+    pub(super) session_policy: String,
+    pub(super) ready_effects: Vec<String>,
+    pub(super) forbidden_ready_effects: Vec<String>,
+    pub(super) non_ready_dispatch_count: usize,
+    pub(super) residual_task_count: usize,
+    pub(super) required_telemetry_events: Vec<String>,
+    pub(super) applies_to_case_count: usize,
+    pub(super) maximum_resident_micros: u64,
+    pub(super) p50_maximum_micros: u64,
+    pub(super) p99_maximum_micros: u64,
+    pub(super) max_maximum_micros: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,9 +74,32 @@ pub(super) struct QualificationReceipt {
     pub(super) schema_version: &'static str,
     pub(super) plan_digest: String,
     pub(super) lock_digest: String,
+    pub(super) client_protocol: ClientProtocolReceipt,
     pub(super) qualified_case_count: usize,
     pub(super) cases: Vec<QualificationCaseReceipt>,
     pub(super) status: &'static str,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ClientProtocolReceipt {
+    pub(super) protocol_id: &'static str,
+    pub(super) protocol_version: &'static str,
+    pub(super) transport: &'static str,
+    pub(super) phases: [&'static str; 6],
+    pub(super) session_policy: String,
+    pub(super) ready_effects: Vec<String>,
+    pub(super) forbidden_ready_effects: Vec<String>,
+    pub(super) non_ready_dispatch_count: usize,
+    pub(super) residual_task_count: usize,
+    pub(super) cancel_outcome: &'static str,
+    pub(super) request_outcome: &'static str,
+    pub(super) required_telemetry_events: [&'static str; 6],
+    pub(super) qualified_case_count: usize,
+    pub(super) maximum_resident_micros: u64,
+    pub(super) p50_maximum_micros: u64,
+    pub(super) p99_maximum_micros: u64,
+    pub(super) max_maximum_micros: u64,
 }
 
 #[derive(Debug, Serialize)]

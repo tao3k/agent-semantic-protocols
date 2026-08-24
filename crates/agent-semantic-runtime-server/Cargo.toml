@@ -1,0 +1,25 @@
+[package]
+name = "agent-semantic-runtime-server"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+agent-semantic-client-db = { path = "../agent-semantic-client-db" }
+agent-semantic-client-core = { path = "../agent-semantic-client-core" }
+agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
+agent-semantic-client-server = { path = "../agent-semantic-client-server" }
+serde_json.workspace = true
+serde.workspace = true
+tokio.workspace = true
+agent-semantic-provider-protocol.workspace = true
+prost.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true
+tokio-stream.workspace = true
+
+[build-dependencies]
+tonic-prost-build.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+agent-semantic-provider-transport.workspace = true

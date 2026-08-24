@@ -12,6 +12,23 @@
     "rust",
     "typescript"
   ],
+  "clientProtocol": {
+    "protocolId": "agent.semantic-protocols.client",
+    "protocolVersion": "1",
+    "transport": "http-json",
+    "phases": ["initialize", "catalog", "request", "cancel", "cancelled", "shutdown"],
+    "sessionPolicy": "one-initialize-per-session",
+    "readyEffects": ["mpsc", "oneshot", "cancel", "response"],
+    "forbiddenReadyEffects": ["process", "filesystem", "dbWrite", "generationMutation", "providerActivation", "controlPoll"],
+    "nonReadyDispatchCount": 0,
+    "residualTaskCount": 0,
+    "requiredTelemetryEvents": ["client_protocol_initialize", "client_protocol_catalog", "client_protocol_request", "client_protocol_cancel", "client_protocol_cancelled", "client_protocol_shutdown"],
+    "appliesToCaseCount": 17,
+    "maximumResidentMicros": 1000,
+    "p50MaximumMicros": 250,
+    "p99MaximumMicros": 700,
+    "maxMaximumMicros": 1000
+  },
   "cases": [
     {
       "caseId": "gerbil-scheme.gerbil.core",

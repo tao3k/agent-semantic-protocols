@@ -11,9 +11,6 @@ use super::protocol_version_line;
 pub(crate) use super::provider_selector::{
     is_language_facade, unsupported_language_facade_message,
 };
-use super::search_owner_items::{
-    SearchOwnerItemsContext, is_search_owner_items_query, run_search_owner_items_query_command,
-};
 use provider_usage::{guide_usage, is_guide, provider_usage, validate_provider_command};
 
 /// Observational target only; it never controls or cancels search execution.
@@ -24,44 +21,32 @@ pub(crate) async fn run_language_command(
     args: &[String],
     process_started: tokio::time::Instant,
 ) -> Result<(), String> {
-    let exact_query_started = process_started;
     fn uses_client_backend(args: &[String]) -> bool {
         (args.first().is_some_and(|command| command == "search")
             && args.get(1).is_none_or(|subcommand| subcommand != "guide"))
             || matches!(args.first().map(String::as_str), Some("cache"))
     }
 
-    async fn run_runtime_provider_search_command(
+    async fn run_runtime_provider_route(
         language_id: &str,
-        args: Vec<String>,
+        route: &str,
+        intent: serde_json::Value,
         project_root: &Path,
     ) -> Result<(), String> {
-        let language_id = agent_semantic_client_core::LanguageId::try_from(language_id)
-            .map_err(|error| format!("decode provider search language id: {error}"))?;
-        let session =
-            crate::server::runtime_server::runtime_server_workspace_session_async(project_root)
-                .await?;
-        let operation_id = format!(
-            "provider-search-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_err(|error| format!("read provider search operation clock: {error}"))?
-                .as_nanos()
+        let client = agent_semantic_client::RuntimeHttpClient::new(
+            crate::server::runtime_server::state_home()?,
+            project_root,
         );
-        let receipt = session
-            .provider_search(operation_id, language_id, args)
-            .await?;
-        std::io::Write::write_all(&mut std::io::stderr(), &receipt.stderr)
-            .map_err(|error| format!("write Runtime provider search stderr: {error}"))?;
-        std::io::Write::write_all(&mut std::io::stdout(), &receipt.stdout)
-            .map_err(|error| format!("write Runtime provider search stdout: {error}"))?;
-        if receipt.status_code != 0 {
-            return Err(format!(
-                "Runtime provider search failed: statusCode={} operationId={}",
-                receipt.status_code, receipt.operation_id
-            ));
-        }
+        let session = client.open_session().await?;
+        let response = session.request_route(language_id, route, intent).await;
+        let shutdown = session.shutdown().await;
+        let response = response?;
+        shutdown?;
+        println!(
+            "{}",
+            serde_json::to_string(&response)
+                .map_err(|error| format!("encode route response: {error}"))?
+        );
         Ok(())
     }
 
@@ -127,14 +112,8 @@ pub(crate) async fn run_language_command(
                 &invocation_root,
             )?
             .unwrap_or_else(|| (invocation_root.clone(), command_args.clone()));
-        // Exact projection is terminal at the admitted Runtime generation.
-        // Missing authority must never fall through to public provider argv.
-        return super::provider_resident_exact::run_resident_exact_query(
-            language_id,
-            &exact_provider_args,
-            &exact_project_root,
-            exact_query_started,
-        )
+        let intent = runtime_query_intent(&exact_provider_args)?;
+        return run_runtime_provider_route(language_id, "query", intent, &exact_project_root)
         .await;
     }
     if is_search_owner_items_query(&command_args) {
@@ -145,14 +124,12 @@ pub(crate) async fn run_language_command(
                 &invocation_root,
             )?
             .unwrap_or_else(|| (invocation_root.clone(), command_args.clone()));
-        return run_search_owner_items_query_command(
-            &owner_args,
-            SearchOwnerItemsContext {
-                language_id,
-                project_root: &owner_project_root,
-                locator_root: &invocation_root,
-                frontier_receipt: frontier_receipt.as_ref(),
-            },
+        let intent = runtime_owner_intent(&owner_args)?;
+        return run_runtime_provider_route(
+            language_id,
+            "search.owner",
+            intent,
+            &owner_project_root,
         )
         .await;
     }
@@ -168,11 +145,8 @@ pub(crate) async fn run_language_command(
             .first()
             .is_some_and(|command| command == "search")
         {
-            return run_runtime_provider_search_command(
-                language_id,
-                provider_args,
-                &project_root,
-            )
+            let intent = runtime_search_intent(&provider_args)?;
+            return run_runtime_provider_route(language_id, "search", intent, &project_root)
             .await;
         }
         return Err(format!(
@@ -221,4 +195,89 @@ fn is_guide_help(args: &[String]) -> bool {
             .skip(1)
             .any(|arg| arg == "--help" || arg == "-h")
 }
+
+fn is_search_owner_items_query(args: &[String]) -> bool {
+    matches!(args.first().map(String::as_str), Some("search"))
+        && matches!(args.get(1).map(String::as_str), Some("owner"))
+        && matches!(args.get(3).map(String::as_str), Some("items"))
+        && !args.iter().any(|arg| arg == "--json")
+}
+
+fn option_value(args: &[String], option: &str) -> Result<Option<String>, String> {
+    let Some(index) = args.iter().position(|arg| arg == option) else {
+        return Ok(None);
+    };
+    args.get(index + 1)
+        .filter(|value| !value.starts_with('-'))
+        .cloned()
+        .map(Some)
+        .ok_or_else(|| format!("{option} requires a value"))
+}
+
+fn runtime_query_intent(args: &[String]) -> Result<serde_json::Value, String> {
+    let selector = super::provider_selector::exact_query_selector_argument(args)
+        .ok_or_else(|| "query requires a canonical selector".to_owned())?;
+    let projection = option_value(args, "--projection")?.unwrap_or_else(|| "source".to_owned());
+    Ok(serde_json::json!({
+        "schemaId": "agent.semantic-protocols.asp-client-exact-query-request",
+        "schemaVersion": "1",
+        "selector": selector,
+        "projection": projection,
+    }))
+}
+
+fn runtime_owner_intent(args: &[String]) -> Result<serde_json::Value, String> {
+    let owner_path = args
+        .get(2)
+        .filter(|value| !value.starts_with('-'))
+        .cloned()
+        .ok_or_else(|| "search owner requires an owner path".to_owned())?;
+    Ok(serde_json::json!({
+        "schemaId": "agent.semantic-protocols.asp-client-owner-search-request",
+        "schemaVersion": "1",
+        "ownerPath": owner_path,
+        "query": option_value(args, "--query")?.unwrap_or_default(),
+        "view": option_value(args, "--view")?.unwrap_or_else(|| "seeds".to_owned()),
+    }))
+}
+
+fn runtime_search_intent(args: &[String]) -> Result<serde_json::Value, String> {
+    let operation = args
+        .get(1)
+        .filter(|value| !value.starts_with('-'))
+        .cloned()
+        .ok_or_else(|| "search requires an operation".to_owned())?;
+    let mut queries = Vec::new();
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--query" => {
+                let value = args
+                    .get(index + 1)
+                    .filter(|value| !value.starts_with('-'))
+                    .ok_or_else(|| "--query requires a value".to_owned())?;
+                queries.push(value.clone());
+                index += 2;
+            }
+            "--workspace" | "--view" | "--query-set" | "--owner" | "--from-hook"
+            | "--projection" | "--selector" | "--context" => index += 2,
+            option if option.starts_with('-') => index += 1,
+            _value if index == 1 => index += 1,
+            value => {
+                queries.push(value.to_owned());
+                index += 1;
+            }
+        }
+    }
+    Ok(serde_json::json!({
+        "schemaId": "agent.semantic-protocols.asp-client-search-request",
+        "schemaVersion": "1",
+        "operation": operation,
+        "query": queries.join(" "),
+    }))
+}
 use super::provider_selector::is_provider_owned_structural_selector_query;
+
+#[cfg(test)]
+#[path = "../../tests/unit/command/provider_route_intent.rs"]
+mod tests;

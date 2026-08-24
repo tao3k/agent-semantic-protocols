@@ -240,6 +240,8 @@ pub(super) async fn write_graph_turbo_receipt(
             args,
             cwd,
             env: BTreeMap::new(),
+            remove_env: Default::default(),
+            remove_env_prefixes: Default::default(),
             stdin: StdinMode::bytes(packet_bytes.to_vec()),
             stdout: OutputMode::Capture,
             stderr: OutputMode::Capture,

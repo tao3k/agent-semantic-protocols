@@ -29,6 +29,7 @@ fn endpoint() -> RuntimeServerEndpoint {
         socket_path: "/runtime/control.sock".to_owned(),
         data_plane_socket_path: "/runtime/data.sock".to_owned(),
         provider_plane_socket_path: "/runtime/providers.sock".to_owned(),
+        client_http_endpoint: "http://127.0.0.1:1".to_owned(),
         workspace_store_path: "/runtime/workspaces".to_owned(),
         status_memory_path: "/runtime/status.memory".to_owned(),
     }
@@ -44,7 +45,7 @@ fn request(operation: RuntimeServerOperation) -> RuntimeServerControlRequest {
             value: "blake3-256:running-runtime".to_owned(),
             algorithm: "blake3-256".to_owned(),
         },
-        request_id: "supervisor-reconcile".to_owned(),
+        request_id: "supervisor-control".to_owned(),
         transport_contract_digest: "blake3-256:running-transport".to_owned(),
         owner_epoch: 7,
         binding_token: "binding-token".to_owned(),
@@ -52,7 +53,7 @@ fn request(operation: RuntimeServerOperation) -> RuntimeServerControlRequest {
 }
 
 #[test]
-fn stale_transport_is_rejected_by_status_and_admitted_by_reconcile() {
+fn stale_transport_is_rejected_by_status_and_admitted_by_explicit_restart() {
     let mut endpoint = endpoint();
     endpoint.transport_contract_digest =
         agent_semantic_client_db::runtime_server_control::runtime_server_transport_contract_digest(
@@ -66,56 +67,36 @@ fn stale_transport_is_rejected_by_status_and_admitted_by_reconcile() {
             .contains("transport contract mismatch")
     );
 
-    status.operation = RuntimeServerOperation::Reconcile;
+    status.operation = RuntimeServerOperation::Restart;
     assert!(
         status
             .requires_restart(&endpoint)
-            .expect("authenticated reconcile must cross data-plane contract drift")
+            .expect("authenticated restart must cross data-plane contract drift")
     );
 }
 
 #[test]
-fn matching_reconcile_is_noop_and_either_digest_drift_requests_restart() {
-    let endpoint = endpoint();
-    let mut reconcile = request(RuntimeServerOperation::Reconcile);
-    assert!(
-        !reconcile
-            .requires_restart(&endpoint)
-            .expect("matching reconcile")
-    );
-
-    reconcile.expected_runtime_binary_identity = RuntimeBinaryIdentity::Content {
-        value: "blake3-256:next-runtime".to_owned(),
-        algorithm: "blake3-256".to_owned(),
-    };
-    assert!(
-        reconcile
-            .requires_restart(&endpoint)
-            .expect("runtime drift")
-    );
-    reconcile.expected_runtime_binary_identity = endpoint.runtime_binary_identity.clone();
-    reconcile.transport_contract_digest = "blake3-256:next-transport".to_owned();
-    assert!(
-        reconcile
-            .requires_restart(&endpoint)
-            .expect("transport drift")
-    );
+fn transport_digest_includes_the_northbound_client_frame_contract() {
+    let source = include_str!("../../src/runtime_server_control/model.rs");
+    assert!(source.contains("ASP_CLIENT_FRAME_CONTRACT"));
+    assert!(source.contains("b\"asp-client-frame\".as_slice()"));
+    assert!(source.contains("schemas/asp-client-frame.schema.json"));
 }
 
 #[test]
-fn reconcile_never_weakens_owner_epoch_or_binding_token() {
+fn restart_never_weakens_owner_epoch_or_binding_token() {
     let endpoint = endpoint();
-    let mut reconcile = request(RuntimeServerOperation::Reconcile);
-    reconcile.transport_contract_digest = "blake3-256:next-transport".to_owned();
-    reconcile.owner_epoch += 1;
+    let mut restart = request(RuntimeServerOperation::Restart);
+    restart.transport_contract_digest = "blake3-256:next-transport".to_owned();
+    restart.owner_epoch += 1;
     assert_eq!(
-        reconcile.requires_restart(&endpoint),
+        restart.requires_restart(&endpoint),
         Err("Runtime Server control request binding mismatch".to_owned())
     );
-    reconcile.owner_epoch = endpoint.owner_epoch;
-    reconcile.binding_token = "wrong-binding".to_owned();
+    restart.owner_epoch = endpoint.owner_epoch;
+    restart.binding_token = "wrong-binding".to_owned();
     assert_eq!(
-        reconcile.requires_restart(&endpoint),
+        restart.requires_restart(&endpoint),
         Err("Runtime Server control request binding mismatch".to_owned())
     );
 }

@@ -1,4 +1,4 @@
-use super::core::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION;
+use super::contract::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION;
 use crate::ClientDbSourceIndexImport;
 use crate::engine::turso_statement::run_turso_operation;
 

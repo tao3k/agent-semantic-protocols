@@ -4,6 +4,21 @@ fn main() -> std::process::ExitCode {
     let hook_args = std::env::args_os().skip(1).collect::<Vec<_>>();
     let hook_dispatch =
         agent_semantic_protocol::hook_bootstrap::is_hook_event_dispatch(hook_args.clone());
+    if hook_dispatch && std::env::var_os("ASP_HOOK_BOOTSTRAP_TRACE").is_some() {
+        eprintln!("[asp-hook] route=process-entry-hook-dispatch");
+    }
+    if let Some(result) =
+        agent_semantic_protocol::hook_bootstrap::process_entry_no_agent_bypass(&hook_args)
+    {
+        let code = match result {
+            Ok(()) => 0,
+            Err(error) => {
+                eprintln!("[asp-hook] status=failed error={error}");
+                2
+            }
+        };
+        agent_semantic_protocol::hook_bootstrap::terminate_hook_process(code)
+    }
     let synchronous_hook_dispatch =
         agent_semantic_protocol::hook_bootstrap::is_synchronous_hook_dispatch(hook_args);
     if synchronous_hook_dispatch {
@@ -21,13 +36,20 @@ fn main() -> std::process::ExitCode {
         && std::env::args_os().nth(2).as_deref() == Some(std::ffi::OsStr::new("daemon"));
     let mut runtime_builder = if daemon {
         agent_semantic_client_db::runtime_server_runtime::RuntimeServerRuntimeBuilder::new_daemon()
+    } else if hook_dispatch {
+        agent_semantic_client_db::runtime_server_runtime::RuntimeServerRuntimeBuilder::new_hook_client()
     } else {
-        agent_semantic_client_db::runtime_server_runtime::RuntimeServerRuntimeBuilder::new_cli()
+        agent_semantic_client_db::runtime_server_runtime::RuntimeServerRuntimeBuilder::new_client()
     };
     let runtime = match runtime_builder.enable_all().build() {
         Ok(runtime) => runtime,
         Err(error) => {
-            eprintln!("failed to create ASP CLI runtime: {error}");
+            eprintln!(
+                "{}",
+                agent_semantic_protocol::cli_failure::materialize_cli_failure(&format!(
+                    "failed to create ASP CLI runtime: {error}"
+                ))
+            );
             return std::process::ExitCode::from(2);
         }
     };
@@ -44,7 +66,19 @@ fn main() -> std::process::ExitCode {
                 agent_semantic_protocol::hook_bootstrap::run_hook_bootstrap_from_env().await,
             )
         } else {
-            ProcessOutcome::Command(agent_semantic_protocol::run_binary_from_env().await)
+            let command = agent_semantic_protocol::run_binary_from_env();
+            tokio::pin!(command);
+            ProcessOutcome::Command(tokio::select! {
+                result = &mut command => result,
+                signal = tokio::signal::ctrl_c() => match signal {
+                    Ok(()) => Err(
+                        "state=cancelled reasonKind=process-interrupted signal=SIGINT".to_owned(),
+                    ),
+                    Err(error) => Err(format!(
+                        "state=failed reasonKind=signal-listener-failed error={error}"
+                    )),
+                },
+            })
         }
     });
     match outcome {
@@ -53,7 +87,10 @@ fn main() -> std::process::ExitCode {
         }
         ProcessOutcome::Command(Ok(())) => std::process::ExitCode::SUCCESS,
         ProcessOutcome::Command(Err(message)) => {
-            eprintln!("{message}");
+            eprintln!(
+                "{}",
+                agent_semantic_protocol::cli_failure::materialize_cli_failure(&message)
+            );
             std::process::ExitCode::from(2)
         }
     }

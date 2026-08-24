@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const SYNC_SCHEMA_ID: &str = "agent.semantic-protocols.agent-config-sync-receipt.v1";
+const SYNC_SCHEMA_ID: &str = "agent.semantic-protocols.agent-config-sync-receipt";
 
 pub(super) fn run_agent_config_command(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
@@ -41,44 +41,13 @@ pub(crate) fn synchronize_agent_config_to_roots(
     state_home: &Path,
     codex_home: &Path,
 ) -> Result<serde_json::Value, String> {
-    let state_agents = state_home.join("agents");
-    std::fs::create_dir_all(&state_agents).map_err(|error| {
-        format!(
-            "failed to create ASP agent state directory {}: {error}",
-            state_agents.display()
-        )
-    })?;
-    let embedded_assets = agent_semantic_config::embedded_agent_assets::embedded_agent_assets();
-    let embedded_catalog = embedded_assets
-        .iter()
-        .find(|asset| asset.file_name == "config.toml")
-        .ok_or_else(|| "embedded ASP agent registry is missing config.toml".to_owned())?;
-    let embedded_catalog_source = std::str::from_utf8(embedded_catalog.contents)
-        .map_err(|error| format!("embedded ASP agent registry is not UTF-8: {error}"))?;
-    let embedded_registry =
-        agent_semantic_config::agent_route_registry::parse_agent_route_registry(
-            embedded_catalog_source,
-            "embedded ASP agent registry",
-        )?;
-    let expected_embedded_profiles = embedded_assets
-        .iter()
-        .filter(|asset| asset.file_name != "config.toml")
-        .map(|asset| std::ffi::OsString::from(asset.file_name))
-        .collect::<BTreeSet<_>>();
-    let removed_stale_profiles_before_load = remove_stale_state_profiles(
-        &state_agents,
-        &expected_embedded_profiles,
-        embedded_registry
-            .platforms
-            .values()
-            .map(|platform| platform.matcher.as_str()),
-    )?;
-    for asset in embedded_assets {
-        atomic_write(&state_agents.join(asset.file_name), asset.contents)?;
-    }
-    let state_catalog = state_agents.join("config.toml");
-    let loaded =
-        agent_semantic_config::agent_route_registry::load_agent_route_registry(&state_catalog)?;
+    let synchronized = synchronize_embedded_agent_state(state_home)?;
+    let SynchronizedAgentState {
+        state_agents,
+        state_catalog,
+        loaded,
+        removed_stale_profiles: removed_stale_profiles_before_load,
+    } = synchronized;
     std::fs::create_dir_all(codex_home.join("agents")).map_err(|error| {
         format!(
             "failed to create Codex agent directory {}: {error}",
@@ -161,6 +130,66 @@ pub(crate) fn synchronize_agent_config_to_roots(
         "agents": projections,
         "removedStaleProfiles": removed_stale_profiles,
     }))
+}
+
+struct SynchronizedAgentState {
+    state_agents: PathBuf,
+    state_catalog: PathBuf,
+    loaded: agent_semantic_config::agent_route_registry::AgentsRegistry,
+    removed_stale_profiles: Vec<String>,
+}
+
+pub(crate) fn synchronize_embedded_agent_state_config(
+    state_home: &Path,
+) -> Result<PathBuf, String> {
+    synchronize_embedded_agent_state(state_home).map(|state| state.state_catalog)
+}
+
+fn synchronize_embedded_agent_state(state_home: &Path) -> Result<SynchronizedAgentState, String> {
+    let state_agents = state_home.join("agents");
+    std::fs::create_dir_all(&state_agents).map_err(|error| {
+        format!(
+            "failed to create ASP agent state directory {}: {error}",
+            state_agents.display()
+        )
+    })?;
+    let embedded_assets = agent_semantic_config::embedded_agent_assets::embedded_agent_assets();
+    let embedded_catalog = embedded_assets
+        .iter()
+        .find(|asset| asset.file_name == "config.toml")
+        .ok_or_else(|| "embedded ASP agent registry is missing config.toml".to_owned())?;
+    let embedded_catalog_source = std::str::from_utf8(embedded_catalog.contents)
+        .map_err(|error| format!("embedded ASP agent registry is not UTF-8: {error}"))?;
+    let embedded_registry =
+        agent_semantic_config::agent_route_registry::parse_agent_route_registry(
+            embedded_catalog_source,
+            "embedded ASP agent registry",
+        )?;
+    let expected_embedded_profiles = embedded_assets
+        .iter()
+        .filter(|asset| asset.file_name != "config.toml")
+        .map(|asset| std::ffi::OsString::from(asset.file_name))
+        .collect::<BTreeSet<_>>();
+    let removed_stale_profiles_before_load = remove_stale_state_profiles(
+        &state_agents,
+        &expected_embedded_profiles,
+        embedded_registry
+            .platforms
+            .values()
+            .map(|platform| platform.matcher.as_str()),
+    )?;
+    for asset in embedded_assets {
+        atomic_write(&state_agents.join(asset.file_name), asset.contents)?;
+    }
+    let state_catalog = state_agents.join("config.toml");
+    let loaded =
+        agent_semantic_config::agent_route_registry::load_agent_route_registry(&state_catalog)?;
+    Ok(SynchronizedAgentState {
+        state_agents,
+        state_catalog,
+        loaded,
+        removed_stale_profiles: removed_stale_profiles_before_load,
+    })
 }
 
 fn remove_stale_state_profiles<'a>(

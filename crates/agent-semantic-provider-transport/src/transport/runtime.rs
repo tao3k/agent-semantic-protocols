@@ -345,6 +345,21 @@ fn provider_command(spec: &ProviderProcessSpec, stdin_mode: &StdinMode) -> Comma
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     configure_provider_process(&mut command, spec.limits.memory_limit_bytes());
+    for key in &spec.remove_env {
+        command.env_remove(key);
+    }
+    if !spec.remove_env_prefixes.is_empty() {
+        for (key, _) in std::env::vars_os() {
+            let key_text = key.to_string_lossy();
+            if spec
+                .remove_env_prefixes
+                .iter()
+                .any(|prefix| key_text.starts_with(prefix))
+            {
+                command.env_remove(key);
+            }
+        }
+    }
     for (key, value) in &spec.env {
         command.env(key, value);
     }

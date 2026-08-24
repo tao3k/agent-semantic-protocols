@@ -31,7 +31,7 @@ pub(crate) fn asp_codex_rollout_session_index_algorithm_pressure_stays_inside_sc
             )
             .env("CODEX_HOME", root.join("home/.codex"))
             .env("HOME", root.join("home"))
-            .env("ASP_NO_AGENT_PLATFORM", "1")
+            .env("ASP_NO_AGENT", "1")
             .env_remove("PRJ_CACHE_HOME")
             .output()
             .expect("run lifecycle audit scenario");
@@ -126,7 +126,7 @@ pub(crate) fn asp_agent_session_status_and_reuse_hot_paths_stay_inside_scenario_
         .current_dir(&root)
         .env("ASP_STATE_HOME", &state_home)
         .env("HOME", &home)
-        .env("ASP_NO_AGENT_PLATFORM", "1")
+        .env("ASP_NO_AGENT", "1")
         .env_remove("PRJ_CACHE_HOME")
         .output()
         .expect("register status hot path fixture");
@@ -147,7 +147,7 @@ pub(crate) fn asp_agent_session_status_and_reuse_hot_paths_stay_inside_scenario_
                 .current_dir(&root)
                 .env("ASP_STATE_HOME", &state_home)
                 .env("HOME", &home)
-                .env("ASP_NO_AGENT_PLATFORM", "1")
+                .env("ASP_NO_AGENT", "1")
                 .env_remove("PRJ_CACHE_HOME")
                 .output()
                 .unwrap_or_else(|error| panic!("run {label} hot path fixture: {error}"));

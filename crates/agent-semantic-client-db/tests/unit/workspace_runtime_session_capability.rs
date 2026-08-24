@@ -7,7 +7,7 @@ use agent_semantic_client_db::{
 #[tokio::test]
 async fn read_only_runtime_session_rejects_selector_mutation_before_io() {
     let endpoint = RuntimeServerEndpoint {
-        schema_id: "agent.semantic-protocols.runtime-server-endpoint.v1".to_owned(),
+        schema_id: "agent.semantic-protocols.runtime-server-endpoint".to_owned(),
         schema_version: "1".to_owned(),
         owner_epoch: 1,
         owner_process_id: 0,

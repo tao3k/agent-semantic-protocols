@@ -44,6 +44,9 @@ pub(super) async fn serve_connection(
     mut stream: UnixStream,
     endpoint: RuntimeServerEndpoint,
     registry: Arc<WorkspaceDbRegistry>,
+    generation_admission: Option<
+        Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>,
+    >,
     lifecycle: watch::Receiver<RuntimeServerState>,
     graph_turbo_resident_status: Option<GraphTurboResidentStatusHandle>,
     mut drain: watch::Receiver<bool>,
@@ -67,14 +70,63 @@ pub(super) async fn serve_connection(
             replay_guard.lock().await.admit(&request.request_id)?;
             let request_restart = request.requires_restart(&endpoint)?;
             restart |= request_restart;
+            let mut workspace_generation = None;
             let ensure_failure = if request.operation
                 == crate::runtime_server_control::RuntimeServerOperation::EnsureWorkspace
             {
                 match request.project_root.as_deref() {
-                    Some(project_root) => registry
-                        .bootstrap_workspace(std::path::Path::new(project_root))
-                        .await
-                        .err(),
+                    Some(project_root) => {
+                        let project_root = std::path::Path::new(project_root);
+                        let admission_result = if let Some(admission) = &generation_admission {
+                            let workspace_identity =
+                                crate::AgentSessionRegistry::workspace_id(project_root);
+                            match workspace_identity {
+                                Ok(workspace_identity) => match crate::runtime_server_admission::discover_workspace_generation_candidate(project_root).await {
+                                    Ok(candidate) => {
+                                        let candidate_digest = candidate.candidate_generation.digest.clone();
+                                        let previous = admission
+                                            .current(&workspace_identity, project_root)
+                                            .map(|receipt| receipt.candidate_generation.digest);
+                                        match admission
+                                            .ensure(&workspace_identity, project_root, candidate)
+                                            .await
+                                        {
+                                            Ok(receipt) => {
+                                                let active_digest = receipt
+                                                    .commit
+                                                    .as_ref()
+                                                    .map(|commit| commit.generation_digest.clone())
+                                                    .unwrap_or_else(|| {
+                                                        receipt.candidate_generation.digest.clone()
+                                                    });
+                                                workspace_generation = Some(
+                                                    crate::runtime_server_control::WorkspaceGenerationControlReceipt {
+                                                        workspace_identity: workspace_identity.clone(),
+                                                        previous_generation_digest: previous.clone(),
+                                                        active_generation_digest: active_digest,
+                                                        candidate_digest,
+                                                        generation_changed: previous.as_deref()
+                                                            != Some(receipt.candidate_generation.digest.as_str()),
+                                                        state: format!("{:?}", receipt.state),
+                                                    },
+                                                );
+                                                Ok(())
+                                            }
+                                            Err(error) => Err(error),
+                                        }
+                                    }
+                                    Err(error) => Err(error),
+                                },
+                                Err(error) => Err(error),
+                            }
+                        } else {
+                            Ok(())
+                        };
+                        match admission_result {
+                            Ok(()) => registry.bootstrap_workspace(project_root).await.err(),
+                            Err(error) => Some(error),
+                        }
+                    }
                     None => Some(
                         "Runtime Server ensure-workspace request omitted project root".to_owned(),
                     ),
@@ -117,6 +169,7 @@ pub(super) async fn serve_connection(
                     workspace_entry_count,
                 )
             };
+            receipt.workspace_generation = workspace_generation;
             receipt.graph_turbo_resident = graph_turbo_resident_status
                 .as_ref()
                 .map(|status| status.snapshot());

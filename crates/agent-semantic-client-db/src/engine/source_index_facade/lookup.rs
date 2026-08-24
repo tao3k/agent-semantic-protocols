@@ -329,7 +329,7 @@ fn lookup_live_source_index_read_model(
     }
     let terms = source_index_read_model_terms(query)?;
     let live_artifact_digest =
-        crate::client_db_source_index_artifact_digest(live_facts.source_snapshot);
+        agent_semantic_search_projection::source_index_artifact_digest(live_facts.source_snapshot);
     let live_generation =
         crate::client_db_source_index_generation_id_for_snapshot(live_facts.source_snapshot);
     let live_project_root = live_facts
@@ -642,7 +642,7 @@ async fn turso_source_index_lookup_schema_current(
                         scope.project_root.as_str(),
                         scope.schema_id.as_str(),
                         scope.schema_version.as_str(),
-                        crate::engine::turso_source_index::core::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,
+                        crate::engine::turso_source_index::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,
                     ),
                 )
                 .await,
@@ -653,7 +653,7 @@ async fn turso_source_index_lookup_schema_current(
                      WHERE term_projection_version = ?1
                        AND token_projection_generation_id <> ''
                      LIMIT 1",
-                    (crate::engine::turso_source_index::core::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,),
+                    (crate::engine::turso_source_index::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,),
                 )
                 .await,
         }

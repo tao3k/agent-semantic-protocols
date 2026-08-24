@@ -46,12 +46,14 @@ pub struct RuntimeServer {
     pub(super) endpoint: RuntimeServerEndpoint,
     pub(super) listener: UnixListener,
     pub(super) data_listener: UnixListener,
-    pub(super) provider_listener: UnixListener,
     pub(super) provider_register: Arc<crate::runtime_provider_register::RuntimeProviderRegister>,
     pub(super) registry: Arc<WorkspaceDbRegistry>,
     pub(super) workspace_count: watch::Receiver<usize>,
     pub(super) shutdown: watch::Receiver<bool>,
     pub(super) shutdown_handle: RuntimeServerShutdownHandle,
+    pub(super) readiness_sender: watch::Sender<crate::runtime_server_control::RuntimeServerState>,
+    pub(super) generation_publication:
+        crate::runtime_server_publication::WorkspaceGenerationPublication,
     pub(crate) status_memory: RuntimeServerStatusMemoryWriter,
     pub(super) events: Option<crate::runtime_server_observability::RuntimeServerEventPublisher>,
     pub(super) generation_admission:
@@ -108,6 +110,19 @@ impl RuntimeServer {
         &self,
     ) -> Option<Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>> {
         self.generation_admission.clone()
+    }
+
+    pub fn readiness_subscribe(
+        &self,
+    ) -> watch::Receiver<crate::runtime_server_control::RuntimeServerState> {
+        self.readiness_sender.subscribe()
+    }
+
+    pub fn workspace_generation_publication_subscribe(
+        &self,
+    ) -> watch::Receiver<Option<crate::runtime_server_publication::WorkspaceGenerationPublished>>
+    {
+        self.generation_publication.subscribe()
     }
 
     pub(super) async fn cleanup_bound_artifacts(&self) {
@@ -184,6 +199,7 @@ impl RuntimeServer {
         let source_builder = source_builder.into();
         let durable_registry = Arc::clone(&self.registry);
         let memory_registry = Arc::clone(&self.workspace_registry);
+        let generation_publication = self.generation_publication.clone();
         let mutation_owner_projection_builder = owner_projection_builder.clone();
         let events = self.events.clone();
         let builder = Arc::new(
@@ -198,6 +214,7 @@ impl RuntimeServer {
           _cancellation: crate::runtime_generation_cancellation::GenerationCancellation| {
                 let durable_registry = Arc::clone(&durable_registry);
                 let memory_registry = Arc::clone(&memory_registry);
+                let generation_publication = generation_publication.clone();
                 let source_builder = source_builder.clone();
                 let mutation_owner_projection_builder =
                     mutation_owner_projection_builder.clone();
@@ -507,6 +524,18 @@ impl RuntimeServer {
                         },
                     )
                     .await?;
+                    let pointer_path = crate::runtime_server_workspace::workspace_generation_pointer_path(
+                        memory_registry.root(), &workspace_identity, &project_root,
+                    ).map_err(|error| crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                        crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
+                        error,
+                    ))?;
+                    generation_publication.publish(crate::runtime_server_publication::WorkspaceGenerationPublished {
+                        workspace_identity: workspace_identity.clone(),
+                        project_root: project_root.clone(),
+                        resident_pointer_path: pointer_path,
+                        generation_digest: published.generation_digest.clone(),
+                    });
                     let commit = crate::runtime_server_admission::WorkspaceGenerationCommitReceipt::from_recovery(&published).map_err(|error| {
                         crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
                             crate::runtime_server_admission::WorkspaceGenerationFailureStage::CanonicalGenerationPublication,
@@ -561,8 +590,7 @@ impl RuntimeServer {
             endpoint,
             listener,
             data_listener,
-            provider_listener,
-            provider_register,
+            provider_register: _provider_register,
             registry,
             mut workspace_count,
             mut shutdown,
@@ -577,9 +605,12 @@ impl RuntimeServer {
             agent_session_status,
             codex_multi_agent_control_plane_owner,
             telemetry_sender,
+            readiness_sender,
+            generation_publication,
         } = self;
         let (_lifecycle_state, lifecycle) =
             watch::channel(crate::runtime_server_control::RuntimeServerState::Healthy);
+        generation_publication.clear();
         // Socket liveness is Global; generation readiness is workspace-keyed.
         // Durable catalog locators stay lazy. A workspace request restores its
         // published pointer or admits one scope-local rebuild; startup never
@@ -593,6 +624,7 @@ impl RuntimeServer {
                 .max(loaded_entry_count)
                 .max(*workspace_count.borrow()),
         )?;
+        readiness_sender.send_replace(crate::runtime_server_control::RuntimeServerState::Healthy);
         let mut connections = JoinSet::new();
         let connection_supervisor =
             crate::runtime_server_runtime::RuntimeServerConnectionSupervisor::for_current_runtime(
@@ -632,6 +664,7 @@ impl RuntimeServer {
                                     .expect("capacity guard must admit one control connection");
                                 let connection_endpoint = endpoint.clone();
                                 let connection_registry = Arc::clone(&registry);
+                                let connection_generation_admission = generation_admission.clone();
                                 let connection_lifecycle = lifecycle.clone();
                                 let connection_graph_turbo_status = graph_turbo_resident_status.clone();
                                 let connection_drain = drain_receiver.clone();
@@ -641,6 +674,7 @@ impl RuntimeServer {
                                         stream,
                                         connection_endpoint,
                                         connection_registry,
+                                        connection_generation_admission,
                                         connection_lifecycle,
                                         connection_graph_turbo_status,
                                         connection_drain,
@@ -687,30 +721,6 @@ impl RuntimeServer {
             agent_session_status.as_ref(),
                                         &codex_multi_agent_control_plane_owner,
                                         telemetry_sender.as_ref(),
-                                        connection_drain,
-                                    )
-                                    .await
-                                    .map(|()| false);
-                                    (lease, result)
-                                });
-                            }
-                            connection = provider_listener.accept(), if connection_supervisor.has_capacity() => {
-                                let (stream, _) = connection.map_err(|error| {
-                                    format!("failed to accept Runtime Server provider-plane request: {error}")
-                                })?;
-                                crate::runtime_server_control::validate_runtime_server_peer_fd(
-                                    std::os::fd::AsRawFd::as_raw_fd(&stream),
-                                )?;
-                                let register = Arc::clone(&provider_register);
-                                let connection_drain = drain_receiver.clone();
-                                let lease = connection_supervisor.try_admit().ok_or_else(|| {
-                                    "Runtime Server provider-plane connection capacity changed during admission"
-                                        .to_owned()
-                                })?;
-                                connections.spawn(async move {
-                                    let result = crate::runtime_provider_register_ipc::serve_provider_register_stream(
-                                        stream,
-                                        register,
                                         connection_drain,
                                     )
                                     .await

@@ -72,6 +72,20 @@ fn document_adapter_without_git_candidate_support_fails_closed() {
     assert!(error.contains("reasonKind=provider-document-resolution-git-candidates-unsupported"));
 }
 
+#[test]
+fn provider_identity_does_not_force_project_adapter_without_declared_marker() {
+    let capabilities = inventory_capabilities(Some(vec!["gerbil.pkg"]), Some(true));
+    assert_eq!(
+        select_provider_source_inventory_adapter(
+            &capabilities,
+            "gerbil-scheme",
+            "asp-gerbil-scheme",
+            |_| false,
+        ),
+        Ok(ProviderSourceInventoryAdapter::GitDocumentCandidates)
+    );
+}
+
 fn scope_file(path: std::path::PathBuf) -> agent_semantic_client_db::ClientDbSourceIndexScopeFile {
     agent_semantic_client_db::ClientDbSourceIndexScopeFile {
         path,

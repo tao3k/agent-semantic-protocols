@@ -4,7 +4,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tokio::net::UnixStream;
 use tokio::sync::{Mutex, OnceCell, RwLock};
-use tokio::task::JoinSet;
 
 use super::frame::{read_frame, write_frame};
 use super::{
@@ -23,7 +22,6 @@ pub(super) struct RuntimeServerConnectionPool {
     endpoint: RuntimeServerEndpoint,
     next_lane: AtomicUsize,
     lanes: Vec<Arc<RuntimeServerLane>>,
-    prewarmed: OnceCell<()>,
 }
 
 struct RuntimeServerLane {
@@ -45,7 +43,6 @@ impl RuntimeServerConnectionPool {
                     })
                 })
                 .collect(),
-            prewarmed: OnceCell::const_new(),
         }
     }
 
@@ -95,40 +92,6 @@ impl RuntimeServerConnectionPool {
         let result = exchange_runtime_server_request(&self.endpoint, &mut stream, &request).await;
         lane.in_flight.fetch_sub(1, Ordering::Release);
         result
-    }
-
-    pub(super) async fn prewarm(&self) -> Result<(), String> {
-        self.prewarmed
-            .get_or_try_init(|| async {
-                let mut connections = JoinSet::new();
-                for (index, lane) in self.lanes.iter().enumerate() {
-                    if lane.stream.lock().await.is_some() {
-                        continue;
-                    }
-                    let socket_path = self.endpoint.socket_path.clone();
-                    connections.spawn(async move {
-                        let stream = UnixStream::connect(&socket_path).await.map_err(|error| {
-                            format!("failed to prewarm Runtime Server control lane: {error}")
-                        })?;
-                        super::validate_runtime_server_peer_fd(std::os::fd::AsRawFd::as_raw_fd(
-                            &stream,
-                        ))?;
-                        Ok::<_, String>((index, stream))
-                    });
-                }
-                while let Some(connection) = connections.join_next().await {
-                    let (index, stream) = connection.map_err(|error| {
-                        format!("failed to join Runtime Server control lane prewarm: {error}")
-                    })??;
-                    let mut slot = self.lanes[index].stream.lock().await;
-                    if slot.is_none() {
-                        *slot = Some(stream);
-                    }
-                }
-                Ok(())
-            })
-            .await
-            .map(|_| ())
     }
 }
 

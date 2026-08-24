@@ -75,22 +75,21 @@ MUST NOT be represented by ={}= or converted into a second policy decision.
 Recovery uses a parser-independent control plane and cannot depend on search
 generation admission, Turso availability, or event export.
 
-The hook evaluation hot path MUST NOT invoke supervisor reconcile, restart,
+The hook evaluation hot path MUST NOT invoke supervisor start, restart,
 installation, or artifact repair.  Those lifecycle transitions are owned by
 the supervisor/checkpoint path before evaluation admission.  A minimal,
 configuration-independent bootstrap kernel MUST recognize only the exact
-=asp server status|reconcile|restart= control commands (including the canonical
+=asp server status|start|restart= control commands (including the canonical
 installed absolute binary and the =direnv exec .= wrapper) and admit them
 without consulting the Runtime Server.  Chained commands, extra arguments, and
 other ASP commands are not recovery edges.  Therefore failure of the resident
 matcher cannot prevent execution of the command that repairs that matcher.
 Each recovery/control command is itself executed by the Tokio supervisor
 runtime under the supervisor wall deadline; bootstrap admissibility MUST NOT
-open a second unbounded wait through =server status=, =reconcile=, or =restart=.
-Supervisor reconcile is an admission operation: it submits the generation
-transition and returns a =starting=, =draining=, or =healthy= receipt.  It MUST
-NOT synchronously wait for Ready inside =install= and then repeat the same
-readiness wait in the command adapter.  Readiness is observed by the separate
+open a second unbounded wait through =server status=, =start=, or =restart=.
+Server start is idempotent availability admission, while restart is an explicit
+generation transition.  Neither synchronously waits for provider generation
+publication inside =install=.  Readiness is observed by the separate
 healthcheck transition under its own bounded phase.
 
 =ASP_NO_AGENT=1= is an explicit operator-owned execution boundary, distinct

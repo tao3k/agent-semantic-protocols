@@ -19,7 +19,7 @@ pub fn exact_selector_fixture_active_artifact_input_v1(
         .iter()
         .find(|leaf| leaf.artifact_kind() == ActiveArtifactKind::ExactSelectorGenerationFixture)
         .ok_or_else(|| {
-            "exact selector generation state=cold-required reasonKind=active-fixture-missing"
+            "exact selector generation state=generation-unavailable reasonKind=active-fixture-missing"
                 .to_owned()
         })?;
     Ok(ExactSelectorFixtureArtifactInput {

@@ -197,6 +197,14 @@ impl WorkspaceGenerationPublisher {
         generation: std::sync::Arc<WorkspaceMemoryGeneration>,
         previous_epoch_readable: bool,
     ) -> Result<WorkspaceGenerationSnapshot, String> {
+        self.publish_inner(generation, previous_epoch_readable).await
+    }
+
+    async fn publish_inner(
+        &self,
+        generation: std::sync::Arc<WorkspaceMemoryGeneration>,
+        previous_epoch_readable: bool,
+    ) -> Result<WorkspaceGenerationSnapshot, String> {
         let state = self.state().await?;
         // Publication is a single-writer transition. Besides preventing pointer races, this
         // lock lets retention distinguish the currently readable generation from abandoned

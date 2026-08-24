@@ -60,7 +60,7 @@ fn builtin_materialization_rule_is_permanent_and_source_scoped() {
 }
 
 #[test]
-fn action_first_rule_denies_inferred_reads_before_shell_expansion() {
+fn action_first_rule_denies_parser_projected_shell_path_reads() {
     let config = ClientHookConfig::default();
     let registry = crate::classifier::rust_registry();
 
@@ -102,9 +102,10 @@ fn action_first_rule_denies_inferred_reads_before_shell_expansion() {
         assert!(
             host_action["semanticCapabilities"]
                 .as_array()
-                .is_some_and(|capabilities| capabilities.iter().all(|capability| {
-                    capability["action"] != "read" || capability["evidence"] == "shell-redirection"
-                }))
+                .is_some_and(|capabilities| capabilities.iter().any(|capability| {
+                    capability["action"] == "read" && capability["evidence"] == "shell-path-operand"
+                })),
+            "{command}: {host_action}"
         );
         assert!(
             matches!(

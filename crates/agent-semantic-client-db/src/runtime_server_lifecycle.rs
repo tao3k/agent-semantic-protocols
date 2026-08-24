@@ -183,6 +183,32 @@ pub async fn read_latest_owner_exit(
         Err(e) => Err(e.to_string()),
     }
 }
+
+/// Read the fixed exit marker only when it belongs to the currently expected owner.
+/// A stale marker is evidence, not a terminal result for a new owner.
+pub async fn read_owner_exit_for(
+    home: &Path,
+    expected_owner_epoch: u64,
+) -> Result<Option<RuntimeServerExitReceipt>, String> {
+    match read_latest_owner_exit(home).await? {
+        Some(receipt) if receipt.owner_epoch == expected_owner_epoch => Ok(Some(receipt)),
+        Some(receipt) => {
+            eprintln!(
+                "{}",
+                serde_json::json!({
+                    "schemaId": "agent.semantic-protocols.runtime-server-daemon-exit-stale",
+                    "schemaVersion": "1",
+                    "state": "ignored",
+                    "expectedOwnerEpoch": expected_owner_epoch,
+                    "observedOwnerEpoch": receipt.owner_epoch,
+                    "reasonKind": "stale-owner-exit-receipt",
+                })
+            );
+            Ok(None)
+        }
+        None => Ok(None),
+    }
+}
 pub async fn remove_stale(home: &Path) -> Result<(), String> {
     remove_if_present(&exit_receipt(home)).await
 }
@@ -192,10 +218,8 @@ pub async fn await_owner_exit(
 ) -> Result<RuntimeServerExitReceipt, String> {
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
     loop {
-        if let Some(receipt) = read_latest_owner_exit(home).await? {
-            if receipt.owner_epoch == owner_epoch {
-                return Ok(receipt);
-            }
+        if let Some(receipt) = read_owner_exit_for(home, owner_epoch).await? {
+            return Ok(receipt);
         }
         if tokio::time::Instant::now() >= deadline {
             return Err("Runtime Server owner exit receipt timeout".to_owned());

@@ -260,7 +260,7 @@ The lifecycles fail independently:
 
 Repair commands MUST name which lifecycle they repair:
 
-- =runtime-server reconcile=;
+- =runtime-server start/restart=;
 - =workspace-entry repair=;
 - =agent-session reconcile=; or
 - =subagent-binding rebind=.

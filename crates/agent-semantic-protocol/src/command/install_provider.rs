@@ -19,7 +19,6 @@ mod install_provider_binary;
 #[path = "install_provider_workspace.rs"]
 mod install_provider_workspace;
 use super::install_provider_release::ProviderReleaseSpec;
-use super::install_provider_runtime_reconcile::reconcile_registered_provider_runtime_binaries;
 use super::install_provider_target::resolve_provider_binary_install_target;
 
 #[path = "install_provider_cli_support.rs"]
@@ -63,7 +62,6 @@ enum InstallScope {
 struct InstallArgs {
     scope: InstallScope,
     target: Option<String>,
-    reconcile_receipt: bool,
     record_installed_receipt: Option<PathBuf>,
 }
 
@@ -138,14 +136,6 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
         InstallScope::Global => None,
         InstallScope::Project { root } => Some(root.as_path()),
     };
-    if install_args.reconcile_receipt {
-        let project_root = project_root
-            .ok_or_else(|| "--reconcile-receipt requires --project <ROOT>".to_string())?;
-        return super::install_provider_reconcile::reconcile_provider_install_receipt(
-            language_id,
-            project_root,
-        );
-    }
     let state_home = agent_semantic_runtime::resolve_state_home()?;
     let artifact_catalog =
         agent_semantic_runtime::runtime_artifact_catalog::load_runtime_artifact_catalog(
@@ -268,11 +258,16 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
         |_| runtime_state.runtime_bin_dir.join(&provider_binary),
     );
     let artifact_root = runtime_state.protocol_home.join("runtime/artifacts");
-    let published = super::protocol_binary::install_protocol_binary_target(
+    let publication_guard =
+        super::protocol_binary::ProtocolBinaryReconciliationGuard::acquire(
+            &runtime_state.protocol_home,
+        )?;
+    let published = super::protocol_binary::install_protocol_binary_target_under_guard(
         &installed_entrypoint,
         &stable_entry,
         &artifact_root,
         &runtime_binary_identity,
+        &publication_guard,
     )
     .await?;
     let installed = published.path.clone();
@@ -327,8 +322,19 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
             launcher_digest: None,
         },
     )?;
+    let installed_provider_artifacts = if matches!(install_args.scope, InstallScope::Global) {
+        Some(
+            super::installed_provider_artifacts::publish_current_installed_provider_artifacts(
+                &runtime_state.protocol_home,
+                &publication_guard,
+            )?,
+        )
+    } else {
+        None
+    };
+    drop(publication_guard);
     println!(
-        "[asp-install] provider={} language={} scope={} installMode=locked-release rev={} target={} binary={} sha256={} checksumAuthority={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} binaryCurrent={} binarySwitch=atomic",
+        "[asp-install] provider={} language={} scope={} installMode=locked-release rev={} target={} binary={} sha256={} checksumAuthority={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} binaryCurrent={} binarySwitch=atomic installedProviderArtifacts={} installedProviderArtifactsWrite={} installedProviderArtifactsChangedLeaves={} installedProviderArtifactsElapsedMicros={}",
         spec.provider_id,
         spec.language_id,
         scope,
@@ -342,6 +348,19 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
         lock_path.display(),
         runtime_bin_dir.display(),
         published.path.display(),
+        installed_provider_artifacts
+            .as_ref()
+            .map(|publication| publication.generation.as_str())
+            .unwrap_or("not-applicable"),
+        installed_provider_artifacts
+            .as_ref()
+            .is_some_and(|publication| publication.artifact_write),
+        installed_provider_artifacts
+            .as_ref()
+            .map_or(0, |publication| publication.changed_leaf_count),
+        installed_provider_artifacts
+            .as_ref()
+            .map_or(0, |publication| publication.elapsed_micros),
     );
     Ok(())
 }
@@ -504,17 +523,10 @@ async fn record_development_provider_install(
         },
     )?;
     let installed_provider_artifacts = if matches!(install_scope, InstallScope::Global) {
-        let provider_binaries = reconcile_registered_provider_runtime_binaries(
-            &runtime_state.runtime_bin_dir,
-            &artifact_root,
-            &runtime_state.provider_lock_dir,
-            &reconciliation_guard,
-        )
-        .await?;
         Some(
-            super::installed_provider_artifacts::publish_installed_provider_artifacts(
+            super::installed_provider_artifacts::publish_current_installed_provider_artifacts(
                 &state_home,
-                &provider_binaries.provider_receipts,
+                &reconciliation_guard,
             )?,
         )
     } else {
@@ -522,7 +534,7 @@ async fn record_development_provider_install(
     };
     drop(reconciliation_guard);
     println!(
-        "[asp-install] provider={} language={} scope={} installMode=develop-workspace sourceKind=develop-workspace devRoot={} target={} binary={} sha256={} installedPath={} lock={} switch=atomic installedProviderArtifacts={} installedProviderArtifactsWrite={}",
+        "[asp-install] provider={} language={} scope={} installMode=develop-workspace sourceKind=develop-workspace devRoot={} target={} binary={} sha256={} installedPath={} lock={} switch=atomic installedProviderArtifacts={} installedProviderArtifactsWrite={} installedProviderArtifactsChangedLeaves={} installedProviderArtifactsElapsedMicros={}",
         provider_id,
         language_id,
         scope,
@@ -539,6 +551,12 @@ async fn record_development_provider_install(
         installed_provider_artifacts
             .as_ref()
             .is_some_and(|publication| publication.artifact_write),
+        installed_provider_artifacts
+            .as_ref()
+            .map_or(0, |publication| publication.changed_leaf_count),
+        installed_provider_artifacts
+            .as_ref()
+            .map_or(0, |publication| publication.elapsed_micros),
     );
     Ok(())
 }
@@ -561,10 +579,7 @@ struct InstallCliArgs {
     #[arg(long, value_name = "TARGET")]
     target: Option<String>,
 
-    #[arg(long)]
-    reconcile_receipt: bool,
-
-    #[arg(long, value_name = "PATH", conflicts_with = "reconcile_receipt")]
+    #[arg(long, value_name = "PATH")]
     record_installed_receipt: Option<PathBuf>,
 }
 
@@ -593,7 +608,6 @@ fn parse_install_args(args: &[String]) -> Result<InstallArgs, String> {
     Ok(InstallArgs {
         scope,
         target: cli.target,
-        reconcile_receipt: cli.reconcile_receipt,
         record_installed_receipt: cli.record_installed_receipt,
     })
 }
@@ -872,7 +886,7 @@ fn write_provider_lock(path: &Path, lock: &ProviderInstallLock<'_>) -> Result<()
         fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
     }
-    super::install_provider_reconcile::atomic_write_provider_lock(path, contents.as_bytes())
+    super::provider_install_receipt::atomic_write_provider_lock(path, contents.as_bytes())
 }
 
 fn toml_escape(value: &str) -> String {

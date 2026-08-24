@@ -11,5 +11,11 @@ serde_json.workspace = true
 tempfile.workspace = true
 tokio.workspace = true
 
+[dev-dependencies]
+asp-rust-project-harness-policy.workspace = true
+
+[build-dependencies]
+asp-rust-project-harness-policy.workspace = true
+
 [lints]
 workspace = true

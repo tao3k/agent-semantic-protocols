@@ -4,19 +4,14 @@
 
 mod cli;
 mod command;
-pub use command::prepare_runtime_server_provider_artifacts;
 pub mod session_control_plane;
 pub use command::graph_turbo_resident_process::{
     GraphTurboResidentLaunchSpec, GraphTurboResidentProcess,
 };
 pub use command::search_router_graph_state;
 mod agent_session_choice_state;
-mod exact_projection_diagnostic;
-mod exact_projection_diagnostic_io;
-mod exact_projection_trace;
 mod hook_break_glass;
 mod multi_agent_session;
-mod resident_exact_projection;
 pub(crate) mod server;
 pub use agent_semantic_context_product as context_product_state;
 
@@ -27,6 +22,7 @@ pub mod graph;
 mod state_cli;
 
 pub use cli::{run_cli_args, run_cli_from_env};
+pub mod cli_failure;
 #[doc(hidden)]
 pub mod hook_bootstrap;
 pub use command::protocol_binary::{

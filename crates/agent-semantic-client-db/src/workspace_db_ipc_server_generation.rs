@@ -114,23 +114,14 @@ pub(crate) async fn require_or_submit_terminal_generation_for_read_with_provider
             "Runtime Server query-demand admission failed: {error} reasonKind=runtime-generation-admission-failed"
         ));
     }
-    let terminal = tokio::time::timeout(
-        crate::runtime_server_admission::RUNTIME_SERVER_GENERATION_ADMISSION_DEADLINE,
-        admission.wait_terminal(workspace_identity, project_root),
-    )
-    .await
-    .map_err(|_| {
-        format!(
-            "{message}; Runtime Server query-demand admission exceeded the {}ms request budget reasonKind=active-workspace-generation-required",
-            crate::runtime_server_admission::RUNTIME_SERVER_GENERATION_ADMISSION_DEADLINE
-                .as_millis()
-        )
-    })?
-    .map_err(|error| {
+    let terminal = admission
+        .wait_terminal(workspace_identity, project_root)
+        .await
+        .map_err(|error| {
         format!(
             "{message}; Runtime Server query-demand admission failed: {error} reasonKind=active-workspace-generation-required"
         )
-    })?;
+        })?;
     if terminal.state != crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
         || terminal.commit.is_none()
     {
@@ -337,17 +328,6 @@ pub(super) fn submit_mutation(
             message: "Runtime Server has no canonical generation builder".to_owned(),
         };
     };
-    if generation_admission
-        .current(&workspace_identity, std::path::Path::new(&project_root))
-        .is_none()
-    {
-        return WorkspaceDbIpcResult::Failed {
-            code: "runtime-server-generation-not-ready".to_owned(),
-            message: format!(
-                "runtime generation mutation requires a prepublished resident generation: workspaceIdentity={workspace_identity} projectRoot={project_root} reasonKind=runtime-generation-not-ready"
-            ),
-        };
-    }
     let key = SubmittedMutationKey {
         workspace_identity: workspace_identity.clone(),
         project_root: project_root.clone(),
@@ -378,31 +358,29 @@ pub(super) fn submit_mutation(
         let task = tokio::spawn(async move {
             let _submission = SubmittedMutationGuard(key);
             let project_root_path = std::path::Path::new(&project_root);
-            let result = match admission_task.current(&workspace_identity, project_root_path) {
-                Some(current) => {
-                    let candidate =
-                        crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity {
-                            candidate_generation: current.candidate_generation,
-                            policy_overlay_digest: current.policy_overlay_digest,
-                        };
-                    admit_mutation(
-                        &memory_registry,
-                        Some(&admission_task),
-                        &workspace_identity,
-                        mutation_id,
-                        project_root,
-                        changed_paths,
-                        candidate,
-                    )
-                    .await
-                }
-                None => WorkspaceDbIpcResult::Failed {
-                    code: "runtime-server-generation-not-ready".to_owned(),
-                    message: format!(
-                        "runtime generation mutation lost its prepublished resident generation: workspaceIdentity={workspace_identity} projectRoot={project_root} reasonKind=runtime-generation-not-ready"
-                    ),
-                },
-            };
+            let result =
+                match crate::runtime_server_admission::discover_workspace_generation_candidate(
+                    project_root_path,
+                )
+                .await
+                {
+                    Ok(candidate) => {
+                        admit_mutation(
+                            &memory_registry,
+                            Some(&admission_task),
+                            &workspace_identity,
+                            mutation_id,
+                            project_root,
+                            changed_paths,
+                            candidate,
+                        )
+                        .await
+                    }
+                    Err(message) => WorkspaceDbIpcResult::Failed {
+                        code: "runtime-server-generation-candidate-discovery-failed".to_owned(),
+                        message,
+                    },
+                };
             if let WorkspaceDbIpcResult::Failed { code, message } = result {
                 eprintln!(
                     "[runtime-server-generation-submission] status=failed code={code} error={message}"

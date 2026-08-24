@@ -14,6 +14,15 @@ impl RuntimeServerWorkspaceRegistry {
         workspace_identity: &str,
         project_root: &Path,
     ) -> Result<super::PublishedWorkspaceGenerationState, String> {
+        self.published_generation_state_inner(workspace_identity, project_root)
+            .await
+    }
+
+    async fn published_generation_state_inner(
+        &self,
+        workspace_identity: &str,
+        project_root: &Path,
+    ) -> Result<super::PublishedWorkspaceGenerationState, String> {
         let pointer_path =
             super::workspace_generation_pointer_path(&self.root, workspace_identity, project_root)?;
         match super::WorkspaceGenerationDataPlaneClient::open_state(&pointer_path).await? {

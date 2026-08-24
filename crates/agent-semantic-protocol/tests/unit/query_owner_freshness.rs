@@ -4,6 +4,79 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[tokio::test(flavor = "multi_thread")]
+async fn ensure_workspace_reports_generation_changes_for_live_sources() {
+    let root = temp_project_root("ensure-workspace-generation-receipt");
+    establish_rust_package(&root);
+    let owner = root.join("src/lib.rs");
+    fs::write(&owner, "pub fn baseline() -> u8 { 1 }\n").expect("write baseline owner");
+    let runtime = ExactQueryRuntime::start(&root).await;
+    let request = |id: &str| {
+        let request_id = id.to_owned();
+        let endpoint = runtime.endpoint.clone();
+        let project_root = root.clone();
+        async move {
+            agent_semantic_client_db::runtime_server_control::ensure_runtime_server_workspace(
+                &endpoint,
+                &project_root,
+                request_id,
+            )
+            .await
+            .expect("ensure workspace")
+        }
+    };
+
+    let baseline = request("ensure-baseline").await;
+    let baseline_generation = baseline
+        .workspace_generation
+        .expect("baseline generation receipt");
+    assert!(baseline_generation.generation_changed);
+
+    fs::write(
+        root.join("src/new_owner.rs"),
+        "pub fn new_owner() -> u8 { 2 }\n",
+    )
+    .expect("write untracked owner");
+    let advanced = request("ensure-untracked").await;
+    let advanced_generation = advanced
+        .workspace_generation
+        .expect("advanced generation receipt");
+    assert!(advanced_generation.generation_changed);
+    assert_eq!(
+        advanced_generation.active_generation_digest,
+        advanced_generation.candidate_digest
+    );
+
+    let unchanged = request("ensure-unchanged").await;
+    assert!(
+        !unchanged
+            .workspace_generation
+            .expect("unchanged receipt")
+            .generation_changed
+    );
+
+    fs::create_dir_all(root.join("target")).expect("create ignored target");
+    fs::write(root.join("target/hidden.rs"), "pub fn hidden() {}\n").expect("write ignored owner");
+    let ignored = request("ensure-ignored").await;
+    assert!(
+        !ignored
+            .workspace_generation
+            .expect("ignored receipt")
+            .generation_changed
+    );
+
+    fs::remove_file(&owner).expect("delete tracked owner");
+    let deleted = request("ensure-deleted").await;
+    assert!(
+        deleted
+            .workspace_generation
+            .expect("deleted receipt")
+            .generation_changed
+    );
+    runtime.shutdown().await;
+    let _ = fs::remove_dir_all(root);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn exact_source_projection_consumes_the_pretool_admitted_owner_change() {
     let root = temp_project_root("exact-selector-freshness");
     establish_rust_package(&root);

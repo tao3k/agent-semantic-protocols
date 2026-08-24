@@ -18,6 +18,8 @@ pub struct ProviderRouteSpec {
     pub operation: String,
     pub authority: ProviderRouteAuthority,
     pub target: ProviderRouteTarget,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_schema_id: Option<String>,
     pub inputs: Vec<ProviderRouteInputSlot>,
     pub requirements: Vec<ProviderRouteRequirement>,
     pub effects: ProviderRouteEffects,
@@ -229,6 +231,9 @@ impl ProviderRouteSpec {
             ));
         }
         require_schema_id("output.schemaId", &self.output.schema_id)?;
+        if let Some(request_schema_id) = &self.request_schema_id {
+            require_schema_id("requestSchemaId", request_schema_id)?;
+        }
         if self.output.media_type != "application/json" {
             return Err(ProviderRouteCompileError::new(
                 "output.mediaType must be `application/json`",
@@ -462,6 +467,7 @@ mod tests {
                 language_id: "rust".into(),
                 provider_id: "asp-rust".into(),
             },
+            request_schema_id: Some("agent.semantic-protocols.search-owner-request".into()),
             inputs: vec![ProviderRouteInputSlot {
                 name: "query".into(),
                 value_type: ProviderRouteValueType::String,

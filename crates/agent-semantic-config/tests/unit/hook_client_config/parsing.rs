@@ -28,6 +28,15 @@ fn default_template_round_trips_through_config_parser() {
     assert!(config.recovery_prompt.codex_agent_flow.is_none());
     assert!(config.recovery_prompt.claude_agent_flow.is_none());
     assert!(config.recovery_prompt.default_agent_flow.is_none());
+    assert_eq!(config.provider_routes.len(), 7);
+    for (language_id, provider_id) in [("org", "asp-org"), ("md", "asp-md")] {
+        assert!(
+            config.provider_routes.iter().any(|route| {
+                route.language_id == language_id && route.provider_id == provider_id
+            }),
+            "canonical Provider Register route missing from Hook projection: {language_id}/{provider_id}"
+        );
+    }
     let rendered = canonical_default_template();
     for legacy in [
         "choice pane",
@@ -124,7 +133,7 @@ fn default_template_round_trips_through_config_parser() {
         .expect("TOML projection matcher");
     assert_eq!(toml_projection.binary, "yq");
     assert_eq!(toml_projection.optional_subcommand_any, ["eval", "e"]);
-    assert_eq!(config.rules.len(), 14);
+    assert_eq!(config.rules.len(), 15);
     assert_eq!(
         config
             .rules
@@ -140,6 +149,7 @@ fn default_template_round_trips_through_config_parser() {
             "deny-agent-search-json",
             "route-read-to-asp-languages",
             "route-structured-document-read",
+            "route-shell-structured-document-read",
             "deny-uncontrolled-source-search-commands",
             "allow-bounded-json-projection",
             "allow-bounded-toml-projection",
@@ -164,6 +174,39 @@ fn default_template_round_trips_through_config_parser() {
             "legacy key remains: {removed_key}"
         );
     }
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn managed_config_without_copied_provider_routes_uses_build_admitted_register() {
+    let root = temp_root("hook-client-provider-register-admission");
+    let config_path = root.join("config.toml");
+    fs::write(
+        &config_path,
+        r#"
+schemaId = "agent.semantic-protocols.hook.client-config"
+schemaVersion = "1"
+protocolId = "agent.semantic-protocols.hook"
+protocolVersion = "1"
+"#,
+    )
+    .expect("write route-free managed config");
+
+    let config = load_hook_client_config_file(&config_path)
+        .expect("canonical Provider Register must be admitted without copied route tables");
+
+    assert!(
+        config
+            .provider_routes
+            .iter()
+            .any(|route| { route.language_id == "org" && route.provider_id == "asp-org" })
+    );
+    assert!(
+        config
+            .provider_routes
+            .iter()
+            .any(|route| { route.language_id == "md" && route.provider_id == "asp-md" })
+    );
     let _ = fs::remove_dir_all(root);
 }
 

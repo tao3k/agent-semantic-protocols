@@ -14,18 +14,18 @@ use super::{
 };
 
 #[test]
-fn codex_desktop_hook_open_stdin_without_payload_exits_inside_gate() {
+fn codex_desktop_hook_closed_stdin_without_payload_exits_inside_gate() {
     let _guard = performance_gate_guard();
     let root = temp_project_root("codex-desktop-open-stdin-no-payload");
     write_hook_fixture(&root);
 
     let mut child = spawn_hook(&root);
-    let _stdin_guard = child.stdin.take().expect("hook stdin");
+    drop(child.stdin.take().expect("hook stdin"));
     let (_stdout, elapsed) = wait_for_hook_exit(child, HOOK_STDIN_PERFORMANCE_GATE);
 
     assert!(
         elapsed < HOOK_STDIN_PERFORMANCE_GATE,
-        "open stdin without payload should not wait for Codex's outer timeout; elapsed={elapsed:?}"
+        "closed stdin without payload should exit without waiting for Codex's outer timeout; elapsed={elapsed:?}"
     );
 }
 
@@ -59,18 +59,18 @@ fn codex_desktop_hook_reads_payload_without_waiting_for_stdin_eof() {
 }
 
 #[test]
-fn codex_desktop_post_tool_open_stdin_without_payload_exits_inside_gate() {
+fn codex_desktop_post_tool_closed_stdin_without_payload_exits_inside_gate() {
     let _guard = performance_gate_guard();
     let root = temp_project_root("codex-desktop-post-tool-open-stdin-no-payload");
     write_hook_fixture(&root);
 
     let mut child = spawn_hook_event(&root, "post-tool");
-    let _stdin_guard = child.stdin.take().expect("hook stdin");
+    drop(child.stdin.take().expect("hook stdin"));
     let (_stdout, elapsed) = wait_for_hook_exit(child, HOOK_STDIN_PERFORMANCE_GATE);
 
     assert!(
         elapsed < HOOK_STDIN_PERFORMANCE_GATE,
-        "post-tool open stdin without payload should not wait for Codex's outer timeout; elapsed={elapsed:?}"
+        "post-tool closed stdin without payload should exit without waiting for Codex's outer timeout; elapsed={elapsed:?}"
     );
 }
 

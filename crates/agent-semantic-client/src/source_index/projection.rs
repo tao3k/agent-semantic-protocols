@@ -182,10 +182,23 @@ async fn project_provider(
             base_generation_root_digest: None,
             owners,
         };
+        let frame_owner_paths = request
+            .owners
+            .iter()
+            .map(|owner| owner.owner_path.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
         let response = match executor {
             ProviderProjectionExecutor::Resident(runtime) => {
                 let encoded = request.encode().map_err(|error| error.to_string())?;
-                let response = runtime.request(&operation.operation, encoded).await?;
+                let response = runtime
+                    .request(&operation.operation, encoded)
+                    .await
+                    .map_err(|error| {
+                        format!(
+                            "provider projection frame failed: ownerPaths={frame_owner_paths} error={error}"
+                        )
+                    })?;
                 agent_semantic_provider_transport::projection_batch::ProviderProjectionBatchResponse::decode_for(
                     &request,
                     &response,
@@ -213,7 +226,12 @@ async fn project_provider(
                         operation.operation.clone(),
                         encoded,
                     )
-                    .await?;
+                    .await
+                    .map_err(|error| {
+                        format!(
+                            "provider projection frame failed: ownerPaths={frame_owner_paths} error={error}"
+                        )
+                    })?;
                 agent_semantic_provider_transport::projection_batch::ProviderProjectionBatchResponse::decode_for(
                     &request,
                     &response,

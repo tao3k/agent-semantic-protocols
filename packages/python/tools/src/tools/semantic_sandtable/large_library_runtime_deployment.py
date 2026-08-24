@@ -93,4 +93,4 @@ def install_workspace_provider(
 
 
 def _automation_environment() -> dict[str, str]:
-    return {**os.environ, "ASP_NO_AGENT_PLATFORM": "1"}
+    return {**os.environ, "ASP_NO_AGENT": "1"}

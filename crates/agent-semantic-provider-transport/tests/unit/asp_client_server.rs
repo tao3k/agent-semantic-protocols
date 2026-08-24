@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use tokio::{net::TcpListener, sync::watch};
 
-use super::{AspClientServerHttpClient, AspClientServerPeer, AspClientServerSpec};
+use super::{utf8_chunks, AspClientServerHttpClient, AspClientServerPeer, AspClientServerSpec};
 use crate::{AspClientServerRequest, AspClientServerResponse, serve_asp_client_server};
 
 fn serve_request(
@@ -24,6 +24,10 @@ fn serve_request(
                 body: Bytes::from_static(br#"{"state":"draining"}"#),
             })
         }
+        "/failure" => Ok(AspClientServerResponse {
+            status: 500,
+            body: Bytes::from_static(br#"{"error":"projection-failed"}"#),
+        }),
         _ => Ok(AspClientServerResponse {
             status: 404,
             body: Bytes::from_static(br#"{"error":"not-found"}"#),
@@ -65,11 +69,12 @@ async fn tokio_http_fixture_covers_health_request_and_shutdown_without_external_
         .expect("bind Tokio HTTP fixture");
     let address = listener.local_addr().expect("Tokio HTTP fixture address");
     let (shutdown, shutdown_reader) = watch::channel(false);
+    let request_shutdown = shutdown.clone();
     let server = tokio::spawn(serve_asp_client_server(
         listener,
         shutdown_reader,
         move |request| {
-            let shutdown = shutdown.clone();
+            let shutdown = request_shutdown.clone();
             async move { serve_request(request, shutdown) }
         },
     ));
@@ -104,6 +109,43 @@ async fn tokio_http_fixture_covers_health_request_and_shutdown_without_external_
         .expect("serve Tokio HTTP fixture");
 }
 
+#[tokio::test]
+async fn non_success_response_preserves_bounded_provider_evidence() {
+    let listener = TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("bind Tokio HTTP fixture");
+    let address = listener.local_addr().expect("Tokio HTTP fixture address");
+    let (shutdown, shutdown_reader) = watch::channel(false);
+    let request_shutdown = shutdown.clone();
+    let server = tokio::spawn(serve_asp_client_server(
+        listener,
+        shutdown_reader,
+        move |request| {
+            let shutdown = request_shutdown.clone();
+            async move { serve_request(request, shutdown) }
+        },
+    ));
+    let client = AspClientServerHttpClient::new(
+        reqwest::Url::parse(&format!("http://{address}/"))
+            .expect("construct Tokio HTTP fixture URL"),
+    )
+    .expect("construct ASP Client Server client");
+
+    let error = client
+        .json("POST", "/failure", Some(b"{}"))
+        .await
+        .expect_err("non-success response must fail closed");
+    assert!(error.contains("reasonKind=asp-client-server-http-status"));
+    assert!(error.contains("500 Internal Server Error"));
+    assert!(error.contains("projection-failed"));
+
+    shutdown.send_replace(true);
+    server
+        .await
+        .expect("join Tokio HTTP fixture")
+        .expect("serve Tokio HTTP fixture");
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn provider_exit_before_bootstrap_reports_launch_and_bounded_stderr() {
@@ -128,6 +170,16 @@ async fn provider_exit_before_bootstrap_reports_launch_and_bounded_stderr() {
     assert!(error.contains("status=exit status: 23"));
     assert!(error.contains("program=/bin/sh"));
     assert!(error.contains("provider-bootstrap-sentinel"));
+}
+
+#[test]
+fn provider_request_stream_chunks_preserve_utf8_boundaries_and_content() {
+    let source = "a界".repeat(100_000);
+    let chunks = utf8_chunks(&source, 128 * 1024);
+
+    assert!(chunks.len() > 1);
+    assert!(chunks.iter().all(|chunk| chunk.len() <= 128 * 1024));
+    assert_eq!(chunks.concat(), source);
 }
 
 #[test]

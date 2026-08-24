@@ -303,6 +303,15 @@ fn apply_verified_child_registration_context(
 ) -> Result<(), String> {
     let receipt: serde_json::Value = serde_json::from_str(receipt_json)
         .map_err(|error| format!("child-session-registration-receipt-invalid: {error}"))?;
+    let schema_is_current = receipt.get("schemaId").and_then(serde_json::Value::as_str)
+        == Some(crate::multi_agent_session::CHILD_REGISTRATION_SCHEMA_ID)
+        && receipt
+            .get("schemaVersion")
+            .and_then(serde_json::Value::as_u64)
+            == Some(1);
+    if !schema_is_current {
+        return Err("child-session-registration-receipt-schema-invalid".to_owned());
+    }
     let generation = receipt
         .get("generation")
         .and_then(serde_json::Value::as_u64)
@@ -319,15 +328,71 @@ fn apply_verified_child_registration_context(
     let authority = receipt
         .get("registrationAuthority")
         .and_then(serde_json::Value::as_str)
-        .filter(|authority| !authority.trim().is_empty())
+        .filter(|authority| *authority == crate::multi_agent_session::CHILD_REGISTRATION_AUTHORITY)
         .ok_or_else(|| "child-session-registration-receipt-authority-invalid".to_owned())?;
     let host_receipt_digest = receipt
         .get("hostCallReceiptDigest")
         .and_then(serde_json::Value::as_str)
-        .filter(|digest| digest.starts_with("blake3-256:"))
+        .filter(|digest| {
+            digest.strip_prefix("blake3-256:").is_some_and(|hex| {
+                hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit())
+            })
+        })
         .ok_or_else(|| "child-session-registration-receipt-host-digest-invalid".to_owned())?;
+    let registered_child_session_id = receipt
+        .get("childSessionId")
+        .and_then(serde_json::Value::as_str)
+        .filter(|session_id| !session_id.trim().is_empty())
+        .ok_or_else(|| "child-session-registration-receipt-child-id-invalid".to_owned())?;
+    let registered_agent_name = receipt
+        .get("residentId")
+        .and_then(serde_json::Value::as_str)
+        .filter(|name| !name.trim().is_empty())
+        .ok_or_else(|| "child-session-registration-receipt-agent-name-invalid".to_owned())?;
+    let definition_schema_id = receipt
+        .get("definitionSchemaId")
+        .and_then(serde_json::Value::as_str)
+        .filter(|schema_id| {
+            *schema_id
+                == agent_semantic_config::agent_route_registry::CODEX_AGENT_DEFINITION_SCHEMA_ID
+        })
+        .ok_or_else(|| "child-session-registration-receipt-schema-invalid".to_owned())?;
+    let denied_actions = receipt
+        .get("deniedActions")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "child-session-registration-receipt-permissions-invalid".to_owned())?;
+    if denied_actions.len() != 1 || denied_actions[0].as_str() != Some("edit") {
+        return Err("child-session-registration-receipt-permissions-invalid".to_owned());
+    }
+    let allowed_rule_intents = receipt
+        .get("allowedRuleIntents")
+        .and_then(serde_json::Value::as_array)
+        .filter(|intents| !intents.is_empty())
+        .ok_or_else(|| "child-session-registration-receipt-scope-invalid".to_owned())?;
+    let mut unique_intents = std::collections::BTreeSet::new();
+    if allowed_rule_intents.iter().any(|intent| {
+        intent
+            .as_str()
+            .filter(|value| !value.trim().is_empty())
+            .is_none_or(|value| !unique_intents.insert(value))
+    }) {
+        return Err("child-session-registration-receipt-scope-invalid".to_owned());
+    }
     if !lifecycle_is_live || !routable {
         return Err("child-session-registration-receipt-not-routable".to_owned());
+    }
+    let payload_child_session_id = payload
+        .get("agent_id")
+        .or_else(|| payload.get("agentId"))
+        .and_then(serde_json::Value::as_str);
+    let payload_agent_name = payload
+        .get("agent_type")
+        .or_else(|| payload.get("agentType"))
+        .and_then(serde_json::Value::as_str);
+    if payload_child_session_id != Some(registered_child_session_id)
+        || payload_agent_name != Some(registered_agent_name)
+    {
+        return Err("child-session-registration-receipt-payload-binding-mismatch".to_owned());
     }
     let object = payload
         .as_object_mut()
@@ -347,6 +412,22 @@ fn apply_verified_child_registration_context(
     object.insert(
         "registration_host_receipt_digest".to_owned(),
         serde_json::Value::String(host_receipt_digest.to_owned()),
+    );
+    object.insert(
+        "registered_agent_name".to_owned(),
+        serde_json::Value::String(registered_agent_name.to_owned()),
+    );
+    object.insert(
+        "registered_definition_schema_id".to_owned(),
+        serde_json::Value::String(definition_schema_id.to_owned()),
+    );
+    object.insert(
+        "registered_denied_actions".to_owned(),
+        serde_json::Value::Array(denied_actions.clone()),
+    );
+    object.insert(
+        "registered_allowed_rule_intents".to_owned(),
+        serde_json::Value::Array(allowed_rule_intents.clone()),
     );
     Ok(())
 }
@@ -449,19 +530,37 @@ async fn run_hook_with_input(
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| PathBuf::from("."));
     let project_root = hook_workspace_candidate(&payload, &payload_root);
-    enrich_registered_host_agent_roles(client, &project_root, &mut payload)?;
-    let registration_receipt =
-        crate::multi_agent_session::register_child_session_from_host_payload(
+    let config_path = flag_value(args, "--config")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| default_client_config_path(&project_root.to_string_lossy()));
+    let explicit_no_agent_bypass = if payload_command_has_no_agent_marker(&payload) {
+        terminal_no_agent_bypass_matches(
+            &config_path,
             &project_root,
             client,
+            classification_event,
             &payload,
-        )
-        .await?;
-    if let Some(receipt_json) = registration_receipt.as_deref() {
-        apply_verified_child_registration_context(&mut payload, receipt_json)?;
-    }
+        )?
+    } else {
+        false
+    };
     let workspace_micros = hook_started.elapsed().as_micros();
-    if event != "pre-tool" {
+    if !explicit_no_agent_bypass {
+        enrich_registered_host_agent_roles(client, &project_root, &mut payload)?;
+        let registration_receipt = if matches!(event, "pre-tool" | "permission-request") {
+            crate::multi_agent_session::read_child_session_registration_from_host_payload(
+                &project_root,
+                client,
+                &payload,
+            )?
+        } else {
+            None
+        };
+        if let Some(receipt_json) = registration_receipt.as_deref() {
+            apply_verified_child_registration_context(&mut payload, receipt_json)?;
+        }
+    }
+    if !explicit_no_agent_bypass && event != "pre-tool" {
         hook_runtime_workspace_mutation::relay_post_tool_workspace_mutation(
             event,
             &payload,
@@ -476,7 +575,21 @@ async fn run_hook_with_input(
         )
         .await
         {
-            Ok(hook_runtime_host_lifecycle::HostLifecycleDisposition::Recorded) => return Ok(()),
+            Ok(hook_runtime_host_lifecycle::HostLifecycleDisposition::Recorded {
+                registered_session,
+                register_child,
+            }) => {
+                if register_child {
+                    crate::multi_agent_session::register_child_session_from_host_payload(
+                        &project_root,
+                        client,
+                        &payload,
+                        registered_session,
+                    )
+                    .await?;
+                }
+                return Ok(());
+            }
             Ok(hook_runtime_host_lifecycle::HostLifecycleDisposition::NotLifecycle) => {}
             Err(error) => {
                 emit_hook_runtime_failure(client, event, emit, &error)?;
@@ -491,9 +604,6 @@ async fn run_hook_with_input(
         providers: Vec::new(),
         policy_providers: Vec::new(),
     };
-    let config_path = flag_value(args, "--config")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| default_client_config_path(&project_root.to_string_lossy()));
     let matcher_keys = agent_semantic_hook::hook_matcher_keys(&payload);
     let direct_read_key = matcher_keys.direct_read;
     let shell_read_keys = matcher_keys.shell_reads;
@@ -595,6 +705,88 @@ async fn run_hook_with_input(
     publish_hook_decision_before_emit(&project_root, &mut decision);
     trace_stage("complete");
     emit_decision(emit, &decision)
+}
+
+fn payload_command_has_no_agent_marker(payload: &serde_json::Value) -> bool {
+    ["tool_input", "toolInput", "parameters", "input"]
+        .into_iter()
+        .filter_map(|key| payload.get(key))
+        .find_map(|input| {
+            ["cmd", "command"]
+                .into_iter()
+                .find_map(|key| input.get(key).and_then(serde_json::Value::as_str))
+        })
+        .is_some_and(|command| {
+            command
+                .split_whitespace()
+                .any(|word| word == "ASP_NO_AGENT=1")
+        })
+}
+
+fn terminal_no_agent_bypass_matches(
+    config_path: &std::path::Path,
+    project_root: &std::path::Path,
+    client: &str,
+    event: &str,
+    payload: &serde_json::Value,
+) -> Result<bool, String> {
+    let matcher_keys = agent_semantic_hook::hook_matcher_keys(payload);
+    let (loaded, _) = hook_runtime_config_recovery::load_fresh_hook_config(
+        config_path,
+        project_root,
+        matcher_keys
+            .direct_read
+            .as_ref()
+            .map(|key| key.extension.as_str()),
+        matcher_keys
+            .direct_read
+            .as_ref()
+            .map(|key| key.path.as_str()),
+        &matcher_keys.shell_reads,
+        &matcher_keys.shell_commands,
+    )?;
+    let decision = if let Some(decision) = loaded.decision {
+        if matcher_keys.shell_commands.is_empty() {
+            decision
+        } else {
+            agent_semantic_hook::rebind_command_decision_to_payload_with_keys(
+                decision,
+                payload,
+                &matcher_keys.shell_commands,
+            )
+        }
+    } else {
+        let mut config = loaded
+            .config
+            .ok_or_else(|| "Hook matcher loaded neither config nor decision shard".to_owned())?;
+        let mut runtime = agent_semantic_hook::HookRuntime {
+            project_root: project_root.display().to_string(),
+            rankers: Vec::new(),
+            providers: Vec::new(),
+            policy_providers: Vec::new(),
+        };
+        config.move_language_provider_projection(&mut runtime)?;
+        classify_hook_with_config(HookClassificationRequest {
+            registry: &runtime,
+            config: &config,
+            platform: client,
+            event,
+            payload,
+        })
+    };
+    Ok(
+        decision.decision == agent_semantic_hook::DecisionKind::Allow
+            && decision
+                .fields
+                .get("configRuleId")
+                .and_then(serde_json::Value::as_str)
+                == Some("allow-explicit-no-agent-host-bypass")
+            && decision
+                .fields
+                .get("bypassScope")
+                .and_then(serde_json::Value::as_str)
+                == Some("host-policy"),
+    )
 }
 
 fn annotate_payload_context(decision: &mut HookDecision, payload: &serde_json::Value) {

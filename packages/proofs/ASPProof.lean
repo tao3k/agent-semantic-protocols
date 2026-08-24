@@ -293,3 +293,4 @@ import ASPProof.HookSourceAccessReplayIdentity
 import ASPProof.Audit.HookSourceAccessReplayIdentity
 import ASPProof.IncrementalCacheAuthority
 import ASPProof.RuntimeEndpointAuthority
+import ASPProof.HotPathEffectIsolation

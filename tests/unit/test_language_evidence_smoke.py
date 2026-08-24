@@ -209,7 +209,7 @@ def _run_asp_text(*args: str) -> str:
     completed = subprocess.run(
         ["asp", *args],
         cwd=_REPO_ROOT,
-        env={**os.environ, "ASP_NO_AGENT_PLATFORM": "1"},
+        env={**os.environ, "ASP_NO_AGENT": "1"},
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

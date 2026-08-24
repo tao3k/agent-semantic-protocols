@@ -28,6 +28,36 @@ pub struct GraphSelectorSeedProjection {
 pub fn graph_selector_seed_projection(
     request: GraphSelectorSeedProjectionRequest<'_>,
 ) -> GraphSelectorSeedProjection {
+    let identity = selector_seed_identity(&request);
+    let nodes = selector_seed_nodes(&request, &identity);
+    let edges = selector_seed_edges(&identity);
+    GraphSelectorSeedProjection {
+        canonical_selector: identity.canonical_selector,
+        owner: identity.owner,
+        symbol: identity.symbol,
+        language_node_id: identity.language_node_id,
+        selector_node_id: identity.selector_node_id,
+        owner_node_id: identity.owner_node_id,
+        query_node_id: identity.query_node_id,
+        nodes,
+        edges,
+    }
+}
+
+struct GraphSelectorSeedIdentity {
+    canonical_selector: Option<agent_semantic_content_identity::CanonicalItemSelector>,
+    owner: Option<String>,
+    symbol: Option<String>,
+    language_node_id: String,
+    selector_node_id: Option<String>,
+    owner_node_id: Option<String>,
+    query_node_id: Option<String>,
+    unresolved_selector_node_id: Option<String>,
+}
+
+fn selector_seed_identity(
+    request: &GraphSelectorSeedProjectionRequest<'_>,
+) -> GraphSelectorSeedIdentity {
     let canonical_selector =
         agent_semantic_content_identity::CanonicalItemSelector::parse(request.selector)
             .ok()
@@ -52,16 +82,34 @@ pub fn graph_selector_seed_projection(
         .map(|owner| stable_graph_node_id("owner", owner));
     let query_node_id =
         (!request.query.trim().is_empty()).then(|| stable_graph_node_id("query", request.query));
+    let unresolved_selector_node_id = canonical_selector
+        .is_none()
+        .then(|| stable_graph_node_id("selector-input", request.selector));
+    GraphSelectorSeedIdentity {
+        canonical_selector,
+        owner,
+        symbol,
+        language_node_id,
+        selector_node_id,
+        owner_node_id,
+        query_node_id,
+        unresolved_selector_node_id,
+    }
+}
+
+fn selector_seed_nodes(
+    request: &GraphSelectorSeedProjectionRequest<'_>,
+    identity: &GraphSelectorSeedIdentity,
+) -> Vec<Value> {
     let mut nodes = vec![json!({
-        "id": language_node_id,
+        "id": identity.language_node_id,
         "kind": "provider-root",
         "role": "language",
         "value": request.language_id,
         "languageId": request.language_id,
         "fields": { "workspace": request.workspace },
     })];
-    let unresolved_selector_node_id = canonical_selector.is_none().then(|| {
-        let node_id = stable_graph_node_id("selector-input", request.selector);
+    if let Some(node_id) = identity.unresolved_selector_node_id.as_ref() {
         nodes.push(json!({
             "id": node_id,
             "kind": "selector-input",
@@ -72,9 +120,8 @@ pub fn graph_selector_seed_projection(
                 "reasonKind": "selector-invalid-or-language-mismatch",
             },
         }));
-        node_id
-    });
-    if let Some(query_node_id) = query_node_id.as_ref() {
+    }
+    if let Some(query_node_id) = identity.query_node_id.as_ref() {
         nodes.push(json!({
             "id": query_node_id,
             "kind": "query",
@@ -82,7 +129,9 @@ pub fn graph_selector_seed_projection(
             "value": request.query,
         }));
     }
-    if let (Some(owner), Some(owner_node_id)) = (owner.as_deref(), owner_node_id.as_ref()) {
+    if let (Some(owner), Some(owner_node_id)) =
+        (identity.owner.as_deref(), identity.owner_node_id.as_ref())
+    {
         nodes.push(json!({
             "id": owner_node_id,
             "kind": "owner",
@@ -94,36 +143,56 @@ pub fn graph_selector_seed_projection(
         }));
     }
     if let (Some(selector), Some(selector_node_id)) =
-        (canonical_selector.as_ref(), selector_node_id.as_ref())
+        (
+            identity.canonical_selector.as_ref(),
+            identity.selector_node_id.as_ref(),
+        )
     {
         nodes.push(json!({
             "id": selector_node_id,
             "kind": "item",
             "role": "selector",
             "value": selector.structural_selector(),
-            "ownerPath": owner,
-            "symbol": symbol,
+            "ownerPath": identity.owner.as_deref(),
+            "symbol": identity.symbol.as_deref(),
             "structuralSelector": selector.structural_selector(),
             "projection": selector_projection_kind(request.language_id),
             "requiresExact": true,
             "languageId": request.language_id,
         }));
     }
+    nodes
+}
+
+fn selector_seed_edges(identity: &GraphSelectorSeedIdentity) -> Vec<Value> {
     let mut edges = Vec::new();
-    if let Some(owner_node_id) = owner_node_id.as_ref() {
-        edges.push(graph_edge(&language_node_id, owner_node_id, "serves_owner"));
+    if let Some(owner_node_id) = identity.owner_node_id.as_ref() {
+        edges.push(graph_edge(
+            &identity.language_node_id,
+            owner_node_id,
+            "serves_owner",
+        ));
     }
     if let (Some(owner_node_id), Some(selector_node_id)) =
-        (owner_node_id.as_ref(), selector_node_id.as_ref())
+        (
+            identity.owner_node_id.as_ref(),
+            identity.selector_node_id.as_ref(),
+        )
     {
         edges.push(graph_edge(owner_node_id, selector_node_id, "owns_item"));
     }
     if let (Some(query_node_id), Some(selector_node_id)) =
-        (query_node_id.as_ref(), selector_node_id.as_ref())
+        (
+            identity.query_node_id.as_ref(),
+            identity.selector_node_id.as_ref(),
+        )
     {
         edges.push(graph_edge(query_node_id, selector_node_id, "targets_item"));
     } else if let (Some(query_node_id), Some(unresolved_selector_node_id)) =
-        (query_node_id.as_ref(), unresolved_selector_node_id.as_ref())
+        (
+            identity.query_node_id.as_ref(),
+            identity.unresolved_selector_node_id.as_ref(),
+        )
     {
         edges.push(graph_edge(
             query_node_id,
@@ -131,17 +200,7 @@ pub fn graph_selector_seed_projection(
             "targets_unresolved_selector",
         ));
     }
-    GraphSelectorSeedProjection {
-        canonical_selector,
-        owner,
-        symbol,
-        language_node_id,
-        selector_node_id,
-        owner_node_id,
-        query_node_id,
-        nodes,
-        edges,
-    }
+    edges
 }
 
 fn selector_projection_kind(language_id: &str) -> &'static str {

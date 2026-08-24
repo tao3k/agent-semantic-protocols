@@ -137,6 +137,58 @@ async fn passes_cwd_and_env() {
 }
 
 #[tokio::test]
+async fn removes_declared_inherited_environment() {
+    let root = temp_dir("removed-env");
+    let program = script(
+        &root,
+        "provider.sh",
+        "#!/bin/sh\nif [ -z \"${ASP_TEST_REMOVED+x}\" ]; then printf 'removed'; else printf 'present'; fi\n",
+    );
+    unsafe {
+        std::env::set_var("ASP_TEST_REMOVED", "parent-value");
+    }
+    let mut process = spec(program, root.clone());
+    process.remove_env.insert("ASP_TEST_REMOVED".into());
+    let output = ProviderProcessSupervisor::default()
+        .run(process)
+        .await
+        .expect("run provider");
+    unsafe {
+        std::env::remove_var("ASP_TEST_REMOVED");
+    }
+
+    assert_eq!(output.stdout.as_ref(), b"removed");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn removes_declared_inherited_environment_prefix() {
+    let root = temp_dir("removed-env-prefix");
+    let program = script(
+        &root,
+        "provider.sh",
+        "#!/bin/sh\nif [ -z \"${ASP_PREFIX_TEST_VALUE+x}\" ]; then printf 'removed'; else printf 'present'; fi\n",
+    );
+    unsafe {
+        std::env::set_var("ASP_PREFIX_TEST_VALUE", "parent-value");
+    }
+    let mut process = spec(program, root.clone());
+    process
+        .remove_env_prefixes
+        .insert("ASP_PREFIX_TEST_".into());
+    let output = ProviderProcessSupervisor::default()
+        .run(process)
+        .await
+        .expect("run provider");
+    unsafe {
+        std::env::remove_var("ASP_PREFIX_TEST_VALUE");
+    }
+
+    assert_eq!(output.stdout.as_ref(), b"removed");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[tokio::test]
 async fn records_signal_termination_with_memory_limit_context() {
     let root = temp_dir("signal-memory-receipt");
     let program = script(&root, "provider.sh", "#!/bin/sh\nkill -SEGV $$\n");

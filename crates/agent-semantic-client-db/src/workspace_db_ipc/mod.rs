@@ -11,6 +11,8 @@ pub use protocol::{
 mod provider_owner;
 mod runtime_generation;
 mod runtime_locator;
+#[path = "../workspace_db_ipc_server_single_request.rs"]
+mod server_single_request;
 mod session_pool;
 pub(crate) mod transport;
 mod validation;
@@ -24,7 +26,7 @@ use validation::{
 };
 
 pub use crate::try_acquire_workspace_db_owner_election;
-pub use crate::workspace_db_ipc_server_single_request::serve_one_workspace_db_ipc_request;
+pub use server_single_request::serve_one_workspace_db_ipc_request;
 pub use agent_session_registry::{
     AgentHostExecutionObservationIpc, AgentHostLifecycleEventIpc, AgentHostLifecycleEventKind,
     AgentHostNonMatchIpc, AgentSessionModelObservationIpc, AgentSessionRegisterIpcRequest,

@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use agent_semantic_client_core::{LanguageId, ProviderId};
+use agent_semantic_client_core::{ClientCacheFileHash, LanguageId, ProviderId};
+use agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation;
 
 use super::{
     ClientDbSourceIndexImport, ClientDbSourceIndexOwner, ClientDbSourceIndexPath,
@@ -131,20 +132,26 @@ pub fn partial_source_index_import(
             )
         })
         .collect::<BTreeMap<_, _>>();
-    let mut relations = Vec::new();
-    for relation in &import.relations {
-        let owner_path = selector_owners
-            .get(relation.from.id.as_str())
-            .ok_or_else(|| {
-                format!(
-                    "source-index relation has no parser-owned source selector: selectorId={}",
-                    relation.from.id
-                )
-            })?;
-        if changed_owner_paths.contains(owner_path) {
-            relations.push(relation.clone());
-        }
-    }
+    let relations = import
+        .relations
+        .iter()
+        .map(|relation| {
+            let owner_path = selector_owners
+                .get(relation.from.id.as_str())
+                .ok_or_else(|| {
+                    format!(
+                        "source-index relation has no parser-owned source selector: selectorId={}",
+                        relation.from.id
+                    )
+                })?;
+            Ok(changed_owner_paths
+                .contains(owner_path)
+                .then(|| relation.clone()))
+        })
+        .collect::<Result<Vec<_>, String>>()?
+        .into_iter()
+        .flatten()
+        .collect();
     let file_hashes = import
         .file_hashes
         .iter()
@@ -202,18 +209,62 @@ pub fn overlay_active_source_index_import(
         ));
     }
 
+    let file_hashes = overlay_file_hashes(
+        active,
+        partial,
+        changed_owner_paths,
+        removed_owner_paths,
+    );
+    let (owners, selectors) = overlay_owner_facts(
+        active,
+        partial,
+        changed_owner_paths,
+        removed_owner_paths,
+    )?;
+    let relations = overlay_relations(
+        active,
+        partial,
+        changed_owner_paths,
+        removed_owner_paths,
+    );
+    let source_blobs = overlay_source_blobs(
+        active_blobs,
+        partial,
+        changed_owner_paths,
+        removed_owner_paths,
+    );
+
+    Ok(ClientDbSourceIndexImport {
+        generation_id: partial.generation_id.clone(),
+        project_root: partial.project_root.clone(),
+        schema_id: partial.schema_id.clone(),
+        schema_version: partial.schema_version.clone(),
+        file_hashes,
+        source_blobs,
+        owners,
+        selectors,
+        relations,
+    })
+}
+
+fn overlay_file_hashes(
+    active: &ClientDbSourceIndexGenerationSnapshot,
+    partial: &ClientDbSourceIndexImport,
+    changed_owner_paths: &BTreeSet<String>,
+    removed_owner_paths: &BTreeSet<String>,
+) -> Vec<ClientCacheFileHash> {
+    let retired_selector_evidence_paths = changed_owner_paths
+        .iter()
+        .chain(removed_owner_paths)
+        .map(|owner_path| format!("@scope/selector-generation/{owner_path}"))
+        .collect::<BTreeSet<_>>();
     let mut file_hashes = active
         .file_hash_records
         .iter()
         .filter(|record| {
             !changed_owner_paths.contains(record.path.as_str())
                 && !removed_owner_paths.contains(record.path.as_str())
-                && !changed_owner_paths
-                    .iter()
-                    .chain(removed_owner_paths.iter())
-                    .any(|owner_path| {
-                        record.path == format!("@scope/selector-generation/{owner_path}")
-                    })
+                && !retired_selector_evidence_paths.contains(record.path.as_str())
         })
         .cloned()
         .map(|record| (record.path.clone(), record))
@@ -221,7 +272,15 @@ pub fn overlay_active_source_index_import(
     for record in &partial.file_hashes {
         file_hashes.insert(record.path.clone(), record.clone());
     }
+    file_hashes.into_values().collect()
+}
 
+fn overlay_owner_facts(
+    active: &ClientDbSourceIndexGenerationSnapshot,
+    partial: &ClientDbSourceIndexImport,
+    changed_owner_paths: &BTreeSet<String>,
+    removed_owner_paths: &BTreeSet<String>,
+) -> Result<(Vec<ClientDbSourceIndexOwner>, Vec<ClientDbSourceIndexSelector>), String> {
     let mut owners = Vec::new();
     let mut selectors = Vec::new();
     for owner in active.owners.iter().filter(|owner| {
@@ -235,7 +294,15 @@ pub fn overlay_active_source_index_import(
     selectors.extend(partial.selectors.iter().cloned());
     owners.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
     selectors.sort_by(|left, right| left.selector_id.cmp(&right.selector_id));
+    Ok((owners, selectors))
+}
 
+fn overlay_relations(
+    active: &ClientDbSourceIndexGenerationSnapshot,
+    partial: &ClientDbSourceIndexImport,
+    changed_owner_paths: &BTreeSet<String>,
+    removed_owner_paths: &BTreeSet<String>,
+) -> Vec<ProviderProjectedRelation> {
     let mut relations = active
         .relations
         .iter()
@@ -248,7 +315,15 @@ pub fn overlay_active_source_index_import(
     relations.extend(partial.relations.iter().cloned());
     relations.sort();
     relations.dedup();
+    relations
+}
 
+fn overlay_source_blobs(
+    active_blobs: &ClientDbActiveGenerationSourceBlobs,
+    partial: &ClientDbSourceIndexImport,
+    changed_owner_paths: &BTreeSet<String>,
+    removed_owner_paths: &BTreeSet<String>,
+) -> ClientDbSourceIndexSourceBlobs {
     let mut source_blobs = active_blobs
         .owners
         .iter()
@@ -269,16 +344,5 @@ pub fn overlay_active_source_index_import(
             bytes.to_vec(),
         )
     }));
-
-    Ok(ClientDbSourceIndexImport {
-        generation_id: partial.generation_id.clone(),
-        project_root: partial.project_root.clone(),
-        schema_id: partial.schema_id.clone(),
-        schema_version: partial.schema_version.clone(),
-        file_hashes: file_hashes.into_values().collect(),
-        source_blobs: ClientDbSourceIndexSourceBlobs::from_normalized(source_blobs),
-        owners,
-        selectors,
-        relations,
-    })
+    ClientDbSourceIndexSourceBlobs::from_normalized(source_blobs)
 }

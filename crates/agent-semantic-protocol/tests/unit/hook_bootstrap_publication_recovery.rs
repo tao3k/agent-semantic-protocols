@@ -1,29 +1,21 @@
-use super::{is_synchronous_hook_dispatch, is_synchronous_hook_dispatch_with_override};
+use super::is_synchronous_hook_dispatch_with_override;
 use std::ffi::OsString;
 
 #[test]
-fn enforcing_and_host_publication_actions_are_synchronous_before_runtime_construction() {
-    assert!(is_synchronous_hook_dispatch([
-        "hook", "pre-tool", "--client", "codex",
-    ]));
-    assert!(is_synchronous_hook_dispatch([
-        "hook",
-        "permission-request",
-        "--client",
-        "codex",
-    ]));
-    assert!(is_synchronous_hook_dispatch([
-        "hook",
-        "subagent-start",
-        "--client",
-        "codex",
-    ]));
-    assert!(is_synchronous_hook_dispatch([
-        "hook",
-        "subagent-stop",
-        "--client",
-        "codex",
-    ]));
+fn only_policy_enforcement_is_synchronous_before_runtime_construction() {
+    let dispatch = |event: &str| {
+        let args = [
+            OsString::from("hook"),
+            OsString::from(event),
+            OsString::from("--client"),
+            OsString::from("codex"),
+        ];
+        is_synchronous_hook_dispatch_with_override(&args, false)
+    };
+    assert!(dispatch("pre-tool"));
+    assert!(dispatch("permission-request"));
+    assert!(!dispatch("subagent-start"));
+    assert!(!dispatch("subagent-stop"));
 }
 
 #[test]

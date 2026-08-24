@@ -107,6 +107,7 @@ pub(crate) fn spawn_runtime_identity_monitor_with_intervals(
     let (event_tx, event_rx) = mpsc::channel(1);
     let (cancel_tx, mut cancel_rx) = watch::channel(false);
     let task = tokio::spawn(async move {
+        let _ = write_monitor_receipt(&state_home, owner_epoch, "starting", "", "", false).await;
         let mut tick = tokio::time::interval(poll_interval);
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let mut last_identity: Option<String> = None;

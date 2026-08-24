@@ -38,13 +38,6 @@ pub(super) struct InstalledProviderArtifactsPublication {
     pub(super) elapsed_micros: u64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct InstalledProviderArtifactsReadiness {
-    pub(crate) generation: String,
-    pub(crate) provider_count: usize,
-    pub(crate) elapsed_micros: u64,
-}
-
 #[derive(Clone)]
 pub(crate) struct RuntimeProviderArtifacts {
     document: Arc<InstalledProviderArtifactsDocument>,
@@ -124,7 +117,7 @@ fn registration_digest(
     registration: &agent_semantic_provider_protocol::ProviderRegistrationDocument,
 ) -> Result<String, String> {
     let bytes = serde_json::to_vec(&registration.registration)
-        .map_err(|error| format!("encode live provider registration: {error}"))?;
+        .map_err(|error| format!("encode installed provider capability: {error}"))?;
     Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
 }
 
@@ -135,7 +128,7 @@ impl RuntimeProviderArtifacts {
         language_id: &str,
         register: &agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
     ) -> Result<RuntimeProviderLaunch, String> {
-        let registration = register.live_registration(language_id)?;
+        let registration = register.installed_capability(language_id)?;
         let provider = self
             .document
             .providers
@@ -146,7 +139,7 @@ impl RuntimeProviderArtifacts {
             })
             .ok_or_else(|| {
                 format!(
-                    "state=artifact-missing reasonKind=live-provider-not-installed languageId={language_id} providerId={}",
+                    "state=artifact-missing reasonKind=provider-capability-artifact-missing languageId={language_id} providerId={}",
                     registration.provider_id
                 )
             })?;
@@ -219,25 +212,6 @@ pub(crate) async fn load_runtime_provider_artifacts(
     validate_document(&document)?;
     Ok(RuntimeProviderArtifacts {
         document: Arc::new(document),
-    })
-}
-
-pub(crate) fn read_installed_provider_artifacts_readiness(
-    state_home: &Path,
-) -> Result<InstalledProviderArtifactsReadiness, String> {
-    let started = std::time::Instant::now();
-    let path = document_path(state_home);
-    let document = match std::fs::read(&path) {
-        Ok(bytes) => serde_json::from_slice(&bytes)
-            .map_err(|error| format!("parse {}: {error}", path.display()))?,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => empty_document()?,
-        Err(error) => return Err(format!("read {}: {error}", path.display())),
-    };
-    validate_document(&document)?;
-    Ok(InstalledProviderArtifactsReadiness {
-        generation: document.generation,
-        provider_count: document.providers.len(),
-        elapsed_micros: started.elapsed().as_micros().try_into().unwrap_or(u64::MAX),
     })
 }
 
@@ -333,6 +307,88 @@ pub(super) fn publish_installed_provider_artifacts(
     })
 }
 
+pub(super) fn publish_current_installed_provider_artifacts(
+    state_home: &Path,
+    _publication_guard: &super::protocol_binary::ProtocolBinaryReconciliationGuard,
+) -> Result<InstalledProviderArtifactsPublication, String> {
+    let provider_lock_dir = agent_semantic_runtime::provider_receipt_dir(state_home);
+    let canonical_artifact_root = state_home
+        .join("runtime")
+        .join("artifacts")
+        .join("blake3-256")
+        .canonicalize()
+        .map_err(|error| format!("resolve provider artifact CAS root: {error}"))?;
+    let mut receipts = Vec::new();
+    for registration in super::provider_install_registry::provider_install_registrations()? {
+        let lock_path = provider_lock_dir.join(format!("{}.lock.toml", registration.language_id));
+        match std::fs::symlink_metadata(&lock_path) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(format!(
+                    "inspect provider install receipt {}: {error}",
+                    lock_path.display()
+                ));
+            }
+        }
+        let receipt = super::provider_install_receipt::read_provider_install_receipt(
+            registration.language_id.as_str(),
+            &provider_lock_dir,
+        )?;
+        if receipt.provider_id != registration.provider_id {
+            return Err(format!(
+                "provider install receipt identity drift: languageId={} expectedProviderId={} actualProviderId={}",
+                registration.language_id, registration.provider_id, receipt.provider_id
+            ));
+        }
+        let canonical_artifact = receipt.installed_path.canonicalize().map_err(|error| {
+            format!(
+                "resolve installed provider artifact {}: {error}",
+                receipt.installed_path.display()
+            )
+        })?;
+        if !canonical_artifact.starts_with(&canonical_artifact_root) {
+            return Err(format!(
+                "installed provider artifact escapes CAS root: languageId={} artifact={}",
+                receipt.language_id,
+                canonical_artifact.display()
+            ));
+        }
+        if !super::provider_install_receipt::provider_install_receipt_matches_artifact(
+            &receipt,
+            &receipt.installed_path,
+        )? {
+            return Err(format!(
+                "provider install receipt does not match artifact: languageId={} artifact={}",
+                receipt.language_id,
+                receipt.installed_path.display()
+            ));
+        }
+        let expected_execution_command_digest =
+            agent_semantic_hook::provider_execution_command_digest(
+                &[receipt.installed_path.to_string_lossy().into_owned()],
+                &receipt.installed_entrypoint_digest,
+            )?;
+        if receipt.execution_command_digest != expected_execution_command_digest {
+            return Err(format!(
+                "provider execution command digest drift: languageId={} expected={} actual={}",
+                receipt.language_id,
+                expected_execution_command_digest,
+                receipt.execution_command_digest
+            ));
+        }
+        let mut runtime_receipt = receipt;
+        runtime_receipt.installed_path = canonical_artifact;
+        runtime_receipt.execution_command_digest =
+            agent_semantic_hook::provider_execution_command_digest(
+                &[runtime_receipt.installed_path.to_string_lossy().into_owned()],
+                &runtime_receipt.installed_entrypoint_digest,
+            )?;
+        receipts.push(runtime_receipt);
+    }
+    publish_installed_provider_artifacts(state_home, &receipts)
+}
+
 pub(crate) fn runtime_source_index_provider_projection(
     artifacts: &RuntimeProviderArtifacts,
     register: &agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister,
@@ -343,10 +399,10 @@ pub(crate) fn runtime_source_index_provider_projection(
     ),
     String,
 > {
-    let registrations = register.live_registrations();
+    let registrations = register.installed_capabilities();
     if registrations.is_empty() {
         return Err(
-            "state=provider-missing reasonKind=no-executable-provider-in-live-register".to_owned(),
+            "state=provider-missing reasonKind=no-installed-provider-capability".to_owned(),
         );
     }
     let providers = registrations
@@ -362,7 +418,7 @@ pub(crate) fn runtime_source_index_provider_projection(
                 })
                 .ok_or_else(|| {
                     format!(
-                        "live provider has no installed artifact: languageId={} providerId={}",
+                        "installed provider capability has no artifact: languageId={} providerId={}",
                         registration.language_id, registration.provider_id
                     )
                 })?;

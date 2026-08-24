@@ -3,7 +3,18 @@
 use std::cmp::Ordering;
 
 use crate::dynamic_overlay::SEARCH_OVERLAY_ROUTE_SOURCE;
-use crate::structural_index_search::TursoStructuralIndexSearchHit;
+
+/// Immutable structural-index hit returned by the resident Search generation.
+///
+/// Storage adapters materialize this contract before publication. Warm search
+/// never exposes or opens a database engine.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StructuralIndexSearchHit {
+    pub document_id: String,
+    pub generation: String,
+    pub selector: Option<String>,
+    pub document: String,
+}
 use crate::{LexicalOverlaySearchHit, SourceIndexRankCandidate};
 
 macro_rules! search_candidate_text {
@@ -85,7 +96,7 @@ search_candidate_text!(SearchCandidateFieldValue);
 search_candidate_text!(SearchCandidateMatchedTerm);
 search_candidate_text!(SearchCandidateRankFeatureName);
 
-/// Search candidate shared by source-index, overlay, Turso FTS, and graph routes.
+/// Search candidate shared by source-index, overlay, resident structural index, and graph routes.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SearchCandidate {
     pub route_source: SearchCandidateRouteSource,
@@ -221,10 +232,10 @@ pub fn lexical_overlay_hit_to_search_candidate(
     }
 }
 
-/// Project a Turso structural-index hit into the shared search candidate shape.
+/// Project a resident structural-index hit into the shared search candidate shape.
 #[must_use]
 pub fn structural_index_hit_to_search_candidate(
-    hit: &TursoStructuralIndexSearchHit,
+    hit: &StructuralIndexSearchHit,
     query_terms: &[String],
 ) -> SearchCandidate {
     let matched_terms = query_terms
@@ -233,7 +244,7 @@ pub fn structural_index_hit_to_search_candidate(
         .cloned()
         .collect::<Vec<_>>();
     SearchCandidate {
-        route_source: ("turso-fts".to_string()).into(),
+        route_source: ("resident-structural-index".to_string()).into(),
         fallback_reason: ("none".to_string()).into(),
         candidate_id: (hit.document_id.clone()).into(),
         identity_kind: if hit.selector.is_some() {
@@ -255,7 +266,7 @@ pub fn structural_index_hit_to_search_candidate(
             name: ("stable-structural-fts".to_string()).into(),
             value: 1.0,
         }],
-        proof_source: ("agent-semantic-search/structural-index-turso".to_string()).into(),
+        proof_source: ("agent-semantic-search/resident-structural-index".to_string()).into(),
     }
 }
 
@@ -340,7 +351,7 @@ fn search_candidate_route_priority(route_source: &str) -> usize {
         "receipt-anchor" => 0,
         SEARCH_OVERLAY_ROUTE_SOURCE => 1,
         "provider-delta" => 2,
-        "turso-fts" => 3,
+        "resident-structural-index" => 3,
         "source-index" => 4,
         "semantic-vector" => 5,
         "evidence-graph-rank" => 6,
@@ -380,7 +391,7 @@ fn source_index_candidate_matches_term(candidate: &SourceIndexRankCandidate, ter
                 .any(|key| key.contains(normalized_term.as_str())))
 }
 
-fn structural_index_hit_matches_term(hit: &TursoStructuralIndexSearchHit, term: &str) -> bool {
+fn structural_index_hit_matches_term(hit: &StructuralIndexSearchHit, term: &str) -> bool {
     let normalized_term = term.to_ascii_lowercase();
     !normalized_term.is_empty()
         && (hit

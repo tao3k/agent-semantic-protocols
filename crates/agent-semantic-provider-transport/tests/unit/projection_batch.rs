@@ -55,7 +55,8 @@ fn response_validation_rejects_generation_or_owner_drift() {
                 source_byte_start: 0,
                 source_byte_end: request.owners[0].source_bytes.len(),
                 identity: ProviderProjectedItemIdentity {
-                    schema_id: "asp.canonical-language-item-identity.v1".to_string(),
+                    schema_id: "agent.semantic-protocols.canonical-language-item-identity"
+                        .to_string(),
                     schema_version: "1".to_string(),
                     language_id: "rust".to_string(),
                     kind: "function".to_string(),
@@ -73,13 +74,13 @@ fn response_validation_rejects_generation_or_owner_drift() {
 }
 
 #[test]
-fn workspace_pressure_is_split_into_bounded_server_operation_batches() {
+fn workspace_pressure_is_split_into_bounded_wire_frames() {
     let owner_sizes = vec![64 * 1024; 294];
     let ranges = provider_projection_batch_ranges(&owner_sizes);
 
-    assert_eq!(ranges.len(), 10);
-    assert_eq!(ranges.first().expect("first batch"), &(0..32));
-    assert_eq!(ranges.last().expect("last batch"), &(288..294));
+    assert_eq!(ranges.len(), 49);
+    assert_eq!(ranges.first().expect("first frame"), &(0..6));
+    assert_eq!(ranges.last().expect("last frame"), &(288..294));
     for range in ranges {
         assert!(range.len() <= MAX_PROVIDER_PROJECTION_BATCH_OWNERS);
         assert!(
@@ -91,14 +92,14 @@ fn workspace_pressure_is_split_into_bounded_server_operation_batches() {
 
 #[test]
 fn source_byte_pressure_splits_before_owner_count_limit() {
-    let owner_sizes = vec![1024 * 1024; 12];
+    let owner_sizes = vec![128 * 1024; 12];
     let ranges = provider_projection_batch_ranges(&owner_sizes);
 
-    assert_eq!(ranges, vec![0..4, 4..8, 8..12]);
+    assert_eq!(ranges, vec![0..3, 3..6, 6..9, 9..12]);
 }
 
 #[test]
-fn oversized_owner_is_admitted_as_a_single_bounded_operation() {
+fn owner_larger_than_the_source_budget_is_isolated_for_wire_validation() {
     let owner_sizes = vec![MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES + 1, 1];
     let ranges = provider_projection_batch_ranges(&owner_sizes);
 

@@ -82,7 +82,7 @@
       "additionalProperties": false,
       "required": ["name", "valueType", "cardinality", "source"],
       "properties": {
-        "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+        "name": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
         "valueType": {
           "enum": [
             "string",

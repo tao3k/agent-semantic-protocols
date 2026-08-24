@@ -90,15 +90,6 @@ async fn run_install_for_client(
         ensure_protocol_binary_installed_under_guard(&binary_install_plan, &reconciliation_guard)
             .await?;
     timings.mark("binary");
-    let provider_binary_reconciliation =
-    crate::command::install_provider_runtime_reconcile::reconcile_registered_provider_runtime_binaries(
-        &runtime_state.runtime_bin_dir,
-        &runtime_artifact_root,
-        &runtime_state.provider_lock_dir,
-        &reconciliation_guard,
-    )
-    .await?;
-    timings.mark("provider-binaries");
     let activation_path = runtime_state.activation_path.clone();
     let client_config_path = runtime_state
         .protocol_home
@@ -185,7 +176,7 @@ async fn run_install_for_client(
         user_config_status.as_str()
     );
     println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} hookMatcherGeneration={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binarySwitch=atomic providerBinariesMissing={} mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} hookMatcherGeneration={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binarySwitch=atomic mode=updated",
         display_path(&project_root, &activation_path),
         "server-register",
         user_config_receipt,
@@ -206,7 +197,6 @@ async fn run_install_for_client(
         binary_install.path.display(),
         binary_install.status,
         binary_install.artifact_digest,
-        provider_binary_reconciliation.missing_count,
     );
     Ok(())
 }

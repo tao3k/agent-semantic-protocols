@@ -1,7 +1,9 @@
 use agent_semantic_client_db::runtime_server_opentelemetry::RuntimeLifecycleEvent;
 use agent_semantic_client_db::runtime_telemetry_bus::{
-    CAPACITY, RuntimeTelemetryBus, RuntimeTelemetryEvent,
+    CAPACITY, ResidentReadTerminalContext, ResidentReadTerminalOutcome, RuntimeTelemetryBus,
+    RuntimeTelemetryEvent,
 };
+use agent_semantic_client_db::workspace_db_ipc::RuntimeResidentReadWorkCounters;
 
 fn event(transition: &str, state: &str) -> RuntimeLifecycleEvent {
     RuntimeLifecycleEvent {
@@ -16,6 +18,57 @@ fn event(transition: &str, state: &str) -> RuntimeLifecycleEvent {
         active_task_count: 1,
         active_child_count: 0,
     }
+}
+
+#[tokio::test]
+async fn exact_selector_terminal_projects_query_runtime_latency() {
+    let bus = RuntimeTelemetryBus::new();
+    let context = ResidentReadTerminalContext {
+        operation_id: "query-1".to_owned(),
+        surface: "runtime-resident-runtime-selector".to_owned(),
+        workspace_identity: "workspace-1".to_owned(),
+        generation_digest: "blake3-256:generation".to_owned(),
+        root_digest: "blake3-256:root".to_owned(),
+        read_state: "hit".to_owned(),
+        elapsed_micros: 9,
+        work_counters: RuntimeResidentReadWorkCounters {
+            database_opens: 0,
+            filesystem_reads: 0,
+            provider_spawns: 0,
+            control_socket_roundtrips: 0,
+        },
+    };
+    let observation = context
+        .clone()
+        .into_performance_observation()
+        .expect("exact selector observation");
+
+    assert_eq!(observation.surface, "query");
+    assert_eq!(observation.stage, "runtime-selector-read");
+    assert_eq!(observation.elapsed_micros, 9);
+    assert_eq!(observation.budget_micros, 1_000);
+    assert_eq!(observation.budget_status, "within-budget");
+    assert_eq!(observation.memory_search_turso_opens, Some(0));
+    assert_eq!(observation.memory_search_source_bytes_read, Some(0));
+    assert_eq!(observation.memory_search_provider_spawns, Some(0));
+    assert_eq!(observation.memory_search_socket_connects, Some(0));
+
+    bus.sender
+        .try_record_resident_read_terminal(
+            context,
+            ResidentReadTerminalOutcome {
+                terminal_state: "success".to_owned(),
+            },
+        )
+        .expect("resident Query terminal enters the Runtime telemetry bus");
+    let mut receiver = bus.receiver;
+    let RuntimeTelemetryEvent::Performance(recorded) =
+        receiver.recv().await.expect("Query performance event")
+    else {
+        panic!("expected Query performance event");
+    };
+    assert_eq!(recorded.surface, "query");
+    assert_eq!(recorded.elapsed_micros, 9);
 }
 
 #[tokio::test]
@@ -34,6 +87,7 @@ async fn terminal_events_preserve_transition_order() {
         match receiver.recv().await.expect("building") {
             RuntimeTelemetryEvent::Lifecycle(event) => event.transition,
             RuntimeTelemetryEvent::SearchIncident(_) => panic!("unexpected incident"),
+            RuntimeTelemetryEvent::Performance(_) => panic!("unexpected performance event"),
         },
         "building"
     );
@@ -41,6 +95,7 @@ async fn terminal_events_preserve_transition_order() {
         match receiver.recv().await.expect("ready") {
             RuntimeTelemetryEvent::Lifecycle(event) => event.transition,
             RuntimeTelemetryEvent::SearchIncident(_) => panic!("unexpected incident"),
+            RuntimeTelemetryEvent::Performance(_) => panic!("unexpected performance event"),
         },
         "ready"
     );
@@ -101,6 +156,7 @@ async fn independent_runtime_buses_do_not_cross_deliver() {
         match first_receiver.recv().await.expect("first event") {
             RuntimeTelemetryEvent::Lifecycle(event) => event.transition,
             RuntimeTelemetryEvent::SearchIncident(_) => panic!("unexpected incident"),
+            RuntimeTelemetryEvent::Performance(_) => panic!("unexpected performance event"),
         },
         "first"
     );
@@ -108,6 +164,7 @@ async fn independent_runtime_buses_do_not_cross_deliver() {
         match second_receiver.recv().await.expect("second event") {
             RuntimeTelemetryEvent::Lifecycle(event) => event.transition,
             RuntimeTelemetryEvent::SearchIncident(_) => panic!("unexpected incident"),
+            RuntimeTelemetryEvent::Performance(_) => panic!("unexpected performance event"),
         },
         "second"
     );

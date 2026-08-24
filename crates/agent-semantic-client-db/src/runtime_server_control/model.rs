@@ -5,13 +5,12 @@ use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
 use serde::{Deserialize, Serialize};
 
 pub(super) const SCHEMA_VERSION: &str = "1";
-pub(super) const ENDPOINT_SCHEMA_ID: &str = "agent.semantic-protocols.runtime-server-endpoint.v1";
+pub(super) const ENDPOINT_SCHEMA_ID: &str = "agent.semantic-protocols.runtime-server-endpoint";
 pub(super) const REQUEST_SCHEMA_ID: &str =
-    "agent.semantic-protocols.runtime-server-control-request.v1";
+    "agent.semantic-protocols.runtime-server-control-request";
 pub(super) const RECEIPT_SCHEMA_ID: &str =
-    "agent.semantic-protocols.runtime-server-control-receipt.v1";
-const STATUS_SNAPSHOT_SCHEMA_ID: &str =
-    "agent.semantic-protocols.runtime-server-status-snapshot.v1";
+    "agent.semantic-protocols.runtime-server-control-receipt";
+const STATUS_SNAPSHOT_SCHEMA_ID: &str = "agent.semantic-protocols.runtime-server-status-snapshot";
 
 static RUNTIME_SERVER_TRANSPORT_CONTRACT_DIGEST: OnceLock<String> = OnceLock::new();
 const RUNTIME_SERVER_TRANSPORT_CONTRACT_DOMAIN: &[u8] =
@@ -28,6 +27,8 @@ const PROVIDER_REGISTER_REQUEST_CONTRACT: &[u8] =
     include_bytes!("../../../../schemas/provider-register-request.schema.json");
 const PROVIDER_REGISTER_RESPONSE_CONTRACT: &[u8] =
     include_bytes!("../../../../schemas/provider-register-response.schema.json");
+const ASP_CLIENT_FRAME_CONTRACT: &[u8] =
+    include_bytes!("../../../../schemas/asp-client-frame.schema.json");
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -152,7 +153,6 @@ impl RuntimeServerEndpoint {
 pub enum RuntimeServerOperation {
     Status,
     EnsureWorkspace,
-    Reconcile,
     Restart,
 }
 
@@ -220,9 +220,6 @@ impl RuntimeServerControlRequest {
                 }
                 Ok(false)
             }
-            RuntimeServerOperation::Reconcile => Ok(self.expected_runtime_binary_identity
-                != endpoint.runtime_binary_identity
-                || self.transport_contract_digest != endpoint.transport_contract_digest),
             RuntimeServerOperation::Restart => Ok(true),
         }
     }
@@ -349,6 +346,7 @@ impl RuntimeServerStatusSnapshot {
             artifact_catalog_digest: self.artifact_catalog_digest.clone(),
             transport_contract_digest: self.transport_contract_digest.clone(),
             workspace_entry_count: self.workspace_entry_count,
+            workspace_generation: None,
             graph_turbo_resident: self.graph_turbo_resident.clone(),
             reason: None,
         })
@@ -365,6 +363,7 @@ impl RuntimeServerStatusSnapshot {
             artifact_catalog_digest: self.artifact_catalog_digest.clone(),
             transport_contract_digest: self.transport_contract_digest.clone(),
             workspace_entry_count: self.workspace_entry_count,
+            workspace_generation: None,
             graph_turbo_resident: self.graph_turbo_resident.clone(),
             reason: None,
         }
@@ -384,8 +383,21 @@ pub struct RuntimeServerControlReceipt {
     pub transport_contract_digest: String,
     pub workspace_entry_count: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_generation: Option<WorkspaceGenerationControlReceipt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub graph_turbo_resident: Option<GraphTurboResidentStatus>,
     pub reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceGenerationControlReceipt {
+    pub workspace_identity: String,
+    pub previous_generation_digest: Option<String>,
+    pub active_generation_digest: String,
+    pub candidate_digest: String,
+    pub generation_changed: bool,
+    pub state: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -424,6 +436,7 @@ impl RuntimeServerControlReceipt {
             artifact_catalog_digest: endpoint.artifact_catalog_digest.clone(),
             transport_contract_digest: endpoint.transport_contract_digest.clone(),
             workspace_entry_count,
+            workspace_generation: None,
             graph_turbo_resident: None,
             reason: None,
         }
@@ -457,6 +470,7 @@ impl RuntimeServerControlReceipt {
             artifact_catalog_digest,
             transport_contract_digest: runtime_server_transport_contract_digest(),
             workspace_entry_count: 0,
+            workspace_generation: None,
             graph_turbo_resident: None,
             reason: Some(reason),
         }
@@ -519,6 +533,7 @@ fn runtime_server_transport_contract_digest_ref() -> &'static str {
                     b"provider-register-response".as_slice(),
                     PROVIDER_REGISTER_RESPONSE_CONTRACT,
                 ),
+                (b"asp-client-frame".as_slice(), ASP_CLIENT_FRAME_CONTRACT),
             ] {
                 hasher.update(&(contract_name.len() as u64).to_le_bytes());
                 hasher.update(contract_name);

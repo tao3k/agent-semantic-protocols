@@ -7,7 +7,7 @@ use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
 
 fn endpoint(root: &std::path::Path) -> RuntimeServerEndpoint {
     RuntimeServerEndpoint {
-        schema_id: "agent.semantic-protocols.runtime-server-endpoint.v1".to_owned(),
+        schema_id: "agent.semantic-protocols.runtime-server-endpoint".to_owned(),
         schema_version: "1".to_owned(),
         transport_contract_digest: runtime_server_transport_contract_digest(),
         owner_epoch: 7,
@@ -34,6 +34,7 @@ fn endpoint(root: &std::path::Path) -> RuntimeServerEndpoint {
             .join("runtime/server/providers.sock")
             .display()
             .to_string(),
+        client_http_endpoint: "http://127.0.0.1:1".to_owned(),
         workspace_store_path: root.join("runtime/server/workspaces").display().to_string(),
         status_memory_path: root
             .join("runtime/server/status.memory")

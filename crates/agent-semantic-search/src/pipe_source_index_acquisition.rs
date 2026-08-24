@@ -3,7 +3,6 @@
 use std::path::{Path, PathBuf};
 
 use crate::SearchPipeCandidate;
-use crate::pipe_source::intent_terms_all_path_like;
 
 macro_rules! source_index_acquisition_text {
     ($(#[$meta:meta])* $name:ident) => {
@@ -102,8 +101,7 @@ pub enum SearchPipeSourceIndexDecision {
     QueryGate,
     DeferBackend,
     UseAndSkipSearchOverlay,
-    Busy,
-    ColdRequired,
+    GenerationUnavailable,
     Fallthrough,
 }
 
@@ -120,7 +118,7 @@ pub struct SearchPipeSourceIndexAcquisition {
     /// snapshot digest. Graph routing must bind its facts to the complete,
     /// active workspace generation before it may rank or render them.
     pub workspace_generation:
-        agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationAuthorityV1,
+        agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationAuthority,
     pub index_artifact_digest: Option<String>,
 }
 
@@ -135,7 +133,7 @@ impl SearchPipeSourceIndexAcquisition {
     >{
         evidence.validate_complete()?;
         self.workspace_generation =
-            agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationAuthorityV1::Active {
+            agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationAuthority::Active {
                 evidence,
             };
         Ok(())
@@ -170,27 +168,41 @@ pub struct SearchPipeSourceIndexAcquisitionRequest<'a> {
 pub fn collect_search_pipe_source_index_acquisition(
     request: SearchPipeSourceIndexAcquisitionRequest<'_>,
 ) -> Option<SearchPipeSourceIndexAcquisition> {
-    if !request.scopes.is_empty() {
+    let SearchPipeSourceIndexAcquisitionRequest {
+        intent,
+        project_root,
+        scopes,
+        lookup,
+    } = request;
+    if !scopes.is_empty() {
         return None;
     }
-    let lookup = request.lookup?;
+    Some(collect_admitted_source_index_acquisition(
+        intent,
+        project_root,
+        lookup?,
+    ))
+}
+
+fn collect_admitted_source_index_acquisition(
+    intent: &str,
+    project_root: &Path,
+    lookup: &SearchPipeSourceIndexLookup,
+) -> SearchPipeSourceIndexAcquisition {
     let candidates = lookup
         .candidates
         .iter()
         .map(|candidate| {
             crate::pipe_source_index_projection::source_index_candidate(
-                request.project_root,
-                request.intent,
+                project_root,
+                intent,
                 candidate,
             )
         })
         .collect::<Vec<_>>();
-    let decision = if lookup.state == "busy".into() && candidates.is_empty() {
-        SearchPipeSourceIndexDecision::Busy
-    } else if lookup.state == "cold-required".into() && candidates.is_empty() {
-        SearchPipeSourceIndexDecision::ColdRequired
-    } else if intent_terms_all_path_like(request.intent)
-        && matches!(lookup.state.as_str(), "missing-db" | "empty-index" | "miss")
+    let decision = if lookup.state == "generation-unavailable".into() && candidates.is_empty() {
+        SearchPipeSourceIndexDecision::GenerationUnavailable
+    } else if intent_terms_all_path_like(intent) && lookup.state.as_str() == "miss"
     {
         SearchPipeSourceIndexDecision::DeferBackend
     } else if candidates.is_empty() {
@@ -203,15 +215,15 @@ pub fn collect_search_pipe_source_index_acquisition(
     } else {
         SearchPipeSourceIndexDecision::DeferBackend
     };
-    Some(SearchPipeSourceIndexAcquisition {
-        workspace_generation: agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationAuthorityV1::cold_required(),
+    SearchPipeSourceIndexAcquisition {
+        workspace_generation: agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationAuthority::unavailable(),
         decision,
         gate: None,
         candidates,
         source_snapshot: lookup.source_snapshot.clone(),
         index_artifact_digest: (lookup.index_artifact_digest.clone())
             .map(|value| value.to_string()),
-    })
+    }
 }
 
 #[must_use]
@@ -237,4 +249,16 @@ pub fn search_pipe_source_index_query_gate(
             .filter(|term| term.role != crate::SearchPipeTermRole::Symbol)
             .count(),
     })
+}
+
+fn intent_terms_all_path_like(intent: &str) -> bool {
+    let terms = intent
+        .split(|character: char| character == ',' || character == '|' || character.is_whitespace())
+        .map(str::trim)
+        .filter(|term| !term.is_empty())
+        .collect::<Vec<_>>();
+    !terms.is_empty()
+        && terms
+            .iter()
+            .all(|term| term.contains('/') || term.contains('\\') || term.contains('.'))
 }

@@ -4,7 +4,7 @@ use crate::{
     merge_search_candidates_with_receipt, search_candidate_has_executable_line_identity,
     search_lexical_overlay, source_index_candidate_to_search_candidate, source_index_lookup_terms,
 };
-use crate::{TursoStructuralIndexSearchHit, structural_index_hit_to_search_candidate};
+use crate::{StructuralIndexSearchHit, structural_index_hit_to_search_candidate};
 
 #[test]
 fn source_index_candidate_projects_to_shared_search_candidate_contract() {
@@ -99,7 +99,7 @@ fn lexical_overlay_hit_projects_selector_and_overlay_namespace() {
 #[test]
 fn structural_index_hit_projects_selector_generation_and_stable_route() {
     let terms = source_index_lookup_terms("parse config serde_json");
-    let hit = TursoStructuralIndexSearchHit {
+    let hit = StructuralIndexSearchHit {
         document_id: "structural-index:generation-1:symbol:rust://src/lib.rs#item/fn/parse_config"
             .to_string(),
         generation: "generation-1".to_string(),
@@ -108,7 +108,7 @@ fn structural_index_hit_projects_selector_generation_and_stable_route() {
     };
     let candidate = structural_index_hit_to_search_candidate(&hit, &terms);
 
-    assert_eq!(candidate.route_source, "turso-fts");
+    assert_eq!(candidate.route_source, "resident-structural-index");
     assert_eq!(candidate.fallback_reason, "none");
     assert_eq!(candidate.identity_kind, "selector");
     assert_eq!(candidate.generation.as_deref(), Some("generation-1"));
@@ -141,7 +141,7 @@ fn shared_search_candidate_detects_executable_line_identity() {
 }
 
 #[test]
-fn merge_search_candidates_prefers_overlay_then_structural_fts_then_source_index() {
+fn merge_search_candidates_prefers_overlay_then_resident_structural_index_then_source_index() {
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let source_snapshot = fixture
         .workspace
@@ -160,7 +160,7 @@ fn merge_search_candidates_prefers_overlay_then_structural_fts_then_source_index
         &terms,
     );
     let structural_candidate = structural_index_hit_to_search_candidate(
-        &TursoStructuralIndexSearchHit {
+        &StructuralIndexSearchHit {
             document_id:
                 "structural-index:generation-1:symbol:rust://src/lib.rs#item/fn/overlay_fixture"
                     .to_string(),
@@ -202,7 +202,10 @@ fn merge_search_candidates_prefers_overlay_then_structural_fts_then_source_index
     ]);
 
     assert_eq!(ranked[0].candidate.route_source, "search-overlay");
-    assert_eq!(ranked[1].candidate.route_source, "turso-fts");
+    assert_eq!(
+        ranked[1].candidate.route_source,
+        "resident-structural-index"
+    );
     assert_eq!(ranked[2].candidate.route_source, "source-index");
 }
 

@@ -41,6 +41,8 @@ pub(super) fn spec(program: PathBuf, cwd: PathBuf) -> ProviderProcessSpec {
         args: Vec::new(),
         cwd,
         env: BTreeMap::new(),
+        remove_env: Default::default(),
+        remove_env_prefixes: Default::default(),
         stdin: StdinMode::Closed,
         stdout: OutputMode::Capture,
         stderr: OutputMode::Capture,

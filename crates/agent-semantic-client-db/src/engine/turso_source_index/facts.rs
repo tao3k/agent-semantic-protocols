@@ -198,7 +198,9 @@ pub(super) async fn write_turso_source_index_rows(
                             materialization.project_resolutions.clone(),
                         )?;
                     let selector_fingerprint =
-                        super::core::turso_source_index_selector_fingerprint(&full_import)?;
+                        super::selector_identity::turso_source_index_selector_fingerprint(
+                            &full_import,
+                        )?;
                     (
                         full_materialization,
                         serde_json::to_string(&full_import.file_hashes).map_err(|error| {

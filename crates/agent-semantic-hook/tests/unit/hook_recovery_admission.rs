@@ -22,7 +22,7 @@ fn admits_only_recovery_hook_events() {
 fn admits_exact_server_and_doctor_commands() {
     for command in [
         "asp server status",
-        "asp server reconcile",
+        "asp server start",
         "direnv exec . asp server restart",
         "asp hook doctor --client codex",
     ] {

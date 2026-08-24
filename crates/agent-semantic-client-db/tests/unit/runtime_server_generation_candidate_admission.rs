@@ -292,6 +292,39 @@ async fn untracked_source_owner_discovers_and_admits_a_new_generation() {
     admission.shutdown().await.expect("drain admission lane");
 }
 
+#[tokio::test]
+async fn ignored_target_owner_does_not_advance_workspace_generation() {
+    let fixture = tempfile::tempdir().expect("candidate admission fixture");
+    let project_root = fixture.path();
+    run_git(project_root, &["init", "--quiet"]);
+    fs::create_dir_all(project_root.join("src")).expect("create source root");
+    fs::write(
+        project_root.join("src/lib.rs"),
+        "pub fn value() -> u8 { 1 }\n",
+    )
+    .expect("write initial source");
+    fs::write(project_root.join(".gitignore"), "target/\n").expect("write ignore rules");
+    run_git(project_root, &["add", "src/lib.rs", ".gitignore"]);
+
+    let initial = discover_workspace_generation_candidate(project_root)
+        .await
+        .expect("discover initial candidate");
+    fs::create_dir_all(project_root.join("target")).expect("create ignored target");
+    fs::write(
+        project_root.join("target/hidden.rs"),
+        "pub fn hidden_owner() -> u8 { 9 }\n",
+    )
+    .expect("write ignored source owner");
+    let after_ignored = discover_workspace_generation_candidate(project_root)
+        .await
+        .expect("discover candidate after ignored source");
+
+    assert_eq!(
+        initial.candidate_generation.digest, after_ignored.candidate_generation.digest,
+        "ignored target contents must not enter the live workspace generation"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn ensure_coalesces_an_advanced_candidate_behind_an_inflight_build() {
     let builds = Arc::new(Mutex::new(Vec::new()));

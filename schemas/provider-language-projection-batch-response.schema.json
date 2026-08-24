@@ -115,7 +115,7 @@
           "minimum": 0
         },
         "identity": {
-          "$ref": "canonical-language-item-identity.v1.schema.json"
+          "$ref": "canonical-language-item-identity.schema.json"
         },
         "projections": {
           "type": "array",

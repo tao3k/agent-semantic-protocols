@@ -18,7 +18,7 @@ pub struct RuntimeServerRuntimeBuilder {
 }
 
 /// Effective CPU capacity exposed to this process. The OS value accounts for
-/// processor-set and cgroup limits, so CLI, client, and daemon Tokio runtimes
+/// processor-set and cgroup limits, so interactive clients and the daemon Tokio runtimes
 /// share one host-authoritative capacity policy rather than fixed products
 /// defaults.
 pub fn adaptive_tokio_worker_count() -> usize {
@@ -164,11 +164,23 @@ impl Drop for RuntimeServerConnectionLease {
 }
 
 impl RuntimeServerRuntimeBuilder {
-    pub fn new_cli() -> Self {
+    pub fn new_client() -> Self {
         let mut builder = tokio::runtime::Builder::new_multi_thread();
         builder
             .worker_threads(adaptive_tokio_worker_count())
-            .thread_name("asp-cli");
+            .thread_name("asp-client");
+        Self { builder }
+    }
+
+    /// Minimal Tokio scheduler for one Host Hook IPC request.
+    ///
+    /// The resident Runtime Server owns discovery, generation builds, and
+    /// publication. A Hook process only parses one framed event and submits a
+    /// typed request, so constructing the interactive multi-thread client pool
+    /// here would put client startup on every PostTool critical path.
+    pub fn new_hook_client() -> Self {
+        let mut builder = tokio::runtime::Builder::new_current_thread();
+        builder.thread_name("asp-hook-client");
         Self { builder }
     }
 

@@ -134,40 +134,32 @@ build-asp-release:
 
 agent-tools-install-protocol bin_dir="":
     @requested_bin_dir="{{bin_dir}}"; \
+      if [ -n "${requested_bin_dir}" ]; then \
+        echo "agent-tools-install-protocol no longer accepts a custom bin_dir; Runtime configuration owns the stable install slot" >&2; \
+        exit 2; \
+      fi; \
       cargo_target_dir="${CARGO_TARGET_DIR:-target}"; \
       asp_artifact="${cargo_target_dir}/release/asp"; \
-      if [ -n "${requested_bin_dir}" ]; then \
-        mkdir -p "${requested_bin_dir}"; \
-        requested_bin_dir="$(cd "${requested_bin_dir}" && pwd -P)"; \
-      fi; \
       cargo build --release --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp || exit $?; \
       "${asp_artifact}" --version --require-release >/dev/null; \
-      if [ -n "${requested_bin_dir}" ]; then \
-        destination="${requested_bin_dir}/asp"; \
-      elif [ -n "${SEMANTIC_AGENT_BIN_DIR:-}" ]; then \
-        destination="${SEMANTIC_AGENT_BIN_DIR}/asp"; \
-      else \
-        destination="{{asp_runtime_bin}}/asp"; \
-      fi; \
-      "${asp_artifact}" install binary --target "${destination}"; \
-      rm -f "$(dirname "${destination}")/semantic-agent-protocol"; \
+      destination="$("${asp_artifact}" paths --get runtimeBinDir)/asp"; \
+      "${asp_artifact}" install binary; \
       test -x "${destination}"; \
       "${destination}" --version --require-release >/dev/null
 
-# Install the debug protocol binary into the canonical Global runtime and prewarm it.
+# Install the debug protocol binary into the canonical Global runtime.
 agent-tools-install-protocol-debug bin_dir="":
     @bin_dir="{{bin_dir}}"; \
+      if [ -n "${bin_dir}" ]; then \
+        echo "agent-tools-install-protocol-debug no longer accepts a custom bin_dir; Runtime configuration owns the stable install slot" >&2; \
+        exit 2; \
+      fi; \
       cargo_target_dir="${CARGO_TARGET_DIR:-target}"; \
       asp_artifact="${cargo_target_dir}/debug/asp"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="{{asp_runtime_bin}}"; fi; \
-      mkdir -p "${bin_dir}"; \
-      bin_dir="$(cd "${bin_dir}" && pwd -P)"; \
       cargo build --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp || exit $?; \
-      "${asp_artifact}" install binary --target "${bin_dir}/asp"; \
-      rm -f "${bin_dir}/semantic-agent-protocol"; \
-      test -x "${bin_dir}/asp"; \
-      "${bin_dir}/asp" guide >/dev/null; \
-      if [ "${bin_dir}/asp" = "{{ asp_runtime_bin }}/asp" ]; then just agent-tools-ensure-local-bin-path; fi
+      destination="$("${asp_artifact}" paths --get runtimeBinDir)/asp"; \
+      "${asp_artifact}" install binary; \
+      test -x "${destination}"
 
 # Install the shared protocol binary used by hook runtime commands.
 agent-tools-install-hook bin_dir="":

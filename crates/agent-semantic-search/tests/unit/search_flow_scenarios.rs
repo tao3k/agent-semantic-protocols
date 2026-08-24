@@ -14,7 +14,7 @@ fn search_flow_source_index_owner_item_graph_chain_is_executable() {
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
     let index_artifact_digest =
-        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
+        agent_semantic_search::source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
         source_snapshot: Some(snapshot.evidence.clone()),
         index_artifact_digest: Some(index_artifact_digest.clone()),
@@ -218,18 +218,16 @@ fn search_flow_degraded_source_index_miss_uses_bounded_receipt_reason() {
             warm_candidates: &candidates,
             session_candidates: &candidates,
             owner_candidates: &candidates,
-            provider_owner_item_available: false,
-            cold_scan_allowed: true,
         },
     );
 
     assert_eq!(
         route.acquisition_route,
-        agent_semantic_search::LexicalAcquisitionRoute::BoundedColdScan
+        agent_semantic_search::LexicalAcquisitionRoute::GenerationUnavailable
     );
     assert_eq!(
         route.evidence_state,
-        agent_semantic_search::LexicalEvidenceState::NeedsColdScan
+        agent_semantic_search::LexicalEvidenceState::GenerationUnavailable
     );
     assert_eq!(route.fallback_reason, "warm-miss");
     assert_eq!(route.provider_process_count, 0);
@@ -238,8 +236,8 @@ fn search_flow_degraded_source_index_miss_uses_bounded_receipt_reason() {
 
     let receipt = agent_semantic_search::search_subagent_graph_route_receipt(
         "render_dynamic_owner_items_frontier DynamicOwnerItem no-owner-item-match",
-        "bounded-cold-scan",
-        "needs-cold-scan",
+        "generation-unavailable",
+        "generation-unavailable",
         vec![serde_json::json!({
             "kind": "route-miss",
             "source": "search-frame",
@@ -249,7 +247,7 @@ fn search_flow_degraded_source_index_miss_uses_bounded_receipt_reason() {
             "nativeFinderProcessCount": route.native_finder_process_count
         })],
         serde_json::json!({
-            "action": "bounded-cold-scan",
+            "action": "generation-unavailable",
             "reason": route.fallback_reason,
             "maxProviderProcessCount": 0,
             "maxNativeFinderProcessCount": 0
@@ -257,10 +255,10 @@ fn search_flow_degraded_source_index_miss_uses_bounded_receipt_reason() {
     );
 
     assert!(agent_semantic_search::search_subagent_graph_route_receipt_is_compact(&receipt));
-    assert_eq!(receipt["route"], "bounded-cold-scan");
-    assert_eq!(receipt["state"], "needs-cold-scan");
+    assert_eq!(receipt["route"], "generation-unavailable");
+    assert_eq!(receipt["state"], "generation-unavailable");
     assert_eq!(receipt["evidence"][0]["reason"], "warm-miss");
-    assert_eq!(receipt["next"]["action"], "bounded-cold-scan");
+    assert_eq!(receipt["next"]["action"], "generation-unavailable");
 
     let mut polluted = receipt;
     polluted["evidence"][0]["commandLog"] = serde_json::json!(["asp rg ..."]);
@@ -268,16 +266,16 @@ fn search_flow_degraded_source_index_miss_uses_bounded_receipt_reason() {
 }
 
 #[test]
-fn search_flow_busy_source_index_miss_returns_overlay_skipped() {
+fn search_flow_unavailable_generation_returns_overlay_skipped() {
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
     let index_artifact_digest =
-        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
+        agent_semantic_search::source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
         source_snapshot: Some(snapshot.evidence.clone()),
         index_artifact_digest: Some(index_artifact_digest.clone()),
-        state: "busy".to_string(),
+        state: "generation-unavailable".to_string(),
         candidates: Vec::new(),
     };
     let owners: Vec<PathBuf> = Vec::new();
@@ -304,7 +302,7 @@ fn search_flow_busy_source_index_miss_returns_overlay_skipped() {
         base_source_snapshot: &fixture.evidence,
         provider_digest: fixture.provider_digest.as_str(),
     })
-    .expect("busy source-index should short-circuit without overlay");
+    .expect("unavailable generation should short-circuit without overlay");
 
     assert_eq!(acquisition.candidate_sources, vec!["source-index"]);
     assert!(acquisition.candidates.is_empty());
@@ -313,63 +311,7 @@ fn search_flow_busy_source_index_miss_returns_overlay_skipped() {
         acquisition
             .source_trace
             .iter()
-            .any(|trace| trace.source == "sourceIndex" && trace.status == "busy")
-    );
-    assert!(
-        acquisition
-            .source_trace
-            .iter()
-            .any(|trace| trace.source == "search-overlay" && trace.status == "skipped")
-    );
-}
-
-#[test]
-fn search_flow_cold_required_source_index_returns_overlay_skipped() {
-    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
-    let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
-    let index_artifact_digest =
-        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
-    let lookup = SearchPipeSourceIndexLookup {
-        source_snapshot: Some(snapshot.evidence.clone()),
-        index_artifact_digest: Some(index_artifact_digest.clone()),
-        state: "cold-required".to_string(),
-        candidates: Vec::new(),
-    };
-    let owners: Vec<PathBuf> = Vec::new();
-    let ignore_dirs: Vec<String> = Vec::new();
-    let include_hidden_dirs: Vec<String> = Vec::new();
-    let query = "source-index schema requires explicit rebuild SourceIndexLookup";
-    let query_terms = crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
-        agent_semantic_search::search_pipe_typed_query_terms("rust", query, descriptor)
-    });
-
-    let acquisition = collect_search_pipe_auto_acquisition(SearchPipeAutoAcquisitionRequest {
-        language_id: "rust",
-        project_root,
-        locator_root: project_root,
-        query,
-        query_terms: &query_terms,
-        owners: &owners,
-        ignore_dirs: &ignore_dirs,
-        include_hidden_dirs: &include_hidden_dirs,
-        require_multi_clause: false,
-        limit: 5,
-        source_index_lookup: Some(&lookup),
-        base_snapshot: Some(&fixture.workspace),
-        base_source_snapshot: &fixture.evidence,
-        provider_digest: fixture.provider_digest.as_str(),
-    })
-    .expect("cold-required source-index should short-circuit without overlay");
-
-    assert_eq!(acquisition.candidate_sources, vec!["source-index"]);
-    assert!(acquisition.candidates.is_empty());
-    assert_eq!(acquisition.source_snapshot, Some(fixture.evidence.clone()));
-    assert!(
-        acquisition
-            .source_trace
-            .iter()
-            .any(|trace| trace.source == "sourceIndex" && trace.status == "cold-required")
+            .any(|trace| trace.source == "sourceIndex" && trace.status == "generation-unavailable")
     );
     assert!(
         acquisition

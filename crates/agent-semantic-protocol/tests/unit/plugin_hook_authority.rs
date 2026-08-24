@@ -224,7 +224,7 @@ fn plugin_launcher_uses_healthy_slot_when_public_and_active_slots_are_unavailabl
 fn plugin_launcher_contains_no_policy_or_runtime_server_plane() {
     for forbidden in [
         "config.toml",
-        "server reconcile",
+        "server start",
         "server healthcheck",
         "runtime/server",
         ".local/bin",

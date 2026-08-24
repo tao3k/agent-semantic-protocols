@@ -77,33 +77,14 @@ pub enum RuntimeSearchServiceRequest {
 #[derive(Clone)]
 pub struct RuntimeSearchServiceHandle {
     sender: mpsc::Sender<RuntimeSearchServiceRequest>,
-    request_deadline: std::time::Duration,
 }
-
-const DEFAULT_RUNTIME_SEARCH_REQUEST_DEADLINE: std::time::Duration =
-    std::time::Duration::from_secs(30);
 
 pub fn runtime_search_service_channel() -> (
     RuntimeSearchServiceHandle,
     mpsc::Receiver<RuntimeSearchServiceRequest>,
 ) {
-    runtime_search_service_channel_with_deadline(DEFAULT_RUNTIME_SEARCH_REQUEST_DEADLINE)
-}
-
-fn runtime_search_service_channel_with_deadline(
-    request_deadline: std::time::Duration,
-) -> (
-    RuntimeSearchServiceHandle,
-    mpsc::Receiver<RuntimeSearchServiceRequest>,
-) {
     let (sender, receiver) = mpsc::channel(DEFAULT_QUEUE_CAPACITY);
-    (
-        RuntimeSearchServiceHandle {
-            sender,
-            request_deadline,
-        },
-        receiver,
-    )
+    (RuntimeSearchServiceHandle { sender }, receiver)
 }
 
 pub fn build_runtime_provider_search_receipt(
@@ -181,7 +162,7 @@ pub fn build_runtime_provider_search_receipt(
     let elapsed_micros = resident_read_elapsed_micros.saturating_add(service_elapsed_micros);
 
     Ok(RuntimeProviderSearchReceipt {
-        schema_id: "agent.semantic-protocols.runtime-provider-search-receipt.v1".to_owned(),
+        schema_id: "agent.semantic-protocols.runtime-provider-search-receipt".to_owned(),
         schema_version: "1".to_owned(),
         operation_id,
         status: if candidate_count == 0 {
@@ -346,13 +327,9 @@ impl RuntimeSearchServiceHandle {
         operation: &str,
         dropped_message: &str,
     ) -> Result<T, String> {
-        match tokio::time::timeout(self.request_deadline, receipt).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(dropped_message.to_owned()),
-            Err(_) => Err(format!(
-                "runtime search service request deadline exceeded: operation={operation} deadlineMillis={}",
-                self.request_deadline.as_millis()
-            )),
+        match receipt.await {
+            Ok(result) => result,
+            Err(_) => Err(format!("{dropped_message}: operation={operation}")),
         }
     }
 

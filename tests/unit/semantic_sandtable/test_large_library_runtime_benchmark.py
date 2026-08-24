@@ -262,7 +262,7 @@ def test_runtime_workspace_deployment_uses_release_install_command(
     assert call["check"] is False
     assert call["timeout"] == 120
     assert isinstance(call["env"], dict)
-    assert call["env"]["ASP_NO_AGENT_PLATFORM"] == "1"
+    assert call["env"]["ASP_NO_AGENT"] == "1"
 
 
 def test_runtime_process_listing_failure_is_explicit(

@@ -37,30 +37,38 @@ pub fn output_with_delegation_hint_lines(output: Bytes, packet_bytes: &[u8]) -> 
         return output;
     }
     if bytes_contains(&output, b"subagentHint=") {
-        let Ok(existing) = std::str::from_utf8(&output) else {
-            return output;
-        };
-        let mut rendered_lines = Vec::new();
-        let mut replaced = false;
-        for line in existing.lines() {
-            if line.starts_with("subagentHint=") {
-                if !replaced {
-                    rendered_lines.extend(lines.iter().cloned());
-                    replaced = true;
-                }
-            } else {
-                rendered_lines.push(line.to_string());
-            }
-        }
-        if !replaced {
-            rendered_lines.extend(lines);
-        }
-        let mut rendered = rendered_lines.join("\n").into_bytes();
-        if existing.ends_with('\n') {
-            rendered.push(b'\n');
-        }
-        return Bytes::from(rendered);
+        return replace_delegation_hint_lines(output, &lines);
     }
+    append_delegation_hint_lines(output, lines)
+}
+
+fn replace_delegation_hint_lines(output: Bytes, lines: &[String]) -> Bytes {
+    let Ok(existing) = std::str::from_utf8(&output) else {
+        return output;
+    };
+    let mut rendered_lines = Vec::new();
+    let mut replaced = false;
+    for line in existing.lines() {
+        if line.starts_with("subagentHint=") {
+            if !replaced {
+                rendered_lines.extend(lines.iter().cloned());
+                replaced = true;
+            }
+        } else {
+            rendered_lines.push(line.to_string());
+        }
+    }
+    if !replaced {
+        rendered_lines.extend(lines.iter().cloned());
+    }
+    let mut rendered = rendered_lines.join("\n").into_bytes();
+    if existing.ends_with('\n') {
+        rendered.push(b'\n');
+    }
+    Bytes::from(rendered)
+}
+
+fn append_delegation_hint_lines(output: Bytes, lines: Vec<String>) -> Bytes {
     let mut rendered = Vec::with_capacity(
         output.len() + lines.iter().map(|line| line.len() + 1).sum::<usize>() + 1,
     );

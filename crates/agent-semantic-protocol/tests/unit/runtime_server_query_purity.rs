@@ -1,133 +1,102 @@
 #[test]
-fn query_data_plane_never_invokes_generation_reconciliation() {
-    let query_adapter = include_str!("../../src/server/runtime_server.rs");
-    let data_plane = include_str!("../../src/server/runtime_server_generation_data_plane.rs");
-    let readiness = include_str!("../../src/server/runtime_server_generation.rs");
-    assert!(
-        !query_adapter.contains("repair_runtime_generation_locator"),
-        "query adapter reintroduced supervisor-owned generation reconciliation"
-    );
-    assert!(
-        !readiness.contains("ensure_runtime_generation_admitted_for_projection_async"),
-        "generation owner reintroduced the non-terminal admission bridge"
-    );
-    assert!(!data_plane.contains("ensure_runtime_generation_ready"));
-    assert!(data_plane.contains("runtime_server_workspace_session_for_admission_async"));
-    assert!(!query_adapter.contains("ensure_runtime_generation_ready"));
-    assert!(!query_adapter.contains("ensure_runtime_generation()"));
-    assert!(!query_adapter.contains("RuntimeWorkspaceAdmissionCatalog::resolve_mapped"));
-    assert!(!query_adapter.contains("RuntimeWorkspaceScopeResolution"));
-    assert!(!data_plane.contains("connect_hook_workspace_session"));
-    assert!(!data_plane.contains("connect_runtime_server_workspace_session"));
-    assert!(data_plane.contains("runtime_server_workspace_session_for_admission_async"));
-    assert!(data_plane.contains("read_runtime_exact_projection"));
-    assert!(!data_plane.contains("rebind_runtime_selector_overlay"));
-}
+fn language_facade_uses_one_persistent_http_session_and_catalog_typed_params() {
+    let dispatch = include_str!("../../src/command/provider_dispatch.rs");
 
-#[test]
-fn provider_owner_query_uses_only_the_committed_resident_runtime() {
-    let daemon = include_str!("../../src/server/runtime_server_daemon.rs");
-    let owner_branch = daemon
-        .split("RuntimeSearchServiceRequest::ProviderOwner")
-        .nth(1)
-        .and_then(|source| {
-            source
-                .split("RuntimeSearchServiceRequest::TreeSitterQuery")
-                .next()
-        })
-        .expect("Runtime Server ProviderOwner branch");
-    assert!(owner_branch.contains("ProviderRuntimeActorState::Ready"));
-    assert!(
-        owner_branch
-            .contains("prepare_runtime_server_owner_projection_with_resident_runtime_async")
-    );
-    assert!(!owner_branch.contains("ProviderRuntimeProcessPeer::start"));
-    assert!(!owner_branch.contains("ProviderProcessSupervisor"));
-    assert!(!owner_branch.contains("prepare_runtime_server_owner_projection_with_registry_async"));
-}
+    assert!(dispatch.contains("RuntimeHttpClient::new("));
+    assert!(dispatch.contains("client.open_session().await?"));
+    assert!(!dispatch.contains("RuntimeProviderRouteIntent"));
+    assert!(dispatch.contains("session.request_route("));
+    assert!(dispatch.contains("session.shutdown().await"));
 
-#[test]
-fn generation_builder_uses_the_same_resident_provider_authority() {
-    let daemon = include_str!("../../src/server/runtime_server_daemon.rs");
-    let builder = daemon
-        .split("let generation_builder:")
-        .nth(1)
-        .and_then(|source| source.split("let owner_builder_catalog").next())
-        .expect("Runtime Server generation builder");
-    assert!(
-        builder.contains("prepare_runtime_server_workspace_generation_with_runtime_service_async")
-    );
-    assert!(!builder.contains("prepare_runtime_server_workspace_generation_with_registry_async"));
-    assert!(!builder.contains("ProviderProcessSupervisor"));
-}
-
-#[test]
-fn graph_turbo_ranking_is_a_read_only_generation_consumer() {
-    let graph = include_str!("../../src/command/graph.rs");
-    assert!(graph.contains("runtime_server_workspace_session_async"));
-    assert!(!graph.contains("runtime_server_workspace_session_for_admission_async"));
-    assert!(!graph.contains("ensure_runtime_generation_ready"));
-}
-
-#[test]
-fn exact_projection_is_a_read_only_generation_consumer() {
-    let source = include_str!("../../src/command/provider_resident_exact.rs");
     for forbidden in [
-        "ensure_runtime_generation_owner_ready",
-        "owner-freshness-before",
-        "owner-freshness-ready",
-        "publish_owner_overlay",
-        "tombstone_owner_overlay",
-        "ensure_runtime_generation_ready",
+        "runtime_server_ensure_workspace_async",
+        "runtime_server_workspace_session_async",
+        "provider_resident_exact",
+        "run_search_owner_items_query_command",
+        "provider_operation(",
+        "run_asp_fast_search_command",
         "await_agent_facing_runtime_server_client",
         "block_on(",
         "std::thread",
     ] {
         assert!(
-            !source.contains(forbidden),
-            "exact projection reintroduced query-time generation mutation: {forbidden}"
+            !dispatch.contains(forbidden),
+            "language facade reintroduced a legacy or query-time lifecycle path: {forbidden}"
         );
     }
 }
 
 #[test]
-fn owner_items_is_a_pre_activation_resident_read() {
-    let source = include_str!("../../src/command/provider_dispatch.rs");
-    let owner_route = source
-        .find("if is_search_owner_items_query(&command_args)")
-        .expect("typed pre-activation resident owner predicate");
-    let owner_branch = &source[owner_route..];
-    assert!(owner_branch.contains("run_search_owner_items_query_command("));
-    assert!(owner_branch.contains("SearchOwnerItemsContext {"));
-    for legacy in [
-        "OwnerItemsExecutionRoute",
-        "owner-provider-surface-admitted",
-        "owner-native-incremental-admitted",
-        "provider_invokes_asp_facade",
+fn generation_builds_bind_the_current_installed_capability_catalog() {
+    let daemon = include_str!("../../src/server/runtime_server_daemon.rs");
+
+    assert!(daemon.contains("load_runtime_provider_artifacts(&state_home).await?"));
+    assert!(!daemon.contains("catalog advanced after daemon admission"));
+}
+
+#[test]
+fn cli_adapter_emits_route_semantics_instead_of_forwarding_argv() {
+    let dispatch = include_str!("../../src/command/provider_dispatch.rs");
+
+    assert!(dispatch.contains("runtime_search_intent(&provider_args)?"));
+    assert!(dispatch.contains("runtime_query_intent(&exact_provider_args)?"));
+    assert!(dispatch.contains("runtime_owner_intent(&owner_args)?"));
+    assert!(dispatch.contains("\"selector\": selector"));
+    assert!(dispatch.contains("\"ownerPath\": owner_path"));
+    assert!(dispatch.contains("\"query\": queries.join(\" \")"));
+    assert!(!dispatch.contains("serde_json::json!({\"argv\""));
+}
+
+#[test]
+fn runtime_dispatch_reads_only_the_published_immutable_generation() {
+    let dispatcher =
+        include_str!("../../../agent-semantic-runtime-server/src/runtime_asp_client.rs");
+    let generation = include_str!("../../../agent-semantic-runtime-server/src/query_generation.rs");
+
+    assert!(dispatcher.contains(".get(request.workspace_identity.as_str())"));
+    assert!(dispatcher.contains(".read_source_index("));
+    assert!(dispatcher.contains(".read_runtime_owner("));
+    assert!(dispatcher.contains(".read_runtime_selector("));
+    assert!(generation.contains("RuntimeQueryGenerationState"));
+    assert!(generation.contains("Failed(Arc<str>)"));
+    assert!(generation.contains("RuntimeResidentReadClient::open("));
+
+    for forbidden in [
+        "provider_operation(",
+        "ensure_workspace",
+        "build_generation",
+        "await_ready",
+        "thread::sleep",
+        "tokio::time::sleep",
     ] {
         assert!(
-            !source.contains(legacy),
-            "legacy owner dispatch surface reintroduced: {legacy}"
+            !dispatcher.contains(forbidden),
+            "Ready query dispatch reintroduced lifecycle work: {forbidden}"
         );
     }
 }
 
 #[test]
-fn search_adapter_never_decodes_the_complete_resident_generation() {
-    let dispatch = include_str!("../../src/command/provider_dispatch.rs");
-    let data_plane = include_str!("../../src/server/runtime_server_generation_data_plane.rs");
+fn old_cli_exact_and_generation_data_planes_are_not_declared() {
+    let command_modules = include_str!("../../src/command/mod.rs");
+    let crate_modules = include_str!("../../src/lib.rs");
+    let server_modules = include_str!("../../src/server/mod.rs");
 
-    assert!(!dispatch.contains("runtime_server_workspace_generation_client_async"));
-    assert!(!dispatch.contains("WorkspaceGenerationDataPlaneClient"));
-    assert!(dispatch.contains("run_runtime_provider_search_command("));
-    assert!(dispatch.contains("run_search_owner_items_query_command("));
-    assert!(!dispatch.contains("runtime_server_search_data_plane_async"));
-    assert!(!dispatch.contains("run_asp_fast_search_command"));
-    assert!(!dispatch.contains("await_agent_facing_runtime_server_client"));
-    assert!(data_plane.contains("runtime_server_workspace_session_for_admission_async"));
-    assert!(data_plane.contains("read_runtime_exact_projection"));
-    assert!(data_plane.contains("WorkspaceRuntimeSelectorRead"));
-    assert!(!data_plane.contains("runtime_search_generation_authority"));
+    for forbidden in [
+        "provider_exact_args",
+        "provider_resident_exact",
+        "search_owner_items",
+    ] {
+        assert!(!command_modules.contains(forbidden));
+    }
+    for forbidden in [
+        "exact_projection_diagnostic",
+        "exact_projection_trace",
+        "resident_exact_projection",
+    ] {
+        assert!(!crate_modules.contains(forbidden));
+    }
+    assert!(!server_modules.contains("runtime_server_generation_data_plane"));
 }
 
 #[test]
@@ -141,4 +110,65 @@ fn search_db_facade_is_tokio_native_without_a_sync_bridge() {
             "search DB facade reintroduced a synchronous compatibility bridge: {forbidden}"
         );
     }
+}
+
+#[test]
+fn query_generation_lane_uses_explicit_daemon_shutdown() {
+    let daemon = include_str!("../../src/server/runtime_server_daemon.rs");
+
+    assert!(daemon.contains("let mut generation_shutdown = client_http_shutdown.subscribe();"));
+    assert!(daemon.contains("changed = generation_shutdown.changed()"));
+    assert!(daemon.contains("let _ = client_http_shutdown.send(true);"));
+    assert!(daemon.contains("let _ = generation_task.join().await;"));
+
+    let shutdown = daemon
+        .find("let _ = client_http_shutdown.send(true);")
+        .expect("explicit daemon shutdown publication");
+    let join = daemon
+        .find("let _ = generation_task.join().await;")
+        .expect("generation lane join");
+    assert!(
+        shutdown < join,
+        "generation shutdown must linearize before join"
+    );
+}
+
+#[test]
+fn runtime_owner_identity_is_digest_addressed_not_a_mutable_entrypoint() {
+    let adapter = include_str!("../../src/server/runtime_server_wire_adapter.rs");
+
+    assert!(adapter.contains("program: runtime_artifact"));
+    assert!(adapter.contains("expected_executable: runtime_artifact.clone()"));
+    assert!(adapter.contains("Ok(resolved)"));
+    assert!(!adapter.contains("Ok(stable_entry)"));
+}
+
+#[test]
+fn runtime_readiness_has_no_wall_clock_timeout_policy() {
+    let lifecycle = include_str!("../../src/server/runtime_server.rs");
+
+    assert!(!lifecycle.contains("STARTUP_DEADLINE"));
+    assert!(!lifecycle.contains("runtime-server-readiness-deadline-exceeded"));
+    assert!(!lifecycle.contains("tokio::time::timeout(\n        STARTUP_DEADLINE"));
+}
+
+#[test]
+fn identity_handoff_admits_the_new_active_artifact_not_the_retiring_invoker() {
+    let adapter = include_str!("../../src/server/runtime_server_wire_adapter.rs");
+    let handoff = include_str!("../../src/server/runtime_server_identity_handoff.rs");
+
+    assert!(handoff.contains("reconcile_healthy_runtime_server_after_identity_handoff"));
+    assert!(adapter.contains("ensure_runtime_server_after_identity_handoff"));
+    assert!(adapter.contains("supervisor_request_for_active_artifact"));
+    assert!(adapter.contains("&runtime_artifact,\n        receipt,"));
+    assert!(adapter.contains("&current_exe,\n        &receipt,"));
+}
+
+#[test]
+fn binary_install_only_migrates_state_home_agent_authority() {
+    let install = include_str!("../../src/command/install_provider_binary.rs");
+
+    assert!(install.contains("synchronize_embedded_agent_state_config"));
+    assert!(!install.contains("synchronize_embedded_agent_config("));
+    assert!(install.contains("agentConfigCoupling=binary-content"));
 }

@@ -20,32 +20,32 @@ fn install_language_pinned_release_writes_runtime_bin_package_and_lock() {
 }
 
 #[test]
-fn install_language_rejects_non_installable_document_provider() {
-    let root = temp_project_root();
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args([
-            "install",
-            "language",
+fn document_languages_resolve_independent_workspace_install_descriptors() {
+    let register = agent_semantic_provider_protocol::parse_provider_install_register(
+        include_bytes!("../../../../schemas/provider-install-register.json"),
+    )
+    .expect("provider install register");
+    for (language_id, provider_id, descriptor) in [
+        (
+            "org",
+            "asp-org",
+            "provider/asp-org-provider-workspace-install.json",
+        ),
+        (
             "md",
-            "--target",
-            "x86_64-unknown-linux-gnu",
-        ])
-        .arg("--project")
-        .arg(&root)
-        .env("ASP_NO_AGENT_PLATFORM", "1")
-        .output()
-        .expect("run install for an embedded document surface");
-
-    assert!(!output.status.success());
-    let receipt = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(
-        receipt.contains("no installable provider is registered for `md`"),
-        "{receipt}"
-    );
+            "asp-md",
+            "provider/asp-md-provider-workspace-install.json",
+        ),
+    ] {
+        let registration = register
+            .providers
+            .iter()
+            .find(|registration| registration.language_id == language_id)
+            .expect("document language install registration");
+        assert_eq!(registration.provider_id, provider_id);
+        assert_eq!(registration.workspace_install, descriptor);
+        assert_eq!(registration.binary, provider_id);
+    }
 }
 
 #[test]
@@ -64,7 +64,7 @@ fn install_binary_does_not_reconcile_provider_artifacts() {
             .args(["install", "binary"])
             .env("ASP_STATE_HOME", &state_home)
             .env("HOME", root.join("home"))
-            .env("ASP_NO_AGENT_PLATFORM", "1")
+            .env("ASP_NO_AGENT", "1")
             .current_dir(&root)
             .output()
             .expect("run ASP binary installation")

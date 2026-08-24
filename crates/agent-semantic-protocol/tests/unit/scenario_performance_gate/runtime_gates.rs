@@ -356,6 +356,8 @@ pub(crate) async fn asp_provider_process_orphan_descendant_closure_stays_inside_
         args: vec!["-c".to_string(), command],
         cwd: root.clone(),
         env: BTreeMap::new(),
+        remove_env: Default::default(),
+        remove_env_prefixes: Default::default(),
         stdin: StdinMode::Closed,
         stdout: OutputMode::Capture,
         stderr: OutputMode::Capture,

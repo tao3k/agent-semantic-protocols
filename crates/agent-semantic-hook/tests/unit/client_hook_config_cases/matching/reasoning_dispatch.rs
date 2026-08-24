@@ -341,7 +341,7 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
         {
             assert!(
                 actual_message.starts_with(
-                    "Raw search over registered source is denied only in the current Agent."
+                    "Registered-source reasoning search/query is denied only in the current Agent."
                 ),
                 "registered search lost the Config TOML policy message: {case_id}: {actual_message}"
             );

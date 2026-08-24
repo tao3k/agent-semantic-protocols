@@ -267,15 +267,9 @@ fn install_language_command() -> Command {
         )
         .arg(Arg::new("target").long("target").value_name("TARGET"))
         .arg(
-            Arg::new("reconcile-receipt")
-                .long("reconcile-receipt")
-                .action(ArgAction::SetTrue),
-        )
-        .arg(
             Arg::new("record-installed-receipt")
                 .long("record-installed-receipt")
                 .value_name("BINARY")
-                .conflicts_with("reconcile-receipt")
                 .hide(true),
         )
         .arg(
@@ -426,6 +420,7 @@ fn selected_command_default(args: &[String]) -> Command {
         (Some("paths"), _) => paths_command(),
         (Some("healthcheck"), _) => healthcheck_command(),
         (Some("server"), _) => crate::server::runtime_server::runtime_server_command(),
+        (Some("schema"), _) => schema_command(),
         (Some("live-corpus"), _) => live_corpus_command(),
         (Some("ast-patch"), _) => ast_patch_command(),
         (Some("graph"), _) => graph_command(),

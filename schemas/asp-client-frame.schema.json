@@ -40,11 +40,12 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["schemaId", "schemaVersion", "protocolId", "protocolVersion", "kind", "sessionId", "workspaceIdentity", "requestId", "clientInfo", "capabilities"],
+          "required": ["schemaId", "schemaVersion", "protocolId", "protocolVersion", "kind", "sessionId", "workspaceIdentity", "requestId", "projectRoot", "clientInfo", "capabilities"],
           "properties": {
             "schemaId": {}, "schemaVersion": {}, "protocolId": {}, "protocolVersion": {},
             "kind": { "const": "initialize" }, "sessionId": {}, "workspaceIdentity": {}, "traceContext": {},
             "requestId": { "type": "string", "minLength": 1 },
+            "projectRoot": { "type": "string", "minLength": 1 },
             "clientInfo": {
               "type": "object",
               "additionalProperties": false,

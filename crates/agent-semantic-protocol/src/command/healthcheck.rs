@@ -32,7 +32,7 @@ fn usage() -> String {
 pub(super) async fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
     let options = HealthcheckOptions::parse(args)?;
     let state_home = crate::server::runtime_server::state_home()?;
-    crate::server::runtime_server::reconcile_runtime_server_for_healthcheck(&state_home).await?;
+    crate::server::runtime_server::ensure_runtime_server_for_healthcheck(&state_home).await?;
     let health = agent_semantic_client_db::runtime_server_health::cached_runtime_server_health_at(
         &agent_semantic_client_db::runtime_server_control::runtime_server_runtime_base(
             &state_home,

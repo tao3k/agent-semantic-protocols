@@ -1,10 +1,10 @@
-#+title: Workspace-Specific Reconcile Closure
+#+title: Workspace-Specific Generation Admission Closure
 
 * Status
 
 This module specifies the receipt boundary for Runtime Server warm publication.
 It precedes Rust implementation.  It complements workspace generation
-readiness by defining when reconciliation is complete for every registered
+readiness by defining when generation admission is complete for every registered
 workspace rather than merely healthy at the process level.
 
 * Problem
@@ -16,9 +16,9 @@ A process-level =healthy= response is compatible with all of the following:
 - a current generation without the requested projection mode; and
 - a nested workspace that was never independently published.
 
-Consequently, =server reconcile= cannot close by returning server health alone.
-It closes only when every required workspace has a matching committed
-publication receipt.
+Consequently, process-level health cannot close workspace admission.  Each
+=EnsureWorkspace= request closes only when its exact workspace has a matching
+committed publication receipt.
 
 The current Rust search facade also failed to expose an owner-tests surface for
 =runtime_server_workspace/registry/publication.rs=.  The owner-items surface
@@ -99,7 +99,7 @@ It proves:
 
 * Runtime refinement gate
 
-The future Runtime Server reconcile receipt MUST include one entry per required
+Each Runtime Server =EnsureWorkspace= receipt MUST identify its required
 workspace with:
 
 - workspace identity;
@@ -113,4 +113,3 @@ workspace with:
 Warm publication may run continuously in the background.  Interactive search
 should request or await this internal closure through Server IPC.  It must not
 restart the Server, direct-open the registry, or mutate the Agent Session.
-

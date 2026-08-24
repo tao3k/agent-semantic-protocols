@@ -42,7 +42,7 @@ async fn stalled_control_exchange_is_bounded_and_discards_the_lane() {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     });
     let endpoint = RuntimeServerEndpoint {
-        schema_id: "agent.semantic-protocols.runtime-server-endpoint.v1".to_owned(),
+        schema_id: "agent.semantic-protocols.runtime-server-endpoint".to_owned(),
         schema_version: "1".to_owned(),
         transport_contract_digest: runtime_server_transport_contract_digest(),
         owner_epoch: 1,
@@ -67,11 +67,12 @@ async fn stalled_control_exchange_is_bounded_and_discards_the_lane() {
             .join("providers.sock")
             .display()
             .to_string(),
+        client_http_endpoint: "http://127.0.0.1:1".to_owned(),
         workspace_store_path: temporary.path().join("workspace").display().to_string(),
         status_memory_path: temporary.path().join("status").display().to_string(),
     };
     let request = RuntimeServerControlRequest {
-        schema_id: "agent.semantic-protocols.runtime-server-control-request.v1".to_owned(),
+        schema_id: "agent.semantic-protocols.runtime-server-control-request".to_owned(),
         schema_version: "1".to_owned(),
         operation: RuntimeServerOperation::Restart,
         expected_runtime_binary_identity:

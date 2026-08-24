@@ -153,8 +153,9 @@ struct OwnerRank {
     local_hits: usize,
     parser_finder_local_hits: usize,
     path_hits: usize,
+    path_is_test: bool,
     query_axis_terms: Vec<String>,
-    path_query_axis_terms: Vec<String>,
+    path_query_axis_count: usize,
     symbols: Vec<String>,
 }
 
@@ -162,7 +163,7 @@ struct PreparedGraphOwnerRankCandidate<'a> {
     candidate: &'a GraphOwnerRankCandidate,
     package_root: String,
     matched_query_axes: Vec<String>,
-    matched_path_query_axes: Vec<String>,
+    matched_path_query_axis_count: usize,
     matching_submodule_path: Option<&'a str>,
 }
 
@@ -193,49 +194,10 @@ pub fn rank_graph_owner_report(request: GraphOwnerRankRequest) -> GraphOwnerRank
         &request.submodule_paths,
     );
     ranks.sort_unstable_by(owner_rank_compare);
-    let mut candidate_descriptors = request.candidates.iter().collect::<Vec<_>>();
-    candidate_descriptors.sort_unstable_by(|left, right| {
-        (
-            left.path.as_str(),
-            left.symbol.as_str(),
-            left.text.as_str(),
-            left.source.as_str(),
-            left.confidence.as_str(),
-        )
-            .cmp(&(
-                right.path.as_str(),
-                right.symbol.as_str(),
-                right.text.as_str(),
-                right.source.as_str(),
-                right.confidence.as_str(),
-            ))
-    });
-    let candidate_descriptor_bytes = candidate_descriptors.iter().fold(
-        Vec::with_capacity(candidate_descriptors.len() * 128),
-        |mut bytes, candidate| {
-            if !bytes.is_empty() {
-                bytes.extend_from_slice(b"\0\0");
-            }
-            for (index, field) in [
-                candidate.path.as_str(),
-                candidate.symbol.as_str(),
-                candidate.text.as_str(),
-                candidate.source.as_str(),
-                candidate.confidence.as_str(),
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                if index > 0 {
-                    bytes.push(0);
-                }
-                bytes.extend_from_slice(field.as_bytes());
-            }
-            bytes
-        },
-    );
-    let candidates_digest =
-        agent_semantic_content_identity::hash_blob(&candidate_descriptor_bytes).value;
+    // Candidate rows are admitted from this immutable generation. Re-hashing
+    // and sorting their full text on every query duplicated publication work
+    // and made the warm rank path scale with source payload size.
+    let candidates_digest = request.workspace_generation.root_digest.as_str();
     let query_digest =
         agent_semantic_content_identity::hash_blob(query_axes.join("\0").as_bytes()).value;
     let mut submodule_paths = request.submodule_paths.clone();
@@ -249,7 +211,7 @@ pub fn rank_graph_owner_report(request: GraphOwnerRankRequest) -> GraphOwnerRank
             snapshot_root: &request.source_snapshot.root_digest,
             provider_digest: &request.source_snapshot.provider_digest,
             parameters: &[
-                ("candidatesDigest", candidates_digest.as_str()),
+                ("candidatesDigest", candidates_digest),
                 ("queryAxesDigest", query_digest.as_str()),
                 ("submodulePathsDigest", submodule_digest.as_str()),
             ],
@@ -349,8 +311,9 @@ fn new_owner_rank(
         local_hits: 1,
         parser_finder_local_hits: usize::from(is_parser_finder_local_candidate(candidate)),
         path_hits: usize::from(is_path_evidence_candidate(candidate)),
+        path_is_test: owner_path_is_test(&candidate.path),
         query_axis_terms: prepared_candidate.matched_query_axes,
-        path_query_axis_terms: prepared_candidate.matched_path_query_axes,
+        path_query_axis_count: prepared_candidate.matched_path_query_axis_count,
         symbols,
     }
 }
@@ -377,10 +340,9 @@ fn update_owner_rank(
         .matched_query_axes
         .iter()
         .for_each(|axis| push_unique(&mut rank.query_axis_terms, axis));
-    prepared_candidate
-        .matched_path_query_axes
-        .iter()
-        .for_each(|axis| push_unique(&mut rank.path_query_axis_terms, axis));
+    rank.path_query_axis_count = rank
+        .path_query_axis_count
+        .max(prepared_candidate.matched_path_query_axis_count);
 }
 
 fn push_unique(values: &mut Vec<String>, value: &str) {
@@ -397,12 +359,14 @@ fn matched_query_axes(
     if query_axes.is_empty() {
         return Vec::new();
     }
+    let normalized_symbol = candidate.symbol.to_ascii_lowercase();
+    let normalized_text = candidate.text.to_ascii_lowercase();
     query_axes
         .iter()
         .filter(|axis| {
             normalized_path.contains(axis.as_str())
-                || ascii_contains_ignore_case(&candidate.symbol, axis)
-                || ascii_contains_ignore_case(&candidate.text, axis)
+                || normalized_symbol.contains(axis.as_str())
+                || normalized_text.contains(axis.as_str())
         })
         .cloned()
         .collect()
@@ -475,8 +439,8 @@ fn owner_rank_sort_key(rank: &OwnerRank) -> OwnerRankSortKey<'_> {
         Reverse(rank.package_query_axis_count.min(16)),
         Reverse(rank.topology_query_axis_count.min(16)),
         Reverse(rank.query_axis_terms.len()),
-        owner_path_is_test(&rank.path),
-        Reverse(rank.path_query_axis_terms.len()),
+        rank.path_is_test,
+        Reverse(rank.path_query_axis_count),
         Reverse(rank.topology_local_hits.min(12)),
         Reverse(rank.parser_finder_local_hits.min(12)),
         Reverse(rank.path_hits.min(8)),
@@ -497,7 +461,7 @@ fn prepare_owner_rank_candidate<'a>(
         candidate,
         package_root: owner_rank_package_root(&candidate.path),
         matched_query_axes: matched_query_axes(candidate, &normalized_path, query_axes),
-        matched_path_query_axes: matched_path_query_axes(&normalized_path, query_axes),
+        matched_path_query_axis_count: matched_path_query_axis_count(&normalized_path, query_axes),
         matching_submodule_path: submodule_paths
             .iter()
             .find(|submodule_path| graph_path_is_under(&candidate.path, submodule_path))
@@ -505,12 +469,11 @@ fn prepare_owner_rank_candidate<'a>(
     }
 }
 
-fn matched_path_query_axes(normalized_path: &str, query_axes: &[String]) -> Vec<String> {
+fn matched_path_query_axis_count(normalized_path: &str, query_axes: &[String]) -> usize {
     query_axes
         .iter()
         .filter(|axis| normalized_path.contains(axis.as_str()))
-        .cloned()
-        .collect()
+        .count()
 }
 
 fn owner_path_is_test(path: &str) -> bool {
@@ -560,15 +523,19 @@ fn topology_query_axis_counts(
 }
 
 fn owner_rank_package_root(path: &str) -> String {
-    let segments = path
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>();
-    match segments.as_slice() {
-        ["packages", ecosystem, package, ..] => format!("packages/{ecosystem}/{package}"),
-        [root, package, ..] if !is_single_root_owner_segment(root) => format!("{root}/{package}"),
-        [root, ..] => (*root).to_string(),
-        [] => ".".to_string(),
+    let mut segments = path.split('/').filter(|segment| !segment.is_empty());
+    let Some(root) = segments.next() else {
+        return ".".to_owned();
+    };
+    let second = segments.next();
+    if root == "packages"
+        && let (Some(ecosystem), Some(package)) = (second, segments.next())
+    {
+        return format!("packages/{ecosystem}/{package}");
+    }
+    match second {
+        Some(package) if !is_single_root_owner_segment(root) => format!("{root}/{package}"),
+        _ => root.to_owned(),
     }
 }
 
@@ -577,14 +544,6 @@ fn is_single_root_owner_segment(segment: &str) -> bool {
         segment,
         "." | "src" | "tests" | "test" | "docs" | "schemas" | "fixtures"
     )
-}
-
-fn ascii_contains_ignore_case(haystack: &str, needle: &str) -> bool {
-    needle.is_empty()
-        || haystack
-            .as_bytes()
-            .windows(needle.len())
-            .any(|window| window.eq_ignore_ascii_case(needle.as_bytes()))
 }
 
 fn owner_rank_query_axes(query_terms: &[String]) -> Vec<String> {

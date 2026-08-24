@@ -117,16 +117,22 @@ async fn control_request_nonce_is_single_use_for_the_owner_epoch() {
     let server = tokio::spawn(server.serve());
     call_runtime_server(
         &endpoint,
-        RuntimeServerOperation::Reconcile,
-        endpoint.runtime_binary_identity.clone(),
+        RuntimeServerOperation::Status,
+        agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+            value: "blake3-256:transport-replay-probe".to_owned(),
+            algorithm: "blake3-256".to_owned(),
+        },
         "single-use-control-nonce".to_owned(),
     )
     .await
     .expect("first use of control nonce succeeds");
     let replay = call_runtime_server(
         &endpoint,
-        RuntimeServerOperation::Reconcile,
-        endpoint.runtime_binary_identity.clone(),
+        RuntimeServerOperation::Status,
+        agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+            value: "blake3-256:transport-replay-probe".to_owned(),
+            algorithm: "blake3-256".to_owned(),
+        },
         "single-use-control-nonce".to_owned(),
     )
     .await

@@ -475,33 +475,49 @@ impl MappedWorkspaceExactProjection {
 
     fn find_owner(&self, owner_path: &str) -> Result<Option<(usize, OwnerEntry)>, String> {
         let hash = *blake3::hash(owner_path.as_bytes()).as_bytes();
+        let Some(first) = self.owner_hash_start(&hash)? else {
+            return Ok(None);
+        };
+        self.find_owner_from(first, &hash, owner_path)
+    }
+
+    fn owner_hash_start(&self, hash: &[u8; 32]) -> Result<Option<usize>, String> {
         let mut low = 0;
         let mut high = self.owner_count;
         while low < high {
             let middle = low + (high - low) / 2;
             let entry = self.owner_entry(middle)?;
-            match entry.hash.cmp(&hash) {
+            match entry.hash.cmp(hash) {
                 Ordering::Less => low = middle + 1,
                 Ordering::Greater => high = middle,
                 Ordering::Equal => {
                     let mut first = middle;
-                    while first > 0 && self.owner_entry(first - 1)?.hash == hash {
+                    while first > 0 && self.owner_entry(first - 1)?.hash == *hash {
                         first -= 1;
                     }
-                    let mut index = first;
-                    while index < self.owner_count {
-                        let candidate = self.owner_entry(index)?;
-                        if candidate.hash != hash {
-                            break;
-                        }
-                        if self.owner_path(&candidate)? == owner_path {
-                            return Ok(Some((index, candidate)));
-                        }
-                        index += 1;
-                    }
-                    return Ok(None);
+                    return Ok(Some(first));
                 }
             }
+        }
+        Ok(None)
+    }
+
+    fn find_owner_from(
+        &self,
+        first: usize,
+        hash: &[u8; 32],
+        owner_path: &str,
+    ) -> Result<Option<(usize, OwnerEntry)>, String> {
+        let mut index = first;
+        while index < self.owner_count {
+            let candidate = self.owner_entry(index)?;
+            if candidate.hash != *hash {
+                break;
+            }
+            if self.owner_path(&candidate)? == owner_path {
+                return Ok(Some((index, candidate)));
+            }
+            index += 1;
         }
         Ok(None)
     }
@@ -512,35 +528,52 @@ impl MappedWorkspaceExactProjection {
         selector: &str,
     ) -> Result<Option<SelectorEntry>, String> {
         let hash = projection_key_hash(projection_kind.as_str(), selector);
+        let Some(first) = self.selector_hash_start(&hash)? else {
+            return Ok(None);
+        };
+        self.find_selector_from(first, &hash, projection_kind, selector)
+    }
+
+    fn selector_hash_start(&self, hash: &[u8; 32]) -> Result<Option<usize>, String> {
         let mut low = 0;
         let mut high = self.selector_count;
         while low < high {
             let middle = low + (high - low) / 2;
             let entry = self.selector_entry(middle)?;
-            match entry.hash.cmp(&hash) {
+            match entry.hash.cmp(hash) {
                 Ordering::Less => low = middle + 1,
                 Ordering::Greater => high = middle,
                 Ordering::Equal => {
                     let mut first = middle;
-                    while first > 0 && self.selector_entry(first - 1)?.hash == hash {
+                    while first > 0 && self.selector_entry(first - 1)?.hash == *hash {
                         first -= 1;
                     }
-                    let mut index = first;
-                    while index < self.selector_count {
-                        let candidate = self.selector_entry(index)?;
-                        if candidate.hash != hash {
-                            break;
-                        }
-                        if self.selector_kind(&candidate)? == projection_kind
-                            && self.selector_text(&candidate)? == selector
-                        {
-                            return Ok(Some(candidate));
-                        }
-                        index += 1;
-                    }
-                    return Ok(None);
+                    return Ok(Some(first));
                 }
             }
+        }
+        Ok(None)
+    }
+
+    fn find_selector_from(
+        &self,
+        first: usize,
+        hash: &[u8; 32],
+        projection_kind: super::model::ExactProjectionKind,
+        selector: &str,
+    ) -> Result<Option<SelectorEntry>, String> {
+        let mut index = first;
+        while index < self.selector_count {
+            let candidate = self.selector_entry(index)?;
+            if candidate.hash != *hash {
+                break;
+            }
+            if self.selector_kind(&candidate)? == projection_kind
+                && self.selector_text(&candidate)? == selector
+            {
+                return Ok(Some(candidate));
+            }
+            index += 1;
         }
         Ok(None)
     }
@@ -548,39 +581,55 @@ impl MappedWorkspaceExactProjection {
     fn find_relocated_selectors(&self, selector: &str) -> Result<Vec<String>, String> {
         let requested_identity = relocation_identity(selector)?;
         let hash = relocation_key_hash(requested_identity.as_str());
+        let Some(first) = self.relocation_hash_start(&hash)? else {
+            return Ok(Vec::new());
+        };
+        self.collect_relocated_selectors(first, &hash, &requested_identity)
+    }
+
+    fn relocation_hash_start(&self, hash: &[u8; 32]) -> Result<Option<usize>, String> {
         let mut low = 0;
         let mut high = self.relocation_count;
         while low < high {
             let middle = low + (high - low) / 2;
-            match self.relocation_entry(middle)?.hash.cmp(&hash) {
+            match self.relocation_entry(middle)?.hash.cmp(hash) {
                 Ordering::Less => low = middle + 1,
                 Ordering::Greater => high = middle,
                 Ordering::Equal => {
                     let mut first = middle;
-                    while first > 0 && self.relocation_entry(first - 1)?.hash == hash {
+                    while first > 0 && self.relocation_entry(first - 1)?.hash == *hash {
                         first -= 1;
                     }
-                    let mut matches = Vec::new();
-                    let mut index = first;
-                    while index < self.relocation_count {
-                        let relocation = self.relocation_entry(index)?;
-                        if relocation.hash != hash {
-                            break;
-                        }
-                        let candidate = self.selector_entry(relocation.selector_index)?;
-                        let candidate_text = self.selector_text(&candidate)?;
-                        if relocation_identity(candidate_text)? == requested_identity {
-                            matches.push(candidate_text.to_owned());
-                        }
-                        index += 1;
-                    }
-                    matches.sort();
-                    matches.dedup();
-                    return Ok(matches);
+                    return Ok(Some(first));
                 }
             }
         }
-        Ok(Vec::new())
+        Ok(None)
+    }
+
+    fn collect_relocated_selectors(
+        &self,
+        first: usize,
+        hash: &[u8; 32],
+        requested_identity: &str,
+    ) -> Result<Vec<String>, String> {
+        let mut matches = Vec::new();
+        let mut index = first;
+        while index < self.relocation_count {
+            let relocation = self.relocation_entry(index)?;
+            if relocation.hash != *hash {
+                break;
+            }
+            let candidate = self.selector_entry(relocation.selector_index)?;
+            let candidate_text = self.selector_text(&candidate)?;
+            if relocation_identity(candidate_text)? == requested_identity {
+                matches.push(candidate_text.to_owned());
+            }
+            index += 1;
+        }
+        matches.sort();
+        matches.dedup();
+        Ok(matches)
     }
 
     fn relocation_entry(&self, index: usize) -> Result<RelocationEntry, String> {

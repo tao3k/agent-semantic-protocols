@@ -3,11 +3,55 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+mod routes;
+pub use routes::{
+    AspClientExactQueryRequest, AspClientOwnerSearchRequest, AspClientSearchRequest,
+    ProviderNativeExactProjection, ProviderNativeExactRequest, ProviderNativeOwnerSearchRequest,
+    ProviderNativeOwnerSearchResponse, RuntimeProviderSearchReceipt, RuntimeProviderSearchRequest,
+};
+
 pub const CLIENT_PROTOCOL_ID: &str = "agent.semantic-protocols.client";
 pub const CLIENT_PROTOCOL_VERSION: &str = "1";
 pub const CLIENT_FRAME_SCHEMA_ID: &str = "agent.semantic-protocols.client.frame";
 pub const CLIENT_CATALOG_SCHEMA_ID: &str = "agent.semantic-protocols.client.protocol-catalog";
 pub const SCHEMA_VERSION: &str = "1";
+
+macro_rules! client_identifier {
+    ($name:ident) => {
+        #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+        #[serde(transparent)]
+        pub struct $name(String);
+
+        impl $name {
+            pub fn new(value: impl Into<String>) -> Result<Self, String> {
+                let value = value.into();
+                if value.trim().is_empty() {
+                    return Err(concat!(stringify!($name), " must be non-empty").to_owned());
+                }
+                Ok(Self(value))
+            }
+
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+
+            pub fn into_inner(self) -> String {
+                self.0
+            }
+        }
+
+        impl TryFrom<String> for $name {
+            type Error = String;
+            fn try_from(value: String) -> Result<Self, Self::Error> {
+                Self::new(value)
+            }
+        }
+    };
+}
+
+client_identifier!(ClientWorkspaceIdentity);
+client_identifier!(ClientSessionId);
+client_identifier!(ClientRequestId);
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -99,14 +143,15 @@ pub enum ClientFrame {
     Initialize {
         #[serde(flatten)]
         base: ClientFrameBase,
-        request_id: String,
+        request_id: ClientRequestId,
+        project_root: String,
         client_info: ClientInfo,
         capabilities: Value,
     },
     Request {
         #[serde(flatten)]
         base: ClientFrameBase,
-        request_id: String,
+        request_id: ClientRequestId,
         catalog_generation: String,
         workspace_generation: String,
         method: String,
@@ -115,12 +160,12 @@ pub enum ClientFrame {
     Cancel {
         #[serde(flatten)]
         base: ClientFrameBase,
-        request_id: String,
+        request_id: ClientRequestId,
     },
     Shutdown {
         #[serde(flatten)]
         base: ClientFrameBase,
-        request_id: String,
+        request_id: ClientRequestId,
     },
     Exit {
         #[serde(flatten)]
@@ -129,7 +174,7 @@ pub enum ClientFrame {
     Response {
         #[serde(flatten)]
         base: ClientFrameBase,
-        request_id: String,
+        request_id: ClientRequestId,
         outcome: ClientOutcome,
         #[serde(default)]
         result: Option<Value>,
@@ -154,8 +199,8 @@ pub struct ClientFrameBase {
     pub schema_version: String,
     pub protocol_id: String,
     pub protocol_version: String,
-    pub session_id: String,
-    pub workspace_identity: String,
+    pub session_id: ClientSessionId,
+    pub workspace_identity: ClientWorkspaceIdentity,
     #[serde(default)]
     pub trace_context: Option<TraceContext>,
 }
@@ -224,8 +269,8 @@ pub enum ClientSessionState {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientSession {
     state: ClientSessionState,
-    session_id: Option<String>,
-    workspace_identity: Option<String>,
+    session_id: Option<ClientSessionId>,
+    workspace_identity: Option<ClientWorkspaceIdentity>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -283,12 +328,15 @@ impl ClientProtocolCatalog {
             }
             let mut parameters = BTreeSet::new();
             for parameter in &method.parameters {
-                if parameter.name.is_empty()
-                    || !parameter.name.bytes().all(|byte| {
-                        byte.is_ascii_lowercase()
-                            || byte.is_ascii_digit()
-                            || matches!(byte, b'-' | b'_')
-                    })
+                if !parameter
+                    .name
+                    .as_bytes()
+                    .first()
+                    .is_some_and(u8::is_ascii_lowercase)
+                    || !parameter
+                        .name
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric())
                 {
                     return Err(error(
                         "client-parameter-name-invalid",
@@ -335,13 +383,13 @@ impl ClientFrame {
             &base.protocol_version,
             CLIENT_FRAME_SCHEMA_ID,
         )?;
-        if base.session_id.is_empty() {
+        if base.session_id.as_str().is_empty() {
             return Err(error(
                 "client-session-required",
                 "client sessionId is required",
             ));
         }
-        if base.workspace_identity.is_empty() {
+        if base.workspace_identity.as_str().is_empty() {
             return Err(error(
                 "client-workspace-required",
                 "client workspaceIdentity is required",
@@ -355,7 +403,7 @@ impl ClientFrame {
             | Self::Response { request_id, .. } => Some(request_id),
             Self::Exit { .. } | Self::Event { .. } => None,
         };
-        if correlated_request_id.is_some_and(|request_id| request_id.is_empty()) {
+        if correlated_request_id.is_some_and(|request_id| request_id.as_str().is_empty()) {
             return Err(error(
                 "client-request-id-required",
                 "correlated client frame requires requestId",
@@ -449,8 +497,8 @@ impl ClientSession {
             }
             self.session_id = Some(base.session_id.clone());
             self.workspace_identity = Some(base.workspace_identity.clone());
-        } else if self.session_id.as_deref() != Some(base.session_id.as_str())
-            || self.workspace_identity.as_deref() != Some(base.workspace_identity.as_str())
+        } else if self.session_id.as_ref() != Some(&base.session_id)
+            || self.workspace_identity.as_ref() != Some(&base.workspace_identity)
         {
             return Err(error(
                 "client-session-isolation-mismatch",

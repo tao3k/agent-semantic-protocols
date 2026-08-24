@@ -129,7 +129,7 @@ impl ToolAction {
 
     pub(crate) fn derive_agent_action(&self) -> AgentAction {
         let host_action = self.operation.agent_action_kind();
-        AgentAction {
+        let mut action = AgentAction {
             host: HostInvocationFact {
                 action: host_action,
                 tool_name: self.tool_name.clone(),
@@ -142,7 +142,27 @@ impl ToolAction {
                 evidence: SemanticCapabilityEvidence::HostInvocation,
             }],
             subjects: Vec::new(),
+        };
+        let behavior_facts = self
+            .semantic_command_text()
+            .and_then(|command| {
+                agent_semantic_shell_parser::parse_bash_command_candidates(command).ok()
+            })
+            .into_iter()
+            .flatten()
+            .flat_map(|stage| agent_semantic_shell_parser::command_stage_behavior_facts(&stage))
+            .collect::<Vec<_>>();
+        for fact in behavior_facts {
+            let semantic_action = match fact.access {
+                agent_semantic_shell_parser::ShellAccessKind::Read => AgentActionKind::Read,
+                agent_semantic_shell_parser::ShellAccessKind::Write => AgentActionKind::Edit,
+            };
+            action.add_capability(SemanticCapability {
+                action: semantic_action,
+                evidence: SemanticCapabilityEvidence::ShellRedirection,
+            });
         }
+        action
     }
 
     pub(crate) fn command_tokens(&self) -> Option<Cow<'_, [String]>> {

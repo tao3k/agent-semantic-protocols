@@ -235,6 +235,13 @@ fn production_cases() -> Vec<MatchPolicyCase> {
             reason: ReasonKind::BulkSourceDump,
         },
         MatchPolicyCase {
+            name: "shell structured document read capability",
+            payload: shell("sed -n '1p' package.json"),
+            rule_id: "route-shell-structured-document-read",
+            decision: DecisionKind::Deny,
+            reason: ReasonKind::StructuredSourceRead,
+        },
+        MatchPolicyCase {
             name: "source search command",
             payload: shell("rg classify_hook src/app.ts"),
             rule_id: "deny-uncontrolled-source-search-commands",

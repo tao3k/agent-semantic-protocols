@@ -104,21 +104,21 @@ impl CodexMultiAgentControlPlaneOwner {
         server: WorkspaceServerProjection,
     ) -> usize {
         let mut snapshots = self.snapshots.write().await;
-        let mut changed = 0usize;
-        for (key, projection) in snapshots.iter_mut() {
-            if key.workspace_identity == server.workspace_identity
-                && projection.workspace_server != server
-            {
+        snapshots
+            .iter_mut()
+            .filter(|(key, projection)| {
+                key.workspace_identity == server.workspace_identity
+                    && projection.workspace_server != server
+            })
+            .map(|(_, projection)| {
                 *projection = Arc::new(
                     projection
                         .as_ref()
                         .clone()
                         .with_workspace_server(server.clone()),
                 );
-                changed += 1;
-            }
-        }
-        changed
+            })
+            .count()
     }
 
     pub async fn downstream_dispatch_authorized(

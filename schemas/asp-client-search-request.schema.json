@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp-client-search-request.schema.json",
+  "title": "ASP Client Search Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "operation", "query"],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.asp-client-search-request"
+    },
+    "schemaVersion": { "const": "1" },
+    "operation": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "query": { "type": "string" }
+  }
+}

@@ -27,8 +27,6 @@ pub(crate) fn plan_pipe_lexical_search_frame(
         warm_candidates: &warm_candidates,
         session_candidates: &[],
         owner_candidates: &owner_candidates,
-        provider_owner_item_available: false,
-        cold_scan_allowed: true,
     })
 }
 

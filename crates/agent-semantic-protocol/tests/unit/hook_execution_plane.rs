@@ -63,7 +63,7 @@ fn hook_event_plane_has_zero_runtime_server_dependencies() {
             "runtime_server_workspace_session",
             "ensure_runtime_generation",
             "submit_runtime_generation_mutation",
-            "server reconcile",
+            "server start",
         ] {
             assert!(
                 !source.contains(forbidden),
@@ -154,28 +154,80 @@ fn codex_wildcard_is_transport_coverage_not_runtime_routing() {
 fn explicit_no_agent_environment_bypasses_host_hook_before_payload_evaluation() {
     use std::process::{Command, Stdio};
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args(["hook", "pre-tool", "--client", "codex"])
+    let binary = env!("CARGO_BIN_EXE_asp");
+    let warm = Command::new(binary)
+        .arg("--version")
         .env_clear()
-        .env("ASP_NO_AGENT", "1")
-        .env("ASP_HOOK_BOOTSTRAP_TRACE", "1")
-        .stdin(Stdio::null())
         .output()
-        .expect("spawn no-agent Hook bypass");
-    let stdout = String::from_utf8(output.stdout).expect("Hook bypass stdout UTF-8");
-    let stderr = String::from_utf8(output.stderr).expect("Hook bypass stderr UTF-8");
+        .expect("warm Hook binary image");
+    assert!(warm.status.success());
 
-    assert!(output.status.success(), "stdout={stdout} stderr={stderr}");
-    assert_eq!(stdout.trim(), "{}");
-    assert!(
-        stderr.contains("route=bootstrap-no-agent-bypass"),
-        "stderr={stderr}"
-    );
-    assert!(
-        !stderr.contains("local-policy-evaluator"),
-        "stderr={stderr}"
-    );
-    assert!(!stderr.contains("runtime-server"), "stderr={stderr}");
+    for event in [
+        "pre-tool",
+        "permission-request",
+        "post-tool",
+        "stop",
+        "notification",
+        "user-prompt",
+        "session-start",
+        "subagent-start",
+        "subagent-stop",
+    ] {
+        let mut child = Command::new(binary)
+            .args(["hook", event, "--client", "codex"])
+            .env_clear()
+            .env("ASP_NO_AGENT", "1")
+            .env("ASP_HOOK_BOOTSTRAP_TRACE", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn no-agent Hook bypass");
+        let mut held_open_stdin = Some(child.stdin.take().expect("piped Hook stdin"));
+        let started = std::time::Instant::now();
+        let status = loop {
+            if let Some(status) = child.try_wait().expect("poll no-agent Hook bypass") {
+                break status;
+            }
+            if started.elapsed() >= std::time::Duration::from_millis(750) {
+                child.kill().expect("kill blocked no-agent Hook bypass");
+                drop(held_open_stdin.take());
+                let output = child
+                    .wait_with_output()
+                    .expect("collect blocked no-agent Hook bypass output");
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                panic!(
+                    "ASP_NO_AGENT Hook bypass waited for stdin or another synchronous dependency: event={event} stdout={stdout} stderr={stderr}"
+                );
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        };
+        drop(held_open_stdin.take());
+        let output = child
+            .wait_with_output()
+            .expect("collect no-agent Hook bypass output");
+        let stdout = String::from_utf8(output.stdout).expect("Hook bypass stdout UTF-8");
+        let stderr = String::from_utf8(output.stderr).expect("Hook bypass stderr UTF-8");
+
+        assert!(
+            status.success(),
+            "event={event} stdout={stdout} stderr={stderr}"
+        );
+        assert_eq!(stdout.trim(), "{}", "event={event}");
+        assert!(
+            stderr.contains("route=process-entry-no-agent-bypass"),
+            "event={event} stderr={stderr}"
+        );
+        assert!(
+            !stderr.contains("local-policy-evaluator"),
+            "event={event} stderr={stderr}"
+        );
+        assert!(
+            !stderr.contains("runtime-server"),
+            "event={event} stderr={stderr}"
+        );
+    }
 }
 
 #[test]

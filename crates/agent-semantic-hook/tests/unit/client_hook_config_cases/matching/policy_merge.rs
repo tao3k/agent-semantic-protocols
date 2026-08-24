@@ -267,8 +267,15 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
     assert!(
         asp_search_decision
             .message
-            .contains("compact `asp <language> search ...` route without `--json`"),
+            .contains("compact `asp <language> search ...`"),
         "registered search dispatch must explain the normal compact Explorer path: {}",
+        asp_search_decision.message
+    );
+    assert!(
+        asp_search_decision
+            .message
+            .contains("selector-bearing `asp <language> query ...`"),
+        "registered search dispatch must keep exact query in the same Explorer capability: {}",
         asp_search_decision.message
     );
     assert!(
@@ -315,6 +322,79 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
             .all(|value| value.as_str() != Some("asp sync"))
     );
 
+    let asp_query_decision = classify_hook_with_config(HookClassificationRequest {
+        registry: &registry,
+        config: &config,
+        platform: "codex",
+        event: "pre-tool",
+        payload: &json!({
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source"
+            }
+        }),
+    });
+
+    assert_eq!(asp_query_decision.decision, DecisionKind::Deny);
+    assert_eq!(
+        asp_query_decision
+            .fields
+            .get("configRuleId")
+            .and_then(|id| id.as_str()),
+        Some("registered-asp-reasoning-search")
+    );
+    assert_eq!(
+        asp_query_decision
+            .fields
+            .get("intent")
+            .and_then(|value| value.as_str()),
+        Some("reasoning-search")
+    );
+    assert_eq!(
+        asp_query_decision
+            .fields
+            .get("registeredLanguageId")
+            .and_then(|value| value.as_str()),
+        Some("rust")
+    );
+
+    for (language_id, command) in [
+        (
+            "org",
+            "asp org search owner docs/spec.org items --query capability --workspace . --view seeds",
+        ),
+        (
+            "md",
+            "asp md query --selector 'md://README.md#item/heading/runtime' --workspace . --projection source",
+        ),
+    ] {
+        let provider_route_decision = classify_hook_with_config(HookClassificationRequest {
+            registry: &registry,
+            config: &config,
+            platform: "codex",
+            event: "pre-tool",
+            payload: &json!({
+                "tool_name": "Bash",
+                "tool_input": {"command": command}
+            }),
+        });
+        assert_eq!(provider_route_decision.decision, DecisionKind::Deny);
+        assert_eq!(
+            provider_route_decision
+                .fields
+                .get("configRuleId")
+                .and_then(|id| id.as_str()),
+            Some("registered-asp-reasoning-search")
+        );
+        assert_eq!(
+            provider_route_decision
+                .fields
+                .get("registeredLanguageId")
+                .and_then(|value| value.as_str()),
+            Some(language_id)
+        );
+    }
+
     let direct_rg_decision = classify_hook_with_config(HookClassificationRequest {
         registry: &registry,
         config: &config,
@@ -336,10 +416,7 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
         Some("deny-uncontrolled-source-search-commands")
     );
 
-    for command in [
-        "asp help",
-        "asp rust query --selector 'rust://src/lib.rs#item/function/run' --projection source",
-    ] {
+    for command in ["asp help"] {
         let non_reasoning_decision = classify_hook_with_config(HookClassificationRequest {
             registry: &registry,
             config: &config,

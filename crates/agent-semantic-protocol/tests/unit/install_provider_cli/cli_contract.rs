@@ -4,7 +4,7 @@ use std::process::Command;
 fn install_language_help_separates_locked_release_from_develop_mode() {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args(["install", "language", "--help"])
-        .env("ASP_NO_AGENT_PLATFORM", "1")
+        .env("ASP_NO_AGENT", "1")
         .output()
         .expect("run asp install language --help");
 
@@ -34,7 +34,7 @@ fn install_language_help_separates_locked_release_from_develop_mode() {
 fn install_language_usage_separates_locked_release_from_develop_mode() {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args(["install", "language"])
-        .env("ASP_NO_AGENT_PLATFORM", "1")
+        .env("ASP_NO_AGENT", "1")
         .output()
         .expect("run asp install language without a language id");
 

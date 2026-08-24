@@ -17,6 +17,10 @@ const ROOT_COMMANDS: &[(&str, &str)] = &[
     ("healthcheck", "Check ASP runtime health"),
     ("server", "Manage the Global ASP Runtime Server"),
     (
+        "schema",
+        "Materialize or verify shared language schema bundles",
+    ),
+    (
         "live-corpus",
         "Qualify and publish provider live-corpus artifacts",
     ),
@@ -181,6 +185,31 @@ fn cloud_command() -> Command {
         .bin_name("asp cloud")
         .about("Inspect optional cloud state")
         .subcommand(Command::new("status").about("Show cloud status"))
+}
+
+fn schema_command() -> Command {
+    command_with_subcommands(
+        "schema",
+        "asp schema",
+        "Materialize or verify shared language schema bundles",
+        &[
+            ("materialize", "Publish Schema Manager-owned language bundles"),
+            ("verify", "Verify Schema Manager-owned language bundles"),
+        ],
+    )
+    .arg(
+        Arg::new("workspace")
+            .long("workspace")
+            .value_name("ROOT")
+            .help("Select the ASP source workspace"),
+    )
+    .arg(
+        Arg::new("language")
+            .long("language")
+            .value_name("LANGUAGE_ID")
+            .action(ArgAction::Append)
+            .help("Select one or more language bundles"),
+    )
 }
 
 fn hook_command() -> Command {

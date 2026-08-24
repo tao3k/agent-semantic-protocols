@@ -1,9 +1,66 @@
 use serde_json::json;
 
+#[test]
+fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
+    let search = crate::AspClientSearchRequest {
+        schema_id: "agent.semantic-protocols.asp-client-search-request".to_owned(),
+        schema_version: "1".to_owned(),
+        operation: "pipe".to_owned(),
+        query: "RuntimeAspClient".to_owned(),
+    };
+    search.validate_schema_identity().expect("search identity");
+
+    let exact = crate::AspClientExactQueryRequest {
+        schema_id: "agent.semantic-protocols.asp-client-exact-query-request".to_owned(),
+        schema_version: "1".to_owned(),
+        selector: "rust://src/lib.rs#item/function/example".to_owned(),
+        projection: "callable-skeleton".to_owned(),
+    };
+    exact.validate_schema_identity().expect("query identity");
+
+    let owner = crate::AspClientOwnerSearchRequest {
+        schema_id: "agent.semantic-protocols.asp-client-owner-search-request".to_owned(),
+        schema_version: "1".to_owned(),
+        owner_path: "src/lib.rs".to_owned(),
+        query: "example".to_owned(),
+        view: "seeds".to_owned(),
+    };
+    owner.validate_schema_identity().expect("owner identity");
+
+    assert_ne!(
+        search.schema_id,
+        "agent.semantic-protocols.runtime-provider-search-request"
+    );
+}
+
+#[test]
+fn provider_route_bindings_roundtrip_and_reject_identity_drift() {
+    let request = crate::RuntimeProviderSearchRequest {
+        schema_id: "agent.semantic-protocols.runtime-provider-search-request".to_owned(),
+        schema_version: "1".to_owned(),
+        operation_id: "op".to_owned(),
+        workspace_identity: "workspace".to_owned(),
+        language_id: "rust".to_owned(),
+        scope: "production".to_owned(),
+        query_plan: json!({"method":"lexical","terms":["owner"],"view":"seeds"}),
+    };
+    let encoded = serde_json::to_vec(&request).expect("encode");
+    let decoded: crate::RuntimeProviderSearchRequest =
+        serde_json::from_slice(&encoded).expect("decode");
+    assert!(decoded.validate_schema_identity().is_ok());
+    let mut invalid = decoded;
+    invalid.schema_id.push_str(".v1");
+    assert!(invalid.validate_schema_identity().is_err());
+}
+
 use super::*;
 
 fn digest(character: char) -> String {
     format!("blake3-256:{}", character.to_string().repeat(64))
+}
+
+fn request_id(value: &str) -> ClientRequestId {
+    ClientRequestId::new(value).expect("request id")
 }
 
 fn catalog() -> ClientProtocolCatalog {
@@ -45,8 +102,8 @@ fn base() -> ClientFrameBase {
         schema_version: SCHEMA_VERSION.to_owned(),
         protocol_id: CLIENT_PROTOCOL_ID.to_owned(),
         protocol_version: CLIENT_PROTOCOL_VERSION.to_owned(),
-        session_id: "session".to_owned(),
-        workspace_identity: "workspace".to_owned(),
+        session_id: ClientSessionId::new("session").expect("session id"),
+        workspace_identity: ClientWorkspaceIdentity::new("workspace").expect("workspace id"),
         trace_context: None,
     }
 }
@@ -57,7 +114,7 @@ fn catalog_is_closed_and_generation_pinned() {
     catalog.validate().expect("valid catalog");
     let unknown = ClientFrame::Request {
         base: base(),
-        request_id: "request".to_owned(),
+        request_id: request_id("request"),
         catalog_generation: catalog.catalog_generation.clone(),
         workspace_generation: catalog.workspace_generation.clone(),
         method: "python.query".to_owned(),
@@ -74,7 +131,8 @@ fn client_lifecycle_has_no_provider_control_transition() {
     let catalog = catalog();
     let initialize = ClientFrame::Initialize {
         base: base(),
-        request_id: "initialize".to_owned(),
+        request_id: request_id("initialize"),
+        project_root: "/workspace".to_owned(),
         client_info: ClientInfo {
             name: "test".to_owned(),
             version: "1".to_owned(),
@@ -86,7 +144,7 @@ fn client_lifecycle_has_no_provider_control_transition() {
         .expect("initialize");
     let shutdown = ClientFrame::Shutdown {
         base: base(),
-        request_id: "shutdown".to_owned(),
+        request_id: request_id("shutdown"),
     };
     let state = state.admit(&shutdown, &catalog).expect("shutdown");
     let exit = ClientFrame::Exit { base: base() };
@@ -101,7 +159,7 @@ fn cancellation_preserves_initialized_session() {
     let catalog = catalog();
     let cancel = ClientFrame::Cancel {
         base: base(),
-        request_id: "request".to_owned(),
+        request_id: request_id("request"),
     };
     assert_eq!(
         ClientSessionState::Initialized
@@ -116,7 +174,7 @@ fn request_parameters_are_executable_and_fail_closed() {
     let catalog = catalog();
     let request = ClientFrame::Request {
         base: base(),
-        request_id: "request".to_owned(),
+        request_id: request_id("request"),
         catalog_generation: catalog.catalog_generation.clone(),
         workspace_generation: catalog.workspace_generation.clone(),
         method: "rust.search".to_owned(),
@@ -126,6 +184,19 @@ fn request_parameters_are_executable_and_fail_closed() {
         .admit(&request, &catalog)
         .expect_err("wrong parameter type must fail");
     assert_eq!(error.reason_kind, "client-request-parameter-type-mismatch");
+}
+
+#[test]
+fn catalog_parameter_identity_matches_provider_route_input_slots() {
+    let mut catalog = catalog();
+    catalog.methods[0].parameters[0].name = "ownerPath".to_owned();
+    catalog.validate().expect("camelCase provider input slot");
+
+    catalog.methods[0].parameters[0].name = "owner-path".to_owned();
+    let error = catalog
+        .validate()
+        .expect_err("kebab name must drift closed");
+    assert_eq!(error.reason_kind, "client-parameter-name-invalid");
 }
 
 #[test]
@@ -139,7 +210,7 @@ fn runtime_context_cannot_be_injected_by_a_client() {
     });
     let request = ClientFrame::Request {
         base: base(),
-        request_id: "request".to_owned(),
+        request_id: request_id("request"),
         catalog_generation: catalog.catalog_generation.clone(),
         workspace_generation: catalog.workspace_generation.clone(),
         method: "rust.search".to_owned(),
@@ -177,7 +248,8 @@ fn session_and_workspace_identity_are_bound_at_initialize() {
         .admit(
             &ClientFrame::Initialize {
                 base: base(),
-                request_id: "initialize".to_owned(),
+                request_id: request_id("initialize"),
+                project_root: "/workspace".to_owned(),
                 client_info: ClientInfo {
                     name: "test".to_owned(),
                     version: "1".to_owned(),
@@ -188,12 +260,13 @@ fn session_and_workspace_identity_are_bound_at_initialize() {
         )
         .expect("initialize");
     let mut crossed = base();
-    crossed.workspace_identity = "other-workspace".to_owned();
+    crossed.workspace_identity =
+        ClientWorkspaceIdentity::new("other-workspace").expect("workspace id");
     let error = session
         .admit(
             &ClientFrame::Request {
                 base: crossed,
-                request_id: "request".to_owned(),
+                request_id: request_id("request"),
                 catalog_generation: catalog.catalog_generation.clone(),
                 workspace_generation: catalog.workspace_generation.clone(),
                 method: "rust.search".to_owned(),

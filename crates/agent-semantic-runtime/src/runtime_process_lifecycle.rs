@@ -167,8 +167,8 @@ mod tests {
 
     #[test]
     fn other_signal_errors_remain_fail_closed() {
-        let error = classify_kill_result(-1, std::io::Error::from_raw_os_error(libc::EPERM))
-            .unwrap_err();
+        let error =
+            classify_kill_result(-1, std::io::Error::from_raw_os_error(libc::EPERM)).unwrap_err();
         assert!(!error.is_empty());
     }
 }

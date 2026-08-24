@@ -119,15 +119,26 @@ fn client_profile_completes_bounded_control_work() {
 }
 
 #[test]
-fn cli_profile_never_collapses_hook_processes_onto_one_tokio_worker() {
+fn interactive_client_profile_uses_the_host_tokio_capacity() {
     let expected = agent_semantic_client_db::runtime_server_runtime::adaptive_tokio_worker_count();
-    let runtime = RuntimeServerRuntimeBuilder::new_cli()
+    let runtime = RuntimeServerRuntimeBuilder::new_client()
         .enable_all()
         .build()
-        .expect("CLI runtime");
+        .expect("interactive client runtime");
     let workers =
         runtime.block_on(async { tokio::runtime::Handle::current().metrics().num_workers() });
     assert_eq!(workers, expected);
+}
+
+#[test]
+fn hook_client_profile_is_a_single_current_thread_tokio_scheduler() {
+    let runtime = RuntimeServerRuntimeBuilder::new_hook_client()
+        .enable_all()
+        .build()
+        .expect("Hook client runtime");
+    let workers =
+        runtime.block_on(async { tokio::runtime::Handle::current().metrics().num_workers() });
+    assert_eq!(workers, 1);
 }
 
 #[test]

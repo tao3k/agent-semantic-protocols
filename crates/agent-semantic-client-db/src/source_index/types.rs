@@ -21,23 +21,6 @@ pub fn client_db_source_index_file_count(file_count: usize) -> u32 {
     file_count.min(u32::MAX as usize) as u32
 }
 
-/// Content address of the disposable source-index projection for one snapshot.
-#[must_use]
-pub fn client_db_source_index_artifact_digest(
-    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
-) -> String {
-    agent_semantic_content_identity::hash_derived_artifact_key(
-        agent_semantic_content_identity::DerivedArtifactKeyInput {
-            artifact_kind: "source-index",
-            schema_id: "asp.source-index-artifact.v1",
-            snapshot_root: &source_snapshot.root_digest,
-            provider_digest: &source_snapshot.provider_digest,
-            parameters: &[],
-        },
-    )
-    .value
-}
-
 /// Deterministic generation identity; there is deliberately no timestamp fallback.
 #[must_use]
 pub fn client_db_source_index_generation_id_for_snapshot(
@@ -45,7 +28,7 @@ pub fn client_db_source_index_generation_id_for_snapshot(
 ) -> CacheGenerationId {
     CacheGenerationId::from(format!(
         "source-index-{}",
-        client_db_source_index_artifact_digest(source_snapshot)
+        agent_semantic_search_projection::source_index_artifact_digest(source_snapshot)
     ))
 }
 

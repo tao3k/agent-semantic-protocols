@@ -91,6 +91,33 @@ async fn exit_receipt_roundtrip_preserves_terminal_state() {
     assert!(receipt.clean_drain);
 }
 
+#[tokio::test]
+async fn stale_exit_receipt_is_ignored_for_new_owner_epoch() {
+    let dir = tempdir().unwrap();
+    agent_semantic_client_db::runtime_server_lifecycle::publish_with_errors(
+        dir.path(),
+        11,
+        true,
+        vec!["stale".into()],
+    )
+    .await
+    .unwrap();
+    assert!(
+        agent_semantic_client_db::runtime_server_lifecycle::read_owner_exit_for(dir.path(), 12,)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        agent_semantic_client_db::runtime_server_lifecycle::read_owner_exit_for(dir.path(), 11)
+            .await
+            .unwrap()
+            .unwrap()
+            .owner_epoch,
+        11
+    );
+}
+
 fn fixture_endpoint(state_home: &std::path::Path, owner_epoch: u64) -> RuntimeServerEndpoint {
     let runtime_root = agent_semantic_client_db::runtime_server_runtime_base(state_home).unwrap();
     let binding_token = format!("binding-{owner_epoch}");
@@ -99,7 +126,7 @@ fn fixture_endpoint(state_home: &std::path::Path, owner_epoch: u64) -> RuntimeSe
         blake3::hash(format!("{owner_epoch}\0{binding_token}\0{identity_value}").as_bytes())
             .to_hex();
     RuntimeServerEndpoint {
-        schema_id: "agent.semantic-protocols.runtime-server-endpoint.v1".to_owned(),
+        schema_id: "agent.semantic-protocols.runtime-server-endpoint".to_owned(),
         schema_version: "1".to_owned(),
         transport_contract_digest:
             agent_semantic_client_db::runtime_server_control::runtime_server_transport_contract_digest(),

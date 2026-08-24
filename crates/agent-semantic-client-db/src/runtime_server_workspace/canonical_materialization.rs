@@ -266,6 +266,22 @@ impl WorkspaceCanonicalMaterialization {
         source_blobs: &crate::ClientDbSourceIndexSourceBlobs,
         project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
     ) -> Result<Self, String> {
+        Self::from_source_index_inner(
+            workspace_identity.into(),
+            source_snapshot,
+            import,
+            source_blobs,
+            project_resolutions,
+        )
+    }
+
+    fn from_source_index_inner(
+        workspace_identity: String,
+        source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+        import: &crate::ClientDbSourceIndexImport,
+        source_blobs: &crate::ClientDbSourceIndexSourceBlobs,
+        project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
+    ) -> Result<Self, String> {
         let mut owners = std::collections::BTreeMap::new();
         for (owner_path, bytes) in source_blobs.iter() {
             owners.insert(
@@ -487,6 +503,10 @@ impl WorkspaceCanonicalMaterialization {
     }
 
     pub fn validate_persisted(&self, workspace_identity: &str) -> Result<(), String> {
+        self.validate_persisted_inner(workspace_identity)
+    }
+
+    fn validate_persisted_inner(&self, workspace_identity: &str) -> Result<(), String> {
         self.workspace_snapshot.validate()?;
         if self.schema_id != WORKSPACE_CANONICAL_MATERIALIZATION_SCHEMA_ID
             || self.schema_version != "1"
@@ -641,6 +661,7 @@ impl WorkspaceCanonicalMaterialization {
             .iter()
             .map(|file_hash| (file_hash.path.as_str(), file_hash))
             .collect::<std::collections::BTreeMap<_, _>>();
+        let selectors = self.selector_membership_index();
         for imported_owner in &import.owners {
             let owner_path = imported_owner.owner_path.as_str();
             let materialized_owner = owners.get(owner_path).ok_or_else(|| {
@@ -698,10 +719,8 @@ impl WorkspaceCanonicalMaterialization {
                     proof.structural_selector()
                 )
             })?;
-            let materialized_selector = owner
-                .selectors
-                .iter()
-                .find(|candidate| candidate.selector == proof.structural_selector())
+            let materialized_selector = selectors
+                .get(&(proof.owner_path(), proof.structural_selector()))
                 .ok_or_else(|| {
                     format!(
                         "workspace canonical materialization omitted proof selector: ownerPath={} selector={}",
@@ -733,6 +752,7 @@ impl WorkspaceCanonicalMaterialization {
             .iter()
             .map(|owner| (owner.owner_path.as_str(), owner))
             .collect::<std::collections::BTreeMap<_, _>>();
+        let selectors = self.selector_membership_index();
         let mut expected_selectors = std::collections::BTreeSet::new();
         for selector in &import.selectors {
             let record = &selector.projection_record;
@@ -766,10 +786,8 @@ impl WorkspaceCanonicalMaterialization {
                     proof.owner_path(), proof.structural_selector()
                 )
             })?;
-            let materialized_selector = owner
-                .selectors
-                .iter()
-                .find(|candidate| candidate.selector == proof.structural_selector())
+            let materialized_selector = selectors
+                .get(&(proof.owner_path(), proof.structural_selector()))
                 .ok_or_else(|| {
                     format!(
                         "workspace canonical materialization omitted proof selector: ownerPath={} selector={}",
@@ -789,15 +807,7 @@ impl WorkspaceCanonicalMaterialization {
             }
             expected_selectors.insert((proof.owner_path(), proof.structural_selector()));
         }
-        let actual_selectors =
-            self.owners
-                .iter()
-                .flat_map(|owner| {
-                    owner.selectors.iter().map(move |selector| {
-                        (owner.owner_path.as_str(), selector.selector.as_str())
-                    })
-                })
-                .collect::<std::collections::BTreeSet<_>>();
+        let actual_selectors = selectors.keys().copied().collect::<std::collections::BTreeSet<_>>();
         if actual_selectors != expected_selectors {
             return Err(
                 "workspace canonical materialization selector set differs from parser proofs"
@@ -805,5 +815,24 @@ impl WorkspaceCanonicalMaterialization {
             );
         }
         Ok(())
+    }
+
+    fn selector_membership_index(
+        &self,
+    ) -> std::collections::BTreeMap<
+        (&str, &str),
+        &crate::runtime_server_workspace::WorkspaceSelectorSnapshot,
+    > {
+        self.owners
+            .iter()
+            .flat_map(|owner| {
+                owner.selectors.iter().map(move |selector| {
+                    (
+                        (owner.owner_path.as_str(), selector.selector.as_str()),
+                        selector,
+                    )
+                })
+            })
+            .collect()
     }
 }

@@ -34,7 +34,7 @@ macro_rules! binary_with_required_activation {
 }
 
 #[test]
-fn active_receipt_without_exact_fixture_is_typed_cold_required() {
+fn active_receipt_without_exact_fixture_is_typed_generation_unavailable() {
     let receipt =
         agent_semantic_content_identity::active_artifact_merkle::ActiveAspArtifactReceipt::build(
             "empty-active-artifact-set",
@@ -55,7 +55,7 @@ fn active_receipt_without_exact_fixture_is_typed_cold_required() {
         .expect("build empty active artifact receipt");
     let error = exact_selector_fixture_active_artifact_input_v1(&receipt)
         .expect_err("receipt without exact fixture must fail closed");
-    assert!(error.contains("state=cold-required"));
+    assert!(error.contains("state=generation-unavailable"));
     assert!(error.contains("reasonKind=active-fixture-missing"));
 }
 

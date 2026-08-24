@@ -94,7 +94,7 @@ fn host_native_edit_is_not_derived_from_shell_syntax() {
 }
 
 #[test]
-fn opaque_shell_stage_does_not_invent_read_or_edit() {
+fn shell_path_operand_does_not_replace_the_native_host_action() {
     let read_matcher = AgentActionMatch::new(AgentActionMatchConfig {
         action_any: vec![HookClientActionKind::Read],
         ..AgentActionMatchConfig::default()
@@ -135,7 +135,7 @@ fn host_execute_and_semantic_read_are_independent_predicate_axes() {
         "Bash".to_owned(),
     );
 
-    assert!(!matcher.matches(&runtime(), &opaque, None));
+    assert!(matcher.matches(&runtime(), &opaque, None));
     assert!(matcher.matches(&runtime(), &redirected, None));
 }
 

@@ -19,10 +19,11 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["languageId", "packageRoot", "rootSets", "roots", "providerOwned"],
+        "required": ["languageId", "packageRoot", "bundleRoot", "rootSets", "roots", "providerOwned"],
         "properties": {
           "languageId": { "type": "string", "minLength": 1 },
           "packageRoot": { "type": "string", "minLength": 1 },
+          "bundleRoot": { "type": "string", "minLength": 1 },
           "rootSets": { "type": "array", "items": { "type": "string", "minLength": 1 } },
           "roots": { "$ref": "#/$defs/schemaNames" },
           "providerOwned": { "$ref": "#/$defs/schemaNames" }

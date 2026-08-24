@@ -1,7 +1,7 @@
 //! Workspace generation evidence contract tests.
 
 use agent_semantic_content_identity::workspace_generation_evidence::{
-    WorkspaceGenerationAuthorityV1, WorkspaceGenerationEvidenceError, WorkspaceGenerationEvidenceV1,
+    WorkspaceGenerationAuthority, WorkspaceGenerationEvidenceError, WorkspaceGenerationEvidenceV1,
 };
 
 fn complete(root: &str) -> WorkspaceGenerationEvidenceV1 {
@@ -16,7 +16,7 @@ fn complete(root: &str) -> WorkspaceGenerationEvidenceV1 {
 #[test]
 fn graph_authority_fails_closed_without_an_active_generation() {
     assert_eq!(
-        WorkspaceGenerationAuthorityV1::cold_required().admit_graph(&complete("root-a")),
+        WorkspaceGenerationAuthority::unavailable().admit_graph(&complete("root-a")),
         Err(WorkspaceGenerationEvidenceError::GenerationAuthorityMissing)
     );
 }

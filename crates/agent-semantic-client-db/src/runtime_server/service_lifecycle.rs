@@ -100,8 +100,6 @@ impl RuntimeServer {
         let listener = bind_runtime_server_listener(Path::new(&endpoint.socket_path))?;
         let data_listener =
             bind_runtime_server_listener(Path::new(&endpoint.data_plane_socket_path))?;
-        let provider_listener =
-            bind_runtime_server_listener(Path::new(&endpoint.provider_plane_socket_path))?;
         let provider_register_state_path =
             crate::runtime_server_control::provider_register_state_path(Path::new(
                 &endpoint.provider_plane_socket_path,
@@ -121,13 +119,14 @@ impl RuntimeServer {
         );
         let workspace_count = workspace_registry.subscribe_workspace_count();
         let (shutdown_sender, shutdown) = watch::channel(false);
+        let (readiness_sender, _readiness) =
+            watch::channel(crate::runtime_server_control::RuntimeServerState::Starting);
         Ok(Self {
             artifact_catalog,
             workspace_registry,
             endpoint,
             listener,
             data_listener,
-            provider_listener,
             provider_register: Arc::new(
                 crate::runtime_provider_register::RuntimeProviderRegister::from_seed_with_store(
                     agent_semantic_provider_protocol::builtin_provider_registrations()?,
@@ -141,6 +140,9 @@ impl RuntimeServer {
             shutdown_handle: RuntimeServerShutdownHandle {
                 sender: shutdown_sender,
             },
+            readiness_sender,
+            generation_publication:
+                crate::runtime_server_publication::WorkspaceGenerationPublication::new(),
             status_memory,
             events: None,
             generation_admission: None,

@@ -36,7 +36,7 @@ pub fn canonical_recovery_admission(event: Option<&str>, input: &[u8]) -> bool {
     let exact_server_control = words.get(asp_index + 1).map(String::as_str) == Some("server")
         && matches!(
             words.get(asp_index + 2).map(String::as_str),
-            Some("status" | "reconcile" | "restart")
+            Some("status" | "start" | "restart")
         )
         && words.len() == asp_index + 3;
     if exact_server_control {

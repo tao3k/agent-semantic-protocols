@@ -19,6 +19,7 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
     validate_agent_org_artifacts(config.agent_org_artifacts.as_ref())?;
     validate_recovery_prompt(&config.recovery_prompt)?;
     validate_profiles(&config.profiles)?;
+    validate_provider_routes(&config.provider_routes)?;
     validate_rule_profile_references(&config.rules, &config.profiles)?;
     validate_command_profiles(&config.command_profiles)?;
     validate_capability_policies(&config.capability_policies)?;
@@ -29,6 +30,30 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
         &config.command_profiles,
         &config.capability_policies,
     )
+}
+
+fn validate_provider_routes(
+    routes: &[super::document::HookClientProviderRouteIdentity],
+) -> Result<(), String> {
+    let mut identities = HashSet::new();
+    let mut languages = HashSet::new();
+    for route in routes {
+        validate_non_empty("providerRoutes[].languageId", &route.language_id)?;
+        validate_non_empty("providerRoutes[].providerId", &route.provider_id)?;
+        if !identities.insert((route.language_id.as_str(), route.provider_id.as_str())) {
+            return Err(format!(
+                "duplicate provider route identity `{}/{}`",
+                route.language_id, route.provider_id
+            ));
+        }
+        if !languages.insert(route.language_id.as_str()) {
+            return Err(format!(
+                "provider facade language `{}` resolves to more than one provider identity",
+                route.language_id
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_rule_profile_references(

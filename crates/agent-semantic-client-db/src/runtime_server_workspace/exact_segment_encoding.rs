@@ -13,7 +13,20 @@ use super::{
 };
 use crate::runtime_server_workspace::{
     ExactProjectionKind, WorkspaceDerivedProjectionSnapshot, WorkspaceMemoryGeneration,
+    WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot,
 };
+
+type ByteRange = (usize, usize);
+type OwnerRow = ([u8; 32], ByteRange, ByteRange, usize, usize, [u8; 32]);
+type SelectorRow = ([u8; 32], ByteRange, ByteRange, usize, usize, usize, usize, usize);
+type EvidenceContexts = std::collections::BTreeMap<String, Vec<u8>>;
+
+struct ProjectionRowSink<'a> {
+    strings: &'a mut Vec<u8>,
+    blobs: &'a mut Vec<u8>,
+    selector_rows: Vec<SelectorRow>,
+    evidence_contexts: EvidenceContexts,
+}
 
 pub(crate) fn encode_exact_projection_segment(
     generation: &WorkspaceMemoryGeneration,
@@ -46,68 +59,9 @@ pub(crate) fn encode_exact_projection_segment(
         generation.source_snapshot.root_digest.as_bytes(),
     );
     let workspace_identity = push_bytes(&mut strings, generation.workspace_identity.as_bytes());
-    let mut owner_rows = Vec::with_capacity(owners.len());
-    let mut selector_rows = Vec::with_capacity(selector_count);
     let mut blobs = Vec::new();
-    let mut evidence_contexts = std::collections::BTreeMap::new();
-    for (owner_index, owner) in owners.iter().enumerate() {
-        let path = push_bytes(&mut strings, owner.owner_path.as_bytes());
-        let digest = push_bytes(&mut strings, owner.content_digest.as_bytes());
-        let blob_offset = blobs.len();
-        blobs.extend_from_slice(&owner.bytes);
-        owner_rows.push((
-            *blake3::hash(owner.owner_path.as_bytes()).as_bytes(),
-            path,
-            digest,
-            blob_offset,
-            owner.bytes.len(),
-            owner_projection_digest(owner),
-        ));
-        for selector in &owner.selectors {
-            let text = push_bytes(&mut strings, selector.selector.as_bytes());
-            let source_kind = push_bytes(&mut strings, b"source");
-            selector_rows.push((
-                projection_key_hash("source", &selector.selector),
-                text,
-                source_kind,
-                owner_index,
-                selector.byte_start,
-                selector.byte_end,
-                0,
-                0,
-            ));
-            for projection in &selector.derived_projections {
-                let projection_kind =
-                    push_bytes(&mut strings, projection.projection_kind.as_bytes());
-                let (projection_bytes, evidence_context) = resident_projection_payload(projection)?;
-                if let Some(context) = evidence_context {
-                    let context_bytes = serde_json::to_vec(&context)
-                        .map_err(|error| format!("encode projection evidence context: {error}"))?;
-                    if let Some(existing) = evidence_contexts
-                        .insert(context.evidence_context_ref.clone(), context_bytes.clone())
-                        && existing != context_bytes
-                    {
-                        return Err(
-                            "projection evidence context ref resolved to conflicting identity"
-                                .to_owned(),
-                        );
-                    }
-                }
-                let projection_blob_offset = blobs.len();
-                blobs.extend_from_slice(&projection_bytes);
-                selector_rows.push((
-                    projection_key_hash(projection.projection_kind.as_str(), &selector.selector),
-                    text,
-                    projection_kind,
-                    owner_index,
-                    selector.byte_start,
-                    selector.byte_end,
-                    projection_blob_offset,
-                    projection_bytes.len(),
-                ));
-            }
-        }
-    }
+    let (owner_rows, mut selector_rows, evidence_contexts) =
+        collect_projection_rows(&owners, selector_count, &mut strings, &mut blobs)?;
     selector_rows.sort_by(|left, right| {
         left.0.cmp(&right.0).then_with(|| {
             slice_from_range(&strings, left.2)
@@ -261,6 +215,109 @@ pub(crate) fn encode_exact_projection_segment(
     segment[string_table_offset..blob_offset].copy_from_slice(&strings);
     segment[blob_offset..].copy_from_slice(&blobs);
     Ok(segment)
+}
+
+fn collect_projection_rows(
+    owners: &[&WorkspaceOwnerSnapshot],
+    selector_count: usize,
+    strings: &mut Vec<u8>,
+    blobs: &mut Vec<u8>,
+) -> Result<(Vec<OwnerRow>, Vec<SelectorRow>, EvidenceContexts), String> {
+    let mut owner_rows = Vec::with_capacity(owners.len());
+    let mut sink = ProjectionRowSink {
+        strings,
+        blobs,
+        selector_rows: Vec::with_capacity(selector_count),
+        evidence_contexts: EvidenceContexts::new(),
+    };
+    for (owner_index, owner) in owners.iter().enumerate() {
+        append_owner_projection_rows(owner_index, owner, &mut owner_rows, &mut sink)?;
+    }
+    Ok((owner_rows, sink.selector_rows, sink.evidence_contexts))
+}
+
+fn append_owner_projection_rows(
+    owner_index: usize,
+    owner: &WorkspaceOwnerSnapshot,
+    owner_rows: &mut Vec<OwnerRow>,
+    sink: &mut ProjectionRowSink<'_>,
+) -> Result<(), String> {
+    let path = push_bytes(sink.strings, owner.owner_path.as_bytes());
+    let digest = push_bytes(sink.strings, owner.content_digest.as_bytes());
+    let blob_offset = sink.blobs.len();
+    sink.blobs.extend_from_slice(&owner.bytes);
+    owner_rows.push((
+        *blake3::hash(owner.owner_path.as_bytes()).as_bytes(),
+        path,
+        digest,
+        blob_offset,
+        owner.bytes.len(),
+        owner_projection_digest(owner),
+    ));
+    for selector in &owner.selectors {
+        append_selector_projection_rows(owner_index, selector, sink)?;
+    }
+    Ok(())
+}
+
+fn append_selector_projection_rows(
+    owner_index: usize,
+    selector: &WorkspaceSelectorSnapshot,
+    sink: &mut ProjectionRowSink<'_>,
+) -> Result<(), String> {
+    let text = push_bytes(sink.strings, selector.selector.as_bytes());
+    let source_kind = push_bytes(sink.strings, b"source");
+    sink.selector_rows.push((
+        projection_key_hash("source", &selector.selector),
+        text,
+        source_kind,
+        owner_index,
+        selector.byte_start,
+        selector.byte_end,
+        0,
+        0,
+    ));
+    for projection in &selector.derived_projections {
+        append_derived_projection_row(owner_index, selector, projection, text, sink)?;
+    }
+    Ok(())
+}
+
+fn append_derived_projection_row(
+    owner_index: usize,
+    selector: &WorkspaceSelectorSnapshot,
+    projection: &WorkspaceDerivedProjectionSnapshot,
+    text: ByteRange,
+    sink: &mut ProjectionRowSink<'_>,
+) -> Result<(), String> {
+    let projection_kind = push_bytes(sink.strings, projection.projection_kind.as_bytes());
+    let (projection_bytes, evidence_context) = resident_projection_payload(projection)?;
+    if let Some(context) = evidence_context {
+        let context_bytes = serde_json::to_vec(&context)
+            .map_err(|error| format!("encode projection evidence context: {error}"))?;
+        if let Some(existing) = sink
+            .evidence_contexts
+            .insert(context.evidence_context_ref.clone(), context_bytes.clone())
+            && existing != context_bytes
+        {
+            return Err(
+                "projection evidence context ref resolved to conflicting identity".to_owned(),
+            );
+        }
+    }
+    let projection_blob_offset = sink.blobs.len();
+    sink.blobs.extend_from_slice(&projection_bytes);
+    sink.selector_rows.push((
+        projection_key_hash(projection.projection_kind.as_str(), &selector.selector),
+        text,
+        projection_kind,
+        owner_index,
+        selector.byte_start,
+        selector.byte_end,
+        projection_blob_offset,
+        projection_bytes.len(),
+    ));
+    Ok(())
 }
 
 fn resident_projection_payload(

@@ -176,11 +176,31 @@ fn runtime_artifact_content_digest(path: &Path) -> Result<String, String> {
     Ok(hasher.finalize().to_hex().to_string())
 }
 
+fn stage_runtime_artifact(source: &Path, staged: &Path) -> Result<(), String> {
+    // The content-addressed store is an immutable snapshot boundary. A hard
+    // link would leave the published artifact on the source executable's inode,
+    // so a later build-side chmod or in-place update could mutate the active
+    // Runtime artifact and invalidate its identity receipt.
+    std::fs::copy(source, staged).map_err(|error| {
+        format!(
+            "failed to snapshot runtime artifact {}: {error}",
+            staged.display()
+        )
+    })?;
+    let permissions = std::fs::metadata(source)
+        .map_err(|error| format!("failed to inspect {}: {error}", source.display()))?
+        .permissions();
+    std::fs::set_permissions(staged, permissions)
+        .map_err(|error| format!("failed to chmod {}: {error}", staged.display()))?;
+    Ok(())
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeArtifactPublication {
     pub path: PathBuf,
     pub source_path: PathBuf,
     pub source_generation: String,
+    pub source_generation_algorithm: String,
     pub status: &'static str,
     pub artifact_digest: String,
     pub reference: RuntimeArtifactReference,
@@ -511,17 +531,7 @@ fn publish_content_artifact(
     let staged = temporary_runtime_artifact_path(&artifact_root.join(file_name));
     remove_stale_staged_artifact(&staged)?;
     let staged_snapshot = (|| -> Result<String, String> {
-        std::fs::copy(&source_identity, &staged).map_err(|error| {
-            format!(
-                "failed to snapshot runtime artifact {}: {error}",
-                staged.display()
-            )
-        })?;
-        let permissions = std::fs::metadata(&source_identity)
-            .map_err(|error| format!("failed to inspect {}: {error}", source_identity.display()))?
-            .permissions();
-        std::fs::set_permissions(&staged, permissions)
-            .map_err(|error| format!("failed to chmod {}: {error}", staged.display()))?;
+        stage_runtime_artifact(&source_identity, &staged)?;
         runtime_artifact_content_digest(&staged)
     })();
     let content_digest = match staged_snapshot {
@@ -641,6 +651,7 @@ fn publish_content_artifact(
         path: target.to_path_buf(),
         source_path: source_identity,
         source_generation,
+        source_generation_algorithm: "filesystem-generation-v1".to_owned(),
         status,
         artifact_digest: content_digest,
         identity: reference.identity.clone(),
@@ -1009,4 +1020,51 @@ pub async fn load_runtime_artifact_catalog(
         Some(generation) => catalog.with_provider_catalog_generation(generation),
         None => catalog,
     })
+}
+
+#[cfg(test)]
+mod artifact_staging_tests {
+    use super::stage_runtime_artifact;
+
+    #[cfg(unix)]
+    #[test]
+    fn publication_snapshot_has_an_independent_inode() {
+        use std::os::unix::fs::MetadataExt;
+        let root = tempfile::tempdir().expect("tempdir");
+        let source = root.path().join("source");
+        let staged = root.path().join("staged");
+        std::fs::write(&source, b"artifact").expect("source");
+        stage_runtime_artifact(&source, &staged).expect("stage");
+        assert_ne!(
+            std::fs::metadata(source).expect("source metadata").ino(),
+            std::fs::metadata(staged).expect("staged metadata").ino()
+        );
+    }
+
+    #[test]
+    fn publication_snapshot_preserves_bytes() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let source = root.path().join("source");
+        let staged = root.path().join("staged");
+        std::fs::write(&source, b"artifact").expect("source");
+        stage_runtime_artifact(&source, &staged).expect("snapshot");
+        assert_eq!(
+            std::fs::read(source).expect("source bytes"),
+            std::fs::read(staged).expect("staged bytes")
+        );
+    }
+
+    #[test]
+    fn staging_failure_preserves_active_and_healthy_slots() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let active = root.path().join("active");
+        let healthy = root.path().join("healthy");
+        std::fs::write(&active, b"active").expect("active");
+        std::fs::write(&healthy, b"healthy").expect("healthy");
+        let result =
+            stage_runtime_artifact(&root.path().join("missing"), &root.path().join("staged"));
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(active).expect("active bytes"), b"active");
+        assert_eq!(std::fs::read(healthy).expect("healthy bytes"), b"healthy");
+    }
 }

@@ -60,6 +60,19 @@ def test_live_corpus_search_query_plan_covers_the_complete_locked_matrix() -> No
         "rust",
         "typescript",
     }
+    assert plan["clientProtocol"]["appliesToCaseCount"] == len(plan["cases"]) == 17
+    assert plan["clientProtocol"]["maximumResidentMicros"] <= 1000
+    assert plan["clientProtocol"]["sessionPolicy"] == "one-initialize-per-session"
+    assert plan["clientProtocol"]["readyEffects"] == ["mpsc", "oneshot", "cancel", "response"]
+    assert plan["clientProtocol"]["forbiddenReadyEffects"] == [
+        "process", "filesystem", "dbWrite", "generationMutation",
+        "providerActivation", "controlPoll",
+    ]
+    assert plan["clientProtocol"]["nonReadyDispatchCount"] == 0
+    assert plan["clientProtocol"]["residualTaskCount"] == 0
+    assert plan["clientProtocol"]["p50MaximumMicros"] == 250
+    assert plan["clientProtocol"]["p99MaximumMicros"] == 700
+    assert plan["clientProtocol"]["maxMaximumMicros"] == 1000
     assert {provider_id for _, _, provider_id in planned.values()} == {
         "asp-gerbil-scheme",
         "asp-julia",
@@ -92,6 +105,24 @@ def test_every_locked_corpus_has_fixed_search_query_and_telemetry_budgets() -> N
 
 def test_receipt_requires_complete_sub_millisecond_latency_distributions() -> None:
     receipt_schema = load_json(RECEIPT_SCHEMA_PATH)
+    assert "clientProtocol" in receipt_schema["required"]
+    client_receipt = receipt_schema["$defs"]["clientProtocolReceipt"]
+    assert client_receipt["properties"]["cancelOutcome"]["const"] == "cancelled"
+    assert client_receipt["properties"]["requestOutcome"]["const"] == "cancelled"
+    assert client_receipt["properties"]["qualifiedCaseCount"]["const"] == 17
+    assert client_receipt["properties"]["sessionPolicy"]["const"] == "one-initialize-per-session"
+    assert client_receipt["properties"]["readyEffects"]["const"] == [
+        "mpsc", "oneshot", "cancel", "response",
+    ]
+    assert client_receipt["properties"]["forbiddenReadyEffects"]["const"] == [
+        "process", "filesystem", "dbWrite", "generationMutation",
+        "providerActivation", "controlPoll",
+    ]
+    assert client_receipt["properties"]["nonReadyDispatchCount"]["const"] == 0
+    assert client_receipt["properties"]["residualTaskCount"]["const"] == 0
+    assert client_receipt["properties"]["p50MaximumMicros"]["const"] == 250
+    assert client_receipt["properties"]["p99MaximumMicros"]["const"] == 700
+    assert client_receipt["properties"]["maxMaximumMicros"]["const"] == 1000
     case_schema = receipt_schema["$defs"]["caseReceipt"]
     required = set(case_schema["required"])
     assert {

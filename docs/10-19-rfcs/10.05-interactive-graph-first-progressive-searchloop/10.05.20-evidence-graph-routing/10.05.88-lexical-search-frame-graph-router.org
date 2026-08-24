@@ -64,32 +64,29 @@ instead of treating recall as reasoning. Other relation modes are reserved for
 explicit route requests: =bridge= for paths connecting seeds across owners, and
 =compare= for side-by-side seed contrast.
 
-The canonical human and agent CLI is positional multi-seed input. The parser
-collects positional seeds until the first surface token such as =owner=,
-=items=, =tests=, or =deps=. Repeated =--query= flags remain the stable
-machine/script form and the escape hatch for ambiguous seeds. Delimiter bundles
-such as =manifest_path|try_map_resources|plugin_root= may be accepted as a
-legacy compact input, but they are not the recommended prompt-facing UX.
+The canonical client contract is the shared multi-seed request schema carried
+over the Runtime Server transport.  Human CLI parsing is only a client adapter
+and owns no alternate acquisition, indexing, provider-startup, or fallback
+semantics.
 ** Acquisition Order
 
 Candidate acquisition is shared across languages and ordered by cost:
 
 #+begin_src text
-warm-overlay/source-index
+active immutable generation
+  -> warm-overlay/source-index
   -> source-index-owner-evidence
   -> session-dynamic-overlay
-  -> provider-parser-owner-items
-  -> bounded-cold-scan
-  -> degraded-finder
+  -> generation-unavailable
 #+end_src
 Source-index owner evidence is valid when the index has non-stale owner/path candidates but lacks bounded selector proof. It lets GraphRouter jump to owner/item refinement without rebuilding the overlay.
 
-The warm route is the target path for repeated lexical searches.  It may use the
-Turso overlay/source-index adapter or another search-owned warm index, but it
-must return provider-neutral candidates and avoid provider process startup,
-workspace-scale file walks, and source body projection.  Cold scan is an
-audited recovery route, not the normal route.  Native finder output is degraded
-evidence and must be labeled as such.
+The warm route is the only query execution path.  It reads a Search-owned,
+immutable published generation and returns provider-neutral candidates without
+database access, provider process startup, workspace-scale file walks, source
+body projection, or native finder execution.  When no admitted generation
+exists, the request returns =generation-unavailable=.  The Runtime's
+incremental publisher repairs that state outside the query transaction.
 
 ** Cross-Language Boundary
 
@@ -119,7 +116,7 @@ owner.path
 item.kind
 item.name
 item.selector          ; parser-owned structural selector when available
-proof.source           ; native-parser, source-index, overlay, degraded-finder
+proof.source           ; native-parser, source-index, resident-overlay
 proof.span             ; debug hint only, never an executable selector
 edges.calls[]
 edges.tests[]
@@ -140,7 +137,7 @@ asp gerbil-scheme search owner src/contract/json-schema-valid.ss items --query '
 #+end_src
 must not force the agent to execute a raw source read from a =path:start-end= selector. The compact =seeds= view may render only the selected graph route, but the provider-owned evidence behind that route must include the def identity, native-parser proof, and bounded call edges needed for the router to choose the next exact action.
 
-JSON is a transport, not a view. =--view seeds --json= keeps the same route semantics as =--view seeds=, but in non-agent/debug automation it returns the bounded =OwnerItemEvidence= packet instead of the compact token-saving text receipt. Inside normal agent sessions, JSON remains disabled by default to avoid token blowups. Setting =ASP_NO_AGENT_PLATFORM=1= is the explicit debug escape hatch and MUST NOT still collapse the response into compact text.
+JSON is a transport, not a view. =--view seeds --json= keeps the same route semantics as =--view seeds=, but in non-agent/debug automation it returns the bounded =OwnerItemEvidence= packet instead of the compact token-saving text receipt. Inside normal agent sessions, JSON remains disabled by default to avoid token blowups. Setting =ASP_NO_AGENT=1= is the explicit, complete non-Agent pass-through and MUST NOT still collapse the response into compact text.
 
 For Lisp-family providers, owner item evidence is not limited to definitions and call forms. Module imports, exports, package/build inputs, and generated launcher inputs are first-class graph facts because they are the routeable evidence for build failures such as a compiled launcher reading an absent module while a package spec omits it. These facts should be projected into =OwnerItemEvidence= with =item.kind= values such as =import=, =export=, or =build-input= and explicit edges such as =imports=, =exports=, =builds=, and =generatedFrom=. The compact receipt may display only the winning route, but the backing packet must let GraphRouter explain whether a path came from parser syntax, source-index lookup, package spec, or generated build metadata. A source-index miss and a build-graph hit for the same term is a state delta, not an empty search result.
 
@@ -181,13 +178,68 @@ document selectors. Display line ranges stay hints. If the router cannot select
 an executable node, it must say why and choose one bounded next action.
 
 ** Performance Gate
-=asp cache source-index refresh= is a warm check, not an index builder. It may validate and reuse the latest Turso source-index generation, or return =status=cold-required= with a bounded next action. It MUST NOT collect provider workspace scope files, start provider processes, or perform a workspace-scale source walk. Cold materialization belongs to the explicit =asp cache source-index rebuild= route, and scenario gates SHOULD cover both =refresh-without-generation-is-bounded= and =rebuild-then-refresh-reuses-generation=.
+Search/query never refreshes, reconciles, rebuilds, or opens a DB.  Language
+clients stream typed owner deltas to the Runtime Server writer; publication
+validates the candidate generation and atomically advances its pointer.  A
+missing generation is a typed admission result, not permission for request-time
+recovery.
 
-The warm algorithm path excludes CLI startup and initial index/bootstrap.  The
-scenario gate for a warmed lexical frame should measure repeated in-process
-queries and keep them in the millisecond or low-sub-100ms range.  CLI startup is
-a separate diagnostic.  A cold scan can have a larger budget only when the route
-receipt marks =acquisitionRoute=bounded-cold-scan= and explains the miss.
+=query= and =search= have different read contracts.  An exact =query= already
+contains a parser-owned owner identity and structural selector.  It MUST resolve
+that selector directly against the admitted resident exact-projection mapping;
+it MUST NOT enter lexical/source-index ranking.  =search= consumes the admitted
+resident lexical, owner, graph, and Merkle indexes and may return a selector as
+its next exact action.  The two operations share generation authority, not a
+query algorithm or a DB facade.
+
+A DB may participate before publication when materializing a bounded navigation
+index, including a root/shallow Merkle accelerator.  Publication MUST encode
+that result into the immutable generation.  Depth, root, or cache state MUST NOT
+trigger a request-time DB lookup: the warm reader either resolves the admitted
+memory/mmap index or returns a typed generation/evidence miss.
+
+** Dynamic Projection and Index Depth
+
+=agent-semantic-search-projection= owns the immutable search projection model,
+segment/table codec, and resident mmap reader.  It does not own ranking,
+transport, Runtime lifecycle, provider scheduling, or DB publication.
+=agent-semantic-search= owns query decomposition, candidate selection, and
+ranking over that projection.  The Runtime Server owns admission and transport;
+=agent-semantic-client-db= is a write-side durability/materialization component.
+
+The resident projection uses three deliberately different access structures:
+
+1. The exact selector map is generation-local Memory/mmap state keyed by the
+   parser-owned selector and owner identity.  Exact =query= reads this map
+   directly.
+2. The shallow navigation index covers only stable workspace, package/module,
+   and owner-path axes.  A DB MAY persist its publication baseline, but the
+   complete admitted index is loaded resident before readiness.  Query-time DB
+   access is forbidden.
+3. Deeper syntax/item projections are owner-local, content-digest keyed, and
+   Memory-resident.  They are materialized incrementally or lazily from the
+   language client's parser projection and are invalidated only when that owner
+   digest changes.  They MUST NOT become a workspace-wide DB index.
+
+Here =depth= is search-navigation depth, not Merkle proof depth.  The content
+identity Merkle tree may still commit every admitted owner.  Persisting that
+identity proof does not authorize a durable global index of every nested syntax
+node.
+
+An edit publishes an overlay containing changed owners and tombstones over the
+resident shallow baseline.  It drops only the changed owners' deeper projection
+arenas.  The required work is therefore proportional to changed owners and
+their local parser facts, never to total workspace syntax-node count.  Search
+first selects bounded owners from the shallow index, then evaluates their
+resident owner-local projections.  An absent deep projection is a typed
+projection-evidence state; it is not permission to query the DB or rebuild the
+workspace synchronously.
+
+The performance gate measures repeated in-process reads of the admitted mmap
+generation.  Its hard warm P99 target is below 1 ms, with zero DB opens, DB
+queries, provider subprocesses, native finder subprocesses, source scans, and
+cache writes in every query receipt.  Compilation and initial background
+publication are measured separately and never charged to query latency.
 
 Search scenarios are declared through the ASP Rust harness policy interface in
 =build-support/asp-rust-project-harness-policy=, not by an ad-hoc registry

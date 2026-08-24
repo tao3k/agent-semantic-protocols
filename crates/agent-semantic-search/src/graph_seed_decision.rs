@@ -197,39 +197,10 @@ pub struct GraphTurboSeedPlanInput<'a> {
 }
 
 pub fn graph_turbo_seed_plan(input: GraphTurboSeedPlanInput<'_>) -> Value {
-    let reason = if input.query_seed_present {
-        "query"
-    } else if input.fallback_owner_seed_count > 0 {
-        "fallback-owner"
-    } else {
-        "empty"
-    };
-    let mut risk_factors = Vec::new();
-    if input.seed_ids.is_empty() {
-        risk_factors.push("empty-seed-frontier");
-    }
-    if input.fallback_owner_seed_count > 0 {
-        risk_factors.push("fallback-owner");
-    }
-    if input.query_present && !input.query_seed_present {
-        risk_factors.push("query-seed-missing");
-    }
-    risk_factors.extend(input.seed_decision.risk_factors.iter().copied());
-    let seed_quality = if input.seed_ids.is_empty() {
-        "fail"
-    } else if risk_factors.is_empty() {
-        "good"
-    } else {
-        "review"
-    };
-    let recommended_actions = if risk_factors.is_empty() {
-        vec!["keep-query-seed"]
-    } else {
-        risk_factors
-            .iter()
-            .filter_map(|risk| recommended_action_for_seed_risk(risk))
-            .collect::<Vec<_>>()
-    };
+    let reason = seed_plan_reason(&input);
+    let risk_factors = seed_plan_risk_factors(&input);
+    let seed_quality = seed_plan_quality(&input, &risk_factors);
+    let recommended_actions = seed_plan_recommended_actions(&risk_factors);
     let selection = SearchActionSelection::for_first_action(SearchEvidenceState::Unknown, "seed");
     let evidence_states = SearchEvidenceState::all()
         .iter()
@@ -266,4 +237,53 @@ pub fn graph_turbo_seed_plan(input: GraphTurboSeedPlanInput<'_>) -> Value {
             "seedWhenKnownSelectorCount": selection.seed_when_known_selector_count,
         },
     })
+}
+
+fn seed_plan_reason(input: &GraphTurboSeedPlanInput<'_>) -> &'static str {
+    if input.query_seed_present {
+        "query"
+    } else if input.fallback_owner_seed_count > 0 {
+        "fallback-owner"
+    } else {
+        "empty"
+    }
+}
+
+fn seed_plan_risk_factors(input: &GraphTurboSeedPlanInput<'_>) -> Vec<&'static str> {
+    let mut risk_factors = Vec::new();
+    if input.seed_ids.is_empty() {
+        risk_factors.push("empty-seed-frontier");
+    }
+    if input.fallback_owner_seed_count > 0 {
+        risk_factors.push("fallback-owner");
+    }
+    if input.query_present && !input.query_seed_present {
+        risk_factors.push("query-seed-missing");
+    }
+    risk_factors.extend(input.seed_decision.risk_factors.iter().copied());
+    risk_factors
+}
+
+fn seed_plan_quality(
+    input: &GraphTurboSeedPlanInput<'_>,
+    risk_factors: &[&str],
+) -> &'static str {
+    if input.seed_ids.is_empty() {
+        "fail"
+    } else if risk_factors.is_empty() {
+        "good"
+    } else {
+        "review"
+    }
+}
+
+fn seed_plan_recommended_actions(risk_factors: &[&str]) -> Vec<&'static str> {
+    if risk_factors.is_empty() {
+        vec!["keep-query-seed"]
+    } else {
+        risk_factors
+            .iter()
+            .filter_map(|risk| recommended_action_for_seed_risk(risk))
+            .collect::<Vec<_>>()
+    }
 }

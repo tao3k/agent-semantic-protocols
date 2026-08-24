@@ -6,6 +6,7 @@ fn main() {
         std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is defined"),
     );
     let agents_root = manifest_dir.join("../../agents");
+    let source_root = manifest_dir.join("../..");
     let output_path = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR is defined"))
         .join("embedded_agent_assets.rs");
 
@@ -44,6 +45,30 @@ fn main() {
         panic!(
             "failed to write embedded agent assets {}: {error}",
             output_path.display()
+        )
+    });
+
+    let provider_register = asp_provider_registry_build::resolve_provider_register(&source_root)
+        .expect("resolve canonical provider identity register");
+    for path in &provider_register.input_paths {
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
+    let mut identities = String::from("&[\n");
+    for identity in provider_register.identities {
+        writeln!(
+            identities,
+            "    ({:?}, {:?}),",
+            identity.language_id, identity.provider_id
+        )
+        .expect("write embedded provider route identity");
+    }
+    identities.push_str("]\n");
+    let identities_path = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR is defined"))
+        .join("provider_route_identities.rs");
+    std::fs::write(&identities_path, identities).unwrap_or_else(|error| {
+        panic!(
+            "failed to write provider route identities {}: {error}",
+            identities_path.display()
         )
     });
 }

@@ -9,13 +9,20 @@
       "provider-query-pack-descriptor.schema.json",
       "provider-runtime-contract-descriptor.schema.json",
       "asp-client-server-descriptor.schema.json",
+      "provider-runtime-request-stream-frame.schema.json",
+      "provider-runtime-request-stream-ack.schema.json",
+      "provider-language-projection-batch-request.schema.json",
+      "provider-language-projection-batch-response.schema.json",
       "provider-workspace-install.schema.json",
       "language-schema-bundle-receipt.schema.json"
     ],
     "client-protocol": [
       "asp-client-protocol-catalog.schema.json",
       "asp-client-frame.schema.json",
-      "asp-client-conformance.schema.json"
+      "asp-client-conformance.schema.json",
+      "asp-client-search-request.schema.json",
+      "asp-client-exact-query-request.schema.json",
+      "asp-client-owner-search-request.schema.json"
     ],
     "project-resolution": [
       "provider-project-resolution-request.schema.json",
@@ -69,13 +76,15 @@
     {
       "languageId": "rust",
       "packageRoot": "languages/rust-lang-project-harness",
+      "bundleRoot": "languages/rust-lang-project-harness/schemas",
       "rootSets": ["provider-contract", "client-protocol", "project-resolution", "core-query", "agent-reasoning"],
-      "roots": ["provider-syntax-query-request.schema.json", "provider-syntax-query-response.schema.json", "provider-language-projection-batch-request.schema.json", "provider-language-projection-batch-response.schema.json", "semantic-invariant-candidate.v1.schema.json", "semantic-compare-packet.v1.schema.json"],
+      "roots": ["provider-syntax-query-request.schema.json", "provider-syntax-query-response.schema.json", "semantic-invariant-candidate.v1.schema.json", "semantic-compare-packet.v1.schema.json"],
       "providerOwned": ["rust-ast-patch-real-project-evidence.v1.schema.json", "rust-semantic-capabilities.v1.schema.json"]
     },
     {
       "languageId": "typescript",
       "packageRoot": "languages/typescript-lang-project-harness",
+      "bundleRoot": "languages/typescript-lang-project-harness/schemas",
       "rootSets": ["provider-contract", "client-protocol", "project-resolution", "core-query", "agent-reasoning"],
       "roots": [],
       "providerOwned": ["typescript-semantic-capabilities.v1.schema.json"]
@@ -83,6 +92,7 @@
     {
       "languageId": "python",
       "packageRoot": "languages/python-lang-project-harness",
+      "bundleRoot": "languages/python-lang-project-harness/schemas",
       "rootSets": ["provider-contract", "client-protocol", "project-resolution", "core-query", "agent-reasoning"],
       "roots": [],
       "providerOwned": ["python-semantic-capabilities.v1.schema.json"]
@@ -90,6 +100,7 @@
     {
       "languageId": "julia",
       "packageRoot": "languages/JuliaLangProjectHarness.jl",
+      "bundleRoot": "languages/JuliaLangProjectHarness.jl/schemas",
       "rootSets": ["provider-contract", "client-protocol", "project-resolution", "core-query", "agent-reasoning"],
       "roots": [],
       "providerOwned": []
@@ -97,9 +108,26 @@
     {
       "languageId": "gerbil-scheme",
       "packageRoot": "languages/gerbil-scheme-language-project-harness",
+      "bundleRoot": "languages/gerbil-scheme-language-project-harness/schemas",
       "rootSets": ["provider-contract", "client-protocol", "project-resolution", "core-query", "agent-reasoning"],
       "roots": ["semantic-extension-pattern-mapping.v1.schema.json", "semantic-language-evidence.v1.schema.json", "semantic-runtime-source-acquisition.v1.schema.json", "semantic-type-proof.v1.schema.json"],
       "providerOwned": ["semantic-gerbil-scheme-harness-info.v1.schema.json"]
+    },
+    {
+      "languageId": "org",
+      "packageRoot": "languages/orgize",
+      "bundleRoot": "languages/orgize/provider/org/schemas",
+      "rootSets": ["provider-contract", "client-protocol", "project-resolution", "core-query", "agent-reasoning"],
+      "roots": [],
+      "providerOwned": []
+    },
+    {
+      "languageId": "md",
+      "packageRoot": "languages/orgize",
+      "bundleRoot": "languages/orgize/provider/md/schemas",
+      "rootSets": ["provider-contract", "client-protocol", "project-resolution", "core-query", "agent-reasoning"],
+      "roots": [],
+      "providerOwned": []
     }
   ]
 }

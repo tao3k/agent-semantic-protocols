@@ -44,6 +44,7 @@ pub struct AspClientServerPeer {
     launch_args: Vec<String>,
     health_path: String,
     request_path: String,
+    request_stream_path: String,
     shutdown_path: String,
     next_request_id: std::sync::atomic::AtomicU64,
 }
@@ -57,6 +58,11 @@ struct AspClientServerState {
 }
 
 const MAX_BOOTSTRAP_STDERR_BYTES: usize = 16 * 1024;
+/// Provider HTTP servers must admit this wire-frame size without changing
+/// language-local server limits.  Corpus-sized operations are expressed as a
+/// sequence of bounded frames instead of one unbounded request body.
+const MAX_PROVIDER_HTTP_REQUEST_FRAME_BYTES: usize = 896 * 1024;
+const PROVIDER_HTTP_REQUEST_STREAM_CHUNK_BYTES: usize = 128 * 1024;
 #[derive(Clone)]
 struct AspClientServerHttpClient {
     client: reqwest::Client,
@@ -118,7 +124,12 @@ impl AspClientServerHttpClient {
             .await
             .map_err(|error| format!("read ASP Client Server response: {error}"))?;
         if !status.is_success() {
-            return Err(format!("ASP Client Server returned status {status}"));
+            let body_prefix = String::from_utf8_lossy(
+                &response_body[..response_body.len().min(4096)],
+            );
+            return Err(format!(
+                "reasonKind=asp-client-server-http-status status={status} bodyPrefix={body_prefix:?}"
+            ));
         }
         Ok(response_body.to_vec())
     }
@@ -179,6 +190,7 @@ impl AspClientServerPeer {
             launch_args: spec.args,
             health_path: spec.health_path,
             request_path: spec.request_path,
+            request_stream_path: "/v1/provider-runtime-stream".to_owned(),
             shutdown_path: spec.shutdown_path,
             next_request_id: std::sync::atomic::AtomicU64::new(0),
         })
@@ -278,17 +290,20 @@ impl AspClientServerPeer {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             .saturating_add(1);
         let request_id = format!("provider-http-{request_id}");
-        let request = ProviderRuntimeRequestFrame::new(&request_id, operation, &payload)?;
+        let request =
+            ProviderRuntimeRequestFrame::new(&request_id, operation.as_str(), &payload)?;
         let request = serde_json::to_vec(&request)
             .map_err(|error| format!("encode provider HTTP server request: {error}"))?;
         let request_prefix = String::from_utf8_lossy(&request)
             .chars()
             .take(4096)
             .collect::<String>();
-        let request_path = self.request_path.clone();
-        let response = self
-            .http_json("POST", &request_path, Some(&request))
-            .await?;
+        let response = if request.len() <= MAX_PROVIDER_HTTP_REQUEST_FRAME_BYTES {
+            let request_path = self.request_path.clone();
+            self.http_json("POST", &request_path, Some(&request)).await?
+        } else {
+            self.send_streamed_request(&request_id, &request).await?
+        };
         let response = serde_json::from_slice::<ProviderRuntimeResponseFrame>(&response).map_err(
         |error| {
             let prefix = String::from_utf8_lossy(&response)
@@ -315,6 +330,57 @@ impl AspClientServerPeer {
                 .error
                 .unwrap_or_else(|| "provider HTTP server returned an error".to_owned())),
         }
+    }
+
+    async fn send_streamed_request(
+        &self,
+        stream_id: &str,
+        request: &[u8],
+    ) -> Result<Vec<u8>, String> {
+        let request = std::str::from_utf8(request)
+            .map_err(|error| format!("provider runtime request frame is not UTF-8: {error}"))?;
+        let chunks = utf8_chunks(request, PROVIDER_HTTP_REQUEST_STREAM_CHUNK_BYTES);
+        if chunks.len() > 1024 {
+            return Err(format!(
+                "reasonKind=provider-runtime-request-stream-too-large frameCount={} maxFrameCount=1024",
+                chunks.len()
+            ));
+        }
+        let stream_path = self.request_stream_path.clone();
+        let mut final_response = None;
+        for (frame_index, request_chunk) in chunks.iter().enumerate() {
+            let frame = serde_json::json!({
+                "schemaId": "agent.semantic-protocols.provider-runtime-request-stream-frame",
+                "schemaVersion": "1",
+                "streamId": stream_id,
+                "frameIndex": frame_index,
+                "frameCount": chunks.len(),
+                "requestChunk": request_chunk,
+            });
+            let frame = serde_json::to_vec(&frame)
+                .map_err(|error| format!("encode provider request stream frame: {error}"))?;
+            if frame.len() > MAX_PROVIDER_HTTP_REQUEST_FRAME_BYTES {
+                return Err("reasonKind=provider-runtime-request-stream-frame-too-large".to_owned());
+            }
+            let response = self.http_json("POST", &stream_path, Some(&frame)).await?;
+            if frame_index + 1 == chunks.len() {
+                final_response = Some(response);
+            } else {
+                let ack: serde_json::Value = serde_json::from_slice(&response)
+                    .map_err(|error| format!("decode provider request stream ack: {error}"))?;
+                if ack.get("schemaId").and_then(serde_json::Value::as_str)
+                    != Some("agent.semantic-protocols.provider-runtime-request-stream-ack")
+                    || ack.get("schemaVersion").and_then(serde_json::Value::as_str) != Some("1")
+                    || ack.get("streamId").and_then(serde_json::Value::as_str) != Some(stream_id)
+                    || ack.get("frameIndex").and_then(serde_json::Value::as_u64)
+                        != Some(frame_index as u64)
+                    || ack.get("state").and_then(serde_json::Value::as_str) != Some("accepted")
+                {
+                    return Err("provider request stream acknowledgement drift".to_owned());
+                }
+            }
+        }
+        final_response.ok_or_else(|| "provider request stream emitted no frames".to_owned())
     }
 
     async fn stop(&self) -> Result<(), String> {
@@ -351,6 +417,20 @@ impl AspClientServerPeer {
         state.stderr_task.abort();
         Ok(())
     }
+}
+
+fn utf8_chunks(value: &str, max_bytes: usize) -> Vec<&str> {
+    let mut chunks = Vec::new();
+    let mut start = 0;
+    while start < value.len() {
+        let mut end = (start + max_bytes).min(value.len());
+        while !value.is_char_boundary(end) {
+            end -= 1;
+        }
+        chunks.push(&value[start..end]);
+        start = end;
+    }
+    chunks
 }
 
 impl ProviderRuntimePeer for AspClientServerPeer {

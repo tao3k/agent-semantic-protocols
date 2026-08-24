@@ -267,7 +267,7 @@ fn every_rule_has_a_near_miss() {
     let scenarios = [
         (
             "registered-asp-reasoning-search",
-            shell("asp rust query --selector item"),
+            shell("asp rust healthcheck"),
         ),
         ("testing-role-dispatch", shell("cargo metadata --no-deps")),
         (

@@ -4,12 +4,6 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 
-/// Maximum time a request may wait for a Runtime-owned generation admission
-/// to reach a terminal receipt. The build itself remains Runtime-owned after
-/// this deadline and is never cancelled with the request.
-pub const RUNTIME_SERVER_GENERATION_ADMISSION_DEADLINE: std::time::Duration =
-    std::time::Duration::from_millis(800);
-
 pub use candidate::{
     WorkspaceGenerationBuild, WorkspaceGenerationBuildCompletion, WorkspaceGenerationBuildFailure,
     WorkspaceGenerationBuildFuture, WorkspaceGenerationBuildMode, WorkspaceGenerationBuilder,
@@ -30,6 +24,8 @@ pub use mutation::{
 mod artifact_publication;
 #[path = "runtime_server_admission_candidate.rs"]
 mod candidate;
+#[path = "runtime_server_admission_contract.rs"]
+mod contract;
 #[path = "runtime_server_admission_dispatcher.rs"]
 pub(crate) mod dispatcher;
 #[path = "runtime_server_admission_entry.rs"]
@@ -42,12 +38,14 @@ mod mutation;
 mod query_coverage;
 #[path = "runtime_server_admission_query_demand.rs"]
 mod query_demand;
+#[path = "runtime_server_admission_registry.rs"]
+mod registry;
 #[path = "runtime_server_admission_restore.rs"]
 mod restore;
 
-use crate::runtime_server_admission_registry::AdmissionRegistry;
 use entry_authority::AdmissionEntryAuthority;
 use query_coverage::QueryTargetCoverage;
+use registry::AdmissionRegistry;
 
 pub const WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-workspace-generation-admission";
@@ -67,7 +65,7 @@ pub enum WorkspaceGenerationAdmissionState {
     Cancelled,
 }
 
-pub use crate::runtime_server_admission_contract::{
+pub use contract::{
     WorkspaceGenerationAdmissionMode, WorkspaceGenerationAdmissionTrigger,
 };
 

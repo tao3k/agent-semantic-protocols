@@ -62,3 +62,5 @@ pub use runtime_wire::{
 pub use transport::{
     ProviderProcessOutput, ProviderProcessSupervisor, provider_process_limits_from_environment,
 };
+pub mod grpc_session;
+pub use grpc_session::GrpcProviderSessionClient;

@@ -45,7 +45,94 @@ of =Ready=; an idle client may be drained only by the Runtime authority.  Every
 transition and request publishes the shared lifecycle/OpenTelemetry evidence
 required by native Scenario and Live Corpus qualification.
 
+** ASP Client Server contract and catalog routes
+
+The Runtime-published loopback HTTP endpoint is the single client authority.
+Each client performs =Initialize -> catalog -> Request -> Cancel/Cancelled ->
+Shutdown= over =POST /protocol/frame=.  The immutable catalog uses unversioned
+=schemaId= values with =schemaVersion= "1".  Canonical provider routes are
+=<language>.search=, =<language>.query=, and =<language>.search.owner=; their
+request and response schema IDs are respectively the runtime search,
+provider-native exact, and provider-native owner contracts.  The Runtime Server
+performs the workspace-generation Tokio watch barrier before dispatch.  A
+=Building=, =Failed=, or =Cancelled= generation is a typed admission response;
+the client never reads an older generation.
+
+CLI language commands are facades over this HTTP catalog.  They MUST NOT call
+provider transport, resident projections, provider caches, or local workspace
+generation/session APIs directly.  Provider lifecycle and cancellation remain
+owned by the server's bounded =mpsc=, =oneshot=, and =watch= tasks; no second
+CLI authority or fallback route is permitted.
+
+** Cross-process Runtime readiness contract
+
+The supervisor pre-binds one per-owner Tokio =UnixDatagram= readiness sink
+before spawning the detached daemon.  The daemon publishes typed
+=Starting=, =Ready=, =Failed=, or =Cancelled= receipts to that sink.  The
+datagram is only a bounded notification channel: in-process status remains the
+Runtime Server's =watch= authority, and the parent accepts a readiness event
+only when it matches the current owner and endpoint binding.  The parent waits
+on the readiness datagram or the owner terminal event; it MUST NOT poll files,
+use a 30-second readiness deadline, or run a 10ms probe loop.
+
+Every readiness receipt binds =requestId=, =readinessToken=, =processId=,
+=ownerEpoch=, =endpointBindingToken=, =runtimeBinaryIdentity=,
+=artifactCatalogDigest=, and =transportContractDigest=.  Stale epoch,
+token, process, artifact, or endpoint messages are typed ignored evidence.
+The central Schema Manager owns
+=agent.semantic-protocols.runtime-server-readiness=, Schema Version 1;
+language packages MUST materialize this schema and MUST NOT copy or redefine
+it.
+
+For every Ready HTTP =search=, =query=, and =search.owner= request, the
+acceptance gate is warm p50 <= 250 microseconds, p99 <= 700 microseconds, and
+hard max < 1000 microseconds.  A non-Ready typed admission response has the
+same hard max.  Startup, provider build, and generation admission are separate
+measurements and MUST NOT block or count as query latency.  Receipts record
+HTTP codec, catalog/generation gate, Tokio mpsc/oneshot, resident provider,
+and response-serialization segments; the 300 microsecond headroom is part of
+the contract.  No timeout is used to implement this SLA.
+
+Live Corpus qualification records the same boundary as an executable contract.
+For a Ready session the only admitted effects are =mpsc=, =oneshot=, =cancel=,
+and =response=.  Process creation, compilation, filesystem preparation, database
+writes, generation mutation, provider activation, and control polling are
+forbidden Ready effects and are measured outside the Search/Query distribution.
+The Version 1 plan and receipt both bind one initialization per session, zero
+non-Ready dispatches, zero residual tasks, p50 <= 250 microseconds, p99 <= 700
+microseconds, and max <= 1000 microseconds.  A decoder that omits any of these
+fields is contract drift and fails qualification; removing the field from the
+plan or treating build time as Runtime latency is not a repair.
+
+** Package authority and dependency DAG
+
+=agent-semantic-client-protocol= owns only version-one typed frames, catalog,
+and route bindings.  =agent-semantic-client-server= owns the transport-neutral
+HTTP/JSON session and cancellation protocol and MUST NOT depend on
+=agent-semantic-client-db=.  =agent-semantic-client-db= owns Runtime state,
+workspace admission, durable registry, and generation receipts.  The public
+=agent-semantic-client= owns the Runtime HTTP client facade and agent-facing
+client composition.  =agent-semantic-provider-transport= owns provider process
+transport and resident provider actors.  A future
+=agent-semantic-runtime-server= package owns daemon assembly, Runtime HTTP
+dispatcher, resident search service, and identity handoff; it MUST NOT depend
+on =agent-semantic-protocol=.
+
+The =agent-semantic-protocol= package is only CLI composition, parser, command
+facade, and renderer ownership.  It MUST NOT own the Runtime daemon, HTTP
+session, durable workspace database, provider transport, or a second Runtime
+HTTP client facade.  Until the runtime-server package extraction is complete,
+the existing server modules remain a tracked Batch gate; each extraction batch
+must move the module and strengthen the authority test before deleting its
+protocol wrapper.
+
 ** Development installation authority
+
+The Runtime invoker is fail-closed: a source/current executable whose identity
+does not equal the active candidate MUST NOT spawn the stable Runtime path.  The
+typed repair is =asp install binary=; there is no silent fallback to an older
+binary.  The transition is candidate -> readiness -> healthy.  If readiness or
+health qualification fails, the previous healthy artifact remains authoritative.
 
 Provider source selection belongs to State Home, not to the install command's
 current directory.  =ASP_STATE_HOME= owns the committed development source
@@ -108,6 +195,24 @@ catalog fails closed.  Dynamic provider activation changes the server catalog
 by an atomic generation publication; it never mutates an established catalog
 in place.  Initialization binds one =sessionId= to one =workspaceIdentity=;
 subsequent frames cannot cross that isolation boundary.
+
+The catalog and provider-process lifecycle are distinct authorities.  A
+content-addressed provider installation publishes one complete capability
+descriptor.  ASP Server validates that descriptor against the built-in
+provider identity constraint and retains it across Runtime owner handoff.  The
+descriptor, workspace language evidence, and Ready workspace generation form
+the immutable catalog input.  Whether a provider session actor is absent,
+starting, ready, draining, or stopped MUST NOT remove a Server-local
+=search=, =query=, or =search.owner= method from that catalog.
+
+Provider session actors are workspace-and-language scoped producers of native
+semantic facts.  Extension and project-resolution events submit lazy
+activation intents to the sole Runtime Tokio supervisor.  Activation,
+cancellation, and drain update the provider-session state machine; they do not
+mutate installed capability identity and they never run in client
+=initialize= or a Ready query hot path.  The implementation MUST NOT use one
+"live provider register" as both capability catalog and process-liveness
+registry.
 
 The canonical HTTP/JSON binding uses one ASP Server loopback origin and typed
 request, response, event, and cancellation frames.  A local Runtime IPC binding
@@ -172,6 +277,28 @@ startup and warm-up duration, health latency, request latency, active requests,
 typed failures, cancellations, restarts, shutdown duration, and leaked-task count.
 Telemetry is observational and never controls readiness.
 
+* Provider workspace toolchain isolation
+
+Provider workspace dependency materialization and build commands execute only
+through the shared Tokio provider-process supervisor.  Their Version 1
+descriptor may declare exact inherited variables in =removeEnv= and bounded
+variable families in =removeEnvPrefixes=.  The provider transport removes
+those values before applying the descriptor-owned =env= map and spawning the
+single supervised process group.  Empty or malformed identities and duplicate
+entries fail closed.
+
+This is one transport capability, not a provider shell wrapper or a second
+build authority.  A provider selects only the isolation required by its native
+toolchain; for example, a Homebrew Gerbil/Gambit build removes inherited Nix C
+toolchain variables instead of mixing SDK headers and flags.  Cancellation,
+descendant cleanup, memory accounting, and single-writer artifact publication
+remain owned by the same supervisor and Runtime artifact guard.
+
+Dependency materialization, compilation, linking, artifact publication,
+provider activation, and Ready-generation admission are preparation evidence.
+Their durations are reported separately and MUST NOT be included in Runtime
+=search= or =query= latency distributions.
+
 * Shutdown and failure
 
 Shutdown closes admission, drains accepted requests, asks the server to stop,
@@ -181,6 +308,11 @@ command channel terminates the writer task. Restart creates a new endpoint
 generation; receipts from an older generation are never reusable.
 
 * Acceptance
+
+Acceptance MUST prove invoker-active identity, readiness generation equality,
+and preservation of the prior healthy slot after a failed candidate.  The
+receipt records structured source and active executable identities so these
+checks do not require re-reading the binary contents.
 
 - 256 concurrent requests share one server and one startup attempt.
 - Starting and Warming are returned without blocking the caller.
@@ -196,3 +328,86 @@ generation; receipts from an older generation are never reusable.
 - Rust, TypeScript, Python, Julia, Gerbil, and one fixture DSL consume the same
   client catalog and pass initialize, request, cancellation, unknown-method,
   generation-drift, shutdown, and trace-context conformance scenarios.
+
+** Hot Path Architecture and proof obligations
+
+The ASP Client data plane has one transport architecture: a persistent,
+multiplexed Hyper/Tokio connection (HTTP/2 where negotiated).  HTTP/2
+multiplexing is a transport property, not a second client/server authority.
+Initialize and catalog validation happen once per workspace/session; the
+validated immutable catalog, route bindings, endpoint binding, and Ready
+generation are retained by that session.
+
+Each warm =search=, =query=, or =search.owner= request then performs exactly
+one typed request on that connection.  It MUST NOT read the endpoint file,
+discover a candidate, build or admit a generation, activate or await a
+provider, perform a second HTTP hop, or revalidate the immutable catalog.
+Bounded =mpsc=, =oneshot=, and typed cancellation remain the only request
+coordination primitives.  Non-Ready admission returns immediately with its
+typed state and the same hard latency bound; startup, provider activation, and
+generation publication are separate measurements and never block or count as
+query latency.
+
+The warm acceptance budget is p50 <= 250 microseconds, p99 <= 700
+microseconds, and hard max < 1000 microseconds.  Telemetry records separate
+HTTP codec, catalog/generation gate, Tokio mpsc/oneshot, resident provider, and
+response serialization segments, preserving at least 300 microseconds of
+headroom.  No timeout implements this SLA.
+
+Lean obligations model a =ReadyEffects= projection and prove it excludes
+=Process=, =Filesystem=, =DbWrite=, =GenerationMutation=,
+=ProviderActivation=, and =ControlPoll=.  Scenario and Live Corpus acceptance
+must both exercise the same persistent client session and verify these effects,
+the segment telemetry, the non-Ready immediate response, and the same
+initialize/catalog/request/cancel/shutdown contract across every language.
+
+Live Corpus admission resolves =sourceInventory=, routes, and provider identity
+from the Runtime provider-plane snapshot for the active generation.  The
+compile-time provider identity register is not a capability authority and MUST
+NOT be used to materialize or qualify a corpus.  Missing Runtime registration,
+generation conflict, or missing provider-owned inventory fails closed with the
+provider-plane receipt.
+
+An explicitly targeted =(languageId, providerId)= corpus invokes that
+provider's declared project-resolution capability after locked-revision and
+language-extension admission.  Project entry markers are discovery hints for
+untargeted CompleteGeneration scans; they are not a second admission gate for
+an explicit provider target.  The Runtime MUST NOT mutate an upstream corpus
+or invent a provider-specific marker merely to satisfy auto-discovery.
+
+** Southbound ProviderSession stream contract
+
+The public northbound HTTP/JSON catalog is an adapter only.  The sole
+southbound business authority is =RuntimeStreamService=, whose admitted
+provider session is a bidirectional Tokio stream represented by the canonical
+=ProviderSession= contract in =crates/agent-semantic-runtime-server/proto/asp-provider-stream.proto=.  Its
+wire implementation will use Tonic; the proto and Schema Manager remain the
+central authority, and language directories contain only managed materialized
+copies.
+
+Ready =search=, =query=, and =search.owner= are Runtime-local operations over
+the immutable Ready generation and MUST NOT take a provider-stream or second
+HTTP hop.  Activation, generation admission, provider facts/capabilities,
+cancellation, and drain use the ProviderSession stream.  Provider HTTP health,
+request, and shutdown operations MUST NOT exist; no HTTP fallback or parallel
+authority is permitted.
+
+The Runtime daemon MUST bind the canonical provider-plane Unix socket before
+publishing Ready, serve =ProviderSession= from the same
+=RuntimeServerTaskScope= as the northbound adapter and resident generation
+owner, and drain it through the same typed shutdown signal.  A proto service or
+loopback test that is not mounted by the daemon is not an admitted transport.
+The provider-plane socket path published by the Runtime endpoint is the sole
+local authority; a second TCP listener, provider HTTP listener, or CLI process
+route is forbidden.
+
+** Northbound route intent contract
+
+Northbound =search=, =query=, and =search.owner= requests carry user intent
+only: language identity, scope/owner intent, and route-specific query fields.
+They MUST NOT carry runtime-owned generation, source, parser, provider, catalog,
+or artifact identities. The Runtime Server resolves those identities from the
+validated session catalog and immutable Ready generation. Provider-native DTOs
+are internal server/provider contracts and are not northbound inputs. Non-Ready
+sessions return a typed admission response without consulting a prior generation
+or invoking a provider.

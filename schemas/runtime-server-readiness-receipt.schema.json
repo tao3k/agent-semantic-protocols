@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-server-readiness-receipt.schema.json",
+  "title": "ASP Runtime Server Readiness Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "state", "requestId", "readinessToken", "processId", "ownerEpoch", "endpointBindingToken", "runtimeBinaryIdentity", "artifactCatalogDigest", "transportContractDigest"],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.runtime-server-readiness" },
+    "schemaVersion": { "const": "1" },
+    "state": { "enum": ["starting", "ready", "failed", "cancelled"] },
+    "requestId": { "type": "string", "minLength": 1 },
+    "readinessToken": { "type": "string", "minLength": 1 },
+    "processId": { "type": "integer", "minimum": 1 },
+    "ownerEpoch": { "type": "integer", "minimum": 1 },
+    "endpointBindingToken": { "type": "string", "minLength": 1 },
+    "runtimeBinaryIdentity": { "type": "string", "minLength": 1 },
+    "artifactCatalogDigest": { "type": "string", "minLength": 1 },
+    "transportContractDigest": { "type": "string", "minLength": 1 },
+    "reasonKind": { "type": "string", "minLength": 1 },
+    "error": { "type": "string", "minLength": 1 }
+  },
+  "allOf": [
+    { "if": { "properties": { "state": { "enum": ["failed", "cancelled"] } } }, "then": { "required": ["reasonKind"] } },
+    { "if": { "properties": { "state": { "const": "ready" } } }, "then": { "required": ["reasonKind"] } }
+  ]
+}

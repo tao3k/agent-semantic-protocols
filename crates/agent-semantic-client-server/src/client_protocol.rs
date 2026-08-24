@@ -4,7 +4,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use agent_semantic_client_protocol::{
-    ClientFrame, ClientFrameBase, ClientOutcome, ClientProtocolCatalog, ClientSession,
+    ClientFrame, ClientFrameBase, ClientOutcome, ClientProtocolCatalog, ClientRequestId,
+    ClientSession, ClientSessionId, ClientWorkspaceIdentity,
 };
 use agent_semantic_http_json::{HttpJsonRequest, HttpJsonResponse};
 use serde_json::{Value, json};
@@ -14,9 +15,9 @@ pub type AspClientDispatchFuture =
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AspClientDispatchRequest {
-    pub session_id: String,
-    pub workspace_identity: String,
-    pub request_id: String,
+    pub session_id: ClientSessionId,
+    pub workspace_identity: ClientWorkspaceIdentity,
+    pub request_id: ClientRequestId,
     pub method: String,
     pub params: Value,
 }
@@ -30,7 +31,12 @@ pub struct AspClientDispatchError {
 pub trait AspClientDispatcher: Send + Sync + 'static {
     fn dispatch(&self, request: AspClientDispatchRequest) -> AspClientDispatchFuture;
 
-    fn cancel(&self, workspace_identity: &str, session_id: &str, request_id: &str) -> bool;
+    fn cancel(
+        &self,
+        workspace_identity: &ClientWorkspaceIdentity,
+        session_id: &ClientSessionId,
+        request_id: &ClientRequestId,
+    ) -> bool;
 }
 
 /// One protocol session hosted by the ASP Client Server.  It is transport
@@ -43,8 +49,9 @@ pub struct AspClientProtocolSession<D> {
     dispatcher: Arc<D>,
 }
 
-type CatalogResolver =
-    dyn Fn(&str) -> Result<ClientProtocolCatalog, String> + Send + Sync + 'static;
+type CatalogResolution =
+    std::pin::Pin<Box<dyn Future<Output = Result<ClientProtocolCatalog, String>> + Send>>;
+type CatalogResolver = dyn Fn(String, String) -> CatalogResolution + Send + Sync + 'static;
 
 /// Concurrent HTTP/JSON binding for the transport-neutral protocol owner.
 /// Admission holds a per-session lock only for the synchronous state
@@ -54,7 +61,10 @@ pub struct AspClientProtocolHttpService<D> {
     dispatcher: Arc<D>,
     resolve_catalog: Arc<CatalogResolver>,
     sessions: tokio::sync::RwLock<
-        HashMap<(String, String), Arc<tokio::sync::Mutex<AspClientProtocolSession<D>>>>,
+        HashMap<
+            (ClientWorkspaceIdentity, ClientSessionId),
+            Arc<tokio::sync::Mutex<AspClientProtocolSession<D>>>,
+        >,
     >,
 }
 
@@ -72,7 +82,7 @@ impl<D: AspClientDispatcher> AspClientProtocolSession<D> {
 
     pub async fn handle(&mut self, frame: ClientFrame) -> Option<ClientFrame> {
         let base = frame.base().clone();
-        let request_id = correlated_request_id(&frame).map(str::to_owned);
+        let request_id = correlated_request_id(&frame).cloned();
         if let Err(error) = self.admit(&frame) {
             return request_id.map(|request_id| {
                 admission_error_response(base, request_id, error.reason_kind, error.message)
@@ -119,7 +129,7 @@ async fn execute_admitted<D: AspClientDispatcher>(
                     params,
                 })
                 .await;
-                Some(match dispatched {
+            Some(match dispatched {
                 Ok(result) => response(
                     base,
                     request_id,
@@ -128,25 +138,25 @@ async fn execute_admitted<D: AspClientDispatcher>(
                     None,
                     None,
                 ),
-                    Err(error) => {
-                        let outcome = if error.reason_kind == "client-request-cancelled" {
-                            ClientOutcome::Cancelled
-                        } else {
-                            ClientOutcome::Error
-                        };
-                        response(
-                            base,
-                            request_id,
-                            outcome,
-                            None,
-                            Some(json!({
-                                "reasonKind": error.reason_kind,
-                                "message": error.message,
-                            })),
-                            None,
-                        )
-                    }
-                })
+                Err(error) => {
+                    let outcome = if error.reason_kind == "client-request-cancelled" {
+                        ClientOutcome::Cancelled
+                    } else {
+                        ClientOutcome::Error
+                    };
+                    response(
+                        base,
+                        request_id,
+                        outcome,
+                        None,
+                        Some(json!({
+                            "reasonKind": error.reason_kind,
+                            "message": error.message,
+                        })),
+                        None,
+                    )
+                }
+            })
         }
         ClientFrame::Cancel { request_id, .. } => {
             let _ = dispatcher.cancel(&base.workspace_identity, &base.session_id, &request_id);
@@ -188,9 +198,22 @@ impl<D: AspClientDispatcher> AspClientProtocolHttpService<D> {
         dispatcher: Arc<D>,
         resolve_catalog: impl Fn(&str) -> Result<ClientProtocolCatalog, String> + Send + Sync + 'static,
     ) -> Self {
+        Self::new_async(dispatcher, move |workspace_identity, _project_root| {
+            let result = resolve_catalog(&workspace_identity);
+            async move { result }
+        })
+    }
+
+    pub fn new_async<F, Fut>(dispatcher: Arc<D>, resolve_catalog: F) -> Self
+    where
+        F: Fn(String, String) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<ClientProtocolCatalog, String>> + Send + 'static,
+    {
         Self {
             dispatcher,
-            resolve_catalog: Arc::new(resolve_catalog),
+            resolve_catalog: Arc::new(move |workspace_identity, project_root| {
+                Box::pin(resolve_catalog(workspace_identity, project_root))
+            }),
             sessions: tokio::sync::RwLock::new(HashMap::new()),
         }
     }
@@ -229,11 +252,16 @@ impl<D: AspClientDispatcher> AspClientProtocolHttpService<D> {
         };
         let base = frame.base().clone();
         let key = (base.workspace_identity.clone(), base.session_id.clone());
-        let session = if matches!(&frame, ClientFrame::Initialize { .. }) {
+        let session = if let ClientFrame::Initialize { project_root, .. } = &frame {
             if let Some(session) = self.sessions.read().await.get(&key).cloned() {
                 session
             } else {
-                let catalog = match (self.resolve_catalog)(&base.workspace_identity) {
+                let catalog = match (self.resolve_catalog)(
+                    base.workspace_identity.as_str().to_owned(),
+                    project_root.clone(),
+                )
+                .await
+                {
                     Ok(catalog) => catalog,
                     Err(message) => {
                         return HttpJsonResponse::json(
@@ -281,12 +309,7 @@ impl<D: AspClientDispatcher> AspClientProtocolHttpService<D> {
         };
         let response_frame = match admission_error {
             Some(error) => correlated_request_id(&frame).map(|request_id| {
-                admission_error_response(
-                    base,
-                    request_id.to_owned(),
-                    error.reason_kind,
-                    error.message,
-                )
+                admission_error_response(base, request_id.clone(), error.reason_kind, error.message)
             }),
             None => execute_admitted(dispatcher, catalog, frame).await,
         };
@@ -309,7 +332,7 @@ pub async fn serve_asp_client_protocol_http<D: AspClientDispatcher>(
     shutdown: tokio::sync::watch::Receiver<bool>,
     service: Arc<AspClientProtocolHttpService<D>>,
 ) -> Result<(), String> {
-    agent_semantic_http_json::serve_http_json(listener, shutdown, move |request| {
+    agent_semantic_http_json::serve_http_json_h2(listener, shutdown, move |request| {
         let service = Arc::clone(&service);
         async move { service.handle(request).await }
     })
@@ -318,7 +341,7 @@ pub async fn serve_asp_client_protocol_http<D: AspClientDispatcher>(
 
 fn admission_error_response(
     base: ClientFrameBase,
-    request_id: String,
+    request_id: ClientRequestId,
     reason_kind: impl Into<String>,
     message: impl Into<String>,
 ) -> ClientFrame {
@@ -335,7 +358,7 @@ fn admission_error_response(
     )
 }
 
-fn correlated_request_id(frame: &ClientFrame) -> Option<&str> {
+fn correlated_request_id(frame: &ClientFrame) -> Option<&ClientRequestId> {
     match frame {
         ClientFrame::Initialize { request_id, .. }
         | ClientFrame::Request { request_id, .. }
@@ -348,7 +371,7 @@ fn correlated_request_id(frame: &ClientFrame) -> Option<&str> {
 
 fn response(
     base: ClientFrameBase,
-    request_id: String,
+    request_id: ClientRequestId,
     outcome: ClientOutcome,
     result: Option<Value>,
     error: Option<Value>,

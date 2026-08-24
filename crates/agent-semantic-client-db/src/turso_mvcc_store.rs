@@ -2,10 +2,15 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-pub use crate::turso_mvcc_maintenance::{
+#[path = "turso_mvcc_maintenance.rs"]
+mod maintenance;
+#[path = "turso_mvcc_typed.rs"]
+mod typed;
+
+pub use maintenance::{
     TURSO_MVCC_MAINTENANCE_RECEIPT_SCHEMA_ID, TursoMvccMaintenanceReceipt,
 };
-pub use crate::turso_mvcc_typed::{TursoMvccWriteError, TursoMvccWriteErrorCode};
+pub use typed::{TursoMvccWriteError, TursoMvccWriteErrorCode};
 use std::time::Duration;
 
 const DEFAULT_CONNECTION_LANES: usize = 4;

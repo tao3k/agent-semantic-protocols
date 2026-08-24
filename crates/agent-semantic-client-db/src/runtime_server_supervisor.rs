@@ -81,7 +81,25 @@ async fn terminate_endpoint_owner(
     state_home: &std::path::Path,
     endpoint: &crate::runtime_server_control::RuntimeServerEndpoint,
     force: bool,
-) -> Result<(), String> {
+) -> Result<crate::runtime_server_lifecycle_coordinator::OwnerClassification, String> {
+    let classification = classify_endpoint_owner(state_home, endpoint).await?;
+    if classification == crate::runtime_server_lifecycle_coordinator::OwnerClassification::Live {
+        let coordinator =
+            crate::runtime_server_lifecycle_coordinator::RuntimeServerLifecycleCoordinator::new(
+                state_home,
+                std::path::Path::new(&endpoint.runtime_artifact_path),
+            );
+        coordinator
+            .terminate_verified(endpoint.owner_process_id, force)
+            .await?;
+    }
+    Ok(classification)
+}
+
+async fn classify_endpoint_owner(
+    state_home: &std::path::Path,
+    endpoint: &crate::runtime_server_control::RuntimeServerEndpoint,
+) -> Result<crate::runtime_server_lifecycle_coordinator::OwnerClassification, String> {
     let owner = crate::runtime_server_lifecycle::read_owner_receipt(state_home)
         .await?
         .ok_or_else(|| "Runtime Server owner receipt is missing".to_owned())?;
@@ -95,12 +113,46 @@ async fn terminate_endpoint_owner(
             state_home,
             std::path::Path::new(&endpoint.runtime_artifact_path),
         );
-    coordinator
-        .terminate_verified(endpoint.owner_process_id, force)
-        .await
+    let classification = coordinator
+        .classify(Some(endpoint.owner_process_id))
+        .await?;
+    Ok(classification)
+}
+
+fn runtime_server_status_requires_drain(
+    state: &crate::runtime_server_control::RuntimeServerState,
+) -> bool {
+    state != &crate::runtime_server_control::RuntimeServerState::Draining
+}
+
+#[cfg(test)]
+mod lifecycle_transition_tests {
+    use super::runtime_server_status_requires_drain;
+    use crate::runtime_server_control::RuntimeServerState;
+
+    #[test]
+    fn a_published_draining_state_never_emits_a_second_drain_request() {
+        assert!(!runtime_server_status_requires_drain(
+            &RuntimeServerState::Draining
+        ));
+        assert!(runtime_server_status_requires_drain(
+            &RuntimeServerState::Starting
+        ));
+        assert!(runtime_server_status_requires_drain(
+            &RuntimeServerState::Healthy
+        ));
+    }
 }
 
 async fn retire_undecodable_endpoint_owner(request: &SupervisorRequest) -> Result<bool, String> {
+    let Some(owner) =
+        crate::runtime_server_lifecycle::read_owner_receipt(&request.state_home).await?
+    else {
+        // With no independently verified live owner, the supervisor may remove
+        // only the canonical invalid endpoint path.  It must not parse or trust
+        // attacker-controlled endpoint contents to discover other paths.
+        return Ok(false);
+    };
     let Some(binding) = crate::runtime_server_control::read_runtime_server_endpoint_owner_binding(
         &request.state_home,
     )
@@ -108,12 +160,6 @@ async fn retire_undecodable_endpoint_owner(request: &SupervisorRequest) -> Resul
     else {
         return Ok(false);
     };
-    let owner = crate::runtime_server_lifecycle::read_owner_receipt(&request.state_home)
-        .await?
-        .ok_or_else(|| {
-            "undecodable Runtime Server endpoint has no owner receipt; refusing unbound termination"
-                .to_owned()
-        })?;
     if owner.process_id != binding.owner_process_id
         || owner.runtime_artifact_path != binding.runtime_artifact_path
         || owner.state_home != request.state_home.display().to_string()
@@ -204,21 +250,43 @@ impl RuntimeServerSupervisor {
                 }) {
                     return Ok(SupervisorOutcome::AlreadyResident);
                 }
-                if status.is_ok() {
-                    request_runtime_server_drain(&endpoint).await?;
+                let owner_was_live = match status.as_ref() {
+                    Ok(receipt) if runtime_server_status_requires_drain(&receipt.state) => {
+                        request_runtime_server_drain(&endpoint).await?;
+                        true
+                    }
+                    Ok(_) => {
+                        // A Draining status is a durable mmap publication: the
+                        // drain already linearized even when the control socket
+                        // has since closed. Never send a second drain request.
+                        classify_endpoint_owner(&request.state_home, &endpoint).await?
+                            == crate::runtime_server_lifecycle_coordinator::OwnerClassification::Live
+                    }
+                    Err(_) => {
+                        terminate_endpoint_owner(&request.state_home, &endpoint, false).await?
+                            == crate::runtime_server_lifecycle_coordinator::OwnerClassification::Live
+                    }
+                };
+                let exit = if owner_was_live {
+                    Some(crate::runtime_server_lifecycle::await_owner_exit(
+                        &request.state_home,
+                        endpoint.owner_epoch,
+                    )
+                    .await?)
                 } else {
-                    terminate_endpoint_owner(&request.state_home, &endpoint, false).await?;
-                }
-                let exit = crate::runtime_server_lifecycle::await_owner_exit(
-                    &request.state_home,
-                    endpoint.owner_epoch,
-                )
-                .await?;
-                if !exit.clean_drain {
-                    return Err(format!(
-                        "Runtime Server generation drain failed: errors={:?}",
-                        exit.errors
-                    ));
+                    crate::runtime_server_lifecycle::read_owner_exit_for(
+                        &request.state_home,
+                        endpoint.owner_epoch,
+                    )
+                    .await?
+                };
+                if let Some(exit) = exit {
+                    if !exit.clean_drain {
+                        return Err(format!(
+                            "Runtime Server generation drain failed: errors={:?}",
+                            exit.errors
+                        ));
+                    }
                 }
                 crate::runtime_server_control::cleanup_runtime_server_endpoint(
                     &request.state_home,
@@ -342,14 +410,30 @@ impl RuntimeServerSupervisor {
                 Ok(ref receipt)
                     if receipt.state == crate::runtime_server_control::RuntimeServerState::Draining
             ) {
-                crate::runtime_server_lifecycle::await_owner_exit(state_home, endpoint.owner_epoch)
-                    .await?
+                Some(
+                    crate::runtime_server_lifecycle::await_owner_exit(
+                        state_home,
+                        endpoint.owner_epoch,
+                    )
+                    .await?,
+                )
             } else {
-                terminate_endpoint_owner(state_home, endpoint, false).await?;
-                crate::runtime_server_lifecycle::await_owner_exit(state_home, endpoint.owner_epoch)
-                    .await?
+                match terminate_endpoint_owner(state_home, endpoint, false).await? {
+                    crate::runtime_server_lifecycle_coordinator::OwnerClassification::Live => Some(
+                        crate::runtime_server_lifecycle::await_owner_exit(
+                            state_home,
+                            endpoint.owner_epoch,
+                        )
+                        .await?,
+                    ),
+                    crate::runtime_server_lifecycle_coordinator::OwnerClassification::Stale
+                    | crate::runtime_server_lifecycle_coordinator::OwnerClassification::Missing => {
+                        None
+                    }
+                }
             };
-            if !exit.clean_drain {
+            if exit.as_ref().is_some_and(|exit| !exit.clean_drain) {
+                let exit = exit.expect("checked exit receipt");
                 return Err(format!(
                     "Runtime Server owner {} exited after a failed service drain: errors={:?}",
                     exit.owner_epoch, exit.errors

@@ -82,7 +82,7 @@ def _drain_terminated_process(
 def facade_environment(provider_timeout_ms: int) -> dict[str, str]:
     return {
         **os.environ,
-        "ASP_NO_AGENT_PLATFORM": "1",
+        "ASP_NO_AGENT": "1",
         "ASP_PROVIDER_TIMEOUT_MS": str(provider_timeout_ms),
     }
 

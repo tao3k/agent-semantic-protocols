@@ -34,15 +34,7 @@ pub use generation::{
     publish_workspace_search_generation_v1,
 };
 mod config;
-mod lookup;
 mod model;
-
-#[cfg(test)]
-pub(crate) use lookup::search_pipe_source_index_lookup_from_client_result;
-pub use lookup::{
-    SourceIndexLookupRequest, lookup_search_pipe_source_index_for_language, lookup_source_index,
-    lookup_source_index_for_language, lookup_source_index_in_cache,
-};
 pub use model::{
     SourceIndexCandidate, SourceIndexLookupResult, SourceIndexLookupState,
     SourceIndexRefreshReport, SourceIndexSourceKind,

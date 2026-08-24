@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package asp.provider.stream;
+
+message ProviderStreamEnvelope {
+  string schema_id = 1;
+  string schema_version = 2;
+  string session_id = 3;
+  string request_id = 4;
+  string workspace_identity = 5;
+  string generation_digest = 6;
+  string provider_id = 7;
+  string language_id = 8;
+  uint64 sequence = 9;
+  string kind = 10;
+  string payload_schema_id = 11;
+  bytes payload = 12;
+}
+
+message ProviderRegisterPacket {
+  string schema_id = 1;
+  string schema_version = 2;
+  bytes payload = 3;
+}
+
+service ProviderSession {
+  rpc Register(ProviderRegisterPacket) returns (ProviderRegisterPacket);
+  rpc Session(stream ProviderStreamEnvelope)
+      returns (stream ProviderStreamEnvelope);
+}

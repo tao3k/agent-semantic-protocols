@@ -3,7 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use super::contract::{
-    QualificationCase, QualificationCaseReceipt, QualificationPlan, QualificationReceipt,
+    ClientProtocolReceipt, QualificationCase, QualificationCaseReceipt, QualificationPlan,
+    QualificationReceipt,
 };
 pub(super) use super::resident_metrics::{
     ResidentSearchOutcome, require_resident_sample_budget, require_zero_runtime_work,
@@ -184,6 +185,39 @@ pub(crate) async fn run(args: &[String]) -> Result<(), String> {
         schema_version: "1",
         plan_digest: live_corpus_lock_digest(&plan_bytes),
         lock_digest: live_corpus_lock_digest(&lock_bytes),
+        client_protocol: ClientProtocolReceipt {
+            protocol_id: "agent.semantic-protocols.client",
+            protocol_version: "1",
+            transport: "http-json",
+            phases: [
+                "initialize",
+                "catalog",
+                "request",
+                "cancel",
+                "cancelled",
+                "shutdown",
+            ],
+            session_policy: plan.client_protocol.session_policy.clone(),
+            ready_effects: plan.client_protocol.ready_effects.clone(),
+            forbidden_ready_effects: plan.client_protocol.forbidden_ready_effects.clone(),
+            non_ready_dispatch_count: plan.client_protocol.non_ready_dispatch_count,
+            residual_task_count: plan.client_protocol.residual_task_count,
+            cancel_outcome: "cancelled",
+            request_outcome: "cancelled",
+            required_telemetry_events: [
+                "client_protocol_initialize",
+                "client_protocol_catalog",
+                "client_protocol_request",
+                "client_protocol_cancel",
+                "client_protocol_cancelled",
+                "client_protocol_shutdown",
+            ],
+            qualified_case_count: receipts.len(),
+            maximum_resident_micros: plan.client_protocol.maximum_resident_micros,
+            p50_maximum_micros: plan.client_protocol.p50_maximum_micros,
+            p99_maximum_micros: plan.client_protocol.p99_maximum_micros,
+            max_maximum_micros: plan.client_protocol.max_maximum_micros,
+        },
         qualified_case_count: receipts.len(),
         cases: receipts,
         status: "qualified",
@@ -236,6 +270,14 @@ async fn qualify_case(
     })??;
     let resident_generation_digest = required_generation.generation_digest.clone();
     let resident_root_digest = required_generation.source_root_digest.clone();
+    super::client_protocol::qualify_client_protocol_case(
+        &endpoint.client_http_endpoint,
+        &workspace_identity,
+        project_root,
+        &resident_generation_digest,
+        &case,
+    )
+    .await?;
 
     let language_id = LanguageId::from(case.language_id.as_str());
     let cold_prime = resident_search(
@@ -766,6 +808,39 @@ fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
             "Live Corpus qualification requires at least 128 resident samples: actual={}",
             plan.resident_sample_count
         ));
+    }
+    if plan.client_protocol.protocol_id != "agent.semantic-protocols.client"
+        || plan.client_protocol.protocol_version != "1"
+        || plan.client_protocol.transport != "http-json"
+        || plan.client_protocol.phases
+            != [
+                "initialize",
+                "catalog",
+                "request",
+                "cancel",
+                "cancelled",
+                "shutdown",
+            ]
+        || plan.client_protocol.session_policy != "one-initialize-per-session"
+        || plan.client_protocol.ready_effects != ["mpsc", "oneshot", "cancel", "response"]
+        || plan.client_protocol.forbidden_ready_effects
+            != [
+                "process",
+                "filesystem",
+                "dbWrite",
+                "generationMutation",
+                "providerActivation",
+                "controlPoll",
+            ]
+        || plan.client_protocol.non_ready_dispatch_count != 0
+        || plan.client_protocol.residual_task_count != 0
+        || plan.client_protocol.applies_to_case_count != 17
+        || plan.client_protocol.maximum_resident_micros > 1_000
+        || plan.client_protocol.p50_maximum_micros != 250
+        || plan.client_protocol.p99_maximum_micros != 700
+        || plan.client_protocol.max_maximum_micros != 1_000
+    {
+        return Err("Live Corpus qualification client protocol contract is invalid".to_owned());
     }
     for case in &plan.cases {
         if case.query.selector_strategy != "first-ranked-parser-owned"

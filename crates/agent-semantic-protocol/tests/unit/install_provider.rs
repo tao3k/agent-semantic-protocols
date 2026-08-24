@@ -17,25 +17,6 @@ fn asset_names_are_rev_independent_and_target_selected() {
 }
 
 #[test]
-fn registered_provider_receipt_covers_language_alias_for_same_binary() {
-    let receipt = agent_semantic_runtime::ProviderInstallReceipt {
-        language_id: "org".to_string(),
-        provider_id: "orgize".to_string(),
-        installed_path: std::path::PathBuf::from("/runtime/bin/orgize"),
-        installed_entrypoint_digest: "content".to_string(),
-        installed_entrypoint_metadata_digest: "metadata".to_string(),
-        execution_command_digest: "execution".to_string(),
-    };
-
-    assert!(
-        super::super::install_provider_runtime_reconcile::registered_provider_receipt_covers_binary(
-            &[receipt],
-            "orgize"
-        )
-    );
-}
-
-#[test]
 fn orgize_release_pin_resolves_provider_binary_asset() {
     let spec = provider_release("org").expect("orgize release spec");
     assert_eq!(spec.provider_id, "asp-org");

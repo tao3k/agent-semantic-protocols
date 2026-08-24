@@ -269,14 +269,16 @@ impl SessionControlPlaneRuntimeRegistry {
             let mut entries = self.entries.write().await;
             std::mem::take(&mut *entries)
         };
-        let mut errors = Vec::new();
-        for cell in entries.into_values() {
-            if let Some(Ok(runtime)) = cell.get()
-                && let Err(error) = runtime.shutdown().await
-            {
-                errors.push(error);
-            }
-        }
+        let errors = tokio_stream::iter(entries.into_values())
+            .then(|cell| async move {
+                match cell.get() {
+                    Some(Ok(runtime)) => runtime.shutdown().await.err(),
+                    Some(Err(_)) | None => None,
+                }
+            })
+            .filter_map(|error| error)
+            .collect::<Vec<_>>()
+            .await;
         if errors.is_empty() {
             Ok(())
         } else {

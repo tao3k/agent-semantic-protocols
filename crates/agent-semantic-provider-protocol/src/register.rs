@@ -82,18 +82,20 @@ impl ProviderRegistrationDocument {
         validate_matching_field(registration, "providerId", &self.provider_id)
     }
 
-    /// Compile the provider-owned semantic routes carried by a live Register
-    /// operation. Built-in seed identities deliberately do not carry routes.
+    /// Compile the provider-owned semantic routes carried by an installed
+    /// capability descriptor. Built-in seed identities deliberately do not
+    /// carry routes; they constrain identity but are not executable catalog
+    /// entries.
     pub fn compiled_routes(&self) -> Result<Vec<CompiledProviderRoute>, String> {
         self.validate()?;
-        self.validate_live_metadata()?;
+        self.validate_capability_metadata()?;
         let routes = self
             .registration
             .get("routes")
             .and_then(Value::as_array)
-            .ok_or_else(|| "live provider registration must declare routes".to_owned())?;
+            .ok_or_else(|| "installed provider capability must declare routes".to_owned())?;
         if routes.is_empty() {
-            return Err("live provider registration routes must not be empty".to_owned());
+            return Err("installed provider capability routes must not be empty".to_owned());
         }
         routes
             .iter()
@@ -121,14 +123,14 @@ impl ProviderRegistrationDocument {
             .get("namespace")
             .and_then(Value::as_str)
             .filter(|value| !value.is_empty())
-            .ok_or_else(|| "live provider registration must declare namespace".to_owned())
+            .ok_or_else(|| "installed provider capability must declare namespace".to_owned())
     }
 
     pub fn source_inventory(&self) -> Result<ProviderSourceInventory, String> {
         let inventory = self
             .registration
             .get("sourceInventory")
-            .ok_or_else(|| "live provider registration must declare sourceInventory".to_owned())?
+            .ok_or_else(|| "installed provider capability must declare sourceInventory".to_owned())?
             .clone();
         let inventory: ProviderSourceInventory = serde_json::from_value(inventory)
             .map_err(|error| format!("provider sourceInventory is invalid: {error}"))?;
@@ -146,10 +148,10 @@ impl ProviderRegistrationDocument {
     pub fn registration_field(&self, field: &str) -> Result<&Value, String> {
         self.registration
             .get(field)
-            .ok_or_else(|| format!("live provider registration must declare {field}"))
+            .ok_or_else(|| format!("installed provider capability must declare {field}"))
     }
 
-    fn validate_live_metadata(&self) -> Result<(), String> {
+    fn validate_capability_metadata(&self) -> Result<(), String> {
         self.namespace()?;
         self.source_inventory()?;
         self.registration_field("searchCapabilities")?;
@@ -452,7 +454,7 @@ mod tests {
     }
 
     #[test]
-    fn live_registration_requires_source_inventory_owned_by_the_client_server() {
+    fn installed_capability_requires_source_inventory_owned_by_the_client_server() {
         let mut registration = provider("rust", "asp-rust");
         registration
             .registration
@@ -461,7 +463,7 @@ mod tests {
             .remove("sourceInventory");
         assert_eq!(
             registration.compiled_routes(),
-            Err("live provider registration must declare sourceInventory".to_owned())
+            Err("installed provider capability must declare sourceInventory".to_owned())
         );
     }
 

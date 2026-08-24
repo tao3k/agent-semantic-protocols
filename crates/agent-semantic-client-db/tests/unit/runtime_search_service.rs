@@ -52,9 +52,9 @@ fn provider_search_receipt_exposes_runtime_timing_and_zero_external_work() {
 }
 
 #[tokio::test]
-async fn provider_owner_request_without_an_actor_response_reaches_a_typed_deadline() {
-    let (handle, _receiver) =
-        super::runtime_search_service_channel_with_deadline(std::time::Duration::from_millis(10));
+async fn provider_owner_request_without_an_actor_response_returns_when_receiver_closes() {
+    let (handle, receiver) = super::runtime_search_service_channel();
+    drop(receiver);
 
     let result = handle
         .provider_owner(
@@ -68,8 +68,5 @@ async fn provider_owner_request_without_an_actor_response_reaches_a_typed_deadli
         Ok(_) => panic!("missing actor response must not leave provider-owner pending"),
         Err(error) => error,
     };
-    assert_eq!(
-        error,
-        "runtime search service request deadline exceeded: operation=provider-owner deadlineMillis=10"
-    );
+    assert!(error.contains("not accepting provider owner requests"));
 }

@@ -88,7 +88,7 @@ pub(super) async fn resolve_turso_source_index_lookup_scope(
                                 scope.project_root.as_str(),
                                 scope.schema_id.as_str(),
                                 scope.schema_version.as_str(),
-                                super::turso_source_index::core::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,
+                                super::turso_source_index::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,
                             ),
                         )
                         .await
@@ -113,7 +113,7 @@ pub(super) async fn resolve_turso_source_index_lookup_scope(
                           AND layout.token_projection_generation_id = scope.generation_id
                          ORDER BY scope.updated_at_ms DESC
                          LIMIT 2",
-                            (super::turso_source_index::core::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,),
+                            (super::turso_source_index::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,),
                         )
                         .await
                         .map_err(|error| error.to_string())
@@ -301,7 +301,7 @@ JOIN asp_source_index_owner_v1 AS owner
                                 term.as_str(),
                                 language_id.map(|value| value.as_str()),
                                 candidate_limit,
-                                super::turso_source_index::core::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,
+                                super::turso_source_index::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,
                             ),
                         )
                         .await

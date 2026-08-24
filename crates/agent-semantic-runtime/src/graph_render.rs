@@ -105,6 +105,8 @@ async fn run_graph_render_process(
             args,
             cwd: env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             env: BTreeMap::new(),
+            remove_env: Default::default(),
+            remove_env_prefixes: Default::default(),
             stdin,
             stdout: OutputMode::Capture,
             stderr: OutputMode::Capture,

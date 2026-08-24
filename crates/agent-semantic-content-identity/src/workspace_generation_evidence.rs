@@ -65,20 +65,20 @@ impl ValidatedWorkspaceGenerationV1 {
 /// Mandatory graph authority state carried by source-index acquisitions.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "kebab-case")]
-pub enum WorkspaceGenerationAuthorityV1 {
+pub enum WorkspaceGenerationAuthority {
     Active {
         evidence: WorkspaceGenerationEvidenceV1,
     },
-    ColdRequired {
+    Unavailable {
         reason_kind: String,
     },
 }
 
-impl WorkspaceGenerationAuthorityV1 {
+impl WorkspaceGenerationAuthority {
     /// Construct the fail-closed state used before an active generation is
     /// bound to an acquisition.
-    pub fn cold_required() -> Self {
-        Self::ColdRequired {
+    pub fn unavailable() -> Self {
+        Self::Unavailable {
             reason_kind: "active-workspace-generation-required".to_owned(),
         }
     }
@@ -92,7 +92,7 @@ impl WorkspaceGenerationAuthorityV1 {
                 evidence.validate_same_generation(active)?;
                 Ok(evidence)
             }
-            Self::ColdRequired { .. } => {
+            Self::Unavailable { .. } => {
                 Err(WorkspaceGenerationEvidenceError::GenerationAuthorityMissing)
             }
         }

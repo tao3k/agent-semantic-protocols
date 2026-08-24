@@ -7,6 +7,10 @@ protocolId = "@HOOK_PROTOCOL_ID@"
 protocolVersion = "@HOOK_PROTOCOL_VERSION@"
 contractFingerprint = "@HOOK_CLIENT_CONTRACT_FINGERPRINT@"
 
+# Generated from schemas/provider-register.json at build time. This list owns
+# provider facade routing only; source-extension policy stays in profiles.
+@REGISTERED_PROVIDER_ROUTES@
+
 [profiles.rust]
 languageId = "rust"
 providerId = "asp-rust"
@@ -115,6 +119,10 @@ semanticCapabilityAny = ["search"]
 id = "opaque-shell-source-access"
 actionAny = ["execute"]
 
+[[capabilityPolicies]]
+id = "shell-read"
+semanticCapabilityAny = ["read"]
+
 # Registered-language reasoning query/search dispatch. The matcher expands
 # `<registered-language>` from the provider registry; the rule owns the complete
 # match, intent, decision, and Host role-dispatch policy.
@@ -125,12 +133,13 @@ priority = 100000
 intent = "reasoning-search"
 decision = "deny"
 reasonKind = "subagent-receipt-required"
-message = "Raw search over registered source is denied only in the current Agent. This policy is owned by Config TOML: delegate it to the registered ASP Explorer, which uses the compact `asp <language> search ...` route without `--json`. The `--json` flag is reserved for explicit debug or programmatic automation, not normal Explorer search. {{agentDispatchMessage}}"
+message = "Registered-source reasoning search/query is denied only in the current Agent. This policy is owned by Config TOML: delegate it to the registered ASP Explorer, which uses compact `asp <language> search ...` and selector-bearing `asp <language> query ...` routes without `--json`. The `--json` flag is reserved for explicit debug or programmatic automation, not normal Explorer evidence flow. {{agentDispatchMessage}}"
 event = "pre-tool"
 
 [rules.match]
 argvPatternAny = [
   ["asp", "<registered-language>", "search"],
+  ["asp", "<registered-language>", "query"],
 ]
 
 [rules.dispatch]
@@ -209,7 +218,6 @@ id = "allow-explicit-no-agent-host-bypass"
 priority = 200000
 decision = "allow"
 terminal = true
-event = "pre-tool"
 message = "Explicit parser-owned no-Agent Host policy bypass."
 fields = { bypassOwner = "hook-matcher", bypassScope = "host-policy" }
 
@@ -256,6 +264,22 @@ role = "explore"
 receiptKind = "asp-explore-search-v1"
 
 [[rules]]
+id = "route-shell-structured-document-read"
+priority = 40010
+decision = "deny"
+reasonKind = "structured-source-read"
+message = "Raw structured-document Read is denied only in the current Agent. Delegate the JSON/TOML file read to the registered ASP Explorer, then use the configured bounded projector there: jq for JSON and yq for TOML."
+
+[rules.match]
+capabilityPolicyAll = ["shell-read"]
+pathGlobAny = ["*.json", "**/*.json", "*.toml", "**/*.toml"]
+
+[rules.dispatch]
+transport = "host-agent"
+role = "explore"
+receiptKind = "asp-explore-search-v1"
+
+[[rules]]
 id = "deny-uncontrolled-source-search-commands"
 matcherPolicies = ["wrapped_command"]
 priority = 10000
@@ -275,8 +299,9 @@ argvPrefixAny = [["rg"], ["ag"], ["grep"], ["fd"], ["find"], ["git", "grep"], ["
 [[rules]]
 id = "allow-bounded-json-projection"
 matcherPolicies = ["wrapped_command"]
-priority = 20020
+priority = 40020
 decision = "allow"
+terminal = true
 fields = { projectionGrammar = "bounded-path-v1", capabilityActivation = "lazy-executable" }
 
 [rules.match]
@@ -293,8 +318,9 @@ optionValueArity = { "--arg" = 2, "--argjson" = 2, "--slurpfile" = 2, "--rawfile
 [[rules]]
 id = "allow-bounded-toml-projection"
 matcherPolicies = ["wrapped_command"]
-priority = 20010
+priority = 40020
 decision = "allow"
+terminal = true
 fields = { projectionGrammar = "bounded-path-v1", capabilityActivation = "lazy-executable" }
 
 [rules.match]
@@ -311,7 +337,7 @@ optionAny = ["-p=toml"]
 [[rules]]
 id = "deny-unbounded-structured-projection"
 matcherPolicies = ["wrapped_command"]
-priority = 20000
+priority = 40015
 decision = "deny"
 reasonKind = "bulk-source-dump"
 message = "Structured documents require one configured bounded projector path; identity, recursive, iterator, compound, unknown-option, multiple-input, and multi-stage projections are denied."

@@ -18,7 +18,7 @@ fn identity_provider(language_id: &str, provider_id: &str) -> ProviderRegistrati
     }
 }
 
-fn live_provider(language_id: &str, provider_id: &str) -> ProviderRegistrationDocument {
+fn installed_capability(language_id: &str, provider_id: &str) -> ProviderRegistrationDocument {
     let mut provider = identity_provider(language_id, provider_id);
     provider.registration["namespace"] = json!(language_id);
     provider.registration["sourceInventory"] = json!({
@@ -90,7 +90,7 @@ async fn external_provider_registration_publishes_one_immutable_generation() {
         .apply(request(
             Some(0),
             ProviderRegisterOperation::Register {
-                provider: live_provider("zig", "asp-zig"),
+                provider: installed_capability("zig", "asp-zig"),
             },
         ))
         .await
@@ -110,7 +110,7 @@ async fn stale_writer_receives_typed_generation_conflict() {
         .apply(request(
             Some(0),
             ProviderRegisterOperation::Register {
-                provider: live_provider("rust", "asp-rust"),
+                provider: installed_capability("rust", "asp-rust"),
             },
         ))
         .await
@@ -119,7 +119,7 @@ async fn stale_writer_receives_typed_generation_conflict() {
         .apply(request(
             Some(0),
             ProviderRegisterOperation::Register {
-                provider: live_provider("python", "asp-python"),
+                provider: installed_capability("python", "asp-python"),
             },
         ))
         .await
@@ -171,7 +171,7 @@ async fn external_provider_state_survives_runtime_server_reconstruction() {
         .apply(request(
             Some(1),
             ProviderRegisterOperation::Register {
-                provider: live_provider("zig", "asp-zig"),
+                provider: installed_capability("zig", "asp-zig"),
             },
         ))
         .await
@@ -180,7 +180,7 @@ async fn external_provider_state_survives_runtime_server_reconstruction() {
 
     let restored = RuntimeProviderRegister::from_seed_with_store(
         vec![identity_provider("rust", "asp-rust")],
-        store_path,
+        store_path.clone(),
     )
     .await
     .expect("restore provider register");
@@ -195,18 +195,18 @@ async fn external_provider_state_survives_runtime_server_reconstruction() {
 }
 
 #[tokio::test]
-async fn builtin_identity_accepts_live_routes_and_unregister_returns_to_seed() {
+async fn builtin_identity_accepts_installed_routes_and_unregister_returns_to_seed() {
     let register = RuntimeProviderRegister::from_seed(vec![identity_provider("rust", "asp-rust")])
         .expect("seed register");
     let response = register
         .apply(request(
             Some(1),
             ProviderRegisterOperation::Register {
-                provider: live_provider("rust", "asp-rust"),
+                provider: installed_capability("rust", "asp-rust"),
             },
         ))
         .await
-        .expect("publish live provider routes");
+        .expect("publish installed provider routes");
     assert!(matches!(
         response.result,
         ProviderRegisterResult::Snapshot { .. }
@@ -228,17 +228,73 @@ async fn builtin_identity_accepts_live_routes_and_unregister_returns_to_seed() {
 }
 
 #[tokio::test]
+async fn builtin_installed_capability_survives_runtime_owner_handoff() {
+    let temporary = tempfile::tempdir().expect("provider state directory");
+    let store_path = temporary.path().join("provider-register-state.json");
+    let register = RuntimeProviderRegister::from_seed_with_store(
+        vec![identity_provider("rust", "asp-rust")],
+        store_path.clone(),
+    )
+    .await
+    .expect("load provider capability register");
+    register
+        .apply(request(
+            Some(1),
+            ProviderRegisterOperation::Register {
+                provider: installed_capability("rust", "asp-rust"),
+            },
+        ))
+        .await
+        .expect("persist builtin provider capability");
+    drop(register);
+
+    let restored = RuntimeProviderRegister::from_seed_with_store(
+        vec![identity_provider("rust", "asp-rust")],
+        store_path.clone(),
+    )
+    .await
+    .expect("restore provider capability register");
+    assert!(restored.compiled_routes("asp-rust").is_some());
+    assert_eq!(
+        restored
+            .installed_capability("rust")
+            .expect("installed Rust capability")
+            .provider_id,
+        "asp-rust"
+    );
+
+    restored
+        .apply(request(
+            Some(restored.snapshot().generation),
+            ProviderRegisterOperation::Unregister {
+                provider_id: "asp-rust".to_owned(),
+            },
+        ))
+        .await
+        .expect("remove installed Rust capability");
+    drop(restored);
+
+    let identity_only = RuntimeProviderRegister::from_seed_with_store(
+        vec![identity_provider("rust", "asp-rust")],
+        store_path,
+    )
+    .await
+    .expect("restore identity-only provider register");
+    assert!(identity_only.compiled_routes("asp-rust").is_none());
+}
+
+#[tokio::test]
 async fn warm_compiled_route_lookup_is_sub_millisecond() {
     let register = RuntimeProviderRegister::new();
     register
         .apply(request(
             Some(0),
             ProviderRegisterOperation::Register {
-                provider: live_provider("rust", "asp-rust"),
+                provider: installed_capability("rust", "asp-rust"),
             },
         ))
         .await
-        .expect("register live provider");
+        .expect("register installed provider capability");
 
     let started = std::time::Instant::now();
     for _ in 0..1_000 {
@@ -252,14 +308,14 @@ async fn warm_compiled_route_lookup_is_sub_millisecond() {
 }
 
 #[tokio::test]
-async fn operation_resolution_requires_a_live_compiled_route() {
+async fn operation_resolution_requires_an_installed_compiled_route() {
     let register = RuntimeProviderRegister::from_seed(vec![identity_provider("rust", "asp-rust")])
         .expect("seed register");
     let missing = register
         .resolve_route("rust", "search.owner")
         .expect_err("identity seed must not dispatch");
     assert!(
-        missing.contains("operation-not-in-live-register"),
+        missing.contains("operation-not-in-installed-capability"),
         "{missing}"
     );
 
@@ -267,30 +323,30 @@ async fn operation_resolution_requires_a_live_compiled_route() {
         .apply(request(
             Some(1),
             ProviderRegisterOperation::Register {
-                provider: live_provider("rust", "asp-rust"),
+                provider: installed_capability("rust", "asp-rust"),
             },
         ))
         .await
-        .expect("register live route");
+        .expect("register installed route");
     let (provider_id, route) = register
         .resolve_route("rust", "search.owner")
-        .expect("resolve live route");
+        .expect("resolve installed route");
     assert_eq!(provider_id, "asp-rust");
     assert_eq!(route.spec().route_id, "rust.search.owner");
 }
 
 #[tokio::test]
-async fn client_catalog_is_an_atomic_projection_of_live_routes() {
+async fn client_catalog_is_an_atomic_projection_of_installed_routes() {
     let register = RuntimeProviderRegister::new();
     register
         .apply(request(
             Some(0),
             ProviderRegisterOperation::Register {
-                provider: live_provider("zig", "asp-zig"),
+                provider: installed_capability("zig", "asp-zig"),
             },
         ))
         .await
-        .expect("register live route");
+        .expect("register installed route");
     let workspace_generation = format!("blake3-256:{}", "a".repeat(64));
     let catalog = register
         .client_protocol_catalog(workspace_generation, vec![ClientTransport::RuntimeIpc])

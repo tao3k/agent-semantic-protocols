@@ -162,7 +162,7 @@ class _runtime_env:
             env = os.environ.copy()
             env["PATH"] = f"{shim_dir}{os.pathsep}{env.get('PATH', '')}"
             env["SEMANTIC_AGENT_PROTOCOL_BIN"] = str(self.asp_bin)
-            env["ASP_NO_AGENT_PLATFORM"] = "1"
+            env["ASP_NO_AGENT"] = "1"
             run([str(self.asp_bin), "install", "plugin", "--codex", "."], env=env)
             return env
         except Exception:
@@ -203,7 +203,7 @@ def _write_shim(path: Path, body: str) -> None:
 
 def _contract_env(source: Mapping[str, str]) -> dict[str, str]:
     env = dict(source)
-    env["ASP_NO_AGENT_PLATFORM"] = "1"
+    env["ASP_NO_AGENT"] = "1"
     return env
 
 

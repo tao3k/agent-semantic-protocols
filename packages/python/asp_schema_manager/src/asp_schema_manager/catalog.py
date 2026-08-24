@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import hashlib
 from pathlib import Path
 from typing import Any, Iterator
 from urllib.parse import unquote, urldefrag, urlparse
@@ -21,6 +22,49 @@ class SchemaDocument:
     protocol_schema_id: str | None
     references: tuple[str, ...]
     byte_length: int
+
+
+@dataclass(frozen=True)
+class ProtoContract:
+    """Central, text-preserved proto contract tracked by Schema Manager."""
+
+    path: Path
+    relative_path: str
+    byte_length: int
+    source_digest: str
+    owner_package: str
+    consumers: tuple[str, ...]
+
+
+PROTO_SOURCE_REGISTRY = (
+    ("agent-semantic-runtime-server", "crates/agent-semantic-runtime-server/proto"),
+)
+
+
+def load_proto_contracts(workspace_root: Path) -> tuple[list[ProtoContract], list[dict[str, Any]]]:
+    """Discover explicit server-owned proto sources and receipt their owner."""
+    contracts: list[ProtoContract] = []
+    diagnostics: list[dict[str, Any]] = []
+    for owner, relative_root in PROTO_SOURCE_REGISTRY:
+        for path in sorted((workspace_root / relative_root).rglob("*.proto")):
+            relative_path = path.relative_to(workspace_root).as_posix()
+            try:
+                source = path.read_text(encoding="utf-8")
+            except OSError as error:
+                diagnostics.append({"severity": "error", "code": "invalid-proto", "message": str(error), "schemaPath": relative_path, "ownerPackage": owner})
+                continue
+            if "syntax = \"proto3\";" not in source or "package " not in source:
+                diagnostics.append({"severity": "error", "code": "invalid-proto-contract", "message": "proto contract requires proto3 syntax and package", "schemaPath": relative_path, "ownerPackage": owner})
+                continue
+            contracts.append(ProtoContract(
+                path,
+                relative_path,
+                len(source.encode("utf-8")),
+                hashlib.sha256(source.encode("utf-8")).hexdigest(),
+                owner,
+                ("runtime-server:server-binding", "provider-transport:client-binding"),
+            ))
+    return contracts, diagnostics
 
 
 def _walk(value: Any) -> Iterator[Any]:

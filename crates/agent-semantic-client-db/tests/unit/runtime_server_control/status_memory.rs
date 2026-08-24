@@ -11,7 +11,7 @@ use super::{
 
 fn fixture_endpoint(root: &std::path::Path, owner_epoch: u64) -> RuntimeServerEndpoint {
     RuntimeServerEndpoint {
-        schema_id: "agent.semantic-protocols.runtime-server-endpoint.v1".to_owned(),
+        schema_id: "agent.semantic-protocols.runtime-server-endpoint".to_owned(),
         schema_version: "1".to_owned(),
         transport_contract_digest: super::super::runtime_server_transport_contract_digest(),
         owner_epoch,
@@ -32,6 +32,7 @@ fn fixture_endpoint(root: &std::path::Path, owner_epoch: u64) -> RuntimeServerEn
         socket_path: root.join("control.sock").to_string_lossy().into_owned(),
         data_plane_socket_path: root.join("data.sock").to_string_lossy().into_owned(),
         provider_plane_socket_path: root.join("providers.sock").to_string_lossy().into_owned(),
+        client_http_endpoint: "http://127.0.0.1:1".to_owned(),
         workspace_store_path: root.join("workspaces").to_string_lossy().into_owned(),
         status_memory_path: root.join("status.memory").to_string_lossy().into_owned(),
     }

@@ -7,10 +7,14 @@ use std::{future::Future, sync::Arc};
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
 use hyper::{
-    Request, Response, StatusCode, body::Incoming, server::conn::http1, service::service_fn,
+    Request, Response, StatusCode, body::Incoming, client::conn::http1 as client_http1,
+    server::conn::http1 as server_http1, service::service_fn,
 };
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::{TokioExecutor, TokioIo};
 use tokio::{net::TcpListener, sync::watch, task::JoinSet};
+use tokio_stream::{StreamExt, wrappers::TcpListenerStream};
+
+pub mod persistent;
 
 #[derive(Debug)]
 pub struct HttpJsonRequest {
@@ -23,6 +27,54 @@ pub struct HttpJsonRequest {
 pub struct HttpJsonResponse {
     pub status: u16,
     pub body: Bytes,
+}
+
+/// POST one bounded JSON payload to the loopback ASP Client HTTP endpoint.
+pub async fn post_json(
+    endpoint: &str,
+    path: &str,
+    body: Bytes,
+) -> Result<HttpJsonResponse, String> {
+    let uri: hyper::Uri = endpoint
+        .parse()
+        .map_err(|error| format!("parse HTTP JSON endpoint: {error}"))?;
+    if uri.scheme_str() != Some("http") || !matches!(uri.host(), Some("127.0.0.1" | "localhost")) {
+        return Err("HTTP JSON client requires a loopback http endpoint".to_owned());
+    }
+    let authority = uri
+        .authority()
+        .ok_or_else(|| "HTTP JSON endpoint has no authority".to_owned())?;
+    let stream = tokio::net::TcpStream::connect(authority.as_str())
+        .await
+        .map_err(|error| format!("connect HTTP JSON endpoint: {error}"))?;
+    let io = TokioIo::new(stream);
+    let (mut sender, connection) = client_http1::handshake(io)
+        .await
+        .map_err(|error| format!("handshake HTTP JSON endpoint: {error}"))?;
+    let connection_task = tokio::spawn(async move {
+        connection
+            .await
+            .map_err(|error| format!("HTTP JSON client connection: {error}"))
+    });
+    let request = Request::post(path)
+        .header("content-type", "application/json")
+        .body(Full::new(body))
+        .map_err(|error| format!("build HTTP JSON request: {error}"))?;
+    let response = sender
+        .send_request(request)
+        .await
+        .map_err(|error| format!("send HTTP JSON request: {error}"))?;
+    let status = response.status().as_u16();
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .map_err(|error| format!("read HTTP JSON response: {error}"))?
+        .to_bytes();
+    connection_task
+        .await
+        .map_err(|error| format!("join HTTP JSON client connection: {error}"))??;
+    Ok(HttpJsonResponse { status, body })
 }
 
 impl HttpJsonResponse {
@@ -45,6 +97,7 @@ where
 {
     let handler = Arc::new(handler);
     let mut connections = JoinSet::new();
+    let mut listener = TcpListenerStream::new(listener);
 
     loop {
         tokio::select! {
@@ -53,8 +106,11 @@ where
                     break;
                 }
             }
-            accepted = listener.accept() => {
-                let (stream, _) = accepted
+            accepted = listener.next() => {
+                let Some(accepted) = accepted else {
+                    break;
+                };
+                let stream = accepted
                     .map_err(|error| format!("accept HTTP JSON connection: {error}"))?;
                 let handler = Arc::clone(&handler);
                 let mut connection_shutdown = shutdown.clone();
@@ -62,7 +118,7 @@ where
                     let service = service_fn(move |request| {
                         serve_request(request, Arc::clone(&handler))
                     });
-                    let connection = http1::Builder::new()
+                    let connection = server_http1::Builder::new()
                         .serve_connection(TokioIo::new(stream), service);
                     tokio::pin!(connection);
                     tokio::select! {
@@ -82,6 +138,52 @@ where
 
     while let Some(result) = connections.join_next().await {
         result.map_err(|error| format!("join HTTP JSON connection: {error}"))??;
+    }
+    Ok(())
+}
+
+/// Serve the ASP northbound data plane using HTTP/2 prior knowledge.
+/// Generic provider HTTP remains owned by `serve_http_json` (HTTP/1).
+pub async fn serve_http_json_h2<H, F>(
+    listener: TcpListener,
+    mut shutdown: watch::Receiver<bool>,
+    handler: H,
+) -> Result<(), String>
+where
+    H: Fn(HttpJsonRequest) -> F + Send + Sync + 'static,
+    F: Future<Output = Result<HttpJsonResponse, String>> + Send + 'static,
+{
+    let handler = Arc::new(handler);
+    let mut connections = JoinSet::new();
+    let mut listener = TcpListenerStream::new(listener);
+    loop {
+        tokio::select! {
+            changed = shutdown.changed() => {
+                if changed.is_err() || *shutdown.borrow() { break; }
+            }
+            accepted = listener.next() => {
+                let Some(accepted) = accepted else { break; };
+                let stream = accepted.map_err(|error| format!("accept HTTP/2 JSON connection: {error}"))?;
+                let handler = Arc::clone(&handler);
+                let mut connection_shutdown = shutdown.clone();
+                connections.spawn(async move {
+                    let service = service_fn(move |request| serve_request(request, Arc::clone(&handler)));
+                    let connection = hyper::server::conn::http2::Builder::new(TokioExecutor::new())
+                        .serve_connection(TokioIo::new(stream), service);
+                    tokio::pin!(connection);
+                    tokio::select! {
+                        result = &mut connection => result.map_err(|error| format!("serve HTTP/2 JSON connection: {error}")),
+                        _ = connection_shutdown.changed() => {
+                            connection.as_mut().graceful_shutdown();
+                            connection.await.map_err(|error| format!("drain HTTP/2 JSON connection: {error}"))
+                        }
+                    }
+                });
+            }
+        }
+    }
+    while let Some(result) = connections.join_next().await {
+        result.map_err(|error| format!("join HTTP/2 JSON connection: {error}"))??;
     }
     Ok(())
 }

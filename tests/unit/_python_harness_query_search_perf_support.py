@@ -217,5 +217,5 @@ def _asp_env(args: list[str]) -> dict[str, str]:
         else f"{PY_HARNESS_SRC}{os.pathsep}{pythonpath}"
     )
     if "--json" in args:
-        env["ASP_NO_AGENT_PLATFORM"] = "1"
+        env["ASP_NO_AGENT"] = "1"
     return env

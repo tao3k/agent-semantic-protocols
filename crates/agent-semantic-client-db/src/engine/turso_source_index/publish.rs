@@ -1,6 +1,5 @@
-use super::core::{
-    TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION, turso_source_index_scope_row_counts,
-};
+use super::contract::TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION;
+use super::core::turso_source_index_scope_row_counts;
 use crate::engine::turso_statement::execute_turso_operation;
 
 fn unix_time_ms() -> i64 {

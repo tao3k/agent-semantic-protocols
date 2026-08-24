@@ -28,6 +28,7 @@ fn default_develop_receipt_install_publishes_installed_artifacts_atomically() {
     make_executable(&source);
 
     let runtime_bin = state_home.join("runtime/bin");
+    let artifact_root = state_home.join("runtime/artifacts/blake3-256");
     let provider_receipts = state_home.join("runtime/providers/receipts");
     fs::create_dir_all(&runtime_bin).expect("create runtime bin");
     fs::create_dir_all(&provider_receipts).expect("create provider receipt directory");
@@ -38,12 +39,17 @@ fn default_develop_receipt_install_publishes_installed_artifacts_atomically() {
         ("gerbil-scheme", "asp-gerbil-scheme", "asp-gerbil-scheme"),
     ] {
         let binary_path = runtime_bin.join(binary);
+        let artifact_path = artifact_root.join(language_id).join(binary);
+        fs::create_dir_all(artifact_path.parent().expect("provider artifact parent"))
+            .expect("create provider CAS fixture");
         fs::write(
-            &binary_path,
+            &artifact_path,
             format!("#!/bin/sh\n# {provider_id}\nexit 0\n").as_bytes(),
         )
         .expect("write registered provider fixture");
-        make_executable(&binary_path);
+        make_executable(&artifact_path);
+        std::os::unix::fs::symlink(&artifact_path, &binary_path)
+            .expect("publish registered provider CAS entry");
         let content_digest = agent_semantic_content_identity::file_content_digest_v1(&binary_path)
             .expect("provider content digest");
         let metadata_digest =
@@ -79,7 +85,7 @@ fn default_develop_receipt_install_publishes_installed_artifacts_atomically() {
                 source.to_str().expect("utf-8 provider source"),
             ])
             .env("ASP_STATE_HOME", &state_home)
-            .env("ASP_NO_AGENT_PLATFORM", "1")
+            .env("ASP_NO_AGENT", "1")
             .output()
             .expect("publish develop provider receipt")
     };
@@ -115,22 +121,26 @@ fn default_develop_receipt_install_publishes_installed_artifacts_atomically() {
     let materialized_path = provider["materializedPath"]
         .as_str()
         .expect("materialized provider path");
-    assert_eq!(
-        std::path::Path::new(materialized_path),
-        state_home.join("runtime/bin/asp-rust"),
-        "installed artifacts must publish the stable Runtime lattice entry"
+    let materialized_path = std::path::Path::new(materialized_path);
+    assert!(
+        materialized_path.starts_with(state_home.join("runtime/artifacts/blake3-256")),
+        "installed artifacts must publish an immutable CAS entry: {}",
+        materialized_path.display()
     );
     assert_eq!(
-        fs::canonicalize(materialized_path).expect("resolve development lattice entry"),
-        fs::canonicalize(
-            dev_root.join("languages/rust-lang-project-harness/target/release/asp-rust"),
-        )
-        .expect("resolve registered workspace artifact"),
-        "development install must select the registry-owned workspace artifact"
+        materialized_path.file_name().and_then(std::ffi::OsStr::to_str),
+        Some("asp-rust"),
+        "installed artifact identity must retain the provider binary name"
+    );
+    assert_eq!(
+        fs::read(materialized_path).expect("read immutable development artifact"),
+        fs::read(&source).expect("read explicitly selected development artifact"),
+        "development install must publish the selected source artifact content"
     );
     assert!(
-        std::path::Path::new(materialized_path).is_file(),
-        "installed provider artifact is missing: {materialized_path}"
+        materialized_path.is_file(),
+        "installed provider artifact is missing: {}",
+        materialized_path.display()
     );
 
     let second = install();
@@ -176,33 +186,4 @@ fn root_justfile_develop_install_is_only_a_registry_driven_adapter() {
             "root Justfile duplicated provider-owned install logic: {forbidden}"
         );
     }
-}
-
-#[test]
-fn record_and_reconcile_receipt_modes_are_mutually_exclusive() {
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args([
-            "install",
-            "language",
-            "rust",
-            "--record-installed-receipt",
-            "asp-rust",
-            "--reconcile-receipt",
-        ])
-        .env("ASP_NO_AGENT_PLATFORM", "1")
-        .output()
-        .expect("run conflicting receipt modes");
-
-    assert!(!output.status.success());
-    let receipt = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(
-        receipt.contains(
-            "the argument '--record-installed-receipt <PATH>' cannot be used with '--reconcile-receipt'"
-        ),
-        "{receipt}"
-    );
 }

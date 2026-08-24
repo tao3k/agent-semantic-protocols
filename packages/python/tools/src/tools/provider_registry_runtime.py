@@ -79,5 +79,5 @@ def provider_registry_with_env(
 
 def _automation_env(env: dict[str, str] | None) -> dict[str, str]:
     result = dict(env or os.environ)
-    result["ASP_NO_AGENT_PLATFORM"] = "1"
+    result["ASP_NO_AGENT"] = "1"
     return result

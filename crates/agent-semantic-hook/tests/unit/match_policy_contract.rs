@@ -438,6 +438,13 @@ fn production_match_policy_contract() {
             reason: ReasonKind::StructuredSourceRead,
         },
         MatchCase {
+            name: "shell structured document read capability",
+            payload: shell("sed -n '1p' package.json"),
+            rule_id: "route-shell-structured-document-read",
+            decision: DecisionKind::Deny,
+            reason: ReasonKind::StructuredSourceRead,
+        },
+        MatchCase {
             name: "bounded JSON projection",
             payload: shell("jq -c '.package.name' package.json"),
             rule_id: "allow-bounded-json-projection",

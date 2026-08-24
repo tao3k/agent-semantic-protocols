@@ -2,12 +2,9 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::dynamic_overlay::DynamicOverlayLane;
 use crate::{
-    DynamicSearchCandidate, DynamicSearchRootCandidateRequest, SearchOverlayCollectionRequest,
-    SearchOverlayConfig, SearchOverlaySurface,
-    collect_dynamic_lexical_overlay_candidates_from_roots, collect_search_overlay_candidates,
-    language_file_spec, language_neutral_search_file_spec,
+    DynamicSearchCandidate, DynamicSearchRootCandidateRequest,
+    collect_dynamic_lexical_overlay_candidates_from_roots, language_file_spec,
 };
 
 /// Candidate returned by the search pipe candidate service.
@@ -41,18 +38,6 @@ pub struct SearchPipeCandidateRequest<'a> {
     pub base_snapshot: &'a agent_semantic_artifacts::WorkspaceSnapshot,
     pub provider_digest: &'a str,
     pub require_multi_clause: bool,
-    pub limit: usize,
-}
-
-/// Request for the independent path/module candidate stage used by `search pipe`.
-pub struct SearchPipePathCandidateRequest<'a> {
-    pub language_id: &'a str,
-    pub project_root: &'a Path,
-    pub locator_root: &'a Path,
-    pub query: &'a str,
-    pub owners: &'a [PathBuf],
-    pub ignore_dirs: &'a [String],
-    pub include_hidden_dirs: &'a [String],
     pub limit: usize,
 }
 
@@ -94,60 +79,6 @@ pub fn collect_search_pipe_candidates(
     })
 }
 
-/// Collect `fd`-equivalent path/module candidates without consulting the source index.
-pub fn collect_search_pipe_path_candidates(
-    request: SearchPipePathCandidateRequest<'_>,
-) -> Result<Vec<SearchPipeCandidate>, String> {
-    let terms = query_terms(request.query);
-    if terms.is_empty()
-        || !terms.iter().any(|term| {
-            term.contains('/') || term.contains('.') || term.contains('_') || term.contains('-')
-        })
-    {
-        return Ok(Vec::new());
-    }
-    let roots = if request.owners.is_empty() {
-        vec![request.locator_root.to_path_buf()]
-    } else {
-        request
-            .owners
-            .iter()
-            .map(|owner| {
-                if owner.is_absolute() {
-                    owner.clone()
-                } else {
-                    request.locator_root.join(owner)
-                }
-            })
-            .collect()
-    };
-    let Some(collection) = collect_search_overlay_candidates(SearchOverlayCollectionRequest {
-        lane: DynamicOverlayLane::Query,
-        surface: SearchOverlaySurface::Path,
-        language_id: request.language_id,
-        file_spec_override: Some(language_neutral_search_file_spec()),
-        accept_all_files: !request.owners.is_empty(),
-        project_root: request.project_root,
-        locator_root: request.locator_root,
-        roots: &roots,
-        terms: &terms,
-        config: SearchOverlayConfig {
-            ignore_dirs: request.ignore_dirs,
-            include_hidden_dirs: request.include_hidden_dirs,
-        },
-        native_args: &[],
-    })?
-    else {
-        return Ok(Vec::new());
-    };
-    Ok(collection
-        .candidates
-        .into_iter()
-        .map(SearchPipeCandidate::from)
-        .take(request.limit)
-        .collect())
-}
-
 fn query_terms(query: &str) -> Vec<String> {
     query
         .split(|character: char| character == ',' || character == '|' || character.is_whitespace())
@@ -155,20 +86,6 @@ fn query_terms(query: &str) -> Vec<String> {
         .filter(|term| !term.is_empty())
         .map(str::to_lowercase)
         .collect()
-}
-
-impl From<crate::SearchOverlayCandidate> for SearchPipeCandidate {
-    fn from(candidate: crate::SearchOverlayCandidate) -> Self {
-        Self {
-            path: candidate.path,
-            line: candidate.line,
-            end_line: candidate.end_line,
-            symbol: candidate.symbol,
-            text: candidate.text,
-            source: candidate.source,
-            confidence: candidate.confidence,
-        }
-    }
 }
 
 impl From<DynamicSearchCandidate> for SearchPipeCandidate {

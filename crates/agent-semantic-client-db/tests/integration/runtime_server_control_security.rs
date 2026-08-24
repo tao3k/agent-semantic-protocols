@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use agent_semantic_client_db::runtime_provider_register_client::call_runtime_provider_register;
 use agent_semantic_client_db::runtime_server::{RuntimeServer, RuntimeServerExit};
 use agent_semantic_client_db::runtime_server_control::{
     prepare_runtime_server_endpoint_in, publish_runtime_server_endpoint,
@@ -8,12 +7,6 @@ use agent_semantic_client_db::runtime_server_control::{
 };
 use agent_semantic_client_db::runtime_server_runtime::RuntimeServerConnectionSupervisor;
 use agent_semantic_client_db::{RuntimeServerOperation, WorkspaceDbRegistry, call_runtime_server};
-use agent_semantic_provider_protocol::{
-    PROVIDER_REGISTER_REQUEST_SCHEMA_ID, PROVIDER_REGISTER_SCHEMA_VERSION,
-    ProviderRegisterOperation, ProviderRegisterRequest, ProviderRegisterResult,
-    ProviderRegistrationDocument,
-};
-use serde_json::json;
 
 async fn fixture_endpoint(
     runtime_dir: &tempfile::TempDir,
@@ -122,16 +115,22 @@ async fn control_request_nonce_is_single_use_for_the_owner_epoch() {
     let server = tokio::spawn(server.serve());
     call_runtime_server(
         &endpoint,
-        RuntimeServerOperation::Reconcile,
-        endpoint.runtime_binary_identity.clone(),
+        RuntimeServerOperation::Status,
+        agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+            value: "blake3-256:transport-replay-probe".to_owned(),
+            algorithm: "blake3-256".to_owned(),
+        },
         "single-use-control-nonce".to_owned(),
     )
     .await
     .expect("first use of control nonce succeeds");
     let replay = call_runtime_server(
         &endpoint,
-        RuntimeServerOperation::Reconcile,
-        endpoint.runtime_binary_identity.clone(),
+        RuntimeServerOperation::Status,
+        agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+            value: "blake3-256:transport-replay-probe".to_owned(),
+            algorithm: "blake3-256".to_owned(),
+        },
         "single-use-control-nonce".to_owned(),
     )
     .await
@@ -145,85 +144,6 @@ async fn control_request_nonce_is_single_use_for_the_owner_epoch() {
     )
     .await
     .expect("restart drains replay test server");
-    assert_eq!(
-        server.await.expect("join runtime server").expect("serve"),
-        RuntimeServerExit::RestartRequested
-    );
-}
-
-#[tokio::test]
-async fn provider_plane_registers_external_provider_without_workspace_admission() {
-    let runtime_dir = tempfile::tempdir().expect("runtime directory");
-    let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 91).await;
-    let server = RuntimeServer::bind_with_catalog(
-        endpoint.clone(),
-        Arc::new(WorkspaceDbRegistry::default()),
-        artifact_catalog,
-    )
-    .await
-    .expect("bind runtime server");
-    let server = tokio::spawn(server.serve());
-
-    let initial = call_runtime_provider_register(
-        &endpoint,
-        &ProviderRegisterRequest {
-            schema_id: PROVIDER_REGISTER_REQUEST_SCHEMA_ID.to_owned(),
-            schema_version: PROVIDER_REGISTER_SCHEMA_VERSION.to_owned(),
-            expected_generation: None,
-            request: ProviderRegisterOperation::List,
-        },
-    )
-    .await
-    .expect("list builtin providers");
-    let ProviderRegisterResult::Snapshot { snapshot: initial } = initial.result else {
-        panic!("provider list must return a snapshot")
-    };
-    assert!(
-        initial
-            .providers
-            .iter()
-            .any(|provider| provider.provider_id == "asp-rust")
-    );
-
-    let response = call_runtime_provider_register(
-        &endpoint,
-        &ProviderRegisterRequest {
-            schema_id: PROVIDER_REGISTER_REQUEST_SCHEMA_ID.to_owned(),
-            schema_version: PROVIDER_REGISTER_SCHEMA_VERSION.to_owned(),
-            expected_generation: Some(initial.generation),
-            request: ProviderRegisterOperation::Register {
-                provider: ProviderRegistrationDocument {
-                    language_id: "zig".to_owned(),
-                    provider_id: "asp-zig".to_owned(),
-                    registration: json!({
-                        "languageId": "zig",
-                        "providerId": "asp-zig",
-                    }),
-                },
-            },
-        },
-    )
-    .await
-    .expect("register external provider");
-    let ProviderRegisterResult::Snapshot { snapshot } = response.result else {
-        panic!("provider registration must return a snapshot")
-    };
-    assert_eq!(snapshot.generation, initial.generation + 1);
-    assert!(
-        snapshot
-            .providers
-            .iter()
-            .any(|provider| provider.provider_id == "asp-zig")
-    );
-
-    call_runtime_server(
-        &endpoint,
-        RuntimeServerOperation::Restart,
-        endpoint.runtime_binary_identity.clone(),
-        "provider-plane-test-shutdown".to_owned(),
-    )
-    .await
-    .expect("restart drains provider-plane test server");
     assert_eq!(
         server.await.expect("join runtime server").expect("serve"),
         RuntimeServerExit::RestartRequested

@@ -39,7 +39,7 @@ pub use types::{
     ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexSelectorSymbol,
     ClientDbSourceIndexSource, ClientDbSourceIndexSourceBlobs, ClientDbSourceIndexSourceKind,
     ClientDbSourceIndexStats, ClientDbSourceIndexStructuralSelector,
-    client_db_source_index_artifact_digest, client_db_source_index_file_count,
+    client_db_source_index_file_count,
     client_db_source_index_generation_id_for_snapshot,
     client_db_source_index_registry_evidence_hash, client_db_source_index_scope_dir_evidence_hash,
 };

@@ -28,15 +28,16 @@ fn lexical_search_frame_requires_query_bundle_before_warm_acquisition() {
         warm_candidates: &warm,
         session_candidates: &[],
         owner_candidates: &[],
-        provider_owner_item_available: true,
-        cold_scan_allowed: true,
     });
 
     assert_eq!(
         route.acquisition_route,
         LexicalAcquisitionRoute::QueryBundleRequired
     );
-    assert_eq!(route.evidence_state, LexicalEvidenceState::Degraded);
+    assert_eq!(
+        route.evidence_state,
+        LexicalEvidenceState::QueryBundleRequired
+    );
     assert_eq!(route.fallback_reason, "query-bundle-required");
     assert_eq!(route.provider_process_count, 0);
     assert_eq!(route.native_finder_process_count, 0);
@@ -87,8 +88,6 @@ fn lexical_search_frame_routes_multi_seed_bundle_by_cohesive_owner() {
         warm_candidates: &warm,
         session_candidates: &[],
         owner_candidates: &[],
-        provider_owner_item_available: false,
-        cold_scan_allowed: true,
     });
 
     assert_eq!(
@@ -105,28 +104,29 @@ fn lexical_search_frame_routes_multi_seed_bundle_by_cohesive_owner() {
 }
 
 #[test]
-fn lexical_search_frame_marks_degraded_finder_as_last_resort() {
+fn lexical_search_frame_reports_unavailable_generation_without_fallback_io() {
     let terms = vec!["missing".to_string(), "owner".to_string()];
     let route = plan_lexical_search_frame(LexicalSearchFrameRequest {
         terms: &terms,
         warm_candidates: &[],
         session_candidates: &[],
         owner_candidates: &[],
-        provider_owner_item_available: false,
-        cold_scan_allowed: false,
     });
 
     assert_eq!(
         route.acquisition_route,
-        LexicalAcquisitionRoute::DegradedFinder
+        LexicalAcquisitionRoute::GenerationUnavailable
     );
-    assert_eq!(route.evidence_state, LexicalEvidenceState::Degraded);
-    assert_eq!(route.fallback_reason, "no-parser-facts");
-    assert_eq!(route.native_finder_process_count, 1);
+    assert_eq!(
+        route.evidence_state,
+        LexicalEvidenceState::GenerationUnavailable
+    );
+    assert_eq!(route.fallback_reason, "generation-unavailable");
+    assert_eq!(route.native_finder_process_count, 0);
 }
 
 #[test]
-fn lexical_search_frame_uses_owner_evidence_before_cold_scan() {
+fn lexical_search_frame_uses_owner_evidence_from_the_admitted_generation() {
     let terms = vec!["DynamicOwnerItem".to_string(), "owner_items".to_string()];
     let owners = vec![LexicalSearchFrameCandidate {
         path: "crates/agent-semantic-search/src/dynamic_search/owner_items/core.rs".to_string(),
@@ -139,8 +139,6 @@ fn lexical_search_frame_uses_owner_evidence_before_cold_scan() {
         warm_candidates: &[],
         session_candidates: &[],
         owner_candidates: &owners,
-        provider_owner_item_available: true,
-        cold_scan_allowed: true,
     });
 
     assert_eq!(
@@ -202,8 +200,6 @@ fn lexical_search_frame_warm_path_stays_inside_scenario_gate() {
             warm_candidates: &warm,
             session_candidates: &[],
             owner_candidates: &[],
-            provider_owner_item_available: true,
-            cold_scan_allowed: true,
         });
         assert_eq!(
             route.acquisition_route,
@@ -225,7 +221,7 @@ fn lexical_search_frame_trace_skips_overlay_when_source_index_is_selector_ready(
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
     let index_artifact_digest =
-        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
+        agent_semantic_search::source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
         source_snapshot: Some(snapshot.evidence.clone()),
         index_artifact_digest: Some(index_artifact_digest.clone()),
@@ -297,7 +293,7 @@ fn lexical_search_frame_uses_source_index_owner_evidence_before_overlay() {
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
     let index_artifact_digest =
-        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
+        agent_semantic_search::source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
         source_snapshot: Some(snapshot.evidence.clone()),
         index_artifact_digest: Some(index_artifact_digest.clone()),

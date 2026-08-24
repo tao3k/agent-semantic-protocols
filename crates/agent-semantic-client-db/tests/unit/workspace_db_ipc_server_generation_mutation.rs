@@ -55,7 +55,7 @@ fn generation(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn admitted_mutation_does_not_require_git_candidate_rediscovery() {
+async fn admitted_mutation_rediscovers_server_owned_non_git_candidate() {
     let temp = tempfile::tempdir().expect("temporary non-Git Runtime root");
     let project_root = temp.path().join("project");
     tokio::fs::create_dir_all(project_root.join("src"))
@@ -81,10 +81,12 @@ async fn admitted_mutation_does_not_require_git_candidate_rediscovery() {
         .expect("publish non-Git base generation");
     let build_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let build_changed = std::sync::Arc::new(tokio::sync::Notify::new());
+    let observed_candidates = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let admission = std::sync::Arc::new(
         crate::runtime_server_admission::WorkspaceGenerationAdmission::new(std::sync::Arc::new({
             let build_count = std::sync::Arc::clone(&build_count);
             let build_changed = std::sync::Arc::clone(&build_changed);
+            let observed_candidates = std::sync::Arc::clone(&observed_candidates);
             move |_workspace_identity,
                   _project_root,
                   candidate,
@@ -94,8 +96,13 @@ async fn admitted_mutation_does_not_require_git_candidate_rediscovery() {
                   _cancellation| {
                 let build_count = std::sync::Arc::clone(&build_count);
                 let build_changed = std::sync::Arc::clone(&build_changed);
+                let observed_candidates = std::sync::Arc::clone(&observed_candidates);
                 Box::pin(async move {
                     build_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                    observed_candidates
+                        .lock()
+                        .expect("candidate observations")
+                        .push(candidate.clone());
                     build_changed.notify_waiters();
                     crate::runtime_server_admission::WorkspaceGenerationBuildCompletion::new(
                             candidate,
@@ -157,6 +164,18 @@ async fn admitted_mutation_does_not_require_git_candidate_rediscovery() {
             .state,
         crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
     );
+    let observed_candidates = observed_candidates.lock().expect("candidate observations");
+    assert_eq!(observed_candidates.len(), 2);
+    assert_ne!(
+        observed_candidates[0].candidate_generation.digest,
+        observed_candidates[1].candidate_generation.digest,
+        "each mutation must rediscover current workspace candidate identity"
+    );
+    assert_eq!(
+        observed_candidates[1].candidate_generation.authorities,
+        vec![agent_semantic_runtime::git::RepositoryCandidateAuthority::ServerResident]
+    );
+    drop(observed_candidates);
 
     admission.shutdown().await.expect("shutdown admission");
     registry.shutdown().await.expect("shutdown registry");
@@ -260,7 +279,7 @@ async fn resident_reads_fail_closed_while_a_new_generation_is_building() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn first_ipc_mutation_requires_a_prepublished_generation() {
+async fn first_ipc_mutation_bootstraps_a_server_owned_generation() {
     let temp = tempfile::tempdir().expect("temporary first-mutation Runtime root");
     let project_root = temp.path().join("project");
     tokio::fs::create_dir_all(&project_root)
@@ -283,7 +302,7 @@ async fn first_ipc_mutation_requires_a_prepublished_generation() {
                     Err(
                         crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
                             crate::runtime_server_admission::WorkspaceGenerationFailureStage::SourceBuilder,
-                            "missing-generation mutation must not schedule a builder",
+                            "bootstrap fixture stops after proving the builder was scheduled",
                         ),
                     )
                 })
@@ -303,14 +322,26 @@ async fn first_ipc_mutation_requires_a_prepublished_generation() {
     let elapsed = started.elapsed();
 
     match result {
-        crate::workspace_db_ipc::WorkspaceDbIpcResult::Failed { code, message } => {
-            assert_eq!(code, "runtime-server-generation-not-ready");
-            assert!(message.contains("reasonKind=runtime-generation-not-ready"));
+        crate::workspace_db_ipc::WorkspaceDbIpcResult::RuntimeGenerationMutationSubmission {
+            receipt,
+        } => {
+            assert_eq!(receipt.mutation_id, "first-ipc-owner-change");
+            assert_eq!(
+                receipt.state,
+                crate::runtime_server_admission::WorkspaceGenerationMutationSubmissionState::Queued
+            );
         }
-        result => panic!("missing generation must fail closed, got {result:?}"),
+        result => panic!("first mutation must bootstrap generation admission, got {result:?}"),
     }
     assert!(elapsed < std::time::Duration::from_millis(1), "{elapsed:?}");
-    assert_eq!(build_count.load(std::sync::atomic::Ordering::Acquire), 0);
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        while build_count.load(std::sync::atomic::Ordering::Acquire) == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("first mutation scheduled bootstrap builder");
+    assert_eq!(build_count.load(std::sync::atomic::Ordering::Acquire), 1);
 
     admission.shutdown().await.expect("shutdown admission");
     registry.shutdown().await.expect("shutdown registry");

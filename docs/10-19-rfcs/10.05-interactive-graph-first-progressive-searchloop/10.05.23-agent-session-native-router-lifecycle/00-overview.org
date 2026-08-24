@@ -447,8 +447,8 @@ $ forall S,
 
 Background indexing may materialize caches or build a candidate generation.
 Publication requires a semantic-content change, complete validation, and the
-existing generation CAS.  Cache warming, cold-scan fallback, selector
-projection, zero matches, or access-recovery bookkeeping are not semantic
+existing generation CAS.  Cache warming, generation-unavailable observations,
+selector projection, zero matches, or access-recovery bookkeeping are not semantic
 content changes.
 
 This clause distinguishes two caches:

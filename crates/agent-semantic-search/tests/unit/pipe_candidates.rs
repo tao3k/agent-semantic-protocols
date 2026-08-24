@@ -96,7 +96,7 @@ fn source_index_acquisition_gates_broad_generic_queries() {
 }
 
 #[test]
-fn auto_acquisition_query_gate_preserves_canonical_source_snapshot() {
+fn auto_acquisition_query_gate_does_not_claim_an_unpublished_generation() {
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let query = "search query budget block generic provider";
     let terms = crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
@@ -123,16 +123,17 @@ fn auto_acquisition_query_gate_preserves_canonical_source_snapshot() {
         limit: 5,
         source_index_lookup: None,
     })
-    .expect("query gate should preserve the admitted source snapshot");
+    .expect("query gate should remain a zero-I/O admission result");
 
-    assert_eq!(acquisition.source_snapshot, Some(fixture.evidence));
+    assert_eq!(acquisition.source_snapshot, None);
+    assert_eq!(acquisition.candidate_sources, vec!["query-gate"]);
 }
 
 #[test]
 fn source_index_acquisition_defers_backend_for_path_like_miss() {
     let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
     let index_artifact_digest =
-        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
+        agent_semantic_search::source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
         source_snapshot: Some(snapshot.evidence.clone()),
         index_artifact_digest: Some((index_artifact_digest.clone()).into()),
@@ -163,7 +164,7 @@ fn source_index_acquisition_quarantines_stale_candidates_and_defers_overlay() {
     std::fs::create_dir_all(&root).expect("create drift fixture root");
     let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
     let index_artifact_digest =
-        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
+        agent_semantic_search::source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
         source_snapshot: Some(snapshot.evidence.clone()),
         index_artifact_digest: Some((index_artifact_digest.clone()).into()),
@@ -216,7 +217,7 @@ fn source_index_acquisition_keeps_existing_rows_inventory_only() {
         .expect("write inventory fixture source");
     let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
     let index_artifact_digest =
-        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
+        agent_semantic_search::source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
         source_snapshot: Some(snapshot.evidence.clone()),
         index_artifact_digest: Some((index_artifact_digest.clone()).into()),

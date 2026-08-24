@@ -8,6 +8,8 @@ doctest = false
 
 [dependencies]
 agent-semantic-client-server = { path = "../agent-semantic-client-server" }
+agent-semantic-runtime-server = { path = "../agent-semantic-runtime-server" }
+agent-semantic-http-json = { path = "../agent-semantic-http-json" }
 agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
 blake3.workspace = true
 agent-semantic-context-product = { path = "../agent-semantic-context-product" }

@@ -1,6 +1,6 @@
 use super::{
-    Arc, Duration, RuntimeServer, RuntimeServerExit, WorkspaceDbRegistry, fixture_endpoint,
-    record_admission_fixture_candidate,
+    Arc, Duration, RuntimeServer, RuntimeServerExit, RuntimeServerOperation, WorkspaceDbRegistry,
+    call_runtime_server, fixture_endpoint, record_admission_fixture_candidate,
 };
 
 #[tokio::test(flavor = "multi_thread")]
@@ -49,6 +49,45 @@ async fn runtime_generation_mutation_submission_is_non_blocking_and_single_fligh
     }));
     let shutdown = server.shutdown_handle();
     let server = tokio::spawn(server.serve());
+    let first_ensure_started = tokio::time::Instant::now();
+    let first_ensure = call_runtime_server(
+        &endpoint,
+        RuntimeServerOperation::EnsureWorkspace,
+        endpoint.runtime_binary_identity.clone(),
+        "ensure-building-first".to_owned(),
+    )
+    .await
+    .expect("first EnsureWorkspace receipt");
+    assert!(first_ensure_started.elapsed() < Duration::from_millis(650));
+    assert_eq!(
+        first_ensure.state,
+        agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
+    );
+    assert_eq!(
+        first_ensure
+            .workspace_generation
+            .as_ref()
+            .map(|generation| generation.state.as_str()),
+        Some("Building")
+    );
+    assert_eq!(*source_build_count.lock().await, 1);
+    let second_ensure = call_runtime_server(
+        &endpoint,
+        RuntimeServerOperation::EnsureWorkspace,
+        endpoint.runtime_binary_identity.clone(),
+        "ensure-building-second".to_owned(),
+    )
+    .await
+    .expect("second EnsureWorkspace receipt");
+    assert_eq!(
+        second_ensure
+            .workspace_generation
+            .as_ref()
+            .map(|generation| generation.state.as_str()),
+        Some("Building")
+    );
+    assert_eq!(*source_build_count.lock().await, 1);
+    source_build_release.add_permits(1);
     let session = Arc::new(
         agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::for_runtime_server(
             &endpoint,

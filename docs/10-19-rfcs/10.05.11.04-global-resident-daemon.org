@@ -52,13 +52,13 @@ through typed control IPC.
 
 #+begin_example
 asp server status
-asp server reconcile
+asp server start
 asp server restart
 asp server stop
 asp server daemon
 #+end_example
 
-=status=, =reconcile=, and =restart= are typed clients.  =daemon= is the service
+=status=, =start=, and =restart= are typed clients.  =daemon= is the service
 entrypoint used by the installed supervisor definition.  It is not a
 per-workspace bootstrap command.
 
@@ -136,8 +136,8 @@ Slow work in one workspace cannot block another workspace.
 The Hook is a nonblocking lifecycle client.  It may:
 
 - validate the installed endpoint receipt;
-- issue a typed =status= or =reconcile= request;
-- ask the platform supervisor to reconcile a missing or unreachable daemon;
+- issue a typed =status= request;
+- return typed unavailable evidence for a missing or unreachable daemon;
 - route the current tool request after daemon health is established.
 
 The Hook may not:
@@ -234,7 +234,7 @@ after their callers have moved to the Global control and data contracts.
 - the supervisor replaces a stale or exited daemon;
 - healthcheck against an absent endpoint creates or requests exactly one fresh
   daemon epoch before awaiting health;
-- an exited owner receipt cannot suppress replacement, and a fresh reconcile
+- an exited owner receipt cannot suppress replacement, and a fresh typed ensure
   publishes a fresh spawn/supervisor receipt;
 - installed runtime artifact and endpoint digest agree.
 

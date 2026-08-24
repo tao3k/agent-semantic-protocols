@@ -93,6 +93,7 @@ async fn telemetry_bus_delivers_terminal_incidents_losslessly() {
     match received {
         RuntimeTelemetryEvent::SearchIncident(received) => assert_eq!(received, event),
         RuntimeTelemetryEvent::Lifecycle(_) => panic!("received lifecycle event"),
+        RuntimeTelemetryEvent::Performance(_) => panic!("received performance event"),
     }
 }
 

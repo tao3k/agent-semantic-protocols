@@ -10,12 +10,19 @@ pub const PROJECTION_BATCH_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.provider-language-projection-batch-request";
 pub const PROJECTION_BATCH_RESPONSE_SCHEMA_ID: &str =
     "agent.semantic-protocols.provider-language-projection-batch-response";
-/// Maximum owners admitted to one short-lived provider projection process.
+pub const CANONICAL_LANGUAGE_ITEM_IDENTITY_SCHEMA_ID: &str =
+    "agent.semantic-protocols.canonical-language-item-identity";
+/// Maximum owners admitted to one provider projection wire frame.
 pub const MAX_PROVIDER_PROJECTION_BATCH_OWNERS: usize = 32;
-/// Maximum aggregate source bytes admitted to one provider projection process.
-pub const MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES: usize = 4 * 1024 * 1024;
+/// Maximum aggregate unencoded source bytes admitted to one provider projection wire frame.
+///
+/// The shared client-server contract deliberately stays below the smallest
+/// supported HTTP request-body ceiling.  A generation is a stream of these
+/// independently validated frames; it is never serialized as one corpus-sized
+/// request.  The HTTP transport separately validates the final encoded frame.
+pub const MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES: usize = 384 * 1024;
 
-/// Plans ordered provider-process batches without splitting an individual owner.
+/// Plans ordered provider wire frames without splitting an individual owner.
 pub fn provider_projection_batch_ranges(owner_sizes: &[usize]) -> Vec<Range<usize>> {
     let mut ranges = Vec::new();
     let mut start = 0;
@@ -265,24 +272,58 @@ fn validate_response(
                             && canonical.symbol.as_str() == projected.symbol
                     },
                 );
-            if item.owner_id != expected_owner_id
-                || item.identity.schema_id != "asp.canonical-language-item-identity.v1"
-                || item.identity.schema_version != "1"
-                || item.identity.language_id != request.language_id
-                || item.identity.kind != item.kind
-                || item.identity.symbol != item.name
-                || canonical.language_id.as_str() != item.identity.language_id
-                || canonical.kind.as_str() != item.identity.kind
-                || canonical.symbol.as_str() != item.identity.symbol
-                || !identity_scopes_match
-                || !item.selector.starts_with(&expected_selector_prefix)
-                || item.source_byte_start >= item.source_byte_end
-                || item.source_byte_end > requested_owner.source_bytes.len()
-                || !selectors.insert(item.selector.as_str())
-            {
+            let mut proof_mismatches = Vec::new();
+            if item.owner_id != expected_owner_id {
+                proof_mismatches.push("ownerId");
+            }
+            if item.identity.schema_id != CANONICAL_LANGUAGE_ITEM_IDENTITY_SCHEMA_ID {
+                proof_mismatches.push("identity.schemaId");
+            }
+            if item.identity.schema_version != "1" {
+                proof_mismatches.push("identity.schemaVersion");
+            }
+            if item.identity.language_id != request.language_id {
+                proof_mismatches.push("identity.languageId");
+            }
+            if item.identity.kind != item.kind {
+                proof_mismatches.push("identity.kind");
+            }
+            if item.identity.symbol != item.name {
+                proof_mismatches.push("identity.symbol");
+            }
+            if canonical.language_id.as_str() != item.identity.language_id {
+                proof_mismatches.push("selector.languageId");
+            }
+            if canonical.kind.as_str() != item.identity.kind {
+                proof_mismatches.push("selector.kind");
+            }
+            if canonical.symbol.as_str() != item.identity.symbol {
+                proof_mismatches.push("selector.symbol");
+            }
+            if !identity_scopes_match {
+                proof_mismatches.push("selector.scopes");
+            }
+            if !item.selector.starts_with(&expected_selector_prefix) {
+                proof_mismatches.push("selector.ownerPrefix");
+            }
+            if item.source_byte_start >= item.source_byte_end {
+                proof_mismatches.push("sourceByteRange.emptyOrReversed");
+            }
+            if item.source_byte_end > requested_owner.source_bytes.len() {
+                proof_mismatches.push("sourceByteRange.outOfBounds");
+            }
+            if !selectors.insert(item.selector.as_str()) {
+                proof_mismatches.push("selector.duplicate");
+            }
+            if !proof_mismatches.is_empty() {
                 return Err(ProviderProjectionBatchError(format!(
-                    "projection batch item proof mismatch: ownerPath={} itemId={}",
-                    projected_owner.owner_path, item.item_id
+                    "projection batch item proof mismatch: ownerPath={} itemId={} proofMismatch={} sourceByteStart={} sourceByteEnd={} sourceBytes={}",
+                    projected_owner.owner_path,
+                    item.item_id,
+                    proof_mismatches.join(","),
+                    item.source_byte_start,
+                    item.source_byte_end,
+                    requested_owner.source_bytes.len(),
                 )));
             }
         }

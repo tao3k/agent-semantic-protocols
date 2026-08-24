@@ -6,7 +6,7 @@
 
 use std::ffi::OsString;
 use std::future::Future;
-use std::io::{Read, Write};
+use std::io::Write;
 
 const MAX_HOOK_INPUT_BYTES: usize = 1024 * 1024;
 const TRACE_ENV: &str = "ASP_HOOK_BOOTSTRAP_TRACE";
@@ -43,8 +43,9 @@ where
 }
 
 /// Policy-enforcing Host actions are mmap-backed synchronous work and must
-/// complete before any Tokio runtime is constructed. A process-level recovery
-/// override has the same precedence for every Hook event.
+/// complete before any Tokio runtime is constructed. Lifecycle events retain
+/// the Tokio runtime needed for typed Runtime Server IPC. A process-level
+/// recovery override has the same precedence for every Hook event.
 #[doc(hidden)]
 pub fn is_synchronous_hook_dispatch<I, S>(args: I) -> bool
 where
@@ -59,17 +60,28 @@ fn no_agent_bypass_requested() -> bool {
     std::env::var_os(NO_AGENT_ENV).is_some_and(|value| value == "1")
 }
 
+/// Completes the explicit no-agent escape at process entry, before the Hook
+/// watchdog thread, Tokio runtime, stdin payload, matcher, or state locks exist.
+#[doc(hidden)]
+pub fn process_entry_no_agent_bypass(args: &[OsString]) -> Option<Result<(), String>> {
+    if !no_agent_bypass_requested() || !is_hook_event_dispatch(args.iter().cloned()) {
+        return None;
+    }
+    if std::env::var_os(TRACE_ENV).is_some() {
+        eprintln!("[asp-hook] route=process-entry-no-agent-bypass");
+    }
+    Some(emit_empty_success())
+}
+
 fn is_synchronous_hook_dispatch_with_override(args: &[OsString], override_present: bool) -> bool {
     if !is_hook_event_dispatch(args.iter().cloned()) {
         return false;
     }
     override_present
-        || args.iter().filter_map(|arg| arg.to_str()).any(|arg| {
-            matches!(
-                arg,
-                "pre-tool" | "permission-request" | "subagent-start" | "subagent-stop"
-            )
-        })
+        || args
+            .iter()
+            .filter_map(|arg| arg.to_str())
+            .any(|arg| matches!(arg, "pre-tool" | "permission-request"))
 }
 
 /// Poll the synchronous policy data plane without a Tokio runtime. Reaching
@@ -109,16 +121,21 @@ pub fn terminate_hook_process(code: i32) -> ! {
     if std::env::var_os(TRACE_ENV).is_some() {
         eprintln!("[asp-hook] route=bootstrap-immediate-termination");
     }
-    #[cfg(unix)]
-    {
-        unsafe extern "C" {
-            fn _exit(status: i32) -> !;
-        }
-        // SAFETY: all Hook-owned output is flushed above and `_exit` accepts
-        // the same process status domain as the public command boundary.
-        unsafe { _exit(code) }
+    hard_exit(code)
+}
+
+#[cfg(unix)]
+fn hard_exit(code: i32) -> ! {
+    unsafe extern "C" {
+        fn _exit(status: i32) -> !;
     }
-    #[cfg(not(unix))]
+    // SAFETY: Hook-owned diagnostics are emitted before this boundary and
+    // `_exit` accepts the same process status domain as the public command.
+    unsafe { _exit(code) }
+}
+
+#[cfg(not(unix))]
+fn hard_exit(code: i32) -> ! {
     std::process::exit(code)
 }
 
@@ -248,15 +265,23 @@ fn local_hook_policy_unavailable(event: &str, error: &str) -> String {
 
 fn local_hook_policy_unavailable_deny(event: &str, error: &str) -> String {
     let failure = local_hook_policy_unavailable(event, error);
-    let hook_event_name = match event {
-        "pre-tool" => "PreToolUse",
-        "permission-request" => "PermissionRequest",
-        _ => "PreToolUse",
-    };
     let reason = "ASP local Hook policy authority is unavailable; the enforcing event is denied until canonical recovery completes.";
+    if event == "permission-request" {
+        return serde_json::json!({
+            "hookSpecificOutput": {
+                "hookEventName": "PermissionRequest",
+                "decision": {
+                    "behavior": "deny",
+                    "message": reason,
+                },
+            },
+            "systemMessage": reason,
+        })
+        .to_string();
+    }
     serde_json::json!({
         "hookSpecificOutput": {
-            "hookEventName": hook_event_name,
+            "hookEventName": "PreToolUse",
             "permissionDecision": "deny",
             "permissionDecisionReason": reason,
             "additionalContext": format!("[agent-hook-local-policy-unavailable] {failure}"),
@@ -277,11 +302,7 @@ fn validate_hook_args(args: &[OsString]) -> Result<(), String> {
 }
 
 fn read_bounded_stdin() -> Result<Vec<u8>, String> {
-    let mut input = Vec::new();
-    std::io::stdin()
-        .take((MAX_HOOK_INPUT_BYTES + 1) as u64)
-        .read_to_end(&mut input)
-        .map_err(|error| format!("read hook stdin: {error}"))?;
+    let input = crate::command::hook_runtime::read_hook_input_bounded()?.into_bytes();
     if input.len() > MAX_HOOK_INPUT_BYTES {
         return Err(format!(
             "hook payload exceeds {MAX_HOOK_INPUT_BYTES} byte bootstrap bound"

@@ -16,6 +16,7 @@
         "sessionId": "fixture-session",
         "workspaceIdentity": "fixture-workspace",
         "requestId": "initialize-1",
+        "projectRoot": "/workspace",
         "clientInfo": { "name": "fixture-client", "version": "1" },
         "capabilities": { "requestCancellation": true, "traceContext": true }
       },

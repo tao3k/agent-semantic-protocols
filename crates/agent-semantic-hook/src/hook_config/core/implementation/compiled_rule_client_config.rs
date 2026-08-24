@@ -8,7 +8,9 @@ use super::{
     DURABLE_HOOK_MATCHER_SCHEMA_VERSION, DurableHookConfigArtifact, HookClientConfigFile,
     HookRuntime, ToolAction, compile_agent_org_artifacts_config,
 };
-use crate::hook_config::core::implementation::profile_provider_projection::extend_profile_provider_projections;
+use crate::hook_config::core::implementation::profile_provider_projection::{
+    extend_profile_provider_projections, extend_registered_provider_route_projections,
+};
 
 impl Default for ClientHookConfig {
     fn default() -> Self {
@@ -439,8 +441,12 @@ fn compile_resolved_config(
     let (mut policy_generation_digest, mut provider_projections) =
         durable_policy.unwrap_or_else(|| ("profile-native-v1".to_owned(), Vec::new()));
     extend_profile_provider_projections(&config.profiles, &mut provider_projections);
-    let canonical_profiles = serde_json::to_vec(&config.profiles)
-        .map_err(|error| format!("serialize Hook source profiles: {error}"))?;
+    extend_registered_provider_route_projections(
+        &config.provider_routes,
+        &mut provider_projections,
+    );
+    let canonical_profiles = serde_json::to_vec(&(&config.profiles, &config.provider_routes))
+        .map_err(|error| format!("serialize Hook provider policy projection: {error}"))?;
     let profile_aware_digest =
         agent_semantic_content_identity::exact_selector_merkle::canonical_content_digest(
             b"agent.semantic-protocols.hook-policy-profile-overlay.v1",

@@ -21,7 +21,6 @@ id = "allow-explicit-no-agent-host-bypass"
 priority = 200000
 decision = "allow"
 terminal = true
-event = "pre-tool"
 
 [rules.match]
 leadingEnvironmentAssignmentAny = ["ASP_NO_AGENT=1"]

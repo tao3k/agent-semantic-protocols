@@ -255,6 +255,49 @@ pub async fn serve_runtime_server_workspace_stream(
         crate::codex_multi_agent_control_plane_owner::CodexMultiAgentControlPlaneOwner,
     >,
     telemetry_sender: Option<&crate::runtime_telemetry_bus::RuntimeTelemetryBusSender>,
+    drain: tokio::sync::watch::Receiver<bool>,
+) -> Result<(), String> {
+    serve_runtime_server_workspace_stream_inner(
+        stream,
+        endpoint,
+        registry,
+        memory_registry,
+        generation_admission,
+        graph_turbo_evaluation_builder,
+        runtime_search_service,
+        agent_session_registry_owner,
+        session_control_plane_runtime_registry,
+        agent_session_status,
+        codex_multi_agent_control_plane_owner,
+        telemetry_sender,
+        drain,
+    )
+    .await
+}
+
+async fn serve_runtime_server_workspace_stream_inner(
+    stream: UnixStream,
+    endpoint: &crate::runtime_server_control::RuntimeServerEndpoint,
+    registry: &WorkspaceDbRegistry,
+    memory_registry: &std::sync::Arc<
+        crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
+    >,
+    generation_admission: Option<
+        &std::sync::Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>,
+    >,
+    graph_turbo_evaluation_builder: Option<&crate::runtime_server::GraphTurboEvaluationBuilder>,
+    runtime_search_service: Option<&crate::runtime_search_service::RuntimeSearchServiceHandle>,
+    agent_session_registry_owner: Option<&std::sync::Arc<crate::AgentSessionRegistry>>,
+    session_control_plane_runtime_registry: &std::sync::Arc<
+        crate::SessionControlPlaneRuntimeRegistry,
+    >,
+    agent_session_status: Option<
+        &crate::runtime_server_agent_session_status::AgentSessionStatusHandle,
+    >,
+    codex_multi_agent_control_plane_owner: &std::sync::Arc<
+        crate::codex_multi_agent_control_plane_owner::CodexMultiAgentControlPlaneOwner,
+    >,
+    telemetry_sender: Option<&crate::runtime_telemetry_bus::RuntimeTelemetryBusSender>,
     mut drain: tokio::sync::watch::Receiver<bool>,
 ) -> Result<(), String> {
     let mut stream = BufStream::new(stream);

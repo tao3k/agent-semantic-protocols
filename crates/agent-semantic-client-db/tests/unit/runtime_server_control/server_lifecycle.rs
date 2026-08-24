@@ -6,6 +6,35 @@ use super::{
     runtime_server_status_memory_metrics,
 };
 
+#[tokio::test(flavor = "current_thread")]
+async fn runtime_server_readiness_watch_starts_starting_and_publishes_healthy() {
+    let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
+    let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 901).await;
+    let server = RuntimeServer::bind_with_catalog(
+        endpoint,
+        Arc::new(WorkspaceDbRegistry::default()),
+        artifact_catalog,
+    )
+    .await
+    .expect("bind Runtime Server");
+    let mut readiness = server.readiness_subscribe();
+    assert_eq!(*readiness.borrow(), RuntimeServerState::Starting);
+    let shutdown = server.shutdown_handle();
+    let task = tokio::spawn(server.serve());
+    tokio::time::timeout(Duration::from_secs(2), readiness.changed())
+        .await
+        .expect("readiness watch must publish without polling")
+        .expect("readiness sender must remain alive");
+    assert_eq!(*readiness.borrow(), RuntimeServerState::Healthy);
+    shutdown.shutdown();
+    task.await
+        .expect("join Runtime Server")
+        .expect("serve Runtime Server")
+        .eq(&RuntimeServerExit::ShutdownRequested)
+        .then_some(())
+        .expect("Runtime Server must shut down cleanly");
+}
+
 #[tokio::test]
 async fn shutdown_aborts_a_connection_that_does_not_observe_drain() {
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
@@ -64,7 +93,7 @@ async fn explicit_restart_is_not_downgraded_to_status_for_the_current_digest() {
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
     let (endpoint, _artifact_catalog) = fixture_endpoint(&runtime_dir, 22).await;
     let request = RuntimeServerControlRequest {
-        schema_id: "agent.semantic-protocols.runtime-server-control-request.v1".to_owned(),
+        schema_id: "agent.semantic-protocols.runtime-server-control-request".to_owned(),
         schema_version: "1".to_owned(),
         operation: RuntimeServerOperation::Restart,
         project_root: None,
@@ -165,15 +194,6 @@ async fn typed_status_and_restart_use_the_real_runtime_server() {
     .expect("bind runtime server");
     let server = tokio::spawn(server.serve());
 
-    let prewarm = call_runtime_server(
-        &endpoint,
-        RuntimeServerOperation::Reconcile,
-        endpoint.runtime_binary_identity.clone(),
-        "prewarm-control-lane".to_owned(),
-    )
-    .await
-    .expect("prewarm persistent Runtime Server control lane");
-    assert_eq!(prewarm.state, RuntimeServerState::Healthy);
     let prewarm_status = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Status,

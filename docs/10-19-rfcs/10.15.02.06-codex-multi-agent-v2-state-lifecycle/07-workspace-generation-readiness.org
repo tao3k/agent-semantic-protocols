@@ -11,7 +11,7 @@ workspace generation.
 
 The Runtime Server reported =healthy= and =workspaceEntryCount=8= while the
 nested =.data/codex= workspace rejected parser-owned search with
-=active-workspace-generation-required=.  A subsequent server reconcile also
+=active-workspace-generation-required=.  A subsequent process health check also
 reported =healthy= without publishing the missing nested generation.
 
 The root workspace separately rejected an exact callable-skeleton projection
@@ -33,7 +33,7 @@ stateDiagram-v2
   Publishing --> GenerationCurrent: publish generation + root digest
   GenerationCurrent --> ProjectionReady: publish requested projection mode
   ProjectionReady --> DigestStale: source root digest changes
-  DigestStale --> Publishing: reconcile exact workspace identity
+  DigestStale --> Publishing: EnsureWorkspace exact workspace identity
   Publishing --> ProjectionReady: atomic canonical republish
 
   GenerationMissing --> QueryRejected: active-workspace-generation-required
@@ -106,8 +106,8 @@ It proves:
 
 * Runtime refinement gate
 
-The later Runtime Server implementation MUST make reconcile receipts
-workspace-specific.  A successful receipt includes the workspace identity,
+The Runtime Server =EnsureWorkspace= receipt MUST be workspace-specific.  A
+successful receipt includes the workspace identity,
 published generation digest, current root digest, projection capabilities, and
 publication CAS result.  A health-only receipt cannot satisfy workspace
 readiness.
@@ -116,4 +116,3 @@ Warm indexing SHOULD publish registered nested workspaces in the background.
 An interactive search MAY wait on or request that internal publication, but it
 must not open the registry directly, restart the resident, or ask the agent to
 perform lifecycle repair.
-

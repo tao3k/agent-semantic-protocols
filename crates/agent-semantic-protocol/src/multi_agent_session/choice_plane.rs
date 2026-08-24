@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use agent_semantic_client_db::{AgentSessionControlPlaneState, AgentSessionRegistry};
 use agent_semantic_config::agent_route_registry::{
-    AgentsRegistry, CompiledAgentRoute, compile_agent_route, load_agent_route_registry,
+    AgentsRegistry, CompiledAgentRoute, compile_agent_route, load_agent_route_registry_for_platform,
 };
 use agent_semantic_config::load_hook_client_config_file;
 use agent_semantic_hook::{HookSessionAgentRoute, latest_hook_session_agent_route};
@@ -33,7 +33,10 @@ pub(crate) async fn open_choice_plane(request: ChoicePlaneRequest<'_>) -> Result
             })?;
     let state = agent_semantic_runtime::state_core::ResolvedState::resolve(request.project_root)
         .map_err(|error| format!("failed to resolve session ChoicePlane state: {error}"))?;
-    let loaded = load_agent_route_registry(&agents_root(&state.state_home).join("config.toml"))?;
+    let loaded = load_agent_route_registry_for_platform(
+        &agents_root(&state.state_home).join("config.toml"),
+        request.platform,
+    )?;
     let (route, resolved_hook_route) =
         compile_hook_selected_route(&loaded, &hook_route, request.platform, &state.state_home)?;
     let sandbox_mode = route.sandbox_mode.as_deref().ok_or_else(|| {
@@ -48,26 +51,17 @@ pub(crate) async fn open_choice_plane(request: ChoicePlaneRequest<'_>) -> Result
         "presentation",
     )?;
     let project_id = AgentSessionRegistry::workspace_id(request.project_root)?;
-    let current_root_session_id = if request.platform == "codex" {
-        std::env::var("CODEX_THREAD_ID")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .or_else(|| {
-                std::env::var("CODEX_SESSION_ID")
-                    .ok()
-                    .filter(|value| !value.trim().is_empty())
-            })
-            .unwrap_or_else(|| hook_route.root_session_id.clone())
-    } else {
-        hook_route.root_session_id.clone()
-    };
+    // A Hook event is evidence for route selection, not session authority. In
+    // particular, it can belong to a prior Codex rollout after the current
+    // thread has started. Never use its root id to address resident state.
+    let current_root_session_id =
+        current_host_root_session_id(request.platform, &hook_route.root_session_id)?;
     let local_registration = read_current_child_registration(
         request.project_root,
         &project_id,
         &current_root_session_id,
         route.route_key.as_str(),
     )?;
-    let mut local_registration_authority = false;
     let mut context = SessionRegistryContext::Ready(AgentSessionControlPlaneState {
         project_id: Some(project_id.clone()),
         root_session_id: Some(current_root_session_id.clone()),
@@ -89,31 +83,11 @@ pub(crate) async fn open_choice_plane(request: ChoicePlaneRequest<'_>) -> Result
             .transpose()
             .map_err(|error| format!("failed to encode child registration binding: {error}"))?,
     });
-    if let Some(receipt) = read_current_child_registration(
-        request.project_root,
-        &project_id,
-        &hook_route.root_session_id,
-        route.route_key.as_str(),
-    )? {
-        local_registration_authority = true;
-        let generation = receipt.generation;
-        let host_binding = serde_json::to_value(&receipt)
-            .map_err(|error| format!("failed to project child registration receipt: {error}"))?;
-        context = SessionRegistryContext::Ready(AgentSessionControlPlaneState {
-            project_id: Some(project_id.clone()),
-            root_session_id: Some(hook_route.root_session_id.clone()),
-            name: route.platform_host_agent_name.as_str().to_owned(),
-            state: "registered".to_owned(),
-            generation,
-            reason_kind: None,
-            host_binding: Some(host_binding),
-        });
-    }
     let inbox_reconciliation_failure = None::<String>;
     context.apply_host_lifecycle_surface(true);
     let reconcile_project_root = request.project_root.to_path_buf();
     let reconcile_state_home = state.state_home.clone();
-    let reconcile_root_session_id = hook_route.root_session_id.clone();
+    let reconcile_root_session_id = current_root_session_id.clone();
     let reconcile_agent_name = route.platform_host_agent_name.as_str().to_owned();
     tokio::spawn(async move {
         let _ = tokio::time::timeout(
@@ -136,10 +110,6 @@ pub(crate) async fn open_choice_plane(request: ChoicePlaneRequest<'_>) -> Result
         .await;
     });
     context.enforce_exact_binding(&route, sandbox_mode, &current_root_session_id)?;
-    if local_registration_authority && let SessionRegistryContext::Ready(state) = &mut context {
-        state.state = "registered".to_owned();
-        state.reason_kind = None;
-    }
     let choices = interactive_contract.admit_matching(&[
         ("SESSION_STATE", context.state()),
         (
@@ -168,7 +138,39 @@ pub(crate) async fn open_choice_plane(request: ChoicePlaneRequest<'_>) -> Result
     )
 }
 
-const CHILD_REGISTRATION_SCHEMA_ID: &str = "agent.child-session-registration";
+fn current_host_root_session_id(
+    platform: &str,
+    hook_root_session_id: &str,
+) -> Result<String, String> {
+    if platform != "codex" {
+        return Ok(hook_root_session_id.to_owned());
+    }
+    current_codex_session_id(
+        std::env::var("CODEX_THREAD_ID").ok().as_deref(),
+        std::env::var("CODEX_SESSION_ID").ok().as_deref(),
+    )
+}
+
+pub(super) fn current_codex_session_id(
+    thread_id: Option<&str>,
+    session_id: Option<&str>,
+) -> Result<String, String> {
+    thread_id
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| session_id.filter(|value| !value.trim().is_empty()))
+        .map(str::to_owned)
+        .ok_or_else(|| {
+            "agent-session-codex-id-required: current Codex session identity is required; a prior Hook event cannot supply it"
+                .to_owned()
+        })
+}
+
+pub(crate) const CHILD_REGISTRATION_SCHEMA_ID: &str = "agent.child-session-registration";
+pub(crate) const CHILD_REGISTRATION_AUTHORITY: &str = "project-child-registration-authority";
+const CHILD_REGISTRATION_LOCK_ATTEMPTS: usize = 50;
+const CHILD_REGISTRATION_LOCK_RETRY: std::time::Duration = std::time::Duration::from_millis(2);
+const CHILD_REGISTRATION_LOCK_STALE_AFTER: std::time::Duration =
+    std::time::Duration::from_millis(250);
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -183,6 +185,9 @@ pub(super) struct ChildSessionRegistrationReceipt {
     pub(super) route_key: String,
     pub(super) profile_id: String,
     pub(super) profile_digest: String,
+    pub(super) definition_schema_id: String,
+    pub(super) denied_actions: Vec<String>,
+    pub(super) allowed_rule_intents: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) configured_model_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -215,7 +220,7 @@ fn child_registration_path(
         .join("child-registration.json"))
 }
 
-fn read_current_child_registration(
+pub(super) fn read_current_child_registration(
     project_root: &std::path::Path,
     project_id: &str,
     root_session_id: &str,
@@ -232,8 +237,28 @@ fn read_current_child_registration(
             ));
         }
     };
+    let receipt_value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
+        format!(
+            "failed to decode child registration {}: {error}",
+            path.display()
+        )
+    })?;
+    let is_current_shape = receipt_value
+        .get("schemaId")
+        .and_then(serde_json::Value::as_str)
+        == Some(CHILD_REGISTRATION_SCHEMA_ID)
+        && receipt_value
+            .get("schemaVersion")
+            .and_then(serde_json::Value::as_u64)
+            == Some(1)
+        && receipt_value.get("definitionSchemaId").is_some()
+        && receipt_value.get("deniedActions").is_some()
+        && receipt_value.get("allowedRuleIntents").is_some();
+    if !is_current_shape {
+        return Ok(None);
+    }
     let receipt: ChildSessionRegistrationReceipt =
-        serde_json::from_slice(&bytes).map_err(|error| {
+        serde_json::from_value(receipt_value).map_err(|error| {
             format!(
                 "failed to decode child registration {}: {error}",
                 path.display()
@@ -248,11 +273,18 @@ fn read_current_child_registration(
         || receipt.child_session_id.is_empty()
         || receipt.child_session_id == receipt.root_session_id
         || receipt.child_session_id == receipt.parent_session_id
+        || receipt.definition_schema_id.trim().is_empty()
+        || receipt.denied_actions.iter().any(|action| action != "edit")
+        || receipt.allowed_rule_intents.is_empty()
+        || receipt
+            .allowed_rule_intents
+            .iter()
+            .any(|intent| intent.trim().is_empty())
         || receipt.generation == 0
         || receipt.lifecycle_state != "live"
         || !receipt.routable
         || !receipt.host_call_receipt_digest.starts_with("blake3-256:")
-        || receipt.registration_authority != "project-child-registration-authority"
+        || receipt.registration_authority != CHILD_REGISTRATION_AUTHORITY
     {
         return Err(format!(
             "child-session-registration-identity-mismatch: {}",
@@ -267,6 +299,7 @@ pub(super) async fn publish_child_session_registration(
     platform: &str,
     topology: HostChildSessionTopology,
     metadata: agent_semantic_runtime::CodexRolloutSessionMetadata,
+    registered_session: Option<agent_semantic_client_db::AgentSessionRecord>,
 ) -> Result<String, String> {
     if platform != "codex" {
         return Err(format!(
@@ -283,7 +316,10 @@ pub(super) async fn publish_child_session_registration(
     })?;
     let state = agent_semantic_runtime::state_core::ResolvedState::resolve(project_root)
         .map_err(|error| format!("failed to resolve child registration state: {error}"))?;
-    let loaded = load_agent_route_registry(&agents_root(&state.state_home).join("config.toml"))?;
+    let loaded = load_agent_route_registry_for_platform(
+        &agents_root(&state.state_home).join("config.toml"),
+        platform,
+    )?;
     let route = loaded
         .compile_route_for_platform_host_agent_name(platform, agent_role)?
         .ok_or_else(|| {
@@ -306,7 +342,39 @@ pub(super) async fn publish_child_session_registration(
                 route.profile_path
             )
         })?;
+    let profile_digest = format!("blake3-256:{}", blake3::hash(&profile).to_hex());
+    let denied_actions = route
+        .effective_permissions
+        .denied_actions()
+        .map(|action| action.as_str().to_owned())
+        .collect::<Vec<_>>();
+    let allowed_rule_intents = route.allowed_rule_intents.clone();
     let project_id = AgentSessionRegistry::workspace_id(project_root)?;
+    if let Some(registered_session) = registered_session {
+        let registered_agent_type = registered_session
+            .configured_agent_type
+            .as_ref()
+            .map(|value| value.as_str())
+            .ok_or_else(|| {
+                "child-self-registration-db-agent-type-required: native SubagentStart evidence is missing"
+                    .to_owned()
+            })?;
+        if registered_session.project_id.as_str() != project_id
+            || registered_session.root_session_id.as_str() != root_session_id
+            || registered_session.session_id.as_str() != child_session_id
+            || registered_session
+                .parent_session_id
+                .as_ref()
+                .map(|value| value.as_str())
+                != Some(parent_session_id.as_str())
+            || registered_agent_type != route.platform_host_agent_name.as_str()
+        {
+            return Err(format!(
+                "child-self-registration-db-binding-mismatch: sessionId={child_session_id} configuredAgentType={registered_agent_type} route={}",
+                route.platform_host_agent_name.as_str()
+            ));
+        }
+    }
     let path = child_registration_path(
         project_root,
         &project_id,
@@ -324,6 +392,10 @@ pub(super) async fn publish_child_session_registration(
     )? && receipt.child_session_id == child_session_id
         && receipt.parent_session_id == parent_session_id
         && receipt.observed_model_id == observed_model
+        && receipt.profile_digest == profile_digest
+        && receipt.definition_schema_id == route.definition_schema_id
+        && receipt.denied_actions == denied_actions
+        && receipt.allowed_rule_intents == allowed_rule_intents
     {
         return serde_json::to_string(&receipt)
             .map_err(|error| format!("failed to encode child registration receipt: {error}"));
@@ -340,9 +412,9 @@ pub(super) async fn publish_child_session_registration(
                 format!("failed to create child registration authority: {error}")
             }
         })?;
-    let lock_path = authority_dir.join(".registration-v2-lock");
+    let lock_path = authority_dir.join(".registration-lock");
     let mut lock_acquired = false;
-    for _ in 0..100 {
+    for _ in 0..CHILD_REGISTRATION_LOCK_ATTEMPTS {
         match tokio::fs::create_dir(&lock_path).await {
             Ok(()) => {
                 lock_acquired = true;
@@ -353,12 +425,12 @@ pub(super) async fn publish_child_session_registration(
                     && let Ok(modified) = metadata.modified()
                     && modified
                         .elapsed()
-                        .is_ok_and(|elapsed| elapsed > std::time::Duration::from_secs(30))
+                        .is_ok_and(|elapsed| elapsed > CHILD_REGISTRATION_LOCK_STALE_AFTER)
                 {
                     let _ = tokio::fs::remove_dir(&lock_path).await;
                     continue;
                 }
-                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                tokio::time::sleep(CHILD_REGISTRATION_LOCK_RETRY).await;
             }
             Err(error) => {
                 return Err(format!(
@@ -416,7 +488,10 @@ pub(super) async fn publish_child_session_registration(
             resident_id: route.platform_host_agent_name.as_str().to_owned(),
             route_key: route.route_key.as_str().to_owned(),
             profile_id: route.profile_path.as_str().to_owned(),
-            profile_digest: format!("blake3-256:{}", blake3::hash(&profile).to_hex()),
+            profile_digest,
+            definition_schema_id: route.definition_schema_id.to_owned(),
+            denied_actions,
+            allowed_rule_intents,
             configured_model_id: Some(model.to_owned()),
             configured_model_digest: Some(format!(
                 "blake3-256:{}",
@@ -435,7 +510,7 @@ pub(super) async fn publish_child_session_registration(
                 "blake3-256:{}",
                 blake3::hash(host_call_identity.as_bytes()).to_hex()
             ),
-            registration_authority: "project-child-registration-authority".to_owned(),
+            registration_authority: CHILD_REGISTRATION_AUTHORITY.to_owned(),
         };
         let encoded = serde_json::to_vec_pretty(&receipt)
             .map_err(|error| format!("failed to encode child registration receipt: {error}"))?;
@@ -699,145 +774,14 @@ pub(crate) fn typed_runtime_failure_reason(error: &str, fallback: &str) -> Strin
         .to_owned()
 }
 
-/*
-fn render_session_pane(
-    json: bool,
-    interactive_contract: &AgentInteractiveChoice,
-    hook_route: &ResolvedHookSessionRoute,
-    route: &CompiledAgentRoute,
-    sandbox_mode: &str,
-    context: &SessionRegistryContext,
-    inbox_reconciliation_failure: Option<&str>,
-    choices: &[AdmittedAgentInteractiveChoice],
-) -> Result<String, String> {
-    if let SessionRegistryContext::Ready(resolved) = context
-        && resolved.name != route.platform_host_agent_name.as_str()
-    {
-        return Err("runtime-server-session-route-mismatch".to_owned());
-    }
-    let generation = context.generation();
-    let node_id = context.state();
-    let reason_kind = context.reason_kind();
-    let failure = context.failure();
-    let binding = context.binding();
-    let history_cursor = pane_history_cursor(context, generation);
-    let choice_receipts = choices
-        .iter()
-        .map(|choice| {
-            serde_json::json!({
-                "id": choice.id,
-                "instruction": choice.instruction,
-                "presentation": choice.presentation,
-                "why": choice.use_if,
-            })
-        })
-        .collect::<Vec<_>>();
-    let hook_inbox = hook_inbox_reconciliation_receipt(inbox_reconciliation_failure);
-    let receipt = serde_json::json!({
-        "schemaId": PANE_SCHEMA_ID,
-        "schemaVersion": "1",
-        "orgInteractive": {
-            "contractId": CONTROL_PLANE_CONTRACT_ID,
-            "panelId": "multi-agent-session-control-plane",
-            "method": "choice",
-            "stage": "presentation",
-        },
-        "hookRoute": {
-            "configRuleId": hook_route.config_rule_id,
-            "targetAgentName": hook_route.target_agent_name,
-            "targetAgentRole": hook_route.target_agent_role,
-            "receiptKind": hook_route.receipt_kind,
-            "commandDigest": hook_route.command_digest,
-            "reasonKind": hook_route.reason_kind,
-        },
-        "pane": {
-            "paneId": "session",
-            "nodeId": node_id,
-            "generation": generation,
-            "historyCursor": history_cursor,
-            "reasonKind": reason_kind,
-            "failure": failure,
-        },
-        "hookInbox": hook_inbox,
-        "agent": {
-            "routeKey": route.route_key.as_str(),
-            "sessionName": route.platform_host_agent_name.as_str(),
-            "sessionLifetime": route.session_lifetime.as_str(),
-            "residentId": route.platform_host_agent_name.as_str(),
-            "matchDecision": "matched",
-            "platform": route.platform.as_str(),
-            "hostAgentName": route.platform_host_agent_name.as_str(),
-            "roles": &route.roles,
-            "roleDescription": route.description.as_str(),
-            "sandboxMode": sandbox_mode,
-            "binding": binding,
-        },
-        "choices": choice_receipts,
-    });
-    if json {
-        return Ok(receipt.to_string());
-    }
-    let mut pane_context = format!(
-        "node={} generation={} agent=@{} sandboxMode={}",
-        node_id,
-        generation,
-        route.platform_host_agent_name.as_str(),
-        sandbox_mode,
-    );
-    if let Some(reason_kind) = reason_kind {
-        pane_context.push_str(&format!(" reasonKind={reason_kind}"));
-    }
-    if let Some(failure) = failure {
-        pane_context.push_str(&format!(" failure={failure}"));
-    }
-    if let Some(inbox_failure) = inbox_reconciliation_failure {
-        pane_context.push_str(&format!(
-            " hookInboxState=degraded hookInboxBlocksChoicePlane=false hookInboxFailure={inbox_failure}"
-        ));
-    }
-    if choices.len() == 1 && choices[0].presentation == "action" {
-        let rendered = interactive_contract.render_admitted_action(
-            CONTROL_PLANE_CONTRACT_ID,
-            &choices[0],
-            &pane_context,
-        );
-        if context.state() == "registration-required" {
-            return Ok(format!(
-                "{rendered}\n registration: After the Host creates the subagent, Call @{} with this instruction: Run `asp session register-current-child` from your own child session. The command reads your current childSessionId and the Host calling receipt, verifies the bound rootSessionId and parentSessionId, registers this child with ASP, and returns a nonzero generation receipt. Then continue the preserved denied command in this same child. Do not ask the parent to supply session IDs and do not create another subagent.",
-                route.platform_host_agent_name.as_str(),
-            ));
-        }
-        return Ok(rendered);
-    }
-    let rendered_choices = choices
-        .iter()
-        .map(|choice| {
-            (
-                choice.id.as_str(),
-                choice.instruction.as_str(),
-                choice.use_if.as_str(),
-            )
-        })
-        .collect::<Vec<_>>();
-    let rendered = interactive_contract.render_admitted_pane(
-        CONTROL_PLANE_CONTRACT_ID,
-        &rendered_choices,
-        &pane_context,
-    );
-    if context.state() == "registration-required" {
-        return Ok(format!(
-            "{rendered}\n register-with-asp: Call @{} with this instruction: You are now inside the Host-created child session. Run `asp session register-current-child` here. The command reads your current childSessionId and verifies the Host calling receipt that binds rootSessionId and parentSessionId; ASP returns the nonzero generation receipt. After it succeeds, continue the preserved denied command in this same child. Do not ask the parent to supply session IDs and do not create another subagent.",
-            route.platform_host_agent_name.as_str(),
-        ));
-    }
-    Ok(rendered)
-}
-
-*/
 fn agents_root(state_home: &Path) -> PathBuf {
     if let Some(root) = std::env::var_os("ASP_AGENTS_HOME") {
         return root.into();
     }
     state_home.join("agents")
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/multi_agent_session_choice_plane.rs"]
+mod tests;
 use super::pane::render_session_pane;

@@ -1,9 +1,9 @@
 ---
-name: asp_testing
+name: asp-testing
 description: ASP test/build execution lane.
 tools: Bash, Read, Glob, Grep
+disallowedTools: Write, Edit
 model: haiku
-permissionMode: acceptEdits
 maxTurns: 8
 ---
 

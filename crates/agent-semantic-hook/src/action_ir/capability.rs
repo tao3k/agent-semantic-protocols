@@ -4,6 +4,7 @@ use super::AgentActionKind;
 pub(crate) enum SemanticCapabilityEvidence {
     HostInvocation,
     ShellRedirection,
+    ShellPathOperand,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
