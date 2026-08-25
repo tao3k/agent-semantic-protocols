@@ -3,7 +3,7 @@
 use agent_semantic_config::HookClientRecoveryPromptConfig;
 
 const DEFAULT_RECOVERY_TEMPLATE: &str = r#"ASP denied `{reason}`. Do not retry raw source tools.
-Use the ASP route below, or delegate the lookup through the configured Host role when available.
+Use the ASP route below, or delegate the lookup through the configured registered Agent when available.
 Return one compact `[asp-search-subagent]` graph-route receipt with `schema`, `intent`, `route`, `state`, ranked selector `evidence`, and exactly one safe parent `next` action.
 Do not run raw source tools again for this step. The file extension maps to the
 `languageId` in the route; use that language and the exact command below, then follow `next` from the same payload.
@@ -14,16 +14,16 @@ Do not run raw source tools again for this step. The file extension maps to the
 {agent_flow}
 "#;
 
-const CODEX_AGENT_FLOW: &str = r#"Codex: use the configured Host Agent role for ASP search/query work.
-If that role is unavailable, re-enter `asp session --agents choice-plane`, execute only its returned Host action, and require the native Host receipt before running the route.
+const CODEX_AGENT_FLOW: &str = r#"Codex: use the ChoicePlane's returned `spawn_agent` target (`agent_type`) for ASP search/query work.
+If that registered Agent is unavailable, re-enter `asp session --agents choice-plane`, execute only its returned Host action, and require the native Host receipt before running the route.
 After the route command succeeds, continue exactly with the returned `next` action; no ChoicePlane re-run is needed for this denial.
 If denied repeatedly, do not switch to raw shell sources. Run the `next` action from this payload only after the route command completes.
 "#;
 
-const CLAUDE_AGENT_FLOW: &str = r#"Claude: run the selected safe route directly in this thread. Use Claude-native helper agents only when that client exposes them for this session.
+const CLAUDE_AGENT_FLOW: &str = r#"Claude: invoke the ChoicePlane's returned registered Agent with Claude's `@agent-<name>` mention (or the Agent tool in SDK mode), then run the selected safe route there.
 "#;
 
-const DEFAULT_AGENT_FLOW: &str = r#"Run the selected safe route directly. Use the configured Host role only when the active client exposes it for this session.
+const DEFAULT_AGENT_FLOW: &str = r#"Run the selected safe route directly. Use the configured registered Agent only when the active client exposes it for this session.
 "#;
 
 #[derive(Debug, Clone)]

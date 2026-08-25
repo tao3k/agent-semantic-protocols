@@ -43,6 +43,8 @@ arc-swap = "1.9.2"
 memmap2 = "0.9.10"
 agent-semantic-provider-protocol = { path = "crates/agent-semantic-provider-protocol" }
 agent-semantic-provider-transport = { path = "crates/agent-semantic-provider-transport" }
+agent-semantic-schema-manager = { path = "crates/agent-semantic-schema-manager" }
+agent-semantic-runtime = { path = "crates/agent-semantic-runtime" }
 agent-semantic-hook = { path = "crates/agent-semantic-hook" }
 asp-provider-registry-build = { path = "build-support/asp-provider-registry-build" }
 jsonschema = { version = "0.48.1", default-features = false }

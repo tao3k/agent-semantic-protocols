@@ -403,7 +403,7 @@ impl ExactQueryRuntime {
         )
         .expect("secure exact-query Runtime state directory");
         let artifact_catalog =
-            agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog::new(
+            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog::new(
                 agent_semantic_config::runtime_dev::RuntimeArtifactMode::Release,
             );
         let endpoint =
@@ -450,6 +450,7 @@ impl ExactQueryRuntime {
                         .map_err(|error| format!("read exact-query owner fixture: {error}"))?;
                     build_exact_query_generation_owner(
                         agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot {
+                            authority: None,
                             content_digest: format!(
                                 "blake3-256:{}",
                                 blake3::hash(&bytes).to_hex()
@@ -762,6 +763,7 @@ async fn build_exact_query_generation(
         owners.push(
             build_exact_query_generation_owner(
                 agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot {
+                    authority: None,
                     owner_path: owner_path.to_owned(),
                     content_digest,
                     selectors: vec![
@@ -814,6 +816,7 @@ async fn build_exact_query_generation(
         .map_err(|_| "exact-query fixture file count overflow".to_owned())?;
     let materialization = agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
         workspace_identity,
+        &workspace_snapshot,
         &source_snapshot,
         &import,
         &source_blobs,

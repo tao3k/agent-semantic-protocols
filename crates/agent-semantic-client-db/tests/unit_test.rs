@@ -55,6 +55,8 @@ mod runtime_server_control_authority;
 mod runtime_server_control_security;
 #[path = "unit/runtime_server_diagnostics.rs"]
 mod runtime_server_diagnostics;
+#[path = "unit/runtime_server_endpoint_v1_migration.rs"]
+mod runtime_server_endpoint_v1_migration;
 #[path = "unit/runtime_server_generation_admission.rs"]
 mod runtime_server_generation_admission;
 #[path = "unit/runtime_server_generation_restore.rs"]

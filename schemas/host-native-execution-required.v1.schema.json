@@ -12,6 +12,7 @@
     "executionAuthority",
     "retryPolicy",
     "argv",
+    "commandDigest",
     "message",
     "cause"
   ],
@@ -28,6 +29,10 @@
       "type": "array",
       "minItems": 2,
       "items": { "type": "string" }
+    },
+    "commandDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
     },
     "message": { "type": "string", "minLength": 1 },
     "cause": { "type": "string", "minLength": 1 }

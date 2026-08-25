@@ -1,9 +1,14 @@
 use agent_semantic_config::{
     HookClientActionKind, HookClientActionSubjectKind, HookClientCapabilityPolicyConfig,
+    HookClientHostInvocationKind, LanguageId, ProviderId,
 };
 
 use super::{AgentActionMatch, AgentActionMatchConfig};
 use crate::HookRuntime;
+use crate::action_ir::{
+    AgentAction, AgentActionKind, HostInvocationFact, HostInvocationKind, SemanticCapability,
+    SemanticCapabilityEvidence,
+};
 use crate::tool_action::ToolAction;
 
 fn runtime() -> HookRuntime {
@@ -15,12 +20,50 @@ fn runtime() -> HookRuntime {
     }
 }
 
-fn policy(id: &str, action_any: Vec<HookClientActionKind>) -> HookClientCapabilityPolicyConfig {
-    HookClientCapabilityPolicyConfig {
-        id: id.to_owned(),
-        action_any,
-        semantic_capability_any: Vec::new(),
-        subject_kind_any: Vec::new(),
+fn action(host: HostInvocationKind, capability: AgentActionKind) -> AgentAction {
+    AgentAction {
+        host: HostInvocationFact {
+            action: host,
+            tool_name: "test-tool".to_owned(),
+            surface: "test-surface".to_owned(),
+            payload: serde_json::Value::Null,
+            invocation_source: None,
+        },
+        capabilities: vec![SemanticCapability {
+            action: capability,
+            evidence: SemanticCapabilityEvidence::HostInvocation,
+        }],
+        subjects: Vec::new(),
+    }
+}
+
+fn rust_runtime() -> HookRuntime {
+    let command = crate::protocol::CommandTemplate {
+        argv: vec!["asp".to_owned()],
+        stdin_mode: None,
+    };
+    HookRuntime {
+        project_root: ".".to_owned(),
+        rankers: Vec::new(),
+        providers: Vec::new(),
+        policy_providers: vec![
+            crate::protocol_activation::protocol_activation_manifest::HookProviderProjection {
+                language_id: LanguageId::new("rust"),
+                provider_id: ProviderId::new("asp-rust"),
+                package_roots: vec![".".to_owned()],
+                source_extensions: vec![".rs".to_owned()],
+                config_files: Vec::new(),
+                policy: crate::protocol::HookPolicy {
+                    direct_source_read: crate::protocol::ActionPolicy::Block,
+                    bulk_source_dump: crate::protocol::ActionPolicy::Block,
+                    raw_source_search: crate::protocol::ActionPolicy::Block,
+                    agent_search_json: crate::protocol::ActionPolicy::Block,
+                },
+                owner_route: command.clone(),
+                lexical_route: command.clone(),
+                ingest_route: command,
+            },
+        ],
     }
 }
 
@@ -30,7 +73,7 @@ fn semantic_policy(
 ) -> HookClientCapabilityPolicyConfig {
     HookClientCapabilityPolicyConfig {
         id: id.to_owned(),
-        action_any: Vec::new(),
+        host_invocation_any: Vec::new(),
         semantic_capability_any,
         subject_kind_any: Vec::new(),
     }
@@ -94,25 +137,35 @@ fn host_native_edit_is_not_derived_from_shell_syntax() {
 }
 
 #[test]
-fn shell_path_operand_does_not_replace_the_native_host_action() {
+fn registered_shell_source_operand_does_not_invent_read_capability() {
     let read_matcher = AgentActionMatch::new(AgentActionMatchConfig {
         action_any: vec![HookClientActionKind::Read],
         ..AgentActionMatchConfig::default()
     });
     let execute_matcher = AgentActionMatch::new(AgentActionMatchConfig {
-        policy_all: vec![policy(
-            "opaque-shell-source-access",
-            vec![HookClientActionKind::Execute],
-        )],
+        host_invocation_any: vec![HookClientHostInvocationKind::Execute],
         ..AgentActionMatchConfig::default()
     });
     let action = ToolAction::normalized_shell_command_action(
-        "opaque-source-consumer src/lib.rs".to_owned(),
+        "future-source-consumer src/lib.rs".to_owned(),
         "Bash".to_owned(),
     );
+    let paths = ["src/lib.rs".to_owned()];
 
-    assert!(!read_matcher.matches(&runtime(), &action, None));
-    assert!(execute_matcher.matches(&runtime(), &action, None));
+    assert!(!read_matcher.matches(&rust_runtime(), &action, Some(&paths)));
+    assert!(execute_matcher.matches(&rust_runtime(), &action, Some(&paths)));
+    let receipt = execute_matcher
+        .derive_agent_action_for_rule(&rust_runtime(), &action, Some(&paths), None)
+        .expect("AgentAction receipt")
+        .receipt_value();
+    assert_eq!(receipt["hostInvocation"]["action"], "execute");
+    assert!(
+        receipt["semanticCapabilities"]
+            .as_array()
+            .is_some_and(|capabilities| capabilities
+                .iter()
+                .all(|capability| capability["action"] != "read"))
+    );
 }
 
 #[test]
@@ -120,7 +173,7 @@ fn host_execute_and_semantic_read_are_independent_predicate_axes() {
     let matcher = AgentActionMatch::new(AgentActionMatchConfig {
         policy_all: vec![HookClientCapabilityPolicyConfig {
             id: "execute-with-parser-read".to_owned(),
-            action_any: vec![HookClientActionKind::Execute],
+            host_invocation_any: vec![HookClientHostInvocationKind::Execute],
             semantic_capability_any: vec![HookClientActionKind::Read],
             subject_kind_any: Vec::new(),
         }],
@@ -178,10 +231,25 @@ fn heredoc_is_not_projected_as_filesystem_read() {
 fn subject_axis_remains_orthogonal_to_capability_axis() {
     let configured = HookClientCapabilityPolicyConfig {
         id: "registered-source".to_owned(),
-        action_any: Vec::new(),
+        host_invocation_any: Vec::new(),
         semantic_capability_any: Vec::new(),
         subject_kind_any: vec![HookClientActionSubjectKind::RegisteredLanguageSource],
     };
-    assert!(configured.action_any.is_empty());
+    assert!(configured.host_invocation_any.is_empty());
     assert_eq!(configured.subject_kind_any.len(), 1);
+}
+
+#[test]
+fn rule_actions_and_host_invocations_are_independent_conjunctive_axes() {
+    let matcher = AgentActionMatch::new(AgentActionMatchConfig {
+        action_any: vec![HookClientActionKind::Read],
+        host_invocation_any: vec![HookClientHostInvocationKind::Mcp],
+        ..AgentActionMatchConfig::default()
+    });
+
+    assert!(matcher.matches_envelope(&action(HostInvocationKind::Mcp, AgentActionKind::Read,)));
+    assert!(
+        !matcher.matches_envelope(&action(HostInvocationKind::Execute, AgentActionKind::Read,))
+    );
+    assert!(!matcher.matches_envelope(&action(HostInvocationKind::Mcp, AgentActionKind::Edit,)));
 }

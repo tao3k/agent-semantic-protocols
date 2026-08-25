@@ -9,7 +9,7 @@ pub async fn run_cli(arguments: impl IntoIterator<Item = String>) -> Result<(), 
     let operation = arguments.next().unwrap_or_else(|| "help".to_owned());
     if matches!(operation.as_str(), "help" | "--help" | "-h") {
         println!(
-            "usage: asp-schema-manager <materialize|verify|publish-client> --workspace <ROOT> [--language <ID>]... [--output <DIR>]"
+            "usage: asp-schema-manager <materialize|verify|responsibilities|publish-client> --workspace <ROOT> [--language <ID>]... [--output <DIR>]"
         );
         return Ok(());
     }
@@ -41,6 +41,22 @@ pub async fn run_cli(arguments: impl IntoIterator<Item = String>) -> Result<(), 
         }
     }
     let manager = SchemaManager::new(workspace);
+    if operation == "responsibilities" {
+        if !languages.is_empty() || output.is_some() {
+            return Err("responsibilities does not accept --language or --output".to_owned());
+        }
+        for responsibility in manager.responsibilities().await? {
+            println!(
+                "[schema-responsibility] schema={} schemaId={} family={} owner={} purpose={}",
+                responsibility.name,
+                responsibility.schema_id,
+                responsibility.family_id,
+                responsibility.owner,
+                responsibility.purpose
+            );
+        }
+        return Ok(());
+    }
     let reports = match operation.as_str() {
         "materialize" => manager.materialize(&languages).await?,
         "verify" => manager.verify(&languages).await?,

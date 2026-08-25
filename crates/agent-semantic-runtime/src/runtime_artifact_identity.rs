@@ -1,9 +1,13 @@
+//! Runtime process identity receipts consumed by the Runtime supervisor.
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 
-use crate::runtime_artifact_catalog::{RuntimeArtifactPublication, RuntimeBinaryIdentity};
+use agent_semantic_artifacts::runtime_artifact_catalog::{
+    RuntimeArtifactPublication, RuntimeBinaryIdentity, runtime_artifact_source_generation,
+};
 
 const SCHEMA_ID: &str = "agent.semantic-protocols.runtime-artifact-identity";
 const SCHEMA_VERSION: &str = "1";
@@ -98,13 +102,6 @@ impl RuntimeArtifactIdentityReceipt {
     pub fn identity_algorithm(&self) -> &str {
         &self.identity_algorithm
     }
-
-    pub fn identity(&self) -> RuntimeBinaryIdentity {
-        RuntimeBinaryIdentity::Content {
-            value: self.identity_value.clone(),
-            algorithm: self.identity_algorithm.clone(),
-        }
-    }
 }
 
 /// Admit an invoker only when it is the receipt-covered source/active executable.
@@ -192,9 +189,14 @@ pub async fn publish_runtime_artifact_identity(
     } else {
         "release"
     };
-    let RuntimeBinaryIdentity::Content { value, algorithm } = &publication.identity;
-    let (identity_kind, identity_value, identity_algorithm) =
-        ("content", value.clone(), algorithm.clone());
+    let identity_kind = publication.identity.kind();
+    let identity_value = publication
+        .identity
+        .content_digest()
+        .content_digest()
+        .as_str()
+        .to_owned();
+    let identity_algorithm = publication.identity.algorithm();
     let receipt = RuntimeArtifactIdentityReceipt {
         schema_id: SCHEMA_ID.to_owned(),
         schema_version: SCHEMA_VERSION.to_owned(),
@@ -204,18 +206,22 @@ pub async fn publish_runtime_artifact_identity(
         source_path: publication.source_path.clone(),
         source_generation: publication.source_generation.clone(),
         source_generation_algorithm: publication.source_generation_algorithm.clone(),
-        artifact_digest: publication.artifact_digest.clone(),
+        artifact_digest: publication
+            .artifact_digest
+            .content_digest()
+            .as_str()
+            .to_owned(),
         identity_kind: identity_kind.to_owned(),
         identity_value,
-        identity_algorithm,
+        identity_algorithm: identity_algorithm.to_owned(),
         source_executable_identity: executable_identity(
             &publication.source_path,
-            &publication.artifact_digest,
+            publication.artifact_digest.content_digest().as_str(),
         )
         .ok(),
         active_executable_identity: executable_identity(
             &publication.path,
-            &publication.artifact_digest,
+            publication.artifact_digest.content_digest().as_str(),
         )
         .ok(),
     };
@@ -380,46 +386,6 @@ pub async fn read_runtime_artifact_identity(
         ));
     }
     Ok(receipt)
-}
-
-pub fn runtime_artifact_source_generation(source_path: &Path) -> Result<String, String> {
-    let metadata = std::fs::metadata(source_path).map_err(|error| {
-        format!(
-            "inspect Runtime artifact source generation {}: {error}",
-            source_path.display()
-        )
-    })?;
-    if !metadata.is_file() {
-        return Err(format!(
-            "Runtime artifact source generation is not a file: {}",
-            source_path.display()
-        ));
-    }
-    let mut hasher = blake3::Hasher::new();
-    hasher.update(b"agent.semantic-protocols.filesystem-generation.v1\0");
-    hasher.update(source_path.to_string_lossy().as_bytes());
-    hasher.update(&metadata.len().to_le_bytes());
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt as _;
-
-        hasher.update(&metadata.dev().to_le_bytes());
-        hasher.update(&metadata.ino().to_le_bytes());
-        hasher.update(&metadata.mtime().to_le_bytes());
-        hasher.update(&metadata.mtime_nsec().to_le_bytes());
-        hasher.update(&metadata.ctime().to_le_bytes());
-        hasher.update(&metadata.ctime_nsec().to_le_bytes());
-    }
-    #[cfg(not(unix))]
-    {
-        let modified = metadata
-            .modified()
-            .map_err(|error| format!("read source modification time: {error}"))?
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|error| format!("source modification time predates epoch: {error}"))?;
-        hasher.update(&modified.as_nanos().to_le_bytes());
-    }
-    Ok(format!("blake3-256:{}", hasher.finalize().to_hex()))
 }
 
 fn runtime_artifact_identity_path(
@@ -650,4 +616,88 @@ mod tests {
                 .contains("unknown Runtime artifact source generation algorithm")
         );
     }
+}
+pub async fn publish_resident_runtime_artifact_identity(
+    state_home: &Path,
+    stable_path: &Path,
+    source_path: &Path,
+    artifact_digest: &str,
+    artifact_mode: &str,
+) -> Result<RuntimeArtifactIdentityReceipt, String> {
+    let artifact_kind = stable_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| {
+            format!(
+                "resident Runtime artifact stable path has no binary identity: {}",
+                stable_path.display()
+            )
+        })?
+        .to_owned();
+    if artifact_mode != "dev" && artifact_mode != "release" {
+        return Err(format!(
+            "resident Runtime artifact mode must be dev or release: {artifact_mode}"
+        ));
+    }
+    let source_path = std::fs::canonicalize(source_path).map_err(|error| {
+        format!(
+            "resolve resident Runtime artifact source {}: {error}",
+            source_path.display()
+        )
+    })?;
+    let source_generation = runtime_artifact_source_generation(&source_path)?;
+    let receipt = RuntimeArtifactIdentityReceipt {
+        schema_id: SCHEMA_ID.to_owned(),
+        schema_version: SCHEMA_VERSION.to_owned(),
+        artifact_kind,
+        artifact_mode: artifact_mode.to_owned(),
+        stable_path: stable_path.to_path_buf(),
+        source_path: source_path.clone(),
+        source_generation,
+        source_generation_algorithm: "filesystem-generation-v1".to_owned(),
+        artifact_digest: artifact_digest.to_owned(),
+        identity_kind: "content".to_owned(),
+        identity_value: artifact_digest.to_owned(),
+        identity_algorithm: "blake3-256".to_owned(),
+        source_executable_identity: executable_identity(&source_path, artifact_digest).ok(),
+        active_executable_identity: executable_identity(stable_path, artifact_digest).ok(),
+    };
+    let receipt_path = runtime_artifact_identity_path(state_home, &receipt.artifact_kind)?;
+    let receipt_parent = receipt_path.parent().ok_or_else(|| {
+        format!(
+            "resident Runtime artifact identity path has no parent: {}",
+            receipt_path.display()
+        )
+    })?;
+    tokio::fs::create_dir_all(receipt_parent)
+        .await
+        .map_err(|error| {
+            format!(
+                "create resident Runtime artifact identity directory {}: {error}",
+                receipt_parent.display()
+            )
+        })?;
+    let stage = receipt_parent.join(format!(
+        ".{}.resident-stage-{}-{}",
+        receipt.artifact_kind,
+        crate::runtime_process_lifecycle::current_process_id(),
+        STAGE_NONCE.fetch_add(1, Ordering::Relaxed)
+    ));
+    let bytes = serde_json::to_vec_pretty(&receipt)
+        .map_err(|error| format!("serialize resident Runtime artifact identity: {error}"))?;
+    tokio::fs::write(&stage, bytes).await.map_err(|error| {
+        format!(
+            "write staged resident Runtime artifact identity {}: {error}",
+            stage.display()
+        )
+    })?;
+    if let Err(error) = tokio::fs::rename(&stage, &receipt_path).await {
+        let _ = tokio::fs::remove_file(&stage).await;
+        return Err(format!(
+            "publish resident Runtime artifact identity {}: {error}",
+            receipt_path.display()
+        ));
+    }
+    Ok(receipt)
 }

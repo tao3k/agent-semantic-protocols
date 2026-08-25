@@ -37,6 +37,7 @@
     },
     "structuralSelector": {
       "type": "string",
+      "description": "Canonical selector whose rightmost # separates the verbatim owner path from the item identity fragment.",
       "minLength": 1
     }
   },

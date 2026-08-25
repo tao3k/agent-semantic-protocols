@@ -38,11 +38,18 @@ pub(super) fn require_terminal_generation_for_read(
         record_generation_read_terminal(workspace_identity, started, "not-ready", Some(&error));
         return Err(error);
     };
-    if receipt.state == crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
-        && receipt.commit.is_some()
-        && memory_registry
+    let active_generation_matches_commit = receipt.commit.as_ref().is_some_and(|commit| {
+        memory_registry
             .lease(workspace_identity, project_root)
-            .is_ok()
+            .is_ok_and(|lease| {
+                let generation = lease.generation();
+                lease.epoch() == commit.active_epoch
+                    && generation.generation_digest == commit.generation_digest
+                    && generation.source_snapshot.root_digest == commit.source_root_digest
+            })
+    });
+    if receipt.state == crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
+        && active_generation_matches_commit
         && memory_registry
             .resident_source_index_ready(workspace_identity, project_root)
             .is_ok()

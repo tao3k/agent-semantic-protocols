@@ -51,10 +51,14 @@ dependencies = [
 name = "agent-semantic-artifacts"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-config",
  "agent-semantic-content-identity",
  "blake3",
+ "fs2",
  "serde",
  "serde_json",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -149,6 +153,7 @@ name = "agent-semantic-client-protocol"
 version = "0.1.0"
 dependencies = [
  "asp-rust-project-harness-policy",
+ "blake3",
  "serde",
  "serde_json",
 ]
@@ -202,6 +207,7 @@ dependencies = [
 name = "agent-semantic-hook"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-artifacts",
  "agent-semantic-config",
  "agent-semantic-content-identity",
  "agent-semantic-provider-protocol",
@@ -270,6 +276,7 @@ dependencies = [
 name = "agent-semantic-protocol"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-artifacts",
  "agent-semantic-client",
  "agent-semantic-client-core",
  "agent-semantic-client-db",
@@ -363,6 +370,7 @@ dependencies = [
 name = "agent-semantic-runtime"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-artifacts",
  "agent-semantic-config",
  "agent-semantic-content-identity",
  "agent-semantic-provider-transport",
@@ -384,13 +392,19 @@ dependencies = [
 name = "agent-semantic-runtime-server"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-artifacts",
  "agent-semantic-client-core",
  "agent-semantic-client-db",
  "agent-semantic-client-protocol",
  "agent-semantic-client-server",
+ "agent-semantic-content-identity",
+ "agent-semantic-http-json",
  "agent-semantic-provider-protocol",
  "agent-semantic-provider-transport",
+ "agent-semantic-runtime",
+ "agent-semantic-schema-manager",
  "agent-semantic-search",
+ "blake3",
  "prost",
  "serde",
  "serde_json",

@@ -44,6 +44,7 @@ fn generation(
             ),
             project_resolutions: Vec::new(),
             owners: vec![crate::runtime_server_workspace::WorkspaceOwnerSnapshot {
+                                authority: None,
                 owner_path: "src/lib.rs".to_owned(),
                 content_digest,
                 bytes: bytes.to_vec(),
@@ -182,7 +183,7 @@ async fn admitted_mutation_rediscovers_server_owned_non_git_candidate() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn resident_reads_fail_closed_while_a_new_generation_is_building() {
+async fn resident_reads_require_the_committed_generation_to_be_published() {
     let temp = tempfile::tempdir().expect("temporary generation gate root");
     let project_root = temp.path().join("project");
     tokio::fs::create_dir_all(&project_root)
@@ -268,13 +269,14 @@ async fn resident_reads_fail_closed_while_a_new_generation_is_building() {
         .wait_terminal(workspace_identity, &project_root)
         .await
         .expect("mutation generation ready");
-    crate::workspace_db_ipc_server::generation::require_terminal_generation_for_read(
+    let error = crate::workspace_db_ipc_server::generation::require_terminal_generation_for_read(
         &registry,
         Some(&admission),
         workspace_identity,
         &project_root,
     )
-    .expect("Ready committed generation admits resident reads");
+    .expect_err("an admission receipt cannot substitute for resident generation publication");
+    assert!(error.contains("reasonKind=active-workspace-generation-required"));
     admission.shutdown().await.expect("shutdown admission");
 }
 

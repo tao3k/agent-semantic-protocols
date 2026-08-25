@@ -60,7 +60,7 @@ fn is_source_access_replay_reason(reason: Option<&str>) -> bool {
         reason,
         Some(
             "bulk-source-dump"
-                | "direct-source-read"
+                | "registered-source-route-required"
                 | "structured-source-read"
                 | "raw-broad-search"
                 | "source-directory-enumeration"

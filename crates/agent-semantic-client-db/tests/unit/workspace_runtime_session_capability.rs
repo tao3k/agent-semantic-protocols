@@ -7,6 +7,12 @@ use agent_semantic_client_db::{
 #[tokio::test]
 async fn read_only_runtime_session_rejects_selector_mutation_before_io() {
     let endpoint = RuntimeServerEndpoint {
+        binary_content_digest:
+            "blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
+        runtime_generation_digest:
+            "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
+        schema_digest:
+            "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(),
         schema_id: "agent.semantic-protocols.runtime-server-endpoint".to_owned(),
         schema_version: "1".to_owned(),
         owner_epoch: 1,
@@ -18,13 +24,13 @@ async fn read_only_runtime_session_rejects_selector_mutation_before_io() {
         client_http_endpoint: "http://127.0.0.1:1".to_owned(),
         runtime_artifact_path: "/tmp/asp".to_owned(),
         runtime_binary_identity:
-            agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
                 value: "fixture-runtime-digest".to_owned(),
                 algorithm: "blake3-256".to_owned(),
             },
         monitor_capability: true,
         observed_runtime_binary_identity:
-            agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
                 value: "fixture-runtime-digest".to_owned(),
                 algorithm: "blake3-256".to_owned(),
             },

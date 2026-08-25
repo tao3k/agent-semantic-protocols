@@ -34,6 +34,9 @@
     }
   },
   "$defs": {
+    "requiredClientProtocolTelemetryEvents": {
+      "const": ["client_protocol_initialize", "client_protocol_catalog", "client_protocol_request", "client_protocol_cancel", "client_protocol_cancelled", "client_protocol_shutdown"]
+    },
     "clientProtocolContract": {
       "type": "object",
       "additionalProperties": false,
@@ -43,7 +46,7 @@
         "protocolVersion": { "const": "1" },
         "transport": { "const": "http-json" },
         "phases": { "const": ["initialize", "catalog", "request", "cancel", "cancelled", "shutdown"] },
-        "requiredTelemetryEvents": { "const": ["client_protocol_initialize", "client_protocol_catalog", "client_protocol_request", "client_protocol_cancel", "client_protocol_cancelled", "client_protocol_shutdown"] },
+        "requiredTelemetryEvents": { "$ref": "#/$defs/requiredClientProtocolTelemetryEvents" },
         "appliesToCaseCount": { "const": 17 },
         "maximumResidentMicros": { "type": "integer", "minimum": 1, "maximum": 1000 },
         "sessionPolicy": { "const": "one-initialize-per-session" },

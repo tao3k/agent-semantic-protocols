@@ -57,24 +57,7 @@
       "minimum": 0,
       "exclusiveMaximum": 1000
     },
-    "workCounters": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "providerProcessCount",
-        "schedulerTaskCount",
-        "filesystemReadCount",
-        "databaseReadCount",
-        "socketOperationCount"
-      ],
-      "properties": {
-        "providerProcessCount": { "const": 0 },
-        "schedulerTaskCount": { "const": 0 },
-        "filesystemReadCount": { "const": 0 },
-        "databaseReadCount": { "const": 0 },
-        "socketOperationCount": { "const": 0 }
-      }
-    },
+    "workCounters": { "$ref": "runtime-provider-search-receipt.v1.schema.json#/$defs/zeroWorkCounters" },
     "status": { "enum": ["qualified", "rejected"] },
     "reasonKind": { "type": ["string", "null"], "minLength": 1 }
   },

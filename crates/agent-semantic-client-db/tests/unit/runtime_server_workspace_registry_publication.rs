@@ -5,6 +5,7 @@ fn resident_generation(
     project_root: &std::path::Path,
 ) -> crate::runtime_server_workspace::WorkspaceMemoryGeneration {
     let owner = crate::runtime_server_workspace::WorkspaceOwnerSnapshot {
+        authority: None,
         owner_path: "src/lib.rs".to_owned(),
         content_digest: format!("blake3-256:{}", blake3::hash(b"fn resident() {}").to_hex()),
         bytes: b"fn resident() {}".to_vec(),

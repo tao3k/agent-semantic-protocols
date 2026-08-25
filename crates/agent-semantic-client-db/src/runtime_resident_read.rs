@@ -86,11 +86,11 @@ impl RuntimeResidentReadClient {
     pub fn read_source_index(
         &self,
         query: &str,
-        language_id: Option<&agent_semantic_client_core::LanguageId>,
+        authority: Option<&agent_semantic_search::ResidentSearchAuthority>,
         limit: u32,
     ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
         self.search_projection
-            .read_source_index(query, language_id, limit)
+            .read_source_index(query, authority, limit)
     }
 
     pub fn generation_digest(&self) -> String {

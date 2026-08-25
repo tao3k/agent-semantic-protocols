@@ -35,6 +35,22 @@ pub(super) async fn run_schema_command(args: &[String]) -> Result<(), String> {
         index += 1;
     }
     let manager = SchemaManager::new(workspace);
+    if operation == "responsibilities" {
+        if !languages.is_empty() {
+            return Err("asp schema responsibilities does not accept --language".to_owned());
+        }
+        for responsibility in manager.responsibilities().await? {
+            println!(
+                "[schema-responsibility] schema={} schemaId={} family={} owner={} purpose={}",
+                responsibility.name,
+                responsibility.schema_id,
+                responsibility.family_id,
+                responsibility.owner,
+                responsibility.purpose
+            );
+        }
+        return Ok(());
+    }
     let reports = match operation {
         "materialize" => manager.materialize(&languages).await?,
         "verify" => manager.verify(&languages).await?,
@@ -60,5 +76,6 @@ pub(super) async fn run_schema_command(args: &[String]) -> Result<(), String> {
 }
 
 fn usage() -> String {
-    "usage: asp schema <materialize|verify> [--workspace ROOT] [--language ID]...".to_owned()
+    "usage: asp schema <materialize|verify|responsibilities> [--workspace ROOT] [--language ID]..."
+        .to_owned()
 }

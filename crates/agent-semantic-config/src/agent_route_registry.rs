@@ -92,25 +92,6 @@ pub struct AgentRouteRegistry {
     pub agents: BTreeMap<String, AgentRouteSpec>,
 }
 
-impl AgentRouteRegistry {
-    /// Resolves the only configured route that owns `role`.
-    pub fn unique_route_for_role(&self, role: &str) -> Result<(&str, &AgentRouteSpec), String> {
-        let mut routes = self
-            .agents
-            .iter()
-            .filter(|(_, route)| route.roles.iter().any(|candidate| candidate == role));
-        let route = routes
-            .next()
-            .ok_or_else(|| format!("agent route registry omitted the `{role}` role"))?;
-        if routes.next().is_some() {
-            return Err(format!(
-                "agent route registry defines multiple routes for the `{role}` role"
-            ));
-        }
-        Ok((route.0.as_str(), route.1))
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentsRegistry {
     pub registry: AgentRouteRegistry,
@@ -202,6 +183,42 @@ pub struct CompiledAgentRoute {
     pub sandbox_mode: Option<String>,
     pub definition_schema_id: &'static str,
     pub effective_permissions: EffectiveAgentPermissions,
+}
+
+/// Host-owned invocation projection for one semantic Agent route.
+///
+/// The Hook DSL stores only `route_key`. This projection is materialized from
+/// the active platform profile, so Host syntax never leaks into policy rules.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostAgentInvocationProjection {
+    pub kind: &'static str,
+    /// Native calling symbol derived from the active Host profile's `name`.
+    pub symbol: String,
+    pub syntax: String,
+}
+
+impl CompiledAgentRoute {
+    #[must_use]
+    pub fn host_invocation(&self, symbol: &str) -> HostAgentInvocationProjection {
+        match self.platform.as_str() {
+            "codex" => HostAgentInvocationProjection {
+                kind: "codex-agent-symbol",
+                syntax: symbol.to_owned(),
+                symbol: symbol.to_owned(),
+            },
+            "claude" => HostAgentInvocationProjection {
+                kind: "claude-agent-mention",
+                syntax: symbol.to_owned(),
+                symbol: symbol.to_owned(),
+            },
+            _ => HostAgentInvocationProjection {
+                kind: "host-agent",
+                syntax: symbol.to_owned(),
+                symbol: symbol.to_owned(),
+            },
+        }
+    }
 }
 
 pub fn load_agent_route_registry(config_path: &Path) -> Result<AgentsRegistry, String> {

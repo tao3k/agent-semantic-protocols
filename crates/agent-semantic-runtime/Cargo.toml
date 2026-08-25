@@ -6,6 +6,7 @@ license = "MIT"
 description = "Runtime state materialization for ASP project-local storage."
 
 [dependencies]
+agent-semantic-artifacts.workspace = true
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-content-identity.workspace = true
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }

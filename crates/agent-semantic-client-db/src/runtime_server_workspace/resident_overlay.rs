@@ -477,13 +477,13 @@ impl ResidentOverlaySnapshot {
                 bytes: overlay.projection_bytes.clone(),
             });
         }
-        if self.state.tombstones.contains(owner_path) {
+        if self.state.tombstones.contains(&owner_path) {
             return Ok(WorkspaceRuntimeSelectorRead::OwnerMissing {
                 generation_digest: self.state.generation_digest.clone(),
                 root_digest: self.state.workspace_snapshot.root_digest().to_owned(),
             });
         }
-        if let Some(owner) = self.state.owners.get(owner_path) {
+        if let Some(owner) = self.state.owners.get(&owner_path) {
             return read_owner_selector(
                 owner,
                 &self.state.generation_digest,
@@ -562,12 +562,10 @@ impl ResidentOverlayState {
     }
 }
 
-fn selector_owner_path(selector: &str) -> Result<&str, String> {
-    selector
-        .split_once("://")
-        .and_then(|(_, selector)| selector.split_once('#'))
-        .map(|(owner_path, _)| owner_path)
-        .ok_or_else(|| "exact structural selector is missing its owner path".to_owned())
+fn selector_owner_path(selector: &str) -> Result<String, String> {
+    agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(selector)
+        .map_err(|error| format!("exact structural selector is not canonical: {error}"))?
+        .owner_path()
 }
 
 fn base_owner<'a>(
@@ -646,7 +644,7 @@ fn read_base_selector_with_identity(
     structural_selector: &str,
 ) -> Result<WorkspaceRuntimeSelectorRead, String> {
     let owner_path = selector_owner_path(structural_selector)?;
-    if let Some(owner) = base_owner(base, owner_path) {
+    if let Some(owner) = base_owner(base, &owner_path) {
         return read_owner_selector(
             owner,
             generation_digest,

@@ -9,6 +9,7 @@ description = "Root semantic agent hook runtime for provider manifests and proje
 asp-provider-registry-build.workspace = true
 
 [dependencies]
+agent-semantic-artifacts.workspace = true
 agent-semantic-provider-protocol.workspace = true
 blake3.workspace = true
 agent-semantic-shell-parser = { path = "../agent-semantic-shell-parser" }

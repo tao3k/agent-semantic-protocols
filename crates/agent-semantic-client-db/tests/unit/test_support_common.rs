@@ -37,6 +37,11 @@ pub(crate) fn environment_lock() -> MutexGuard<'static, ()> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+#[test]
+fn performance_lock_is_acquirable() {
+    drop(performance_lock());
+}
+
 pub(crate) fn performance_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))

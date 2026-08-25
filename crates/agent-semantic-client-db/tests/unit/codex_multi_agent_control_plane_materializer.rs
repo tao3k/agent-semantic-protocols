@@ -69,8 +69,8 @@ fn registry_materialization_rejects_cross_workspace_scope() {
 fn refresh_operation_has_a_typed_v1_wire_shape() {
     let value = serde_json::to_value(
         WorkspaceDbIpcOperation::RefreshCodexMultiAgentControlPlane {
-            project_id: "workspace-1".to_owned(),
-            root_session_id: "root-1".to_owned(),
+            project_id: "workspace-1".to_owned().into(),
+            root_session_id: "root-1".to_owned().into(),
         },
     )
     .expect("refresh operation must serialize");

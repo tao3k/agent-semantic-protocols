@@ -172,7 +172,7 @@ impl CanonicalItemSelector {
             structural_selector.split_once("://").ok_or_else(|| {
                 "canonical item structuralSelector must include <language>://".to_string()
             })?;
-        let (owner_path, identity_path) = selector_body.split_once('#').ok_or_else(|| {
+        let (owner_path, identity_path) = selector_body.rsplit_once('#').ok_or_else(|| {
             "canonical item structuralSelector must include an owner and item fragment".to_string()
         })?;
         if owner_path.trim().is_empty() {
@@ -238,16 +238,27 @@ impl CanonicalItemSelector {
     }
 
     /// Returns the parser-validated source owner carried by this selector.
-    pub fn owner_path(&self) -> Result<&str, String> {
-        self.validate()?;
-        self.structural_selector
+    pub fn owner_path(&self) -> Result<String, String> {
+        let encoded = self
+            .structural_selector
             .split_once("://")
-            .and_then(|(_, selector_body)| selector_body.split_once('#'))
+            .and_then(|(_, selector_body)| selector_body.rsplit_once('#'))
             .map(|(owner_path, _)| owner_path)
             .ok_or_else(|| {
                 "canonical item structuralSelector must include an owner and item fragment"
                     .to_owned()
-            })
+            })?;
+        let decoded = crate::structural_selector::decode_structural_selector_owner_path(encoded)
+            .map_err(|error| {
+                format!("canonical item structuralSelector owner path is invalid: {error}")
+            })?;
+        if crate::structural_selector::encode_structural_selector_owner_path(&decoded) != encoded {
+            return Err(
+                "canonical item structuralSelector owner path is not canonically encoded"
+                    .to_owned(),
+            );
+        }
+        Ok(decoded)
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -293,7 +304,7 @@ impl CanonicalItemSelector {
                 "canonical item structuralSelector language does not match languageId".to_string(),
             );
         }
-        let (owner_path, identity_path) = selector_body.split_once('#').ok_or_else(|| {
+        let (owner_path, identity_path) = selector_body.rsplit_once('#').ok_or_else(|| {
             "canonical item structuralSelector must include an owner and item fragment".to_string()
         })?;
         if owner_path.trim().is_empty() {
@@ -301,6 +312,7 @@ impl CanonicalItemSelector {
                 "canonical item structuralSelector owner path must not be empty".to_string(),
             );
         }
+        self.owner_path()?;
         let decoded = crate::structural_selector::decode_canonical_item_identity_path(
             &crate::structural_selector::StructuralSelectorLanguageId::from(
                 self.language_id.as_str(),

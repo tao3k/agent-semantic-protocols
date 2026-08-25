@@ -22,6 +22,7 @@ fn fixture() -> (TempDir, SchemaManager) {
         &json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "$id": "https://example.invalid/root.schema.json",
+            "title": "Fixture Root",
             "$ref": "dependency.schema.json"
         }),
     );
@@ -30,6 +31,7 @@ fn fixture() -> (TempDir, SchemaManager) {
         &json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "$id": "https://example.invalid/dependency.schema.json",
+            "title": "Fixture Dependency",
             "type": "object"
         }),
     );
@@ -38,6 +40,7 @@ fn fixture() -> (TempDir, SchemaManager) {
         &json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "$id": "https://example.invalid/old.schema.json",
+            "title": "Fixture Old Contract",
             "type": "string"
         }),
     );
@@ -63,6 +66,14 @@ fn write_registry(path: &Path, roots: &[&str]) {
             "$schema": "language-schema-profile-registry.schema.json",
             "schemaId": "agent.semantic-protocols.language-schema-profile-registry",
             "schemaVersion": "1",
+            "families": [{
+                "familyId": "asp.schema-family.fixture",
+                "owner": "fixture",
+                "rationale": "Owns all fixture schemas used by Schema Manager tests.",
+                "priority": 100,
+                "namespace": {"filenamePrefixes": [""]}
+            }],
+            "referenceDecisions": [],
             "rootSets": {"contract": roots},
             "profiles": [{
                 "languageId": "fixture",
@@ -147,6 +158,72 @@ async fn publishes_portable_client_bundle_outside_language_package() {
         .expect("verify downstream receipt");
     assert_eq!(receipt.language_id, "fixture");
     assert_eq!(receipt.bundle_digest, report.bundle_digest);
+}
+
+#[tokio::test]
+async fn registry_fails_closed_when_any_canonical_schema_has_no_responsibility() {
+    let (root, manager) = fixture();
+    let registry_path = root.path().join("profiles.json");
+    let mut registry: serde_json::Value =
+        serde_json::from_slice(&fs::read(&registry_path).expect("read registry"))
+            .expect("decode registry");
+    registry["families"][0]["namespace"]["filenamePrefixes"] = json!(["root."]);
+    write_json(&registry_path, &registry);
+
+    let error = manager
+        .verify(&[])
+        .await
+        .expect_err("unowned canonical schema must fail");
+    assert!(
+        error.contains("schema responsibility is undeclared"),
+        "{error}"
+    );
+}
+
+#[tokio::test]
+async fn registry_fails_closed_on_ambiguous_schema_responsibility() {
+    let (root, manager) = fixture();
+    let registry_path = root.path().join("profiles.json");
+    let mut registry: serde_json::Value =
+        serde_json::from_slice(&fs::read(&registry_path).expect("read registry"))
+            .expect("decode registry");
+    registry["families"]
+        .as_array_mut()
+        .expect("families")
+        .push(json!({
+            "familyId": "asp.schema-family.fixture-shadow",
+            "owner": "fixture-shadow",
+            "rationale": "Deliberately conflicts with the fixture family.",
+            "priority": 100,
+            "namespace": {"filenamePrefixes": [""]}
+        }));
+    write_json(&registry_path, &registry);
+
+    let error = manager
+        .verify(&[])
+        .await
+        .expect_err("ambiguous responsibility must fail");
+    assert!(
+        error.contains("schema responsibility is ambiguous"),
+        "{error}"
+    );
+}
+
+#[tokio::test]
+async fn registry_fails_closed_on_duplicate_canonical_schema_id() {
+    let (root, manager) = fixture();
+    let old_path = root.path().join("schemas/old.schema.json");
+    let mut old: serde_json::Value =
+        serde_json::from_slice(&fs::read(&old_path).expect("read old schema"))
+            .expect("decode old schema");
+    old["$id"] = json!("https://example.invalid/root.schema.json");
+    write_json(&old_path, &old);
+
+    let error = manager
+        .verify(&[])
+        .await
+        .expect_err("duplicate schema id must fail");
+    assert!(error.contains("duplicate canonical schema $id"), "{error}");
 }
 
 #[tokio::test]

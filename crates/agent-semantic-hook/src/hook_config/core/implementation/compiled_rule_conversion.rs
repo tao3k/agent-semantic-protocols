@@ -6,7 +6,9 @@ impl From<HookClientConfigReasonKind> for ReasonKind {
     fn from(kind: HookClientConfigReasonKind) -> Self {
         match kind {
             HookClientConfigReasonKind::None => Self::None,
-            HookClientConfigReasonKind::DirectSourceRead => Self::DirectSourceRead,
+            HookClientConfigReasonKind::RegisteredSourceRouteRequired => {
+                Self::RegisteredSourceRouteRequired
+            }
             HookClientConfigReasonKind::StructuredSourceRead => Self::StructuredSourceRead,
             HookClientConfigReasonKind::BulkSourceDump => Self::BulkSourceDump,
             HookClientConfigReasonKind::RawBroadSearch => Self::RawBroadSearch,

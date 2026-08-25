@@ -84,7 +84,7 @@ fn compiled_policy_axes_generate_balanced_complex_black_and_white_witnesses() {
 }
 
 #[test]
-fn positional_shell_witnesses_preserve_argv_structure_for_every_provider() {
+fn positional_shell_witnesses_preserve_argv_structure_without_inventing_policy() {
     let config = toml::from_str(&crate::default_client_config_template())
         .expect("parse rendered default Hook config");
     let witnesses = combinatorial_positional_shell_witnesses(
@@ -106,7 +106,6 @@ fn positional_shell_witnesses_preserve_argv_structure_for_every_provider() {
         .collect::<BTreeSet<_>>();
     assert_eq!(covered_languages, configured_languages);
     for witness in witnesses {
-        assert_eq!(witness.expected_decision, crate::DecisionKind::Deny);
         let payload = serde_json::json!({
             "tool_name": witness.tool_name,
             "tool_input": witness.tool_input,

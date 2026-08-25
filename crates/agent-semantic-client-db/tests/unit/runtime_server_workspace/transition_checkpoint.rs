@@ -15,6 +15,7 @@ fn project_root(workspace_identity: &str) -> std::path::PathBuf {
 
 fn owner(path: &str, selector: &str, bytes: &[u8]) -> WorkspaceOwnerSnapshot {
     WorkspaceOwnerSnapshot {
+        authority: None,
         owner_path: path.to_owned(),
         content_digest: format!("blake3-256:{}", blake3::hash(bytes).to_hex()),
         bytes: bytes.to_vec(),
@@ -556,8 +557,8 @@ async fn published_search_generation_reads_lexical_and_owner_sections_without_fu
     let lookup = client
         .read_source_index("run_search", None, 8)
         .expect("read lexical section");
-    assert_eq!(lookup.candidates.len(), 1);
-    assert_eq!(lookup.candidates[0].path, "src/lib.rs");
+    assert_eq!(lookup.hits.len(), 1);
+    assert_eq!(lookup.hits[0].owner_path, "src/lib.rs");
     assert_eq!(
         client
             .parser_owned_callable_selector_pairs(&["src/lib.rs".to_owned()])
@@ -582,8 +583,8 @@ async fn published_search_generation_reads_lexical_and_owner_sections_without_fu
         .read_source_index("fn", None, 8)
         .expect("read a different query from the admitted typed tables");
     let different_query_elapsed = different_query_started.elapsed();
-    assert_eq!(different_query.candidates.len(), 1);
-    assert_eq!(different_query.candidates[0].path, "src/lib.rs");
+    assert_eq!(different_query.hits.len(), 1);
+    assert_eq!(different_query.hits[0].owner_path, "src/lib.rs");
     assert!(
         different_query_elapsed < std::time::Duration::from_millis(1),
         "different resident search reparsed the generation: {different_query_elapsed:?}"

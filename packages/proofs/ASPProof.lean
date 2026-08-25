@@ -66,6 +66,7 @@ import ASPProof.HookRecoveryDeadlockFreedom
 import ASPProof.Audit.HookRecoveryDeadlockFreedom
 import ASPProof.HookToolMatcherCoverage
 import ASPProof.HookEnforcementKernel
+import ASPProof.HookPlatformActionProjection
 import ASPProof.HostAuthoritativeAgentProfile
 import ASPProof.ManagerProjectionElimination
 import ASPProof.Audit.ManagerProjectionElimination
@@ -87,6 +88,7 @@ import ASPProof.Audit.AgentSessionLifecycleProduct
 import ASPProof.Audit.AgentSessionLifecycleExecutableRefinement
 import ASPProof.Audit.CodexMultiAgentV2ControlPlane
 import ASPProof.Audit.HookEnforcementKernel
+import ASPProof.Audit.HookPlatformActionProjection
 import ASPProof.MultiRoleLifecycleAuthority
 import ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence
 import ASPProof.SearchRouteAdmissionRetryCacheRejoinFenceAuthority
@@ -288,6 +290,7 @@ import ASPProof.RuntimeIndependentParserReadAuthority
 import ASPProof.ParserReadAuthorityLoadOnce
 import ASPProof.ParserReadAuthorityEpochFencing
 import ASPProof.HookMemoryInboxDeadlockFreedom
+import ASPProof.HookHostNativeHandoff
 import ASPProof.Audit.HookMemoryInboxDeadlockFreedom
 import ASPProof.HookSourceAccessReplayIdentity
 import ASPProof.Audit.HookSourceAccessReplayIdentity

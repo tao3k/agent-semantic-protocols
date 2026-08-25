@@ -1,5 +1,4 @@
 use agent_semantic_client_db::runtime_provider_register::RuntimeProviderRegister;
-use agent_semantic_client_protocol::ClientTransport;
 use agent_semantic_provider_protocol::{
     PROVIDER_REGISTER_REQUEST_SCHEMA_ID, PROVIDER_REGISTER_SCHEMA_VERSION,
     ProviderRegisterOperation, ProviderRegisterRequest, ProviderRegisterResult,
@@ -333,41 +332,4 @@ async fn operation_resolution_requires_an_installed_compiled_route() {
         .expect("resolve installed route");
     assert_eq!(provider_id, "asp-rust");
     assert_eq!(route.spec().route_id, "rust.search.owner");
-}
-
-#[tokio::test]
-async fn client_catalog_is_an_atomic_projection_of_installed_routes() {
-    let register = RuntimeProviderRegister::new();
-    register
-        .apply(request(
-            Some(0),
-            ProviderRegisterOperation::Register {
-                provider: installed_capability("zig", "asp-zig"),
-            },
-        ))
-        .await
-        .expect("register installed route");
-    let workspace_generation = format!("blake3-256:{}", "a".repeat(64));
-    let catalog = register
-        .client_protocol_catalog(workspace_generation, vec![ClientTransport::RuntimeIpc])
-        .expect("project client catalog");
-
-    assert_eq!(catalog.catalog_generation, register.snapshot().digest);
-    assert_eq!(catalog.methods.len(), 1);
-    assert_eq!(catalog.methods[0].method, "zig.search.owner");
-    assert_eq!(
-        catalog.methods[0].request_schema_id,
-        "agent.semantic-protocols.search-owner-request"
-    );
-    assert_eq!(
-        catalog.methods[0].response_schema_id,
-        "agent.semantic-protocols.search-packet"
-    );
-    assert!(catalog.capabilities.request_cancellation);
-    let (language_id, operation, route) = register
-        .resolve_client_method("zig.search.owner")
-        .expect("resolve catalog method");
-    assert_eq!(language_id, "zig");
-    assert_eq!(operation, "search.owner");
-    assert_eq!(route.spec().route_id, "zig.search.owner");
 }

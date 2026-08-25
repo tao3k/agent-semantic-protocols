@@ -3,10 +3,16 @@ use crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEnt
 use crate::runtime_server_control::{
     RuntimeServerEndpoint, runtime_server_transport_contract_digest,
 };
-use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
+use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
 
 fn endpoint(root: &std::path::Path) -> RuntimeServerEndpoint {
     RuntimeServerEndpoint {
+        binary_content_digest:
+            "blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
+        runtime_generation_digest:
+            "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
+        schema_digest:
+            "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(),
         schema_id: "agent.semantic-protocols.runtime-server-endpoint".to_owned(),
         schema_version: "1".to_owned(),
         transport_contract_digest: runtime_server_transport_contract_digest(),

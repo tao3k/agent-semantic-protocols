@@ -10,7 +10,7 @@ commands = [
 [expected]
 ruleId = "testing-role-dispatch"
 decision = "deny"
-targetAgentRole = "testing"
+targetAgent = "asp_testing"
 receiptKind = "asp-testing-execution-v1"
 
 [performance]

@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::OnceLock;
 
-use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
+use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
 use serde::{Deserialize, Serialize};
 
 pub(super) const SCHEMA_VERSION: &str = "1";
@@ -35,6 +35,9 @@ const ASP_CLIENT_FRAME_CONTRACT: &[u8] =
 pub struct RuntimeServerEndpoint {
     pub schema_id: String,
     pub schema_version: String,
+    pub binary_content_digest: String,
+    pub runtime_generation_digest: String,
+    pub schema_digest: String,
     pub transport_contract_digest: String,
     pub owner_epoch: u64,
     #[serde(default)]
@@ -110,6 +113,9 @@ impl RuntimeServerEndpoint {
             || self.transport_contract_digest.is_empty()
             || self.runtime_artifact_path.is_empty()
             || self.runtime_binary_identity.value().is_empty()
+            || self.binary_content_digest.is_empty()
+            || self.runtime_generation_digest.is_empty()
+            || self.schema_digest.is_empty()
             || !matches!(self.artifact_mode.as_str(), "dev" | "release")
             || !is_blake3_digest(&self.artifact_catalog_digest)
             || self.binding_token.is_empty()
@@ -121,6 +127,20 @@ impl RuntimeServerEndpoint {
             || self.status_memory_path.is_empty()
         {
             return Err("Runtime Server endpoint is incomplete".to_owned());
+        }
+        if self.binary_content_digest != self.runtime_binary_identity.value() {
+            return Err(
+                "reasonKind=runtime-server-endpoint-identity-incomplete binaryContentDigest does not match canonical Runtime binary identity"
+                    .to_owned(),
+            );
+        }
+        if !is_blake3_digest(&self.runtime_generation_digest)
+            || !is_blake3_digest(&self.schema_digest)
+        {
+            return Err(
+                "reasonKind=runtime-server-endpoint-identity-incomplete Runtime generation or schema digest is invalid"
+                    .to_owned(),
+            );
         }
         if !Path::new(&self.socket_path).is_absolute() {
             return Err("Runtime Server socket path must be absolute".to_owned());
@@ -144,6 +164,70 @@ impl RuntimeServerEndpoint {
         if !Path::new(&self.status_memory_path).is_absolute() {
             return Err("Runtime Server status memory path must be absolute".to_owned());
         }
+        Ok(())
+    }
+
+    /// Prove that every service published by this endpoint generation still
+    /// has a live listener.
+    ///
+    /// Status memory is only a cache owned by the generation; it is not
+    /// sufficient evidence that the control, data, provider, and public client
+    /// planes still agree on that generation.  All loopback connects are
+    /// started together so a healthy receipt cannot be assembled from a stale
+    /// mmap snapshot plus a newer or partially drained listener set.
+    pub async fn validate_service_reachability(&self) -> Result<(), String> {
+        self.validate()?;
+        let client_address = self
+            .client_http_endpoint
+            .strip_prefix("http://")
+            .expect("validated Runtime client endpoint must use HTTP")
+            .parse::<std::net::SocketAddr>()
+            .expect("validated Runtime client endpoint must contain a socket address");
+        let control = async {
+            tokio::net::UnixStream::connect(&self.socket_path)
+                .await
+                .map(|_| ())
+                .map_err(|error| {
+                    format!(
+                        "Runtime Server control listener is unreachable for endpoint generation {}: {error}",
+                        self.owner_epoch
+                    )
+                })
+        };
+        let data = async {
+            tokio::net::UnixStream::connect(&self.data_plane_socket_path)
+                .await
+                .map(|_| ())
+                .map_err(|error| {
+                    format!(
+                        "Runtime Server data listener is unreachable for endpoint generation {}: {error}",
+                        self.owner_epoch
+                    )
+                })
+        };
+        let provider = async {
+            tokio::net::UnixStream::connect(&self.provider_plane_socket_path)
+                .await
+                .map(|_| ())
+                .map_err(|error| {
+                    format!(
+                        "Runtime Server provider listener is unreachable for endpoint generation {}: {error}",
+                        self.owner_epoch
+                    )
+                })
+        };
+        let client = async {
+            tokio::net::TcpStream::connect(client_address)
+                .await
+                .map(|_| ())
+                .map_err(|error| {
+                    format!(
+                        "Runtime Server ASP Client listener is unreachable for endpoint generation {}: {error}",
+                        self.owner_epoch
+                    )
+                })
+        };
+        tokio::try_join!(control, data, provider, client)?;
         Ok(())
     }
 }

@@ -11,6 +11,36 @@ use super::{
 };
 
 impl WorkspaceGenerationAdmission {
+    /// Rebuild an admitted generation whose resident mmap layout cannot be opened.
+    ///
+    /// The admission authority remains the sole build and publication owner. The
+    /// caller supplies no paths, deletes no artifacts, and cannot restore the
+    /// incompatible generation.
+    pub async fn admit_runtime_recovery_and_wait(
+        &self,
+        workspace_identity: String,
+        project_root: PathBuf,
+    ) -> Result<WorkspaceGenerationAdmissionReceipt, String> {
+        let candidate = discover_workspace_generation_candidate(&project_root).await?;
+        let receipt = self
+            .admit_with_mode(
+                workspace_identity.clone(),
+                project_root.clone(),
+                candidate,
+                WorkspaceGenerationBuildMode::RebuildAfterMutation,
+                WorkspaceGenerationAdmissionTrigger::RuntimeRecovery,
+                WorkspaceGenerationAdmissionMode::FullRecovery,
+                None,
+                Arc::default(),
+            )
+            .await?;
+        if receipt.state == WorkspaceGenerationAdmissionState::Building {
+            self.wait_terminal(&workspace_identity, &project_root).await
+        } else {
+            Ok(receipt)
+        }
+    }
+
     /// Builds or restores one complete generation and waits for its terminal receipt.
     ///
     /// This is a cold lifecycle operation. The Runtime remains the only candidate,

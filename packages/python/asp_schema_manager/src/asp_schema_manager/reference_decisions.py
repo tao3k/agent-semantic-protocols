@@ -33,6 +33,12 @@ def load_reference_decisions(
                 "message": str(error),
             }
         ]
+    if isinstance(value, dict) and "referenceDecisions" in value:
+        value = {
+            "schemaId": "asp.schema-reference-decision-registry.v1",
+            "schemaVersion": "1",
+            "entries": value.get("referenceDecisions", []),
+        }
     if contract_path is not None:
         diagnostics.extend(_contract_diagnostics(value, contract_path))
     if (

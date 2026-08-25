@@ -79,7 +79,7 @@ protocolVersion = "1"
 
 [[rules]]
 id = "deny-wl-source-argv"
-priority = 20000
+priority = 50000
 decision = "deny"
 message = "matched configured argv source"
 
@@ -143,7 +143,7 @@ argvSourceExcludeFlagAny = ["--output"]
 
         assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
         assert_eq!(
-            decision.fields["configRuleId"], "deny-raw-registered-source-action",
+            decision.fields["configRuleId"], "route-read-to-asp-languages",
             "the custom argv matcher must exclude the output operand before dominance"
         );
     }
@@ -267,15 +267,15 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
     assert!(
         asp_search_decision
             .message
-            .contains("compact `asp <language> search ...`"),
-        "registered search dispatch must explain the normal compact Explorer path: {}",
+            .contains("delegate search to the registered ASP Explorer"),
+        "registered search dispatch must explain the Explorer evidence path: {}",
         asp_search_decision.message
     );
     assert!(
         asp_search_decision
             .message
-            .contains("selector-bearing `asp <language> query ...`"),
-        "registered search dispatch must keep exact query in the same Explorer capability: {}",
+            .contains("main thread with `asp <language> query --selector ... --projection source`"),
+        "registered search dispatch must return exact query materialization to the main thread: {}",
         asp_search_decision.message
     );
     assert!(
@@ -335,28 +335,9 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
         }),
     });
 
-    assert_eq!(asp_query_decision.decision, DecisionKind::Deny);
-    assert_eq!(
-        asp_query_decision
-            .fields
-            .get("configRuleId")
-            .and_then(|id| id.as_str()),
-        Some("registered-asp-reasoning-search")
-    );
-    assert_eq!(
-        asp_query_decision
-            .fields
-            .get("intent")
-            .and_then(|value| value.as_str()),
-        Some("reasoning-search")
-    );
-    assert_eq!(
-        asp_query_decision
-            .fields
-            .get("registeredLanguageId")
-            .and_then(|value| value.as_str()),
-        Some("rust")
-    );
+    assert_eq!(asp_query_decision.decision, DecisionKind::Allow);
+    assert!(asp_query_decision.fields.get("configRuleId").is_none());
+    assert!(asp_query_decision.fields.get("intent").is_none());
 
     for (language_id, command) in [
         (
@@ -365,7 +346,7 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
         ),
         (
             "md",
-            "asp md query --selector 'md://README.md#item/heading/runtime' --workspace . --projection source",
+            "asp md search owner README.md items --query runtime --workspace . --view seeds",
         ),
     ] {
         let provider_route_decision = classify_hook_with_config(HookClassificationRequest {
@@ -413,7 +394,7 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
             .fields
             .get("configRuleId")
             .and_then(|id| id.as_str()),
-        Some("deny-uncontrolled-source-search-commands")
+        Some("route-read-to-asp-languages")
     );
 
     for command in ["asp help"] {

@@ -249,8 +249,10 @@ agent-tools-build-gerbil bin_dir="":
       artifact_root="${package_dir}/build/workspace-provider"; \
       cd "${package_dir}"; \
       env -u CC -u SDKROOT \
-        ASP_GERBIL_SCHEME_WORKSPACE_ARTIFACT_ROOT="${artifact_root}" \
-        gxpkg env gxi provider/workspace-build.ss; \
+        ASP_PROVIDER_ARTIFACT_ROOT="${artifact_root}" \
+        GERBIL_PATH="${package_dir}/.gerbil" \
+        GERBIL_LOADPATH="${package_dir}/.gerbil/lib" \
+        gxi build.ss; \
       provider_binary="${artifact_root}/bin/asp-gerbil-scheme"; \
       test -x "${provider_binary}"; \
       if [ -n "{{bin_dir}}" ]; then \
@@ -266,7 +268,10 @@ test-gerbil-provider-http-json: agent-tools-build-gerbil
       cd "${package_dir}"; \
       env -u CC -u SDKROOT GERBIL_PATH="${package_dir}/.gerbil" \
         gxc -O src/runtime/provider-operation.ss; \
-      env -u CC -u SDKROOT gxtest t/provider-http-json-server-test.ss
+      env -u CC -u SDKROOT GERBIL_PATH="${package_dir}/.gerbil" \
+        gxtest t/projection-batch-test.ss; \
+      env -u CC -u SDKROOT GERBIL_PATH="${package_dir}/.gerbil" \
+        gxtest t/provider-http-json-server-test.ss
 
 agent-tools-install-gx bin_dir="":
     @just agent-tools-build-gerbil "{{bin_dir}}"

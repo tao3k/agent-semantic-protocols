@@ -1,0 +1,32 @@
+* Agent Search Projection Package Responsibility
+:PROPERTIES:
+:PARENT_RFC: ../10.06-agent-search-projection.org
+:STATUS: normative
+:END:
+
+** Projection ownership
+
+Wire envelopes and byte payloads belong to =agent-semantic-client-protocol=.
+They contain no text presentation, ranking, selector lookup, caching, or
+lifecycle behavior.
+
+Source-index, selector, projection, ranking, and resident-memory query behavior
+belong to =agent-semantic-search=.  Human-readable source or callable-skeleton
+presentation belongs to =agent-semantic-client=.  Explicit machine mode alone
+renders the complete typed JSON frame.
+
+HTTP/gRPC admission and the server-owned query lifecycle belong to
+=agent-semantic-runtime-server=.  The =agent-semantic-protocol= binary may
+compose arguments into an ASP Client request but may not implement search,
+query, rendering, provider admission, or Runtime lifecycle behavior.
+
+=agent-semantic-client-server= is only the stateless frame transport boundary.
+It MUST NOT retain a client-session map, catalog authority, or generation state.
+
+** Cross-language qualification
+
+Scenario and Live Corpus qualification MUST enumerate the registered language
+profiles from the shared Schema Manager registry.  Hard-coded Rust/Python/
+Gerbil subsets are invalid.  Every registered search/query method traverses
+the same ASP Client wire request, ASP Server admission, resident search owner,
+and ASP Client presentation contract.

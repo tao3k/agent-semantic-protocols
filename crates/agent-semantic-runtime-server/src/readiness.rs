@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use tokio::net::UnixDatagram;
 
@@ -82,32 +81,14 @@ pub struct RuntimeServerReadinessListener {
 }
 
 impl RuntimeServerReadinessListener {
-    pub async fn bind(
-        state_home: &Path,
+    #[cfg(test)]
+    async fn bind(
+        state_home: &std::path::Path,
         request_id: impl Into<String>,
         readiness_token: impl Into<String>,
     ) -> Result<Self, String> {
-        let request_id = request_id.into();
-        let readiness_token = readiness_token.into();
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        request_id.hash(&mut hasher);
-        readiness_token.hash(&mut hasher);
-        let path = state_home
-            .join("runtime/server")
-            .join(format!("readiness-{:016x}.sock", hasher.finish()));
-        if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|e| e.to_string())?;
-        }
-        let _ = tokio::fs::remove_file(&path).await;
-        let socket = UnixDatagram::bind(&path).map_err(|e| e.to_string())?;
-        Ok(Self {
-            socket,
-            path,
-            request_id,
-            readiness_token,
-        })
+        let root = RuntimeServerReadinessRoot::new(state_home)?;
+        Self::bind_root(&root, request_id, readiness_token).await
     }
 
     pub fn socket_path(&self) -> &Path {
@@ -285,4 +266,131 @@ mod tests {
         assert_eq!(listener.receive(42).await.unwrap().readiness_token, "token");
         listener.cleanup().await.unwrap();
     }
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeServerReadinessRoot(std::path::PathBuf);
+
+impl RuntimeServerReadinessRoot {
+    pub fn new(path: impl Into<std::path::PathBuf>) -> Result<Self, String> {
+        let path = path.into();
+        if !path.is_absolute() {
+            return Err(format!(
+                "Runtime readiness root must be absolute: {}",
+                path.display()
+            ));
+        }
+        Ok(Self(path))
+    }
+
+    pub fn as_path(&self) -> &std::path::Path {
+        &self.0
+    }
+
+    pub fn endpoint(
+        &self,
+        request_id: &str,
+        readiness_token: &str,
+    ) -> RuntimeServerReadinessEndpoint {
+        let mut identity = blake3::Hasher::new();
+        identity.update(b"agent.semantic-protocols.runtime-server-readiness-endpoint.v1\0");
+        identity.update(request_id.as_bytes());
+        identity.update(b"\0");
+        identity.update(readiness_token.as_bytes());
+        let identity = identity.finalize().to_hex();
+        RuntimeServerReadinessEndpoint(self.0.join("r").join(format!("{}.sock", &identity[..32])))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeServerReadinessEndpoint(std::path::PathBuf);
+
+impl RuntimeServerReadinessEndpoint {
+    pub fn as_path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl RuntimeServerReadinessListener {
+    pub async fn bind_root(
+        root: &RuntimeServerReadinessRoot,
+        request_id: impl Into<String>,
+        readiness_token: impl Into<String>,
+    ) -> Result<Self, String> {
+        let request_id = request_id.into();
+        let readiness_token = readiness_token.into();
+        let endpoint = root.endpoint(&request_id, &readiness_token);
+        let parent = endpoint
+            .as_path()
+            .parent()
+            .ok_or_else(|| "Runtime readiness endpoint has no parent".to_owned())?;
+        tokio::fs::create_dir_all(parent).await.map_err(|error| {
+            format!(
+                "create Runtime readiness endpoint directory {}: {error}",
+                parent.display()
+            )
+        })?;
+        match tokio::fs::remove_file(endpoint.as_path()).await {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!(
+                    "remove stale Runtime readiness endpoint {}: {error}",
+                    endpoint.as_path().display()
+                ));
+            }
+        }
+        let socket = tokio::net::UnixDatagram::bind(endpoint.as_path()).map_err(|error| {
+            format!(
+                "bind Runtime readiness endpoint {}: {error}",
+                endpoint.as_path().display()
+            )
+        })?;
+        Ok(Self {
+            socket,
+            path: endpoint.0,
+            request_id,
+            readiness_token,
+        })
+    }
+
+    pub fn endpoint(&self) -> RuntimeServerReadinessEndpoint {
+        RuntimeServerReadinessEndpoint(self.path.clone())
+    }
+}
+pub async fn await_monitored_candidate_readiness(
+    listener: &RuntimeServerReadinessListener,
+    process: &mut agent_semantic_runtime::runtime_process_lifecycle::RuntimeProcessLaunchHandle,
+) -> Result<RuntimeServerReadinessReceipt, String> {
+    let process_id = process.process_id();
+    tokio::select! {
+        readiness = listener.receive(process_id) => readiness,
+        exit = process.wait() => {
+            let exit = exit?;
+            Err(format!(
+                "Runtime Server candidate exited before readiness: reasonKind=runtime-server-candidate-exited-before-readiness processId={process_id} exitStatus={exit}"
+            ))
+        }
+    }
+}
+
+pub async fn launch_candidate_and_await_readiness(
+    listener: &RuntimeServerReadinessListener,
+    spec: agent_semantic_runtime::runtime_process_lifecycle::RuntimeProcessLaunchSpec,
+) -> Result<
+    (
+        RuntimeServerReadinessReceipt,
+        agent_semantic_runtime::runtime_process_lifecycle::RuntimeProcessLaunchHandle,
+    ),
+    String,
+> {
+    let mut process =
+        agent_semantic_runtime::runtime_process_lifecycle::launch_monitored(spec)
+            .await
+            .map_err(|error| {
+                format!(
+                    "Runtime Server candidate spawn failed: reasonKind=runtime-server-candidate-spawn-failed error={error}"
+                )
+            })?;
+    let readiness = await_monitored_candidate_readiness(listener, &mut process).await?;
+    Ok((readiness, process))
 }

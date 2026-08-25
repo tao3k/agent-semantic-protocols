@@ -17,8 +17,8 @@ impl CompiledHookRule {
     pub(super) fn durable_matcher_artifact(&self) -> DurableRuleMatcherArtifact {
         self.match_config.durable_matcher_artifact()
     }
-    pub(super) fn rendered_message(&self) -> String {
-        compiled_rule_message::render(self)
+    pub(super) fn rendered_message(&self, platform: &str) -> String {
+        compiled_rule_message::render(self, platform)
     }
     pub(super) fn needs_decision_paths(&self) -> bool {
         self.match_config.needs_source_paths()
@@ -70,6 +70,46 @@ impl CompiledHookRule {
                 .any(|language_id| language_id == &provider.language_id)
         })
         .is_empty()
+    }
+
+    pub(super) fn materialize_profile_routes(
+        &self,
+        runtime: &HookRuntime,
+        paths: &[String],
+    ) -> Vec<DecisionRoute> {
+        if self.match_config.profile_any.is_empty() {
+            return Vec::new();
+        }
+
+        collect_source_selector_matches(runtime, paths.iter().map(String::as_str), |provider| {
+            self.match_config.profile_any.iter().any(|profile| {
+                profile.language_id == provider.language_id.as_str()
+                    && profile.provider_id == provider.provider_id.as_str()
+            })
+        })
+        .into_iter()
+        .map(|matched| {
+            let argv = matched
+                .provider
+                .owner_route
+                .argv
+                .iter()
+                .map(|argument| match argument.as_str() {
+                    "{owner}" => matched.route_selector.clone(),
+                    "{workspace}" => runtime.project_root.clone(),
+                    _ => argument.clone(),
+                })
+                .collect::<Vec<_>>();
+            DecisionRoute {
+                language_id: matched.provider.language_id,
+                provider_id: matched.provider.provider_id,
+                binary: argv.first().cloned().unwrap_or_default(),
+                kind: crate::protocol::DecisionRouteKind::Owner,
+                argv,
+                stdin_mode: matched.provider.owner_route.stdin_mode,
+            }
+        })
+        .collect()
     }
 }
 

@@ -12,6 +12,9 @@ use super::protocol_activation_manifest::{
 
 impl HookRuntime {
     pub(crate) fn providers_for_selector(&self, selector: &str) -> Vec<ProviderSelectorMatch> {
+        if !selector_is_workspace_owned(self, selector) {
+            return Vec::new();
+        }
         let matcher = SourceSelectorMatcher::new(selector);
         hook_provider_projections(self)
             .iter()
@@ -25,6 +28,40 @@ impl HookRuntime {
             })
             .collect()
     }
+}
+
+fn selector_is_workspace_owned(runtime: &HookRuntime, selector: &str) -> bool {
+    let selector = normalize_source_selector(selector);
+    if selector.contains("://") {
+        return true;
+    }
+    let Ok(current_dir) = std::env::current_dir() else {
+        return false;
+    };
+    let root = lexical_absolute_path(&current_dir, std::path::Path::new(&runtime.project_root));
+    let candidate = lexical_absolute_path(&root, std::path::Path::new(selector));
+    candidate.starts_with(&root)
+}
+
+fn lexical_absolute_path(base: &std::path::Path, path: &std::path::Path) -> std::path::PathBuf {
+    use std::path::Component;
+
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        base.join(path)
+    };
+    let mut normalized = std::path::PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+    normalized
 }
 
 pub(crate) fn hook_provider_projections(
@@ -157,3 +194,7 @@ fn selector_has_glob(path: &str) -> bool {
     path.chars()
         .any(|character| matches!(character, '*' | '?' | '[' | ']' | '{' | '}'))
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/protocol_activation/provider_routing.rs"]
+mod tests;

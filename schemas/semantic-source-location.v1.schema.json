@@ -57,9 +57,9 @@
     },
     "structuralSelector": {
       "type": "string",
-      "description": "Parser-owned structural selector for an AST/document element. It identifies the element by language, project path, and structural path rather than by line range.",
+      "description": "Parser-owned structural selector for an AST/document element. It identifies the element by language, project path, and structural path rather than by line range. The rightmost # separates the verbatim project-relative owner path from the canonical identity fragment, so # remains legal inside an owner filename.",
       "minLength": 1,
-      "pattern": "^[a-z][a-z0-9+.-]*://[^#\\s]+#[^\\s]+$"
+      "pattern": "^[a-z][a-z0-9+.-]*://[^\\s]+#[^\\s]+$"
     },
     "location": {
       "$ref": "semantic-definitions.v1.schema.json#/$defs/location"

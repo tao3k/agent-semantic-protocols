@@ -19,9 +19,6 @@ pub mod language_owner_items;
 mod live_corpus;
 mod project_resolution;
 pub mod provider_workspace_artifact;
-pub mod runtime_artifact_catalog;
-pub mod runtime_artifact_identity;
-pub mod runtime_artifact_retention;
 pub mod runtime_identity_monitor;
 pub mod runtime_process_lifecycle;
 mod runtime_source;
@@ -128,3 +125,4 @@ mod timeout_policy_tests;
 pub use state::{
     discover_project_activation_path, is_project_activation_path, project_root_for_activation_path,
 };
+pub mod runtime_artifact_identity;

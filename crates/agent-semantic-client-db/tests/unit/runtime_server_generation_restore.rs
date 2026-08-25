@@ -16,14 +16,15 @@ async fn fixture_endpoint(
     epoch: u64,
 ) -> (
     agent_semantic_client_db::RuntimeServerEndpoint,
-    Arc<agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog>,
+    Arc<agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog>,
 ) {
     let state_home = agent_semantic_runtime::resolve_state_home().expect("resolve State Home");
-    let catalog = agent_semantic_runtime::runtime_artifact_catalog::load_runtime_artifact_catalog(
-        &state_home,
-    )
-    .await
-    .expect("load runtime artifact catalog");
+    let catalog =
+        agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_artifact_catalog(
+            &state_home,
+        )
+        .await
+        .expect("load runtime artifact catalog");
     let endpoint = prepare_runtime_server_endpoint_in(
         runtime_dir.path(),
         std::path::Path::new("/runtime/asp"),

@@ -28,6 +28,7 @@ impl RuleMatch {
     pub(super) fn needs_command_tokens(&self) -> bool {
         !self.command_any.is_empty()
             || !self.argv_prefix_any.is_empty()
+            || !self.argv_token_all.is_empty()
             || !self.leading_environment_assignment_any.is_empty()
             || !self.argv_source_any.is_empty()
             || !self.argv_source_glob_any.is_empty()

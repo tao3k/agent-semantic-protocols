@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use agent_semantic_content_identity::WorkspaceSnapshot;
@@ -62,27 +62,7 @@ pub(super) async fn complete_generation_from_optional_active_base(
         &changed_owner_paths,
         &removed_owner_paths,
     )?;
-    let file_hashes = full_import
-        .file_hashes
-        .iter()
-        .map(|record| (record.path.as_str(), record.sha256.as_str()))
-        .collect::<BTreeMap<_, _>>();
-    let owner_hashes = full_import
-        .owners
-        .iter()
-        .map(|owner| {
-            let owner_path = owner.owner_path.as_str();
-            file_hashes
-                .get(owner_path)
-                .map(|digest| (owner_path, *digest))
-                .ok_or_else(|| {
-                    format!(
-                        "complete incremental generation is missing owner digest: ownerPath={owner_path}"
-                    )
-                })
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-    let workspace_snapshot = WorkspaceSnapshot::from_file_hashes(owner_hashes);
+    let workspace_snapshot = WorkspaceSnapshot::from_file_bytes(full_import.source_blobs.iter());
     workspace_snapshot.validate()?;
     let mut successor_source_snapshot = workspace_snapshot.evidence(
         partial_source_snapshot.source_kind,
@@ -93,6 +73,7 @@ pub(super) async fn complete_generation_from_optional_active_base(
     let materialization =
         agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
             workspace_identity,
+            &workspace_snapshot,
             &successor_source_snapshot,
             &full_import,
             &full_import.source_blobs,

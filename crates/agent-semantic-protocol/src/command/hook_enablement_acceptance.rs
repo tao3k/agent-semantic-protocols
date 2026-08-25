@@ -224,7 +224,7 @@ async fn admit_retention_receipt(
             receipt_path.display()
         )
     })?;
-    let receipt: agent_semantic_runtime::runtime_artifact_retention::RuntimeArtifactRetentionReceipt =
+    let receipt: agent_semantic_artifacts::runtime_artifact_retention::RuntimeArtifactRetentionReceipt =
         serde_json::from_slice(&bytes)
             .map_err(|error| format!("parse Runtime artifact retention receipt: {error}"))?;
     if receipt.schema_version != "1"

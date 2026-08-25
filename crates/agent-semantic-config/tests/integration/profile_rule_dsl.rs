@@ -1,4 +1,102 @@
-use agent_semantic_config::HookClientActionKind;
+use agent_semantic_config::{
+    HookClientActionKind, HookClientCapabilityPolicyConfig, HookClientHostInvocationKind,
+    HookClientRuleConfig,
+};
+
+#[test]
+fn host_invocations_are_public_rule_dsl_not_legacy_match_fields() {
+    let rule = toml::from_str::<HookClientRuleConfig>(
+        r#"
+id = "mcp-read"
+decision = "deny"
+actions = ["read"]
+hostInvocations = ["mcp"]
+"#,
+    )
+    .expect("parse host invocation rule DSL");
+    assert_eq!(rule.actions, [HookClientActionKind::Read]);
+    assert_eq!(rule.host_invocations, [HookClientHostInvocationKind::Mcp]);
+
+    let legacy_nested_match = toml::from_str::<HookClientRuleConfig>(
+        r#"
+id = "legacy-mcp-read"
+decision = "deny"
+
+[match]
+hostInvocationAny = ["mcp"]
+"#,
+    );
+    assert!(
+        legacy_nested_match.is_err(),
+        "hostInvocationAny is internal IR, not public rule DSL"
+    );
+}
+
+#[test]
+fn capability_policy_separates_host_and_semantic_axes() {
+    let policy = toml::from_str::<HookClientCapabilityPolicyConfig>(
+        r#"
+id = "raw-host-search"
+hostInvocationAny = ["search", "execute"]
+semanticCapabilityAny = ["search"]
+"#,
+    )
+    .expect("parse split capability policy axes");
+    assert_eq!(
+        policy.host_invocation_any,
+        [
+            HookClientHostInvocationKind::Search,
+            HookClientHostInvocationKind::Execute,
+        ]
+    );
+    assert_eq!(
+        policy.semantic_capability_any,
+        [HookClientActionKind::Search]
+    );
+
+    let legacy = toml::from_str::<HookClientCapabilityPolicyConfig>(
+        r#"
+id = "legacy-conflated-action"
+actionAny = ["execute"]
+"#,
+    );
+    assert!(legacy.is_err(), "legacy actionAny must fail closed");
+}
+
+#[test]
+fn hook_config_schema_exposes_only_the_public_rule_axes() {
+    let schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../schemas/semantic-agent-hook-client-config.v1.schema.json"
+    ))
+    .expect("parse hook config schema");
+    let rule_properties = schema["$defs"]["rule"]["properties"]
+        .as_object()
+        .expect("rule properties");
+    for public_axis in [
+        "actions",
+        "hostInvocations",
+        "profilesList",
+        "matcherPolicies",
+    ] {
+        assert!(
+            rule_properties.contains_key(public_axis),
+            "missing public rule axis {public_axis}"
+        );
+    }
+
+    let match_properties = schema["$defs"]["ruleMatch"]["properties"]
+        .as_object()
+        .expect("rule match properties");
+    assert!(!match_properties.contains_key("actionAny"));
+    assert!(!match_properties.contains_key("hostInvocationAny"));
+
+    let capability_policy_properties = schema["$defs"]["capabilityPolicy"]["properties"]
+        .as_object()
+        .expect("capability policy properties");
+    assert!(capability_policy_properties.contains_key("hostInvocationAny"));
+    assert!(capability_policy_properties.contains_key("semanticCapabilityAny"));
+    assert!(!capability_policy_properties.contains_key("actionAny"));
+}
 
 #[test]
 fn language_route_is_public_dsl_and_materializes_only_in_internal_ir() {
@@ -6,14 +104,25 @@ fn language_route_is_public_dsl_and_materializes_only_in_internal_ir() {
         .expect("parse canonical hook config");
     let public_rule = config
         .rules
-        .iter()
+        .iter_mut()
         .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("language route rule");
     assert_eq!(public_rule.actions, [HookClientActionKind::Read]);
     assert_eq!(
         public_rule.profiles_list,
-        ["rust", "typescript", "python", "julia", "gerbil-scheme"]
+        [
+            "rust",
+            "typescript",
+            "python",
+            "julia",
+            "gerbil-scheme",
+            "org",
+            "markdown"
+        ]
     );
+    public_rule
+        .host_invocations
+        .push(HookClientHostInvocationKind::Read);
 
     config
         .materialize_profile_rule_ir()
@@ -28,6 +137,12 @@ fn language_route_is_public_dsl_and_materializes_only_in_internal_ir() {
             .match_config
             .action_any
             .contains(&HookClientActionKind::Read)
+    );
+    assert!(
+        compiled_rule
+            .match_config
+            .host_invocation_any
+            .contains(&HookClientHostInvocationKind::Read)
     );
     assert!(compiled_rule.match_config.capability_policy_all.is_empty());
     assert!(
@@ -54,6 +169,24 @@ fn unknown_profile_reference_fails_closed() {
         .validate()
         .expect_err("unknown profile must fail closed");
     assert!(error.contains("unknown profile"), "error={error}");
+}
+
+#[test]
+fn unknown_repository_command_set_reference_fails_closed() {
+    let mut config = agent_semantic_config::default_hook_client_config_file()
+        .expect("parse canonical hook config");
+    config
+        .rules
+        .iter_mut()
+        .find(|rule| rule.id == "git-history-inspection-dispatch")
+        .expect("Git history dispatch")
+        .match_config
+        .command_set_any
+        .push("missing-command-set".to_owned());
+    let error = config
+        .validate()
+        .expect_err("unknown command set must fail closed");
+    assert!(error.contains("missing command set"), "error={error}");
 }
 
 #[test]

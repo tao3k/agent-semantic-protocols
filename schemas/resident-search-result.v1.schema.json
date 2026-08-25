@@ -33,7 +33,7 @@
       "type": "array",
       "items": { "$ref": "#/$defs/hit" }
     },
-    "workCounters": { "$ref": "#/$defs/workCounters" }
+    "workCounters": { "$ref": "runtime-provider-search-receipt.v1.schema.json#/$defs/zeroWorkCounters" }
   },
   "$defs": {
     "hit": {
@@ -61,24 +61,6 @@
         },
         "selector": { "type": "string", "minLength": 1 },
         "score": { "type": "integer", "minimum": 0 }
-      }
-    },
-    "workCounters": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "databaseReadCount",
-        "filesystemReadCount",
-        "providerProcessCount",
-        "socketOperationCount",
-        "schedulerTaskCount"
-      ],
-      "properties": {
-        "databaseReadCount": { "const": 0 },
-        "filesystemReadCount": { "const": 0 },
-        "providerProcessCount": { "const": 0 },
-        "socketOperationCount": { "const": 0 },
-        "schedulerTaskCount": { "const": 0 }
       }
     }
   }

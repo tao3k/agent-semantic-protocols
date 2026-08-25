@@ -1,0 +1,39 @@
+* SearchLoop Server/Client Package Responsibility
+:PROPERTIES:
+:PARENT_RFC: ../10.05-interactive-graph-first-progressive-searchloop.org
+:STATUS: normative
+:END:
+
+** Single architecture
+
+=asp <language> search/query= is an ASP Client command entry.  It constructs one
+typed wire request and sends it to the already-published ASP Server endpoint.
+It MUST NOT initialize or shut down a Runtime session, spawn or reconcile a
+provider, restore a workspace generation, or call WorkspaceDbIpc directly.
+
+The ASP Server is the only owner of route admission, lazy client sessions,
+provider lifecycle, workspace generation, cancellation, resident catalogs,
+and cache authority.  A transport handle being dropped MUST NOT close the
+server-owned logical session.
+
+** Package boundary
+
+| Package | Normative responsibility |
+|-
+| =agent-semantic-client-protocol= | Wire schema types, codecs, method identifiers |
+| =agent-semantic-provider-protocol= | Provider wire schema types, codecs, method identifiers |
+| =agent-semantic-client= | ASP Client command transport and response presentation |
+| =agent-semantic-client-server= | Stateless HTTP/gRPC frame transport; no logical session or catalog authority |
+| =agent-semantic-search= | Search index, selector, projection, rank, resident memory query |
+| =agent-semantic-runtime-server= | HTTP/gRPC ingress, Tokio streams, route admission, sessions, providers, generations |
+| =agent-semantic-protocol= | Binary composition root and argument parsing only |
+
+No package may retain a compatibility or fast-path implementation of another
+row's responsibility.
+
+** Performance evidence
+
+Runtime service latency is measured from server admission through resident
+memory lookup and typed response construction.  Its hard gate is below 1ms.
+Compilation, process startup, endpoint connection, and whole-command wall time
+are reported separately and MUST NOT be hidden inside the service metric.

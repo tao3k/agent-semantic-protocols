@@ -86,13 +86,13 @@ fn host_registered_route_capability_is_admissible() {
 }
 
 #[test]
-fn verified_registered_intent_makes_dispatch_idempotent_without_role_relookup() {
+fn verified_registered_intent_makes_dispatch_idempotent_without_symbol_relookup() {
     let mut decision = allow("codex", "pre-tool", DecisionSubject::default());
     decision.decision = DecisionKind::Deny;
     decision.reason_kind = ReasonKind::SubagentReceiptRequired;
     decision.fields.insert(
-        "targetAgentRole".to_owned(),
-        serde_json::Value::String("explore".to_owned()),
+        "targetAgent".to_owned(),
+        serde_json::Value::String("asp_explorer".to_owned()),
     );
     decision.fields.insert(
         "intent".to_owned(),
@@ -118,8 +118,8 @@ fn unrelated_registered_intent_cannot_satisfy_explorer_dispatch() {
     decision.decision = DecisionKind::Deny;
     decision.reason_kind = ReasonKind::SubagentReceiptRequired;
     decision.fields.insert(
-        "targetAgentRole".to_owned(),
-        serde_json::Value::String("explore".to_owned()),
+        "targetAgent".to_owned(),
+        serde_json::Value::String("asp_explorer".to_owned()),
     );
     decision.fields.insert(
         "intent".to_owned(),

@@ -27,7 +27,6 @@ fn root_and_first_level_paths_select_their_own_commands() {
         "install",
         "paths",
         "healthcheck",
-        "source-access",
         "ast-patch",
         "graph",
         "fd",
@@ -82,19 +81,15 @@ fn install_plugin_path_selects_plugin_command() {
 }
 
 #[test]
-fn codex_plugin_help_states_global_default_and_explicit_project_resolution() {
+fn codex_plugin_help_is_global_and_never_defaults_to_the_current_directory() {
     let mut command = help_model::selected_command(&owned_args(&["install", "plugin", "--help"]));
     let help = command.render_help().to_string();
 
-    assert!(
-        help.contains("Install globally (default when no scope flag is given)"),
-        "help={help}",
-    );
-    assert!(help.contains("--global"), "help={help}");
-    assert!(help.contains("--global-plugin"), "help={help}");
-    assert!(help.contains("--project"), "help={help}");
-    assert!(help.contains("--project-plugin"), "help={help}");
-    assert!(help.contains("[default: .]"), "help={help}");
+    assert!(help.contains("globally"), "help={help}");
+    assert!(help.contains("ASP_STATE_HOME [dev].root"), "help={help}");
+    assert!(!help.contains("--global-plugin"), "help={help}");
+    assert!(!help.contains("--project-plugin"), "help={help}");
+    assert!(!help.contains("[default: .]"), "help={help}");
 }
 
 #[test]

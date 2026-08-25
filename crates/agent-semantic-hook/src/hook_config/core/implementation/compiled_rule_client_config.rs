@@ -230,62 +230,6 @@ impl ClientHookConfig {
             } else {
                 action.paths.as_slice()
             };
-            let finalize_materialized = |mut decision: crate::HookDecision| {
-                super::super::dispatch_fields::extend_dispatch_fields(
-                    &mut decision.fields,
-                    rule.dispatch.as_ref(),
-                    action,
-                );
-                if let Some(message) = rule.message.as_ref()
-                    && decision
-                        .fields
-                        .get("routeStatus")
-                        .and_then(serde_json::Value::as_str)
-                        != Some("unavailable")
-                    && decision.message != *message
-                {
-                    decision.message = format!("{message}\n{}", decision.message);
-                }
-                if let Some(agent_action) = rule.agent_action_receipt(
-                    runtime,
-                    action,
-                    decision.subject.paths.as_slice(),
-                    structured_source_operands.as_deref(),
-                ) {
-                    decision
-                        .fields
-                        .insert("agentAction".to_string(), agent_action);
-                }
-                decision.fields.insert(
-                    "configRuleId".to_string(),
-                    serde_json::Value::String(rule.id.clone()),
-                );
-                if let Some(intent) = rule.intent.as_ref() {
-                    decision.fields.insert(
-                        "intent".to_string(),
-                        serde_json::Value::String(intent.clone()),
-                    );
-                }
-                decision.fields.extend(
-                    rule.fields.iter().map(|(key, value)| {
-                        (key.clone(), serde_json::Value::String(value.clone()))
-                    }),
-                );
-                crate::hook_config::HookPolicyCandidate {
-                    priority: rule.priority,
-                    terminal: rule.terminal,
-                    decision,
-                }
-            };
-            if let Some(profile) = rule.match_config.matching_profile(action.paths.as_slice()) {
-                let agent_action = rule.match_config.agent_action.derive_agent_action_for_rule(
-                    runtime,
-                    action,
-                    Some(action.paths.as_slice()),
-                    structured_source_operands.as_deref(),
-                );
-                continue;
-            }
             let candidate = crate::hook_config::HookPolicyCandidate {
                 priority: rule.priority,
                 terminal: rule.terminal,
@@ -333,6 +277,18 @@ pub(in crate::hook_config) fn compile_config_with_executable_capabilities(
         .collect::<Vec<_>>();
     command_profiles.extend(config.command_profiles);
     config.command_profiles = command_profiles;
+    let configured_command_set_ids = config
+        .command_sets
+        .iter()
+        .map(|command_set| command_set.id.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut command_sets = default_config
+        .command_sets
+        .into_iter()
+        .filter(|command_set| !configured_command_set_ids.contains(command_set.id.as_str()))
+        .collect::<Vec<_>>();
+    command_sets.extend(config.command_sets);
+    config.command_sets = command_sets;
     let configured_capability_policy_ids = config
         .capability_policies
         .iter()
@@ -375,13 +331,8 @@ fn compile_resolved_config(
     let source_config = durable_matchers.is_none().then(|| config.clone());
     let contract_fingerprint = config.contract_fingerprint.clone();
     let profiles = config.profiles.clone();
+    let agent_calling = config.agent_calling.clone();
     let wrapper_match = agent_semantic_config::WrapperMatchMode::Off;
-    let semantic_ast_patch_enabled = config
-        .experimental
-        .get("semanticAstPatch")
-        .and_then(|feature| feature.get("enabled"))
-        .copied()
-        .unwrap_or(true);
     let mut rules = config
         .rules
         .into_iter()
@@ -401,8 +352,10 @@ fn compile_resolved_config(
             CompiledHookRule::try_from_with_policy_and_matcher(
                 rule,
                 &config.command_profiles,
+                &config.command_sets,
                 &config.capability_policies,
                 wrapper_match,
+                &agent_calling,
                 durable_matcher,
                 executable_capabilities,
             )

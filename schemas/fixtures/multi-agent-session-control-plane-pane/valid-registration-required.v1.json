@@ -9,8 +9,8 @@
   },
   "hookRoute": {
     "configRuleId": "testing-role-dispatch",
-    "targetAgentName": "asp_testing",
-    "targetAgentRole": "asp_testing",
+    "targetAgent": "asp_testing",
+    "targetAgentSymbol": "@asp_testing",
     "receiptKind": "asp-testing-execution-v1",
     "commandDigest": "sha256:fedcba9876543210",
     "reasonKind": "subagent-receipt-required"

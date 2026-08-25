@@ -47,7 +47,7 @@
         "residualTaskCount": { "const": 0 },
         "cancelOutcome": { "const": "cancelled" },
         "requestOutcome": { "const": "cancelled" },
-        "requiredTelemetryEvents": { "const": ["client_protocol_initialize", "client_protocol_catalog", "client_protocol_request", "client_protocol_cancel", "client_protocol_cancelled", "client_protocol_shutdown"] },
+        "requiredTelemetryEvents": { "$ref": "asp.live-corpus-search-query-qualification-plan.schema.json#/$defs/requiredClientProtocolTelemetryEvents" },
         "qualifiedCaseCount": { "const": 17 },
         "maximumResidentMicros": { "type": "integer", "minimum": 1, "maximum": 1000 },
         "p50MaximumMicros": { "const": 250 },
@@ -134,9 +134,9 @@
         "merkleTelemetryDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
         "runtimeEcosystem": { "const": "tokio" },
         "searchReadMode": { "const": "synchronous-mmap" },
-        "searchReadWorkCounters": { "$ref": "#/$defs/zeroWorkCounters" },
+        "searchReadWorkCounters": { "$ref": "runtime-provider-search-receipt.v1.schema.json#/$defs/zeroWorkCounters" },
         "exactReadMode": { "const": "synchronous-mmap" },
-        "exactReadWorkCounters": { "$ref": "#/$defs/zeroWorkCounters" },
+        "exactReadWorkCounters": { "$ref": "runtime-provider-search-receipt.v1.schema.json#/$defs/zeroWorkCounters" },
         "status": { "const": "qualified" },
         "semanticProjectionSchemaId": {
           "const": "agent.semantic-protocols.semantic-projection"
@@ -168,24 +168,6 @@
         "p95Micros": { "type": "integer", "minimum": 0, "maximum": 1000 },
         "p99Micros": { "type": "integer", "minimum": 0, "maximum": 1000 },
         "maxMicros": { "type": "integer", "minimum": 0, "maximum": 1000 }
-      }
-    },
-    "zeroWorkCounters": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "providerProcessCount",
-        "schedulerTaskCount",
-        "filesystemReadCount",
-        "databaseReadCount",
-        "socketOperationCount"
-      ],
-      "properties": {
-        "providerProcessCount": { "const": 0 },
-        "schedulerTaskCount": { "const": 0 },
-        "filesystemReadCount": { "const": 0 },
-        "databaseReadCount": { "const": 0 },
-        "socketOperationCount": { "const": 0 }
       }
     }
   }

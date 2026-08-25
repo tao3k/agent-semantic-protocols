@@ -15,7 +15,7 @@ mod syntax_query_preflight;
 #[path = "../tests/unit/support.rs"]
 mod test_support;
 mod tools_cli;
-pub use runtime_http_client::{RuntimeHttpClient, RuntimeHttpSession};
+pub use runtime_http_client::AspClient;
 
 pub use agent_semantic_client_core::LanguageId;
 pub use agent_semantic_client_server::{
@@ -40,6 +40,7 @@ mod cli_args_tests;
 #[cfg(test)]
 #[path = "../tests/unit/cli.rs"]
 mod cli_tests;
+pub mod projection_presentation;
 #[cfg(test)]
 #[path = "../tests/unit/provider_runtime_storage.rs"]
 mod provider_runtime_storage_tests;

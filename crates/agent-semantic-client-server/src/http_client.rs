@@ -110,19 +110,36 @@ impl AspClientProtocolHttpClient {
     pub async fn request(
         &self,
         method: &str,
-        workspace_generation: &str,
         params: serde_json::Value,
     ) -> Result<ClientFrame, String> {
         let request_id = self.next_request_id()?;
-        self.request_with_id(request_id, method, workspace_generation, params)
-            .await
+        self.request_with_id(request_id, method, params).await
+    }
+
+    /// Send one server-owned command request without opening a client-owned session.
+    pub async fn dispatch(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<ClientFrame, String> {
+        let frame = ClientFrame::Dispatch {
+            base: self.base.clone(),
+            request_id: self.next_request_id()?,
+            project_root: self.project_root.clone(),
+            client_info: ClientInfo {
+                name: "asp-client".to_owned(),
+                version: "1".to_owned(),
+            },
+            method: method.to_owned(),
+            params,
+        };
+        self.post(&frame).await
     }
 
     pub async fn request_with_id(
         &self,
         request_id: ClientRequestId,
         method: &str,
-        workspace_generation: &str,
         params: serde_json::Value,
     ) -> Result<ClientFrame, String> {
         let catalog = self
@@ -136,7 +153,7 @@ impl AspClientProtocolHttpClient {
             base: self.base.clone(),
             request_id,
             catalog_generation: catalog.catalog_generation.clone(),
-            workspace_generation: workspace_generation.to_owned(),
+            workspace_generation: catalog.workspace_generation.clone(),
             method: method.to_owned(),
             params,
         })

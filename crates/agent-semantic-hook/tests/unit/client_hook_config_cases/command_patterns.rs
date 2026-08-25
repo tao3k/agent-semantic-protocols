@@ -4,6 +4,76 @@ use super::common::{
 };
 
 #[test]
+fn repository_git_history_command_set_routes_only_history_inspection_to_testing() {
+    let root = temp_root("git-history-command-set");
+    let config_path = root.join("config.toml");
+    fs::write(
+        &config_path,
+        agent_semantic_hook::default_client_config_template(),
+    )
+    .expect("write config");
+    let config = load_client_config(&config_path).expect("load default config");
+    let runtime = registry();
+
+    for command in [
+        "git log --oneline -50",
+        "rtk --ultra-compact git show HEAD",
+        "git blame src/lib.rs",
+    ] {
+        let decision = classify_hook_with_config(HookClassificationRequest {
+            registry: &runtime,
+            config: &config,
+            platform: "codex",
+            event: "pre-tool",
+            payload: &json!({
+                "tool_name": "Bash",
+                "tool_input": { "command": command }
+            }),
+        });
+        assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
+        assert_eq!(
+            decision
+                .fields
+                .get("configRuleId")
+                .and_then(serde_json::Value::as_str),
+            Some("git-history-inspection-dispatch"),
+            "{command}"
+        );
+        assert_eq!(
+            decision
+                .fields
+                .get("targetAgent")
+                .and_then(serde_json::Value::as_str),
+            Some("asp_testing"),
+            "{command}"
+        );
+    }
+
+    for command in ["git status --short", "git grep hook", "git ls-files"] {
+        let decision = classify_hook_with_config(HookClassificationRequest {
+            registry: &runtime,
+            config: &config,
+            platform: "codex",
+            event: "pre-tool",
+            payload: &json!({
+                "tool_name": "Bash",
+                "tool_input": { "command": command }
+            }),
+        });
+        assert_ne!(
+            decision
+                .fields
+                .get("configRuleId")
+                .and_then(serde_json::Value::as_str),
+            Some("git-history-inspection-dispatch"),
+            "{command}"
+        );
+    }
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn terminal_allow_rule_uses_parser_owned_leading_environment_assignment() {
     let root = temp_root("leading-environment-assignment");
     let config_path = root.join("config.toml");
@@ -64,6 +134,7 @@ toolAny = ["Bash", "functions.exec_command"]
 
     for command in [
         "NOT_ASP_NO_AGENT=1 cargo test",
+        "ASP_NO_AGENT_PLATFORM=1 cargo test",
         "env ASP_NO_AGENT=1 cargo test",
         "printf warmup && ASP_NO_AGENT=1 cargo test",
         "bash -lc 'ASP_NO_AGENT=1 cargo test'",
@@ -134,7 +205,7 @@ protocolVersion = "1"
 [[rules]]
 id = "deny-case-insensitive-command-contains"
 decision = "deny"
-priority = 20000
+priority = 50000
 
 [rules.match]
 tool = "Bash"
@@ -268,12 +339,12 @@ argvPrefixAny = [[]]
 }
 
 #[test]
-fn configured_git_diff_projects_the_tag_selected_agent_into_org_choice_plane_guidance() {
+fn action_plus_profile_read_projects_explore_choice_plane_guidance() {
     let config = ClientHookConfig::default();
     let registry = registry();
     let payload = json!({
         "tool_name": "functions.exec_command",
-        "tool_input": {"cmd": "git diff --check"}
+        "tool_input": {"cmd": "future-consumer src/app.ts"}
     });
     let decision = classify_hook_with_config(HookClassificationRequest {
         registry: &registry,
@@ -289,7 +360,7 @@ fn configured_git_diff_projects_the_tag_selected_agent_into_org_choice_plane_gui
             .fields
             .get("configRuleId")
             .and_then(serde_json::Value::as_str),
-        Some("deny-uncontrolled-git-metadata-reads")
+        Some("route-read-to-asp-languages")
     );
     assert_eq!(
         decision
@@ -312,10 +383,10 @@ fn configured_git_diff_projects_the_tag_selected_agent_into_org_choice_plane_gui
             .and_then(serde_json::Value::as_str),
         Some("org-contract:agent-interactive")
     );
-    assert_eq!(decision.fields["targetAgentRole"], "testing");
+    assert_eq!(decision.fields["targetAgent"], "asp_explorer");
     assert_eq!(
         decision.fields["agentSessionAction"],
-        "dispatch-choice-plane-role"
+        "dispatch-registered-agent"
     );
     for forbidden in [
         "residentName",
@@ -331,7 +402,7 @@ fn configured_git_diff_projects_the_tag_selected_agent_into_org_choice_plane_gui
     }
     assert_eq!(
         decision.subject.command.as_deref(),
-        Some("git diff --check")
+        Some("future-consumer src/app.ts")
     );
     let decision_json = serde_json::to_value(&decision).expect("serialize hook decision");
     assert!(
@@ -344,7 +415,7 @@ fn configured_git_diff_projects_the_tag_selected_agent_into_org_choice_plane_gui
             "toolName": "functions.exec_command",
             "toolSurface": "shell-command",
             "operationIntent": "shell-command",
-            "paths": ["diff", "--check"]
+            "paths": ["src/app.ts"]
         }])
     );
     let decision_schema: serde_json::Value = serde_json::from_str(include_str!(
@@ -395,6 +466,28 @@ fn configured_git_diff_projects_the_tag_selected_agent_into_org_choice_plane_gui
         "configured resident deny must reference the Org-backed Agent window: {rendered}"
     );
     assert!(rendered.get("systemMessage").is_some());
+}
+
+#[test]
+fn claude_platform_uses_configured_native_agent_symbol() {
+    let config = ClientHookConfig::default();
+    let runtime = registry();
+    let payload = json!({
+        "tool_name": "Bash",
+        "tool_input": {"command": "future-consumer src/app.ts"}
+    });
+    let decision = classify_hook_with_config(HookClassificationRequest {
+        registry: &runtime,
+        config: &config,
+        platform: "claude",
+        event: "pre-tool",
+        payload: &payload,
+    });
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.fields["targetAgent"], "asp_explorer");
+    assert_eq!(decision.fields["targetAgentSymbol"], "@agent-asp-explorer");
+    assert!(decision.message.contains("`@agent-asp-explorer`"));
 }
 
 #[test]

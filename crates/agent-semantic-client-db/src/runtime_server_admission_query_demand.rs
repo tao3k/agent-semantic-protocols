@@ -27,6 +27,28 @@ impl WorkspaceGenerationAdmission {
         &self,
         workspace_identity: String,
         project_root: PathBuf,
+        target_paths: Vec<PathBuf>,
+        provider_target: Option<super::WorkspaceGenerationProviderTarget>,
+    ) -> Result<bool, String> {
+        let candidate = discover_workspace_generation_candidate(&project_root).await?;
+        self.submit_query_demand_for_candidate(
+            workspace_identity,
+            project_root,
+            candidate,
+            target_paths,
+            provider_target,
+        )
+        .await
+    }
+
+    /// Enqueues query demand against the candidate pinned by client
+    /// initialization. This prevents a second workspace scan from silently
+    /// rebinding an admitted client session to a newer source generation.
+    pub async fn submit_query_demand_for_candidate(
+        &self,
+        workspace_identity: String,
+        project_root: PathBuf,
+        candidate: super::WorkspaceGenerationCandidateIdentity,
         mut target_paths: Vec<PathBuf>,
         provider_target: Option<super::WorkspaceGenerationProviderTarget>,
     ) -> Result<bool, String> {
@@ -79,11 +101,6 @@ impl WorkspaceGenerationAdmission {
                 return Ok(false);
             }
         }
-        // Discover the candidate before returning so `admit_with_mode` can
-        // synchronously publish the Building entry and detach only the build
-        // itself. A waiter beginning immediately after this call therefore
-        // observes a real admission receipt rather than an unknown key.
-        let candidate = discover_workspace_generation_candidate(&project_root).await?;
         let receipt = self
             .admit_with_mode(
                 workspace_identity,

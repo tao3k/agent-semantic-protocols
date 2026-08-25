@@ -17,6 +17,7 @@ use super::{
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SearchOwnerRecord {
     owner_path: String,
+    authority: Option<agent_semantic_search::ResidentSearchAuthority>,
     content_digest: String,
     byte_offset: u64,
     byte_length: u64,
@@ -185,6 +186,7 @@ fn encode_workspace_search_generation_segment_inner(
         owner_bytes.extend_from_slice(&owner.bytes);
         let record = SearchOwnerRecord {
             owner_path: owner.owner_path.clone(),
+            authority: owner.authority.clone(),
             content_digest: owner.content_digest.clone(),
             byte_offset,
             byte_length,
@@ -313,6 +315,7 @@ fn build_owner_search_indexes(
                 key.clone(),
                 agent_semantic_search::ResidentSourceIndexSeed {
                     owner_path: record.owner_path,
+                    authority: record.authority,
                     owner_content_digest: record.content_digest,
                     line_count: record.line_count,
                     query_keys: record.query_keys,
@@ -432,11 +435,20 @@ impl WorkspaceSearchGenerationDataPlaneClient {
     pub fn read_source_index(
         &self,
         query: &str,
-        language_id: Option<&agent_semantic_client_core::LanguageId>,
+        authority: Option<&agent_semantic_search::ResidentSearchAuthority>,
+        limit: u32,
+    ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
+        self.resident_source_index.query(query, authority, limit)
+    }
+
+    pub fn read_source_index_for_language(
+        &self,
+        query: &str,
+        language_id: &agent_semantic_client_core::LanguageId,
         limit: u32,
     ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
         self.resident_source_index
-            .query(query, language_id.map(|value| value.as_str()), limit)
+            .query_language(query, language_id, limit)
     }
 
     pub fn parser_owned_callable_selector_pairs(
@@ -579,6 +591,7 @@ impl WorkspaceSearchGenerationDataPlaneClient {
             generation_digest: self.authority.generation_digest.clone(),
             root_digest: self.authority.source_snapshot.root_digest.clone(),
             owner: WorkspaceOwnerSnapshot {
+                authority: None,
                 owner_path: record.owner_path.clone(),
                 content_digest: record.content_digest.clone(),
                 bytes: owner_bytes.to_vec(),

@@ -1,4 +1,3 @@
-use std::fs;
 use std::time::Duration;
 
 use crate::ProviderProcessSupervisor;
@@ -37,33 +36,25 @@ fn provider_admission_capacity_is_machine_and_memory_adaptive() {
 #[tokio::test]
 async fn cancelling_async_transport_kills_the_provider_process() {
     let root = temp_dir("cancel-kills-provider");
-    let pid_path = root.join("provider.pid");
     let program = script(
         &root,
         "provider.sh",
-        &format!(
-            "#!/bin/sh\nprintf '%s' \"$$\" > '{}'\nexec sleep 30\n",
-            pid_path.display()
-        ),
+        "#!/bin/sh\nexec /usr/bin/tail -f /dev/null\n",
     );
     let supervisor = ProviderProcessSupervisor::default();
+    let mut started = supervisor.subscribe_started();
     let task_root = root.clone();
     let task = tokio::spawn({
         let supervisor = supervisor.clone();
         async move { supervisor.run(spec(program, task_root)).await }
     });
-    let pid = tokio::time::timeout(Duration::from_secs(2), async {
-        loop {
-            if let Ok(pid) = tokio::fs::read_to_string(&pid_path).await
-                && let Ok(pid) = pid.parse::<i32>()
-            {
-                break pid;
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("provider must publish pid");
+    let pid = tokio::time::timeout(Duration::from_secs(2), started.recv())
+        .await
+        .expect("provider must publish a start event")
+        .expect("provider start event channel must remain open")
+        .process_id
+        .and_then(|pid| i32::try_from(pid).ok())
+        .expect("provider start event must carry a valid pid");
 
     task.abort();
     assert!(
@@ -82,5 +73,5 @@ async fn cancelling_async_transport_kills_the_provider_process() {
     })
     .await
     .expect("cancelled provider must exit");
-    let _ = fs::remove_dir_all(root);
+    let _ = std::fs::remove_dir_all(root);
 }

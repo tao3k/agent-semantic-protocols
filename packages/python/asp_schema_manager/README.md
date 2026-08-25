@@ -7,11 +7,14 @@ only schema bundle lifecycle authority.  Python never rewrites, copies, or
 deletes language-package schemas.  It reports reusable validation fragments, direct and transitive
 Rust use, unresolved references, and lifecycle recommendations.
 
-Schema families are contractual filename namespaces declared in
-`asp-schema-families.v1.json`. Filename prefixes discover membership, while the
+Schema families are contractual filename namespaces declared once in the Rust
+Schema Manager registry at `schemas/language-schema-profiles.json`. Filename prefixes discover membership, while the
 stable `familyId`, precedence, owner, and parent relationship remain explicit
-registry policy. Cross-family reference candidates are never assigned an
+registry policy. Python consumes that registry read-only and owns no parallel
+family policy. Cross-family reference candidates are never assigned an
 implicit definition owner.
+Accepted cross-family extraction or intentional-duplication decisions live in
+the same canonical registry; Python does not own a package-local decision file.
 
 ```sh
 uv run --project packages/python asp-schema-manager audit --workspace-root .
@@ -27,8 +30,8 @@ uv run --project packages/python asp-schema-manager proof-plan --workspace-root 
 
 The opt-in gates emit an error and exit nonzero for family-local reference
 opportunities, unclassified schemas, or mixed-family reference opportunities.
-Cross-family candidates are governed by
-`asp-schema-reference-decisions.v1.json`; the final gate fails when a candidate
+Cross-family candidates are governed by the canonical registry's
+`referenceDecisions`; the final gate fails when a candidate
 lacks an accepted decision or its fingerprint, occurrence-set digest, or family
 set drifts.
 

@@ -43,6 +43,7 @@ fn generation() -> WorkspaceMemoryGeneration {
         ),
         project_resolutions: Vec::new(),
         owners: vec![WorkspaceOwnerSnapshot {
+                        authority: None,
             owner_path: owner_path.to_owned(),
             content_digest: format!("blake3-256:{}", blake3::hash(bytes).to_hex()),
             bytes: bytes.to_vec(),

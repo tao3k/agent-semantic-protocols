@@ -54,7 +54,7 @@ fn default_template_round_trips_through_config_parser() {
         .find(|rule| rule.id == "testing-role-dispatch")
         .and_then(|rule| rule.dispatch.as_ref())
         .expect("testing resident dispatch");
-    assert_eq!(testing_dispatch.role.as_str(), "testing");
+    assert_eq!(testing_dispatch.agent.as_str(), "asp_testing");
     assert_eq!(
         testing_dispatch.receipt_kind.as_str(),
         "asp-testing-execution-v1"
@@ -62,17 +62,14 @@ fn default_template_round_trips_through_config_parser() {
     for rule_id in [
         "registered-asp-reasoning-search",
         "deny-raw-registered-source-search-action",
-        "deny-raw-registered-source-action",
-        "deny-raw-registered-source-action",
     ] {
         let dispatch = config
             .rules
             .iter()
             .find(|rule| rule.id == rule_id)
             .and_then(|rule| rule.dispatch.as_ref())
-            .unwrap_or_else(|| panic!("{rule_id} must declare a registry role selector"));
-        assert_eq!(dispatch.role.as_str(), "explore");
-        assert_eq!(dispatch.role.as_str(), "explore");
+            .unwrap_or_else(|| panic!("{rule_id} must declare an Agent route"));
+        assert_eq!(dispatch.agent.as_str(), "asp_explorer");
     }
     assert_eq!(
         config
@@ -92,6 +89,7 @@ fn default_template_round_trips_through_config_parser() {
             ("julia-pkg", "testing"),
             ("c-cmake", "testing"),
             ("gerbil-gxpkg", "testing"),
+            ("lean-lake", "testing"),
         ]
     );
     let bounded_json = config
@@ -133,6 +131,21 @@ fn default_template_round_trips_through_config_parser() {
         .expect("TOML projection matcher");
     assert_eq!(toml_projection.binary, "yq");
     assert_eq!(toml_projection.optional_subcommand_any, ["eval", "e"]);
+    let git_history = config
+        .command_sets
+        .iter()
+        .find(|command_set| command_set.id == "git-history-inspection")
+        .expect("repository-wide Git history command set");
+    assert!(
+        git_history
+            .argv_prefix_any
+            .contains(&vec!["git".to_owned(), "log".to_owned()])
+    );
+    assert!(
+        !git_history
+            .argv_prefix_any
+            .contains(&vec!["git".to_owned(), "grep".to_owned()])
+    );
     assert_eq!(config.rules.len(), 15);
     assert_eq!(
         config
@@ -143,19 +156,19 @@ fn default_template_round_trips_through_config_parser() {
         [
             "registered-asp-reasoning-search",
             "testing-role-dispatch",
+            "rust-format-check-role-dispatch",
+            "review-role-dispatch",
+            "git-history-inspection-dispatch",
+            "live-corpus-qualification-dispatch",
+            "gerbil-build-role-dispatch",
             "deny-raw-registered-source-search-action",
-            "deny-raw-registered-source-action",
             "allow-explicit-no-agent-host-bypass",
             "deny-agent-search-json",
             "route-read-to-asp-languages",
             "route-structured-document-read",
-            "route-shell-structured-document-read",
-            "deny-uncontrolled-source-search-commands",
             "allow-bounded-json-projection",
             "allow-bounded-toml-projection",
             "deny-unbounded-structured-projection",
-            "deny-uncontrolled-git-metadata-reads",
-            "deny-uncontrolled-git-source-reads",
         ]
     );
     let rendered = canonical_default_template();
@@ -347,14 +360,15 @@ fn template_uses_capability_policies_without_argv_compatibility() {
     fs::write(&config_path, canonical_default_template()).expect("write config");
 
     let config = load_hook_client_config_file(&config_path).expect("load config");
-    let materialization_rule = config
+    let read_route = config
         .rules
         .iter()
-        .find(|rule| rule.id == "deny-raw-registered-source-action")
-        .expect("materialization rule");
+        .find(|rule| rule.id == "route-read-to-asp-languages")
+        .expect("Read route");
     assert_eq!(
-        materialization_rule.match_config.capability_policy_all,
-        ["opaque-shell-source-access", "registered-language-source"]
+        read_route.actions,
+        [agent_semantic_config::HookClientActionKind::Read]
     );
+    assert!(!read_route.profiles_list.is_empty());
     let _ = fs::remove_dir_all(root);
 }

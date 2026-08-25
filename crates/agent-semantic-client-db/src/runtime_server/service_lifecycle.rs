@@ -12,7 +12,7 @@ use tokio::sync::watch;
 fn validate_runtime_server_bind_authorities(
     endpoint: &RuntimeServerEndpoint,
     workspace_store: &crate::runtime_server_workspace::RuntimeServerWorkspaceStore,
-    artifact_catalog: &agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog,
+    artifact_catalog: &agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog,
 ) -> Result<(), String> {
     endpoint.validate()?;
     if Path::new(&endpoint.workspace_store_path) != workspace_store.root() {
@@ -85,7 +85,7 @@ impl RuntimeServer {
         endpoint: RuntimeServerEndpoint,
         registry: Arc<WorkspaceDbRegistry>,
         artifact_catalog: Arc<
-            agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog,
+            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog,
         >,
     ) -> Result<Self, String> {
         let workspace_store =
@@ -102,7 +102,7 @@ impl RuntimeServer {
         registry: Arc<WorkspaceDbRegistry>,
         workspace_store: crate::runtime_server_workspace::RuntimeServerWorkspaceStore,
         artifact_catalog: Arc<
-            agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog,
+            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog,
         >,
     ) -> Result<Self, String> {
         validate_runtime_server_bind_authorities(
@@ -119,7 +119,7 @@ impl RuntimeServer {
         registry: Arc<WorkspaceDbRegistry>,
         workspace_store: crate::runtime_server_workspace::RuntimeServerWorkspaceStore,
         artifact_catalog: Arc<
-            agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog,
+            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog,
         >,
     ) -> Result<Self, String> {
         let listener = bind_runtime_server_listener(Path::new(&endpoint.socket_path))?;
@@ -196,7 +196,7 @@ impl RuntimeServer {
         registry: Arc<WorkspaceDbRegistry>,
         endpoint_path: &std::path::Path,
         artifact_catalog: Arc<
-            agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog,
+            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog,
         >,
     ) -> Result<Self, String> {
         let server = Self::bind_with_catalog(endpoint, registry, artifact_catalog).await?;
@@ -213,7 +213,7 @@ impl RuntimeServer {
         endpoint_path: &std::path::Path,
         workspace_store: crate::runtime_server_workspace::RuntimeServerWorkspaceStore,
         artifact_catalog: Arc<
-            agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog,
+            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog,
         >,
     ) -> Result<Self, String> {
         let server =

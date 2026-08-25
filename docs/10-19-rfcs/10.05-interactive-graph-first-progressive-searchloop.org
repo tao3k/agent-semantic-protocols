@@ -169,6 +169,73 @@ runtime for the selected provider is a typed provider-local failure, not a
 reason to prepare a shared runtime such as Node.
 
 *** Resident provider authority and memory evidence
+**** Public-route qualification boundary
+***** Server-owned lazy client session
+Package ownership and the single server-first lifecycle are normative in
+[[file:10.05-interactive-graph-first-progressive-searchloop/10.05.01-server-client-package-responsibility.org][10.05.01 Server/Client Package Responsibility]].
+
+Public =asp <language> search/query= commands are request facades, not session
+owners.  They MUST reduce arguments to one typed request over the shared Tokio
+HTTP/gRPC channel.  The CLI MUST NOT initialize or shut down a protocol
+session, spawn a provider, restore a generation, reconcile a catalog, or open
+=WorkspaceDbIpc= for each command.
+
+The Runtime Server owns a lazy session keyed by workspace identity and client
+identity.  Concurrent requests multiplex through the resident server session;
+dropping a client channel handle does not close that session.  Catalog,
+provider, generation, and cache authority remain atomic and server-owned.
+There is no compatibility branch for the former per-command lifecycle.
+
+Qualification records separate phases for request transport, server admission,
+resident memory lookup, and client rendering.  Every phase emits immediate
+=started= and typed terminal receipts with elapsed time.  Compilation, process
+startup, and whole-CLI wall time are reported separately from the Runtime
+service gate.
+
+Public =asp <language> search/query= is one server-first route: the shared ASP
+client sends the request over the managed HTTP transport, Runtime Server route
+catalog admission binds the provider operation, and only then may the resident
+generation data plane execute it.  There is no CLI-local provider execution,
+compatibility route, or semantic fast path beside that route.
+
+Live Corpus and Scenarios qualification MUST exercise this public route for at
+least Rust, Python, and Gerbil Scheme and MUST retain typed admission plus
+terminal search/query receipts.  A direct
+=WorkspaceDbIpcSession::provider_search= call is an internal owner unit-test
+surface only; it MUST NOT satisfy public-route qualification or performance
+evidence by itself.  Resident cold-prime readiness and warm search/query MUST
+share the same Runtime route and single generation authority.  Qualification
+MUST NOT manufacture completion with an outer timeout, sleep, polling loop, or
+an alternate cancellation path.
+
+Live Corpus qualification MUST publish a structured phase receipt before and
+after every lifecycle boundary that can suspend: generation restore, client
+protocol cancellation, resident search, exact projection, and Merkle proof.
+The receipt uses the same case/resource/language/provider identity as the final
+qualification receipt and includes =state=, =phase=, and =elapsedMicros=; a
+failed terminal receipt also includes =reasonKind=.  A silent outer timeout is
+not evidence and MUST NOT be used to infer which phase failed.  These phase
+receipts are the CLI projection of the same OpenTelemetry lifecycle events, not
+a second supervision or timeout mechanism.
+
+Live Corpus generation admission is lifecycle setup, not resident search or
+exact-query latency.  Restoring an immutable active-generation pointer MUST
+coalesce through the Runtime Server's existing single-flight workspace entry
+and MUST reach a typed terminal receipt.  A client wall-clock timeout or
+disconnect MUST NOT cancel the shared =OnceCell= initialization future: later
+clients observe the same admission state instead of restarting pointer restore.
+Only the subsequent resident search/query samples participate in latency gates.
+
+The shared ASP Client catalog MUST expose one language-neutral cancellable
+lifecycle probe.  The probe is admitted through the same request registry,
+cancellation token, dispatcher, and response framing as language search, but
+its operation remains pending until the client cancels it.  A conforming
+server returns typed =Cancelled= outcomes for both the probe request and the
+cancel acknowledgement.  Live Corpus qualification MUST use this probe to
+prove cancellation propagation; it MUST NOT slow a real resident search,
+insert a sleep, or assume that =yield_now= makes cancellation win a race with
+an already sub-millisecond operation.  The probe owns no provider process,
+filesystem read, database read, or mutable language state.
 
 =EnsureWorkspace= is an idempotent workspace-generation admission and polling
 operation.  It MUST return the currently admitted =Building=, =Ready=, =Failed=,
@@ -180,6 +247,27 @@ terminal receipt.  Client timeout or disconnect MUST NOT cancel the admitted
 generation task.
 
 *** Server-owned incremental index authority
+
+Ready is a qualified read state, not merely the presence of a generation
+digest.  A search or query MAY return =no-matches= only when the active
+generation proves coverage for the requested workspace source owner and
+provider.  =Ready-empty=, an uncovered source, a missing owner, or a generation
+whose source snapshot does not contain the requested path is query demand, not
+a terminal empty result.
+
+The Runtime Server MUST coalesce that demand through one single-flight key
+covering workspace identity, language, provider, source snapshot root, and
+requested coverage.  Concurrent HTTP/gRPC clients observe the same Building or
+terminal receipt; they MUST NOT start provider processes or index publications
+independently.  A read completes only with a coverage-qualified immutable
+generation, or a typed Failed/Cancelled receipt carrying the shared demand id.
+
+OpenTelemetry spans and Live Corpus receipts MUST expose the demand id,
+generation transition, requested and published coverage, coalesced waiter
+count, provider work, filesystem work, database work, and publication latency.
+The bounded admission/read path remains subject to the sub-millisecond gate;
+provider compilation or asynchronous generation construction is reported
+separately and is never disguised as query latency.
 
 Workspace attach and source mutation admission, not =search= or =query=, own
 index construction.  The northbound HTTP/gRPC search interface MUST read only
@@ -1077,6 +1165,96 @@ Failure to normalize is a typed client-request error before Runtime dispatch,
 never a generic =provider-route-not-admitted= result for an otherwise valid
 canonical selector.
 
+The canonical item fragment delimiter is the rightmost =#= in the selector.
+Project-relative owner paths are source identities and MAY contain =#= as a
+legal filename byte; providers MUST preserve that owner path verbatim, and
+consumers MUST NOT split at the first =#= or reinterpret the selector through a
+generic URL parser.  The suffix after the rightmost delimiter remains the
+canonical =item/<kind>/<symbol>[/scope/...]= identity path.  Search emission,
+Runtime validation, and exact query therefore recover the same owner path even
+for repositories whose filenames contain URI delimiter characters.
+
+Generation-time projection transport MUST preserve source bytes exactly.
+Each owner carries an explicit =sourceEncoding=: UTF-8 owners use =sourceText=
+without an intermediate copy, while non-UTF-8 owners use
+=sourceBytesBase64=.  These are the two arms of one schema-owned tagged union,
+not provider-specific transports.  A provider MUST reject a missing or
+mismatched arm, decode at its HTTP boundary, and pass the original bytes to its
+native parser.  Runtime MUST NOT use lossy Unicode replacement because byte
+ranges, source digests, exact projections, and Merkle membership all refer to
+the original owner bytes.
+
+A native provider MAY construct a byte-length-preserving parser view when an
+upstream language dialect is semantically compatible but its reader spelling
+differs.  Such a view MUST be deterministic, MUST NOT change newline or byte
+offsets, and MUST NOT replace the original bytes used for digests, ranges, or
+exact-source responses.  For R4RS/Gambit input, case-folding only multi-letter
+=#\\<name>= character literals in the temporary Gerbil reader view is valid;
+single-character literals such as =#\\A= remain unchanged.  Skipping the owner,
+silencing the reader failure, or publishing partial definitions is forbidden.
+
+Gerbil projection MUST enter through the native module reader rather than a
+plain datum-reader fast path.  For an explicit =#lang= owner, the declared
+phase-1 reader is the provider-owned extension hook that converts an embedded
+DSL body into Gerbil syntax forms; those forms enter the same canonical
+definition projector as ordinary Gerbil source.  Ordinary owner imports MUST
+NOT be expanded or resolved.  Only the explicit =#lang= hook may load its
+declared reader; general workspace library resolution belongs to the separate
+ProjectResolution/semantic-expansion route.
+
+The bounded projection batch is a source-byte isolation unit, not a
+module-resolution unit.  A provider MAY materialize the immutable owner bytes
+in a unique temporary root when its native reader requires a path, but it MUST
+parse each primary owner without loading unrelated workspace modules.  It
+restores reader state and deletes the root before replying.  The provider MUST
+NOT rescan the real worktree, retain the temporary root, maintain a second
+resident source index, or turn missing imported libraries into projection
+failure.
+
+Provider-declared =sourceInventory.configFiles= are transmitted as
+=auxiliaryOwners= in the same schema-owned batch.  Runtime finds only matching
+config filenames on admitted source-owner ancestor paths, reads them once with
+Tokio during generation, deduplicates them by workspace-relative path, and
+attaches their content digest and bytes to each relevant batch.  Auxiliary
+owners provide generation-bound parser/config policy but never produce
+searchable items or appear in response owner coverage.  They MUST NOT be used
+to execute imports during owner-local projection.  Treating config files as
+source extensions or reading them during query is forbidden.
+
+The same immutable read pass MUST include auxiliary owner path/digest leaves in
+the workspace generation root.  Projection frames and exact-selector Merkle
+proofs use that combined root, while searchable owner coverage remains limited
+to =owners=.  A config edit therefore creates a new generation identity and
+invalidates provider projection caches; attaching unreceipted config bytes to
+an otherwise unchanged generation is forbidden.  Wire admission counts primary
+and auxiliary bytes against one bounded frame budget, and frame planning
+reserves the repeated auxiliary context before grouping primary owners.
+
+One canonical selector identifies one active binding in a generation.  When a
+language permits the same owner to redefine a binding, the provider MUST merge
+those parser facts by canonical selector and publish the last active
+definition, preserving its original byte range.  Providers MUST NOT invent
+line numbers, occurrence counters, or source-order suffixes to make duplicate
+rows appear unique; those are unstable locations rather than semantic
+identity.  Lexically distinct bindings remain distinct only through real
+parser-owned scope identity.
+
+Native source locations remain authoritative only while their decoded extent is
+monotonic.  Some native runtimes cannot represent the end column of an
+arbitrarily long physical line; a wrapped or reversed end location MUST NOT be
+published as a byte range.  In that typed condition the provider derives a
+conservative exclusive upper bound from the next native top-level start in the
+same owner, or from owner EOF for the final form.  This is one owner-local
+projection algorithm, not a lexical fallback parser: the native parser still
+owns item identity and start order, the recovered range remains bounded by the
+same immutable owner bytes, and Runtime proof validation remains fail-closed.
+
+Provider adapters MUST parse selector structure independently from URI segment
+encoding.  In particular, a parser kind such as =def*= may appear as =def%2A=
+inside the parser-owned selector; comparing that encoded segment with the raw
+kind string is invalid.  The adapter normalizes parser kinds to the shared item
+kind and preserves the parser-owned encoded name/scope segments.
+
 ** Canonical item identity and atomic projection generations
 
 Exact search identity is a language-neutral typed tuple.  Every registered
@@ -1574,7 +1752,23 @@ of one qualification rather than unrelated test suites. Both layers require the
 Tokio Runtime, synchronous mmap reads, zero Runtime work counters on resident
 reads, and terminal OpenTelemetry evidence.
 
+The public exact-query response MUST expose the same falsifiable resident-read
+evidence as Search: =elapsedMicros=, =serviceElapsedMicros=,
+=residentReadElapsedMicros=, and typed =workCounters=. These fields belong to a
+shared ASP Client response schema and wrap the typed projection result; clients
+MUST NOT infer them from CLI wall time or query a second telemetry endpoint.
+Warm exact query qualification requires a stable generation/root pair, a
+resident read below 1ms, and zero database, filesystem, provider-process,
+scheduler-task, and socket operations. Timing a compiler or cold generation
+builder is a separate lifecycle observation and MUST NOT be reported as query
+execution latency.
+
 Provider workspace builds are Tokio request-owned operations.  Cancellation is
 the dropped request future propagated to the supervised process tree.  A fixed
 wall-clock timeout, including a large "safety" timeout, is not an admission or
 correctness mechanism and MUST NOT be installed by the workspace builder.
+
+* Normative atomic resident publication module
+
+The server-owned zero-downtime handover and generation handshake contract is
+defined in [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.02-atomic-resident-publication.org][10.05.02 Atomic Resident Runtime Publication]].

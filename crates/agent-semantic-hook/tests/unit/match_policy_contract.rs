@@ -86,7 +86,10 @@ fn canonical_config_covers_builtin_programming_native_read_matrix() {
                     "{payload}"
                 );
                 assert_eq!(decision.decision, DecisionKind::Deny);
-                assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
+                assert_eq!(
+                    decision.reason_kind,
+                    ReasonKind::RegisteredSourceRouteRequired
+                );
                 assert_eq!(decision.language_ids, [profile.language_id.as_str()]);
                 assert!(
                     decision

@@ -56,7 +56,7 @@ fn concurrent_hook_event_appends_write_valid_json_lines() {
         let event = serde_json::from_str::<Value>(line).expect("event line should be valid JSON");
         assert_eq!(event["schemaId"], "agent.semantic-protocols.hook.event");
         assert_eq!(event["protocolId"], HOOK_PROTOCOL_ID);
-        assert_eq!(event["reasonKind"], "direct-source-read");
+        assert_eq!(event["reasonKind"], "registered-source-route-required");
         let path = event["subject"]["paths"][0]
             .as_str()
             .expect("event path should be a string");
@@ -376,7 +376,7 @@ fn decision(run_id: &str, index: usize) -> HookDecision {
         platform: "codex".to_string(),
         event: "pre-tool".to_string(),
         decision: DecisionKind::Deny,
-        reason_kind: ReasonKind::DirectSourceRead,
+        reason_kind: ReasonKind::RegisteredSourceRouteRequired,
         language_ids: vec!["rust".into()],
         subject: DecisionSubject {
             tool_name: Some("Read".to_string()),
@@ -397,12 +397,12 @@ fn decision(run_id: &str, index: usize) -> HookDecision {
 }
 
 #[test]
-fn dispatch_choice_plane_role_requires_complete_canonical_fields() {
-    let mut decision = decision("dispatch-choice-plane-role", 0);
-    assert!(!decision.has_dispatch_choice_plane_role());
+fn registered_agent_dispatch_requires_complete_canonical_fields() {
+    let mut decision = decision("dispatch-registered-agent", 0);
+    assert!(!decision.has_registered_agent_dispatch());
 
-    insert_dispatch_choice_plane_role(&mut decision);
-    assert!(decision.has_dispatch_choice_plane_role());
+    insert_registered_agent_dispatch(&mut decision);
+    assert!(decision.has_registered_agent_dispatch());
     let serialized = serde_json::to_value(&decision).expect("serialize configured dispatch");
     assert!(
         serialized.get("interactiveCommand").is_none(),
@@ -413,15 +413,15 @@ fn dispatch_choice_plane_role_requires_complete_canonical_fields() {
         "receiptKind".to_string(),
         serde_json::Value::String(String::new()),
     );
-    assert!(!decision.has_dispatch_choice_plane_role());
+    assert!(!decision.has_registered_agent_dispatch());
 }
 
-fn insert_dispatch_choice_plane_role(decision: &mut HookDecision) {
+fn insert_registered_agent_dispatch(decision: &mut HookDecision) {
     for (field, value) in [
-        ("agentSessionAction", "dispatch-choice-plane-role"),
+        ("agentSessionAction", "dispatch-registered-agent"),
         ("transport", "host-agent"),
         ("receiptKind", "asp-testing-execution-v1"),
-        ("targetAgentRole", "testing"),
+        ("targetAgent", "asp_testing"),
         ("configRuleId", "testing-role-dispatch"),
         ("commandDigest", "sha256:test-command"),
         ("sessionId", "root-session-test"),
@@ -438,7 +438,7 @@ fn latest_session_route_is_read_only_and_config_selected() {
     let _state_home = AspStateHomeGuard::activate_isolated();
     let project_root = unique_project_root();
     let mut unrelated = decision("unrelated-route", 0);
-    insert_dispatch_choice_plane_role(&mut unrelated);
+    insert_registered_agent_dispatch(&mut unrelated);
     unrelated.fields.insert(
         "sessionId".to_string(),
         Value::String("another-root".to_string()),
@@ -446,12 +446,12 @@ fn latest_session_route_is_read_only_and_config_selected() {
     append_hook_event_state(&project_root, &unrelated).expect("append unrelated route");
 
     let mut selected = decision("selected-route", 1);
-    insert_dispatch_choice_plane_role(&mut selected);
+    insert_registered_agent_dispatch(&mut selected);
     for preselected_field in [
         "transport",
         "residentName",
         "targetAgentName",
-        "targetAgentRole",
+        "targetAgent",
         "agentSessionAction",
         "receiptKind",
     ] {
@@ -494,7 +494,7 @@ fn source_access_replay_preserves_configured_resident_dispatch() {
     let mut decision = decision("configured-resident-replay", 0);
     let original_message = "Route the exact command to ASP Testing.".to_string();
     decision.message = original_message.clone();
-    insert_dispatch_choice_plane_role(&mut decision);
+    insert_registered_agent_dispatch(&mut decision);
 
     assert!(
         !agent_semantic_hook::apply_repeated_deny_replay(&project_root, &mut decision).unwrap()

@@ -157,9 +157,7 @@ fn runtime_readiness_has_no_wall_clock_timeout_policy() {
 #[test]
 fn identity_handoff_admits_the_new_active_artifact_not_the_retiring_invoker() {
     let adapter = include_str!("../../src/server/runtime_server_wire_adapter.rs");
-    let handoff = include_str!("../../src/server/runtime_server_identity_handoff.rs");
 
-    assert!(handoff.contains("reconcile_healthy_runtime_server_after_identity_handoff"));
     assert!(adapter.contains("ensure_runtime_server_after_identity_handoff"));
     assert!(adapter.contains("supervisor_request_for_active_artifact"));
     assert!(adapter.contains("&runtime_artifact,\n        receipt,"));
@@ -168,7 +166,7 @@ fn identity_handoff_admits_the_new_active_artifact_not_the_retiring_invoker() {
 
 #[test]
 fn binary_install_only_migrates_state_home_agent_authority() {
-    let install = include_str!("../../src/command/install_provider_binary.rs");
+    let install = include_str!("../../src/command/install_provider/binary.rs");
 
     assert!(install.contains("synchronize_embedded_agent_state_config"));
     assert!(!install.contains("synchronize_embedded_agent_config("));

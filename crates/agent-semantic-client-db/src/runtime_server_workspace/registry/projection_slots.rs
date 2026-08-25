@@ -175,11 +175,23 @@ impl RuntimeServerWorkspaceRegistry {
         workspace_identity: &str,
         project_root: &Path,
         query: &str,
-        language_id: Option<&agent_semantic_client_core::LanguageId>,
+        authority: Option<&agent_semantic_search::ResidentSearchAuthority>,
         limit: u32,
     ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
         self.resident_search_projection_client(workspace_identity, project_root)?
-            .read_source_index(query, language_id, limit)
+            .read_source_index(query, authority, limit)
+    }
+
+    pub async fn read_projection_source_index_for_language(
+        &self,
+        workspace_identity: &str,
+        project_root: &Path,
+        query: &str,
+        language_id: &agent_semantic_client_core::LanguageId,
+        limit: u32,
+    ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
+        self.resident_search_projection_client(workspace_identity, project_root)?
+            .read_source_index_for_language(query, language_id, limit)
     }
 
     pub fn read_projection_parser_owned_callable_selector_pairs(

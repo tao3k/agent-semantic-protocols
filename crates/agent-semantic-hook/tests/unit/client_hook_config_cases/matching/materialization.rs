@@ -34,7 +34,7 @@ fn builtin_materialization_rule_is_permanent_and_source_scoped() {
                 .fields
                 .get("configRuleId")
                 .and_then(|id| id.as_str()),
-            Some("deny-raw-registered-source-action")
+            Some("route-read-to-asp-languages")
         );
         assert_eq!(decision.language_ids, ["rust"]);
         assert_eq!(decision.routes.len(), 1);
@@ -60,7 +60,7 @@ fn builtin_materialization_rule_is_permanent_and_source_scoped() {
 }
 
 #[test]
-fn opaque_registered_source_access_denies_without_inventing_read() {
+fn registered_source_operands_project_read_without_executable_name_tables() {
     let config = ClientHookConfig::default();
     let registry = crate::classifier::rust_registry();
 
@@ -88,7 +88,7 @@ fn opaque_registered_source_access_denies_without_inventing_read() {
                 .fields
                 .get("configRuleId")
                 .and_then(|id| id.as_str()),
-            Some("deny-raw-registered-source-action"),
+            Some("route-read-to-asp-languages"),
             "{command}"
         );
         let host_action = decision
@@ -104,8 +104,9 @@ fn opaque_registered_source_access_denies_without_inventing_read() {
                 .as_array()
                 .is_some_and(|capabilities| capabilities
                     .iter()
-                    .all(|capability| { capability["action"] != "read" })),
-            "opaque path operands must not invent Read capability: {command}: {host_action}"
+                    .any(|capability| capability["action"] == "read"
+                        && capability["evidence"] == "shell-source-operand")),
+            "registered source operand must project Read independently of executable names: {command}: {host_action}"
         );
         assert!(
             matches!(
@@ -130,11 +131,11 @@ fn opaque_registered_source_access_denies_without_inventing_read() {
         assert_eq!(
             decision.decision,
             DecisionKind::Deny,
-            "opaque source access must fail closed without inventing a semantic Read: {command}: {decision:?}"
+            "registered-source operation must project Read and fail closed: {command}: {decision:?}"
         );
         assert_eq!(
             decision.fields["configRuleId"],
-            "deny-raw-registered-source-action"
+            "route-read-to-asp-languages"
         );
     }
 
@@ -162,8 +163,8 @@ fn opaque_registered_source_access_denies_without_inventing_read() {
         "route-read-to-asp-languages"
     );
     assert!(
-        native_read.message.starts_with(
-            "Registered {{languageId}} source reads are denied. Use the parser-owned ASP route below instead of raw Read."
+        native_read.message.contains(
+            "Registered rust source reads are denied. Use the parser-owned ASP route below instead of raw Read."
         ),
         "{}",
         native_read.message

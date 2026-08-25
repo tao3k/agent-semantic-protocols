@@ -43,3 +43,29 @@ fn canonical_selector_parse_rejects_non_item_and_noncanonical_identity_paths() {
         );
     }
 }
+
+#[test]
+fn canonical_selector_preserves_hash_in_owner_filename() {
+    let selector =
+        "gerbil-scheme://src/gambit/contrib/GambitREPL/genport%23.scm#item/define-type/genport";
+    let parsed = CanonicalItemSelector::parse(selector)
+        .expect("the rightmost hash must delimit the canonical item fragment");
+
+    assert_eq!(
+        parsed.owner_path().expect("owner path must be available"),
+        "src/gambit/contrib/GambitREPL/genport#.scm"
+    );
+    assert_eq!(parsed.kind.as_str(), "define-type");
+    assert_eq!(parsed.symbol.as_str(), "genport");
+    parsed.validate().expect("parsed selector must validate");
+}
+
+#[test]
+fn canonical_selector_rejects_unescaped_owner_uri_delimiters() {
+    assert!(
+        CanonicalItemSelector::parse(
+            "gerbil-scheme://src/gambit/contrib/GambitREPL/genport#.scm#item/define-type/genport"
+        )
+        .is_err()
+    );
+}

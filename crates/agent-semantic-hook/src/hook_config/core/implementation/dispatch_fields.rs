@@ -8,6 +8,7 @@ use crate::tool_action::ToolAction;
 pub(super) fn extend_dispatch_fields(
     fields: &mut std::collections::BTreeMap<String, serde_json::Value>,
     dispatch: Option<&CompiledRuleDispatch>,
+    platform: &str,
     action: &ToolAction,
 ) {
     let Some(dispatch) = dispatch else {
@@ -15,16 +16,24 @@ pub(super) fn extend_dispatch_fields(
     };
     for (field, value) in [
         ("transport", dispatch.transport.as_str()),
-        ("targetAgentRole", dispatch.target_role.as_str()),
-        ("agentSessionAction", "dispatch-choice-plane-role"),
+        ("targetAgent", dispatch.target_agent.as_str()),
+        ("agentSessionAction", "dispatch-registered-agent"),
         ("receiptKind", dispatch.receipt_kind.as_str()),
-        ("targetAgentSelectionSource", "choice-plane-role-signal"),
+        ("targetAgentSelectionSource", "config-agent-route"),
     ] {
         fields.insert(
             field.to_string(),
             serde_json::Value::String(value.to_string()),
         );
     }
+    fields.insert(
+        "targetAgentSymbol".to_string(),
+        serde_json::Value::String(
+            dispatch
+                .calling
+                .symbol(platform, dispatch.target_agent.as_str()),
+        ),
+    );
     if let Some(command) = action.command.as_deref() {
         fields.insert(
             "commandDigest".to_string(),

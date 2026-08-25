@@ -38,7 +38,7 @@ const ACTION_SCAN_KEYS: &[&str] = &[
 ];
 pub(crate) use crate::action_ir::{
     AgentAction, AgentActionKind, AgentActionSubject, AgentActionSubjectKind, HostInvocationFact,
-    SemanticCapability, SemanticCapabilityEvidence, action_kind_matches,
+    HostInvocationKind, SemanticCapability, SemanticCapabilityEvidence, action_kind_matches,
 };
 
 pub(crate) fn subject_kind_matches(
@@ -128,17 +128,17 @@ impl ToolAction {
     }
 
     pub(crate) fn derive_agent_action(&self) -> AgentAction {
-        let host_action = self.operation.agent_action_kind();
+        let semantic_action = self.operation.agent_action_kind();
         let mut action = AgentAction {
             host: HostInvocationFact {
-                action: host_action,
+                action: self.surface.host_invocation_kind(),
                 tool_name: self.tool_name.clone(),
                 surface: self.surface.as_str().to_owned(),
                 payload: self.host_payload.clone(),
                 invocation_source: self.invocation_source.clone(),
             },
             capabilities: vec![SemanticCapability {
-                action: host_action,
+                action: semantic_action,
                 evidence: SemanticCapabilityEvidence::HostInvocation,
             }],
             subjects: Vec::new(),
@@ -191,6 +191,18 @@ pub(crate) enum ToolSurface {
 }
 
 impl ToolSurface {
+    fn host_invocation_kind(&self) -> HostInvocationKind {
+        match self {
+            Self::CodexApplyPatch => HostInvocationKind::Edit,
+            Self::CodexDirectRead => HostInvocationKind::Read,
+            Self::CodexDirectoryRead => HostInvocationKind::Enumerate,
+            Self::CodexFuzzyFileSearch => HostInvocationKind::Search,
+            Self::CodexMcpRead => HostInvocationKind::Mcp,
+            Self::CodexShell | Self::CodexStdinContinuation => HostInvocationKind::Execute,
+            Self::CodexNestedTools | Self::Unknown => HostInvocationKind::Unknown,
+        }
+    }
+
     pub(crate) fn from_tool_name(tool_name: &str) -> Self {
         let lower = tool_name.to_ascii_lowercase();
         if lower.starts_with("mcp__") && lower.contains("__read") {

@@ -33,6 +33,7 @@ mod hook_config_agent_org;
 mod hook_config_global;
 mod hook_recovery_admission;
 mod hook_recovery_prompt;
+pub mod host_native_handoff;
 pub use hook_recovery_admission::canonical_recovery_admission;
 mod hook_workspace_candidate;
 pub use hook_workspace_candidate::{hook_workspace_candidate, normalize_workspace_path};
@@ -68,8 +69,9 @@ pub use classifier::{
     hook_matcher_keys, hook_trigger_prompt_document,
     materialize_hook_trigger_prompt_agent_flow_for_client, materialize_source_access_deny_message,
     merge_hook_trigger_prompt_document, rebind_command_decision_to_payload,
-    rebind_command_decision_to_payload_with_keys, render_hook_trigger_prompt_document,
-    shell_command_key, shell_command_keys, shell_read_source_key, shell_read_source_keys,
+    rebind_command_decision_to_payload_with_keys, rebind_direct_read_decision_to_payload,
+    render_hook_trigger_prompt_document, shell_command_key, shell_command_keys,
+    shell_read_source_key, shell_read_source_keys,
 };
 pub use codex_config::{
     CodexUserTrustStatus, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END, claude_hook_block, codex_hook_block,
@@ -104,7 +106,6 @@ pub(crate) use hook_config_agent_org::{
     AgentOrgArtifactsArchiveWarning, AgentOrgArtifactsRecovery, CompiledAgentOrgArtifactsConfig,
 };
 pub use hook_config_global::default_global_client_config_path;
-pub(crate) use hook_recovery_prompt::CompiledRecoveryPromptConfig;
 pub use match_policy_conformance::validate_match_policy_rule_coverage;
 pub use protocol::{
     ActionPolicy, AgentHookError, CANONICAL_SCHEMA_AUTHORITY, CommandTemplate, DecisionKind,
@@ -134,6 +135,14 @@ pub(crate) use tool_action::{
 mod dev_context;
 #[cfg(test)]
 extern crate self as agent_semantic_hook;
+
+#[cfg(test)]
+#[path = "../tests/unit/tool_action_functions_exec.rs"]
+mod tool_action_functions_exec;
+
+#[cfg(test)]
+#[path = "../tests/unit/tool_action_workspace_mutation.rs"]
+mod tool_action_workspace_mutation;
 pub use crate::provider_registry::{
     RegisteredProviderKind, registered_provider_id, registered_provider_kind,
     registered_provider_method_invocation, registered_provider_projection_operation,

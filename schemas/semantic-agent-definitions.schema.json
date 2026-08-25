@@ -4,6 +4,13 @@
   "title": "Semantic Agent Family Definitions v1",
   "description": "Shared definitions owned by the semantic-agent schema family.",
   "$defs": {
+    "typedSubjectKind": {
+      "enum": ["registered-language-source", "registered-language-source-pattern", "provider-config-file", "directory", "structural-selector", "other"]
+    },
+    "subjectKindArray": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/typedSubjectKind" }
+    },
     "agentOrgArtifacts": {
       "type": "object",
       "additionalProperties": false,

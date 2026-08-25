@@ -91,6 +91,31 @@ pub fn rebind_command_decision_to_payload(decision: HookDecision, payload: &Valu
     resolve_dispatch_decision(decision, payload)
 }
 
+/// Rebind a config-compiled direct-read decision to the exact Host invocation.
+/// The shard owns rule selection; the Host payload owns tool identity and the
+/// invocation receipt. Keeping these facts separate prevents a template from
+/// inventing or erasing the native tool name.
+pub fn rebind_direct_read_decision_to_payload(
+    decision: HookDecision,
+    payload: &Value,
+    key: &DirectReadSourceKey,
+) -> HookDecision {
+    let actions = collect_payload_tool_actions(payload);
+    let mut decision = with_action_receipt_fields(decision, payload, &actions);
+    if let Some(action) = actions.iter().find(|action| {
+        action.operation == crate::tool_action::OperationIntent::DirectRead
+            && action.tool_name == key.tool_name
+            && action.paths.iter().any(|path| path == &key.path)
+    }) {
+        decision.fields.insert(
+            "agentAction".to_owned(),
+            action.derive_agent_action().receipt_value(),
+        );
+    }
+    decision.subject.tool_name = Some(key.tool_name.clone());
+    decision
+}
+
 /// Rebind a decision using command keys already normalized by the Hook hot
 /// path, avoiding a second shell AST parse solely for receipt materialization.
 pub fn rebind_command_decision_to_payload_with_keys(

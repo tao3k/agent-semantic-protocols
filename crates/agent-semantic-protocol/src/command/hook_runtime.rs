@@ -417,6 +417,21 @@ fn apply_verified_child_registration_context(
         "registered_agent_name".to_owned(),
         serde_json::Value::String(registered_agent_name.to_owned()),
     );
+    for (payload_key, receipt_key) in [
+        ("root_session_id", "rootSessionId"),
+        ("parent_session_id", "parentSessionId"),
+        ("child_session_id", "childSessionId"),
+    ] {
+        let value = receipt
+            .get(receipt_key)
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| format!("child-session-registration-receipt-{payload_key}-invalid"))?;
+        object.insert(
+            payload_key.to_owned(),
+            serde_json::Value::String(value.to_owned()),
+        );
+    }
     object.insert(
         "registered_definition_schema_id".to_owned(),
         serde_json::Value::String(definition_schema_id.to_owned()),
@@ -547,17 +562,24 @@ async fn run_hook_with_input(
     let workspace_micros = hook_started.elapsed().as_micros();
     if !explicit_no_agent_bypass {
         enrich_registered_host_agent_roles(client, &project_root, &mut payload)?;
-        let registration_receipt = if matches!(event, "pre-tool" | "permission-request") {
-            crate::multi_agent_session::read_child_session_registration_from_host_payload(
-                &project_root,
-                client,
-                &payload,
-            )?
-        } else {
-            None
-        };
+        let registration_receipt =
+            if matches!(event, "pre-tool" | "permission-request" | "post-tool") {
+                crate::multi_agent_session::read_child_session_registration_from_host_payload(
+                    &project_root,
+                    client,
+                    &payload,
+                )?
+            } else {
+                None
+            };
         if let Some(receipt_json) = registration_receipt.as_deref() {
             apply_verified_child_registration_context(&mut payload, receipt_json)?;
+        }
+        if event == "post-tool"
+            && agent_semantic_hook::host_native_handoff::publish_from_post_tool_payload(&payload)?
+                .is_some()
+        {
+            return Ok(());
         }
     }
     if !explicit_no_agent_bypass && event != "pre-tool" {
@@ -626,7 +648,9 @@ async fn run_hook_with_input(
     } = loaded_hook_config;
     let matcher_projection = projection.unwrap_or("complete-policy-matcher");
     let mut decision = if let Some(decision) = decision {
-        if !shell_command_keys.is_empty() {
+        if let Some(key) = direct_read_key.as_ref() {
+            agent_semantic_hook::rebind_direct_read_decision_to_payload(decision, &payload, key)
+        } else if !shell_command_keys.is_empty() {
             agent_semantic_hook::rebind_command_decision_to_payload_with_keys(
                 decision,
                 &payload,
@@ -659,11 +683,6 @@ async fn run_hook_with_input(
     // a second shell parse solely to choose a stronger denial reason. Allow is
     // the only decision that can cross the provider-binary authority boundary;
     // preserve the config-independent registry policy there before emission.
-    if let Some(key) = &direct_read_key {
-        if decision.subject.tool_name.as_deref() != Some(key.tool_name.as_str()) {
-            decision.subject.tool_name = Some(key.tool_name.clone());
-        }
-    }
     let provider_projection_micros = hook_started.elapsed().as_micros();
     let classified_micros = hook_started.elapsed().as_micros();
     trace_stage("classified");
@@ -792,7 +811,7 @@ fn terminal_no_agent_bypass_matches(
 fn annotate_payload_context(decision: &mut HookDecision, payload: &serde_json::Value) {
     let dispatch_relevant = decision.reason_kind
         == agent_semantic_hook::ReasonKind::SubagentReceiptRequired
-        || decision.has_dispatch_choice_plane_role();
+        || decision.has_registered_agent_dispatch();
     if dispatch_relevant {
         annotate_host_root_session_identity(
             &mut decision.fields,

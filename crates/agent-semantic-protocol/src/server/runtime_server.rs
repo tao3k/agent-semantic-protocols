@@ -125,6 +125,7 @@ async fn run_control_status() -> Result<(), String> {
         )
         .await?;
     let endpoint = read_endpoint(&endpoint_path).await?;
+    validate_runtime_server_service_publication(&endpoint).await?;
     let request_id = request_identity("control").await?;
     prewarm_runtime_server_status_memory(&endpoint).await?;
     let receipt = call_runtime_server(
@@ -220,11 +221,13 @@ async fn await_healthy_runtime_server_after_spawn_inner() -> Result<(), String> 
                     })
                     .to_string());
                 }
-                agent_semantic_runtime::runtime_artifact_catalog::
+                agent_semantic_artifacts::runtime_artifact_catalog::
                     promote_active_runtime_artifact_to_healthy(
                         &state_home,
                         "asp",
-                        &active_digest,
+                        &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
+                            &active_digest,
+                        )?,
                     )
                     .await?;
                 return Ok(());
@@ -363,18 +366,32 @@ pub(super) async fn observe_runtime_server_readiness(
             request_identity("startup-readiness").await?,
         )
         .await?;
-    let endpoint_present = tokio::fs::try_exists(&endpoint.socket_path)
-        .await
-        .map_err(|error| format!("failed to inspect Runtime Server endpoint: {error}"))?;
     if receipt.state
         == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
-        && !endpoint_present
+        && let Err(error) = validate_runtime_server_service_publication(&endpoint).await
     {
         receipt.state =
             agent_semantic_client_db::runtime_server_control::RuntimeServerState::Starting;
-        receipt.reason = Some("Runtime Server endpoint is not present".to_owned());
+        receipt.reason = Some(error);
     }
     Ok(receipt)
+}
+
+async fn validate_runtime_server_service_publication(
+    endpoint: &agent_semantic_client_db::RuntimeServerEndpoint,
+) -> Result<(), String> {
+    let control = tokio::fs::try_exists(&endpoint.socket_path);
+    let data = tokio::fs::try_exists(&endpoint.data_plane_socket_path);
+    let provider = tokio::fs::try_exists(&endpoint.provider_plane_socket_path);
+    let (control, data, provider) = tokio::try_join!(control, data, provider)
+        .map_err(|error| format!("failed to inspect Runtime Server service generation: {error}"))?;
+    if control && data && provider {
+        return Ok(());
+    }
+    Err(format!(
+        "Runtime Server service generation is incomplete: ownerEpoch={} control={control} data={data} provider={provider}",
+        endpoint.owner_epoch
+    ))
 }
 
 /// Read-only liveness probe for agent-session admission.

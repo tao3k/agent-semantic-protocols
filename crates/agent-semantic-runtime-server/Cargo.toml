@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+agent-semantic-artifacts.workspace = true
+agent-semantic-runtime.workspace = true
+agent-semantic-content-identity.workspace = true
+blake3.workspace = true
 agent-semantic-client-db = { path = "../agent-semantic-client-db" }
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
@@ -24,3 +28,5 @@ tonic-prost-build.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 agent-semantic-provider-transport.workspace = true
+agent-semantic-schema-manager.workspace = true
+agent-semantic-http-json.workspace = true

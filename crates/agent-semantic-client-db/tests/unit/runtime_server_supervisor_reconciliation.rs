@@ -10,9 +10,9 @@ use agent_semantic_client_db::{
 };
 
 async fn fixture_catalog()
--> agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog {
+-> agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog {
     let state_home = agent_semantic_runtime::resolve_state_home().expect("resolve State Home");
-    agent_semantic_runtime::runtime_artifact_catalog::load_runtime_artifact_catalog(&state_home)
+    agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_artifact_catalog(&state_home)
         .await
         .expect("load runtime artifact catalog")
 }
@@ -179,7 +179,7 @@ async fn stale_generation_handoff_publishes_the_next_healthy_endpoint() {
     let draining = call_runtime_server(
         &first_endpoint,
         RuntimeServerOperation::Restart,
-        agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+        agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
             value: "blake3-256:generation-two".to_owned(),
             algorithm: "blake3-256".to_owned(),
         },

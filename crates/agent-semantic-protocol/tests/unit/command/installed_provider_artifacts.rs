@@ -98,9 +98,9 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
         language_id: "rust".to_owned(),
         provider_id: "asp-rust".to_owned(),
         materialized_path: "/runtime/artifacts/asp-rust".to_owned(),
-        artifact_digest: "blake3-256:artifact".to_owned(),
-        artifact_metadata_digest: "blake3-256:metadata".to_owned(),
-        execution_command_digest: "sha256:command".to_owned(),
+        artifact_digest: format!("blake3-256:{}", "a".repeat(64)),
+        artifact_metadata_digest: format!("blake3-256:{}", "b".repeat(64)),
+        execution_command_digest: format!("sha256:{}", "c".repeat(64)),
     }];
     let artifacts = RuntimeProviderArtifacts {
         document: Arc::new(InstalledProviderArtifactsDocument {
@@ -177,14 +177,11 @@ fn guarded_install_publication_is_atomic_and_rejects_receipt_drift() {
         execution_command_digest,
     );
     std::fs::write(&receipt_path, &receipt).expect("write provider receipt");
-    let guard = crate::command::protocol_binary::ProtocolBinaryReconciliationGuard::acquire(&root)
-        .expect("acquire provider publication guard");
-
-    let first = publish_current_installed_provider_artifacts(&root, &guard)
-        .expect("publish provider snapshot");
+    let first =
+        publish_current_installed_provider_artifacts(&root).expect("publish provider snapshot");
     assert!(first.artifact_write);
     assert_eq!(first.changed_leaf_count, 1);
-    let second = publish_current_installed_provider_artifacts(&root, &guard)
+    let second = publish_current_installed_provider_artifacts(&root)
         .expect("observe current provider snapshot");
     assert!(!second.artifact_write);
     assert_eq!(second.changed_leaf_count, 0);
@@ -206,10 +203,9 @@ fn guarded_install_publication_is_atomic_and_rejects_receipt_drift() {
         receipt.replace(&content, "blake3-256:wrong-content"),
     )
     .expect("write drifted provider receipt");
-    let error = publish_current_installed_provider_artifacts(&root, &guard)
+    let error = publish_current_installed_provider_artifacts(&root)
         .expect_err("receipt content drift must fail closed");
     assert!(error.contains("does not match artifact"), "{error}");
 
-    drop(guard);
     std::fs::remove_dir_all(root).expect("remove provider publication fixture");
 }

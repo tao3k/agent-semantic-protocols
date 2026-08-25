@@ -39,6 +39,10 @@ gix.workspace = true
 name = "source_index_generation"
 path = "tests/integration/source_index_generation.rs"
 
+[[test]]
+name = "projection_presentation"
+path = "tests/unit_test.rs"
+
 [[bench]]
 name = "client_microbench"
 harness = false

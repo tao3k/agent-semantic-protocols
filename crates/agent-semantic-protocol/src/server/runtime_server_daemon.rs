@@ -54,21 +54,48 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         .map_err(|error| format!("failed to prepare Runtime Server workspace store: {error}"))?;
     let runtime_artifact_path = std::env::current_exe()
         .map_err(|error| format!("failed to resolve running ASP artifact: {error}"))?;
-    let runtime_artifact_identity =
-        agent_semantic_runtime::runtime_artifact_identity::read_runtime_artifact_identity(
-            state_home, "asp",
-        )
-        .await?;
-    agent_semantic_runtime::runtime_artifact_identity::admit_runtime_invoker(
-        &runtime_artifact_path,
-        &runtime_artifact_identity,
-        &state_home.join("runtime/bin/asp"),
-    )?;
-    let runtime_binary_identity = runtime_artifact_identity.identity();
+    let runtime_binary_identity =
+        if let Some(expected_digest) = std::env::var_os("ASP_RUNTIME_BINARY_CONTENT_DIGEST") {
+            let expected_digest = expected_digest.to_string_lossy().into_owned();
+            let canonical_artifact = tokio::fs::canonicalize(&runtime_artifact_path)
+                .await
+                .map_err(|error| format!("canonicalize candidate Runtime artifact: {error}"))?;
+            let observed_digest =
+                agent_semantic_content_identity::blake3_digest_from_canonical_artifact_path(
+                    &canonical_artifact,
+                )
+                .ok_or_else(|| "candidate Runtime artifact is not content-addressed".to_owned())?;
+            if observed_digest != expected_digest {
+                return Err(serde_json::json!({
+                    "schemaId": "agent.semantic-protocols.runtime-server-generation-mismatch",
+                    "schemaVersion": "1",
+                    "reasonKind": "runtime-server-generation-mismatch",
+                    "expectedBinaryContentDigest": expected_digest,
+                    "observedBinaryContentDigest": observed_digest,
+                })
+                .to_string());
+            }
+            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+                value: expected_digest,
+                algorithm: "blake3-256".to_owned(),
+            }
+        } else {
+            let runtime_artifact_identity =
+                agent_semantic_runtime::runtime_artifact_identity::read_runtime_artifact_identity(
+                    state_home, "asp",
+                )
+                .await?;
+            agent_semantic_runtime::runtime_artifact_identity::admit_runtime_invoker(
+                &runtime_artifact_path,
+                &runtime_artifact_identity,
+                &state_home.join("runtime/bin/asp"),
+            )?;
+            runtime_artifact_identity.identity()
+        };
     let (client_http_listener, client_http_endpoint) =
         runtime_asp_client::bind_http_listener().await?;
     let artifact_catalog =
-        agent_semantic_runtime::runtime_artifact_catalog::load_runtime_artifact_catalog(
+        agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_artifact_catalog(
             &state_home,
         )
         .await?;
@@ -294,16 +321,18 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         std::sync::Arc::new(artifact_catalog),
     )
     .await
-    .map_err(|error| format!("failed to bind and publish Runtime Server: {error}"))?
-    .with_provider_register(std::sync::Arc::clone(&provider_register))
-    .with_event_sender(diagnostic_events)
-    .with_runtime_telemetry_sender(lifecycle_bus.sender.clone())
-    .with_workspace_generation_and_owner_builders_and_catalog(
-        generation_builder,
-        owner_projection_builder,
-        admission_catalog,
-    )
-    .with_runtime_search_service(runtime_search_service.clone());
+    .map_err(|error| format!("failed to bind and publish Runtime Server: {error}"))?;
+    endpoint.validate_service_reachability().await?;
+    let server = server
+        .with_provider_register(std::sync::Arc::clone(&provider_register))
+        .with_event_sender(diagnostic_events)
+        .with_runtime_telemetry_sender(lifecycle_bus.sender.clone())
+        .with_workspace_generation_and_owner_builders_and_catalog(
+            generation_builder,
+            owner_projection_builder,
+            admission_catalog,
+        )
+        .with_runtime_search_service(runtime_search_service.clone());
     let query_generation_authority =
         agent_semantic_runtime_server::query_generation::RuntimeQueryGenerationAuthority::new();
     let mut generation_publications = server.workspace_generation_publication_subscribe();
@@ -313,7 +342,8 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     let client_http_service = runtime_asp_client::build_http_service(
         runtime_search_service.clone(),
         std::sync::Arc::clone(server.workspace_registry()),
-        std::sync::Arc::clone(&provider_register),
+        runtime_provider_catalog.generation().to_owned(),
+        std::sync::Arc::from(runtime_provider_catalog.installed_provider_targets()),
         client_generation_admission,
         query_generation_authority.clone(),
         lifecycle_bus.sender.clone(),
@@ -413,6 +443,32 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         identity_monitor.shutdown().await;
     })?;
     let service_failure_shutdown = server.shutdown_handle();
+    let activation_state_home = state_home.to_path_buf();
+    let activation_endpoint = endpoint.clone();
+    let running_artifact_digest = std::env::var("ASP_RUNTIME_BINARY_CONTENT_DIGEST")
+        .ok()
+        .map(|value| {
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(&value)
+        })
+        .transpose()?;
+    let activation_actor =
+        runtime_asp_client::artifact_activation::mount_runtime_daemon_artifact_activation(
+            activation_state_home.clone(),
+            move |event| {
+                let state_home = activation_state_home.clone();
+                let endpoint = activation_endpoint.clone();
+                let running_artifact_digest = running_artifact_digest.clone();
+                async move {
+                    if running_artifact_digest.as_ref() == Some(&event.artifact_digest) {
+                        return Ok(());
+                    }
+                    RuntimeIdentityHandoffCoordinator::new(&state_home, &endpoint)
+                        .admit_successor()
+                        .await
+                }
+            },
+        )
+        .await?;
     let (server_done_sender, mut server_done_receiver) = tokio::sync::oneshot::channel();
     let server_task = task_scope.spawn("runtime-server", async move {
         let result = server.serve().await;
@@ -424,6 +480,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         result = &mut client_http_done_receiver => ("client-http", result),
         result = &mut provider_stream_done_receiver => ("provider-stream", result),
     };
+    activation_actor.shutdown().await?;
     if winner.0 != "server" {
         service_failure_shutdown.shutdown();
     }

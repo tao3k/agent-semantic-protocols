@@ -13,14 +13,15 @@ async fn fixture_endpoint(
     epoch: u64,
 ) -> (
     agent_semantic_client_db::RuntimeServerEndpoint,
-    Arc<agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog>,
+    Arc<agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog>,
 ) {
     let state_home = agent_semantic_runtime::resolve_state_home().expect("resolve State Home");
-    let catalog = agent_semantic_runtime::runtime_artifact_catalog::load_runtime_artifact_catalog(
-        &state_home,
-    )
-    .await
-    .expect("load runtime artifact catalog");
+    let catalog =
+        agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_artifact_catalog(
+            &state_home,
+        )
+        .await
+        .expect("load runtime artifact catalog");
     let endpoint = prepare_runtime_server_endpoint_in(
         runtime_dir.path(),
         std::path::Path::new("/runtime/asp"),
@@ -116,7 +117,7 @@ async fn control_request_nonce_is_single_use_for_the_owner_epoch() {
     call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Status,
-        agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+        agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
             value: "blake3-256:transport-replay-probe".to_owned(),
             algorithm: "blake3-256".to_owned(),
         },
@@ -127,7 +128,7 @@ async fn control_request_nonce_is_single_use_for_the_owner_epoch() {
     let replay = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Status,
-        agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+        agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
             value: "blake3-256:transport-replay-probe".to_owned(),
             algorithm: "blake3-256".to_owned(),
         },

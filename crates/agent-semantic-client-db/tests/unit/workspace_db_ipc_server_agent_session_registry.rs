@@ -10,19 +10,19 @@ fn host_stop_resume_and_achieve_preserve_one_durable_generation() {
         crate::AgentSessionRegistry::open_or_create_state_root(root.path().join("state"))
             .expect("open Host lifecycle registry");
     let start = AgentHostLifecycleEventIpc {
-        host_event_id: "host-event-1".to_owned(),
+        host_event_id: "host-event-1".to_owned().into(),
         host_event_sequence: 1,
-        namespace_id: "asp-testing".to_owned(),
+        namespace_id: "asp-testing".to_owned().into(),
         kind: AgentHostLifecycleEventKind::Started,
         platform: "codex".to_owned(),
-        project_id: "workspace-1".to_owned(),
-        root_session_id: "root-1".to_owned(),
-        parent_session_id: "parent-1".to_owned(),
-        child_session_id: "child-1".to_owned(),
+        project_id: "workspace-1".to_owned().into(),
+        root_session_id: "root-1".to_owned().into(),
+        parent_session_id: "parent-1".to_owned().into(),
+        child_session_id: "child-1".to_owned().into(),
         host_task_name: "asp_explorer".to_owned(),
         platform_host_agent_name: "asp_explorer".to_owned(),
-        route_key: "asp_explorer".to_owned(),
-        profile_id: "agents/asp_explorer.toml".to_owned(),
+        route_key: "asp_explorer".to_owned().into(),
+        profile_id: "agents/asp_explorer.toml".to_owned().into(),
         role: "explore".to_owned(),
         model: "gpt-test".to_owned(),
         model_digest: "blake3-256:model".to_owned(),
@@ -30,7 +30,7 @@ fn host_stop_resume_and_achieve_preserve_one_durable_generation() {
         sandbox_mode: crate::workspace_db_ipc::AgentHostSandboxMode::ReadOnly,
         session_lifetime: "resident".to_owned(),
         payload_digest: "blake3-256:payload".to_owned(),
-        transcript_path: Some("/tmp/child.jsonl".to_owned()),
+        transcript_path: Some("/tmp/child.jsonl".to_owned().into()),
         observed_at: 10,
     };
 
@@ -59,7 +59,7 @@ fn host_stop_resume_and_achieve_preserve_one_durable_generation() {
     let stopped = super::record_host_lifecycle_event(
         &registry,
         AgentHostLifecycleEventIpc {
-            host_event_id: "host-event-2".to_owned(),
+            host_event_id: "host-event-2".to_owned().into(),
             host_event_sequence: 2,
             kind: AgentHostLifecycleEventKind::Stopped,
             observed_at: 20,
@@ -81,7 +81,7 @@ fn host_stop_resume_and_achieve_preserve_one_durable_generation() {
     super::record_host_lifecycle_event(
         &registry,
         AgentHostLifecycleEventIpc {
-            host_event_id: "host-event-3".to_owned(),
+            host_event_id: "host-event-3".to_owned().into(),
             host_event_sequence: 3,
             kind: AgentHostLifecycleEventKind::Resumed,
             observed_at: 30,
@@ -99,7 +99,7 @@ fn host_stop_resume_and_achieve_preserve_one_durable_generation() {
     super::record_host_lifecycle_event(
         &registry,
         AgentHostLifecycleEventIpc {
-            host_event_id: "host-event-4".to_owned(),
+            host_event_id: "host-event-4".to_owned().into(),
             host_event_sequence: 4,
             kind: AgentHostLifecycleEventKind::Achieved,
             observed_at: 40,
@@ -123,19 +123,19 @@ async fn host_execution_observation_resumes_exact_namespace_without_new_generati
             .expect("open Host execution registry"),
     );
     let start = AgentHostLifecycleEventIpc {
-        host_event_id: "host-event-1".to_owned(),
+        host_event_id: "host-event-1".to_owned().into(),
         host_event_sequence: 1,
-        namespace_id: "asp-explorer".to_owned(),
+        namespace_id: "asp-explorer".to_owned().into(),
         kind: AgentHostLifecycleEventKind::Started,
         platform: "codex".to_owned(),
-        project_id: "workspace-1".to_owned(),
-        root_session_id: "root-1".to_owned(),
-        parent_session_id: "root-1".to_owned(),
-        child_session_id: "child-1".to_owned(),
+        project_id: "workspace-1".to_owned().into(),
+        root_session_id: "root-1".to_owned().into(),
+        parent_session_id: "root-1".to_owned().into(),
+        child_session_id: "child-1".to_owned().into(),
         host_task_name: "asp_explorer".to_owned(),
         platform_host_agent_name: "asp_explorer".to_owned(),
-        route_key: "asp_explorer".to_owned(),
-        profile_id: "agents/asp_explorer.toml".to_owned(),
+        route_key: "asp_explorer".to_owned().into(),
+        profile_id: "agents/asp_explorer.toml".to_owned().into(),
         role: "explore".to_owned(),
         model: "gpt-test".to_owned(),
         model_digest: "blake3-256:model".to_owned(),
@@ -143,14 +143,14 @@ async fn host_execution_observation_resumes_exact_namespace_without_new_generati
         sandbox_mode: crate::workspace_db_ipc::AgentHostSandboxMode::ReadOnly,
         session_lifetime: "resident".to_owned(),
         payload_digest: "blake3-256:payload".to_owned(),
-        transcript_path: Some("/tmp/child.jsonl".to_owned()),
+        transcript_path: Some("/tmp/child.jsonl".to_owned().into()),
         observed_at: 10,
     };
     super::record_host_lifecycle_event(&registry, start.clone()).expect("start namespace");
     super::record_host_lifecycle_event(
         &registry,
         AgentHostLifecycleEventIpc {
-            host_event_id: "host-event-2".to_owned(),
+            host_event_id: "host-event-2".to_owned().into(),
             host_event_sequence: 2,
             kind: AgentHostLifecycleEventKind::Stopped,
             observed_at: 20,
@@ -165,9 +165,9 @@ async fn host_execution_observation_resumes_exact_namespace_without_new_generati
             registry
                 .record_host_execution_observation_local(&AgentHostExecutionObservationIpc {
                     observation_id: format!("tool-{index}"),
-                    project_id: "workspace-1".to_owned(),
-                    root_session_id: "root-1".to_owned(),
-                    child_session_id: "child-1".to_owned(),
+                    project_id: "workspace-1".to_owned().into(),
+                    root_session_id: "root-1".to_owned().into(),
+                    child_session_id: "child-1".to_owned().into(),
                     platform_host_agent_name: "asp_explorer".to_owned(),
                     transcript_path: "/tmp/child.jsonl".to_owned(),
                     observed_at: 30 + index,
@@ -208,9 +208,9 @@ async fn host_execution_observation_never_creates_or_rebinds_a_namespace() {
             .expect("open Host execution registry");
     let observation = AgentHostExecutionObservationIpc {
         observation_id: "tool-1".to_owned(),
-        project_id: "workspace-1".to_owned(),
-        root_session_id: "root-1".to_owned(),
-        child_session_id: "child-1".to_owned(),
+        project_id: "workspace-1".to_owned().into(),
+        root_session_id: "root-1".to_owned().into(),
+        child_session_id: "child-1".to_owned().into(),
         platform_host_agent_name: "asp_explorer".to_owned(),
         transcript_path: "/tmp/child.jsonl".to_owned(),
         observed_at: 30,
@@ -233,19 +233,19 @@ async fn host_execution_observation_never_creates_or_rebinds_a_namespace() {
     );
 
     let start = AgentHostLifecycleEventIpc {
-        host_event_id: "host-event-1".to_owned(),
+        host_event_id: "host-event-1".to_owned().into(),
         host_event_sequence: 1,
-        namespace_id: "asp-explorer".to_owned(),
+        namespace_id: "asp-explorer".to_owned().into(),
         kind: AgentHostLifecycleEventKind::Started,
         platform: "codex".to_owned(),
-        project_id: "workspace-1".to_owned(),
-        root_session_id: "root-1".to_owned(),
-        parent_session_id: "root-1".to_owned(),
-        child_session_id: "child-1".to_owned(),
+        project_id: "workspace-1".to_owned().into(),
+        root_session_id: "root-1".to_owned().into(),
+        parent_session_id: "root-1".to_owned().into(),
+        child_session_id: "child-1".to_owned().into(),
         host_task_name: "asp_explorer".to_owned(),
         platform_host_agent_name: "asp_explorer".to_owned(),
-        route_key: "asp_explorer".to_owned(),
-        profile_id: "agents/asp_explorer.toml".to_owned(),
+        route_key: "asp_explorer".to_owned().into(),
+        profile_id: "agents/asp_explorer.toml".to_owned().into(),
         role: "explore".to_owned(),
         model: "gpt-test".to_owned(),
         model_digest: "blake3-256:model".to_owned(),
@@ -253,14 +253,14 @@ async fn host_execution_observation_never_creates_or_rebinds_a_namespace() {
         sandbox_mode: crate::workspace_db_ipc::AgentHostSandboxMode::ReadOnly,
         session_lifetime: "resident".to_owned(),
         payload_digest: "blake3-256:payload".to_owned(),
-        transcript_path: Some("/tmp/child.jsonl".to_owned()),
+        transcript_path: Some("/tmp/child.jsonl".to_owned().into()),
         observed_at: 10,
     };
     super::record_host_lifecycle_event(&registry, start.clone()).expect("start namespace");
 
     let wrong_child = registry
         .record_host_execution_observation_local(&AgentHostExecutionObservationIpc {
-            child_session_id: "child-2".to_owned(),
+            child_session_id: "child-2".to_owned().into(),
             ..observation.clone()
         })
         .await
@@ -273,7 +273,7 @@ async fn host_execution_observation_never_creates_or_rebinds_a_namespace() {
     super::record_host_lifecycle_event(
         &registry,
         AgentHostLifecycleEventIpc {
-            host_event_id: "host-event-2".to_owned(),
+            host_event_id: "host-event-2".to_owned().into(),
             host_event_sequence: 2,
             kind: AgentHostLifecycleEventKind::Achieved,
             observed_at: 40,
@@ -301,19 +301,19 @@ fn existing_namespace_rejects_second_start_and_requires_native_resume() {
         crate::AgentSessionRegistry::open_or_create_state_root(root.path().join("state"))
             .expect("open Host lifecycle registry");
     let start = AgentHostLifecycleEventIpc {
-        host_event_id: "host-event-1".to_owned(),
+        host_event_id: "host-event-1".to_owned().into(),
         host_event_sequence: 1,
-        namespace_id: "asp-testing".to_owned(),
+        namespace_id: "asp-testing".to_owned().into(),
         kind: AgentHostLifecycleEventKind::Started,
         platform: "codex".to_owned(),
-        project_id: "workspace-1".to_owned(),
-        root_session_id: "root-1".to_owned(),
-        parent_session_id: "root-1".to_owned(),
-        child_session_id: "child-1".to_owned(),
+        project_id: "workspace-1".to_owned().into(),
+        root_session_id: "root-1".to_owned().into(),
+        parent_session_id: "root-1".to_owned().into(),
+        child_session_id: "child-1".to_owned().into(),
         host_task_name: "asp_explorer".to_owned(),
         platform_host_agent_name: "asp_explorer".to_owned(),
-        route_key: "asp_explorer".to_owned(),
-        profile_id: "agents/asp_explorer.toml".to_owned(),
+        route_key: "asp_explorer".to_owned().into(),
+        profile_id: "agents/asp_explorer.toml".to_owned().into(),
         role: "explore".to_owned(),
         model: "gpt-test".to_owned(),
         model_digest: "blake3-256:model".to_owned(),
@@ -321,14 +321,14 @@ fn existing_namespace_rejects_second_start_and_requires_native_resume() {
         sandbox_mode: crate::workspace_db_ipc::AgentHostSandboxMode::ReadOnly,
         session_lifetime: "resident".to_owned(),
         payload_digest: "blake3-256:payload".to_owned(),
-        transcript_path: Some("/tmp/child.jsonl".to_owned()),
+        transcript_path: Some("/tmp/child.jsonl".to_owned().into()),
         observed_at: 10,
     };
     super::record_host_lifecycle_event(&registry, start.clone())
         .expect("first resident registration");
 
     let duplicate = AgentHostLifecycleEventIpc {
-        child_session_id: "child-2".to_owned(),
+        child_session_id: "child-2".to_owned().into(),
         observed_at: 11,
         ..start.clone()
     };
@@ -339,7 +339,7 @@ fn existing_namespace_rejects_second_start_and_requires_native_resume() {
     super::record_host_lifecycle_event(
         &registry,
         AgentHostLifecycleEventIpc {
-            host_event_id: "host-event-2".to_owned(),
+            host_event_id: "host-event-2".to_owned().into(),
             host_event_sequence: 2,
             kind: AgentHostLifecycleEventKind::Stopped,
             observed_at: 12,
@@ -350,7 +350,7 @@ fn existing_namespace_rejects_second_start_and_requires_native_resume() {
     let reuse_error = super::record_host_lifecycle_event(
         &registry,
         AgentHostLifecycleEventIpc {
-            host_event_id: "host-event-3".to_owned(),
+            host_event_id: "host-event-3".to_owned().into(),
             host_event_sequence: 3,
             payload_digest: "blake3-256:restart-attempt".to_owned(),
             observed_at: 13,
@@ -363,7 +363,7 @@ fn existing_namespace_rejects_second_start_and_requires_native_resume() {
     super::record_host_lifecycle_event(
         &registry,
         AgentHostLifecycleEventIpc {
-            host_event_id: "host-event-4".to_owned(),
+            host_event_id: "host-event-4".to_owned().into(),
             host_event_sequence: 4,
             kind: AgentHostLifecycleEventKind::Resumed,
             observed_at: 14,

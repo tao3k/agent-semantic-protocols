@@ -5,12 +5,12 @@ use agent_semantic_client_db::workspace_db_ipc::{
 #[test]
 fn complete_dispatch_has_one_typed_v1_wire_shape() {
     let operation = AgentSessionRegistryIpcOperation::CompleteDispatch {
-        project_id: "workspace-1".to_owned(),
-        root_session_id: "root-1".to_owned(),
-        name: "asp-testing".to_owned(),
-        dispatch_identity: "dispatch-v1:identity".to_owned(),
-        command_digest: "command-digest".to_owned(),
-        evidence_ref: "receipt:test".to_owned(),
+        project_id: "workspace-1".into(),
+        root_session_id: "root-1".into(),
+        name: "asp-testing".into(),
+        dispatch_identity: "dispatch-v1:identity".into(),
+        command_digest: "command-digest".into(),
+        evidence_ref: "receipt:test".into(),
         now: 17,
     };
     let encoded = serde_json::to_value(&operation).expect("encode complete dispatch operation");

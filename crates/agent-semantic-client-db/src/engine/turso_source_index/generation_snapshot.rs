@@ -496,6 +496,10 @@ pub(super) fn materialize_turso_source_index_generation_snapshot(
         .iter()
         .map(|file_hash| (file_hash.path.clone(), file_hash.sha256.clone()))
         .collect::<BTreeMap<_, _>>();
+    let source_file_hashes = all_file_hashes
+        .iter()
+        .filter(|(path, _)| !path.starts_with("@scope/"))
+        .collect::<BTreeMap<_, _>>();
     let file_hashes = owner_rows
         .keys()
         .filter_map(|owner_path| {
@@ -508,14 +512,14 @@ pub(super) fn materialize_turso_source_index_generation_snapshot(
         .map_err(|error| {
             ClientDbSourceIndexGenerationSnapshotError::SourceSnapshotDecode(error.to_string())
         })?;
-    if source_snapshot.leaf_count != file_hashes.len()
+    if source_snapshot.leaf_count != source_file_hashes.len()
         || all_file_hashes.len() != file_hash_record_count
         || file_hashes.len() != owner_count as usize
         || owner_rows.len() != owner_count as usize
     {
         return Err(ClientDbSourceIndexGenerationSnapshotError::Incomplete {
             leaf_count: source_snapshot.leaf_count,
-            file_hash_count: file_hashes.len(),
+            file_hash_count: source_file_hashes.len(),
             owner_count,
             owner_row_count: owner_rows.len(),
         });

@@ -5,6 +5,9 @@ use std::path::{Path, PathBuf};
 
 const SERVER_DIR: &str = "runtime/server";
 fn server_dir(home: &Path) -> PathBuf {
+    if let Some(publication_dir) = std::env::var_os("ASP_RUNTIME_SERVER_PUBLICATION_DIR") {
+        return PathBuf::from(publication_dir).join("lifecycle");
+    }
     home.join(SERVER_DIR)
 }
 fn marker(home: &Path, name: &str) -> PathBuf {

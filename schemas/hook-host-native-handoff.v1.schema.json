@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/hook-host-native-handoff.v1.schema.json",
+  "title": "Hook Host-native Handoff Capability",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId", "schemaVersion", "nonce", "workspaceRoot", "rootSessionId",
+    "issuerSessionId", "issuerAgent", "receiptKind", "deferredSchemaId",
+    "reasonKind", "executionAuthority", "retryPolicy", "argv", "commandDigest",
+    "issuedAtUnixMs", "expiresAtUnixMs"
+  ],
+  "properties": {
+    "schemaId": { "const": "agent.semantic-protocols.hook-host-native-handoff" },
+    "schemaVersion": { "const": "1" },
+    "nonce": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "workspaceRoot": { "type": "string", "minLength": 1 },
+    "rootSessionId": { "type": "string", "minLength": 1 },
+    "issuerSessionId": { "type": "string", "minLength": 1 },
+    "issuerAgent": { "const": "asp_testing" },
+    "receiptKind": { "const": "asp-testing-execution-v1" },
+    "deferredSchemaId": { "const": "agent.semantic-protocols.host-native-execution-required" },
+    "reasonKind": { "const": "host-local-ipc-permission-denied" },
+    "executionAuthority": { "const": "host-native" },
+    "retryPolicy": { "const": "do-not-retry-in-current-sandbox" },
+    "argv": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "commandDigest": { "type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$" },
+    "consumerTurnId": { "type": "string", "minLength": 1 },
+    "issuedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "expiresAtUnixMs": { "type": "integer", "minimum": 1 }
+  }
+}

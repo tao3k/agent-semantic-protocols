@@ -36,7 +36,8 @@ fn validate_exact_projection_selector_target(request: &ClientRequest) -> Result<
     };
     let workspace = query_workspace(request);
     let selector_owner = selector_owner_path(selector);
-    let selector_path = resolve_under_workspace(&workspace, selector_owner.unwrap_or(selector));
+    let selector_path =
+        resolve_under_workspace(&workspace, selector_owner.as_deref().unwrap_or(selector));
     if selector_path.is_dir() {
         return Err(format!(
             "exact query requires a parser-owned structural selector; `{selector}` is a directory. Use search lexical or search owner with --workspace for directory-scoped discovery"
@@ -51,7 +52,7 @@ fn validate_exact_projection_selector_target(request: &ClientRequest) -> Result<
             "invalid exact-query selector `{selector}`: file selectors are not executable structural selectors; query an exact parser-owned item selector such as {language_id}://path#item/function/name; recover with search owner <path> items\nselectorState=file-selector\nallowed=false\nreason=file-selectors-are-not-structural-selectors\nnextAction=materialize-owner-items\nnextCommand=asp {language_id} search owner {selector} items --workspace {workspace_arg} --view seeds\nrequiredSelector={language_id}://{selector}#item/<kind>/<name>"
         ));
     }
-    if let Some(owner) = selector_owner {
+    if let Some(owner) = selector_owner.as_deref() {
         if !selector_path.exists() {
             return Err(format!(
                 "stale-index selector path does not exist under --workspace: {owner} selector={selector} workspace={}",
@@ -70,14 +71,11 @@ fn validate_exact_projection_selector_target(request: &ClientRequest) -> Result<
     Ok(())
 }
 
-fn selector_owner_path(selector: &str) -> Option<&str> {
-    let (_, rest) = selector.split_once("://")?;
-    let owner = rest
-        .split_once('#')
-        .map(|(owner, _)| owner)
-        .unwrap_or(rest)
-        .trim();
-    (!owner.is_empty()).then_some(owner)
+fn selector_owner_path(selector: &str) -> Option<String> {
+    agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(selector)
+        .ok()?
+        .owner_path()
+        .ok()
 }
 
 fn selector_path_before_range(selector: &str) -> &str {

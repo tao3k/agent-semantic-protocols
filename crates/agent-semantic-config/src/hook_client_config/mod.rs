@@ -11,7 +11,7 @@ pub use routing::{HookClientStructuredFilterGrammar, HookClientStructuredProject
 
 pub use document::{
     AspProjectConfigFile, AspProjectDiscoveryConfig, AspProjectHookConfig,
-    CLIENT_HOOK_CONFIG_SCHEMA_ID, CLIENT_HOOK_CONFIG_SCHEMA_VERSION,
+    CLIENT_HOOK_CONFIG_SCHEMA_ID, CLIENT_HOOK_CONFIG_SCHEMA_VERSION, HookClientAgentCallingConfig,
     HookClientAgentOrgArtifactsArchiveWarningConfig, HookClientAgentOrgArtifactsConfig,
     HookClientConfigFile, HookClientProfileConfig, HookClientProviderRouteIdentity,
     HookClientRecoveryPromptConfig, WrapperMatchMode, default_hook_client_config_file,
@@ -26,12 +26,14 @@ pub use policy_coverage::{
     mutate_path_outside_registered_extensions,
 };
 pub use profiles::{
-    HookClientCommandProfileConfig, HookClientCommandProfileRef, expand_command_profile_prefixes,
+    HookClientCommandProfileConfig, HookClientCommandProfileRef, HookClientCommandSetConfig,
+    expand_command_profile_prefixes, expand_command_set_prefixes,
 };
 pub use routing::{
-    HookClientActionKind, HookClientActionSubjectKind, HookClientAgentRoleSelector,
+    HookClientActionKind, HookClientActionSubjectKind, HookClientAgentSelector,
     HookClientCapabilityPolicyConfig, HookClientConfigDecision, HookClientConfigReasonKind,
-    HookClientConfigRouteKind, HookClientConfigStdinMode, HookClientLazyProviderPolicy,
-    HookClientMatcherPolicy, HookClientRuleConfig, HookClientRuleDispatchConfig,
-    HookClientRuleDispatchTransport, HookClientRuleMatchConfig, HookClientRuleRouteConfig,
+    HookClientConfigRouteKind, HookClientConfigStdinMode, HookClientHostInvocationKind,
+    HookClientLazyProviderPolicy, HookClientMatcherPolicy, HookClientRuleConfig,
+    HookClientRuleDispatchConfig, HookClientRuleDispatchTransport, HookClientRuleMatchConfig,
+    HookClientRuleRouteConfig,
 };

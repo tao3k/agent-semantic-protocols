@@ -417,14 +417,6 @@ impl WorkspaceDbIpcSession {
     }
 }
 
-#[cfg(test)]
-#[path = "../../tests/unit/workspace_db_ipc_search_deadline.rs"]
-mod search_deadline_tests;
-
-#[cfg(test)]
-#[path = "../../tests/unit/workspace_db_ipc_tree_sitter_inventory.rs"]
-mod tree_sitter_inventory_tests;
-
 fn is_search_data_plane_read(operation: &WorkspaceDbIpcOperation) -> bool {
     matches!(
         operation,

@@ -228,7 +228,7 @@ async fn different_workspaces_initialize_independent_entries() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn resident_turso_session_restores_an_empty_memory_backend_without_reopening_the_database() {
+async fn resident_turso_restore_returns_authority_owned_source_query_without_reopening_database() {
     let _environment = environment_lock();
     let temp = TestDir::new("cold-restore");
     let state_home = temp.path().join("state");
@@ -256,6 +256,8 @@ async fn resident_turso_session_restores_an_empty_memory_backend_without_reopeni
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
         blake3::hash(b"resident-provider").to_hex().to_string(),
     );
+    let workspace_snapshot =
+        agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes(source_blobs.iter());
     let import = agent_semantic_client_db::ClientDbSourceIndexImport {
         source_blobs: source_blobs.clone(),
         relations: Vec::new(),
@@ -271,7 +273,7 @@ async fn resident_turso_session_restores_an_empty_memory_backend_without_reopeni
         owners: vec![agent_semantic_client_db::ClientDbSourceIndexOwner {
             owner_path: "src/lib.rs".into(),
             language_id: Some("rust".into()),
-            provider_id: Some("rs-harness".into()),
+            provider_id: Some("asp-rust".into()),
             source_kind: "file".into(),
             line_count: Some(1),
             query_keys: vec![],
@@ -281,6 +283,7 @@ async fn resident_turso_session_restores_an_empty_memory_backend_without_reopeni
     let materialization =
         agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
             scope.workspace_identity.clone(),
+            &workspace_snapshot,
             &source_snapshot,
             &import,
             &source_blobs,
@@ -342,6 +345,40 @@ async fn resident_turso_session_restores_an_empty_memory_backend_without_reopeni
             .await
             .expect("restored generation durability lane remains available");
     }
+    let authority = agent_semantic_search::ResidentSearchAuthority {
+        language_id: "rust".into(),
+        provider_id: "asp-rust".into(),
+    };
+    let unscoped_search = memory_registry
+        .read_projection_source_index(
+            &scope.workspace_identity,
+            std::path::Path::new(&scope.project_root),
+            "lib",
+            None,
+            8,
+        )
+        .await
+        .expect("cold restored resident generation returns an unscoped terminal");
+    assert_eq!(
+        unscoped_search.hits.len(),
+        1,
+        "restored source must be searchable before applying authority"
+    );
+    let search = memory_registry
+        .read_projection_source_index(
+            &scope.workspace_identity,
+            std::path::Path::new(&scope.project_root),
+            "lib",
+            Some(&authority),
+            8,
+        )
+        .await
+        .expect("cold restored resident generation returns an authority-owned terminal");
+    assert_eq!(
+        search.hits.len(),
+        1,
+        "restored authority must own the source hit"
+    );
     assert_eq!(
         durable_registry.counters().database_open_count,
         durable_baseline.database_open_count,

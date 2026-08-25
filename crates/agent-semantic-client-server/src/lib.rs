@@ -10,8 +10,9 @@ pub use agent_semantic_http_json::{
     HttpJsonRequest, HttpJsonResponse, run_http_json, serve_http_json, serve_http_json_h2,
 };
 pub use client_protocol::{
-    AspClientDispatchError, AspClientDispatchFuture, AspClientDispatchRequest, AspClientDispatcher,
-    AspClientProtocolHttpService, AspClientProtocolSession, serve_asp_client_protocol_http,
+    AspClientCancelFuture, AspClientDispatchError, AspClientDispatchFuture,
+    AspClientDispatchRequest, AspClientDispatcher, AspClientProtocolHttpService,
+    serve_asp_client_protocol_http,
 };
 pub use http_client::AspClientProtocolHttpClient;
 

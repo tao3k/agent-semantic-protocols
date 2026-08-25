@@ -38,7 +38,7 @@ impl RuntimeServerShutdownHandle {
 
 pub struct RuntimeServer {
     pub(super) artifact_catalog:
-        Arc<agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog>,
+        Arc<agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog>,
     pub(super) workspace_registry:
         std::sync::Arc<crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry>,
     pub(super) runtime_search_service:
@@ -95,7 +95,7 @@ impl RuntimeServer {
     /// Immutable artifact authority loaded once for this daemon generation.
     pub fn artifact_catalog(
         &self,
-    ) -> &Arc<agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog> {
+    ) -> &Arc<agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog> {
         &self.artifact_catalog
     }
 
@@ -305,6 +305,17 @@ impl RuntimeServer {
                             },
                         )
                         .await;
+                        let restored_generation_covers_demand = pointer_restore
+                            .as_ref()
+                            .is_ok_and(|_| {
+                                super::generation_builder::restored_generation_covers_demand(
+                                    &memory_registry,
+                                    &workspace_identity,
+                                    &project_root,
+                                    changed_paths.as_ref(),
+                                    provider_target.as_ref(),
+                                )
+                            });
                         let restore_elapsed_micros = restore_started
                             .elapsed()
                             .as_micros()
@@ -326,12 +337,16 @@ impl RuntimeServer {
                         if pointer_restore.is_err() {
                             restore_observation.failure_reason =
                                 Some("workspace-generation-pointer-restore-failed".to_owned());
+                        } else if !restored_generation_covers_demand {
+                            restore_observation.failure_reason = Some(
+                                "workspace-generation-restored-provider-coverage-missing".to_owned(),
+                            );
                         }
                         let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(
                             restore_observation,
                         );
                         match pointer_restore {
-                            Ok(published) => {
+                            Ok(published) if restored_generation_covers_demand => {
                             publish_event(
                                 events.as_ref(),
                                 RuntimeServerEvent::WorkspaceGenerationResidentPublished {
@@ -356,6 +371,15 @@ impl RuntimeServer {
                                     error,
                                 ));
                             }
+                            Ok(_) if build_mode
+                                == crate::runtime_server_admission::WorkspaceGenerationBuildMode::RestoreOnly =>
+                            {
+                                return Err(crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
+                                    crate::runtime_server_admission::WorkspaceGenerationFailureStage::DurableRestore,
+                                    "restored generation does not cover the requested language/provider target",
+                                ));
+                            }
+                            Ok(_) => {}
                             Err(failure)
                                 if build_mode
                                     == crate::runtime_server_admission::WorkspaceGenerationBuildMode::RestoreOnly =>

@@ -5,7 +5,7 @@ use super::{
 use crate::runtime_server_control::{
     RuntimeServerOperation, runtime_server_transport_contract_digest,
 };
-use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
+use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
 
 #[tokio::test]
 async fn pooled_lane_discards_a_closed_previous_generation_before_write() {
@@ -42,6 +42,12 @@ async fn stalled_control_exchange_is_bounded_and_discards_the_lane() {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     });
     let endpoint = RuntimeServerEndpoint {
+        binary_content_digest:
+            "blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
+        runtime_generation_digest:
+            "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
+        schema_digest:
+            "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(),
         schema_id: "agent.semantic-protocols.runtime-server-endpoint".to_owned(),
         schema_version: "1".to_owned(),
         transport_contract_digest: runtime_server_transport_contract_digest(),
@@ -76,7 +82,7 @@ async fn stalled_control_exchange_is_bounded_and_discards_the_lane() {
         schema_version: "1".to_owned(),
         operation: RuntimeServerOperation::Restart,
         expected_runtime_binary_identity:
-            agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
                 value: "next-runtime-digest".to_owned(),
                 algorithm: "blake3-256".to_owned(),
             },

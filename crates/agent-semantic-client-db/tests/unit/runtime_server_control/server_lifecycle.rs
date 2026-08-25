@@ -218,7 +218,7 @@ async fn typed_status_and_restart_use_the_real_runtime_server() {
     let restart = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Restart,
-        agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+        agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
             value: "next-runtime-digest".to_owned(),
             algorithm: "blake3-256".to_owned(),
         },

@@ -275,11 +275,11 @@ pub(crate) async fn serve_runtime_server_workspace_stream(
                         .collect::<Vec<_>>()
                         .join(" ");
                     match memory_registry
-                        .read_projection_source_index(
+                        .read_projection_source_index_for_language(
                             &request.workspace_identity,
                             Path::new(&project_root),
                             &query,
-                            Some(&language_id),
+                            &language_id,
                             200,
                         )
                         .await
@@ -706,15 +706,30 @@ pub(crate) async fn serve_runtime_server_workspace_stream(
                 } => {
                     let evidence_started = tokio::time::Instant::now();
                     let counters_before = memory_registry.data_plane_counters();
-                    let lookup = memory_registry
-                        .read_projection_source_index(
-                            &request.workspace_identity,
-                            Path::new(&lookup_request.project_root),
-                            &lookup_request.query,
-                            lookup_request.language_id.as_ref(),
-                            lookup_request.limit,
-                        )
-                        .await;
+                    let lookup = match lookup_request.language_id.as_ref() {
+                        Some(language_id) => {
+                            memory_registry
+                                .read_projection_source_index_for_language(
+                                    &request.workspace_identity,
+                                    Path::new(&lookup_request.project_root),
+                                    &lookup_request.query,
+                                    language_id,
+                                    lookup_request.limit,
+                                )
+                                .await
+                        }
+                        None => {
+                            memory_registry
+                                .read_projection_source_index(
+                                    &request.workspace_identity,
+                                    Path::new(&lookup_request.project_root),
+                                    &lookup_request.query,
+                                    None,
+                                    lookup_request.limit,
+                                )
+                                .await
+                        }
+                    };
                     match lookup {
                         Ok(lookup) => {
                             let counters = memory_registry

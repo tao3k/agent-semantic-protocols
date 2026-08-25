@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:agent-semantic-protocols:schema:asp-cli-failure",
+  "title": "ASP CLI Failure",
   "x-asp-schema-version": 1,
   "type": "object",
   "additionalProperties": false,

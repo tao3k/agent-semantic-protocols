@@ -19,15 +19,26 @@
     }
   },
   "$defs": {
-    "actionKind": {
+    "semanticActionKind": {
       "enum": ["read", "edit", "search", "enumerate", "execute", "unknown"]
+    },
+    "hostInvocationKind": {
+      "enum": [
+        "read",
+        "edit",
+        "search",
+        "enumerate",
+        "execute",
+        "mcp",
+        "unknown"
+      ]
     },
     "hostInvocation": {
       "type": "object",
       "additionalProperties": false,
       "required": ["action", "toolName", "surface", "payload", "source"],
       "properties": {
-        "action": { "$ref": "#/$defs/actionKind" },
+        "action": { "$ref": "#/$defs/hostInvocationKind" },
         "toolName": { "type": "string" },
         "surface": { "type": "string", "minLength": 1 },
         "payload": {},
@@ -39,9 +50,9 @@
       "additionalProperties": false,
       "required": ["action", "evidence"],
       "properties": {
-        "action": { "$ref": "#/$defs/actionKind" },
+        "action": { "$ref": "#/$defs/semanticActionKind" },
         "evidence": {
-          "enum": ["host-invocation", "shell-redirection"]
+            "enum": ["host-invocation", "shell-redirection", "shell-source-operand"]
         }
       }
     },

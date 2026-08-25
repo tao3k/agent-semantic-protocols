@@ -31,12 +31,14 @@ fn search_segment_publishes_a_verified_owner_inclusion_proof() {
         project_resolutions: Vec::new(),
         owners: vec![
             WorkspaceOwnerSnapshot {
+                authority: None,
                 owner_path: "src/lib.rs".to_owned(),
                 content_digest: format!("blake3-256:{}", blake3::hash(&bytes).to_hex()),
                 bytes,
                 selectors: Vec::new(),
             },
             WorkspaceOwnerSnapshot {
+                authority: None,
                 owner_path: "src/sibling.rs".to_owned(),
                 content_digest: format!("blake3-256:{}", blake3::hash(&sibling_bytes).to_hex()),
                 bytes: sibling_bytes,

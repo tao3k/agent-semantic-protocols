@@ -129,11 +129,38 @@ fn build_source_index_import_inner(
     request: ClientDbSourceIndexImportRequest,
 ) -> Result<ClientDbSourceIndexImport, String> {
     let mut canonical_file_hashes = request.file_hashes.clone();
-    let file_hash_index_by_path = canonical_file_hashes
-        .iter()
-        .enumerate()
-        .map(|(index, file_hash)| (file_hash.path.clone(), index))
-        .collect::<BTreeMap<_, _>>();
+    let mut file_hash_index_by_path = canonical_file_hashes.iter().enumerate().try_fold(
+        BTreeMap::new(),
+        |mut index_by_path, (index, file_hash)| {
+            if index_by_path
+                .insert(file_hash.path.clone(), index)
+                .is_some()
+            {
+                return Err(format!(
+                    "source index file hashes repeat owner path: {}",
+                    file_hash.path
+                ));
+            }
+            Ok(index_by_path)
+        },
+    )?;
+    for (owner_path, source) in request.source_blobs.iter() {
+        let sha256 = format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(source));
+        if let Some(index) = file_hash_index_by_path.get(owner_path).copied() {
+            let file_hash = &mut canonical_file_hashes[index];
+            file_hash.sha256 = sha256;
+            file_hash.byte_len = source.len() as u64;
+        } else {
+            let index = canonical_file_hashes.len();
+            canonical_file_hashes.push(ClientCacheFileHash {
+                path: owner_path.to_owned(),
+                sha256,
+                byte_len: source.len() as u64,
+                mtime_ms: 0,
+            });
+            file_hash_index_by_path.insert(owner_path.to_owned(), index);
+        }
+    }
     for file in &request.files {
         let owner_path = ClientDbSourceIndexPath::from(file.relative_path.clone());
         let source = request.source_blobs.get(&owner_path).ok_or_else(|| {
@@ -145,9 +172,8 @@ fn build_source_index_import_inner(
         let file_hash_index = file_hash_index_by_path
             .get(file.relative_path.as_str())
             .ok_or_else(|| format!("missing source index hash for {}", file.relative_path))?;
-        let file_hash = &mut canonical_file_hashes[*file_hash_index];
-        file_hash.sha256 = format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(source));
-        file_hash.byte_len = source.len() as u64;
+        let file_hash = &canonical_file_hashes[*file_hash_index];
+        debug_assert_eq!(file_hash.byte_len, source.len() as u64);
     }
     let mut owners = Vec::with_capacity(request.files.len());
     let mut selectors = Vec::with_capacity(request.files.len());

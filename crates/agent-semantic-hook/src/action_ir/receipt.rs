@@ -1,6 +1,6 @@
 use super::{
     AgentActionKind, AgentActionSubject, AgentActionSubjectKind, HostInvocationFact,
-    SemanticCapability, SemanticCapabilityEvidence,
+    HostInvocationKind, SemanticCapability, SemanticCapabilityEvidence,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -20,7 +20,7 @@ impl AgentAction {
     pub(crate) fn receipt_value(&self) -> serde_json::Value {
         serde_json::json!({
             "hostInvocation": {
-                "action": agent_action_kind_label(self.host.action),
+            "action": host_invocation_kind_label(self.host.action),
                 "toolName": self.host.tool_name,
                 "surface": self.host.surface,
                 "payload": self.host.payload,
@@ -46,6 +46,18 @@ const fn agent_action_kind_label(kind: AgentActionKind) -> &'static str {
         AgentActionKind::Enumerate => "enumerate",
         AgentActionKind::Execute => "execute",
         AgentActionKind::Unknown => "unknown",
+    }
+}
+
+const fn host_invocation_kind_label(kind: HostInvocationKind) -> &'static str {
+    match kind {
+        HostInvocationKind::Read => "read",
+        HostInvocationKind::Edit => "edit",
+        HostInvocationKind::Search => "search",
+        HostInvocationKind::Enumerate => "enumerate",
+        HostInvocationKind::Execute => "execute",
+        HostInvocationKind::Mcp => "mcp",
+        HostInvocationKind::Unknown => "unknown",
     }
 }
 

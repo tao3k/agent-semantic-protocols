@@ -54,10 +54,35 @@ pub async fn runtime_server_runtime_base_async(state_home: &Path) -> Result<Path
 }
 
 pub fn runtime_server_endpoint_path(state_home: &Path) -> Result<PathBuf, String> {
+    if let Some(publication_dir) = std::env::var_os("ASP_RUNTIME_SERVER_PUBLICATION_DIR") {
+        return Ok(PathBuf::from(publication_dir).join("endpoint.json"));
+    }
+    let resident_endpoint = state_home
+        .join("runtime")
+        .join("resident")
+        .join("current")
+        .join("endpoint.json");
+    if std::fs::symlink_metadata(&resident_endpoint).is_ok() {
+        return Ok(resident_endpoint);
+    }
     Ok(runtime_server_runtime_base(state_home)?.join("endpoint.v1.json"))
 }
 
 pub async fn runtime_server_endpoint_path_async(state_home: &Path) -> Result<PathBuf, String> {
+    if let Some(publication_dir) = std::env::var_os("ASP_RUNTIME_SERVER_PUBLICATION_DIR") {
+        return Ok(PathBuf::from(publication_dir).join("endpoint.json"));
+    }
+    let resident_endpoint = state_home
+        .join("runtime")
+        .join("resident")
+        .join("current")
+        .join("endpoint.json");
+    if tokio::fs::symlink_metadata(&resident_endpoint)
+        .await
+        .is_ok()
+    {
+        return Ok(resident_endpoint);
+    }
     Ok(runtime_server_runtime_base_async(state_home)
         .await?
         .join("endpoint.v1.json"))

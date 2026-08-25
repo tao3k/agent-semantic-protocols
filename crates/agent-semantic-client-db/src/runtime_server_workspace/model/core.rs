@@ -150,6 +150,8 @@ pub struct WorkspaceDerivedProjectionSnapshot {
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceOwnerSnapshot {
     pub owner_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority: Option<agent_semantic_search::ResidentSearchAuthority>,
     pub content_digest: String,
     pub bytes: Vec<u8>,
     pub selectors: Vec<WorkspaceSelectorSnapshot>,

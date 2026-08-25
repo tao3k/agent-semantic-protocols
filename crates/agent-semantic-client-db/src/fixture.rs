@@ -97,10 +97,15 @@ impl SourceIndexFixture {
             let materialization_source_blobs = materialization_import.source_blobs.clone();
             let canonical_source_snapshot =
                 canonical_source_snapshot(&request, &materialization_source_blobs);
+            let canonical_workspace_snapshot =
+                agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes(
+                    materialization_source_blobs.iter(),
+                );
             request.source_snapshot = canonical_source_snapshot.clone();
             let materialization =
                 crate::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
                     session.workspace_identity(),
+                    &canonical_workspace_snapshot,
                     &canonical_source_snapshot,
                     &materialization_import,
                     &materialization_source_blobs,

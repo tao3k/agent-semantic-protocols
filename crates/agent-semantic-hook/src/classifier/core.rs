@@ -93,24 +93,14 @@ pub(super) fn resolve_dispatch_decision(
         .or_else(|| payload.get("agentId"))
         .and_then(serde_json::Value::as_str)
         .filter(|value| !value.trim().is_empty());
-    let current_agent_role = payload
-        .get("agent_role")
-        .or_else(|| payload.get("agentRole"))
-        .and_then(serde_json::Value::as_str)
-        .filter(|value| !value.trim().is_empty());
-    let target_role = dispatch_target_field(&decision, "targetAgentRole");
-    let current_agent_roles = payload
-        .get("agent_roles")
-        .or_else(|| payload.get("agentRoles"))
-        .and_then(serde_json::Value::as_array);
-    let role_matches = target_role.is_some_and(|target| {
-        current_agent_role.is_some_and(|role| role.eq_ignore_ascii_case(target))
-            || current_agent_roles.is_some_and(|roles| {
-                roles.iter().any(|role| {
-                    role.as_str()
-                        .is_some_and(|role| role.eq_ignore_ascii_case(target))
-                })
-            })
+    let target_agent = dispatch_target_field(&decision, "targetAgent");
+    let agent_matches = target_agent.is_some_and(|target| {
+        current_agent.is_some_and(|current| {
+            current
+                .chars()
+                .map(|ch| if ch == '-' { '_' } else { ch })
+                .eq(target.chars().map(|ch| if ch == '-' { '_' } else { ch }))
+        })
     });
     let registration_verified = payload
         .get("registration_verified")
@@ -121,7 +111,8 @@ pub(super) fn resolve_dispatch_decision(
     if registration_verified
         && current_agent.is_some()
         && current_agent_id.is_some()
-        && (role_matches || registered_intent_matches)
+        && agent_matches
+        && registered_intent_matches
     {
         decision.decision = DecisionKind::Allow;
         decision.reason_kind = ReasonKind::None;
@@ -144,7 +135,7 @@ pub(super) fn resolve_dispatch_decision(
                 if registered_intent_matches {
                     "verified-registration-intent"
                 } else {
-                    "verified-registration-role"
+                    "verified-registration-agent"
                 }
                 .to_owned(),
             ),
@@ -152,10 +143,14 @@ pub(super) fn resolve_dispatch_decision(
         return decision;
     }
 
-    let target_role = target_role.unwrap_or("configured");
+    let target_agent = target_agent.unwrap_or("configured");
     let receipt_kind = dispatch_target_field(&decision, "receiptKind").unwrap_or("unspecified");
+    let target_symbol = dispatch_target_field(&decision, "targetAgentSymbol")
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("@{target_agent}"));
     let dispatch_instruction = render_choice_plane_instruction(AgentDispatchMessageFields {
-        role: target_role,
+        agent: target_agent,
+        symbol: Some(&target_symbol),
         receipt_kind,
     });
     if decision.message.trim().is_empty() {
@@ -348,7 +343,10 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
         return with_hook_match_receipt(decision, request.payload, &actions, request.config);
     }
     let decision = resolve_dispatch_decision(decision, request.payload);
-    let decision = enforce_registered_subagent_capability(decision, request.payload, &actions);
+    let mut decision = enforce_registered_subagent_capability(decision, request.payload, &actions);
+    if decision.reason_kind == ReasonKind::RegisteredSourceRouteRequired {
+        super::materialize_source_access_deny_message(&mut decision);
+    }
     let decision = super::with_selector_only_subagent_message(decision);
     let decision = with_prompt_scope_fields(decision, request.payload);
     let decision =
@@ -412,6 +410,14 @@ pub(super) fn with_action_receipt_fields(
     payload: &Value,
     actions: &[ToolAction],
 ) -> HookDecision {
+    if !decision.fields.contains_key("agentAction")
+        && let Some(action) = actions.first()
+    {
+        decision.fields.insert(
+            "agentAction".to_string(),
+            action.derive_agent_action().receipt_value(),
+        );
+    }
     let payload_keys = payload
         .as_object()
         .map(|object| object.keys().cloned().collect::<Vec<_>>())

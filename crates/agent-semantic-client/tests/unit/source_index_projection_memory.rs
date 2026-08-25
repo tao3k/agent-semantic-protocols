@@ -1,4 +1,6 @@
-use super::{encode_semantic_projection, normalized_item_parser_facts};
+use super::{
+    auxiliary_owner_applies_to_source, encode_semantic_projection, normalized_item_parser_facts,
+};
 use agent_semantic_client_db::runtime_server_workspace::ExactProjectionKind;
 use agent_semantic_provider_transport::projection_batch::{
     ProviderProjectedItem, ProviderProjectedItemIdentity,
@@ -44,6 +46,22 @@ fn normalized_selector_fact_is_item_local_and_scales_linearly() {
         selector_count * baseline.len(),
         "selector proof bytes must scale with item facts only"
     );
+}
+
+#[test]
+fn auxiliary_context_is_limited_to_source_ancestors() {
+    assert!(auxiliary_owner_applies_to_source(
+        "Cargo.toml",
+        "crates/core/src/lib.rs"
+    ));
+    assert!(auxiliary_owner_applies_to_source(
+        "crates/core/Cargo.toml",
+        "crates/core/src/lib.rs"
+    ));
+    assert!(!auxiliary_owner_applies_to_source(
+        "crates/other/Cargo.toml",
+        "crates/core/src/lib.rs"
+    ));
 }
 
 #[test]

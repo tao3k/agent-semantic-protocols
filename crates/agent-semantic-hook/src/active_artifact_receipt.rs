@@ -1,9 +1,7 @@
 use agent_semantic_content_identity::active_artifact_merkle::{
     ActiveArtifactKind, ActiveArtifactLeaf, ActiveAspArtifactReceipt,
 };
-use agent_semantic_content_identity::exact_selector_merkle::{
-    blake3_content_digest_v1, parse_content_digest_v1,
-};
+use agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -122,8 +120,10 @@ pub fn rebind_active_asp_binary_receipt_if_present(
         .map_err(|error| format!("failed to inspect {}: {error}", activation_path.display()))?;
     let activation_bytes = fs::read(&activation_path)
         .map_err(|error| format!("failed to read {}: {error}", activation_path.display()))?;
-    let binary_digest = parse_content_digest_v1(binary_digest)
-        .map_err(|_| format!("invalid BLAKE3 ASP binary digest: {binary_digest}"))?;
+    let binary_digest =
+        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(binary_digest)
+            .map_err(|_| format!("invalid BLAKE3 ASP binary digest: {binary_digest}"))?
+            .into_content_digest();
     let leaves = vec![
         ActiveArtifactLeaf::new(
             "runtime/asp",
@@ -195,8 +195,10 @@ pub fn materialize_active_asp_artifact_receipt(
         .map_err(|error| format!("failed to inspect {}: {error}", binary_path.display()))?;
     let activation_bytes = fs::read(&activation_path)
         .map_err(|error| format!("failed to read {}: {error}", activation_path.display()))?;
-    let binary_digest = parse_content_digest_v1(binary_digest)
-        .map_err(|_| format!("invalid BLAKE3 ASP binary digest: {binary_digest}"))?;
+    let binary_digest =
+        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(binary_digest)
+            .map_err(|_| format!("invalid BLAKE3 ASP binary digest: {binary_digest}"))?
+            .into_content_digest();
     let artifact_byte_reads = 0;
     let artifact_bytes_read = 0;
     let leaves = vec![

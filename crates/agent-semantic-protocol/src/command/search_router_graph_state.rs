@@ -1,5 +1,8 @@
+//! Typed continuation identity for interactive graph-first search routing.
+
 use serde::{Deserialize, Serialize};
 
+/// Stable identity of one resumable interactive graph-search continuation.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InteractiveGraphContinuationIdentity {
@@ -38,6 +41,7 @@ impl InteractiveGraphContinuationIdentity {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// Search-budget accounting accumulated across one interactive graph hop.
 pub struct InteractiveGraphHopAccounting {
     pub semantic_graph_hops: u32,
     pub executed_graph_hops: u32,
@@ -45,6 +49,7 @@ pub struct InteractiveGraphHopAccounting {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// GraphTurbo invocation accounting attached to one interactive search continuation.
 pub struct GraphTurboInvocationAccounting {
     pub input_nodes: u64,
     pub input_edges: u64,
@@ -58,6 +63,7 @@ pub struct GraphTurboInvocationAccounting {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// Aggregate GraphTurbo accounting for one interactive graph-search response.
 pub struct GraphTurboAccounting {
     pub invocations: u32,
     pub input_nodes: u64,

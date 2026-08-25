@@ -12,8 +12,8 @@ use agent_semantic_client_protocol::{
     ClientWorkspaceIdentity, SCHEMA_VERSION,
 };
 use agent_semantic_client_server::{
-    AspClientDispatchFuture, AspClientDispatchRequest, AspClientDispatcher,
-    AspClientProtocolHttpService, AspClientProtocolSession, HttpJsonRequest,
+    AspClientCancelFuture, AspClientDispatchFuture, AspClientDispatchRequest, AspClientDispatcher,
+    AspClientProtocolHttpService, HttpJsonRequest,
 };
 use serde_json::json;
 use tokio::sync::Notify;
@@ -33,8 +33,8 @@ impl AspClientDispatcher for Dispatcher {
         _: &ClientWorkspaceIdentity,
         _: &ClientSessionId,
         _: &ClientRequestId,
-    ) -> bool {
-        true
+    ) -> AspClientCancelFuture {
+        Box::pin(async { true })
     }
 }
 
@@ -68,10 +68,10 @@ impl AspClientDispatcher for SlowDispatcher {
         _: &ClientWorkspaceIdentity,
         _: &ClientSessionId,
         _: &ClientRequestId,
-    ) -> bool {
+    ) -> AspClientCancelFuture {
         self.cancelled.store(true, Ordering::Release);
         self.release.notify_waiters();
-        true
+        Box::pin(async { true })
     }
 }
 
@@ -122,57 +122,6 @@ fn catalog() -> ClientProtocolCatalog {
             streaming: false,
         }],
     }
-}
-
-#[tokio::test]
-async fn initialize_returns_catalog_and_request_dispatches() {
-    let dispatcher = Arc::new(Dispatcher {
-        requests: Mutex::new(Vec::new()),
-    });
-    let mut session =
-        AspClientProtocolSession::new(catalog(), Arc::clone(&dispatcher)).expect("session");
-    let initialized = session
-        .handle(ClientFrame::Initialize {
-            base: base(),
-            request_id: request_id("initialize"),
-            project_root: "/workspace".to_owned(),
-            client_info: ClientInfo {
-                name: "test".to_owned(),
-                version: "1".to_owned(),
-            },
-            capabilities: json!({}),
-        })
-        .await
-        .expect("initialize response");
-    assert!(matches!(
-        initialized,
-        ClientFrame::Response {
-            outcome: ClientOutcome::Ready,
-            catalog: Some(_),
-            ..
-        }
-    ));
-
-    let catalog = catalog();
-    let result = session
-        .handle(ClientFrame::Request {
-            base: base(),
-            request_id: request_id("request"),
-            catalog_generation: catalog.catalog_generation,
-            workspace_generation: catalog.workspace_generation,
-            method: "rust.search".to_owned(),
-            params: json!({"query": "owner"}),
-        })
-        .await
-        .expect("request response");
-    assert!(matches!(
-        result,
-        ClientFrame::Response {
-            outcome: ClientOutcome::Ready,
-            ..
-        }
-    ));
-    assert_eq!(dispatcher.requests.lock().expect("requests").len(), 1);
 }
 
 #[tokio::test]
@@ -300,4 +249,51 @@ async fn http_cancellation_releases_session_admission_before_dispatch() {
             ..
         }
     ));
+}
+#[tokio::test]
+async fn http_dispatch_lazily_admits_without_initialize() {
+    let dispatcher = Arc::new(Dispatcher {
+        requests: Mutex::new(Vec::new()),
+    });
+    let service = AspClientProtocolHttpService::new(Arc::clone(&dispatcher), |_| Ok(catalog()));
+    let frame = ClientFrame::Dispatch {
+        base: base(),
+        request_id: request_id("dispatch-without-initialize"),
+        project_root: "/workspace".to_owned(),
+        client_info: ClientInfo {
+            name: "asp-client-test".to_owned(),
+            version: "1".to_owned(),
+        },
+        method: "rust.search".to_owned(),
+        params: json!({"operation": "pipe", "query": "ready"}),
+    };
+
+    let started = tokio::time::Instant::now();
+    let response = service
+        .handle(HttpJsonRequest {
+            method: "POST".to_owned(),
+            path: "/protocol/frame".to_owned(),
+            body: serde_json::to_vec(&frame).expect("encode frame").into(),
+        })
+        .await
+        .expect("HTTP response");
+    let elapsed = started.elapsed();
+
+    assert_eq!(response.status, 200);
+    assert!(
+        elapsed < std::time::Duration::from_millis(1),
+        "typed ASP Client dispatch exceeded 1ms: {elapsed:?}"
+    );
+    let response: ClientFrame = serde_json::from_slice(&response.body).expect("response frame");
+    assert!(matches!(
+        response,
+        ClientFrame::Response {
+            outcome: ClientOutcome::Ready,
+            catalog: None,
+            ..
+        }
+    ));
+    let requests = dispatcher.requests.lock().expect("requests");
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].method, "rust.search");
 }

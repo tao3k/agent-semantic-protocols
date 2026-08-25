@@ -109,6 +109,16 @@ pub struct ProviderProcessSupervisor {
     cancellation: tokio_util::sync::CancellationToken,
     active: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     idle: std::sync::Arc<tokio::sync::Notify>,
+    started: tokio::sync::broadcast::Sender<ProviderProcessStarted>,
+}
+
+/// Event emitted after Tokio has created the provider child process.
+///
+/// Consumers subscribe before submitting work, so lifecycle coordination does
+/// not depend on filesystem polling or guessed startup delays.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProviderProcessStarted {
+    pub process_id: Option<u32>,
 }
 
 struct ProviderProcessExecutionGuard {
@@ -133,12 +143,19 @@ impl ProviderProcessSupervisor {
 
     /// Creates a supervisor with an explicit bounded concurrency limit.
     pub fn with_capacity(capacity: usize) -> Self {
+        let (started, _) = tokio::sync::broadcast::channel(capacity.max(1));
         Self {
             permits: std::sync::Arc::new(tokio::sync::Semaphore::new(capacity.max(1))),
             cancellation: tokio_util::sync::CancellationToken::new(),
             active: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             idle: std::sync::Arc::new(tokio::sync::Notify::new()),
+            started,
         }
+    }
+
+    /// Subscribes to provider start events owned by this supervisor instance.
+    pub fn subscribe_started(&self) -> tokio::sync::broadcast::Receiver<ProviderProcessStarted> {
+        self.started.subscribe()
     }
 
     /// Cancels queued and active work, closes admission, and waits until every
@@ -176,6 +193,7 @@ impl ProviderProcessSupervisor {
         let cancellation = self.cancellation.clone();
         let active = self.active.clone();
         let idle = self.idle.clone();
+        let started = self.started.clone();
         let span = info_span!(
             "provider_process",
             program = %spec.program,
@@ -201,6 +219,9 @@ impl ProviderProcessSupervisor {
             let stderr_mode = spec.stderr;
             let limits = spec.limits;
             let mut child = spawn_provider_process(&spec, &stdin_mode).await?;
+            let _ = started.send(ProviderProcessStarted {
+                process_id: child.id(),
+            });
             debug!("spawned provider process");
             let io_tasks = spawn_provider_io_tasks(
                 &mut child,

@@ -22,9 +22,9 @@ use format::{
 // Layout 0002 adds the same-segment projection evidence-context catalog.
 // Keeping the old magic would make a 144-byte layout look structurally valid
 // to the 160-byte decoder and reinterpret owner-table bytes as context offsets.
-const MAGIC: &[u8; 16] = b"ASPEXACTMMAP0002";
+const MAGIC: &[u8; 16] = b"ASPEXACTMMAP0003";
 const HEADER_LEN: usize = 160;
-const OWNER_ENTRY_LEN: usize = 112;
+const OWNER_ENTRY_LEN: usize = 144;
 const SELECTOR_ENTRY_LEN: usize = 104;
 const RELOCATION_ENTRY_LEN: usize = 40;
 
@@ -329,12 +329,13 @@ impl MappedWorkspaceExactProjection {
                 candidates: relocated,
             });
         }
-        let owner_path = structural_selector
-            .split_once("://")
-            .and_then(|(_, selector)| selector.split_once('#'))
-            .map(|(owner_path, _)| owner_path)
-            .ok_or_else(|| "exact structural selector is missing its owner path".to_owned())?;
-        let Some((owner_index, owner)) = self.find_owner(owner_path)? else {
+        let owner_path =
+            agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
+                structural_selector,
+            )
+            .map_err(|error| format!("exact structural selector is not canonical: {error}"))?
+            .owner_path()?;
+        let Some((owner_index, owner)) = self.find_owner(&owner_path)? else {
             return Ok(WorkspaceRuntimeSelectorRead::OwnerMissing {
                 generation_digest: self.generation_digest.clone(),
                 root_digest: self.root_digest.clone(),
@@ -405,6 +406,7 @@ impl MappedWorkspaceExactProjection {
     ) -> Result<WorkspaceOwnerSnapshot, String> {
         Ok(WorkspaceOwnerSnapshot {
             owner_path: self.owner_path(owner)?.to_owned(),
+            authority: self.owner_authority(owner)?,
             content_digest: self.owner_digest(owner)?.to_owned(),
             bytes: self.owner_bytes(owner)?.to_vec(),
             selectors: self.owner_selectors(owner_index)?,
@@ -672,7 +674,11 @@ impl MappedWorkspaceExactProjection {
             digest_len: read_usize(bytes, 56, "owner digest length")?,
             blob_offset: read_usize(bytes, 64, "owner blob offset")?,
             blob_len: read_usize(bytes, 72, "owner blob length")?,
-            projection_digest: bytes[80..112]
+            language_offset: read_usize(bytes, 80, "owner language offset")?,
+            language_len: read_usize(bytes, 88, "owner language length")?,
+            provider_offset: read_usize(bytes, 96, "owner provider offset")?,
+            provider_len: read_usize(bytes, 104, "owner provider length")?,
+            projection_digest: bytes[112..144]
                 .try_into()
                 .map_err(|_| "workspace exact owner projection digest is invalid".to_owned())?,
         })
@@ -732,6 +738,36 @@ impl MappedWorkspaceExactProjection {
         )
     }
 
+    fn owner_authority(
+        &self,
+        owner: &OwnerEntry,
+    ) -> Result<Option<agent_semantic_search::ResidentSearchAuthority>, String> {
+        if owner.language_len == 0 && owner.provider_len == 0 {
+            return Ok(None);
+        }
+        if owner.language_len == 0 || owner.provider_len == 0 {
+            return Err("workspace exact owner authority is incomplete".to_owned());
+        }
+        Ok(Some(agent_semantic_search::ResidentSearchAuthority {
+            language_id: read_text(
+                &self.mapping,
+                owner.language_offset,
+                owner.language_len,
+                "owner language",
+            )?
+            .to_owned()
+            .into(),
+            provider_id: read_text(
+                &self.mapping,
+                owner.provider_offset,
+                owner.provider_len,
+                "owner provider",
+            )?
+            .to_owned()
+            .into(),
+        }))
+    }
+
     fn selector_text<'a>(&'a self, selector: &SelectorEntry) -> Result<&'a str, String> {
         read_text(
             &self.mapping,
@@ -763,6 +799,10 @@ struct OwnerEntry {
     digest_len: usize,
     blob_offset: usize,
     blob_len: usize,
+    language_offset: usize,
+    language_len: usize,
+    provider_offset: usize,
+    provider_len: usize,
     projection_digest: [u8; 32],
 }
 
@@ -827,16 +867,17 @@ fn projection_key_hash(projection_kind: &str, selector: &str) -> [u8; 32] {
 }
 
 fn relocation_identity(selector: &str) -> Result<String, String> {
-    agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
-        selector,
-    )?;
-    let (language_id, body) = selector
-        .split_once("://")
-        .ok_or_else(|| "canonical selector is missing its language".to_owned())?;
-    let (_, fragment) = body
-        .split_once('#')
-        .ok_or_else(|| "canonical selector is missing its identity fragment".to_owned())?;
-    Ok(format!("{language_id}#{fragment}"))
+    let canonical =
+        agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
+            selector,
+        )?;
+    Ok(format!(
+        "{}#{}",
+        canonical.language_id.as_str(),
+        agent_semantic_content_identity::structural_selector::encode_canonical_item_identity_path(
+            &canonical.identity()
+        )
+    ))
 }
 
 fn relocation_key_hash(identity: &str) -> [u8; 32] {
@@ -846,6 +887,13 @@ fn relocation_key_hash(identity: &str) -> [u8; 32] {
 }
 
 fn owner_projection_digest(owner: &WorkspaceOwnerSnapshot) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    if let Some(authority) = &owner.authority {
+        hasher.update(authority.language_id.as_str().as_bytes());
+        hasher.update(&[0]);
+        hasher.update(authority.provider_id.as_str().as_bytes());
+        hasher.update(&[0]);
+    }
     let mut rows = owner
         .selectors
         .iter()
@@ -876,7 +924,6 @@ fn owner_projection_digest(owner: &WorkspaceOwnerSnapshot) -> [u8; 32] {
             .then_with(|| left.3.cmp(&right.3))
             .then_with(|| left.4.cmp(right.4))
     });
-    let mut hasher = blake3::Hasher::new();
     for (projection_kind, selector, byte_start, byte_end, projection_bytes) in rows {
         hash_len_prefixed(&mut hasher, projection_kind.as_bytes());
         hash_len_prefixed(&mut hasher, selector.as_bytes());

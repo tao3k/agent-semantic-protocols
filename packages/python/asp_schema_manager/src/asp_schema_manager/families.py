@@ -34,6 +34,12 @@ def load_family_registry(
                 "message": str(error),
             }
         ]
+    families = value.get("families", []) if isinstance(value, dict) else []
+    family_contract_value = {
+        "schemaId": "asp.schema-family-registry.v1",
+        "schemaVersion": "1",
+        "families": families,
+    }
     diagnostics = [
         {
             "severity": "error",
@@ -42,11 +48,10 @@ def load_family_registry(
             "jsonPointer": "/" + "/".join(str(part) for part in error.path),
         }
         for error in sorted(
-            Draft202012Validator(contract).iter_errors(value),
+            Draft202012Validator(contract).iter_errors(family_contract_value),
             key=lambda item: list(item.path),
         )
     ]
-    families = value.get("families", []) if isinstance(value, dict) else []
     return [item for item in families if isinstance(item, dict)], diagnostics
 
 

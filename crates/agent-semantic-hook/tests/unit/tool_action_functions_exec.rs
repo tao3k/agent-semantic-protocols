@@ -1,5 +1,102 @@
-use super::{collect_tool_actions, workspace_mutation_paths};
+use super::{OperationIntent, collect_tool_actions, workspace_mutation_paths};
 use serde_json::json;
+
+#[test]
+fn canonical_host_envelopes_project_parser_owned_operation_intents() {
+    let cases = [
+        (
+            "fs/readFile",
+            json!({ "path": "docs/plan.org" }),
+            OperationIntent::DirectRead,
+            "docs/plan.org",
+        ),
+        (
+            "apply_patch",
+            json!({
+                "patch": "*** Begin Patch\n*** Update File: src/lib.rs\n@@\n-old\n+new\n*** End Patch"
+            }),
+            OperationIntent::ApplyPatch,
+            "src/lib.rs",
+        ),
+        (
+            "Bash",
+            json!({ "command": "printf ok" }),
+            OperationIntent::ShellCommand,
+            "",
+        ),
+        (
+            "Grep",
+            json!({ "pattern": "owner", "path": "src" }),
+            OperationIntent::FileSearch,
+            "src",
+        ),
+        (
+            "fs/readDirectory",
+            json!({ "path": "docs" }),
+            OperationIntent::DirectoryRead,
+            "docs",
+        ),
+        (
+            "mcp__filesystem__read_file",
+            json!({ "uri": "README.md" }),
+            OperationIntent::DirectRead,
+            "README.md",
+        ),
+    ];
+
+    for (tool_name, payload, expected_operation, expected_path) in cases {
+        let actions = collect_tool_actions(tool_name, &payload);
+        let action = actions
+            .iter()
+            .find(|action| action.operation == expected_operation)
+            .unwrap_or_else(|| panic!("missing {expected_operation:?} for {tool_name}"));
+        if !expected_path.is_empty() {
+            assert!(
+                action.paths.iter().any(|path| path == expected_path),
+                "missing {expected_path} for {tool_name}: {:?}",
+                action.paths
+            );
+        }
+        if tool_name == "mcp__filesystem__read_file" {
+            let agent_action = action.derive_agent_action();
+            assert_eq!(
+                agent_action.host.action,
+                crate::action_ir::HostInvocationKind::Mcp
+            );
+            assert!(agent_action.capabilities.iter().any(|capability| {
+                capability.action == crate::action_ir::AgentActionKind::Read
+            }));
+        }
+    }
+}
+
+#[test]
+fn nested_host_envelopes_preserve_each_semantic_operation() {
+    let payload = json!({
+        "tool_uses": [
+            {
+                "recipient_name": "fs/readFile",
+                "parameters": { "path": "README.md" }
+            },
+            {
+                "recipient_name": "apply_patch",
+                "parameters": {
+                    "patch": "*** Begin Patch\n*** Update File: src/lib.rs\n@@\n-old\n+new\n*** End Patch"
+                }
+            }
+        ]
+    });
+
+    let actions = collect_tool_actions("multi_tool_use.parallel", &payload);
+    assert!(actions.iter().any(|action| {
+        action.operation == OperationIntent::DirectRead
+            && action.paths.iter().any(|path| path == "README.md")
+    }));
+    assert!(actions.iter().any(|action| {
+        action.operation == OperationIntent::ApplyPatch
+            && action.paths.iter().any(|path| path == "src/lib.rs")
+    }));
+}
 
 #[test]
 fn functions_exec_apply_patch_binding_projects_workspace_mutation_paths() {

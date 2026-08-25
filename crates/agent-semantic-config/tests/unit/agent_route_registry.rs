@@ -10,11 +10,6 @@ fn canonical_registry_path() -> std::path::PathBuf {
 #[test]
 fn canonical_registry_compiles_host_routes() {
     let loaded = load_agent_route_registry(&canonical_registry_path()).expect("canonical registry");
-    let (explorer_key, _) = loaded
-        .registry
-        .unique_route_for_role("explore")
-        .expect("unique explore route");
-    assert_eq!(explorer_key, "asp_explorer");
     assert_eq!(
         loaded
             .compile_route_for_platform_host_agent_name("codex", "asp_explorer")
@@ -39,12 +34,31 @@ fn canonical_registry_compiles_host_routes() {
     assert_eq!(claude.platform.as_str(), "claude");
     assert_eq!(codex.platform_host_agent_name.as_str(), "asp_explorer");
     assert_eq!(claude.platform_host_agent_name.as_str(), "asp-explorer");
+    assert_eq!(
+        codex.host_invocation("@asp_explorer").symbol,
+        "@asp_explorer"
+    );
+    assert_eq!(
+        codex.host_invocation("@asp_explorer").syntax,
+        "@asp_explorer"
+    );
+    assert_eq!(
+        claude.host_invocation("@agent-asp-explorer").symbol,
+        "@agent-asp-explorer"
+    );
+    assert_eq!(
+        claude.host_invocation("@agent-asp-explorer").syntax,
+        "@agent-asp-explorer"
+    );
     assert_eq!(codex.model.as_deref(), Some("gpt-5.6-luna"));
     assert_eq!(claude.model.as_deref(), Some("haiku"));
     assert!(codex.profile_path.ends_with("asp_explorer_codex.toml"));
     assert!(claude.profile_path.ends_with("asp_explorer_claude.md"));
-    assert_eq!(codex.roles, vec!["explore", "subagent"]);
-    assert_eq!(codex.allowed_rule_intents, vec!["reasoning-search"]);
+    assert_eq!(codex.roles, vec!["explore", "explorer", "subagent"]);
+    assert_eq!(
+        codex.allowed_rule_intents,
+        vec!["reasoning-search", "structured-projection"]
+    );
     assert_eq!(codex.agent_kind, "Subagent");
     assert_eq!(codex.display_role, "Evidence Explorer");
     assert_eq!(codex.description, "for code and evidence search");
@@ -70,7 +84,15 @@ fn canonical_registry_compiles_host_routes() {
     assert_eq!(testing.focus_mode, super::AgentFocusMode::Leaf);
     assert_eq!(testing.agent_kind, "Subagent");
     assert_eq!(testing.display_role, "Test Runner");
-    assert_eq!(testing.allowed_rule_intents, vec!["test-build-command"]);
+    assert_eq!(
+        testing.allowed_rule_intents,
+        vec![
+            "test-build-command",
+            "review-command",
+            "live-corpus-qualification",
+            "git-history-inspection"
+        ]
+    );
     assert_eq!(testing.description, "for build and test jobs");
     assert!(testing.profile_path.ends_with("asp_testing_codex.toml"));
     assert_eq!(testing.sandbox_mode.as_deref(), Some("read-only"));
@@ -132,35 +154,6 @@ fn anthropic_permission_modes_match_the_official_frontmatter_contract() {
             "plan"
         ])
     );
-}
-
-#[test]
-fn ambiguous_role_owner_fails_closed() {
-    let registry = super::parse_agent_route_registry(
-        r#"schema_id = "agent.semantic-protocols.agent-route-registry"
-schema_version = 1
-
-[platforms.codex]
-matcher = "*_codex.toml"
-
-[agents.first]
-session_lifetime = "resident"
-roles = ["explore"]
-allowed_rule_intents = ["reasoning-search"]
-
-[agents.second]
-session_lifetime = "resident"
-roles = ["explore"]
-allowed_rule_intents = ["reasoning-search"]
-"#,
-        "ambiguous registry fixture",
-    )
-    .expect("parse registry");
-
-    let error = registry
-        .unique_route_for_role("explore")
-        .expect_err("ambiguous role owner must fail closed");
-    assert!(error.contains("multiple routes"));
 }
 
 #[test]

@@ -2,7 +2,7 @@ include!("cli_help_model.rs");
 pub(crate) fn install_plugin_command() -> Command {
     Command::new("plugin")
         .bin_name("asp install plugin")
-        .about("Install the ASP Codex plugin")
+        .about("Install the ASP Codex plugin globally")
         .arg(
             Arg::new("codex")
                 .long("codex")
@@ -13,8 +13,7 @@ pub(crate) fn install_plugin_command() -> Command {
         .arg(
             Arg::new("project-root")
                 .value_name("PROJECT_ROOT")
-                .default_value(".")
-                .help("Locate the ASP plugin source from this project root"),
+                .help("Explicit ASP source root; defaults to ASP_STATE_HOME [dev].root"),
         )
 }
 

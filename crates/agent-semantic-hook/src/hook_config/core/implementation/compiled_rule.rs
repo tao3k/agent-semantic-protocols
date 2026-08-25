@@ -15,7 +15,7 @@ use crate::protocol::{
 use crate::tool_action::{ToolAction, subject_for_action};
 use crate::{
     AgentOrgArtifactsArchiveWarning, AgentOrgArtifactsRecovery, CompiledAgentOrgArtifactsConfig,
-    CompiledRecoveryPromptConfig, HookRuntime, collect_source_selector_matches,
+    HookRuntime, collect_source_selector_matches,
 };
 
 #[path = "compiled_rule_conversion.rs"]
@@ -77,8 +77,9 @@ pub(in crate::hook_config) struct CompiledHookRule {
 #[derive(Debug)]
 pub(in crate::hook_config) struct CompiledRuleDispatch {
     pub(super) transport: agent_semantic_config::HookClientRuleDispatchTransport,
-    pub(in crate::hook_config) target_role: String,
+    pub(in crate::hook_config) target_agent: String,
     pub(super) receipt_kind: String,
+    pub(super) calling: agent_semantic_config::HookClientAgentCallingConfig,
     lazy_provider: Option<agent_semantic_config::HookClientLazyProviderPolicy>,
 }
 
@@ -90,6 +91,7 @@ pub(super) struct RuleMatch {
     command_any: Vec<String>,
     argv_pattern_any: Vec<Vec<String>>,
     argv_prefix_any: Vec<Vec<String>>,
+    argv_token_all: Vec<String>,
     leading_environment_assignment_any: Vec<String>,
     command_contains_any: CompiledCommandContains,
     path_any: Vec<String>,
@@ -161,12 +163,15 @@ impl CompiledHookRule {
             HookClientConfigDecision::Block => DecisionKind::Block,
             HookClientConfigDecision::Deny => DecisionKind::Deny,
         };
-        let routes = self
+        let mut routes = self
             .routes
             .iter()
             .map(|route| route.decision_route(runtime))
             .collect::<Vec<_>>();
-        let message = self.rendered_message();
+        if routes.is_empty() {
+            routes = self.materialize_profile_routes(runtime, paths);
+        }
+        let message = self.rendered_message(platform);
         let mut subject = subject_for_action(action);
         subject.paths = paths.to_vec();
         let mut decision_fields = self
@@ -182,6 +187,7 @@ impl CompiledHookRule {
         super::dispatch_fields::extend_dispatch_fields(
             &mut decision_fields,
             self.dispatch.as_ref(),
+            platform,
             action,
         );
         let registered_asp = crate::hook_config::core::registered_asp::match_registered_asp_command(
@@ -192,7 +198,16 @@ impl CompiledHookRule {
         let language_ids = registered_asp
             .as_ref()
             .map(|matched| vec![matched.language_id.clone()])
-            .unwrap_or_else(|| self.language_ids.clone());
+            .unwrap_or_else(|| {
+                if self.language_ids.is_empty() {
+                    routes
+                        .iter()
+                        .map(|route| route.language_id.clone())
+                        .collect()
+                } else {
+                    self.language_ids.clone()
+                }
+            });
         if let Some(matched) = registered_asp.as_ref() {
             crate::hook_config::core::registered_asp::append_materialization_fields(
                 &mut decision_fields,
@@ -280,6 +295,7 @@ impl RuleMatch {
             agent_action: action_match::AgentActionMatch::new(
                 action_match::AgentActionMatchConfig {
                     action_any: std::mem::take(&mut config.action_any),
+                    host_invocation_any: std::mem::take(&mut config.host_invocation_any),
                     subject_kind_any: std::mem::take(&mut config.subject_kind_any),
                     policy_all: policies.all,
                     policy_any: policies.any,
@@ -291,6 +307,7 @@ impl RuleMatch {
             command_any: config.command_any,
             argv_pattern_any: config.argv_pattern_any,
             argv_prefix_any: config.argv_prefix_any,
+            argv_token_all: config.argv_token_all,
             leading_environment_assignment_any: config.leading_environment_assignment_any,
             command_contains_any,
             path_any: config.path_any,
@@ -356,6 +373,7 @@ impl RuleMatch {
     fn matches_command(&self, facts: &crate::execute_rule_facts::ExecuteRuleFacts<'_>) -> bool {
         if self.command_any.is_empty()
             && self.argv_prefix_any.is_empty()
+            && self.argv_token_all.is_empty()
             && self.leading_environment_assignment_any.is_empty()
             && self.command_contains_any.is_empty()
         {
@@ -378,31 +396,29 @@ impl RuleMatch {
                     .matches_wrapped_prefix(self.wrapper_match, prefix)
                     .routes_protected()
             });
+        let argv_token_match = self.argv_token_all.is_empty()
+            || agent_semantic_shell_parser::parse_bash_command_candidates(command).is_ok_and(
+                |stages| {
+                    stages.iter().any(|stage| {
+                        self.argv_token_all.iter().all(|expected| {
+                            stage
+                                .words()
+                                .iter()
+                                .any(|actual| actual.eq_ignore_ascii_case(expected))
+                        })
+                    })
+                },
+            );
         let leading_environment_match = environment_assignment::matches(
             command,
             &self.leading_environment_assignment_any,
             facts.leading_shell_stage(),
         );
-        token_match && prefix_match && contains_match && leading_environment_match
-    }
-
-    pub(super) fn matching_profile(
-        &self,
-        paths: &[String],
-    ) -> Option<&agent_semantic_config::HookClientProfileConfig> {
-        self.profile_any.iter().find(|profile| {
-            paths.iter().any(|path| {
-                std::path::Path::new(path)
-                    .extension()
-                    .and_then(|extension| extension.to_str())
-                    .is_some_and(|extension| {
-                        profile
-                            .extension_any
-                            .iter()
-                            .any(|expected| extension.eq_ignore_ascii_case(expected))
-                    })
-            })
-        })
+        token_match
+            && prefix_match
+            && argv_token_match
+            && contains_match
+            && leading_environment_match
     }
 
     fn matches_path(&self, paths: &[String]) -> bool {
@@ -495,7 +511,9 @@ impl TryFrom<HookClientRuleConfig> for CompiledHookRule {
             config,
             &[],
             &[],
+            &[],
             agent_semantic_config::WrapperMatchMode::default(),
+            &agent_semantic_config::HookClientAgentCallingConfig::default(),
         )
     }
 }
@@ -504,14 +522,18 @@ impl CompiledHookRule {
     pub(in crate::hook_config) fn try_from_with_policy(
         config: HookClientRuleConfig,
         command_profiles: &[agent_semantic_config::HookClientCommandProfileConfig],
+        command_sets: &[agent_semantic_config::HookClientCommandSetConfig],
         capability_policies: &[agent_semantic_config::HookClientCapabilityPolicyConfig],
         wrapper_match: agent_semantic_config::WrapperMatchMode,
+        agent_calling: &agent_semantic_config::HookClientAgentCallingConfig,
     ) -> Result<Self, String> {
         Self::try_from_with_policy_and_matcher(
             config,
             command_profiles,
+            command_sets,
             capability_policies,
             wrapper_match,
+            agent_calling,
             None,
             None,
         )
@@ -520,8 +542,10 @@ impl CompiledHookRule {
     fn try_from_with_policy_and_matcher(
         config: HookClientRuleConfig,
         command_profiles: &[agent_semantic_config::HookClientCommandProfileConfig],
+        command_sets: &[agent_semantic_config::HookClientCommandSetConfig],
         capability_policies: &[agent_semantic_config::HookClientCapabilityPolicyConfig],
         wrapper_match: agent_semantic_config::WrapperMatchMode,
+        agent_calling: &agent_semantic_config::HookClientAgentCallingConfig,
         durable_matcher: Option<DurableRuleMatcherArtifact>,
         executable_capabilities: Option<&std::collections::BTreeSet<String>>,
     ) -> Result<Self, String> {
@@ -538,8 +562,9 @@ impl CompiledHookRule {
             .map(|dispatch| {
                 Ok::<CompiledRuleDispatch, String>(CompiledRuleDispatch {
                     transport: dispatch.transport,
-                    target_role: dispatch.role.as_str().to_owned(),
+                    target_agent: dispatch.agent.as_str().to_owned(),
                     receipt_kind: dispatch.receipt_kind.as_str().to_owned(),
+                    calling: agent_calling.clone(),
                     lazy_provider: dispatch.lazy_provider,
                 })
             })
@@ -550,7 +575,7 @@ impl CompiledHookRule {
             .unwrap_or(ReasonKind::None);
         let dynamic_profile_route = !config.match_config.profile_extension_any.is_empty()
             || !config.match_config.profile_any.is_empty();
-        if dynamic_profile_route && reason_kind == ReasonKind::DirectSourceRead {
+        if dynamic_profile_route && reason_kind == ReasonKind::RegisteredSourceRouteRequired {
             let referenced_semantic_capabilities = config
                 .match_config
                 .capability_policy_all
@@ -583,6 +608,14 @@ impl CompiledHookRule {
         for prefix in agent_semantic_config::expand_command_profile_prefixes(
             &raw_match_config.command_profile_any,
             command_profiles,
+        )? {
+            if !raw_match_config.argv_prefix_any.contains(&prefix) {
+                raw_match_config.argv_prefix_any.push(prefix);
+            }
+        }
+        for prefix in agent_semantic_config::expand_command_set_prefixes(
+            &raw_match_config.command_set_any,
+            command_sets,
         )? {
             if !raw_match_config.argv_prefix_any.contains(&prefix) {
                 raw_match_config.argv_prefix_any.push(prefix);

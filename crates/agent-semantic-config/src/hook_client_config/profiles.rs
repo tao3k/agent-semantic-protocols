@@ -21,6 +21,16 @@ pub struct HookClientCommandProfileRef {
     pub category: String,
 }
 
+/// A repository-wide command family that is intentionally independent of any
+/// language provider profile.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientCommandSetConfig {
+    pub id: String,
+    #[serde(default)]
+    pub argv_prefix_any: Vec<Vec<String>>,
+}
+
 /// Resolve profile references into deterministic parser-owned argv prefixes.
 pub fn expand_command_profile_prefixes(
     references: &[HookClientCommandProfileRef],
@@ -44,6 +54,26 @@ pub fn expand_command_profile_prefixes(
             )
         })?;
         for prefix in category {
+            if !prefixes.contains(prefix) {
+                prefixes.push(prefix.clone());
+            }
+        }
+    }
+    Ok(prefixes)
+}
+
+/// Resolve repository-wide command-set references into deterministic argv prefixes.
+pub fn expand_command_set_prefixes(
+    references: &[String],
+    command_sets: &[HookClientCommandSetConfig],
+) -> Result<Vec<Vec<String>>, String> {
+    let mut prefixes = Vec::new();
+    for reference in references {
+        let command_set = command_sets
+            .iter()
+            .find(|command_set| command_set.id == *reference)
+            .ok_or_else(|| format!("commandSetAny references missing command set `{reference}`"))?;
+        for prefix in &command_set.argv_prefix_any {
             if !prefixes.contains(prefix) {
                 prefixes.push(prefix.clone());
             }

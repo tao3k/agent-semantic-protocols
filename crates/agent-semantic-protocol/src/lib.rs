@@ -5,9 +5,6 @@
 mod cli;
 mod command;
 pub mod session_control_plane;
-pub use command::graph_turbo_resident_process::{
-    GraphTurboResidentLaunchSpec, GraphTurboResidentProcess,
-};
 pub use command::search_router_graph_state;
 mod agent_session_choice_state;
 mod hook_break_glass;

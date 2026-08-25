@@ -23,7 +23,7 @@ fn registered_read_only_action(agent_name: &str, tool_name: &str, tool_input: Va
         "asp_explorer" => (json!(["explore", "subagent"]), json!(["reasoning-search"])),
         "asp_testing" => (
             json!(["build", "subagent", "testing"]),
-            json!(["test-build-command"]),
+            json!(["test-build-command", "live-corpus-qualification"]),
         ),
         _ => (json!(["subagent"]), json!([])),
     };
@@ -60,9 +60,8 @@ fn capabilities(decision: &Value) -> Vec<Value> {
 }
 
 #[test]
-fn shell_path_operands_do_not_invent_read_capabilities() {
-    let decision = classify(&runtime("."), "unknown-consumer src/lib.rs");
-    assert_eq!(decision["decision"], "deny");
+fn non_language_operands_do_not_invent_read_capabilities() {
+    let decision = classify(&runtime("."), "unknown-consumer Cargo.lock");
     assert!(capabilities(&decision).iter().any(|capability| {
         capability["action"] == "execute" && capability["evidence"] == "host-invocation"
     }));
@@ -78,7 +77,7 @@ fn shell_path_operand_mutation_is_not_a_structured_document_read() {
     let decision = classify(&runtime("."), "git add -u -- policy.toml");
     assert_ne!(
         decision["fields"]["configRuleId"],
-        "route-shell-structured-document-read"
+        "route-structured-document-read"
     );
     assert!(
         !capabilities(&decision)
@@ -137,7 +136,7 @@ fn raw_structured_shell_read_is_denied_by_action_and_path_rule() {
     assert_eq!(decision["decision"], "deny");
     assert_eq!(
         decision["fields"]["configRuleId"],
-        "route-shell-structured-document-read"
+        "route-structured-document-read"
     );
     assert_eq!(decision["reasonKind"], "structured-source-read");
     assert!(capabilities(&decision).iter().any(|capability| {
@@ -147,7 +146,7 @@ fn raw_structured_shell_read_is_denied_by_action_and_path_rule() {
 
 #[test]
 fn emitted_action_ir_conforms_to_the_v1_schema() {
-    let decision = classify(&runtime("."), "unknown-consumer src/lib.rs");
+    let decision = classify(&runtime("."), "unknown-consumer Cargo.lock");
     let schema: Value =
         serde_json::from_str(include_str!("../../../schemas/agent-action.v1.schema.json"))
             .expect("parse Agent Action v1 schema");
@@ -173,13 +172,16 @@ fn registered_search_denial_emits_role_receipt_without_legacy_target_identity() 
     );
     assert_eq!(
         decision["fields"]["agentSessionAction"],
-        "dispatch-choice-plane-role"
+        "dispatch-registered-agent"
     );
     assert_eq!(decision["fields"]["transport"], "host-agent");
-    assert!(
-        decision["fields"]["targetAgentRole"]
-            .as_str()
-            .is_some_and(|value| !value.is_empty())
+    assert_eq!(
+        decision["fields"]["targetAgent"].as_str(),
+        Some("asp_explorer")
+    );
+    assert_eq!(
+        decision["fields"]["targetAgentSymbol"].as_str(),
+        Some("@asp_explorer")
     );
     assert!(
         decision["fields"]["receiptKind"]
@@ -202,6 +204,38 @@ fn agent_search_json_denial_is_owned_by_the_declared_rule() {
     );
     assert_eq!(decision["decision"], "deny");
     assert_eq!(decision["fields"]["configRuleId"], "deny-agent-search-json");
+}
+
+#[test]
+fn read_action_plus_language_profile_does_not_depend_on_executable_names() {
+    for command in [
+        "just --list | rg hook",
+        "rg hook",
+        "rg HookDecision Cargo.lock",
+    ] {
+        let decision = classify(&runtime("."), command);
+        assert_ne!(
+            decision["fields"]["configRuleId"], "route-read-to-asp-languages",
+            "command={command}"
+        );
+    }
+
+    let registered_source_read = classify(
+        &runtime("."),
+        "future-unknown-consumer crates/agent-semantic-hook/src/protocol.rs",
+    );
+    assert_eq!(registered_source_read["decision"], "deny");
+    assert_eq!(
+        registered_source_read["fields"]["configRuleId"],
+        "route-read-to-asp-languages"
+    );
+    assert!(
+        capabilities(&registered_source_read)
+            .iter()
+            .any(|capability| {
+                capability["action"] == "read" && capability["evidence"] == "shell-source-operand"
+            })
+    );
 }
 
 #[test]
@@ -339,5 +373,30 @@ fn registered_testing_profile_denies_unscoped_execution() {
     assert_eq!(
         decision["fields"]["attemptedRuleIntent"],
         "unscoped-command"
+    );
+}
+
+#[test]
+fn registered_testing_profile_admits_wrapped_live_corpus_qualification() {
+    let payload = registered_read_only_action(
+        "asp_testing",
+        "Bash",
+        json!({"command": "rtk --ultra-compact err asp live-corpus qualify"}),
+    );
+    let decision = classify_hook_scenario(
+        &runtime("."),
+        &ClientHookConfig::default(),
+        "codex",
+        "pre-tool",
+        &payload,
+    )
+    .expect("classify wrapped Live Corpus qualification");
+
+    assert_eq!(decision["decision"], "allow");
+    assert_eq!(decision["fields"]["intent"], "live-corpus-qualification");
+    assert_eq!(decision["fields"]["dispatchSatisfied"], true);
+    assert_eq!(
+        decision["fields"]["dispatchAdmission"],
+        "verified-registration-intent"
     );
 }

@@ -4,10 +4,63 @@ use agent_semantic_client_core::{
 };
 use agent_semantic_client_db::{
     CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
-    CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, ClientDbSourceIndexImport, ClientDbSourceIndexOwner,
+    CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, ClientDbSourceIndexImport,
+    ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest, ClientDbSourceIndexOwner,
     ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey, ClientDbSourceIndexRefreshRequest,
     ClientDbSourceIndexSelector, ClientDbSourceIndexSource, ClientDbSourceIndexSourceBlobs,
 };
+
+#[test]
+fn same_pass_auxiliary_blobs_receive_hashes_without_becoming_searchable_owners() {
+    let source = b"pub fn indexed() {}\n";
+    let auxiliary = b"package: test\n";
+    let import =
+        agent_semantic_client_db::build_source_index_import(ClientDbSourceIndexImportRequest {
+            generation_id: CacheGenerationId::from("same-pass-auxiliary"),
+            project_root: std::path::PathBuf::from("."),
+            schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
+            schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
+            selector_source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
+            file_hashes: vec![ClientCacheFileHash {
+                path: "src/indexed.rs".to_owned(),
+                sha256: "stale".to_owned(),
+                byte_len: 0,
+                mtime_ms: 7,
+            }],
+            source_blobs: ClientDbSourceIndexSourceBlobs::from_normalized([
+                (
+                    ClientDbSourceIndexPath::new("src/indexed.rs"),
+                    source.to_vec(),
+                ),
+                (
+                    ClientDbSourceIndexPath::new("gerbil.pkg"),
+                    auxiliary.to_vec(),
+                ),
+            ]),
+            files: vec![ClientDbSourceIndexImportFile {
+                relative_path: "src/indexed.rs".to_owned(),
+                language_id: LanguageId::from("rust"),
+                provider_id: ProviderId::from("asp-rust"),
+                text: String::from_utf8(source.to_vec()).expect("UTF-8 fixture"),
+                selectors: Vec::new(),
+                relations: Vec::new(),
+            }],
+        })
+        .expect("assemble a complete same-pass import");
+
+    assert_eq!(import.owners.len(), 1);
+    assert_eq!(import.owners[0].owner_path.as_str(), "src/indexed.rs");
+    let auxiliary_hash = import
+        .file_hashes
+        .iter()
+        .find(|file_hash| file_hash.path == "gerbil.pkg")
+        .expect("auxiliary blob hash");
+    assert_eq!(auxiliary_hash.byte_len, auxiliary.len() as u64);
+    assert_eq!(
+        auxiliary_hash.sha256,
+        format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(auxiliary))
+    );
+}
 
 fn fixture_root() -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
@@ -150,14 +203,67 @@ fn admitted_project_resolution(
 }
 
 #[test]
+fn auxiliary_snapshot_leaves_are_committed_without_becoming_searchable_owners() {
+    let root = fixture_root();
+    let project_root = root.join("auxiliary-snapshot-generation");
+    std::fs::create_dir_all(&project_root).expect("create auxiliary snapshot fixture root");
+    let (mut request, _) = generation_fixture(&project_root);
+    let source_blobs = ClientDbSourceIndexSourceBlobs::from_normalized([
+        (
+            ClientDbSourceIndexPath::new("src/materialized.rs"),
+            b"pub fn materialized() {}\n".to_vec(),
+        ),
+        (
+            ClientDbSourceIndexPath::new("gerbil.pkg"),
+            b"package: test\n".to_vec(),
+        ),
+    ]);
+    request.import.source_blobs = source_blobs.clone();
+    let workspace_snapshot =
+        agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes(source_blobs.iter());
+    let source_snapshot = workspace_snapshot.evidence(
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        blake3::hash(b"auxiliary-snapshot-provider")
+            .to_hex()
+            .to_string(),
+    );
+
+    let materialization = agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
+        "workspace-auxiliary-snapshot",
+        &workspace_snapshot,
+        &source_snapshot,
+        &request.import,
+        &source_blobs,
+        Vec::new(),
+    )
+    .expect("materialize generation with an auxiliary snapshot leaf");
+
+    assert_eq!(materialization.owners.len(), 1);
+    assert_eq!(materialization.owners[0].owner_path, "src/materialized.rs");
+    assert!(
+        materialization
+            .workspace_snapshot
+            .file_digest("gerbil.pkg")
+            .is_some()
+    );
+    assert_eq!(
+        materialization.workspace_snapshot.root_digest(),
+        materialization.source_snapshot.root_digest
+    );
+}
+
+#[test]
 fn project_resolution_graph_is_part_of_canonical_and_mmap_generation_identity() {
     let root = fixture_root();
     let project_root = root.join("project-resolution-generation");
     std::fs::create_dir_all(&project_root).expect("create ProjectResolution fixture root");
     let (request, source_blobs) = generation_fixture(&project_root);
     let source_snapshot = request.source_snapshot.clone();
+    let workspace_snapshot =
+        agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes(source_blobs.iter());
     let first = agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
         "workspace-project-resolution-generation",
+        &workspace_snapshot,
         &source_snapshot,
         &request.import,
         &source_blobs,
@@ -168,6 +274,7 @@ fn project_resolution_graph_is_part_of_canonical_and_mmap_generation_identity() 
     .expect("first resident generation");
     let second = agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
         "workspace-project-resolution-generation",
+        &workspace_snapshot,
         &source_snapshot,
         &request.import,
         &source_blobs,
@@ -412,10 +519,15 @@ fn one_workspace_persists_identical_generation_ids_per_project_resolution() {
     for project_root in [&first_root, &second_root] {
         let (mut request, source_blobs) = generation_fixture(project_root);
         let source_snapshot = request.source_snapshot.clone();
+        let workspace_snapshot =
+            agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes(
+                source_blobs.iter(),
+            );
         request.source_snapshot = source_snapshot.clone();
         let materialization =
             agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
                 workspace_identity,
+                &workspace_snapshot,
                 &source_snapshot,
                 &request.import,
                 &source_blobs,

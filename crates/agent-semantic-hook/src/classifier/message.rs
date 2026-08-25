@@ -53,18 +53,29 @@ fn prepend_typed_agent_guidance(decision: &mut HookDecision) {
             .and_then(serde_json::Value::as_str)
             .filter(|value| !value.trim().is_empty())
     };
-    let Some(role) = string_field("targetAgentRole") else {
+    let Some(agent) = string_field("targetAgent").map(str::to_owned) else {
         return;
     };
-    let receipt_kind = string_field("receiptKind").unwrap_or("the configured role receipt");
-    let lane = string_field("executionLane").unwrap_or(role);
-    let jobs = match lane {
+    let receipt_kind = string_field("receiptKind")
+        .unwrap_or("the configured role receipt")
+        .to_owned();
+    let symbol = string_field("targetAgentSymbol")
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("@{agent}"));
+    let lane = string_field("executionLane")
+        .map(str::to_owned)
+        .unwrap_or_else(|| agent.clone());
+    let jobs = match lane.as_str() {
         "testing" => "testing/build jobs",
         "explore" | "search" => "search/query jobs",
         _ => "this scoped job",
     };
     let guidance = format!(
-        "Please use `asp session --agents choice-plane` for Host role `{role}` ({jobs}); require receipt `{receipt_kind}` before retrying."
+        "Please invoke `{symbol}` for registered Agent `{agent}` ({jobs}) through `asp session --agents choice-plane`; require receipt `{receipt_kind}` before retrying."
+    );
+    decision.fields.insert(
+        "targetAgentSymbol".to_owned(),
+        serde_json::Value::String(symbol),
     );
     if !decision.message.contains(&guidance) {
         decision.message.insert(0, '\n');

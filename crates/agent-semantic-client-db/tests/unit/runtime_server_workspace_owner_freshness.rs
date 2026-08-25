@@ -5,6 +5,7 @@ use crate::runtime_server_workspace::{
 
 fn owner(selectors: Vec<WorkspaceSelectorSnapshot>) -> WorkspaceOwnerSnapshot {
     WorkspaceOwnerSnapshot {
+        authority: None,
         owner_path: "src/lib.rs".to_owned(),
         content_digest: format!("blake3-256:{}", "a".repeat(64)),
         bytes: b"fn run() {}\n".to_vec(),

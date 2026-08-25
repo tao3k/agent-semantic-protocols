@@ -81,7 +81,7 @@ async fn adaptive_concurrent_runtime_control_is_sub_millisecond_at_p99() {
     let restart = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Restart,
-        agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+        agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
             value: "next-runtime-digest".to_owned(),
             algorithm: "blake3-256".to_owned(),
         },

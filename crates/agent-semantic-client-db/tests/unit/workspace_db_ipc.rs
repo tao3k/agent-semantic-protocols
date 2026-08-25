@@ -29,6 +29,7 @@ fn runtime_owner_relocation_has_one_atomic_v1_wire_shape() {
         project_root: "/workspace".to_owned(),
         previous_owner_path: "src/previous.rs".to_owned(),
         owner: agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot {
+            authority: None,
             owner_path: "src/current.rs".to_owned(),
             content_digest:
                 "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

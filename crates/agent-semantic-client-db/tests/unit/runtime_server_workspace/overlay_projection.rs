@@ -27,6 +27,7 @@ fn resident_pointer(
 
 fn owner(path: &str, selector: &str, bytes: &[u8]) -> WorkspaceOwnerSnapshot {
     WorkspaceOwnerSnapshot {
+        authority: None,
         owner_path: path.to_owned(),
         content_digest: format!("blake3-256:{}", blake3::hash(bytes).to_hex()),
         bytes: bytes.to_vec(),

@@ -4,6 +4,15 @@
   "title": "Provider Family Definitions v1",
   "description": "Shared definitions owned by the provider schema family.",
   "$defs": {
+    "providerReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languageId", "providerId"],
+      "properties": {
+        "languageId": { "type": "string", "minLength": 1 },
+        "providerId": { "type": "string", "minLength": 1 }
+      }
+    },
     "relationEndpoint": {
       "type": "object",
       "additionalProperties": false,

@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "RenderedSearchProjectionV1",
+  "$id": "https://schemas.agent-semantic-protocols.dev/rendered-search-projection.v1.schema.json",
+  "title": "Rendered Search Projection",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -155,15 +155,15 @@ fn command_shard_covers_every_configured_profile_and_rule_pattern_without_litera
             "prefix={prefix:?}"
         );
         if expected.reason_kind == crate::ReasonKind::SubagentReceiptRequired {
-            let target_role = actual
+            let target_agent = actual
                 .fields
-                .get("targetAgentRole")
+                .get("targetAgent")
                 .and_then(serde_json::Value::as_str)
-                .expect("dispatch decision projects its ChoicePlane target role");
-            assert!(!target_role.is_empty());
+                .expect("dispatch decision projects its registered Agent");
+            assert!(!target_agent.is_empty());
             assert_eq!(
                 actual.fields.get("agentSessionAction"),
-                Some(&serde_json::json!("dispatch-choice-plane-role"))
+                Some(&serde_json::json!("dispatch-registered-agent"))
             );
             assert!(
                 actual

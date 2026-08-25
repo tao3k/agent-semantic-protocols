@@ -192,6 +192,7 @@ pub(super) async fn write_turso_source_index_rows(
                     let full_materialization =
                 crate::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
             materialization.workspace_identity.clone(),
+                            &workspace_snapshot,
                             &successor_source_snapshot,
                             &full_import,
                             &full_import.source_blobs,

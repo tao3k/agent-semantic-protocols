@@ -85,8 +85,8 @@ impl From<String> for HookEventStateError {
 /// Policy selection recorded by a denied Hook event.
 ///
 /// Resident identity is intentionally absent. `asp session` resolves the
-/// selected rule's semantic role through the current managed config and agent
-/// registry, so a Hook receipt cannot become a second agent registry.
+/// selected rule's stable Agent route key through the current managed config
+/// and agent registry, so a Hook receipt cannot become a second registry.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HookSessionAgentRoute {
     pub command_digest: Option<String>,
@@ -99,7 +99,7 @@ pub struct HookSessionAgentRoute {
 
 fn should_preserve_parser_route_message(decision: &HookDecision) -> bool {
     !decision.routes.is_empty()
-        || decision.has_dispatch_choice_plane_role()
+        || decision.has_registered_agent_dispatch()
         || decision.fields.contains_key("agentSessionAction")
             && decision.fields.contains_key("agentSessionRoute")
 }

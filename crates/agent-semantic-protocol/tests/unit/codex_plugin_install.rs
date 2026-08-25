@@ -329,14 +329,14 @@ developer_instructions = "test projection"
         );
         assert!(stdout.contains("Arguments:"), "stdout={stdout}");
         assert!(stdout.contains("Options:"), "stdout={stdout}");
+        assert!(stdout.contains("globally"), "stdout={stdout}");
         assert!(
-            stdout.contains("Install globally (default when no scope flag is given)"),
+            stdout.contains("ASP_STATE_HOME [dev].root"),
             "stdout={stdout}"
         );
-        assert!(stdout.contains("--global-plugin"), "stdout={stdout}");
-        assert!(stdout.contains("--project"), "stdout={stdout}");
-        assert!(stdout.contains("--project-plugin"), "stdout={stdout}");
-        assert!(stdout.contains("[default: .]"), "stdout={stdout}");
+        assert!(!stdout.contains("--global-plugin"), "stdout={stdout}");
+        assert!(!stdout.contains("--project-plugin"), "stdout={stdout}");
+        assert!(!stdout.contains("[default: .]"), "stdout={stdout}");
     }
 
     #[test]

@@ -7,6 +7,7 @@ fn registered_language_facades() -> Vec<String> {
                 .profiles
                 .values()
                 .map(|profile| profile.language_id.clone())
+                .filter(|language_id| !matches!(language_id.as_str(), "md" | "org"))
                 .collect::<std::collections::BTreeSet<_>>()
                 .into_iter()
                 .collect()

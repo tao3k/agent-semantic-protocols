@@ -4,10 +4,24 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 mod routes;
+mod server_method_catalog;
+#[cfg(test)]
+#[path = "../tests/unit/server_method_catalog.rs"]
+mod server_method_catalog_tests;
+pub mod workspace_source_mutation;
+#[cfg(test)]
+#[path = "../tests/unit/workspace_source_mutation.rs"]
+mod workspace_source_mutation_tests;
 pub use routes::{
-    AspClientExactQueryRequest, AspClientOwnerSearchRequest, AspClientSearchRequest,
-    ProviderNativeExactProjection, ProviderNativeExactRequest, ProviderNativeOwnerSearchRequest,
+    AspClientExactQueryRequest, AspClientExactQueryResponse, AspClientOwnerSearchRequest,
+    AspClientRuntimeWorkCounters, AspClientSearchRequest, ProviderNativeExactProjection,
+    ProviderNativeExactRequest, ProviderNativeOwnerSearchRequest,
     ProviderNativeOwnerSearchResponse, RuntimeProviderSearchRequest,
+};
+pub use server_method_catalog::{
+    CANCELLATION_PROBE_METHOD, CANCELLATION_PROBE_REQUEST_SCHEMA_ID,
+    CANCELLATION_PROBE_RESPONSE_SCHEMA_ID, ServerClientRoute, resolve_server_client_method,
+    server_client_catalog, server_client_methods,
 };
 
 pub const CLIENT_PROTOCOL_ID: &str = "agent.semantic-protocols.client";
@@ -132,6 +146,8 @@ pub enum ClientParameterSource {
     RuntimeContext,
 }
 
+pub mod runtime_generation;
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(
     tag = "kind",
@@ -147,6 +163,15 @@ pub enum ClientFrame {
         project_root: String,
         client_info: ClientInfo,
         capabilities: Value,
+    },
+    Dispatch {
+        #[serde(flatten)]
+        base: ClientFrameBase,
+        request_id: ClientRequestId,
+        project_root: String,
+        client_info: ClientInfo,
+        method: String,
+        params: Value,
     },
     Request {
         #[serde(flatten)]
@@ -365,6 +390,7 @@ impl ClientFrame {
     pub fn base(&self) -> &ClientFrameBase {
         match self {
             Self::Initialize { base, .. }
+            | Self::Dispatch { base, .. }
             | Self::Request { base, .. }
             | Self::Cancel { base, .. }
             | Self::Shutdown { base, .. }
@@ -397,6 +423,7 @@ impl ClientFrame {
         }
         let correlated_request_id = match self {
             Self::Initialize { request_id, .. }
+            | Self::Dispatch { request_id, .. }
             | Self::Request { request_id, .. }
             | Self::Cancel { request_id, .. }
             | Self::Shutdown { request_id, .. }

@@ -71,7 +71,10 @@ fn rust_harness_activation_routes_explicit_reads_to_owner_frontier() {
     );
 
     assert_eq!(decision.decision, DecisionKind::Deny);
-    assert_eq!(decision.reason_kind, ReasonKind::DirectSourceRead);
+    assert_eq!(
+        decision.reason_kind,
+        ReasonKind::RegisteredSourceRouteRequired
+    );
     assert_eq!(decision.language_ids, ["rust"]);
     assert_eq!(decision.routes[0].kind, DecisionRouteKind::Owner);
     assert_eq!(decision.routes[0].provider_id, "asp-rust");
@@ -90,14 +93,13 @@ fn rust_harness_activation_routes_source_glob_search_to_lexical_frontier() {
     );
 
     assert_eq!(decision.decision, DecisionKind::Deny);
-    assert_eq!(decision.reason_kind, ReasonKind::RawBroadSearch);
-    assert!(decision.routes.is_empty());
+    assert_eq!(decision.reason_kind, ReasonKind::RegisteredSourceRouteRequired);
     assert_eq!(
         decision
             .fields
             .get("configRuleId")
             .and_then(|value| value.as_str()),
-        Some("deny-uncontrolled-source-search-commands")
+        Some("route-read-to-asp-languages")
     );
     assert!(decision.message.contains("asp session"));
     assert!(!decision.message.contains("ASP Explore"));

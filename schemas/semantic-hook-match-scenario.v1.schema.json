@@ -36,13 +36,13 @@
       "required": [
         "ruleId",
         "decision",
-        "targetAgentRole",
+        "targetAgent",
         "receiptKind"
       ],
       "properties": {
         "ruleId": { "type": "string", "minLength": 1 },
         "decision": { "const": "deny" },
-        "targetAgentRole": { "type": "string", "minLength": 1 },
+        "targetAgent": { "type": "string", "minLength": 1 },
         "receiptKind": { "type": "string", "minLength": 1 }
       }
     },

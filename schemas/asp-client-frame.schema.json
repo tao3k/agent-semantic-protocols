@@ -5,6 +5,7 @@
   "oneOf": [
     { "$ref": "#/$defs/initialize" },
     { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/dispatch" },
     { "$ref": "#/$defs/cancel" },
     { "$ref": "#/$defs/shutdown" },
     { "$ref": "#/$defs/exit" },
@@ -70,6 +71,33 @@
             "requestId": { "type": "string", "minLength": 1 },
             "catalogGeneration": { "type": "string", "minLength": 1 },
             "workspaceGeneration": { "type": "string", "minLength": 1 },
+            "method": { "type": "string", "minLength": 1 },
+            "params": {}
+          }
+        }
+      ]
+    },
+    "dispatch": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaId", "schemaVersion", "protocolId", "protocolVersion", "kind", "sessionId", "workspaceIdentity", "requestId", "projectRoot", "clientInfo", "method", "params"],
+          "properties": {
+            "schemaId": {}, "schemaVersion": {}, "protocolId": {}, "protocolVersion": {},
+            "kind": { "const": "dispatch" }, "sessionId": {}, "workspaceIdentity": {}, "traceContext": {},
+            "requestId": { "type": "string", "minLength": 1 },
+            "projectRoot": { "type": "string", "minLength": 1 },
+            "clientInfo": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "version"],
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "version": { "type": "string", "minLength": 1 }
+              }
+            },
             "method": { "type": "string", "minLength": 1 },
             "params": {}
           }

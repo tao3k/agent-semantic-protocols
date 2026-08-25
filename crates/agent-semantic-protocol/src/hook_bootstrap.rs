@@ -150,6 +150,34 @@ async fn run_hook_bootstrap(args: Vec<OsString>) -> Result<i32, String> {
         return Ok(0);
     }
     let input = read_bounded_stdin()?;
+    if matches!(hook_event(&args), Some("pre-tool" | "permission-request")) {
+        match agent_semantic_hook::host_native_handoff::evaluate_hook_phase(
+            &input,
+            hook_event(&args).unwrap_or("unknown"),
+        ) {
+            agent_semantic_hook::host_native_handoff::HookHostNativeHandoffEvaluation::Authorized(
+                capability,
+            ) => {
+                if std::env::var_os(TRACE_ENV).is_some() {
+                    eprintln!(
+                        "[asp-hook] route=bootstrap-one-shot-host-native-handoff nonce={} receiptKind={}",
+                        capability.nonce, capability.receipt_kind,
+                    );
+                }
+                emit_empty_success()?;
+                return Ok(0);
+            }
+            agent_semantic_hook::host_native_handoff::HookHostNativeHandoffEvaluation::Rejected(error) => {
+                if std::env::var_os(TRACE_ENV).is_some() {
+                    eprintln!(
+                        "[asp-hook] route=bootstrap-host-native-handoff-rejected error={}",
+                        single_line(&error),
+                    );
+                }
+            }
+            agent_semantic_hook::host_native_handoff::HookHostNativeHandoffEvaluation::NotRequested => {}
+        }
+    }
     match crate::hook_break_glass::evaluate_hook_break_glass(&input) {
         crate::hook_break_glass::HookBreakGlassEvaluation::Authorized(capability) => {
             if std::env::var_os(TRACE_ENV).is_some() {

@@ -4,11 +4,15 @@ use std::collections::{BTreeMap, HashSet};
 
 use super::document::{
     CLIENT_HOOK_CONFIG_SCHEMA_ID, CLIENT_HOOK_CONFIG_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
-    HOOK_PROTOCOL_VERSION, HookClientAgentOrgArtifactsArchiveWarningConfig,
-    HookClientAgentOrgArtifactsConfig, HookClientConfigFile, HookClientRecoveryPromptConfig,
+    HOOK_PROTOCOL_VERSION, HookClientAgentCallingConfig,
+    HookClientAgentOrgArtifactsArchiveWarningConfig, HookClientAgentOrgArtifactsConfig,
+    HookClientConfigFile, HookClientRecoveryPromptConfig,
 };
 use super::routing::{HookClientRuleConfig, HookClientRuleMatchConfig, HookClientRuleRouteConfig};
-use super::{HookClientCommandProfileConfig, expand_command_profile_prefixes};
+use super::{
+    HookClientCommandProfileConfig, HookClientCommandSetConfig, expand_command_profile_prefixes,
+    expand_command_set_prefixes,
+};
 
 pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), String> {
     validate_protocol(config)?;
@@ -18,18 +22,44 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
     )?;
     validate_agent_org_artifacts(config.agent_org_artifacts.as_ref())?;
     validate_recovery_prompt(&config.recovery_prompt)?;
+    validate_agent_calling(&config.agent_calling)?;
     validate_profiles(&config.profiles)?;
     validate_provider_routes(&config.provider_routes)?;
     validate_rule_profile_references(&config.rules, &config.profiles)?;
     validate_command_profiles(&config.command_profiles)?;
+    validate_command_sets(&config.command_sets)?;
     validate_capability_policies(&config.capability_policies)?;
     validate_rule_dispatches(&config.rules)?;
     validate_unique_rule_ids(&config.rules)?;
     validate_rule_schema_shape(
         &config.rules,
         &config.command_profiles,
+        &config.command_sets,
         &config.capability_policies,
     )
+}
+
+fn validate_agent_calling(config: &HookClientAgentCallingConfig) -> Result<(), String> {
+    let validate_pattern = |field: &str, pattern: &str| {
+        validate_non_empty(field, pattern)?;
+        let placeholder_count =
+            pattern.matches("{name}").count() + pattern.matches("{name-kebab}").count();
+        if placeholder_count != 1 {
+            return Err(format!(
+                "{field} must contain exactly one `{{name}}` or `{{name-kebab}}` placeholder"
+            ));
+        }
+        Ok(())
+    };
+    validate_pattern("agentCalling.defaultPattern", &config.default_pattern)?;
+    for (platform, pattern) in &config.platform_patterns {
+        validate_identifier("agentCalling.platformPatterns platform", platform)?;
+        validate_pattern(
+            &format!("agentCalling.platformPatterns.{platform}"),
+            pattern,
+        )?;
+    }
+    Ok(())
 }
 
 fn validate_provider_routes(
@@ -123,7 +153,7 @@ fn validate_capability_policies(
         if !ids.insert(policy.id.as_str()) {
             return Err(format!("duplicate capability policy id `{}`", policy.id));
         }
-        if policy.action_any.is_empty()
+        if policy.host_invocation_any.is_empty()
             && policy.semantic_capability_any.is_empty()
             && policy.subject_kind_any.is_empty()
         {
@@ -183,7 +213,7 @@ fn validate_rule_dispatches(rules: &[HookClientRuleConfig]) -> Result<(), String
             continue;
         };
         let prefix = format!("rules[{}].dispatch", rule.id);
-        validate_identifier(&format!("{prefix}.role"), dispatch.role.as_str())?;
+        validate_identifier(&format!("{prefix}.agent"), dispatch.agent.as_str())?;
         validate_non_empty(
             &format!("{prefix}.receiptKind"),
             dispatch.receipt_kind.as_str(),
@@ -243,6 +273,24 @@ fn validate_command_profiles(configs: &[HookClientCommandProfileConfig]) -> Resu
     Ok(())
 }
 
+fn validate_command_sets(configs: &[HookClientCommandSetConfig]) -> Result<(), String> {
+    let mut ids = HashSet::new();
+    for config in configs {
+        validate_identifier("commandSets[].id", &config.id)?;
+        if !ids.insert(config.id.as_str()) {
+            return Err(format!("duplicate command set id `{}`", config.id));
+        }
+        if config.argv_prefix_any.is_empty() {
+            return Err(format!(
+                "commandSets[{}].argvPrefixAny must not be empty",
+                config.id
+            ));
+        }
+        validate_argv_prefix_patterns("commandSets[].argvPrefixAny", &config.argv_prefix_any)?;
+    }
+    Ok(())
+}
+
 fn validate_protocol(config: &HookClientConfigFile) -> Result<(), String> {
     expect_optional_field(
         "schemaId",
@@ -280,6 +328,7 @@ fn validate_unique_rule_ids(rules: &[HookClientRuleConfig]) -> Result<(), String
 fn validate_rule_schema_shape(
     rules: &[HookClientRuleConfig],
     profiles: &[HookClientCommandProfileConfig],
+    command_sets: &[HookClientCommandSetConfig],
     capability_policies: &[super::routing::HookClientCapabilityPolicyConfig],
 ) -> Result<(), String> {
     let capability_policy_ids = capability_policies
@@ -293,7 +342,12 @@ fn validate_rule_schema_shape(
         validate_optional_platform(rule.platform.as_deref())?;
         validate_unique_values("rules[].languageIds", &rule.language_ids)?;
         validate_identifiers("rules[].languageIds[]", &rule.language_ids)?;
-        validate_match_schema_shape(&rule.match_config, profiles, &capability_policy_ids)?;
+        validate_match_schema_shape(
+            &rule.match_config,
+            profiles,
+            command_sets,
+            &capability_policy_ids,
+        )?;
         if rule.terminal
             && !matches!(
                 rule.decision,
@@ -326,6 +380,7 @@ fn validate_rule_schema_shape(
 fn validate_match_schema_shape(
     match_config: &HookClientRuleMatchConfig,
     profiles: &[HookClientCommandProfileConfig],
+    command_sets: &[HookClientCommandSetConfig],
     capability_policy_ids: &HashSet<&str>,
 ) -> Result<(), String> {
     for (axis, references) in [
@@ -361,10 +416,18 @@ fn validate_match_schema_shape(
         }
     }
     expand_command_profile_prefixes(&match_config.command_profile_any, profiles)?;
+    validate_non_empty_values(
+        "rules[].match.commandSetAny[]",
+        &match_config.command_set_any,
+    )?;
+    validate_unique_values("rules[].match.commandSetAny", &match_config.command_set_any)?;
+    expand_command_set_prefixes(&match_config.command_set_any, command_sets)?;
     validate_optional_non_empty("rules[].match.tool", match_config.tool.as_deref())?;
     validate_non_empty_values("rules[].match.toolAny[]", &match_config.tool_any)?;
     validate_non_empty_values("rules[].match.commandAny[]", &match_config.command_any)?;
     validate_argv_prefix_patterns("rules[].match.argvPrefixAny", &match_config.argv_prefix_any)?;
+    validate_non_empty_values("rules[].match.argvTokenAll[]", &match_config.argv_token_all)?;
+    validate_unique_values("rules[].match.argvTokenAll", &match_config.argv_token_all)?;
     validate_environment_assignments(
         "rules[].match.leadingEnvironmentAssignmentAny",
         &match_config.leading_environment_assignment_any,
@@ -445,9 +508,9 @@ fn validate_argv_pattern_bindings(patterns: &[Vec<String>]) -> Result<(), String
             .iter()
             .filter(|token| token.as_str() == "<registered-language>")
             .count();
-        if bindings != 1 {
+        if bindings > 1 {
             return Err(
-                "rules[].match.argvPatternAny[] must contain exactly one `<registered-language>` binding"
+                "rules[].match.argvPatternAny[] may contain at most one `<registered-language>` binding"
                     .to_string(),
             );
         }

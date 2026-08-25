@@ -1,4 +1,4 @@
-use super::publish_mutation_generation;
+use super::{publish_mutation_generation, restored_generation_covers_demand};
 
 fn candidate() -> crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity {
     crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity {
@@ -46,6 +46,7 @@ fn generation(
             ),
             project_resolutions: Vec::new(),
             owners: vec![crate::runtime_server_workspace::WorkspaceOwnerSnapshot {
+                authority: None,
                 owner_path: "src/lib.rs".to_owned(),
                 content_digest,
                 bytes: bytes.to_vec(),
@@ -54,6 +55,53 @@ fn generation(
         },
     )
     .expect("typed mutation builder generation")
+}
+
+#[tokio::test]
+async fn provider_targeted_restore_without_candidate_binding_is_not_query_ready() {
+    let temp = tempfile::tempdir().expect("temporary restore coverage root");
+    let project_root = temp.path().join("project");
+    let workspace_identity = "workspace-restore-provider-coverage";
+    let registry = crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry::new(
+        temp.path().join("runtime"),
+    )
+    .expect("create restore coverage registry");
+    registry
+        .publish(
+            "publish-uncovered-restore",
+            crate::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
+            generation(workspace_identity, &project_root, b"fn fixture() {}\n"),
+        )
+        .await
+        .expect("publish uncovered restored generation");
+
+    assert!(!restored_generation_covers_demand(
+        &registry,
+        workspace_identity,
+        &project_root,
+        &std::collections::BTreeSet::new(),
+        None,
+    ));
+    assert!(!restored_generation_covers_demand(
+        &registry,
+        workspace_identity,
+        &project_root,
+        &std::collections::BTreeSet::new(),
+        Some(
+            &crate::runtime_server_admission::WorkspaceGenerationProviderTarget {
+                language_id: "rust".to_owned(),
+                provider_id: None,
+            },
+        ),
+    ));
+    assert!(!restored_generation_covers_demand(
+        &registry,
+        workspace_identity,
+        &project_root,
+        &std::collections::BTreeSet::from([project_root.join("src/missing.rs")]),
+        None,
+    ));
+    registry.shutdown().await.expect("shutdown registry");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -94,6 +142,7 @@ async fn mutation_builder_projects_only_changed_owner_and_publishes_one_epoch() 
                         .await
                         .map_err(|error| format!("read changed owner: {error}"))?;
                     Ok(crate::runtime_server_workspace::WorkspaceOwnerSnapshot {
+                        authority: None,
                         owner_path,
                         content_digest: format!("blake3-256:{}", blake3::hash(&bytes).to_hex()),
                         bytes,

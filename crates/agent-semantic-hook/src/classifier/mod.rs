@@ -16,7 +16,8 @@ mod recovery;
 
 pub use command_decision_rebind::{
     HookMatcherKeys, ShellCommandKey, hook_matcher_keys, rebind_command_decision_to_payload,
-    rebind_command_decision_to_payload_with_keys, shell_command_key, shell_command_keys,
+    rebind_command_decision_to_payload_with_keys, rebind_direct_read_decision_to_payload,
+    shell_command_key, shell_command_keys,
 };
 pub use core::{
     DirectReadSourceKey, HookClassificationRequest, ShellReadSourceKey, classify_hook,

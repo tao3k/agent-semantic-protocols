@@ -6,12 +6,16 @@ use super::provider_usage;
 use std::env;
 use std::path::Path;
 
+use agent_semantic_client::projection_presentation::{
+    ProjectionPresentation, render_exact_projection_response,
+};
+
 use super::gerbil_deps::try_run_gerbil_deps_index_command;
 use super::protocol_version_line;
 pub(crate) use super::provider_selector::{
     is_language_facade, unsupported_language_facade_message,
 };
-use provider_usage::{guide_usage, is_guide, provider_usage, validate_provider_command};
+use provider_usage::{guide_usage, is_guide, provider_usage};
 
 /// Observational target only; it never controls or cancels search execution.
 const SEARCH_DIAGNOSTIC_SLOW_TARGET_MICROS: u64 = 500_000;
@@ -24,29 +28,28 @@ pub(crate) async fn run_language_command(
     fn uses_client_backend(args: &[String]) -> bool {
         (args.first().is_some_and(|command| command == "search")
             && args.get(1).is_none_or(|subcommand| subcommand != "guide"))
-            || matches!(args.first().map(String::as_str), Some("cache"))
+            || matches!(args.first().map(String::as_str), Some("query" | "cache"))
     }
 
-    async fn run_runtime_provider_route(
+    async fn dispatch_asp_client_command(
         language_id: &str,
         route: &str,
         intent: serde_json::Value,
         project_root: &Path,
+        presentation: ProjectionPresentation,
     ) -> Result<(), String> {
-        let client = agent_semantic_client::RuntimeHttpClient::new(
+        let client = agent_semantic_client::AspClient::new(
             crate::server::runtime_server::state_home()?,
             project_root,
         );
-        let session = client.open_session().await?;
-        let response = session.request_route(language_id, route, intent).await;
-        let shutdown = session.shutdown().await;
-        let response = response?;
-        shutdown?;
-        println!(
-            "{}",
+        let response = client.dispatch(language_id, route, intent).await?;
+        let rendered = if route == "query" {
+            render_exact_projection_response(&response, presentation)?
+        } else {
             serde_json::to_string(&response)
                 .map_err(|error| format!("encode route response: {error}"))?
-        );
+        };
+        println!("{rendered}");
         Ok(())
     }
 
@@ -93,7 +96,6 @@ pub(crate) async fn run_language_command(
     }
     let invocation_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
-    validate_provider_command(&command_args)?;
     if is_guide_help(&command_args) {
         println!("{}", guide_usage(language_id));
         return Ok(());
@@ -113,7 +115,14 @@ pub(crate) async fn run_language_command(
             )?
             .unwrap_or_else(|| (invocation_root.clone(), command_args.clone()));
         let intent = runtime_query_intent(&exact_provider_args)?;
-        return run_runtime_provider_route(language_id, "query", intent, &exact_project_root)
+        let presentation = runtime_query_presentation(&exact_provider_args);
+        return dispatch_asp_client_command(
+            language_id,
+            "query",
+            intent,
+            &exact_project_root,
+            presentation,
+        )
         .await;
     }
     if is_search_owner_items_query(&command_args) {
@@ -125,11 +134,12 @@ pub(crate) async fn run_language_command(
             )?
             .unwrap_or_else(|| (invocation_root.clone(), command_args.clone()));
         let intent = runtime_owner_intent(&owner_args)?;
-        return run_runtime_provider_route(
+        return dispatch_asp_client_command(
             language_id,
             "search.owner",
             intent,
             &owner_project_root,
+            ProjectionPresentation::MachineJson,
         )
         .await;
     }
@@ -146,7 +156,13 @@ pub(crate) async fn run_language_command(
             .is_some_and(|command| command == "search")
         {
             let intent = runtime_search_intent(&provider_args)?;
-            return run_runtime_provider_route(language_id, "search", intent, &project_root)
+            return dispatch_asp_client_command(
+                language_id,
+                "search",
+                intent,
+                &project_root,
+                ProjectionPresentation::MachineJson,
+            )
             .await;
         }
         return Err(format!(
@@ -224,6 +240,14 @@ fn runtime_query_intent(args: &[String]) -> Result<serde_json::Value, String> {
         "selector": selector,
         "projection": projection,
     }))
+}
+
+fn runtime_query_presentation(args: &[String]) -> ProjectionPresentation {
+    if args.iter().any(|arg| arg == "--json") {
+        ProjectionPresentation::MachineJson
+    } else {
+        ProjectionPresentation::Text
+    }
 }
 
 fn runtime_owner_intent(args: &[String]) -> Result<serde_json::Value, String> {

@@ -4,6 +4,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::ops::Range;
 
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use serde::{Deserialize, Serialize};
 
 pub const PROJECTION_BATCH_REQUEST_SCHEMA_ID: &str =
@@ -14,6 +16,8 @@ pub const CANONICAL_LANGUAGE_ITEM_IDENTITY_SCHEMA_ID: &str =
     "agent.semantic-protocols.canonical-language-item-identity";
 /// Maximum owners admitted to one provider projection wire frame.
 pub const MAX_PROVIDER_PROJECTION_BATCH_OWNERS: usize = 32;
+/// Maximum immutable config owners admitted alongside one source-owner frame.
+pub const MAX_PROVIDER_PROJECTION_BATCH_AUXILIARY_OWNERS: usize = 128;
 /// Maximum aggregate unencoded source bytes admitted to one provider projection wire frame.
 ///
 /// The shared client-server contract deliberately stays below the smallest
@@ -21,14 +25,29 @@ pub const MAX_PROVIDER_PROJECTION_BATCH_OWNERS: usize = 32;
 /// independently validated frames; it is never serialized as one corpus-sized
 /// request.  The HTTP transport separately validates the final encoded frame.
 pub const MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES: usize = 384 * 1024;
+/// Maximum source bytes for a frame containing exactly one indivisible owner.
+///
+/// Native parsers require a complete owner.  Large generated sources therefore
+/// travel alone instead of forcing the entire generation into one request.  The
+/// ceiling matches the transport's bounded streamed-operation budget; the
+/// HTTP actor splits the encoded request into independently admitted chunks.
+pub const MAX_PROVIDER_PROJECTION_SINGLE_OWNER_SOURCE_BYTES: usize = 16 * 1024 * 1024;
 
 /// Plans ordered provider wire frames without splitting an individual owner.
 pub fn provider_projection_batch_ranges(owner_sizes: &[usize]) -> Vec<Range<usize>> {
+    provider_projection_batch_ranges_with_auxiliary_bytes(owner_sizes, 0)
+}
+
+/// Plans frames while reserving the repeated immutable config context bytes.
+pub fn provider_projection_batch_ranges_with_auxiliary_bytes(
+    owner_sizes: &[usize],
+    auxiliary_source_bytes: usize,
+) -> Vec<Range<usize>> {
     let mut ranges = Vec::new();
     let mut start = 0;
     while start < owner_sizes.len() {
         let mut end = start;
-        let mut source_bytes = 0usize;
+        let mut source_bytes = auxiliary_source_bytes;
         while end < owner_sizes.len() && end - start < MAX_PROVIDER_PROJECTION_BATCH_OWNERS {
             let next_source_bytes = source_bytes.saturating_add(owner_sizes[end]);
             if end > start && next_source_bytes > MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES {
@@ -60,6 +79,7 @@ pub struct ProviderProjectionBatchRequest {
     pub query_pack_digest: String,
     pub base_generation_root_digest: Option<String>,
     pub owners: Vec<ProviderProjectionOwner>,
+    pub auxiliary_owners: Vec<ProviderProjectionOwner>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -138,23 +158,12 @@ impl std::error::Error for ProviderProjectionBatchError {}
 impl ProviderProjectionBatchRequest {
     pub fn encode(&self) -> Result<Vec<u8>, ProviderProjectionBatchError> {
         self.validate()?;
-        let owners = self
-            .owners
+        let owners = self.owners.iter().map(encode_owner).collect::<Vec<_>>();
+        let auxiliary_owners = self
+            .auxiliary_owners
             .iter()
-            .map(|owner| {
-                let source_text = std::str::from_utf8(&owner.source_bytes).map_err(|error| {
-                    ProviderProjectionBatchError(format!(
-                        "projection owner is not UTF-8 {}: {error}",
-                        owner.owner_path
-                    ))
-                })?;
-                Ok(serde_json::json!({
-                    "ownerPath": owner.owner_path,
-                    "sourceLeafDigest": owner.source_leaf_digest,
-                    "sourceText": source_text,
-                }))
-            })
-            .collect::<Result<Vec<_>, ProviderProjectionBatchError>>()?;
+            .map(encode_owner)
+            .collect::<Vec<_>>();
         let mut payload = serde_json::json!({
             "schemaId": PROJECTION_BATCH_REQUEST_SCHEMA_ID,
             "schemaVersion": "1",
@@ -166,6 +175,9 @@ impl ProviderProjectionBatchRequest {
             "queryPackDigest": self.query_pack_digest,
             "owners": owners,
         });
+        if !auxiliary_owners.is_empty() {
+            payload["auxiliaryOwners"] = serde_json::Value::Array(auxiliary_owners);
+        }
         if let Some(base_digest) = &self.base_generation_root_digest {
             payload["baseGenerationRootDigest"] = serde_json::Value::String(base_digest.clone());
         }
@@ -184,7 +196,20 @@ impl ProviderProjectionBatchRequest {
         if let Some(base_digest) = self.base_generation_root_digest.as_deref() {
             require_text("baseGenerationRootDigest", base_digest)?;
         }
+        if self.owners.is_empty() || self.owners.len() > MAX_PROVIDER_PROJECTION_BATCH_OWNERS {
+            return Err(ProviderProjectionBatchError(format!(
+                "projection batch owner count is outside the admitted range: {}",
+                self.owners.len()
+            )));
+        }
+        if self.auxiliary_owners.len() > MAX_PROVIDER_PROJECTION_BATCH_AUXILIARY_OWNERS {
+            return Err(ProviderProjectionBatchError(format!(
+                "projection batch auxiliary owner count exceeds the admitted limit: {}",
+                self.auxiliary_owners.len()
+            )));
+        }
         let mut owner_paths = BTreeSet::new();
+        let mut source_bytes = 0usize;
         for owner in &self.owners {
             require_text("ownerPath", &owner.owner_path)?;
             require_text("sourceLeafDigest", &owner.source_leaf_digest)?;
@@ -194,9 +219,50 @@ impl ProviderProjectionBatchRequest {
                     owner.owner_path
                 )));
             }
+            source_bytes = source_bytes.saturating_add(owner.source_bytes.len());
+        }
+        for owner in &self.auxiliary_owners {
+            require_text("auxiliaryOwners.ownerPath", &owner.owner_path)?;
+            require_text(
+                "auxiliaryOwners.sourceLeafDigest",
+                &owner.source_leaf_digest,
+            )?;
+            if !owner_paths.insert(owner.owner_path.as_str()) {
+                return Err(ProviderProjectionBatchError(format!(
+                    "duplicate projection or auxiliary owner path: {}",
+                    owner.owner_path
+                )));
+            }
+            source_bytes = source_bytes.saturating_add(owner.source_bytes.len());
+        }
+        let admitted_source_bytes = if self.owners.len() == 1 {
+            MAX_PROVIDER_PROJECTION_SINGLE_OWNER_SOURCE_BYTES
+        } else {
+            MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES
+        };
+        if source_bytes > admitted_source_bytes {
+            return Err(ProviderProjectionBatchError(format!(
+                "projection batch immutable source bytes exceed the admitted limit: {source_bytes} > {admitted_source_bytes}"
+            )));
         }
         Ok(())
     }
+}
+
+fn encode_owner(owner: &ProviderProjectionOwner) -> serde_json::Value {
+    let mut payload = serde_json::json!({
+        "ownerPath": owner.owner_path,
+        "sourceLeafDigest": owner.source_leaf_digest,
+    });
+    if let Ok(source_text) = std::str::from_utf8(&owner.source_bytes) {
+        payload["sourceEncoding"] = serde_json::Value::String("utf8".to_string());
+        payload["sourceText"] = serde_json::Value::String(source_text.to_string());
+    } else {
+        payload["sourceEncoding"] = serde_json::Value::String("base64".to_string());
+        payload["sourceBytesBase64"] =
+            serde_json::Value::String(BASE64_STANDARD.encode(&owner.source_bytes));
+    }
+    payload
 }
 
 impl ProviderProjectionBatchResponse {
@@ -251,8 +317,6 @@ fn validate_response(
             .find(|owner| owner.owner_path == projected_owner.owner_path)
             .expect("owner coverage was checked above");
         let expected_owner_id = format!("owner:{}", projected_owner.owner_path);
-        let expected_selector_prefix =
-            format!("{}://{}#", request.language_id, projected_owner.owner_path);
         let mut selectors = BTreeSet::new();
         for item in &projected_owner.items {
             let canonical = agent_semantic_content_identity::CanonicalItemSelector::parse(
@@ -261,6 +325,12 @@ fn validate_response(
             .map_err(|error| {
                 ProviderProjectionBatchError(format!(
                     "projection batch selector is not canonical: ownerPath={} itemId={} error={error}",
+                    projected_owner.owner_path, item.item_id
+                ))
+            })?;
+            let canonical_owner_path = canonical.owner_path().map_err(|error| {
+                ProviderProjectionBatchError(format!(
+                    "projection batch selector owner is not canonical: ownerPath={} itemId={} error={error}",
                     projected_owner.owner_path, item.item_id
                 ))
             })?;
@@ -303,8 +373,8 @@ fn validate_response(
             if !identity_scopes_match {
                 proof_mismatches.push("selector.scopes");
             }
-            if !item.selector.starts_with(&expected_selector_prefix) {
-                proof_mismatches.push("selector.ownerPrefix");
+            if canonical_owner_path != projected_owner.owner_path {
+                proof_mismatches.push("selector.ownerPath");
             }
             if item.source_byte_start >= item.source_byte_end {
                 proof_mismatches.push("sourceByteRange.emptyOrReversed");

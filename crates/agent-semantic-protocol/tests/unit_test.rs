@@ -18,8 +18,6 @@ mod codex_multi_agent_v2_control_plane;
 mod command_ascent_search_router_graph_state;
 #[path = "unit/command/dispatch_agent_session_policy.rs"]
 mod command_dispatch_agent_session_policy;
-#[path = "unit/command/graph_turbo_resident_runtime.rs"]
-mod command_graph_turbo_resident_runtime;
 #[path = "unit/command/search_router_graph_state.rs"]
 mod command_search_router_graph_state;
 #[path = "unit/context_product_state.rs"]
@@ -40,6 +38,8 @@ mod hook_execution_plane;
 mod hook_paths;
 #[path = "unit/install_provider_cli.rs"]
 mod install_provider_cli;
+#[path = "unit/live_corpus_registered_languages.rs"]
+mod live_corpus_registered_languages;
 #[path = "unit/paths_command.rs"]
 mod paths_command;
 #[path = "unit/command/provider_language_facade.rs"]

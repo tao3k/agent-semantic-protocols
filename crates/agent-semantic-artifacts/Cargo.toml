@@ -6,11 +6,15 @@ license = "MIT"
 description = "Content-addressed artifact identity and Merkle root primitives for ASP."
 
 [dependencies]
+agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-content-identity.workspace = true
 blake3.workspace = true
+fs2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
+tempfile.workspace = true
 
 [build-dependencies]

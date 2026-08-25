@@ -10,6 +10,13 @@ use agent_semantic_content_identity::SourceSnapshotEvidence;
 
 use crate::source_index_lookup_terms;
 
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResidentSearchAuthority {
+    pub language_id: agent_semantic_client_core::LanguageId,
+    pub provider_id: agent_semantic_client_core::ProviderId,
+}
+
 /// Stable navigation keys admitted to the durable shallow search projection.
 ///
 /// Source text and nested syntax items are intentionally excluded. Those facts
@@ -25,12 +32,13 @@ pub struct ResidentSourceIndexSeed {
     pub owner_content_digest: String,
     pub line_count: u32,
     pub query_keys: Vec<String>,
+    pub authority: Option<ResidentSearchAuthority>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct QueryCacheKey {
     query: String,
-    language_id: Option<String>,
+    authority: Option<ResidentSearchAuthority>,
     limit: u32,
 }
 
@@ -74,12 +82,12 @@ impl ResidentSourceIndex {
     pub fn query(
         &self,
         query: &str,
-        language_id: Option<&str>,
+        authority: Option<&ResidentSearchAuthority>,
         limit: u32,
     ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
         let cache_key = QueryCacheKey {
             query: query.trim().to_ascii_lowercase(),
-            language_id: language_id.map(str::to_owned),
+            authority: authority.cloned(),
             limit,
         };
         let cache_slot = self.cache_slot(&cache_key);
@@ -87,9 +95,9 @@ impl ResidentSourceIndex {
             return Ok(result);
         }
         let hits = self
-            .owner_paths(query, limit)
+            .owner_paths(query, authority, limit)
             .into_iter()
-            .map(|owner_path| self.candidate(&owner_path, language_id))
+            .map(|owner_path| self.candidate(&owner_path))
             .collect::<Result<Vec<_>, String>>()?;
         let result = agent_semantic_search_projection::ResidentSearchReadyResult::new(
             self.generation_digest.clone(),
@@ -104,12 +112,47 @@ impl ResidentSourceIndex {
         Ok(result)
     }
 
+    pub fn query_language(
+        &self,
+        query: &str,
+        language_id: &agent_semantic_client_core::LanguageId,
+        limit: u32,
+    ) -> Result<agent_semantic_search_projection::ResidentSearchReadyResult, String> {
+        let mut authorities = self
+            .candidate_seeds
+            .values()
+            .filter_map(|seed| seed.authority.as_ref())
+            .filter(|authority| &authority.language_id == language_id);
+        let authority = authorities.next().cloned().ok_or_else(|| {
+            format!(
+                "resident source-index language authority is missing: languageId={}",
+                language_id.as_str()
+            )
+        })?;
+        if authorities.any(|candidate| candidate.provider_id != authority.provider_id) {
+            return Err(format!(
+                "resident source-index language authority is ambiguous: languageId={}",
+                language_id.as_str()
+            ));
+        }
+        self.query(query, Some(&authority), limit)
+    }
+
     fn cache_slot(&self, cache_key: &QueryCacheKey) -> usize {
-        let language_id = cache_key.language_id.as_deref().unwrap_or_default();
+        let language_id = cache_key
+            .authority
+            .as_ref()
+            .map_or("", |authority| authority.language_id.as_str());
+        let provider_id = cache_key
+            .authority
+            .as_ref()
+            .map_or("", |authority| authority.provider_id.as_str());
         let mut hasher = blake3::Hasher::new();
         hasher.update(cache_key.query.as_bytes());
         hasher.update(&[0]);
         hasher.update(language_id.as_bytes());
+        hasher.update(&[0]);
+        hasher.update(provider_id.as_bytes());
         hasher.update(&[0]);
         hasher.update(&cache_key.limit.to_le_bytes());
         let digest = hasher.finalize();
@@ -132,7 +175,12 @@ impl ResidentSourceIndex {
             .map(|(_, result)| result.clone()))
     }
 
-    fn owner_paths(&self, query: &str, limit: u32) -> Vec<String> {
+    fn owner_paths(
+        &self,
+        query: &str,
+        authority: Option<&ResidentSearchAuthority>,
+        limit: u32,
+    ) -> Vec<String> {
         let normalized = query.trim().to_ascii_lowercase();
         if is_exact_lexical_query(&normalized) {
             return self
@@ -140,6 +188,7 @@ impl ResidentSourceIndex {
                 .get(&normalized)
                 .into_iter()
                 .flatten()
+                .filter(|path| self.matches_authority(path, authority))
                 .take(limit as usize)
                 .cloned()
                 .collect();
@@ -148,6 +197,7 @@ impl ResidentSourceIndex {
             .into_iter()
             .filter_map(|term| self.lexical_index.get(&term))
             .flatten()
+            .filter(|path| self.matches_authority(path, authority))
             .fold(HashMap::<&str, usize>::new(), |mut scores, path| {
                 *scores.entry(path.as_str()).or_default() += 1;
                 scores
@@ -162,10 +212,22 @@ impl ResidentSourceIndex {
             .collect()
     }
 
+    fn matches_authority(
+        &self,
+        owner_path: &str,
+        requested: Option<&ResidentSearchAuthority>,
+    ) -> bool {
+        requested.is_none_or(|requested| {
+            self.candidate_seeds
+                .get(owner_path)
+                .and_then(|seed| seed.authority.as_ref())
+                == Some(requested)
+        })
+    }
+
     fn candidate(
         &self,
         owner_path: &str,
-        language_id: Option<&str>,
     ) -> Result<agent_semantic_search_projection::ResidentSearchHit, String> {
         let seed = self.candidate_seeds.get(owner_path).ok_or_else(|| {
             "resident source-index lexical index references a missing owner".to_owned()
@@ -173,7 +235,10 @@ impl ResidentSourceIndex {
         Ok(agent_semantic_search_projection::ResidentSearchHit {
             owner_path: seed.owner_path.clone(),
             owner_content_digest: seed.owner_content_digest.clone(),
-            language_id: language_id.map(str::to_owned),
+            language_id: seed
+                .authority
+                .as_ref()
+                .map(|authority| authority.language_id.as_str().to_owned()),
             projection_tier:
                 agent_semantic_search_projection::ResidentSearchProjectionTier::ShallowNavigation,
             line_count: seed.line_count,

@@ -274,14 +274,14 @@ where
 }
 
 impl HookDecision {
-    /// Whether a config rule emitted a complete ChoicePlane role signal.
-    pub fn has_dispatch_choice_plane_role(&self) -> bool {
+    /// Whether a config rule emitted a complete registered-Agent dispatch.
+    pub fn has_registered_agent_dispatch(&self) -> bool {
         self.fields
             .get("agentSessionAction")
             .and_then(Value::as_str)
-            == Some("dispatch-choice-plane-role")
+            == Some("dispatch-registered-agent")
             && self.fields.get("transport").and_then(Value::as_str) == Some("host-agent")
-            && ["receiptKind", "targetAgentRole"].into_iter().all(|field| {
+            && ["receiptKind", "targetAgent"].into_iter().all(|field| {
                 self.fields
                     .get(field)
                     .and_then(Value::as_str)
@@ -305,7 +305,7 @@ pub enum DecisionKind {
 pub enum ReasonKind {
     None,
     ActivationUnavailable,
-    DirectSourceRead,
+    RegisteredSourceRouteRequired,
     StructuredSourceRead,
     BulkSourceDump,
     RawBroadSearch,

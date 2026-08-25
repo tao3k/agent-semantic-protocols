@@ -18,7 +18,7 @@ That split allows production routing and scenario tests to disagree.
 
 * V1 contract
 
-The managed hook config owns one top-level mode:
+Each rule that admits wrapped commands owns the matcher policy locally:
 
 #+begin_src toml
 matcherPolicies = ["wrapped_command"]
@@ -64,9 +64,43 @@ projection, schema validation, and the performance gate. A unit test that
 reconstructs expectations independently is not sufficient closure.
 
 The canonical initial scenario is
-=generic-wrapper-testing-resident-dispatch=. It includes several unrelated
+=generic-wrapper-testing-role-dispatch=. It includes several unrelated
 wrapper names and proves that each wrapper around =cargo test= routes to
 =asp-testing= without a wrapper executable registry.
+
+* Repository-wide command sets
+
+Language toolchains remain under =commandProfiles= because their command
+families carry a real =languageIds= ownership relation. Repository-object
+inspection must not invent a language provider. It uses a separate, reusable
+=commandSets= declaration and a rule-local =commandSetAny= reference:
+
+#+begin_src toml
+[[commandSets]]
+id = "git-history-inspection"
+argvPrefixAny = [["git", "log"], ["git", "show"], ["git", "diff"]]
+
+[[rules]]
+id = "git-history-inspection-dispatch"
+matcherPolicies = ["wrapped_command"]
+intent = "git-history-inspection"
+
+[rules.match]
+commandSetAny = ["git-history-inspection"]
+#+end_src
+
+The command set supplies parser-owned argv facts only. =git diff= is included
+because it projects the current working-tree/index delta without assigning
+language-provider ownership to the inspected paths. The rule still owns
+intent, dominance, decision, dispatch, receipt, and message. Source-discovery
+commands such as =git grep= and =git ls-files= do not belong to the history
+set; they remain governed by registered-source search routing.
+
+When one command family contains both mutating and non-mutating forms, a prefix
+is insufficient. The rule composes the command profile with parser-owned exact
+argv tokens. Rust formatting verification, for example, requires both the
+=cargo fmt= family and =argvTokenAll = ["--check"]= in the same parsed command
+stage. Plain =cargo fmt= therefore never enters the read-only Testing lane.
 
 * Performance
 

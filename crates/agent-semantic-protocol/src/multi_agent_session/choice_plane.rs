@@ -545,8 +545,8 @@ pub(super) async fn publish_child_session_registration(
 
 pub(super) struct ResolvedHookSessionRoute {
     pub(super) config_rule_id: String,
-    pub(super) target_agent_name: String,
-    pub(super) target_agent_role: String,
+    pub(super) target_agent: String,
+    pub(super) target_agent_symbol: String,
     pub(super) receipt_kind: String,
     pub(super) command_digest: Option<String>,
     pub(super) reason_kind: String,
@@ -571,29 +571,29 @@ fn compile_hook_selected_route(
         })?;
     let dispatch = rule.dispatch.as_ref().ok_or_else(|| {
         format!(
-            "hook-session-dispatch-missing: Hook rule `{}` does not declare a semantic role",
+            "hook-session-dispatch-missing: Hook rule `{}` does not declare a registered Agent",
             hook_route.config_rule_id
         )
     })?;
-    let (route_key, _) = loaded
-        .registry
-        .unique_route_for_role(dispatch.role.as_str())?;
-    let route = compile_agent_route(loaded, route_key, platform)?;
-    let identity_matches = route_key == route.route_key.as_str()
-        || route_key == route.platform_host_agent_name.as_str();
-    if !identity_matches {
+    let route = compile_agent_route(loaded, dispatch.agent.as_str(), platform)?;
+    if let Some(intent) = rule.intent.as_deref()
+        && !route
+            .allowed_rule_intents
+            .iter()
+            .any(|allowed| allowed == intent)
+    {
         return Err(format!(
-            "hook-agent-route-registry-mismatch: rule `{}` role `{}` resolved `{route_key}`, but registry route `{}` owns session `{}`",
+            "hook-agent-intent-not-admitted: rule `{}` intent `{intent}` is not admitted by Agent `{}`",
             hook_route.config_rule_id,
-            dispatch.role.as_str(),
             route.route_key.as_str(),
-            route.platform_host_agent_name.as_str(),
         ));
     }
     let resolved = ResolvedHookSessionRoute {
         config_rule_id: hook_route.config_rule_id.clone(),
-        target_agent_name: route.platform_host_agent_name.as_str().to_owned(),
-        target_agent_role: dispatch.role.as_str().to_owned(),
+        target_agent: route.route_key.as_str().to_owned(),
+        target_agent_symbol: hook_config
+            .agent_calling
+            .symbol(platform, route.platform_host_agent_name.as_str()),
         receipt_kind: dispatch.receipt_kind.as_str().to_owned(),
         command_digest: hook_route.command_digest.clone(),
         reason_kind: hook_route.reason_kind.clone(),

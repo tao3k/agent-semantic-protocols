@@ -26,37 +26,10 @@ pub fn current_process_id() -> u32 {
 pub async fn launch_detached(
     spec: RuntimeProcessLaunchSpec,
 ) -> Result<RuntimeProcessLaunchReceipt, String> {
-    let stderr = tokio::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&spec.stderr)
-        .await
-        .map_err(|e| e.to_string())?;
-    let mut command = tokio::process::Command::new(&spec.program);
-    let stderr = stderr.into_std().await;
-    command.args(&spec.args);
-    if let Some(current_dir) = spec.current_dir {
-        command.current_dir(current_dir);
-    }
-    for (key, value) in spec.environment {
-        command.env(key, value);
-    }
-    command
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::from(stderr));
-    #[cfg(unix)]
-    {
-        command.process_group(0);
-    }
-    let child = command
-        .spawn()
-        .map_err(|e| format!("spawn runtime process: {e}"))?;
-    Ok(RuntimeProcessLaunchReceipt {
-        process_id: child
-            .id()
-            .ok_or_else(|| "spawned process has no pid".to_owned())?,
-    })
+    let handle = launch_monitored(spec).await?;
+    let process_id = handle.process_id();
+    drop(handle);
+    Ok(RuntimeProcessLaunchReceipt { process_id })
 }
 
 pub async fn canonicalize(path: impl Into<PathBuf>) -> std::io::Result<PathBuf> {
@@ -171,4 +144,61 @@ mod tests {
             classify_kill_result(-1, std::io::Error::from_raw_os_error(libc::EPERM)).unwrap_err();
         assert!(!error.is_empty());
     }
+}
+pub struct RuntimeProcessLaunchHandle {
+    process_id: u32,
+    child: tokio::process::Child,
+}
+
+impl RuntimeProcessLaunchHandle {
+    pub fn process_id(&self) -> u32 {
+        self.process_id
+    }
+
+    pub async fn wait(&mut self) -> Result<std::process::ExitStatus, String> {
+        self.child
+            .wait()
+            .await
+            .map_err(|error| format!("wait for Runtime process {}: {error}", self.process_id))
+    }
+}
+
+pub async fn launch_monitored(
+    spec: RuntimeProcessLaunchSpec,
+) -> Result<RuntimeProcessLaunchHandle, String> {
+    let stderr = tokio::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&spec.stderr)
+        .await
+        .map_err(|error| {
+            format!(
+                "open Runtime process stderr {}: {error}",
+                spec.stderr.display()
+            )
+        })?;
+    let mut command = tokio::process::Command::new(&spec.program);
+    let stderr = stderr.into_std().await;
+    command.args(&spec.args);
+    if let Some(current_dir) = spec.current_dir {
+        command.current_dir(current_dir);
+    }
+    for (key, value) in spec.environment {
+        command.env(key, value);
+    }
+    command
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::from(stderr));
+    #[cfg(unix)]
+    {
+        command.process_group(0);
+    }
+    let child = command
+        .spawn()
+        .map_err(|error| format!("spawn Runtime process: {error}"))?;
+    let process_id = child
+        .id()
+        .ok_or_else(|| "spawned Runtime process has no pid".to_owned())?;
+    Ok(RuntimeProcessLaunchHandle { process_id, child })
 }

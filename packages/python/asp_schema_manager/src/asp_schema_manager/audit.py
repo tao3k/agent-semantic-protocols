@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .catalog import definition_usage, load_catalog, schema_edges
+from .catalog import load_catalog
 from .families import (
     classify_schema_families,
     definition_visibility_diagnostics,
@@ -18,15 +18,12 @@ from .reference_decisions import (
 )
 from .references import discover_reference_opportunities
 from .rust_usage import rust_usage
+from .schema_graph import definition_usage, schema_edges
 
 
 DEFAULT_MANIFEST = Path("packages/python/asp_schema_manager/asp-schema-lifecycle.v1.json")
-DEFAULT_FAMILY_REGISTRY = Path(
-    "packages/python/asp_schema_manager/asp-schema-families.v1.json"
-)
-DEFAULT_REFERENCE_DECISIONS = Path(
-    "packages/python/asp_schema_manager/asp-schema-reference-decisions.v1.json"
-)
+DEFAULT_FAMILY_REGISTRY = Path("schemas/language-schema-profiles.json")
+DEFAULT_REFERENCE_DECISIONS = Path("schemas/language-schema-profiles.json")
 
 
 def audit_workspace(

@@ -1,17 +1,17 @@
-use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
 use agent_semantic_client_protocol::{
     ClientFrame, ClientFrameBase, ClientOutcome, ClientProtocolCatalog, ClientRequestId,
-    ClientSession, ClientSessionId, ClientWorkspaceIdentity,
+    ClientSessionId, ClientWorkspaceIdentity,
 };
 use agent_semantic_http_json::{HttpJsonRequest, HttpJsonResponse};
 use serde_json::{Value, json};
 
 pub type AspClientDispatchFuture =
     Pin<Box<dyn Future<Output = Result<Value, AspClientDispatchError>> + Send>>;
+pub type AspClientCancelFuture = Pin<Box<dyn Future<Output = bool> + Send>>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AspClientDispatchRequest {
@@ -36,22 +36,16 @@ pub trait AspClientDispatcher: Send + Sync + 'static {
         workspace_identity: &ClientWorkspaceIdentity,
         session_id: &ClientSessionId,
         request_id: &ClientRequestId,
-    ) -> bool;
+    ) -> AspClientCancelFuture;
 }
 
 /// One protocol session hosted by the ASP Client Server.  It is transport
 /// neutral: HTTP/JSON and Runtime IPC decode the same `ClientFrame` and call
 /// this owner, so lifecycle, generation, parameter, and isolation admission
 /// cannot drift between bindings.
-pub struct AspClientProtocolSession<D> {
-    catalog: ClientProtocolCatalog,
-    session: ClientSession,
-    dispatcher: Arc<D>,
-}
-
 type CatalogResolution =
     std::pin::Pin<Box<dyn Future<Output = Result<ClientProtocolCatalog, String>> + Send>>;
-type CatalogResolver = dyn Fn(String, String) -> CatalogResolution + Send + Sync + 'static;
+type CatalogResolver = dyn Fn(String, String, String) -> CatalogResolution + Send + Sync + 'static;
 
 /// Concurrent HTTP/JSON binding for the transport-neutral protocol owner.
 /// Admission holds a per-session lock only for the synchronous state
@@ -60,48 +54,11 @@ type CatalogResolver = dyn Fn(String, String) -> CatalogResolution + Send + Sync
 pub struct AspClientProtocolHttpService<D> {
     dispatcher: Arc<D>,
     resolve_catalog: Arc<CatalogResolver>,
-    sessions: tokio::sync::RwLock<
-        HashMap<
-            (ClientWorkspaceIdentity, ClientSessionId),
-            Arc<tokio::sync::Mutex<AspClientProtocolSession<D>>>,
-        >,
-    >,
-}
-
-impl<D: AspClientDispatcher> AspClientProtocolSession<D> {
-    pub fn new(catalog: ClientProtocolCatalog, dispatcher: Arc<D>) -> Result<Self, String> {
-        catalog
-            .validate()
-            .map_err(|error| format!("{}: {}", error.reason_kind, error.message))?;
-        Ok(Self {
-            catalog,
-            session: ClientSession::default(),
-            dispatcher,
-        })
-    }
-
-    pub async fn handle(&mut self, frame: ClientFrame) -> Option<ClientFrame> {
-        let base = frame.base().clone();
-        let request_id = correlated_request_id(&frame).cloned();
-        if let Err(error) = self.admit(&frame) {
-            return request_id.map(|request_id| {
-                admission_error_response(base, request_id, error.reason_kind, error.message)
-            });
-        }
-        execute_admitted(Arc::clone(&self.dispatcher), self.catalog.clone(), frame).await
-    }
-
-    fn admit(
-        &mut self,
-        frame: &ClientFrame,
-    ) -> Result<(), agent_semantic_client_protocol::ClientAdmissionError> {
-        self.session.admit(frame, &self.catalog).map(|_| ())
-    }
 }
 
 async fn execute_admitted<D: AspClientDispatcher>(
     dispatcher: Arc<D>,
-    catalog: ClientProtocolCatalog,
+    catalog: Option<ClientProtocolCatalog>,
     frame: ClientFrame,
 ) -> Option<ClientFrame> {
     let base = frame.base().clone();
@@ -112,9 +69,15 @@ async fn execute_admitted<D: AspClientDispatcher>(
             ClientOutcome::Ready,
             None,
             None,
-            Some(catalog),
+            catalog,
         )),
-        ClientFrame::Request {
+        ClientFrame::Dispatch {
+            request_id,
+            method,
+            params,
+            ..
+        }
+        | ClientFrame::Request {
             request_id,
             method,
             params,
@@ -159,7 +122,9 @@ async fn execute_admitted<D: AspClientDispatcher>(
             })
         }
         ClientFrame::Cancel { request_id, .. } => {
-            let _ = dispatcher.cancel(&base.workspace_identity, &base.session_id, &request_id);
+            let _ = dispatcher
+                .cancel(&base.workspace_identity, &base.session_id, &request_id)
+                .await;
             Some(response(
                 base,
                 request_id,
@@ -198,23 +163,29 @@ impl<D: AspClientDispatcher> AspClientProtocolHttpService<D> {
         dispatcher: Arc<D>,
         resolve_catalog: impl Fn(&str) -> Result<ClientProtocolCatalog, String> + Send + Sync + 'static,
     ) -> Self {
-        Self::new_async(dispatcher, move |workspace_identity, _project_root| {
-            let result = resolve_catalog(&workspace_identity);
-            async move { result }
-        })
+        Self::new_async(
+            dispatcher,
+            move |workspace_identity, _session_id, _project_root| {
+                let result = resolve_catalog(&workspace_identity);
+                async move { result }
+            },
+        )
     }
 
     pub fn new_async<F, Fut>(dispatcher: Arc<D>, resolve_catalog: F) -> Self
     where
-        F: Fn(String, String) -> Fut + Send + Sync + 'static,
+        F: Fn(String, String, String) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<ClientProtocolCatalog, String>> + Send + 'static,
     {
         Self {
             dispatcher,
-            resolve_catalog: Arc::new(move |workspace_identity, project_root| {
-                Box::pin(resolve_catalog(workspace_identity, project_root))
+            resolve_catalog: Arc::new(move |workspace_identity, session_id, project_root| {
+                Box::pin(resolve_catalog(
+                    workspace_identity,
+                    session_id,
+                    project_root,
+                ))
             }),
-            sessions: tokio::sync::RwLock::new(HashMap::new()),
         }
     }
 
@@ -251,13 +222,14 @@ impl<D: AspClientDispatcher> AspClientProtocolHttpService<D> {
             }
         };
         let base = frame.base().clone();
-        let key = (base.workspace_identity.clone(), base.session_id.clone());
-        let session = if let ClientFrame::Initialize { project_root, .. } = &frame {
-            if let Some(session) = self.sessions.read().await.get(&key).cloned() {
-                session
-            } else {
-                let catalog = match (self.resolve_catalog)(
+
+        let catalog = if let ClientFrame::Initialize { project_root, .. }
+        | ClientFrame::Dispatch { project_root, .. } = &frame
+        {
+            Some(
+                match (self.resolve_catalog)(
                     base.workspace_identity.as_str().to_owned(),
+                    base.session_id.as_str().to_owned(),
                     project_root.clone(),
                 )
                 .await
@@ -272,57 +244,19 @@ impl<D: AspClientDispatcher> AspClientProtocolHttpService<D> {
                             }),
                         );
                     }
-                };
-                let candidate = Arc::new(tokio::sync::Mutex::new(AspClientProtocolSession::new(
-                    catalog,
-                    Arc::clone(&self.dispatcher),
-                )?));
-                Arc::clone(
-                    self.sessions
-                        .write()
-                        .await
-                        .entry(key.clone())
-                        .or_insert(candidate),
-                )
-            }
-        } else {
-            let Some(session) = self.sessions.read().await.get(&key).cloned() else {
-                return HttpJsonResponse::json(
-                    409,
-                    &json!({
-                        "reasonKind": "client-session-not-initialized",
-                        "message": "initialize the workspace-scoped client session first",
-                    }),
-                );
-            };
-            session
-        };
-
-        let (admission_error, dispatcher, catalog) = {
-            let mut session = session.lock().await;
-            let error = session.admit(&frame).err();
-            (
-                error,
-                Arc::clone(&session.dispatcher),
-                session.catalog.clone(),
+                },
             )
+        } else {
+            None
         };
-        let response_frame = match admission_error {
-            Some(error) => correlated_request_id(&frame).map(|request_id| {
-                admission_error_response(base, request_id.clone(), error.reason_kind, error.message)
-            }),
-            None => execute_admitted(dispatcher, catalog, frame).await,
-        };
+        let response_frame = execute_admitted(Arc::clone(&self.dispatcher), catalog, frame).await;
         match response_frame {
             Some(response_frame) => HttpJsonResponse::json(
                 200,
                 &serde_json::to_value(response_frame)
                     .map_err(|error| format!("encode ASP Client Protocol frame: {error}"))?,
             ),
-            None => {
-                self.sessions.write().await.remove(&key);
-                HttpJsonResponse::json(200, &json!({"state": "exited"}))
-            }
+            None => HttpJsonResponse::json(200, &json!({"state": "exited"})),
         }
     }
 }
@@ -337,36 +271,6 @@ pub async fn serve_asp_client_protocol_http<D: AspClientDispatcher>(
         async move { service.handle(request).await }
     })
     .await
-}
-
-fn admission_error_response(
-    base: ClientFrameBase,
-    request_id: ClientRequestId,
-    reason_kind: impl Into<String>,
-    message: impl Into<String>,
-) -> ClientFrame {
-    response(
-        base,
-        request_id,
-        ClientOutcome::Error,
-        None,
-        Some(json!({
-            "reasonKind": reason_kind.into(),
-            "message": message.into(),
-        })),
-        None,
-    )
-}
-
-fn correlated_request_id(frame: &ClientFrame) -> Option<&ClientRequestId> {
-    match frame {
-        ClientFrame::Initialize { request_id, .. }
-        | ClientFrame::Request { request_id, .. }
-        | ClientFrame::Cancel { request_id, .. }
-        | ClientFrame::Shutdown { request_id, .. }
-        | ClientFrame::Response { request_id, .. } => Some(request_id),
-        ClientFrame::Exit { .. } | ClientFrame::Event { .. } => None,
-    }
 }
 
 fn response(

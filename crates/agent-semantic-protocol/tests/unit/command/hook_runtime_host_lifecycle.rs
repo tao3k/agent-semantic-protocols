@@ -4,9 +4,9 @@ use serde_json::Value;
 
 fn event(id: &str) -> AgentHostLifecycleEventIpc {
     AgentHostLifecycleEventIpc {
-        host_event_id: id.to_owned(),
+        host_event_id: id.to_owned().into(),
         host_event_sequence: 0,
-        namespace_id: "blake3-256:test-namespace".to_owned(),
+        namespace_id: "blake3-256:test-namespace".to_owned().into(),
         kind: AgentHostLifecycleEventKind::Started,
         platform: "codex".to_owned(),
         project_id: "test-project".into(),
@@ -15,8 +15,8 @@ fn event(id: &str) -> AgentHostLifecycleEventIpc {
         child_session_id: "child".into(),
         host_task_name: "asp_explorer".to_owned(),
         platform_host_agent_name: "asp_explorer".to_owned(),
-        route_key: "asp-explore".to_owned(),
-        profile_id: "profiles/asp-explore.toml".to_owned(),
+        route_key: "asp-explore".to_owned().into(),
+        profile_id: "profiles/asp-explore.toml".to_owned().into(),
         role: "explorer".to_owned(),
         model: "test-model".to_owned(),
         model_digest: "blake3-256:model".to_owned(),

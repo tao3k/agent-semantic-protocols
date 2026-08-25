@@ -184,14 +184,11 @@ fn missing_hook_config_auto_refreshes_then_routes_search_to_host_role() {
         decision["reasonKind"], "subagent-receipt-required",
         "{decision}"
     );
-    assert_eq!(decision["fields"]["targetAgentRole"], "explore");
-    assert_eq!(
-        decision["fields"]["receiptKind"],
-        "asp-explore-search-v1"
-    );
+    assert_eq!(decision["fields"]["targetAgent"], "asp_explorer");
+    assert_eq!(decision["fields"]["receiptKind"], "asp-explore-search-v1");
     assert_eq!(
         decision["fields"]["agentSessionAction"],
-        "dispatch-choice-plane-role"
+        "dispatch-registered-agent"
     );
     assert_eq!(decision["fields"]["transport"], "host-agent");
     assert_eq!(

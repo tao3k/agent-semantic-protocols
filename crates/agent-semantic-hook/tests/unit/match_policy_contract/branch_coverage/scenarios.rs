@@ -78,19 +78,19 @@ fn codex_payload_surfaces_are_equivalent() {
         Scenario {
             name: "exec_command cmd",
             payload: shell_surface("exec_command", "cmd", command),
-            expected_rule: Some("deny-raw-registered-source-action"),
+            expected_rule: Some("route-read-to-asp-languages"),
             forbidden_rule: None,
         },
         Scenario {
             name: "functions.exec_command cmd",
             payload: shell_surface("functions.exec_command", "cmd", command),
-            expected_rule: Some("deny-raw-registered-source-action"),
+            expected_rule: Some("route-read-to-asp-languages"),
             forbidden_rule: None,
         },
         Scenario {
             name: "Bash command",
             payload: shell_surface("Bash", "command", command),
-            expected_rule: Some("deny-raw-registered-source-action"),
+            expected_rule: Some("route-read-to-asp-languages"),
             forbidden_rule: None,
         },
         Scenario {
@@ -101,7 +101,7 @@ fn codex_payload_surfaces_are_equivalent() {
                     "code": "await tools.exec_command({cmd: \"sed -n '1,8p' src/app.ts\"})"
                 },
             }),
-            expected_rule: Some("deny-raw-registered-source-action"),
+            expected_rule: Some("route-read-to-asp-languages"),
             forbidden_rule: None,
         },
         Scenario {
@@ -112,7 +112,7 @@ fn codex_payload_surfaces_are_equivalent() {
                     "code": "await tools.exec_command({command: \"sed -n '1,8p' src/app.ts\"});"
                 },
             }),
-            expected_rule: Some("deny-raw-registered-source-action"),
+            expected_rule: Some("route-read-to-asp-languages"),
             forbidden_rule: None,
         },
         Scenario {
@@ -123,7 +123,7 @@ fn codex_payload_surfaces_are_equivalent() {
                     "code": "await tools.exec_command({cmd: 'sed -n 1,8p src/app.ts'});"
                 },
             }),
-            expected_rule: Some("deny-raw-registered-source-action"),
+            expected_rule: Some("route-read-to-asp-languages"),
             forbidden_rule: None,
         },
         Scenario {
@@ -134,7 +134,7 @@ fn codex_payload_surfaces_are_equivalent() {
                     "code": "const r = await tools.exec_command({cmd: \"sed -n '1,8p' src/app.ts\", workdir: \"/workspace\", yield_time_ms: 10000}); text(JSON.stringify(r));"
                 },
             }),
-            expected_rule: Some("deny-raw-registered-source-action"),
+            expected_rule: Some("route-read-to-asp-languages"),
             forbidden_rule: None,
         },
         Scenario {
@@ -143,7 +143,7 @@ fn codex_payload_surfaces_are_equivalent() {
                 "tool_name": "functions.exec",
                 "tool_input": "const r = await tools.exec_command({cmd: \"sed -n '1,8p' src/app.ts\", workdir: \"/workspace\", yield_time_ms: 10000}); text(r);",
             }),
-            expected_rule: Some("deny-raw-registered-source-action"),
+            expected_rule: Some("route-read-to-asp-languages"),
             forbidden_rule: None,
         },
         Scenario {
@@ -154,7 +154,7 @@ fn codex_payload_surfaces_are_equivalent() {
                     "code": "await tools.exec_command({cmd: \"true\"}); await tools.exec_command({cmd: \"cat src/app.ts\"});"
                 },
             }),
-            expected_rule: Some("deny-raw-registered-source-action"),
+            expected_rule: Some("route-read-to-asp-languages"),
             forbidden_rule: None,
         },
         Scenario {
@@ -254,7 +254,7 @@ fn functions_exec_code_parser_rejects_near_misses() {
             "tool_input": {"code": code},
         }),
         expected_rule: None,
-        forbidden_rule: Some("deny-raw-registered-source-action"),
+        forbidden_rule: Some("route-read-to-asp-languages"),
     });
     run_scenarios(TEST_NAME, &scenarios);
 }
@@ -276,22 +276,22 @@ fn priority_overlaps_have_explicit_winners() {
         (
             "action-first read over python inline source access",
             shell("python -c 'from pathlib import Path; print(Path(\"src/app.ts\").read_text())'"),
-            "deny-raw-registered-source-action",
+            "route-read-to-asp-languages",
         ),
         (
             "javascript inline source access",
             shell("node -e 'require(\"fs\").readFileSync(\"src/app.ts\", \"utf8\")'"),
-            "deny-raw-registered-source-action",
+            "route-read-to-asp-languages",
         ),
         (
             "semantic source read over raw action",
             shell("sed -n '1,8p' src/app.ts"),
-            "deny-raw-registered-source-action",
+            "route-read-to-asp-languages",
         ),
         (
-            "git over raw action",
+            "repository history intent dominates embedded source read",
             shell("git show HEAD:src/app.ts"),
-            "deny-uncontrolled-git-source-reads",
+            "git-history-inspection-dispatch",
         ),
         (
             "bounded allow over unbounded deny",

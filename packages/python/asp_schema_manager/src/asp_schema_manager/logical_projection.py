@@ -11,7 +11,8 @@ from typing import Any, Iterable
 from ._logical_projection_keywords import keyword_facts
 from ._logical_projection_obligations import proof_obligations
 from .audit import audit_workspace
-from .catalog import SchemaDocument, load_catalog, schema_edges
+from .catalog import SchemaDocument, load_catalog
+from .schema_graph import schema_edges
 
 
 CONTRACT_COMPOSITION = {

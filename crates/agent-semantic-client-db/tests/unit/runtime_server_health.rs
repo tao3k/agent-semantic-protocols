@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog;
 use agent_semantic_client_db::WorkspaceDbRegistry;
 use agent_semantic_client_db::runtime_server::RuntimeServer;
 use agent_semantic_client_db::runtime_server_control::{
@@ -9,7 +10,6 @@ use agent_semantic_client_db::runtime_server_control::{
 };
 use agent_semantic_client_db::runtime_server_health::cached_runtime_server_health_at;
 use agent_semantic_config::runtime_dev::RuntimeArtifactMode;
-use agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_cached_health_is_sub_millisecond_at_p99() {

@@ -39,6 +39,7 @@ pub(super) fn render_session_pane(
         })
         .collect::<Vec<_>>();
     let hook_inbox = hook_inbox_reconciliation_receipt(inbox_reconciliation_failure);
+    let host_invocation = route.host_invocation(&hook_route.target_agent_symbol);
     let receipt = serde_json::json!({
         "schemaId": PANE_SCHEMA_ID,
         "schemaVersion": "1",
@@ -50,8 +51,8 @@ pub(super) fn render_session_pane(
         },
         "hookRoute": {
             "configRuleId": hook_route.config_rule_id,
-            "targetAgentName": hook_route.target_agent_name,
-            "targetAgentRole": hook_route.target_agent_role,
+            "targetAgent": hook_route.target_agent,
+            "targetAgentSymbol": &host_invocation.symbol,
             "receiptKind": hook_route.receipt_kind,
             "commandDigest": hook_route.command_digest,
             "reasonKind": hook_route.reason_kind,
@@ -73,6 +74,7 @@ pub(super) fn render_session_pane(
             "matchDecision": "matched",
             "platform": route.platform.as_str(),
             "hostAgentName": route.platform_host_agent_name.as_str(),
+            "hostInvocation": host_invocation,
             "roles": &route.roles,
             "roleDescription": route.description.as_str(),
             "sandboxMode": sandbox_mode,

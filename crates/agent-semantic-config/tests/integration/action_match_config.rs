@@ -1,59 +1,35 @@
 use agent_semantic_config::{HookClientActionKind, HookClientConfigFile, HookClientMatcherPolicy};
 
+fn default_config() -> HookClientConfigFile {
+    agent_semantic_config::default_hook_client_config_file()
+        .expect("generated default hook config should parse")
+}
+
 #[test]
-fn git_source_read_rule_dispatches_to_testing_role() {
-    let config =
-        toml::from_str::<HookClientConfigFile>(include_str!("../../templates/hooks/config.toml"))
-            .expect("default hook config template should parse");
+fn source_read_rule_is_owned_only_by_action_and_language_profiles() {
+    let config = default_config();
     let rule = config
         .rules
         .iter()
-        .find(|rule| rule.id == "deny-uncontrolled-git-source-reads")
-        .expect("git source read rule should exist");
-    let dispatch = rule
-        .dispatch
-        .as_ref()
-        .expect("git source read rule should declare a Host testing-role dispatch");
-
-    assert_eq!(dispatch.role.as_str(), "testing");
-    assert_eq!(dispatch.receipt_kind.as_str(), "asp-testing-execution-v1");
-    assert!(
-        rule.message
-            .as_deref()
-            .is_some_and(|message| message.contains("asp session --agents choice-plane"))
+        .find(|rule| rule.id == "route-read-to-asp-languages")
+        .expect("Read plus language profiles route should exist");
+    let dispatch = rule.dispatch.as_ref().expect("Read route dispatch");
+    assert_eq!(dispatch.agent.as_str(), "asp_explorer");
+    assert_eq!(rule.actions, [HookClientActionKind::Read]);
+    assert!(!rule.profiles_list.is_empty());
+    assert_eq!(
+        config.agent_calling.symbol("codex", "asp_explorer"),
+        "@asp_explorer"
+    );
+    assert_eq!(
+        config.agent_calling.symbol("claude", "asp_explorer"),
+        "@agent-asp-explorer"
     );
 }
 
 #[test]
-fn source_deny_rules_have_one_explore_role_dispatch_for_the_choice_plane() {
-    let config =
-        toml::from_str::<HookClientConfigFile>(include_str!("../../templates/hooks/config.toml"))
-            .expect("default hook config template should parse");
-
-    for rule_id in [
-        "deny-uncontrolled-source-search-commands",
-        "deny-raw-registered-source-action",
-    ] {
-        let rule = config
-            .rules
-            .iter()
-            .find(|rule| rule.id == rule_id)
-            .unwrap_or_else(|| panic!("{rule_id} should exist"));
-        let dispatch = rule
-            .dispatch
-            .as_ref()
-            .unwrap_or_else(|| panic!("{rule_id} should declare one dispatch"));
-
-        assert_eq!(dispatch.role.as_str(), "explore");
-        assert_eq!(dispatch.receipt_kind.as_str(), "asp-explore-search-v1");
-    }
-}
-
-#[test]
 fn default_template_uses_rule_local_matcher_policies() {
-    let config =
-        toml::from_str::<HookClientConfigFile>(include_str!("../../templates/hooks/config.toml"))
-            .expect("default hook config template should parse");
+    let config = default_config();
 
     let wrapped_rule = config
         .rules
@@ -71,23 +47,98 @@ fn default_template_uses_rule_local_matcher_policies() {
         .expect("native Read route rule");
     assert!(native_read_rule.matcher_policies.is_empty());
 
-    let action_rule = config
+    assert_eq!(native_read_rule.actions, [HookClientActionKind::Read]);
+    assert!(native_read_rule.profiles_list.contains(&"rust".to_owned()));
+    assert!(
+        native_read_rule
+            .profiles_list
+            .contains(&"typescript".to_owned())
+    );
+}
+
+#[test]
+fn repository_git_history_uses_a_language_independent_command_set() {
+    let config = default_config();
+    let command_set = config
+        .command_sets
+        .iter()
+        .find(|command_set| command_set.id == "git-history-inspection")
+        .expect("Git history command set");
+    assert!(
+        command_set
+            .argv_prefix_any
+            .contains(&vec!["git".to_owned(), "show".to_owned()])
+    );
+    assert!(
+        command_set
+            .argv_prefix_any
+            .contains(&vec!["git".to_owned(), "diff".to_owned()])
+    );
+    assert!(
+        !command_set
+            .argv_prefix_any
+            .contains(&vec!["git".to_owned(), "ls-files".to_owned()])
+    );
+
+    let rule = config
         .rules
         .iter()
-        .find(|rule| rule.id == "deny-raw-registered-source-action")
-        .expect("action-first source deny rule should exist");
+        .find(|rule| rule.id == "git-history-inspection-dispatch")
+        .expect("Git history Testing route");
     assert_eq!(
-        action_rule.match_config.capability_policy_all,
-        ["opaque-shell-source-access", "registered-language-source"]
+        rule.match_config.command_set_any,
+        ["git-history-inspection"]
     );
-    let opaque_shell_source_access = config
-        .capability_policies
-        .iter()
-        .find(|policy| policy.id == "opaque-shell-source-access")
-        .expect("opaque shell source-access policy");
     assert_eq!(
-        opaque_shell_source_access.action_any,
-        vec![HookClientActionKind::Execute]
+        rule.dispatch
+            .as_ref()
+            .map(|dispatch| dispatch.agent.as_str()),
+        Some("asp_testing")
+    );
+}
+
+#[test]
+fn review_categories_have_an_explicit_testing_lane_intent() {
+    let config = default_config();
+    let rule = config
+        .rules
+        .iter()
+        .find(|rule| rule.id == "review-role-dispatch")
+        .expect("review dispatch");
+    assert_eq!(rule.intent.as_deref(), Some("review-command"));
+    assert_eq!(
+        rule.dispatch
+            .as_ref()
+            .map(|dispatch| dispatch.agent.as_str()),
+        Some("asp_testing")
+    );
+    assert!(
+        rule.match_config
+            .command_profile_any
+            .iter()
+            .any(|reference| {
+                reference.profile == "rust-cargo" && reference.category == "review"
+            })
+    );
+}
+
+#[test]
+fn rust_format_review_requires_the_non_mutating_check_token() {
+    let config = default_config();
+    let rule = config
+        .rules
+        .iter()
+        .find(|rule| rule.id == "rust-format-check-role-dispatch")
+        .expect("Rust format check dispatch");
+    assert_eq!(rule.intent.as_deref(), Some("review-command"));
+    assert_eq!(rule.match_config.argv_token_all, ["--check"]);
+    assert!(
+        rule.match_config
+            .command_profile_any
+            .iter()
+            .any(|reference| {
+                reference.profile == "rust-cargo" && reference.category == "format-check"
+            })
     );
 }
 
@@ -105,13 +156,11 @@ fn matcher_policy_rfc_records_parser_owned_snapshot_contract() {
 
 #[test]
 fn typed_action_rule_shape_probe() {
-    let config =
-        toml::from_str::<HookClientConfigFile>(include_str!("../../templates/hooks/config.toml"))
-            .expect("default hook config template should parse");
+    let config = default_config();
     let rule = config
         .rules
         .iter()
-        .find(|rule| rule.id == "deny-raw-registered-source-action")
+        .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("typed action rule should exist");
     eprintln!("{rule:#?}");
 }

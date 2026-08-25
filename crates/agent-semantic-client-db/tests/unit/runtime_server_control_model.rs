@@ -2,10 +2,13 @@ use super::{
     ENDPOINT_SCHEMA_ID, REQUEST_SCHEMA_ID, RuntimeServerControlRequest, RuntimeServerEndpoint,
     RuntimeServerOperation, SCHEMA_VERSION,
 };
-use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
+use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
 
 fn endpoint() -> RuntimeServerEndpoint {
     RuntimeServerEndpoint {
+        binary_content_digest: "blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
+        runtime_generation_digest: "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
+        schema_digest: "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(),
         schema_id: ENDPOINT_SCHEMA_ID.to_owned(),
         schema_version: SCHEMA_VERSION.to_owned(),
         transport_contract_digest:

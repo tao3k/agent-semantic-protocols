@@ -56,7 +56,8 @@ fn wrapped_gxi_ss_build_routes_to_the_testing_lane() {
         decision["fields"]["configRuleId"],
         "gerbil-build-role-dispatch"
     );
-    assert_eq!(decision["fields"]["targetAgentRole"], "testing");
+    assert_eq!(decision["fields"]["targetAgent"], "asp_testing");
+    assert_eq!(decision["fields"]["targetAgentSymbol"], "@asp_testing");
     assert_eq!(decision["fields"]["blockedCommandClass"], "building");
 }
 

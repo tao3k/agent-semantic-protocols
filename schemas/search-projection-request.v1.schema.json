@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "SearchProjectionRequestV1",
+  "$id": "https://schemas.agent-semantic-protocols.dev/search-projection-request.v1.schema.json",
+  "title": "Search Projection Request",
   "type": "object",
   "additionalProperties": false,
   "required": [

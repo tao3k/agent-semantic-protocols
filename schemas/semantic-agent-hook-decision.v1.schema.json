@@ -54,8 +54,9 @@
     "reasonKind": {
       "enum": [
         "none",
-        "direct-source-read",
-        "structured-source-read",
+      "direct-source-read",
+      "registered-source-route-required",
+      "structured-source-read",
         "bulk-source-dump",
         "raw-broad-search",
         "asp-reasoning-routed",
@@ -340,12 +341,17 @@
           "type": "string",
           "minLength": 1
         },
-        "targetAgentRole": {
+        "targetAgent": {
           "type": "string",
           "minLength": 1
         },
+        "targetAgentSymbol": {
+          "type": "string",
+          "minLength": 2,
+          "pattern": "^@"
+        },
         "targetAgentSelectionSource": {
-          "const": "choice-plane-role-signal"
+          "const": "config-agent-route"
         },
         "dispatchSatisfied": {
           "type": "boolean",

@@ -1,4 +1,4 @@
-use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
+use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
 use std::sync::{Arc, RwLock};
 
 use crate::{RuntimeServerAgentSessionLifecycleState, RuntimeServerAgentSessionStatus};
@@ -11,6 +11,12 @@ use super::{
 
 fn fixture_endpoint(root: &std::path::Path, owner_epoch: u64) -> RuntimeServerEndpoint {
     RuntimeServerEndpoint {
+        binary_content_digest:
+            "blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
+        runtime_generation_digest:
+            "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
+        schema_digest:
+            "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(),
         schema_id: "agent.semantic-protocols.runtime-server-endpoint".to_owned(),
         schema_version: "1".to_owned(),
         transport_contract_digest: super::super::runtime_server_transport_contract_digest(),

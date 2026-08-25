@@ -80,6 +80,47 @@ pub(crate) struct ProtocolBinaryInstall {
     pub(crate) path: PathBuf,
     pub(crate) status: &'static str,
     pub(crate) artifact_digest: String,
+    pub(crate) lock_acquisition_count: u8,
+    pub(crate) quiescence_operation: Option<String>,
+    pub(crate) quiescence_lease_nonce: Option<String>,
+    pub(crate) lease_producer_process_id: Option<u32>,
+    pub(crate) lease_consumer_process_id: Option<u32>,
+}
+
+impl ProtocolBinaryInstall {
+    fn validate_artifact_transaction_receipt(&self) -> Result<(), String> {
+        if self.status == "current" {
+            return Ok(());
+        }
+        let expected_operation = self
+            .path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| format!("publish:{name}"))
+            .ok_or_else(|| {
+                "reasonKind=runtime-artifact-publication-receipt-incomplete missing binary name"
+                    .to_owned()
+            })?;
+        if self.lock_acquisition_count != 1
+            || self.quiescence_operation.as_deref() != Some(expected_operation.as_str())
+            || !self
+                .quiescence_lease_nonce
+                .as_deref()
+                .is_some_and(|nonce| !nonce.is_empty())
+            || self.lease_producer_process_id == Some(0)
+            || self.lease_producer_process_id.is_none()
+            || self.lease_consumer_process_id != Some(std::process::id())
+        {
+            return Err(format!(
+                "reasonKind=runtime-artifact-publication-receipt-incomplete operation={} lockAcquisitionCount={} producerProcessId={:?} consumerProcessId={:?}",
+                self.quiescence_operation.as_deref().unwrap_or("missing"),
+                self.lock_acquisition_count,
+                self.lease_producer_process_id,
+                self.lease_consumer_process_id
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -111,21 +152,6 @@ impl ProtocolBinaryInstallPlan {
 /// Runtime-owned transaction guard for artifact mutation and its coupled
 /// Protocol receipts. Protocol carries this authority; it does not own a
 /// second reconciliation lock.
-pub(crate) struct ProtocolBinaryReconciliationGuard {
-    artifact_guard:
-        agent_semantic_runtime::runtime_artifact_retention::RuntimeArtifactMutationGuard,
-}
-
-impl ProtocolBinaryReconciliationGuard {
-    pub(crate) fn acquire(protocol_home: &Path) -> Result<Self, String> {
-        let artifact_guard =
-            agent_semantic_runtime::runtime_artifact_retention::RuntimeArtifactMutationGuard::try_acquire(
-                &protocol_home.join("runtime/artifacts"),
-            )?;
-        Ok(Self { artifact_guard })
-    }
-}
-
 #[cfg(test)]
 #[path = "../../tests/unit/protocol_binary_reconciliation_lock.rs"]
 mod protocol_binary_reconciliation_lock_tests;
@@ -188,19 +214,17 @@ pub(crate) async fn ensure_protocol_binary_installed(
     Ok(install)
 }
 
-pub(crate) async fn ensure_protocol_binary_installed_under_guard(
+pub(crate) async fn ensure_protocol_binary_installed_transaction(
     plan: &ProtocolBinaryInstallPlan,
-    guard: &ProtocolBinaryReconciliationGuard,
 ) -> Result<ProtocolBinaryInstall, String> {
     for alias in &plan.managed_path_aliases {
         validate_protocol_entry_for_repair(alias, &plan.artifact_root)?;
     }
-    let install = install_protocol_binary_target_under_guard(
+    let install = install_protocol_binary_target(
         plan.candidate_source(),
         &plan.target,
         &plan.artifact_root,
         &plan.binary_identity,
-        guard,
     )
     .await?;
     for alias in &plan.managed_path_aliases {
@@ -360,68 +384,36 @@ pub(crate) async fn install_protocol_binary_target(
     artifact_root: &Path,
     binary_identity: &RuntimeBinaryIdentityV1,
 ) -> Result<ProtocolBinaryInstall, String> {
-    let guard =
-        agent_semantic_runtime::runtime_artifact_retention::RuntimeArtifactMutationGuard::try_acquire(
-            artifact_root,
-        )?;
-    install_protocol_binary_target_with_runtime_guard(
-        source,
-        target,
-        artifact_root,
-        binary_identity,
-        None,
-        &guard,
-    )
-    .await
+    install_protocol_binary_target_transaction(source, target, artifact_root, binary_identity, None)
+        .await
 }
 
-pub(crate) async fn install_protocol_binary_target_under_guard(
-    source: &Path,
-    target: &Path,
-    artifact_root: &Path,
-    binary_identity: &RuntimeBinaryIdentityV1,
-    guard: &ProtocolBinaryReconciliationGuard,
-) -> Result<ProtocolBinaryInstall, String> {
-    install_protocol_binary_target_with_runtime_guard(
-        source,
-        target,
-        artifact_root,
-        binary_identity,
-        None,
-        &guard.artifact_guard,
-    )
-    .await
-}
-
-pub(crate) async fn install_qualified_provider_staging_target_under_guard(
+pub(crate) async fn install_qualified_provider_staging_target(
     source: &Path,
     target: &Path,
     artifact_root: &Path,
     binary_identity: &RuntimeBinaryIdentityV1,
     checkout_root: PathBuf,
-    guard: &ProtocolBinaryReconciliationGuard,
 ) -> Result<ProtocolBinaryInstall, String> {
-    let authority = agent_semantic_runtime::runtime_artifact_catalog::QualifiedRuntimeArtifactSource::develop_state_home_staging(checkout_root)?;
-    install_protocol_binary_target_with_runtime_guard(
+    let authority = agent_semantic_artifacts::runtime_artifact_catalog::QualifiedRuntimeArtifactSource::develop_state_home_staging(checkout_root)?;
+    install_protocol_binary_target_transaction(
         source,
         target,
         artifact_root,
         binary_identity,
         Some(authority),
-        &guard.artifact_guard,
     )
     .await
 }
 
-async fn install_protocol_binary_target_with_runtime_guard(
+async fn install_protocol_binary_target_transaction(
     source: &Path,
     target: &Path,
     artifact_root: &Path,
     binary_identity: &RuntimeBinaryIdentityV1,
     qualified_source: Option<
-        agent_semantic_runtime::runtime_artifact_catalog::QualifiedRuntimeArtifactSource,
+        agent_semantic_artifacts::runtime_artifact_catalog::QualifiedRuntimeArtifactSource,
     >,
-    guard: &agent_semantic_runtime::runtime_artifact_retention::RuntimeArtifactMutationGuard,
 ) -> Result<ProtocolBinaryInstall, String> {
     let binary_name = binary_identity.name();
     if target.file_name() != Some(binary_name) {
@@ -451,7 +443,7 @@ async fn install_protocol_binary_target_with_runtime_guard(
             target.display()
         ));
     }
-    if agent_semantic_runtime::runtime_artifact_catalog::load_runtime_developer_root(state_home)?
+    if agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_developer_root(state_home)?
         .is_none()
     {
         validate_protocol_entry_for_repair(target, artifact_root)?;
@@ -473,53 +465,46 @@ async fn install_protocol_binary_target_with_runtime_guard(
             path: target.to_path_buf(),
             status: "current",
             artifact_digest: receipt.artifact_digest().to_owned(),
+            lock_acquisition_count: 0,
+            quiescence_operation: None,
+            quiescence_lease_nonce: None,
+            lease_producer_process_id: None,
+            lease_consumer_process_id: None,
         });
     }
     let previous_artifact_digest = previous_identity
         .as_ref()
         .map(|receipt| receipt.artifact_digest().to_owned());
-    let publication = match qualified_source {
-        Some(authority) => {
-            agent_semantic_runtime::runtime_artifact_catalog::publish_qualified_runtime_artifact_under_guard(
-                state_home,
-                source,
-                target,
-                artifact_root,
-                &artifact_kind,
-                authority,
-                guard,
-            )
-            .await?
-        }
-        None => {
-            agent_semantic_runtime::runtime_artifact_catalog::publish_runtime_artifact_under_guard(
-                state_home,
-                source,
-                target,
-                artifact_root,
-                &artifact_kind,
-                guard,
-            )
-            .await?
-        }
+    let artifact_mode = if qualified_source.is_some() {
+        "dev"
+    } else {
+        "release"
     };
-    agent_semantic_runtime::runtime_artifact_identity::publish_runtime_artifact_identity(
+    let previous_artifact_digest = previous_artifact_digest
+        .as_deref()
+        .map(agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse)
+        .transpose()?;
+    let receipt = agent_semantic_runtime_server::resident_install::install_resident_runtime(
         state_home,
+        source,
         target,
-        &publication,
+        artifact_mode,
+        previous_artifact_digest.as_ref(),
+        qualified_source,
     )
     .await?;
-    let status =
-        if previous_artifact_digest.as_deref() == Some(publication.artifact_digest.as_str()) {
-            publication.status
-        } else {
-            "updated"
-        };
-    return Ok(ProtocolBinaryInstall {
-        path: publication.path,
-        status,
-        artifact_digest: publication.artifact_digest,
-    });
+    let install = ProtocolBinaryInstall {
+        path: receipt.path,
+        status: receipt.status,
+        artifact_digest: receipt.artifact_digest.to_string(),
+        lock_acquisition_count: receipt.lock_acquisition_count,
+        quiescence_operation: Some(receipt.quiescence_operation),
+        quiescence_lease_nonce: Some(receipt.quiescence_lease_nonce),
+        lease_producer_process_id: Some(receipt.lease_producer_process_id),
+        lease_consumer_process_id: Some(receipt.lease_consumer_process_id),
+    };
+    install.validate_artifact_transaction_receipt()?;
+    Ok(install)
 }
 
 fn resolve_protocol_binary_artifact_entry(

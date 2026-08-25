@@ -12,7 +12,7 @@ use super::model::{
     ENDPOINT_SCHEMA_ID, RuntimeServerEndpoint, RuntimeServerEndpointOwnerBinding, SCHEMA_VERSION,
     runtime_server_transport_contract_digest,
 };
-use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
+use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
 
 const MAX_UNIX_SOCKET_PATH_BYTES: usize = 103;
 
@@ -81,6 +81,35 @@ pub fn read_runtime_server_endpoint(
             endpoint_path.display()
         )
     })?;
+    let installed_binary = std::fs::canonicalize(state_home.join("runtime/bin/asp")).map_err(
+        |error| {
+            serde_json::json!({
+                "schemaId": "agent.semantic-protocols.runtime-server-generation-mismatch",
+                "schemaVersion": "1",
+                "reasonKind": agent_semantic_client_protocol::runtime_generation::RUNTIME_SERVER_GENERATION_MISMATCH,
+                "error": format!("resolve installed ASP Client binary: {error}"),
+            })
+            .to_string()
+        },
+    )?;
+    let expected_binary_content_digest =
+        agent_semantic_content_identity::blake3_digest_from_canonical_artifact_path(
+            &installed_binary,
+        )
+        .ok_or_else(|| {
+            serde_json::json!({
+                "schemaId": "agent.semantic-protocols.runtime-server-generation-mismatch",
+                "schemaVersion": "1",
+                "reasonKind": agent_semantic_client_protocol::runtime_generation::RUNTIME_SERVER_GENERATION_MISMATCH,
+                "error": "installed ASP Client binary is not content-addressed",
+                "installedBinary": installed_binary,
+            })
+            .to_string()
+        })?;
+    super::endpoint_io::validate_runtime_server_generation(
+        &endpoint,
+        &expected_binary_content_digest,
+    )?;
     Ok(Some(endpoint))
 }
 
@@ -306,7 +335,10 @@ pub async fn try_acquire_runtime_server_election(
 async fn open_runtime_server_election_file(
     state_home: &Path,
 ) -> Result<(tokio::fs::File, std::path::PathBuf), String> {
-    let runtime_base = runtime_server_runtime_base_async(state_home).await?;
+    let runtime_base = match std::env::var_os("ASP_RUNTIME_SERVER_PUBLICATION_DIR") {
+        Some(publication_dir) => PathBuf::from(publication_dir).join("lifecycle"),
+        None => runtime_server_runtime_base_async(state_home).await?,
+    };
     tokio::fs::create_dir_all(&runtime_base)
         .await
         .map_err(|error| {
@@ -531,6 +563,17 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
         super::listener::prepare_private_runtime_directory(uid_root).await?;
     }
     super::listener::prepare_private_runtime_directory(runtime_base).await?;
+    let binary_content_digest = runtime_binary_identity.value().to_owned();
+    let transport_contract_digest = runtime_server_transport_contract_digest();
+    let generation_identity =
+        agent_semantic_client_protocol::runtime_generation::RuntimeServerGenerationIdentity::derive(
+            binary_content_digest.clone(),
+            ENDPOINT_SCHEMA_ID,
+            SCHEMA_VERSION,
+            &transport_contract_digest,
+            artifact_catalog_digest,
+            owner_epoch,
+        );
     let digest = blake3::hash(
         format!(
             "{owner_epoch}\0{binding_token}\0{}",
@@ -546,7 +589,7 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
         &digest,
         MAX_UNIX_SOCKET_PATH_BYTES,
     )?;
-    let status_memory_path = runtime_base.join("status.v1.memory");
+    let status_memory_path = runtime_base.join(format!("status-{}.memory", &digest[..16]));
     if socket_path.as_os_str().as_bytes().len() > MAX_UNIX_SOCKET_PATH_BYTES {
         return Err(format!(
             "Runtime Server socket path exceeds Unix sun_path budget: {}",
@@ -562,7 +605,10 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
     Ok(RuntimeServerEndpoint {
         schema_id: ENDPOINT_SCHEMA_ID.to_owned(),
         schema_version: SCHEMA_VERSION.to_owned(),
-        transport_contract_digest: runtime_server_transport_contract_digest(),
+        binary_content_digest,
+        runtime_generation_digest: generation_identity.runtime_generation_digest,
+        schema_digest: generation_identity.schema_digest,
+        transport_contract_digest,
         owner_epoch,
         owner_process_id: agent_semantic_runtime::runtime_process_lifecycle::current_process_id(),
         runtime_artifact_path: runtime_artifact_path.to_string_lossy().into_owned(),
@@ -580,3 +626,4 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
         status_memory_path: status_memory_path.to_string_lossy().into_owned(),
     })
 }
+use std::path::PathBuf;

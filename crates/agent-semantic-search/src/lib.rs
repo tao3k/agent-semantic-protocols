@@ -159,7 +159,7 @@ pub use provider_candidate_annotations::{
     provider_facts_envelope_from_value,
 };
 pub use resident_source_index::{
-    ResidentSourceIndex, ResidentSourceIndexSeed, resident_navigation_keys,
+    ResidentSearchAuthority, ResidentSourceIndex, ResidentSourceIndexSeed, resident_navigation_keys,
 };
 pub use runtime_search_receipt::{
     RUNTIME_SEARCH_SOURCE_CAPACITY, RUNTIME_SEARCH_SOURCE_LIMIT, RuntimeSearchResult,

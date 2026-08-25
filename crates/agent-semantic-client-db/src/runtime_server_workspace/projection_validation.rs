@@ -7,13 +7,11 @@ pub(super) fn validate_selector(
     if selector.selector.trim().is_empty() {
         return Err("workspace selector must be non-empty text".to_owned());
     }
-    let (_, selector_target) = selector
-        .selector
-        .split_once("://")
-        .ok_or_else(|| "workspace selector must include a language scheme".to_owned())?;
-    let (selector_owner, _) = selector_target
-        .split_once('#')
-        .ok_or_else(|| "workspace selector must include an owner fragment".to_owned())?;
+    let selector_owner =
+        agent_semantic_content_identity::CanonicalItemSelector::parse(&selector.selector)
+            .map_err(|error| format!("workspace selector is not canonical: {error}"))?
+            .owner_path()
+            .map_err(|error| format!("workspace selector owner is not canonical: {error}"))?;
     if selector_owner != owner.owner_path {
         return Err(format!(
             "workspace selector owner drift: selector={} ownerPath={}",

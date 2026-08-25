@@ -2,6 +2,10 @@
 
 use std::path::{Path, PathBuf};
 
+#[path = "phase_receipt.rs"]
+mod phase_receipt;
+use phase_receipt::qualify_phase;
+
 use super::contract::{
     ClientProtocolReceipt, QualificationCase, QualificationCaseReceipt, QualificationPlan,
     QualificationReceipt,
@@ -252,42 +256,44 @@ async fn qualify_case(
             .workspace
             .workspace_id
             .to_string();
+    qualify_phase(
+        &case,
+        "public-client-search-query",
+        super::client_protocol::qualify_client_protocol_case(
+            &endpoint.client_http_endpoint,
+            &workspace_identity,
+            project_root,
+            &case,
+        ),
+    )
+    .await?;
     let session = agent_semantic_client_db::WorkspaceDbIpcSession::for_runtime_server_client(
         endpoint,
         workspace_identity.clone(),
         project_root.to_path_buf(),
     );
-    let required_generation = tokio::time::timeout(
-        std::time::Duration::from_millis(800),
+    let required_generation = qualify_phase(
+        &case,
+        "generation-restore",
         session.restore_runtime_generation_from_pointer(),
     )
-    .await
-    .map_err(|_| {
-        format!(
-            "Live Corpus generation pointer restore exceeded 800ms: case={}",
-            case.case_id
-        )
-    })??;
+    .await?;
     let resident_generation_digest = required_generation.generation_digest.clone();
     let resident_root_digest = required_generation.source_root_digest.clone();
-    super::client_protocol::qualify_client_protocol_case(
-        &endpoint.client_http_endpoint,
-        &workspace_identity,
-        project_root,
-        &resident_generation_digest,
-        &case,
-    )
-    .await?;
 
     let language_id = LanguageId::from(case.language_id.as_str());
-    let cold_prime = resident_search(
-        &session,
-        &resident_root_digest,
-        &language_id,
-        &case.search.method,
-        &case.search.view,
-        &case.search.terms,
-        format!("live-corpus-search-{}-cold-prime", case.case_id),
+    let cold_prime = qualify_phase(
+        &case,
+        "resident-search-cold-prime",
+        resident_search(
+            &session,
+            &resident_root_digest,
+            &language_id,
+            &case.search.method,
+            &case.search.view,
+            &case.search.terms,
+            format!("live-corpus-search-{}-cold-prime", case.case_id),
+        ),
     )
     .await?;
     require_zero_resident_search_work(
@@ -296,14 +302,18 @@ async fn qualify_case(
         0,
         &cold_prime.work_counters,
     )?;
-    let search = resident_search(
-        &session,
-        &resident_root_digest,
-        &language_id,
-        &case.search.method,
-        &case.search.view,
-        &case.search.terms,
-        format!("live-corpus-search-{}-0", case.case_id),
+    let search = qualify_phase(
+        &case,
+        "resident-search-sample-0",
+        resident_search(
+            &session,
+            &resident_root_digest,
+            &language_id,
+            &case.search.method,
+            &case.search.view,
+            &case.search.terms,
+            format!("live-corpus-search-{}-0", case.case_id),
+        ),
     )
     .await?;
     let search_operation_id = search.operation_id.clone();
@@ -336,14 +346,17 @@ async fn qualify_case(
             case.case_id
         )
     })?;
-    let query_result = session
-        .read_runtime_exact_projection(
+    let query_result = qualify_phase(
+        &case,
+        "exact-source-sample-0",
+        session.read_runtime_exact_projection(
             language_id.clone(),
             ExactProjectionKind::Source,
             RuntimeProjectionScope::Production,
             selector.clone(),
-        )
-        .await?;
+        ),
+    )
+    .await?;
     let query_evidence = query_result.evidence.clone();
     let query = query_result.value;
     let query_elapsed_micros = query_evidence.elapsed_micros;
@@ -391,14 +404,17 @@ async fn qualify_case(
             root_digest
         ));
     }
-    let projection_result = session
-        .read_runtime_exact_projection(
+    let projection_result = qualify_phase(
+        &case,
+        "callable-skeleton-sample-0",
+        session.read_runtime_exact_projection(
             language_id.clone(),
             ExactProjectionKind::CallableSkeleton,
             RuntimeProjectionScope::Production,
             selector.clone(),
-        )
-        .await?;
+        ),
+    )
+    .await?;
     let projection_evidence = projection_result.evidence.clone();
     let projection_read = projection_result.value;
     let projection_elapsed_micros = projection_evidence.elapsed_micros;
@@ -488,14 +504,19 @@ async fn qualify_case(
         ));
     }
     for sample_index in 1..resident_sample_count {
-        let search_sample = resident_search(
-            &session,
-            &resident_root_digest,
-            &language_id,
-            &case.search.method,
-            &case.search.view,
-            &case.search.terms,
-            format!("live-corpus-search-{}-{sample_index}", case.case_id),
+        let search_phase = format!("resident-search-sample-{sample_index}");
+        let search_sample = qualify_phase(
+            &case,
+            &search_phase,
+            resident_search(
+                &session,
+                &resident_root_digest,
+                &language_id,
+                &case.search.method,
+                &case.search.view,
+                &case.search.terms,
+                format!("live-corpus-search-{}-{sample_index}", case.case_id),
+            ),
         )
         .await?;
         require_resident_sample_budget(
@@ -521,14 +542,18 @@ async fn qualify_case(
         search_service_latency_samples.push(search_sample.service_elapsed_micros);
         search_total_latency_samples.push(search_sample.elapsed_micros);
 
-        let exact_sample = session
-            .read_runtime_exact_projection(
+        let exact_phase = format!("exact-source-sample-{sample_index}");
+        let exact_sample = qualify_phase(
+            &case,
+            &exact_phase,
+            session.read_runtime_exact_projection(
                 language_id.clone(),
                 ExactProjectionKind::Source,
                 RuntimeProjectionScope::Production,
                 selector.clone(),
-            )
-            .await?;
+            ),
+        )
+        .await?;
         require_resident_sample_budget(
             &case.case_id,
             "exact-source",
@@ -561,14 +586,18 @@ async fn qualify_case(
         }
         exact_source_latency_samples.push(exact_elapsed_micros);
 
-        let callable_sample = session
-            .read_runtime_exact_projection(
+        let callable_phase = format!("callable-skeleton-sample-{sample_index}");
+        let callable_sample = qualify_phase(
+            &case,
+            &callable_phase,
+            session.read_runtime_exact_projection(
                 language_id.clone(),
                 ExactProjectionKind::CallableSkeleton,
                 RuntimeProjectionScope::Production,
                 selector.clone(),
-            )
-            .await?;
+            ),
+        )
+        .await?;
         require_resident_sample_budget(
             &case.case_id,
             "callable-skeleton",
@@ -617,7 +646,12 @@ async fn qualify_case(
             case.case_id
         )
     })?;
-    let merkle_read_result = session.read_runtime_merkle_owner(merkle_owner_path).await?;
+    let merkle_read_result = qualify_phase(
+        &case,
+        "merkle-owner-proof",
+        session.read_runtime_merkle_owner(merkle_owner_path),
+    )
+    .await?;
     let merkle_telemetry_digest = merkle_read_result.evidence.telemetry_digest.clone();
     let merkle_read = merkle_read_result.value;
     let merkle_receipt = agent_semantic_client_db::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofQualificationReceipt::qualified(
@@ -668,14 +702,18 @@ async fn qualify_case(
     let query_operation_id = format!("live-corpus-query-{}", case.case_id);
 
     let zero_match_operation_id = format!("live-corpus-zero-match-{}", case.case_id);
-    let zero_match = resident_search(
-        &session,
-        &resident_root_digest,
-        &language_id,
-        "lexical",
-        "seeds",
-        &case.zero_match_terms,
-        zero_match_operation_id.clone(),
+    let zero_match = qualify_phase(
+        &case,
+        "resident-search-zero-match",
+        resident_search(
+            &session,
+            &resident_root_digest,
+            &language_id,
+            "lexical",
+            "seeds",
+            &case.zero_match_terms,
+            zero_match_operation_id.clone(),
+        ),
     )
     .await?;
     if zero_match.candidate_count != 0 {

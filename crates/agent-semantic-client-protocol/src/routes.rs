@@ -6,6 +6,8 @@ use serde_json::Value;
 const SEARCH_REQUEST: &str = "agent.semantic-protocols.runtime-provider-search-request";
 const CLIENT_SEARCH_REQUEST: &str = "agent.semantic-protocols.asp-client-search-request";
 const CLIENT_EXACT_QUERY_REQUEST: &str = "agent.semantic-protocols.asp-client-exact-query-request";
+const CLIENT_EXACT_QUERY_RESPONSE: &str =
+    "agent.semantic-protocols.asp-client-exact-query-response";
 const CLIENT_OWNER_SEARCH_REQUEST: &str =
     "agent.semantic-protocols.asp-client-owner-search-request";
 const EXACT_REQUEST: &str = "agent.semantic-protocols.provider-native-exact-request";
@@ -29,6 +31,33 @@ pub struct AspClientExactQueryRequest {
     pub schema_version: String,
     pub selector: String,
     pub projection: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspClientRuntimeWorkCounters {
+    pub database_read_count: u64,
+    pub filesystem_read_count: u64,
+    pub provider_process_count: u64,
+    pub scheduler_task_count: u64,
+    pub socket_operation_count: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspClientExactQueryResponse {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub operation_id: String,
+    pub language_id: String,
+    pub provider_id: String,
+    pub generation_digest: String,
+    pub root_digest: String,
+    pub result: Value,
+    pub resident_read_elapsed_micros: u64,
+    pub service_elapsed_micros: u64,
+    pub elapsed_micros: u64,
+    pub work_counters: AspClientRuntimeWorkCounters,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -181,3 +210,50 @@ validate_schema_identity!(ProviderNativeExactRequest, EXACT_REQUEST);
 validate_schema_identity!(ProviderNativeExactProjection, EXACT_RESPONSE);
 validate_schema_identity!(ProviderNativeOwnerSearchRequest, OWNER_REQUEST);
 validate_schema_identity!(ProviderNativeOwnerSearchResponse, OWNER_RESPONSE);
+
+impl AspClientExactQueryResponse {
+    pub fn validate(&self) -> Result<(), String> {
+        check(
+            &self.schema_id,
+            CLIENT_EXACT_QUERY_RESPONSE,
+            &self.schema_version,
+        )?;
+        if self.operation_id.trim().is_empty()
+            || self.language_id.trim().is_empty()
+            || self.provider_id.trim().is_empty()
+        {
+            return Err("exact-query response identity fields must be non-empty".to_owned());
+        }
+        validate_digest("generationDigest", &self.generation_digest, true)?;
+        validate_digest("rootDigest", &self.root_digest, false)?;
+        if !self.result.is_object() {
+            return Err("exact-query response result must be an object".to_owned());
+        }
+        if self.elapsed_micros
+            != self
+                .resident_read_elapsed_micros
+                .saturating_add(self.service_elapsed_micros)
+        {
+            return Err("exact-query response elapsedMicros is inconsistent".to_owned());
+        }
+        Ok(())
+    }
+}
+
+fn validate_digest(field: &str, value: &str, algorithm_prefix: bool) -> Result<(), String> {
+    let hex = if algorithm_prefix {
+        value
+            .strip_prefix("blake3-256:")
+            .ok_or_else(|| format!("exact-query response {field} uses an unsupported digest"))?
+    } else {
+        value
+    };
+    if hex.len() != 64
+        || !hex
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        return Err(format!("exact-query response {field} is invalid"));
+    }
+    Ok(())
+}

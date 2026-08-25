@@ -17,8 +17,36 @@ fn streaming_digest_preserves_the_existing_json_digest_contract() {
 }
 
 #[test]
+fn selector_owner_validation_uses_the_shared_canonical_owner_codec() {
+    let owner = WorkspaceOwnerSnapshot {
+        authority: None,
+        owner_path: "src/genport#.scm".to_owned(),
+        content_digest: "blake3-256:fixture".to_owned(),
+        bytes: b"(defstruct genport ())".to_vec(),
+        selectors: Vec::new(),
+    };
+    let selector = WorkspaceSelectorSnapshot {
+        selector: "gerbil-scheme://src/genport%23.scm#item/type/genport".to_owned(),
+        byte_start: 0,
+        byte_end: owner.bytes.len(),
+        derived_projections: Vec::new(),
+    };
+
+    validate_selector(&owner, &selector).expect("encoded owner path must match decoded owner");
+
+    let raw_selector = WorkspaceSelectorSnapshot {
+        selector: "gerbil-scheme://src/genport#.scm#item/type/genport".to_owned(),
+        ..selector
+    };
+    let error = validate_selector(&owner, &raw_selector)
+        .expect_err("an unescaped owner delimiter must fail canonical validation");
+    assert!(error.contains("not canonical"));
+}
+
+#[test]
 fn signature_text_cannot_masquerade_as_callable_skeleton_json() {
     let owner = WorkspaceOwnerSnapshot {
+        authority: None,
         owner_path: "src/lib.rs".to_owned(),
         content_digest: "blake3-256:unused-by-selector-validation".to_owned(),
         bytes: b"fn f() {}".to_vec(),
@@ -151,6 +179,7 @@ fn callable_fixture() -> (WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot) {
         derived_projections: vec![projection],
     };
     let owner = WorkspaceOwnerSnapshot {
+        authority: None,
         owner_path: owner_path.to_owned(),
         content_digest: "blake3-256:fixture".to_owned(),
         bytes,

@@ -41,6 +41,7 @@ pub mod runtime_server_lifecycle_coordinator;
 pub mod runtime_server_owner_receipt;
 pub mod runtime_server_publication;
 pub mod runtime_server_supervisor;
+pub mod workspace_generation_qualification;
 pub use runtime_server_owner_receipt::{
     RuntimeServerDrainReceipt, RuntimeServerExitReceipt, RuntimeServerSpawnReceipt,
 };
@@ -169,8 +170,14 @@ pub use types::{
 extern crate self as agent_semantic_client_db;
 
 #[cfg(test)]
+#[path = "../tests/unit/runtime_server_endpoint_generation.rs"]
+mod runtime_server_endpoint_generation_tests;
+#[cfg(test)]
 #[path = "../tests/unit/test_support_common.rs"]
 mod test_support;
+#[cfg(test)]
+#[path = "../tests/unit/workspace_generation_qualification.rs"]
+mod workspace_generation_qualification_tests;
 
 pub use engine::{
     ProviderSearchWorkspaceSession, TursoResidentSelectorCandidate, TursoResidentSelectorQuery,

@@ -27,6 +27,8 @@ pub struct HookClientRuleConfig {
     #[serde(default)]
     pub actions: Vec<HookClientActionKind>,
     #[serde(default)]
+    pub host_invocations: Vec<HookClientHostInvocationKind>,
+    #[serde(default)]
     pub profiles_list: Vec<String>,
     #[serde(default)]
     pub matcher_policies: Vec<HookClientMatcherPolicy>,
@@ -42,11 +44,11 @@ pub struct HookClientRuleConfig {
     pub routes: Vec<HookClientRuleRouteConfig>,
 }
 
-/// Stable ChoicePlane responsibility carried directly by a dispatch rule.
+/// Stable agent-registry route key carried directly by a dispatch rule.
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct HookClientAgentRoleSelector(String);
+pub struct HookClientAgentSelector(String);
 
-impl HookClientAgentRoleSelector {
+impl HookClientAgentSelector {
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -65,8 +67,9 @@ impl HookClientReceiptKind {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientRuleDispatchConfig {
     pub transport: HookClientRuleDispatchTransport,
-    /// Semantic role resolved by the host-owned ChoicePlane.
-    pub role: HookClientAgentRoleSelector,
+    /// Exact route key from `agents/config.toml`. Host-specific names and
+    /// invocation syntax are projected by the active Host adapter.
+    pub agent: HookClientAgentSelector,
     pub receipt_kind: HookClientReceiptKind,
     #[serde(default)]
     pub lazy_provider: Option<HookClientLazyProviderPolicy>,
@@ -108,6 +111,19 @@ pub enum HookClientActionKind {
     Unknown,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+#[derive(Hash)]
+pub enum HookClientHostInvocationKind {
+    Read,
+    Edit,
+    Search,
+    Enumerate,
+    Execute,
+    Mcp,
+    Unknown,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HookClientMatcherPolicy {
@@ -140,8 +156,13 @@ pub struct HookClientRuleMatchConfig {
     pub capability_policy_none: Vec<String>,
     #[serde(default)]
     pub command_profile_any: Vec<super::profiles::HookClientCommandProfileRef>,
+    /// Repository-wide command families, independent of language profiles.
     #[serde(default)]
+    pub command_set_any: Vec<String>,
+    #[serde(default, skip_deserializing, skip_serializing)]
     pub action_any: Vec<HookClientActionKind>,
+    #[serde(default, skip_deserializing, skip_serializing)]
+    pub host_invocation_any: Vec<HookClientHostInvocationKind>,
     #[serde(default)]
     pub subject_kind_any: Vec<HookClientActionSubjectKind>,
     #[serde(default)]
@@ -156,6 +177,9 @@ pub struct HookClientRuleMatchConfig {
     /// For example, `argvPrefixAny = [["rm", "-rf"]]` matches `rm -rf target`.
     #[serde(default)]
     pub argv_prefix_any: Vec<Vec<String>>,
+    /// Exact argv tokens that must coexist in one parser-owned shell stage.
+    #[serde(default)]
+    pub argv_token_all: Vec<String>,
     /// Exact shell environment assignments in the leading assignment block of
     /// the first parsed command stage.
     #[serde(default)]
@@ -202,7 +226,7 @@ pub struct HookClientRuleMatchConfig {
 pub struct HookClientCapabilityPolicyConfig {
     pub id: String,
     #[serde(default)]
-    pub action_any: Vec<HookClientActionKind>,
+    pub host_invocation_any: Vec<HookClientHostInvocationKind>,
     #[serde(default)]
     pub semantic_capability_any: Vec<HookClientActionKind>,
     #[serde(default)]
@@ -268,7 +292,7 @@ pub enum HookClientConfigDecision {
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientConfigReasonKind {
     None,
-    DirectSourceRead,
+    RegisteredSourceRouteRequired,
     StructuredSourceRead,
     BulkSourceDump,
     RawBroadSearch,

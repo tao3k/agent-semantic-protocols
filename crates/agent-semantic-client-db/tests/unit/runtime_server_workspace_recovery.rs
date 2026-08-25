@@ -38,6 +38,7 @@ fn generation(workspace_identity: &str) -> WorkspaceMemoryGeneration {
             ),
             project_resolutions: Vec::new(),
             owners: vec![WorkspaceOwnerSnapshot {
+                                authority: None,
                 owner_path: "src/lib.rs".to_owned(),
                 content_digest,
                 bytes: bytes.to_vec(),
@@ -93,6 +94,7 @@ fn canonical_materialization(
         &import,
         [1, 0],
         vec![WorkspaceOwnerSnapshot {
+            authority: None,
             owner_path: "src/lib.rs".to_owned(),
             content_digest,
             bytes: bytes.to_vec(),

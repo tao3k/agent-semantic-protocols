@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use super::{
-    WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot, validate_owners,
+    WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot,
+    canonical_snapshot::{validate_canonical_snapshot, validate_owner_snapshot_membership},
+    validate_owners,
 };
 
 pub const WORKSPACE_CANONICAL_MATERIALIZATION_SCHEMA_ID: &str =
@@ -42,6 +44,7 @@ struct CanonicalMaterializationDerived {
 }
 
 fn derive_canonical_materialization(
+    workspace_snapshot: agent_semantic_content_identity::WorkspaceSnapshot,
     source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     import: &crate::ClientDbSourceIndexImport,
     root_depth: [u8; 2],
@@ -50,12 +53,8 @@ fn derive_canonical_materialization(
 ) -> Result<CanonicalMaterializationDerived, String> {
     let file_count = u32::try_from(owners.len())
         .map_err(|_| "workspace canonical materialization file count overflow".to_owned())?;
-    let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes(
-        owners
-            .iter()
-            .map(|owner| (owner.owner_path.as_str(), owner.bytes.as_slice())),
-    );
     validate_canonical_snapshot(&workspace_snapshot, source_snapshot)?;
+    validate_owner_snapshot_membership(&workspace_snapshot, owners)?;
     let selector_rows = owners
         .iter()
         .map(|owner| (&owner.owner_path, &owner.selectors))
@@ -81,20 +80,6 @@ fn derive_canonical_materialization(
             agent_semantic_runtime::workspace_source_scope_generation_digest(project_resolutions)?,
         file_count,
     })
-}
-
-fn validate_canonical_snapshot(
-    workspace_snapshot: &agent_semantic_content_identity::WorkspaceSnapshot,
-    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
-) -> Result<(), String> {
-    if workspace_snapshot.root_digest() == source_snapshot.root_digest {
-        return Ok(());
-    }
-    Err(format!(
-        "workspace canonical materialization source snapshot drift: expected={} actual={}",
-        workspace_snapshot.root_digest(),
-        source_snapshot.root_digest
-    ))
 }
 
 fn assemble_canonical_materialization(
@@ -391,6 +376,7 @@ impl WorkspaceCanonicalMaterialization {
 
     pub fn from_source_index(
         workspace_identity: impl Into<String>,
+        workspace_snapshot: &agent_semantic_content_identity::WorkspaceSnapshot,
         source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
         import: &crate::ClientDbSourceIndexImport,
         source_blobs: &crate::ClientDbSourceIndexSourceBlobs,
@@ -398,6 +384,7 @@ impl WorkspaceCanonicalMaterialization {
     ) -> Result<Self, String> {
         Self::from_source_index_inner(
             workspace_identity.into(),
+            workspace_snapshot,
             source_snapshot,
             import,
             source_blobs,
@@ -407,17 +394,42 @@ impl WorkspaceCanonicalMaterialization {
 
     fn from_source_index_inner(
         workspace_identity: String,
+        workspace_snapshot: &agent_semantic_content_identity::WorkspaceSnapshot,
         source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
         import: &crate::ClientDbSourceIndexImport,
         source_blobs: &crate::ClientDbSourceIndexSourceBlobs,
         project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
     ) -> Result<Self, String> {
+        let owner_authorities = import
+            .owners
+            .iter()
+            .filter_map(|owner| {
+                owner
+                    .language_id
+                    .as_ref()
+                    .zip(owner.provider_id.as_ref())
+                    .map(|(language_id, provider_id)| {
+                        (
+                            owner.owner_path.as_str(),
+                            agent_semantic_search::ResidentSearchAuthority {
+                                language_id: language_id.clone(),
+                                provider_id: provider_id.clone(),
+                            },
+                        )
+                    })
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
         let mut owners = std::collections::BTreeMap::new();
-        for (owner_path, bytes) in source_blobs.iter() {
+        for indexed_owner in &import.owners {
+            let owner_path = indexed_owner.owner_path.as_str();
+            let bytes = source_blobs.get(&indexed_owner.owner_path).ok_or_else(|| {
+                format!("source-index owner omitted same-pass bytes: ownerPath={owner_path}")
+            })?;
             owners.insert(
                 owner_path.to_owned(),
                 WorkspaceOwnerSnapshot {
                     owner_path: owner_path.to_owned(),
+                    authority: owner_authorities.get(owner_path).cloned(),
                     content_digest: format!("blake3-256:{}", blake3::hash(bytes).to_hex()),
                     bytes: bytes.to_vec(),
                     selectors: Vec::new(),
@@ -489,8 +501,9 @@ impl WorkspaceCanonicalMaterialization {
                 .selectors
                 .sort_by(|left, right| left.selector.cmp(&right.selector));
         }
-        Self::new(
+        Self::new_with_workspace_snapshot(
             workspace_identity,
+            workspace_snapshot.clone(),
             source_snapshot.clone(),
             import,
             [1, 0],
@@ -507,7 +520,34 @@ impl WorkspaceCanonicalMaterialization {
         owners: Vec<WorkspaceOwnerSnapshot>,
         project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
     ) -> Result<Self, String> {
+        let workspace_snapshot =
+            agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes(
+                owners
+                    .iter()
+                    .map(|owner| (owner.owner_path.as_str(), owner.bytes.as_slice())),
+            );
+        Self::new_with_workspace_snapshot(
+            workspace_identity,
+            workspace_snapshot,
+            source_snapshot,
+            import,
+            root_depth,
+            owners,
+            project_resolutions,
+        )
+    }
+
+    fn new_with_workspace_snapshot(
+        workspace_identity: impl Into<String>,
+        workspace_snapshot: agent_semantic_content_identity::WorkspaceSnapshot,
+        source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+        import: &crate::ClientDbSourceIndexImport,
+        root_depth: [u8; 2],
+        owners: Vec<WorkspaceOwnerSnapshot>,
+        project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
+    ) -> Result<Self, String> {
         let derived = derive_canonical_materialization(
+            workspace_snapshot,
             &source_snapshot,
             import,
             root_depth,

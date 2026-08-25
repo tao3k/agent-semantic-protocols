@@ -68,11 +68,12 @@ impl SourceIndexRefreshContext {
         request: SourceIndexGenerationRefresh<'_>,
     ) -> Result<PreparedSourceIndexGeneration, String> {
         let trace_started = Instant::now();
-        let (file_hashes, _workspace_snapshot, source_snapshot, source_blobs) =
+        let (file_hashes, workspace_snapshot, source_snapshot, source_blobs, auxiliary_owners) =
             super::async_snapshot::source_index_snapshot_from_files_async(
                 request.index_root,
                 request.files,
                 request.registry,
+                request.provider_registry,
             )
             .await?;
         let workspace_identity =
@@ -87,6 +88,7 @@ impl SourceIndexRefreshContext {
             request.provider_registry,
             request.files,
             &source_blobs,
+            &auxiliary_owners,
         )
         .await?;
         self.prepare_generation_from_snapshot(
@@ -100,6 +102,7 @@ impl SourceIndexRefreshContext {
                 provider_registry: request.provider_registry,
             },
             file_hashes,
+            workspace_snapshot,
             source_snapshot,
             source_blobs,
             trace_started,
@@ -110,6 +113,7 @@ impl SourceIndexRefreshContext {
         &self,
         request: SourceIndexGenerationRefresh<'_>,
         file_hashes: Vec<ClientCacheFileHash>,
+        workspace_snapshot: agent_semantic_content_identity::WorkspaceSnapshot,
         source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
         source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs,
         trace_started: Instant,
@@ -149,6 +153,7 @@ impl SourceIndexRefreshContext {
             agent_semantic_client_db::runtime_server_workspace::
                 WorkspaceCanonicalMaterialization::from_source_index(
                     workspace_identity,
+                    &workspace_snapshot,
                     &source_snapshot,
                     &refresh_request.import,
                     &source_blobs,

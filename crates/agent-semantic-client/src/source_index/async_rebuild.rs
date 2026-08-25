@@ -52,6 +52,10 @@ async fn prepare_runtime_server_owner_projection_async(
             provider.provider_id, ambiguous.provider_id
         ));
     }
+    let authority = agent_semantic_search::ResidentSearchAuthority {
+        language_id: provider.language_id.clone(),
+        provider_id: provider.provider_id.clone(),
+    };
     let source_path = agent_semantic_client_core::scoped_child_path(&project_root, &owner_path)
         .ok_or_else(|| {
             format!("runtime owner projection escaped workspace: ownerPath={owner_path}")
@@ -71,12 +75,14 @@ async fn prepare_runtime_server_owner_projection_async(
         relations: Vec::new(),
     }];
     let registry = snapshot.evidence(&project_root);
-    let (_, _, _, source_blobs) = super::async_snapshot::source_index_snapshot_from_files_async(
-        &project_root,
-        &files,
-        &registry,
-    )
-    .await?;
+    let (_, _, _, source_blobs, auxiliary_owners) =
+        super::async_snapshot::source_index_snapshot_from_files_async(
+            &project_root,
+            &files,
+            &registry,
+            &snapshot,
+        )
+        .await?;
     let projected = match executor {
         RuntimeOwnerProjectionExecutor::Resident(runtime) => {
             super::projection::project_generation_with_resident_runtime(
@@ -86,6 +92,7 @@ async fn prepare_runtime_server_owner_projection_async(
                 &snapshot,
                 &files,
                 &source_blobs,
+                &auxiliary_owners,
             )
             .await?
         }
@@ -135,6 +142,7 @@ async fn prepare_runtime_server_owner_projection_async(
     Ok(
         agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot {
             owner_path,
+            authority: Some(authority),
             content_digest: format!("blake3-256:{}", blake3::hash(&bytes).to_hex()),
             bytes,
             selectors,

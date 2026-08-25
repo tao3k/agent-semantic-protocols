@@ -58,6 +58,7 @@ fn generation_with_selectors(
             ),
             project_resolutions: Vec::new(),
             owners: vec![WorkspaceOwnerSnapshot {
+                authority: None,
                 owner_path: "src/lib.rs".to_owned(),
                 content_digest,
                 bytes: bytes.to_vec(),
@@ -130,6 +131,7 @@ fn canonical_materialization_binds_snapshot_import_and_complete_owner_count() {
         &import,
         [1, 0],
         vec![WorkspaceOwnerSnapshot {
+            authority: None,
             owner_path: "src/lib.rs".to_owned(),
             content_digest: format!("blake3-256:{}", blake3::hash(b"source").to_hex()),
             bytes: b"source".to_vec(),
@@ -233,6 +235,7 @@ async fn owner_overlay_cannot_manufacture_a_canonical_generation() {
             "workspace-overlay-admission",
             &root,
             WorkspaceOwnerSnapshot {
+                authority: None,
                 owner_path: "src/live.rs".to_owned(),
                 content_digest: format!("blake3-256:{}", blake3::hash(b"live").to_hex()),
                 bytes: b"live".to_vec(),
@@ -282,6 +285,7 @@ async fn selector_overlay_atomically_rebinds_a_stale_generation_owner() {
     let bytes = b"fn live() {}".to_vec();
     let owner_content_digest = format!("blake3-256:{}", blake3::hash(&bytes).to_hex());
     let owner = WorkspaceOwnerSnapshot {
+        authority: None,
         owner_path: "src/lib.rs".to_owned(),
         content_digest: owner_content_digest.clone(),
         bytes: bytes.clone(),
@@ -368,6 +372,7 @@ async fn moved_owner_overlay_publishes_one_atomic_relocation_epoch() {
             &root,
             "src/lib.rs",
             WorkspaceOwnerSnapshot {
+                authority: None,
                 owner_path: "src/moved.rs".to_owned(),
                 content_digest: format!("blake3-256:{}", blake3::hash(moved_bytes).to_hex()),
                 bytes: moved_bytes.to_vec(),
@@ -431,12 +436,14 @@ async fn multi_owner_delta_publishes_one_atomic_generation_epoch() {
                 base_generation_digest: old_lease.generation().generation_digest.clone(),
                 owners: vec![
                     WorkspaceOwnerSnapshot {
+                        authority: None,
                         owner_path: "src/first.rs".to_owned(),
                         content_digest: format!("blake3-256:{}", blake3::hash(first).to_hex()),
                         bytes: first.to_vec(),
                         selectors: Vec::new(),
                     },
                     WorkspaceOwnerSnapshot {
+                        authority: None,
                         owner_path: "src/second.rs".to_owned(),
                         content_digest: format!("blake3-256:{}", blake3::hash(second).to_hex()),
                         bytes: second.to_vec(),
@@ -510,6 +517,7 @@ async fn stale_owner_delta_is_rejected_before_pointer_or_epoch_change() {
     let baseline_epoch = baseline.epoch();
     let baseline_digest = baseline.generation().generation_digest.clone();
     let owner = WorkspaceOwnerSnapshot {
+        authority: None,
         owner_path: "src/lib.rs".to_owned(),
         content_digest: format!("blake3-256:{}", blake3::hash(b"fn next() {}\n").to_hex()),
         bytes: b"fn next() {}\n".to_vec(),
@@ -652,6 +660,7 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
         &import,
         [1, 0],
         vec![WorkspaceOwnerSnapshot {
+            authority: None,
             owner_path: "src/lib.rs".to_owned(),
             content_digest: format!("blake3-256:{}", blake3::hash(source).to_hex()),
             bytes: source.to_vec(),
@@ -934,6 +943,7 @@ async fn restarted_registry_restores_mmap_before_admitting_owner_overlay() {
             workspace_identity,
             &root,
             WorkspaceOwnerSnapshot {
+                authority: None,
                 owner_path: "src/lib.rs".to_owned(),
                 content_digest: format!("blake3-256:{}", blake3::hash(b"live").to_hex()),
                 bytes: b"live".to_vec(),

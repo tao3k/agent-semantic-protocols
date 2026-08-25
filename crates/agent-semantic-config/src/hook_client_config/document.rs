@@ -48,7 +48,11 @@ pub struct HookClientConfigFile {
     #[serde(default)]
     pub recovery_prompt: HookClientRecoveryPromptConfig,
     #[serde(default)]
+    pub agent_calling: HookClientAgentCallingConfig,
+    #[serde(default)]
     pub command_profiles: Vec<super::profiles::HookClientCommandProfileConfig>,
+    #[serde(default)]
+    pub command_sets: Vec<super::profiles::HookClientCommandSetConfig>,
     #[serde(default)]
     pub profiles: BTreeMap<String, HookClientProfileConfig>,
     #[serde(default)]
@@ -57,6 +61,44 @@ pub struct HookClientConfigFile {
     pub capability_policies: Vec<HookClientCapabilityPolicyConfig>,
     #[serde(default)]
     pub rules: Vec<HookClientRuleConfig>,
+}
+
+/// Host-native Agent calling-symbol DSL.
+///
+/// `{name}` is replaced with the registered route key. The default is Codex's
+/// native `@name` call; platforms with a different native token override only
+/// their pattern.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientAgentCallingConfig {
+    #[serde(default = "default_agent_calling_pattern")]
+    pub default_pattern: String,
+    #[serde(default)]
+    pub platform_patterns: BTreeMap<String, String>,
+}
+
+impl Default for HookClientAgentCallingConfig {
+    fn default() -> Self {
+        Self {
+            default_pattern: default_agent_calling_pattern(),
+            platform_patterns: BTreeMap::new(),
+        }
+    }
+}
+
+impl HookClientAgentCallingConfig {
+    #[must_use]
+    pub fn symbol(&self, platform: &str, name: &str) -> String {
+        self.platform_patterns
+            .get(platform)
+            .unwrap_or(&self.default_pattern)
+            .replace("{name-kebab}", &name.replace('_', "-"))
+            .replace("{name}", name)
+    }
+}
+
+fn default_agent_calling_pattern() -> String {
+    "@{name}".to_owned()
 }
 
 /// Managed hook projection of provider-owned language source extensions.
@@ -174,6 +216,16 @@ pub fn materialize_profile_rule_ir(config: &mut HookClientConfigFile) -> Result<
         for action in &rule.actions {
             if !rule.match_config.action_any.contains(action) {
                 rule.match_config.action_any.push(*action);
+            }
+        }
+
+        for host_invocation in &rule.host_invocations {
+            if !rule
+                .match_config
+                .host_invocation_any
+                .contains(host_invocation)
+            {
+                rule.match_config.host_invocation_any.push(*host_invocation);
             }
         }
 

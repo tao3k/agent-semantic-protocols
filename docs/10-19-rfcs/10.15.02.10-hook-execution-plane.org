@@ -56,6 +56,39 @@ failure MUST NOT change, suppress, or delay the already-computed decision and
 MUST NOT contact or reconcile the Runtime Server. A separate maintenance or
 checkpoint path MAY use the longer bounded lock budget for durable compaction.
 
+* HostInvocation, SemanticCapability, and unobserved host boundary
+
+=HostInvocation= is an immutable platform fact.  It records the canonical
+host tool identity, payload, surface, invocation source, and host-side
+invocation category.  It must not be inferred from command text or copied from
+a semantic capability merely to satisfy a rule.
+
+=SemanticCapability= is a parser- or classifier-derived behavior fact.  Read,
+edit, search, enumerate, and execute remain semantic capabilities when the
+host invocation arrives through shell, MCP, nested-tool, or agent surfaces.
+
+The version-1 rule DSL keeps these axes independent:
+
+- =actions= matches semantic capabilities only;
+- =hostInvocations= matches host invocation categories only;
+- =profilesList= matches classified language and document subjects;
+- =matcherPolicies= matches parser-owned structural predicates.
+
+Thus =actions=["read"] + profilesList=["org"]= is the basic Org read rule.
+An MCP-specific restriction adds =hostInvocations=["mcp"]= without changing
+the meaning of =read=.
+
+The Action IR, schema, Rust matcher, generated configuration, TestKit
+scenarios, and formal model migrate atomically within schema version 1.  The
+old representation that writes one operation kind into both host invocation
+and semantic capability axes is removed; no compatibility matcher preserves
+that conflation.
+
+An unobserved host event produces no Action IR and no decision receipt.  It is
+neither a synthetic allow nor a synthetic deny.  Physical fail-closed
+acceptance additionally requires host evidence that an action without Hook
+delivery was not executed.
+
 * Hook conformance witness framework
 
 Conformance is a four-layer obligation: the plugin host matcher must admit the

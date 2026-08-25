@@ -303,7 +303,7 @@ async fn lattice_reconciliation_retains_only_reachable_digest_generations() {
     }
 
     let receipt =
-        agent_semantic_runtime::runtime_artifact_retention::prune_unreachable_runtime_artifacts(
+        agent_semantic_artifacts::runtime_artifact_retention::prune_unreachable_runtime_artifacts(
             &artifact_root,
         )
         .await

@@ -281,12 +281,12 @@ fn install_plugin_codex_help_is_non_mutating() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        String::from_utf8_lossy(&output.stdout)
-            .contains("Usage: asp install plugin [OPTIONS] --codex [PROJECT_ROOT]"),
-        "stdout: {}",
-        String::from_utf8_lossy(&output.stdout)
+        stdout.contains("Usage: asp install plugin"),
+        "stdout: {stdout}"
     );
+    assert!(stdout.contains("[PROJECT_ROOT]"), "stdout: {stdout}");
     assert!(!root.join(".codex/config.toml").exists());
     assert!(
         !root

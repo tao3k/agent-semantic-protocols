@@ -1,8 +1,13 @@
 //! Public facade for ASP artifact identity primitives.
 
+pub mod blake3_content_digest;
 mod edge;
 mod identity;
 mod repair_chain;
+pub mod runtime_artifact_catalog;
+pub mod runtime_artifact_publication;
+pub mod runtime_artifact_quiescence;
+pub mod runtime_artifact_retention;
 
 pub use agent_semantic_content_identity::{
     ResolutionAuthority, ResolutionEvidence, ResolutionState, SOURCE_RESOLUTION_SCHEMA_ID,

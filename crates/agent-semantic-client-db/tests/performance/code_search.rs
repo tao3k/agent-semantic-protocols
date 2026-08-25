@@ -142,6 +142,7 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
     .expect("build resident Turso source-index import");
     let owner_snapshot =
         agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot {
+            authority: None,
             owner_path: fixture_owner_path.clone(),
             bytes: fixture_source.clone(),
             content_digest: format!("blake3-256:{}", blake3::hash(&fixture_source).to_hex()),
@@ -285,6 +286,7 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
             format!("workspace-code-search-cold-pressure-{sample_index}");
         let sample_owner =
             agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot {
+                authority: None,
                 owner_path: fixture_owner_path.clone(),
                 bytes: fixture_source.clone(),
                 content_digest: format!("blake3-256:{}", blake3::hash(&fixture_source).to_hex()),

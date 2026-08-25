@@ -1,9 +1,9 @@
+use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
 use agent_semantic_client_db::RuntimeServerEndpoint;
 use agent_semantic_client_db::runtime_server_lifecycle_coordinator::{
     OwnerClassification, RuntimeServerLifecycleCoordinator,
 };
 use agent_semantic_client_db::{RuntimeServerExitReceipt, RuntimeServerSpawnReceipt};
-use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
 use tempfile::tempdir;
 
 #[tokio::test]
@@ -126,6 +126,9 @@ fn fixture_endpoint(state_home: &std::path::Path, owner_epoch: u64) -> RuntimeSe
         blake3::hash(format!("{owner_epoch}\0{binding_token}\0{identity_value}").as_bytes())
             .to_hex();
     RuntimeServerEndpoint {
+        binary_content_digest: "blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
+        runtime_generation_digest: "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
+        schema_digest: "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(),
         schema_id: "agent.semantic-protocols.runtime-server-endpoint".to_owned(),
         schema_version: "1".to_owned(),
         transport_contract_digest:

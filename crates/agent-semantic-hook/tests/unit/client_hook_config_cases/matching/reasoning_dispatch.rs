@@ -340,23 +340,26 @@ fn config_rule_scenarios_enforce_composition_witnesses_and_dominance() {
                         Some("asp session --agents choice-plane"),
                         "positive case changed the Org Agent window: {case_id}"
                     );
-                    let target_role = decision_json["fields"]["targetAgentRole"]
+                    let target_agent = decision_json["fields"]["targetAgent"]
                         .as_str()
-                        .filter(|role| !role.is_empty())
-                        .expect("positive case omitted ChoicePlane target role");
+                        .filter(|agent| !agent.is_empty())
+                        .expect("positive case omitted registered Agent route");
                     let receipt_kind = decision_json["fields"]["receiptKind"]
                         .as_str()
                         .filter(|receipt| !receipt.is_empty())
                         .expect("positive case omitted ChoicePlane receipt kind");
                     assert_eq!(
                         decision_json["fields"]["agentSessionAction"].as_str(),
-                        Some("dispatch-choice-plane-role")
+                        Some("dispatch-registered-agent")
                     );
                     if decision_json["reasonKind"].as_str()
                         == Some("subagent-receipt-required")
                     {
+                        let target_symbol = decision_json["fields"]["targetAgentSymbol"]
+                            .as_str()
+                            .expect("positive case omitted native Agent symbol");
                         let expected_message = format!(
-                            "role `{target_role}` and require receipt `{receipt_kind}`"
+                            "Invoke `{target_symbol}` for registered Agent `{target_agent}` through `asp session --agents choice-plane` and require receipt `{receipt_kind}`"
                         );
         let actual_message = decision_json["message"]
             .as_str()
@@ -366,7 +369,7 @@ fn config_rule_scenarios_enforce_composition_witnesses_and_dominance() {
         {
             assert!(
                 actual_message.starts_with(
-                    "Registered-source reasoning search/query is denied only in the current Agent."
+                    "Registered-source reasoning search is denied only in the current Agent."
                 ),
                 "registered search lost the Config TOML policy message: {case_id}: {actual_message}"
             );

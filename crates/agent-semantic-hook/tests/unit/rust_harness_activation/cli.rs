@@ -78,7 +78,7 @@ fn cli_doctor_reports_deny_for_codex_exec_command_source_dump() {
     assert!(stdout.contains("activeContractFingerprint="));
     assert!(stdout.contains("classifierProbe=deny"));
     assert!(stdout.contains("classifierReason=bulk-source-dump"));
-    assert!(stdout.contains("classifierRule=deny-raw-registered-source-action"));
+    assert!(stdout.contains("classifierRule=route-read-to-asp-languages"));
     assert!(stdout.contains("matchPolicyStatus=partial"), "{stdout}");
     assert!(stdout.contains("matchPolicyRules=17"));
     assert!(stdout.contains("matchPolicyCases=20"));

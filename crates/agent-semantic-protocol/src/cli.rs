@@ -52,6 +52,8 @@ fn render_cli_error(args: &[String], error: String) -> String {
     if !agent_semantic_client_db::workspace_db_ipc::is_host_local_ipc_permission_denied(&error) {
         return error;
     }
+    let command_digest = agent_semantic_hook::host_native_handoff::argv_digest(&argv)
+        .unwrap_or_else(|_| "unavailable".to_owned());
     serde_json::json!({
         "schemaId": "agent.semantic-protocols.host-native-execution-required",
         "schemaVersion": "1",
@@ -60,6 +62,7 @@ fn render_cli_error(args: &[String], error: String) -> String {
         "executionAuthority": "host-native",
         "retryPolicy": "do-not-retry-in-current-sandbox",
         "argv": argv,
+        "commandDigest": command_digest,
         "message": "The current sandbox cannot connect to the Runtime data endpoint. Execute this exact ASP argv with Host-native command authority; do not create or resume another Agent, retry in the current sandbox, open the Runtime database directly, or refresh the plugin.",
         "cause": error,
     })

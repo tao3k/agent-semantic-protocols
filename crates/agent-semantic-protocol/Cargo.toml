@@ -7,6 +7,7 @@ edition.workspace = true
 doctest = false
 
 [dependencies]
+agent-semantic-artifacts.workspace = true
 agent-semantic-client-server = { path = "../agent-semantic-client-server" }
 agent-semantic-runtime-server = { path = "../agent-semantic-runtime-server" }
 agent-semantic-http-json = { path = "../agent-semantic-http-json" }

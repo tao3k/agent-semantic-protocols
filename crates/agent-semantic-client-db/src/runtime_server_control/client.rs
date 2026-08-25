@@ -4,7 +4,7 @@ use super::model::{
     RuntimeServerEndpoint, RuntimeServerOperation, SCHEMA_VERSION,
 };
 use super::status_memory::read_runtime_server_status;
-use agent_semantic_runtime::runtime_artifact_catalog::RuntimeBinaryIdentity;
+use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
 pub async fn call_runtime_server(
     endpoint: &RuntimeServerEndpoint,
     operation: RuntimeServerOperation,

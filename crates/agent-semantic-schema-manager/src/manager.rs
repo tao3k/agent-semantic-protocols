@@ -9,6 +9,10 @@ use agent_semantic_content_identity::exact_selector_merkle::canonical_content_di
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::responsibility::{
+    SchemaFamily, SchemaReferenceDecision, SchemaResponsibility, audit_schema_responsibilities,
+};
+
 pub const PROFILE_REGISTRY_SCHEMA_ID: &str =
     "agent.semantic-protocols.language-schema-profile-registry";
 pub const BUNDLE_RECEIPT_SCHEMA_ID: &str =
@@ -24,6 +28,8 @@ pub struct LanguageSchemaProfileRegistry {
     pub schema: String,
     pub schema_id: String,
     pub schema_version: String,
+    pub families: Vec<SchemaFamily>,
+    pub reference_decisions: Vec<SchemaReferenceDecision>,
     pub root_sets: BTreeMap<String, Vec<String>>,
     pub profiles: Vec<LanguageSchemaProfile>,
 }
@@ -82,6 +88,13 @@ impl SchemaManager {
         }
     }
 
+    /// Returns the registered language profiles from the canonical schema registry.
+    ///
+    /// Consumers must use this owner instead of maintaining a second language list.
+    pub fn registered_language_profiles(&self) -> Result<Vec<LanguageSchemaProfile>, String> {
+        Ok(self.load_registry()?.profiles)
+    }
+
     pub fn with_registry(
         workspace_root: impl Into<PathBuf>,
         registry_path: impl Into<PathBuf>,
@@ -123,6 +136,16 @@ impl SchemaManager {
         })
         .await
         .map_err(|error| format!("client schema publication task failed: {error}"))?
+    }
+
+    pub async fn responsibilities(&self) -> Result<Vec<SchemaResponsibility>, String> {
+        let manager = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let registry = manager.load_registry()?;
+            manager.schema_responsibilities(&registry)
+        })
+        .await
+        .map_err(|error| format!("schema responsibility audit task failed: {error}"))?
     }
 
     fn materialize_blocking(
@@ -175,6 +198,7 @@ impl SchemaManager {
         {
             return Err("schema profile registry identity is unsupported".to_owned());
         }
+        self.schema_responsibilities(&registry)?;
         let mut languages = BTreeSet::new();
         for profile in &registry.profiles {
             validate_identity("languageId", &profile.language_id)?;
@@ -194,11 +218,21 @@ impl SchemaManager {
                     ));
                 }
             }
+            ensure_unique("schema root set", &profile.root_sets)?;
+            ensure_unique("schema root", &profile.roots)?;
+            ensure_unique("provider-owned schema", &profile.provider_owned)?;
             for name in profile.roots.iter().chain(&profile.provider_owned) {
                 validate_schema_name(name)?;
             }
         }
         Ok(registry)
+    }
+
+    fn schema_responsibilities(
+        &self,
+        registry: &LanguageSchemaProfileRegistry,
+    ) -> Result<Vec<SchemaResponsibility>, String> {
+        audit_schema_responsibilities(&self.workspace_root, registry)
     }
 
     fn select_profiles<'a>(
@@ -611,6 +645,16 @@ fn validate_identity(field: &str, value: &str) -> Result<(), String> {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
     {
         return Err(format!("{field} must be a lowercase semantic identity"));
+    }
+    Ok(())
+}
+
+fn ensure_unique(field: &str, values: &[String]) -> Result<(), String> {
+    let mut unique = BTreeSet::new();
+    for value in values {
+        if !unique.insert(value) {
+            return Err(format!("duplicate {field}: {value}"));
+        }
     }
     Ok(())
 }

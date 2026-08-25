@@ -111,6 +111,7 @@ fn owner_with_projection(
     projection: agent_semantic_client_db::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot,
 ) -> WorkspaceOwnerSnapshot {
     WorkspaceOwnerSnapshot {
+        authority: None,
         owner_path: "src/lib.rs".to_owned(),
         content_digest: format!("blake3-256:{}", blake3::hash(source).to_hex()),
         bytes: source.to_vec(),

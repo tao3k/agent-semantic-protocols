@@ -24,23 +24,13 @@ fn real_hook_config_drives_every_match_command_scenario() {
 }
 
 #[test]
-fn wrapped_cargo_test_arguments_cannot_match_raw_search_rules() {
+fn wrapped_cargo_test_arguments_match_only_the_testing_lane() {
     let command = "timeout 30s direnv exec . cargo test -p agent-semantic-protocol \
         --test unit_test codex_hook_auto_syncs_stale_managed_matcher_contract -- --nocapture";
     let cases = match_config::rule_prefixes();
-    let mut raw_search_prefixes = 0usize;
     let mut testing_lane_prefixes = 0usize;
 
     for case in &cases {
-        if case.rule_id == "deny-uncontrolled-source-search-commands" {
-            raw_search_prefixes += 1;
-            assert_eq!(
-                match_config::outcome(case, command),
-                match_config::outcome(case, "asp-shell-parser-negative-control"),
-                "argument tokens escaped into executable matching: prefix={:?}",
-                case.argv_prefix
-            );
-        }
         if case.rule_id == "testing-role-dispatch"
             && case.argv_prefix == ["cargo".to_string(), "test".to_string()]
         {
@@ -54,10 +44,6 @@ fn wrapped_cargo_test_arguments_cannot_match_raw_search_rules() {
         }
     }
 
-    assert!(
-        raw_search_prefixes > 0,
-        "raw search rule missing from config"
-    );
     assert!(
         testing_lane_prefixes > 0,
         "resident testing dispatch missing from config"

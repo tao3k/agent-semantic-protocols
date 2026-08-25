@@ -102,7 +102,7 @@ pub fn derive_hook_policy_coverage_cases(
                         source_extension: extension.clone(),
                         path: path.clone(),
                         expected_rule_id: Some(direct_rule.id.clone()),
-                        expected_reason_kind: "direct-source-read",
+                        expected_reason_kind: "registered-source-route-required",
                         command_prefix: None,
                         envelope_slot,
                         wrapper_depth: 0,
@@ -148,21 +148,13 @@ pub fn derive_hook_policy_coverage_cases(
 
 fn is_shell_registered_read_rule(rule: &HookClientRuleConfig) -> bool {
     let match_config = &rule.match_config;
-    let composed_shell_source = match_config
-        .capability_policy_all
-        .iter()
-        .any(|id| id == "opaque-shell-source-access")
-        && match_config
-            .capability_policy_all
-            .iter()
-            .any(|id| id == "registered-language-source");
     rule.enabled
         && matches!(rule.decision, HookClientConfigDecision::Deny)
-        && (composed_shell_source || match_config.argv_registered_source_file)
-        && (match_config.action_any.is_empty()
+        && (rule.actions.contains(&HookClientActionKind::Read)
             || match_config
                 .action_any
-                .contains(&HookClientActionKind::Execute))
+                .contains(&HookClientActionKind::Read))
+        && !rule.profiles_list.is_empty()
         && (match_config.subject_kind_any.is_empty()
             || match_config
                 .subject_kind_any

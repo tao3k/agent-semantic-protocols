@@ -13,7 +13,9 @@ pub struct RulePrefix {
 }
 
 fn document() -> toml::Value {
-    let rendered = HOOK_CONFIG_TEMPLATE.replace("@ARGV_SOURCE_GLOBS@", "\"**/*.rs\"");
+    let rendered = HOOK_CONFIG_TEMPLATE
+        .replace("@ARGV_SOURCE_GLOBS@", "\"**/*.rs\"")
+        .replace("@REGISTERED_PROVIDER_ROUTES@", "");
     toml::from_str::<toml::Value>(&rendered).expect("renderable hooks/config.toml template")
 }
 

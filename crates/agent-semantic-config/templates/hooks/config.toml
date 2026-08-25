@@ -7,6 +7,12 @@ protocolId = "@HOOK_PROTOCOL_ID@"
 protocolVersion = "@HOOK_PROTOCOL_VERSION@"
 contractFingerprint = "@HOOK_CLIENT_CONTRACT_FINGERPRINT@"
 
+[agentCalling]
+defaultPattern = "@{name}"
+
+[agentCalling.platformPatterns]
+claude = "@agent-{name-kebab}"
+
 # Generated from schemas/provider-register.json at build time. This list owns
 # provider facade routing only; source-extension policy stays in profiles.
 @REGISTERED_PROVIDER_ROUTES@
@@ -58,7 +64,8 @@ testing = [
   ["just", "test"],
   ["asp", "rust", "check"],
 ]
-review = [["cargo", "clippy"], ["cargo", "fmt", "--check"]]
+review = [["cargo", "clippy"]]
+format-check = [["cargo", "fmt"]]
 
 [[commandProfiles]]
 id = "typescript-node"
@@ -112,14 +119,40 @@ id = "gerbil-gxpkg"
 languageIds = ["gerbil-scheme"]
 
 [commandProfiles.categories]
-testing = [["gxpkg", "test"]]
+testing = [
+  ["gxpkg", "test"],
+  ["gxtest"],
+  ["just", "test-gerbil-provider-http-json"],
+  ["just", "check-gerbil-owner-items-fast-path"],
+]
 
 [[commandProfiles]]
 id = "gerbil-gxi"
 languageIds = ["gerbil-scheme"]
 
 [commandProfiles.categories]
-building = [["gxi"]]
+building = [["gxi"], ["gxc"]]
+
+[[commandProfiles]]
+id = "lean-lake"
+languageIds = ["lean"]
+
+[commandProfiles.categories]
+testing = [["lake", "env", "lean"], ["lake", "build"]]
+
+# Repository-wide inspection families are independent of language profiles.
+# Source-search commands such as `git grep` and `git ls-files` deliberately do
+# not belong here; they remain governed by registered-source search routing.
+[[commandSets]]
+id = "git-history-inspection"
+argvPrefixAny = [
+  ["git", "log"],
+  ["git", "show"],
+  ["git", "diff"],
+  ["git", "reflog"],
+  ["git", "shortlog"],
+  ["git", "blame"],
+]
 
 # Reusable predicates over the normalized AgentAction envelope. Rules compose
 # these facts; they do not duplicate tool-name or provider-extension heuristics.
@@ -129,20 +162,14 @@ subjectKindAny = ["registered-language-source", "registered-language-source-patt
 
 [[capabilityPolicies]]
 id = "raw-host-search"
-actionAny = ["search", "execute"]
+hostInvocationAny = ["search", "execute"]
 semanticCapabilityAny = ["search"]
 
-[[capabilityPolicies]]
-id = "opaque-shell-source-access"
-actionAny = ["execute"]
-
-[[capabilityPolicies]]
-id = "shell-read"
-semanticCapabilityAny = ["read"]
-
-# Registered-language reasoning query/search dispatch. The matcher expands
+# Registered-language reasoning search dispatch. The matcher expands
 # `<registered-language>` from the provider registry; the rule owns the complete
-# match, intent, decision, and Host role-dispatch policy.
+# match, intent, decision, and Host role-dispatch policy. Exact selector-bearing
+# query is the main-thread QueryHandoff materialization boundary and is not
+# dispatched back into the Explorer.
 [[rules]]
 id = "registered-asp-reasoning-search"
 matcherPolicies = ["wrapped_command"]
@@ -150,18 +177,17 @@ priority = 100000
 intent = "reasoning-search"
 decision = "deny"
 reasonKind = "subagent-receipt-required"
-message = "Registered-source reasoning search/query is denied only in the current Agent. This policy is owned by Config TOML: delegate it to the registered ASP Explorer, which uses compact `asp <language> search ...` and selector-bearing `asp <language> query ...` routes without `--json`. The `--json` flag is reserved for explicit debug or programmatic automation, not normal Explorer evidence flow. {{agentDispatchMessage}}"
+message = "Registered-source reasoning search is denied only in the current Agent. This policy is owned by Config TOML: delegate search to the registered ASP Explorer, require its exact selector receipt, then materialize that selector from the main thread with `asp <language> query --selector ... --projection source`. The `--json` flag is reserved for explicit debug or programmatic automation, not normal Explorer evidence flow. {{agentDispatchMessage}}"
 event = "pre-tool"
 
 [rules.match]
 argvPatternAny = [
   ["asp", "<registered-language>", "search"],
-  ["asp", "<registered-language>", "query"],
 ]
 
 [rules.dispatch]
 transport = "host-agent"
-role = "explore"
+agent = "asp_explorer"
 receiptKind = "asp-explore-search-v1"
 lazyProvider = "matched-language"
 
@@ -183,16 +209,114 @@ commandProfileAny = [
   { profile = "julia-pkg", category = "testing" },
   { profile = "c-cmake", category = "testing" },
   { profile = "gerbil-gxpkg", category = "testing" },
+  { profile = "lean-lake", category = "testing" },
 ]
 
 [rules.dispatch]
 transport = "host-agent"
-role = "testing"
+agent = "asp_testing"
 receiptKind = "asp-testing-execution-v1"
 
 [rules.fields]
 executionLane = "testing"
 blockedCommandClass = "testing"
+
+[[rules]]
+id = "rust-format-check-role-dispatch"
+matcherPolicies = ["wrapped_command"]
+priority = 91000
+intent = "review-command"
+decision = "deny"
+reasonKind = "subagent-receipt-required"
+message = "Rust formatting verification is denied only in the current Agent; run the non-mutating `cargo fmt ... -- --check` form in the ASP Testing lane. {{agentDispatchMessage}}"
+event = "pre-tool"
+
+[rules.match]
+commandProfileAny = [
+  { profile = "rust-cargo", category = "format-check" },
+]
+argvTokenAll = ["--check"]
+
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_testing"
+receiptKind = "asp-testing-execution-v1"
+
+[rules.fields]
+executionLane = "testing"
+blockedCommandClass = "review"
+
+[[rules]]
+id = "review-role-dispatch"
+matcherPolicies = ["wrapped_command"]
+priority = 90000
+intent = "review-command"
+decision = "deny"
+reasonKind = "subagent-receipt-required"
+message = "Static review is denied only in the current Agent; run it in the ASP Testing lane and return the typed receipt. {{agentDispatchMessage}}"
+event = "pre-tool"
+
+[rules.match]
+commandProfileAny = [
+  { profile = "rust-cargo", category = "review" },
+  { profile = "typescript-node", category = "review" },
+  { profile = "python-uv", category = "review" },
+]
+
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_testing"
+receiptKind = "asp-testing-execution-v1"
+
+[rules.fields]
+executionLane = "testing"
+blockedCommandClass = "review"
+
+[[rules]]
+id = "git-history-inspection-dispatch"
+matcherPolicies = ["wrapped_command"]
+priority = 90000
+intent = "git-history-inspection"
+decision = "deny"
+reasonKind = "subagent-receipt-required"
+message = "Git history inspection can emit large repository-object projections. Run this command in the ASP Testing lane and return a compact receipt. {{agentDispatchMessage}}"
+event = "pre-tool"
+
+[rules.match]
+commandSetAny = ["git-history-inspection"]
+
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_testing"
+receiptKind = "asp-testing-execution-v1"
+
+[rules.fields]
+executionLane = "testing"
+blockedCommandClass = "git-history-inspection"
+
+[[rules]]
+id = "live-corpus-qualification-dispatch"
+matcherPolicies = ["wrapped_command"]
+priority = 90000
+intent = "live-corpus-qualification"
+decision = "deny"
+reasonKind = "subagent-receipt-required"
+message = "Live Corpus qualification is denied only in the current Agent; run the formal qualification in the ASP Testing execution lane. {{agentDispatchMessage}}"
+event = "pre-tool"
+
+[rules.match]
+argvPatternAny = [
+  ["asp", "live-corpus", "qualify"],
+]
+
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_testing"
+receiptKind = "asp-testing-execution-v1"
+
+[rules.fields]
+executionLane = "testing"
+blockedCommandClass = "live-corpus-qualification"
 
 [[rules]]
 id = "gerbil-build-role-dispatch"
@@ -212,7 +336,7 @@ argvSourceGlobAny = ["*.ss", "**/*.ss"]
 
 [rules.dispatch]
 transport = "host-agent"
-role = "testing"
+agent = "asp_testing"
 receiptKind = "asp-testing-execution-v1"
 
 [rules.fields]
@@ -233,25 +357,7 @@ capabilityPolicyAll = ["raw-host-search", "registered-language-source"]
 
 [rules.dispatch]
 transport = "host-agent"
-role = "explore"
-receiptKind = "asp-explore-search-v1"
-lazyProvider = "matched-language"
-
-[[rules]]
-id = "deny-raw-registered-source-action"
-priority = 9900
-decision = "deny"
-reasonKind = "bulk-source-dump"
-message = "Raw semantic reads over registered language source are denied. Use parser-owned ASP search/query evidence."
-event = "pre-tool"
-profilesList = ["rust", "typescript", "python", "julia", "gerbil-scheme", "org", "markdown"]
-
-[rules.match]
-capabilityPolicyAll = ["opaque-shell-source-access", "registered-language-source"]
-
-[rules.dispatch]
-transport = "host-agent"
-role = "explore"
+agent = "asp_explorer"
 receiptKind = "asp-explore-search-v1"
 lazyProvider = "matched-language"
 
@@ -287,7 +393,14 @@ priority = 40000
 actions = ["read"]
 profilesList = ["rust", "typescript", "python", "julia", "gerbil-scheme", "org", "markdown"]
 decision = "deny"
+reasonKind = "registered-source-route-required"
 message = "Registered {{languageId}} source reads are denied. Use the parser-owned ASP route below instead of raw Read."
+
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_explorer"
+receiptKind = "asp-explore-search-v1"
+lazyProvider = "matched-language"
 
 [[rules]]
 id = "route-structured-document-read"
@@ -302,46 +415,14 @@ pathGlobAny = ["*.json", "**/*.json", "*.toml", "**/*.toml"]
 
 [rules.dispatch]
 transport = "host-agent"
-role = "explore"
+agent = "asp_explorer"
 receiptKind = "asp-explore-search-v1"
-
-[[rules]]
-id = "route-shell-structured-document-read"
-priority = 40010
-decision = "deny"
-reasonKind = "structured-source-read"
-message = "Raw structured-document Read is denied only in the current Agent. Delegate the JSON/TOML file read to the registered ASP Explorer, then use the configured bounded projector there: jq for JSON and yq for TOML."
-
-[rules.match]
-capabilityPolicyAll = ["shell-read"]
-pathGlobAny = ["*.json", "**/*.json", "*.toml", "**/*.toml"]
-
-[rules.dispatch]
-transport = "host-agent"
-role = "explore"
-receiptKind = "asp-explore-search-v1"
-
-[[rules]]
-id = "deny-uncontrolled-source-search-commands"
-matcherPolicies = ["wrapped_command"]
-priority = 10000
-decision = "deny"
-reasonKind = "raw-broad-search"
-message = "Uncontrolled source search is denied. Open the Org-owned interactive ChoicePlane with `asp session --agents choice-plane`."
-
-[rules.dispatch]
-transport = "host-agent"
-role = "explore"
-receiptKind = "asp-explore-search-v1"
-lazyProvider = "matched-language"
-
-[rules.match]
-argvPrefixAny = [["rg"], ["ag"], ["grep"], ["fd"], ["find"], ["git", "grep"], ["git", "ls-files"]]
 
 [[rules]]
 id = "allow-bounded-json-projection"
 matcherPolicies = ["wrapped_command"]
 priority = 40020
+intent = "structured-projection"
 decision = "allow"
 terminal = true
 fields = { projectionGrammar = "bounded-path-v1", capabilityActivation = "lazy-executable" }
@@ -361,6 +442,7 @@ optionValueArity = { "--arg" = 2, "--argjson" = 2, "--slurpfile" = 2, "--rawfile
 id = "allow-bounded-toml-projection"
 matcherPolicies = ["wrapped_command"]
 priority = 40020
+intent = "structured-projection"
 decision = "allow"
 terminal = true
 fields = { projectionGrammar = "bounded-path-v1", capabilityActivation = "lazy-executable" }
@@ -380,6 +462,7 @@ optionAny = ["-p=toml"]
 id = "deny-unbounded-structured-projection"
 matcherPolicies = ["wrapped_command"]
 priority = 40015
+intent = "structured-projection"
 decision = "deny"
 reasonKind = "bulk-source-dump"
 message = "Structured documents require one configured bounded projector path; identity, recursive, iterator, compound, unknown-option, multiple-input, and multi-stage projections are denied."
@@ -387,35 +470,3 @@ message = "Structured documents require one configured bounded projector path; i
 [rules.match]
 commandAny = ["jq", "yq"]
 argvStructuredDocumentFile = true
-
-[[rules]]
-id = "deny-uncontrolled-git-metadata-reads"
-matcherPolicies = ["wrapped_command"]
-priority = 10002
-decision = "deny"
-reasonKind = "raw-broad-search"
-message = "Git metadata and tree reads are denied in the main Agent. Open the Org-owned interactive ChoicePlane with `asp session --agents choice-plane`."
-
-[rules.dispatch]
-transport = "host-agent"
-role = "testing"
-receiptKind = "asp-testing-execution-v1"
-
-[rules.match]
-argvPrefixAny = [["git", "show", "--stat"], ["git", "diff", "--stat"], ["git", "diff", "--name-only"], ["git", "diff", "--check"], ["git", "ls-tree"]]
-
-[[rules]]
-id = "deny-uncontrolled-git-source-reads"
-matcherPolicies = ["wrapped_command"]
-priority = 10000
-decision = "deny"
-reasonKind = "bulk-source-dump"
-message = "Git object and diff source materialization is denied in the main Agent. Open the Org-owned interactive ChoicePlane with `asp session --agents choice-plane`."
-
-[rules.dispatch]
-transport = "host-agent"
-role = "testing"
-receiptKind = "asp-testing-execution-v1"
-
-[rules.match]
-argvPrefixAny = [["git", "show"], ["git", "diff"], ["git", "cat-file"], ["git", "blame"], ["git", "log"]]

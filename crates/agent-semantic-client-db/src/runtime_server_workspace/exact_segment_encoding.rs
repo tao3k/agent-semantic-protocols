@@ -17,7 +17,16 @@ use crate::runtime_server_workspace::{
 };
 
 type ByteRange = (usize, usize);
-type OwnerRow = ([u8; 32], ByteRange, ByteRange, usize, usize, [u8; 32]);
+type OwnerRow = (
+    [u8; 32],
+    ByteRange,
+    ByteRange,
+    usize,
+    usize,
+    ByteRange,
+    ByteRange,
+    [u8; 32],
+);
 type SelectorRow = (
     [u8; 32],
     ByteRange,
@@ -163,8 +172,19 @@ pub(crate) fn encode_exact_projection_segment(
         string_table_offset,
         workspace_identity,
     )?;
-    for (index, (hash, path, digest, owner_blob_offset, owner_blob_len, projection_digest)) in
-        owner_rows.into_iter().enumerate()
+    for (
+        index,
+        (
+            hash,
+            path,
+            digest,
+            owner_blob_offset,
+            owner_blob_len,
+            language,
+            provider,
+            projection_digest,
+        ),
+    ) in owner_rows.into_iter().enumerate()
     {
         let start = owner_table_offset + index * OWNER_ENTRY_LEN;
         segment[start..start + 32].copy_from_slice(&hash);
@@ -172,7 +192,9 @@ pub(crate) fn encode_exact_projection_segment(
         write_range_entry(&mut segment, start + 48, string_table_offset, digest)?;
         write_usize(&mut segment, start + 64, blob_offset + owner_blob_offset)?;
         write_usize(&mut segment, start + 72, owner_blob_len)?;
-        segment[start + 80..start + 112].copy_from_slice(&projection_digest);
+        write_range_entry(&mut segment, start + 80, string_table_offset, language)?;
+        write_range_entry(&mut segment, start + 96, string_table_offset, provider)?;
+        segment[start + 112..start + 144].copy_from_slice(&projection_digest);
     }
     for (
         index,
@@ -253,6 +275,14 @@ fn append_owner_projection_rows(
 ) -> Result<(), String> {
     let path = push_bytes(sink.strings, owner.owner_path.as_bytes());
     let digest = push_bytes(sink.strings, owner.content_digest.as_bytes());
+    let (language, provider) = if let Some(authority) = &owner.authority {
+        (
+            push_bytes(sink.strings, authority.language_id.as_str().as_bytes()),
+            push_bytes(sink.strings, authority.provider_id.as_str().as_bytes()),
+        )
+    } else {
+        ((sink.strings.len(), 0), (sink.strings.len(), 0))
+    };
     let blob_offset = sink.blobs.len();
     sink.blobs.extend_from_slice(&owner.bytes);
     owner_rows.push((
@@ -261,6 +291,8 @@ fn append_owner_projection_rows(
         digest,
         blob_offset,
         owner.bytes.len(),
+        language,
+        provider,
         owner_projection_digest(owner),
     ));
     for selector in &owner.selectors {

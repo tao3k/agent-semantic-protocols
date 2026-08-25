@@ -25,15 +25,15 @@ ruleComposition = [
   { pointer = "/match/leadingEnvironmentAssignmentAny", contains = "ASP_NO_AGENT=1" },
 ]
 positiveCommands = [
-  "ASP_NO_AGENT=1 rg -n owner src/lib.rs",
+  "ASP_NO_AGENT=1 future-consumer src/lib.rs",
   "TRACE=1 ASP_NO_AGENT=1 cargo test -p agent-semantic-hook",
   "ASP_NO_AGENT=1 /usr/bin/env -u SDKROOT ASP_PROVIDER_ARTIFACT_ROOT=build/workspace-provider GERBIL_PATH=.gerbil GERBIL_LOADPATH=.gerbil/lib GERBIL_GXC=/opt/homebrew/bin/gxc GERBIL_GSC=/Users/guangtao/.local/bin/gsc GERBIL_GCC=/usr/bin/clang /usr/bin/time -p /opt/homebrew/bin/gxi build.ss",
 ]
 negativeCommands = [
-  "NOT_ASP_NO_AGENT=1 rg -n owner src/lib.rs",
+  "NOT_ASP_NO_AGENT=1 future-consumer src/lib.rs",
   "env ASP_NO_AGENT=1 cargo test -p agent-semantic-hook",
-  "printf warmup && ASP_NO_AGENT=1 rg -n owner src/lib.rs",
-  "bash -lc 'ASP_NO_AGENT=1 rg -n owner src/lib.rs'",
+  "printf warmup && ASP_NO_AGENT=1 future-consumer src/lib.rs",
+  "bash -lc 'ASP_NO_AGENT=1 future-consumer src/lib.rs'",
 ]
 wrapperExemption = "the bypass predicate is intentionally bounded to the first shell stage leading assignment block"
 
@@ -42,7 +42,7 @@ id = "registered-asp-reasoning-search"
 ruleComposition = [
   { pointer = "/matcherPolicies", contains = "wrapped_command" },
   { pointer = "/match/argvPatternAny", contains = ["asp", "<registered-language>", "search"] },
-  { pointer = "/dispatch/role", equals = "explore" },
+  { pointer = "/dispatch/agent", equals = "asp_explorer" },
 ]
 positiveCommands = [
   "asp rust search owner crates/agent-semantic-hook/src/lib.rs items --query capability --workspace . --view seeds",
@@ -51,11 +51,11 @@ positiveCommands = [
   "asp python search owner packages/python/project.py items --query policy --workspace . --view seeds",
   "asp julia search pipe runtime --workspace . --view seeds",
   "asp gerbil-scheme search owner src/main.ss items --query profile --workspace . --view seeds",
-  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source",
-  "asp python query --selector 'python://src/project.py#item/function/run' --workspace . --projection source",
 ]
 negativeCommands = [
   "asp healthcheck",
+  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source",
+  "asp python query --selector 'python://src/project.py#item/function/run' --workspace . --projection source",
 ]
 
 [[rules]]
@@ -63,7 +63,7 @@ id = "testing-role-dispatch"
 ruleComposition = [
   { pointer = "/matcherPolicies", contains = "wrapped_command" },
   { pointer = "/match/commandProfileAny", contains = { profile = "rust-cargo", category = "testing" } },
-  { pointer = "/dispatch/role", equals = "testing" },
+  { pointer = "/dispatch/agent", equals = "asp_testing" },
 ]
 positiveCommands = [
   "cargo test -p agent-semantic-hook --lib",
@@ -82,18 +82,95 @@ positiveCommands = [
   "ctest",
   "cmake --build build",
   "gxpkg test",
+  "gxtest t/provider-http-json-server-test.ss",
+  "just test-gerbil-provider-http-json",
+  "just check-gerbil-owner-items-fast-path",
 ]
 negativeCommands = [
   "cargo metadata --no-deps",
-  "cargo clippy -p agent-semantic-hook",
-  "cargo fmt --check",
   "uv run python --version",
-  "uv run ruff check .",
   "npm view",
+  "just unregistered-gerbil-recipe",
+]
+
+[[rules]]
+id = "rust-format-check-role-dispatch"
+ruleComposition = [
+  { pointer = "/matcherPolicies", contains = "wrapped_command" },
+  { pointer = "/intent", equals = "review-command" },
+  { pointer = "/match/commandProfileAny", contains = { profile = "rust-cargo", category = "format-check" } },
+  { pointer = "/match/argvTokenAll", contains = "--check" },
+  { pointer = "/dispatch/agent", equals = "asp_testing" },
+]
+positiveCommands = [
+  "cargo fmt --all -- --check",
+  "cargo fmt -p agent-semantic-hook -- --check",
+  "rtk --ultra-compact cargo fmt -p agent-semantic-config -- --check",
+]
+negativeCommands = [
+  "cargo fmt --all",
+  "cargo fmt -p agent-semantic-hook",
+]
+
+[[rules]]
+id = "review-role-dispatch"
+ruleComposition = [
+  { pointer = "/matcherPolicies", contains = "wrapped_command" },
+  { pointer = "/intent", equals = "review-command" },
+  { pointer = "/match/commandProfileAny", contains = { profile = "rust-cargo", category = "review" } },
+  { pointer = "/dispatch/agent", equals = "asp_testing" },
+]
+positiveCommands = [
+  "cargo clippy -p agent-semantic-hook",
+  "uv run ruff check .",
   "npm run lint",
   "pnpm run lint",
   "yarn lint",
   "bun run lint",
+]
+negativeCommands = [
+  "cargo metadata --no-deps",
+  "uv run python --version",
+  "npm view",
+]
+
+[[rules]]
+id = "git-history-inspection-dispatch"
+ruleComposition = [
+  { pointer = "/matcherPolicies", contains = "wrapped_command" },
+  { pointer = "/intent", equals = "git-history-inspection" },
+  { pointer = "/match/commandSetAny", contains = "git-history-inspection" },
+  { pointer = "/dispatch/agent", equals = "asp_testing" },
+]
+positiveCommands = [
+  "git log --oneline -50",
+  "rtk --ultra-compact git show HEAD",
+  "rtk --ultra-compact git diff -- crates/agent-semantic-client-db/src/runtime_server_workspace/registry/projection_slots.rs crates/agent-semantic-client-db/src/runtime_server_workspace/registry/core.rs",
+  "git reflog -20",
+  "git shortlog -sn",
+  "git blame src/lib.rs",
+]
+negativeCommands = [
+  "git status --short",
+  "git grep hook",
+  "git ls-files",
+]
+
+[[rules]]
+id = "live-corpus-qualification-dispatch"
+ruleComposition = [
+  { pointer = "/matcherPolicies", contains = "wrapped_command" },
+  { pointer = "/intent", equals = "live-corpus-qualification" },
+  { pointer = "/match/argvPatternAny", contains = ["asp", "live-corpus", "qualify"] },
+  { pointer = "/dispatch/agent", equals = "asp_testing" },
+]
+positiveCommands = [
+  "asp live-corpus qualify",
+  "rtk --ultra-compact err asp live-corpus qualify",
+]
+negativeCommands = [
+  "asp live-corpus status",
+  "rtk --ultra-compact err asp server status",
 ]
 
 [[rules]]
@@ -102,16 +179,18 @@ ruleComposition = [
   { pointer = "/matcherPolicies", contains = "wrapped_command" },
   { pointer = "/match/commandProfileAny", contains = { profile = "gerbil-gxi", category = "building" } },
   { pointer = "/match/argvSourceGlobAny", contains = "*.ss" },
-  { pointer = "/dispatch/role", equals = "testing" },
+  { pointer = "/dispatch/agent", equals = "asp_testing" },
 ]
 positiveCommands = [
   "/usr/bin/env -u SDKROOT ASP_PROVIDER_ARTIFACT_ROOT=build/workspace-provider GERBIL_PATH=.gerbil GERBIL_LOADPATH=.gerbil/lib GERBIL_GXC=/opt/homebrew/bin/gxc GERBIL_GSC=/Users/guangtao/.local/bin/gsc GERBIL_GCC=/usr/bin/clang /usr/bin/time -p /opt/homebrew/bin/gxi build.ss",
   "organization-local-wrapper --profile ci /opt/homebrew/bin/gxi tests/compile-provider.ss",
+  "/opt/homebrew/bin/gxc build.ss",
+  "gxc -O src/runtime/provider-operation.ss",
 ]
 negativeCommands = [
   "/opt/homebrew/bin/gxi build.scm",
   "/opt/homebrew/bin/gxi --help",
-  "/opt/homebrew/bin/gxc build.ss",
+  "/opt/homebrew/bin/gxc build.scm",
 ]
 
 [[rules]]
@@ -119,29 +198,15 @@ id = "deny-raw-registered-source-search-action"
 ruleComposition = [
   { pointer = "/match/capabilityPolicyAll", contains = "raw-host-search" },
   { pointer = "/match/capabilityPolicyAll", contains = "registered-language-source" },
-  { pointer = "/dispatch/role", equals = "explore" },
+  { pointer = "/dispatch/agent", equals = "asp_explorer" },
 ]
 positiveTools = [
-  { name = "command_execution", input = { commandActions = [{ type = "search", command = "rg -n -g '*.rs' HookDecision crates/agent-semantic-hook/src", query = "HookDecision", path = "crates/agent-semantic-hook/src" }] } },
+  { name = "command_execution", input = { commandActions = [{ type = "search", command = "host-native-search", query = "HookDecision", path = "crates/agent-semantic-hook/src/protocol.rs" }] } },
 ]
 negativeTools = [
-  { name = "command_execution", input = { commandActions = [{ type = "search", command = "rg HookDecision Cargo.lock", query = "HookDecision", path = "Cargo.lock" }] } },
+  { name = "command_execution", input = { commandActions = [{ type = "search", command = "host-native-search", query = "HookDecision", path = "Cargo.lock" }] } },
 ]
-wrapperExemption = "host search is a typed action; shell wrappers belong to deny-uncontrolled-source-search-commands"
-
-[[rules]]
-id = "deny-raw-registered-source-action"
-ruleComposition = [
-  { pointer = "/match/capabilityPolicyAll", contains = "opaque-shell-source-access" },
-  { pointer = "/match/capabilityPolicyAll", contains = "registered-language-source" },
-  { pointer = "/profilesList", contains = "gerbil-scheme" },
-]
-positiveCommands = [
-  "read crates/agent-semantic-hook/src/lib.rs",
-]
-negativeCommands = [
-  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source",
-]
+wrapperExemption = "native search is already a typed Host action; shell source access is projected as Read without executable-name tables"
 
 [[rules]]
 id = "deny-agent-search-json"
@@ -168,9 +233,17 @@ positiveTools = [
   { name = "Read", input = { file_path = "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org" } },
   { name = "Read", input = { file_path = "README.md" } },
 ]
+positiveCommands = [
+  "arbitrary-consumer crates/agent-semantic-hook/src/lib.rs",
+  "future-tool languages/typescript-lang-project-harness/src/reasoning-tree/owner-dependency.ts",
+]
 negativeTools = [
   { name = "Read", input = { file_path = "Cargo.lock" } },
   { name = "Read", input = { file_path = "schemas/provider-register.json" } },
+]
+negativeCommands = [
+  "just --list | arbitrary-filter hook",
+  "arbitrary-consumer Cargo.lock",
 ]
 wrapperExemption = "host read is a typed action, not a shell command"
 
@@ -179,7 +252,7 @@ id = "route-structured-document-read"
 ruleComposition = [
   { pointer = "/actions", contains = "read" },
   { pointer = "/match/pathGlobAny", contains = "*.json" },
-  { pointer = "/dispatch/role", equals = "explore" },
+  { pointer = "/dispatch/agent", equals = "asp_explorer" },
 ]
 positiveTools = [
   { name = "Read", input = { file_path = "schemas/semantic-hook-match-scenario.v1.schema.json" } },
@@ -189,33 +262,6 @@ negativeTools = [
   { name = "Read", input = { file_path = "Cargo.lock" } },
 ]
 wrapperExemption = "host read is a typed action, not a shell command"
-
-[[rules]]
-id = "route-shell-structured-document-read"
-ruleComposition = [
-  { pointer = "/match/capabilityPolicyAll", contains = "shell-read" },
-  { pointer = "/match/pathGlobAny", contains = "*.toml" },
-]
-positiveCommands = [
-  "unknown-consumer < schemas/semantic-hook-match-scenario.v1.schema.json",
-  "unknown-consumer < crates/agent-semantic-config/templates/hooks/config.toml",
-]
-negativeCommands = [
-  "jq -r '.properties.expected' schemas/semantic-hook-match-scenario.v1.schema.json",
-  "jq . schemas/semantic-hook-match-scenario.v1.schema.json",
-  "git add -u -- crates/agent-semantic-config/templates/hooks/config.toml",
-]
-
-[[rules]]
-id = "deny-uncontrolled-source-search-commands"
-ruleComposition = [
-  { pointer = "/matcherPolicies", contains = "wrapped_command" },
-  { pointer = "/match/argvPrefixAny", contains = ["rg"] },
-]
-positiveCommands = ["rg HookDecision Cargo.lock", "git ls-files Cargo.lock"]
-negativeCommands = [
-  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source",
-]
 
 [[rules]]
 id = "allow-bounded-json-projection"
@@ -266,26 +312,3 @@ negativeCommands = [
   "jq -r '.properties.expected' schemas/semantic-hook-match-scenario.v1.schema.json",
   "yq -p=toml '.rules[0].id' crates/agent-semantic-config/templates/hooks/config.toml",
 ]
-
-[[rules]]
-id = "deny-uncontrolled-git-metadata-reads"
-ruleComposition = [
-  { pointer = "/matcherPolicies", contains = "wrapped_command" },
-  { pointer = "/match/argvPrefixAny", contains = ["git", "diff", "--check"] },
-]
-positiveCommands = ["git diff --check", "git show --stat HEAD", "git ls-tree -r HEAD"]
-negativeCommands = ["git show HEAD", "git diff", "git status --short"]
-
-[[rules]]
-id = "deny-uncontrolled-git-source-reads"
-ruleComposition = [
-  { pointer = "/matcherPolicies", contains = "wrapped_command" },
-  { pointer = "/match/argvPrefixAny", contains = ["git", "show"] },
-]
-positiveCommands = [
-  "git show HEAD",
-  "git show HEAD:crates/agent-semantic-hook/src/lib.rs",
-  "git diff",
-  "git diff --cached",
-]
-negativeCommands = ["git diff --check", "git diff --stat", "git mv old.rs new.rs", "git status --short"]

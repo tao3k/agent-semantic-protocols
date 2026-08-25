@@ -31,6 +31,13 @@ fn fixture_root() -> std::path::PathBuf {
     ))
 }
 
+#[test]
+fn candidate_checkout_fixture_can_be_initialized() {
+    let directory = tempfile::tempdir().expect("candidate checkout fixture");
+    initialize_candidate_checkout(directory.path());
+    assert!(directory.path().exists());
+}
+
 fn initialize_candidate_checkout(path: &std::path::Path) {
     std::fs::create_dir_all(path).expect("create candidate checkout");
     let initialized = std::process::Command::new("git")

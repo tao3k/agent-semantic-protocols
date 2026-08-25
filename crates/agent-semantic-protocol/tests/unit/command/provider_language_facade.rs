@@ -9,6 +9,71 @@ fn workspace_root() -> PathBuf {
 }
 
 #[test]
+fn structural_item_source_query_does_not_use_cli_breaker() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args([
+            "rust",
+            "query",
+            "--selector",
+            "rust://crates/agent-semantic-protocol/src/command/provider_dispatch.rs#item/function/run_language_command",
+            "--workspace",
+            ".",
+            "--projection",
+            "source",
+        ])
+        .current_dir(workspace_root())
+        .output()
+        .expect("run public exact-query facade");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("provider command must be admitted as a Runtime Server route"),
+        "public query must cross Runtime admission instead of the removed CLI breaker: {stderr}"
+    );
+    assert!(
+        stderr.contains("active-workspace-generation-required")
+            || stderr.contains("provider-missing")
+            || stderr.contains("transport error")
+            || stderr.contains("host-operation-not-permitted"),
+        "public query must return a typed downstream terminal failure: {stderr}"
+    );
+}
+
+#[test]
+fn public_search_facades_use_runtime_admission_for_registered_languages() {
+    for language_id in ["rust", "python", "gerbil-scheme"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+            .args([
+                language_id,
+                "search",
+                "pipe",
+                "RuntimeAspClient",
+                "--workspace",
+                ".",
+            ])
+            .current_dir(workspace_root())
+            .output()
+            .unwrap_or_else(|error| panic!("run public {language_id} search facade: {error}"));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !stderr.contains("provider command must be admitted as a Runtime Server route"),
+            "public {language_id} search must cross Runtime admission: {stderr}"
+        );
+        if !output.status.success() {
+            assert!(
+                stderr.contains("active-workspace-generation-required")
+                    || stderr.contains("provider-missing")
+                    || stderr.contains("transport error")
+                    || stderr.contains("host-operation-not-permitted")
+                    || stderr.contains("client-method-dispatch-failed"),
+                "public {language_id} search must return a typed downstream terminal: {stderr}"
+            );
+        }
+    }
+}
+
+#[test]
 fn structural_item_source_query_fails_closed_without_live_provider() {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([

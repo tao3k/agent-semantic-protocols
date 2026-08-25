@@ -22,11 +22,11 @@
     "hookRoute": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["configRuleId", "targetAgentName", "targetAgentRole", "receiptKind", "commandDigest", "reasonKind"],
+      "required": ["configRuleId", "targetAgent", "targetAgentSymbol", "receiptKind", "commandDigest", "reasonKind"],
       "properties": {
         "configRuleId": {"type": "string", "minLength": 1},
-        "targetAgentName": {"type": "string", "minLength": 1},
-        "targetAgentRole": {"type": "string", "minLength": 1},
+        "targetAgent": {"type": "string", "minLength": 1},
+        "targetAgentSymbol": {"type": "string", "minLength": 2, "pattern": "^@"},
         "receiptKind": {"type": "string", "minLength": 1},
         "commandDigest": {"type": ["string", "null"]},
         "reasonKind": {"type": "string", "minLength": 1}

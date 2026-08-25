@@ -9,8 +9,8 @@
   },
   "hookRoute": {
     "configRuleId": "registered-asp-reasoning-search",
-    "targetAgentName": "asp_explorer",
-    "targetAgentRole": "asp_explorer",
+    "targetAgent": "asp_explorer",
+    "targetAgentSymbol": "@asp_explorer",
     "receiptKind": "asp-explore-search-v1",
     "commandDigest": "sha256:0123456789abcdef",
     "reasonKind": "subagent-receipt-required"

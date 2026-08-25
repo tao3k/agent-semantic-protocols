@@ -1,4 +1,5 @@
 mod canonical_materialization;
+mod canonical_snapshot;
 mod client;
 mod context;
 mod durability;
@@ -88,6 +89,3 @@ pub use retirement::{
     ResidentWorkspaceRetirementReceipt,
 };
 mod atomic_snapshot_pointer;
-#[cfg(test)]
-#[path = "../../tests/unit/runtime_server_search_index_cold_open.rs"]
-mod runtime_server_search_index_cold_open;

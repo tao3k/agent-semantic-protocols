@@ -49,6 +49,21 @@ where
     result
 }
 
+pub(crate) fn restored_generation_covers_demand(
+    _memory_registry: &crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
+    _workspace_identity: &str,
+    _project_root: &std::path::Path,
+    _target_paths: &std::collections::BTreeSet<std::path::PathBuf>,
+    _provider_target: Option<&crate::runtime_server_admission::WorkspaceGenerationProviderTarget>,
+) -> bool {
+    // Durable generations do not yet carry the candidate-generation identity
+    // that produced their projections. After a Runtime restart, neither a
+    // ProjectResolution match nor an owner-path match can prove that restored
+    // bytes belong to the current worktree. Fail closed and rebuild once;
+    // resident Ready coverage remains reusable for subsequent requests.
+    false
+}
+
 enum MutationOwnerProjection {
     Owner(crate::runtime_server_workspace::WorkspaceOwnerSnapshot),
     Tombstone(String),

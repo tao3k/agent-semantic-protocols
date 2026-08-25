@@ -27,7 +27,7 @@ use agent_semantic_content_identity::{
 use agent_semantic_provider_transport::ProviderRuntimeActorClient;
 use agent_semantic_provider_transport::projection_batch::{
     ProviderProjectedItem, ProviderProjectedOwner, ProviderProjectionBatchRequest,
-    ProviderProjectionOwner, provider_projection_batch_ranges,
+    ProviderProjectionOwner, provider_projection_batch_ranges_with_auxiliary_bytes,
 };
 
 enum ProviderProjectionExecutor<'a> {
@@ -37,6 +37,8 @@ enum ProviderProjectionExecutor<'a> {
     ),
 }
 
+pub(super) type ProviderProjectionAuxiliaryOwners = BTreeMap<String, Vec<ProviderProjectionOwner>>;
+
 pub(super) async fn project_generation_with_resident_runtime(
     runtime: &ProviderRuntimeActorClient,
     project_root: &Path,
@@ -44,6 +46,7 @@ pub(super) async fn project_generation_with_resident_runtime(
     registry: &RuntimeProviderProjection,
     files: &[ClientDbSourceIndexScopeFile],
     source_blobs: &ClientDbSourceIndexSourceBlobs,
+    auxiliary_owners: &ProviderProjectionAuxiliaryOwners,
 ) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
     project_generation_with_executor(
         ProviderProjectionExecutor::Resident(runtime),
@@ -52,6 +55,7 @@ pub(super) async fn project_generation_with_resident_runtime(
         registry,
         files,
         source_blobs,
+        auxiliary_owners,
     )
     .await
 }
@@ -63,6 +67,7 @@ pub(super) async fn project_generation_with_runtime_service(
     registry: &RuntimeProviderProjection,
     files: &[ClientDbSourceIndexScopeFile],
     source_blobs: &ClientDbSourceIndexSourceBlobs,
+    auxiliary_owners: &ProviderProjectionAuxiliaryOwners,
 ) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
     project_generation_with_executor(
         ProviderProjectionExecutor::RuntimeService(runtime),
@@ -71,6 +76,7 @@ pub(super) async fn project_generation_with_runtime_service(
         registry,
         files,
         source_blobs,
+        auxiliary_owners,
     )
     .await
 }
@@ -82,13 +88,25 @@ async fn project_generation_with_executor(
     registry: &RuntimeProviderProjection,
     files: &[ClientDbSourceIndexScopeFile],
     source_blobs: &ClientDbSourceIndexSourceBlobs,
+    auxiliary_owners: &ProviderProjectionAuxiliaryOwners,
 ) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
-    let tree = WorkspacePathMerkleTreeV1::from_file_digests(
-        source_blobs
-            .iter()
-            .map(|(owner_path, bytes)| (owner_path.to_owned(), blake3_content_digest_v1(bytes))),
-    )
-    .map_err(|error| format!("build exact-selector workspace Merkle tree: {error}"))?;
+    let mut generation_leaves = source_blobs
+        .iter()
+        .map(|(owner_path, bytes)| (owner_path.to_owned(), blake3_content_digest_v1(bytes)))
+        .collect::<BTreeMap<_, _>>();
+    for owner in auxiliary_owners.values().flatten() {
+        let digest = blake3_content_digest_v1(&owner.source_bytes);
+        if let Some(existing) = generation_leaves.insert(owner.owner_path.clone(), digest.clone()) {
+            if existing != digest {
+                return Err(format!(
+                    "projection generation path has conflicting immutable bytes: {}",
+                    owner.owner_path
+                ));
+            }
+        }
+    }
+    let tree = WorkspacePathMerkleTreeV1::from_file_digests(generation_leaves)
+        .map_err(|error| format!("build exact-selector workspace Merkle tree: {error}"))?;
     let mut projected = files.to_vec();
     for provider in registry
         .providers
@@ -102,6 +120,7 @@ async fn project_generation_with_executor(
             provider,
             &tree,
             source_blobs,
+            auxiliary_owners,
             &mut projected,
         )
         .await?;
@@ -116,6 +135,7 @@ async fn project_provider(
     provider: &RuntimeProvider,
     tree: &WorkspacePathMerkleTreeV1,
     source_blobs: &ClientDbSourceIndexSourceBlobs,
+    auxiliary_owners: &ProviderProjectionAuxiliaryOwners,
     files: &mut [ClientDbSourceIndexScopeFile],
 ) -> Result<(), String> {
     let operation = provider
@@ -153,8 +173,31 @@ async fn project_provider(
                 .ok_or_else(|| format!("projection source bytes are missing: {owner_path}"))
         })
         .collect::<Result<Vec<_>, String>>()?;
-    for range in provider_projection_batch_ranges(&owner_sizes) {
+    let auxiliary_owners = auxiliary_owners
+        .get(provider.provider_id.as_str())
+        .cloned()
+        .unwrap_or_default();
+    let auxiliary_source_bytes = auxiliary_owners
+        .iter()
+        .map(|owner| owner.source_bytes.len())
+        .sum();
+    for range in
+        provider_projection_batch_ranges_with_auxiliary_bytes(&owner_sizes, auxiliary_source_bytes)
+    {
         let batch_indexes = &owner_indexes[range];
+        let batch_owner_paths = batch_indexes
+            .iter()
+            .map(|index| relative_owner_path(project_root, &files[*index].path))
+            .collect::<Vec<_>>();
+        let batch_auxiliary_owners = auxiliary_owners
+            .iter()
+            .filter(|auxiliary| {
+                batch_owner_paths.iter().any(|owner_path| {
+                    auxiliary_owner_applies_to_source(&auxiliary.owner_path, owner_path)
+                })
+            })
+            .cloned()
+            .collect::<Vec<_>>();
         let owners = batch_indexes
             .iter()
             .map(|index| {
@@ -181,6 +224,7 @@ async fn project_provider(
             query_pack_digest: query_pack_digest.as_str().to_owned(),
             base_generation_root_digest: None,
             owners,
+            auxiliary_owners: batch_auxiliary_owners,
         };
         let frame_owner_paths = request
             .owners
@@ -266,6 +310,15 @@ async fn project_provider(
         }
     }
     Ok(())
+}
+
+fn auxiliary_owner_applies_to_source(auxiliary_path: &str, owner_path: &str) -> bool {
+    let auxiliary_directory = Path::new(auxiliary_path)
+        .parent()
+        .unwrap_or_else(|| Path::new(""));
+    Path::new(owner_path)
+        .parent()
+        .is_some_and(|owner_directory| owner_directory.starts_with(auxiliary_directory))
 }
 
 fn encode_semantic_projection(

@@ -1,6 +1,18 @@
 use serde_json::json;
 
 #[test]
+fn cancellation_probe_has_a_language_neutral_route_operation() {
+    assert_eq!(
+        crate::ServerClientRoute::CancellationProbe.operation(),
+        "lifecycle.cancellation"
+    );
+    assert_eq!(
+        crate::CANCELLATION_PROBE_METHOD,
+        "asp.lifecycle.cancellation"
+    );
+}
+
+#[test]
 fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
     let search = crate::AspClientSearchRequest {
         schema_id: "agent.semantic-protocols.asp-client-search-request".to_owned(),
@@ -31,6 +43,29 @@ fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
         search.schema_id,
         "agent.semantic-protocols.runtime-provider-search-request"
     );
+}
+
+#[test]
+fn exact_query_response_carries_falsifiable_resident_performance() {
+    let response = crate::AspClientExactQueryResponse {
+        schema_id: "agent.semantic-protocols.asp-client-exact-query-response".to_owned(),
+        schema_version: "1".to_owned(),
+        operation_id: "query-1".to_owned(),
+        language_id: "rust".to_owned(),
+        provider_id: "asp-rust".to_owned(),
+        generation_digest: format!("blake3-256:{}", "a".repeat(64)),
+        root_digest: "b".repeat(64),
+        result: serde_json::json!({"state": "projection"}),
+        resident_read_elapsed_micros: 7,
+        service_elapsed_micros: 3,
+        elapsed_micros: 10,
+        work_counters: crate::AspClientRuntimeWorkCounters::default(),
+    };
+
+    response.validate().expect("valid exact-query response");
+    let encoded = serde_json::to_value(response).expect("encode exact-query response");
+    assert_eq!(encoded["residentReadElapsedMicros"], 7);
+    assert_eq!(encoded["workCounters"]["filesystemReadCount"], 0);
 }
 
 #[test]

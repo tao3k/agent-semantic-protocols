@@ -40,10 +40,15 @@ pub(super) async fn run_healthcheck_command(args: &[String]) -> Result<(), Strin
     )
     .await?;
     if health.is_healthy() {
-        agent_semantic_runtime::runtime_artifact_catalog::promote_active_runtime_artifact_to_healthy(
+        agent_semantic_artifacts::runtime_artifact_catalog::promote_active_runtime_artifact_to_healthy(
             &state_home,
             "asp",
-            health.resident.runtime_binary_identity.value(),
+            &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
+                &format!(
+                    "blake3-256:{}",
+                    health.resident.runtime_binary_identity.value()
+                ),
+            )?,
         )
         .await?;
     }

@@ -51,6 +51,24 @@ pub fn decode_structural_selector_component(
     })
 }
 
+pub fn encode_structural_selector_owner_path(value: &str) -> String {
+    value
+        .split('/')
+        .map(encode_structural_selector_component)
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+pub fn decode_structural_selector_owner_path(
+    value: &str,
+) -> Result<String, StructuralSelectorCodecError> {
+    value
+        .split('/')
+        .map(decode_structural_selector_component)
+        .collect::<Result<Vec<_>, _>>()
+        .map(|segments| segments.join("/"))
+}
+
 fn hex_digit(value: u8) -> char {
     char::from(if value < 10 {
         b'0' + value

@@ -100,6 +100,12 @@ fn validate_owner(owner: &WorkspaceOwnerSnapshot) -> Result<(), String> {
     if owner.owner_path.trim().is_empty() {
         return Err("workspace owner path must be non-empty text".to_owned());
     }
+    if let Some(authority) = &owner.authority
+        && (authority.language_id.as_str().trim().is_empty()
+            || authority.provider_id.as_str().trim().is_empty())
+    {
+        return Err("workspace owner authority must contain languageId and providerId".to_owned());
+    }
     validate_digest("owner contentDigest", &owner.content_digest)?;
     let actual = format!("blake3-256:{}", blake3::hash(&owner.bytes).to_hex());
     if actual != owner.content_digest {

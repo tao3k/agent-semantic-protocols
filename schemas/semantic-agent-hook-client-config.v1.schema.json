@@ -27,6 +27,13 @@
         "$ref": "#/$defs/commandProfile"
       }
     },
+    "commandSets": {
+      "description": "Repository-wide command families that are independent of language provider profiles.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/commandSet"
+      }
+    },
     "profiles": {
       "description": "Provider-owned source-extension policy projections used for registered-source classification.",
       "type": "object",
@@ -40,7 +47,7 @@
       "minItems": 1,
       "uniqueItems": true,
       "items": {
-        "$ref": "#/$defs/providerRouteIdentity"
+        "$ref": "provider-definitions.v1.schema.json#/$defs/providerReference"
       }
     },
     "capabilityPolicies": {
@@ -52,6 +59,9 @@
     },
     "agentOrgArtifacts": {
       "$ref": "#/$defs/agentOrgArtifacts"
+    },
+    "agentCalling": {
+      "$ref": "#/$defs/agentCalling"
     },
     "aspCommandIntentPolicy": {
       "$ref": "#/$defs/aspCommandIntentPolicy"
@@ -75,6 +85,24 @@
     }
   },
   "$defs": {
+    "agentCalling": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "defaultPattern": {
+          "$ref": "#/$defs/agentCallingPattern"
+        },
+        "platformPatterns": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/identifier" },
+          "additionalProperties": { "$ref": "#/$defs/agentCallingPattern" }
+        }
+      }
+    },
+    "agentCallingPattern": {
+      "type": "string",
+      "pattern": "^[^{}]*\\{name(-kebab)?\\}[^{}]*$"
+    },
     "identifier": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_-]*$"
@@ -82,18 +110,15 @@
     "typedActionKind": {
       "enum": ["read", "edit", "search", "enumerate", "execute", "unknown"]
     },
-    "typedSubjectKind": {
-      "enum": ["registered-language-source", "registered-language-source-pattern", "provider-config-file", "directory", "structural-selector", "other"]
-    },
     "capabilityPolicy": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id"],
       "properties": {
         "id": { "$ref": "#/$defs/identifier" },
-        "actionAny": { "type": "array", "items": { "$ref": "#/$defs/typedActionKind" } },
+        "hostInvocationAny": { "type": "array", "items": { "$ref": "#/$defs/hostInvocationKind" } },
         "semanticCapabilityAny": { "type": "array", "items": { "$ref": "#/$defs/typedActionKind" } },
-        "subjectKindAny": { "type": "array", "items": { "$ref": "#/$defs/typedSubjectKind" } }
+        "subjectKindAny": { "$ref": "semantic-agent-definitions.schema.json#/$defs/subjectKindArray" }
       }
     },
     "commandProfile": {
@@ -133,6 +158,23 @@
         }
       }
     },
+    "commandSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "argvPrefixAny"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "argvPrefixAny": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
     "sourceProfile": {
       "type": "object",
       "additionalProperties": false,
@@ -146,15 +188,6 @@
           "uniqueItems": true,
           "items": { "type": "string", "pattern": "^[A-Za-z0-9]+$" }
         }
-      }
-    },
-    "providerRouteIdentity": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["languageId", "providerId"],
-      "properties": {
-        "languageId": { "type": "string", "minLength": 1 },
-        "providerId": { "type": "string", "minLength": 1 }
       }
     },
     "commandProfileRef": {
@@ -173,12 +206,12 @@
     "dispatch": {
       "type": "object",
       "additionalProperties": false,
-  "required": ["transport", "role", "receiptKind"],
+  "required": ["transport", "agent", "receiptKind"],
       "properties": {
         "transport": {
       "const": "host-agent"
         },
-    "role": {
+    "agent": {
           "$ref": "#/$defs/identifier"
         },
         "receiptKind": {
@@ -362,8 +395,9 @@
         "reasonKind": {
           "enum": [
             "none",
-          "direct-source-read",
-          "structured-source-read",
+        "direct-source-read",
+        "registered-source-route-required",
+        "structured-source-read",
             "bulk-source-dump",
             "raw-broad-search",
             "asp-reasoning-routed",
@@ -389,6 +423,34 @@
         "platform": {
           "enum": ["codex", "claude", "unknown"]
         },
+        "actions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/typedActionKind"
+          }
+        },
+        "hostInvocations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/hostInvocationKind"
+          }
+        },
+        "profilesList": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "matcherPolicies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/matcherPolicy"
+          }
+        },
         "match": {
           "$ref": "#/$defs/ruleMatch"
         },
@@ -399,6 +461,17 @@
           }
         }
       }
+    },
+    "hostInvocationKind": {
+      "enum": [
+        "read",
+        "edit",
+        "search",
+        "enumerate",
+        "execute",
+        "mcp",
+        "unknown"
+      ]
     },
     "ruleMatch": {
       "type": "object",
@@ -419,14 +492,7 @@
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/identifier" }
         },
-        "actionAny": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/typedActionKind" }
-        },
-        "subjectKindAny": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/typedSubjectKind" }
-        },
+        "subjectKindAny": { "$ref": "semantic-agent-definitions.schema.json#/$defs/subjectKindArray" },
         "tool": {
           "type": "string",
           "minLength": 1
@@ -452,6 +518,11 @@
             "$ref": "#/$defs/commandProfileRef"
           }
         },
+        "commandSetAny": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
         "argvPrefixAny": {
           "type": "array",
           "items": {
@@ -462,6 +533,12 @@
               "minLength": 1
             }
           }
+        },
+        "argvTokenAll": {
+          "description": "Exact argv tokens that must coexist in one parser-owned shell stage.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
         },
         "leadingEnvironmentAssignmentAny": {
           "description": "Exact NAME=VALUE assignments matched only in the leading assignment block of the first parsed shell stage.",

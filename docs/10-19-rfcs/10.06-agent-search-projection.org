@@ -4110,6 +4110,42 @@ RFC 10.21 owns the Rust engineering boundary for compact graph schema and render
 
 Any new compact graph field that changes aliases, relation groups, selector groups, frontier actions, omission/avoid rows, or expansion handles must update the shared schema and Rust contract boundary before adding CLI render behavior.
 * Agent-facing render layers
+** Public client projection presentation
+*** Server-owned query lifecycle
+Projection responsibility is modularized in
+[[file:10.06-agent-search-projection/10.06.01-package-responsibility.org][10.06.01 Projection Package Responsibility]].
+
+Projection presentation consumes a server-owned lazy session response.  A
+query/search CLI MUST NOT perform per-command initialize/open-session/shutdown
+or generation restoration.  Workspace and client identity select the resident
+Runtime Server session; a Tokio channel handle may be acquired and dropped
+without changing session, provider, catalog, generation, or cache ownership.
+The projection service budget measures server admission through resident
+memory lookup and is strictly below one millisecond; transport and whole-CLI
+wall time are separate receipts.
+
+
+The public ASP Client Protocol owns projection presentation for every
+registered language.  A provider returns the typed projection payload; the
+shared client renderer decides how that payload is presented.  Language
+facades and provider CLIs MUST NOT decode projection bytes independently.
+
+- =source= and =callable-skeleton= use UTF-8 text presentation by default.
+- an explicit machine/JSON output mode preserves the complete typed response,
+  including byte-oriented provider payloads and receipts;
+- Rust, Python, Gerbil Scheme, and future clients consume the same presentation
+  contract and renderer;
+- a successful exact projection that prints a JSON integer array instead of
+  the requested text violates the public query contract;
+- rendering does not introduce a second query route, provider fallback, or
+  generation authority: both text and machine presentation consume the same
+  Runtime Server response.
+
+Live Corpus and Scenarios qualification MUST exercise both presentations on
+the public HTTP client route.  The text assertion proves that the requested
+projection is usable by an agent; the machine assertion proves that the typed
+schema and receipts remain lossless.
+
 The compact graph render is the normal prompt surface for search. It is not a JSON dump, a debug graph, or a full analyzer receipt. JSON packets remain the machine contract for validators, DB storage, replay, Python graph ranking, and Julia research, but normal stdout should expose only the smallest evidence slice that lets the agent choose the next correct action.
 
 The render has three layers:

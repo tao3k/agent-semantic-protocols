@@ -3,6 +3,7 @@ use crate::runtime_server_workspace::WorkspaceOwnerSnapshot;
 
 fn owner(path: &str, bytes: &[u8]) -> WorkspaceOwnerSnapshot {
     WorkspaceOwnerSnapshot {
+        authority: None,
         owner_path: path.to_owned(),
         content_digest: format!("blake3-256:{}", blake3::hash(bytes).to_hex()),
         bytes: bytes.to_vec(),

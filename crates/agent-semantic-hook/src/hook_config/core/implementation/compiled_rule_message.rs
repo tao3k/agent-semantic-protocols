@@ -3,7 +3,7 @@
 use super::CompiledHookRule;
 use crate::agent_dispatch_message::{AgentDispatchMessageFields, render_choice_plane_instruction};
 
-pub(super) fn render(rule: &CompiledHookRule) -> String {
+pub(super) fn render(rule: &CompiledHookRule, platform: &str) -> String {
     let fallback = format!(
         "client hook config rule `{}` matched this tool use",
         rule.id
@@ -12,23 +12,29 @@ pub(super) fn render(rule: &CompiledHookRule) -> String {
         return fallback;
     };
     let execution_lane = rule.fields.get("executionLane").map_or("", String::as_str);
-    let target_agent_role = rule
+    let target_agent = rule
         .dispatch
         .as_ref()
-        .map_or("", |dispatch| dispatch.target_role.as_str());
+        .map_or("", |dispatch| dispatch.target_agent.as_str());
     let receipt_kind = rule
         .dispatch
         .as_ref()
         .map_or("", |dispatch| dispatch.receipt_kind.as_str());
+    let target_agent_symbol = rule.dispatch.as_ref().map(|dispatch| {
+        dispatch
+            .calling
+            .symbol(platform, dispatch.target_agent.as_str())
+    });
     let agent_dispatch_message = render_choice_plane_instruction(AgentDispatchMessageFields {
-        role: target_agent_role,
+        agent: target_agent,
+        symbol: target_agent_symbol.as_deref(),
         receipt_kind,
     });
     agent_semantic_config::render_hook_client_message_template(
         template,
         &[
             ("executionLane", execution_lane),
-            ("targetAgentRole", target_agent_role),
+            ("targetAgent", target_agent),
             ("receiptKind", receipt_kind),
             ("agentWindowCommand", "asp session --agents choice-plane"),
             ("agentDispatchMessage", &agent_dispatch_message),

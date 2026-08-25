@@ -1,22 +1,5 @@
 use super::provider_selector::registered_language_facades_line;
 
-pub(super) fn validate_provider_command(args: &[String]) -> Result<(), String> {
-    let Some(command) = args.first().map(String::as_str) else {
-        return Err(provider_usage());
-    };
-    let supported = if command == "agent" {
-        args.get(1)
-            .is_some_and(|subcommand| matches!(subcommand.as_str(), "doctor"))
-    } else {
-        SUPPORTED_COMMANDS.contains(&command)
-    };
-    if supported {
-        Ok(())
-    } else {
-        Err(provider_usage())
-    }
-}
-
 pub(super) fn is_guide(args: &[String]) -> bool {
     args.first().is_some_and(|command| command == "guide")
 }
@@ -33,15 +16,3 @@ pub(super) fn guide_usage(language_id: &str) -> String {
         "usage: asp {language_id} guide [--help] [--workspace <root>]\n\nPrints the low-frequency provider-owned agent tool map.\nUse `asp {language_id} search guide --workspace .`, `asp {language_id} query guide --workspace .`, or `asp {language_id} query guide treesitter --workspace .` for focused reference guides."
     )
 }
-pub(super) const SUPPORTED_COMMANDS: &[&str] = &[
-    "search",
-    "query",
-    "guide",
-    "check",
-    "cache",
-    "info",
-    "bench",
-    "projection",
-    "ast-patch",
-    "evidence",
-];

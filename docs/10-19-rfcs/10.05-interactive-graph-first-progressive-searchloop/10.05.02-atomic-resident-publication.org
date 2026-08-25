@@ -1,0 +1,77 @@
+#+TITLE: 10.05.02 Atomic Resident Runtime Publication
+#+OPTIONS: toc:2 num:nil
+
+* Status
+
+Normative. This module owns the zero-downtime publication contract for the ASP
+Server used by every public search and query request.
+
+* Single authority
+
+The ASP Server owns Runtime process, endpoint, provider, workspace generation,
+cache, readiness, drain, and fallback lifecycle. Protocol and command packages
+may compose arguments and coordinate installation, but must not implement or
+poll this state machine.
+
+One generation directory contains all authority coupled to a running server:
+
+#+begin_example
+runtime/server/publications/<runtimeGenerationDigest>/
+  asp
+  endpoint.json
+  authority.json
+runtime/server/current  -> publications/<runtimeGenerationDigest>
+runtime/server/fallback -> publications/<previousHealthyGenerationDigest>
+#+end_example
+
+The stable client binary alias and endpoint resolver both traverse =current=.
+An atomic replacement of that one pointer therefore switches the client binary,
+server endpoint, schema, and Runtime generation together. Independent active
+binary and endpoint pointers are forbidden.
+
+* Candidate handover
+
+Installation MUST follow this ordered transition:
+
+1. Snapshot the binary into the content-addressed artifact store.
+2. Create an immutable candidate generation directory and generation-scoped
+   sockets/lifecycle state.
+3. Launch the candidate without changing =current=.
+4. Receive a typed Ready or Failed receipt. Polling, sleeps, and outer timeouts
+   are not readiness mechanisms.
+5. Validate =binaryContentDigest=, =runtimeGenerationDigest=, and =schemaDigest=
+   across artifact, endpoint, and Ready receipt.
+6. Atomically move the previous =current= generation to =fallback= and publish
+   the ready candidate as =current=.
+7. Stop admitting requests to the old generation, allow its in-flight requests
+   to complete, then request its graceful drain.
+
+A candidate that is not Ready cannot change =current= or the client binary
+authority. A failed installation leaves the previous active generation intact.
+
+* Client handshake
+
+Every ASP Client transport handshake carries the generation identity expected
+by its installed binary. The server endpoint must match all three identity
+fields exactly. Any mismatch terminates immediately with typed reason
+=runtime-server-generation-mismatch=. It must never enter readiness waiting,
+provider spawning, generation restore, polling, or a compatibility route.
+
+* Package ownership
+
+- =agent-semantic-client-protocol=: wire generation identity and mismatch type.
+- =agent-semantic-runtime-server=: candidate publication, Ready validation,
+  atomic current/fallback switch, admission isolation, and drain.
+- =agent-semantic-client=: expected generation handshake and typed rendering.
+- =agent-semantic-protocol=: CLI composition and installer coordination only.
+- =agent-semantic-runtime=: immutable content-addressed artifact storage only;
+  it does not own active server lifecycle.
+
+* Deterministic acceptance
+
+Source gates must prove: new client rejects an old server; non-Ready candidate
+does not switch; Ready candidate switches atomically; in-flight old requests
+finish before drain; fallback restores the previous healthy generation; and a
+query after switch uses the resident memory path below one millisecond. Build,
+process launch, and candidate warm-up are reported separately from query service
+latency.

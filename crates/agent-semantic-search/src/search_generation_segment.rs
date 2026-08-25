@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 pub const WORKSPACE_SEARCH_GENERATION_SEGMENT_SCHEMA_ID: &str =
     "agent.semantic-protocols.workspace-memory-generation-segment";
-const SEGMENT_MAGIC: &[u8; 16] = b"ASPWSSEARCHIDXV1";
+const SEGMENT_MAGIC: &[u8; 16] = b"ASPWSSEARCHIDXV2";
 const SEGMENT_HEADER_LEN: usize = 72;
 const SECTION_DESCRIPTOR_LEN: usize = 64;
 const REQUIRED_SECTION_COUNT: usize = 8;

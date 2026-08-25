@@ -9,7 +9,7 @@ use super::hook_runtime_subagent::{install_claude_resident_agents, subagent_mode
 use super::{
     display_path, ensure_supported_client, flag_value, optional_flag_value, project_root_arg,
 };
-use crate::command::{ProtocolBinaryInstallPlan, ensure_protocol_binary_installed_under_guard};
+use crate::command::ProtocolBinaryInstallPlan;
 use agent_semantic_hook::{
     claude_hook_block, default_claude_settings_path, merge_claude_settings,
     remove_incompatible_hook_event_state, validate_claude_settings_json,
@@ -50,12 +50,20 @@ fn parse_codex_plugin_install_args(args: &[String]) -> Result<CodexPluginInstall
             std::iter::once("asp install plugin".to_string()).chain(args.iter().cloned()),
         )
         .map_err(|error| error.to_string())?;
-    let project_root = fs::canonicalize(
-        matches
-            .get_one::<String>("project-root")
-            .expect("clap supplies default project root"),
-    )
-    .map_err(|error| format!("failed to resolve plugin project root: {error}"))?;
+    let project_root = match matches.get_one::<String>("project-root") {
+        Some(project_root) => fs::canonicalize(project_root)
+            .map_err(|error| format!("failed to resolve plugin project root: {error}"))?,
+        None => {
+            let state_home = agent_semantic_runtime::resolve_state_home()?;
+            agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_developer_root(
+                &state_home,
+            )?
+            .ok_or_else(|| {
+                "global plugin install requires ASP_STATE_HOME [dev].root or an explicit PROJECT_ROOT"
+                    .to_owned()
+            })?
+        }
+    };
     Ok(CodexPluginInstallRequest { project_root })
 }
 
@@ -76,10 +84,6 @@ async fn run_install_for_client(
     ensure_supported_client(client)?;
     timings.mark("args");
     let runtime_state = project_runtime_state(&project_root)?;
-    let reconciliation_guard =
-        crate::command::protocol_binary::ProtocolBinaryReconciliationGuard::acquire(
-            &runtime_state.protocol_home,
-        )?;
     let runtime_artifact_root = runtime_state.protocol_home.join("runtime/artifacts");
     let binary_install_plan = ProtocolBinaryInstallPlan::capture(runtime_artifact_root.clone())?;
     timings.mark("runtime-state");
@@ -87,8 +91,10 @@ async fn run_install_for_client(
         crate::command::org_capture::require_materialized_org_state(&project_root)?;
     timings.mark("org-state");
     let binary_install =
-        ensure_protocol_binary_installed_under_guard(&binary_install_plan, &reconciliation_guard)
-            .await?;
+        crate::command::protocol_binary::ensure_protocol_binary_installed_transaction(
+            &binary_install_plan,
+        )
+        .await?;
     timings.mark("binary");
     let activation_path = runtime_state.activation_path.clone();
     let client_config_path = runtime_state

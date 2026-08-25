@@ -1,39 +1,44 @@
-use super::ProtocolBinaryReconciliationGuard;
-
-#[test]
-fn runtime_artifact_transaction_rejects_concurrent_writer_without_waiting() {
+#[tokio::test]
+async fn cli_install_binary_composition_acquires_once_and_consumes_operation_lease() {
     let protocol_home = std::env::temp_dir().join(format!(
-        "asp-global-reconciliation-lock-{}",
+        "asp-cli-single-artifact-transaction-{}",
         std::process::id()
     ));
-    let first =
-        ProtocolBinaryReconciliationGuard::acquire(&protocol_home).expect("first writer lock");
-    let contender_home = protocol_home.clone();
-    let contender = std::thread::spawn(move || {
-        let started = std::time::Instant::now();
-        let error = ProtocolBinaryReconciliationGuard::acquire(&contender_home)
-            .err()
-            .expect("concurrent writer must be rejected");
-        (started.elapsed(), error)
+    let artifact_root = protocol_home.join("runtime/artifacts");
+    let source = protocol_home.join("build/asp");
+    std::fs::create_dir_all(source.parent().expect("source parent"))
+        .expect("create source directory");
+    std::fs::write(&source, b"asp-cli-composition").expect("write source artifact");
+    let target = protocol_home.join("runtime/bin/asp");
+
+    let receipt = super::ensure_protocol_binary_installed(&super::ProtocolBinaryInstallPlan {
+        binary_identity: super::RuntimeBinaryIdentityV1::asp_bootstrap(),
+        current_exe: source,
+        explicit_candidate_source: None,
+        target,
+        artifact_root,
+        managed_path_aliases: Vec::new(),
     })
-    .join()
-    .expect("concurrent writer thread");
+    .await
+    .expect("CLI install binary composition");
 
+    assert_eq!(receipt.lock_acquisition_count, 1);
+    assert_eq!(receipt.quiescence_operation.as_deref(), Some("publish:asp"));
+    assert_eq!(receipt.lease_producer_process_id, Some(std::process::id()));
+    assert_eq!(receipt.lease_consumer_process_id, Some(std::process::id()));
     assert!(
-        contender.0 < std::time::Duration::from_millis(50),
-        "lock contention must fail in milliseconds: elapsed={:?}",
-        contender.0
+        receipt
+            .quiescence_lease_nonce
+            .as_deref()
+            .is_some_and(|nonce| !nonce.is_empty())
     );
     assert!(
-        contender
-            .1
-            .contains("reasonKind=artifact-publication-conflict")
+        !agent_semantic_artifacts::runtime_artifact_quiescence::runtime_artifact_quiescence_lease_path(
+            &protocol_home,
+        )
+        .exists()
     );
-
-    drop(first);
-    ProtocolBinaryReconciliationGuard::acquire(&protocol_home)
-        .expect("lock must be reusable after commit");
-    std::fs::remove_dir_all(protocol_home).expect("remove reconciliation lock fixture");
+    std::fs::remove_dir_all(protocol_home).expect("remove CLI composition fixture");
 }
 
 #[cfg(unix)]
