@@ -9,12 +9,12 @@ fn host_invocations_are_public_rule_dsl_not_legacy_match_fields() {
         r#"
 id = "mcp-read"
 decision = "deny"
-actions = ["read"]
+matcher = "Read"
 hostInvocations = ["mcp"]
 "#,
     )
     .expect("parse host invocation rule DSL");
-    assert_eq!(rule.actions, [HookClientActionKind::Read]);
+    assert_eq!(rule.matcher.as_deref(), Some("Read"));
     assert_eq!(rule.host_invocations, [HookClientHostInvocationKind::Mcp]);
 
     let legacy_nested_match = toml::from_str::<HookClientRuleConfig>(
@@ -37,17 +37,14 @@ fn capability_policy_separates_host_and_semantic_axes() {
     let policy = toml::from_str::<HookClientCapabilityPolicyConfig>(
         r#"
 id = "raw-host-search"
-hostInvocationAny = ["search", "execute"]
+hostInvocationAny = ["execute"]
 semanticCapabilityAny = ["search"]
 "#,
     )
     .expect("parse split capability policy axes");
     assert_eq!(
         policy.host_invocation_any,
-        [
-            HookClientHostInvocationKind::Search,
-            HookClientHostInvocationKind::Execute,
-        ]
+        [HookClientHostInvocationKind::Execute]
     );
     assert_eq!(
         policy.semantic_capability_any,
@@ -73,7 +70,7 @@ fn hook_config_schema_exposes_only_the_public_rule_axes() {
         .as_object()
         .expect("rule properties");
     for public_axis in [
-        "actions",
+        "matcher",
         "hostInvocations",
         "profilesList",
         "matcherPolicies",
@@ -107,7 +104,7 @@ fn language_route_is_public_dsl_and_materializes_only_in_internal_ir() {
         .iter_mut()
         .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("language route rule");
-    assert_eq!(public_rule.actions, [HookClientActionKind::Read]);
+    assert_eq!(public_rule.matcher.as_deref(), Some("Read"));
     assert_eq!(
         public_rule.profiles_list,
         [
@@ -135,8 +132,8 @@ fn language_route_is_public_dsl_and_materializes_only_in_internal_ir() {
     assert!(
         compiled_rule
             .match_config
-            .action_any
-            .contains(&HookClientActionKind::Read)
+            .native_matcher_any
+            .contains(&"Read".to_owned())
     );
     assert!(
         compiled_rule

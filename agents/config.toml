@@ -28,7 +28,7 @@ description = "for build and test jobs"
 [agents.asp_coding]
 session_lifetime = "resident"
 focus_mode = "leaf"
-roles = ["coding", "subagent", "worker"]
+roles = ["coding", "default", "subagent", "worker"]
 allowed_rule_intents = ["owner-scoped-mutation"]
 agent_kind = "Subagent"
 display_role = "Owner-scoped Coding Worker"

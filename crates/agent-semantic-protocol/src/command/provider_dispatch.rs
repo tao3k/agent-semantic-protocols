@@ -3,12 +3,13 @@
 use super::provider_execution::take_frontier_receipt_request;
 use super::provider_usage;
 
-use std::env;
-use std::path::Path;
-
-use agent_semantic_client::projection_presentation::{
-    ProjectionPresentation, render_exact_projection_response,
+use agent_semantic_client::{
+    LanguageCommandApplication, LanguageCommandOperation, LanguageCommandRequest,
 };
+use agent_semantic_client_protocol::{
+    AspClientExactQueryRequest, AspClientOwnerSearchRequest, AspClientSearchRequest,
+};
+use std::env;
 
 use super::gerbil_deps::try_run_gerbil_deps_index_command;
 use super::protocol_version_line;
@@ -20,6 +21,45 @@ use provider_usage::{guide_usage, is_guide, provider_usage};
 /// Observational target only; it never controls or cancels search execution.
 const SEARCH_DIAGNOSTIC_SLOW_TARGET_MICROS: u64 = 500_000;
 
+async fn forward_language_command(
+    application: &impl LanguageCommandApplication,
+    language_id: &str,
+    operation: LanguageCommandOperation,
+    project_root: std::path::PathBuf,
+    machine_readable: bool,
+) -> Result<(), String> {
+    application
+        .execute(LanguageCommandRequest {
+            language_id: agent_semantic_client::LanguageId::new(language_id),
+            operation,
+            project_root,
+            machine_readable,
+        })
+        .await
+}
+
+async fn forward_runtime_language_command(
+    language_id: &str,
+    operation: LanguageCommandOperation,
+    project_root: std::path::PathBuf,
+    machine_readable: bool,
+) -> Result<(), String> {
+    let bootstrap =
+        crate::server::runtime_server::reconcile_pending_runtime_activation_for_client_bootstrap()
+            .await?;
+    if !crate::server::runtime_server::runtime_server_client_bootstrap_continues(bootstrap) {
+        return Ok(());
+    }
+    forward_language_command(
+        &agent_semantic_client::RuntimeLanguageCommandApplication,
+        language_id,
+        operation,
+        project_root,
+        machine_readable,
+    )
+    .await
+}
+
 pub(crate) async fn run_language_command(
     language_id: &str,
     args: &[String],
@@ -29,28 +69,6 @@ pub(crate) async fn run_language_command(
         (args.first().is_some_and(|command| command == "search")
             && args.get(1).is_none_or(|subcommand| subcommand != "guide"))
             || matches!(args.first().map(String::as_str), Some("query" | "cache"))
-    }
-
-    async fn dispatch_asp_client_command(
-        language_id: &str,
-        route: &str,
-        intent: serde_json::Value,
-        project_root: &Path,
-        presentation: ProjectionPresentation,
-    ) -> Result<(), String> {
-        let client = agent_semantic_client::AspClient::new(
-            crate::server::runtime_server::state_home()?,
-            project_root,
-        );
-        let response = client.dispatch(language_id, route, intent).await?;
-        let rendered = if route == "query" {
-            render_exact_projection_response(&response, presentation)?
-        } else {
-            serde_json::to_string(&response)
-                .map_err(|error| format!("encode route response: {error}"))?
-        };
-        println!("{rendered}");
-        Ok(())
     }
 
     if !is_language_facade(language_id) {
@@ -116,11 +134,10 @@ pub(crate) async fn run_language_command(
             .unwrap_or_else(|| (invocation_root.clone(), command_args.clone()));
         let intent = runtime_query_intent(&exact_provider_args)?;
         let presentation = runtime_query_presentation(&exact_provider_args);
-        return dispatch_asp_client_command(
+        return forward_runtime_language_command(
             language_id,
-            "query",
-            intent,
-            &exact_project_root,
+            LanguageCommandOperation::ExactQuery(intent),
+            exact_project_root,
             presentation,
         )
         .await;
@@ -134,12 +151,11 @@ pub(crate) async fn run_language_command(
             )?
             .unwrap_or_else(|| (invocation_root.clone(), command_args.clone()));
         let intent = runtime_owner_intent(&owner_args)?;
-        return dispatch_asp_client_command(
+        return forward_runtime_language_command(
             language_id,
-            "search.owner",
-            intent,
-            &owner_project_root,
-            ProjectionPresentation::MachineJson,
+            LanguageCommandOperation::OwnerSearch(intent),
+            owner_project_root,
+            true,
         )
         .await;
     }
@@ -156,12 +172,11 @@ pub(crate) async fn run_language_command(
             .is_some_and(|command| command == "search")
         {
             let intent = runtime_search_intent(&provider_args)?;
-            return dispatch_asp_client_command(
+            return forward_runtime_language_command(
                 language_id,
-                "search",
-                intent,
-                &project_root,
-                ProjectionPresentation::MachineJson,
+                LanguageCommandOperation::Search(intent),
+                project_root,
+                true,
             )
             .await;
         }
@@ -230,42 +245,44 @@ fn option_value(args: &[String], option: &str) -> Result<Option<String>, String>
         .ok_or_else(|| format!("{option} requires a value"))
 }
 
-fn runtime_query_intent(args: &[String]) -> Result<serde_json::Value, String> {
+fn runtime_query_intent(args: &[String]) -> Result<AspClientExactQueryRequest, String> {
+    if let Some(removed) = args
+        .iter()
+        .find(|argument| matches!(argument.as_str(), "--code" | "--names-only"))
+    {
+        return Err(format!("unexpected argument `{removed}` for exact query"));
+    }
     let selector = super::provider_selector::exact_query_selector_argument(args)
         .ok_or_else(|| "query requires a canonical selector".to_owned())?;
     let projection = option_value(args, "--projection")?.unwrap_or_else(|| "source".to_owned());
-    Ok(serde_json::json!({
-        "schemaId": "agent.semantic-protocols.asp-client-exact-query-request",
-        "schemaVersion": "1",
-        "selector": selector,
-        "projection": projection,
-    }))
+    Ok(AspClientExactQueryRequest {
+        schema_id: "agent.semantic-protocols.asp-client-exact-query-request".to_owned(),
+        schema_version: "1".to_owned(),
+        selector: selector.to_owned(),
+        projection,
+    })
 }
 
-fn runtime_query_presentation(args: &[String]) -> ProjectionPresentation {
-    if args.iter().any(|arg| arg == "--json") {
-        ProjectionPresentation::MachineJson
-    } else {
-        ProjectionPresentation::Text
-    }
+fn runtime_query_presentation(args: &[String]) -> bool {
+    args.iter().any(|arg| arg == "--json")
 }
 
-fn runtime_owner_intent(args: &[String]) -> Result<serde_json::Value, String> {
+fn runtime_owner_intent(args: &[String]) -> Result<AspClientOwnerSearchRequest, String> {
     let owner_path = args
         .get(2)
         .filter(|value| !value.starts_with('-'))
         .cloned()
         .ok_or_else(|| "search owner requires an owner path".to_owned())?;
-    Ok(serde_json::json!({
-        "schemaId": "agent.semantic-protocols.asp-client-owner-search-request",
-        "schemaVersion": "1",
-        "ownerPath": owner_path,
-        "query": option_value(args, "--query")?.unwrap_or_default(),
-        "view": option_value(args, "--view")?.unwrap_or_else(|| "seeds".to_owned()),
-    }))
+    Ok(AspClientOwnerSearchRequest {
+        schema_id: "agent.semantic-protocols.asp-client-owner-search-request".to_owned(),
+        schema_version: "1".to_owned(),
+        owner_path,
+        query: option_value(args, "--query")?.unwrap_or_default(),
+        view: option_value(args, "--view")?.unwrap_or_else(|| "seeds".to_owned()),
+    })
 }
 
-fn runtime_search_intent(args: &[String]) -> Result<serde_json::Value, String> {
+fn runtime_search_intent(args: &[String]) -> Result<AspClientSearchRequest, String> {
     let operation = args
         .get(1)
         .filter(|value| !value.starts_with('-'))
@@ -293,12 +310,12 @@ fn runtime_search_intent(args: &[String]) -> Result<serde_json::Value, String> {
             }
         }
     }
-    Ok(serde_json::json!({
-        "schemaId": "agent.semantic-protocols.asp-client-search-request",
-        "schemaVersion": "1",
-        "operation": operation,
-        "query": queries.join(" "),
-    }))
+    Ok(AspClientSearchRequest {
+        schema_id: "agent.semantic-protocols.asp-client-search-request".to_owned(),
+        schema_version: "1".to_owned(),
+        operation,
+        query: queries.join(" "),
+    })
 }
 use super::provider_selector::is_provider_owned_structural_selector_query;
 

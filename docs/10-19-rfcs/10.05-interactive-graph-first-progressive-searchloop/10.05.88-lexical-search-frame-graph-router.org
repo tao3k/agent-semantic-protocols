@@ -1,6 +1,0 @@
-#+title: Compatibility locator: lexical SearchFrame and GraphRouter
-
-* Canonicalization pending
-
-The canonical graph-routing RFC is
-[[file:10.05.20-evidence-graph-routing/10.05.88-lexical-search-frame-graph-router.org][Lexical SearchFrame and GraphRouter]].

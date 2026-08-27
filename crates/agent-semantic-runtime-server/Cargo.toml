@@ -13,6 +13,7 @@ agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
 agent-semantic-search = { path = "../agent-semantic-search" }
 agent-semantic-client-server = { path = "../agent-semantic-client-server" }
+agent-semantic-schema-manager.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 tokio.workspace = true
@@ -28,5 +29,3 @@ tonic-prost-build.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 agent-semantic-provider-transport.workspace = true
-agent-semantic-schema-manager.workspace = true
-agent-semantic-http-json.workspace = true

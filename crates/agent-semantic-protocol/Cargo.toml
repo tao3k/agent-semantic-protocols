@@ -10,7 +10,6 @@ doctest = false
 agent-semantic-artifacts.workspace = true
 agent-semantic-client-server = { path = "../agent-semantic-client-server" }
 agent-semantic-runtime-server = { path = "../agent-semantic-runtime-server" }
-agent-semantic-http-json = { path = "../agent-semantic-http-json" }
 agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
 blake3.workspace = true
 agent-semantic-context-product = { path = "../agent-semantic-context-product" }
@@ -23,7 +22,6 @@ aho-corasick.workspace = true
 agent-semantic-client = { path = "../agent-semantic-client" }
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-hook = { path = "../agent-semantic-hook" }
-memmap2.workspace = true
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 agent-semantic-provider-protocol = { path = "../agent-semantic-provider-protocol" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
@@ -39,6 +37,7 @@ jsonschema.workspace = true
 sha2 = { workspace = true }
 toml = { workspace = true }
 syn = { workspace = true, features = ["full"] }
+fs2.workspace = true
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
 ignore = { workspace = true }
@@ -58,6 +57,7 @@ agent-semantic-config = { path = "../agent-semantic-config" }
 asp-rust-project-harness-policy = { workspace = true }
 
 [dev-dependencies]
+agent-semantic-hook-testkit = { path = "../agent-semantic-hook-testkit" }
 rs-harness = { path = "../../languages/rust-lang-project-harness/rs-harness" }
 rust-lang-project-harness = { workspace = true }
 gix.workspace = true

@@ -21,7 +21,7 @@ def test_transport_and_client_authorities_have_no_db_cycle() -> None:
     assert "agent-semantic-client-db" not in deps("agent-semantic-client-server")
     assert "agent-semantic-client-protocol" in deps("agent-semantic-client-server")
     assert "agent-semantic-client-server" in deps("agent-semantic-client")
-    assert (ROOT / "crates/agent-semantic-client/src/runtime_http_client.rs").is_file()
+    assert (ROOT / "crates/agent-semantic-client/src/runtime_language_client.rs").is_file()
     assert not (ROOT / "crates/agent-semantic-protocol/src/command/runtime_http_client.rs").exists()
 
 

@@ -87,7 +87,7 @@ class SemanticAgentHookClientConfigSchemaTests(unittest.TestCase):
                             "decision": "allow",
                             "terminal": True,
                             "match": {
-                                "leadingEnvironmentAssignmentAny": ["ASP_NO_AGENT=1"]
+                                "leadingEnvironmentAssignmentAny": ["CI_MODE=1"]
                             },
                         }
                     ]
@@ -113,7 +113,7 @@ class SemanticAgentHookClientConfigSchemaTests(unittest.TestCase):
                     {
                         "id": "invalid-assignment",
                         "decision": "allow",
-                        "match": {"leadingEnvironmentAssignmentAny": ["ASP_NO_AGENT"]},
+                        "match": {"leadingEnvironmentAssignmentAny": ["CI_MODE"]},
                     }
                 ]
             }

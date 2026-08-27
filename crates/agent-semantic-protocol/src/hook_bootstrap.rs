@@ -266,6 +266,12 @@ fn emit_empty_success() -> Result<(), String> {
 }
 
 fn hook_event_requires_policy_evaluation(event: &str, input: &[u8]) -> Result<bool, String> {
+    // A physical Codex PreToolUse matcher is already the Host routing fact.
+    // Never run a second Rust tool-name allowlist before the plugin-bound
+    // action signal is validated by the local policy evaluator.
+    if event == "pre-tool" {
+        return Ok(true);
+    }
     if !matches!(event, "pre-tool" | "permission-request" | "post-tool") {
         return Ok(true);
     }

@@ -115,7 +115,12 @@ impl ProviderRuntimeContractReceipt {
                 self.transport,
                 self.operations
                     .iter()
-                    .map(|operation| operation.operation.as_str())
+                    .map(|operation| format!(
+                        "{}({}=>{})",
+                        operation.operation,
+                        operation.request_schema_id,
+                        operation.response_schema_id,
+                    ))
                     .collect::<Vec<_>>()
                     .join(",")
             ));

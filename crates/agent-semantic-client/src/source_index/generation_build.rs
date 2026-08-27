@@ -41,6 +41,7 @@ impl SourceIndexRefreshContext {
         &self,
         runtime: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
         request: SourceIndexGenerationRefresh<'_>,
+        cancellation: agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation,
     ) -> Result<PreparedSourceIndexGeneration, String> {
         let changed_owner_paths = request.changed_owner_paths.map(|paths| {
             paths
@@ -49,7 +50,11 @@ impl SourceIndexRefreshContext {
                 .collect::<std::collections::BTreeSet<_>>()
         });
         let prepared = self
-            .prepare_partial_generation_with_runtime_service_async(runtime, request)
+            .prepare_partial_generation_with_runtime_service_async(
+                runtime,
+                request,
+                cancellation.clone(),
+            )
             .await?;
         let Some(changed_owner_paths) = changed_owner_paths else {
             return Ok(prepared);
@@ -66,16 +71,20 @@ impl SourceIndexRefreshContext {
         &self,
         runtime: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
         request: SourceIndexGenerationRefresh<'_>,
+        cancellation: agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation,
     ) -> Result<PreparedSourceIndexGeneration, String> {
         let trace_started = Instant::now();
-        let (file_hashes, workspace_snapshot, source_snapshot, source_blobs, auxiliary_owners) =
-            super::async_snapshot::source_index_snapshot_from_files_async(
+        let (file_hashes, workspace_snapshot, source_snapshot, source_blobs, auxiliary_owners) = tokio::select! {
+            result = super::async_snapshot::source_index_snapshot_from_files_async(
                 request.index_root,
                 request.files,
                 request.registry,
                 request.provider_registry,
-            )
-            .await?;
+            ) => result?,
+            _ = cancellation.cancelled() => {
+                return Err("runtime-generation-cancelled: source snapshot cancelled".to_owned());
+            }
+        };
         let workspace_identity =
             agent_semantic_client_core::state_core::ResolvedState::resolve(request.index_root)?
                 .workspace
@@ -83,6 +92,7 @@ impl SourceIndexRefreshContext {
                 .to_string();
         let projected_files = super::projection::project_generation_with_runtime_service(
             runtime,
+            cancellation,
             request.index_root,
             &workspace_identity,
             request.provider_registry,

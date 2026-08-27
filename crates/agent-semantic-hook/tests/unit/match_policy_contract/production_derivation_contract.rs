@@ -19,7 +19,7 @@ fn production_derivation_is_host_fact_then_parser_fact() {
         "Bash".to_owned(),
     );
     let receipt = matcher
-        .derive_agent_action_for_rule(&runtime(), &action, None, None)
+        .derive_agent_action_for_rule(&runtime(), "codex", &action, None, None)
         .expect("AgentAction")
         .receipt_value();
 
@@ -27,7 +27,7 @@ fn production_derivation_is_host_fact_then_parser_fact() {
     assert_eq!(receipt["hostInvocation"]["action"], "execute");
     assert_eq!(
         receipt["semanticCapabilities"][0]["evidence"],
-        "host-invocation"
+        "host-matcher"
     );
     assert!(
         receipt["semanticCapabilities"]

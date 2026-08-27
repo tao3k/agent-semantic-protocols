@@ -12,7 +12,6 @@ use crate::runtime_server_control::{
 
 const CACHED_HEALTH_SCHEMA_ID: &str = "agent.semantic-protocols.runtime-server-cached-health";
 const SCHEMA_VERSION: &str = "1";
-const STATUS_MEMORY_FILE: &str = "status.v1.memory";
 static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 /// Coherent resident health projected from the stable status-memory authority.
@@ -32,20 +31,33 @@ impl RuntimeServerCachedHealth {
     }
 }
 
-/// Read cached health from an explicitly selected isolated Runtime Server base.
-pub async fn cached_runtime_server_health_at(
-    runtime_base: &Path,
+/// Read cached health from the exact generation-bound endpoint publication.
+pub async fn cached_runtime_server_health(
+    endpoint: &crate::runtime_server_control::RuntimeServerEndpoint,
+) -> Result<RuntimeServerCachedHealth, String> {
+    endpoint.validate()?;
+    cached_runtime_server_health_from_status_memory(Path::new(&endpoint.status_memory_path)).await
+}
+
+pub async fn cached_runtime_server_health_for_state_home(
+    state_home: &Path,
+) -> Result<RuntimeServerCachedHealth, String> {
+    let endpoint =
+        crate::runtime_server_control::read_runtime_server_supervisor_endpoint(state_home)
+            .await?
+            .ok_or_else(|| "Runtime Server endpoint is unavailable".to_owned())?;
+    cached_runtime_server_health(&endpoint).await
+}
+
+async fn cached_runtime_server_health_from_status_memory(
+    status_memory_path: &Path,
 ) -> Result<RuntimeServerCachedHealth, String> {
     let started = Instant::now();
     let request_id = format!(
         "cached-health-{}",
         REQUEST_SEQUENCE.fetch_add(1, Ordering::Relaxed)
     );
-    let resident = read_runtime_server_cached_health_status(
-        &runtime_base.join(STATUS_MEMORY_FILE),
-        request_id,
-    )
-    .await?;
+    let resident = read_runtime_server_cached_health_status(status_memory_path, request_id).await?;
     Ok(RuntimeServerCachedHealth {
         schema_id: CACHED_HEALTH_SCHEMA_ID,
         schema_version: SCHEMA_VERSION,

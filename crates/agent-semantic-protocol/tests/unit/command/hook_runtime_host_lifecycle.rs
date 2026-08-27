@@ -103,9 +103,16 @@ async fn publication_sequence_is_monotonic() {
 async fn publication_lock_contention_is_bounded() {
     let state_home = isolated_state_home("bounded-lock-contention");
     let authority_dir = state_home.join("hooks/host-sessions/test-namespace");
-    tokio::fs::create_dir_all(authority_dir.join(".publication-lock"))
+    tokio::fs::create_dir_all(&authority_dir)
         .await
-        .expect("create contended publication lock");
+        .expect("create publication authority");
+    let lock_file = std::fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(authority_dir.join(".publication-lock"))
+        .expect("open contended publication lock");
+    fs2::FileExt::lock_exclusive(&lock_file).expect("hold contended publication lock");
     let mut lifecycle_event = event("blake3-256:contended");
     let started = std::time::Instant::now();
 
@@ -119,6 +126,7 @@ async fn publication_lock_contention_is_bounded() {
 
     assert!(error.contains("timed out acquiring Host lifecycle authority lock"));
     assert!(started.elapsed() < std::time::Duration::from_millis(500));
+    fs2::FileExt::unlock(&lock_file).expect("release contended publication lock");
     let _ = tokio::fs::remove_dir_all(state_home).await;
 }
 
@@ -139,10 +147,14 @@ async fn failed_publication_releases_its_lock() {
         .expect_err("corrupt authority must fail closed");
 
     assert!(error.contains("failed to decode Host lifecycle authority"));
-    assert!(
-        !authority_dir.join(".publication-lock").exists(),
-        "publication failure leaked its lock"
-    );
+    let lock_file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(authority_dir.join(".publication-lock"))
+        .expect("reopen persistent publication lock file");
+    fs2::FileExt::try_lock_exclusive(&lock_file)
+        .expect("publication failure must release its advisory lock");
+    fs2::FileExt::unlock(&lock_file).expect("release verification lock");
     let _ = tokio::fs::remove_dir_all(state_home).await;
 }
 

@@ -3,23 +3,24 @@ use super::model::{
     RECEIPT_SCHEMA_ID, REQUEST_SCHEMA_ID, RuntimeServerControlReceipt, RuntimeServerControlRequest,
     RuntimeServerEndpoint, RuntimeServerOperation, SCHEMA_VERSION,
 };
-use super::status_memory::read_runtime_server_status;
+use super::status_memory::{attach_resident_transaction, read_runtime_server_status};
 use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
-pub async fn call_runtime_server(
+pub async fn call_runtime_server_for_state_home(
+    state_home: &std::path::Path,
     endpoint: &RuntimeServerEndpoint,
     operation: RuntimeServerOperation,
     expected_runtime_binary_identity: RuntimeBinaryIdentity,
     request_id: String,
 ) -> Result<RuntimeServerControlReceipt, String> {
-    if operation == RuntimeServerOperation::Status {
+    let status_operation = operation == RuntimeServerOperation::Status;
+    if status_operation {
         endpoint.validate()?;
     } else {
         endpoint.validate_supervisor_control()?;
     }
-    if operation == RuntimeServerOperation::Status
-        && expected_runtime_binary_identity == endpoint.runtime_binary_identity
-    {
-        return read_runtime_server_status(endpoint, request_id).await;
+    if status_operation && expected_runtime_binary_identity == endpoint.runtime_binary_identity {
+        let receipt = read_runtime_server_status(endpoint, request_id).await?;
+        return attach_resident_transaction(state_home, endpoint, receipt).await;
     }
     let request = RuntimeServerControlRequest {
         schema_id: REQUEST_SCHEMA_ID.to_owned(),
@@ -41,7 +42,32 @@ pub async fn call_runtime_server(
     {
         return Err("Runtime Server control receipt identity mismatch".to_owned());
     }
-    Ok(receipt)
+    if status_operation {
+        attach_resident_transaction(state_home, endpoint, receipt).await
+    } else {
+        Ok(receipt)
+    }
+}
+
+pub async fn call_runtime_server(
+    endpoint: &RuntimeServerEndpoint,
+    operation: RuntimeServerOperation,
+    expected_runtime_binary_identity: RuntimeBinaryIdentity,
+    request_id: String,
+) -> Result<RuntimeServerControlReceipt, String> {
+    if operation == RuntimeServerOperation::Status {
+        return Err(
+            "state=runtime-server-status-not-current reasonKind=runtime-status-state-home-authority-required phase=runtime-server-control".to_owned(),
+        );
+    }
+    call_runtime_server_for_state_home(
+        std::path::Path::new(""),
+        endpoint,
+        operation,
+        expected_runtime_binary_identity,
+        request_id,
+    )
+    .await
 }
 
 pub async fn ensure_runtime_server_workspace(

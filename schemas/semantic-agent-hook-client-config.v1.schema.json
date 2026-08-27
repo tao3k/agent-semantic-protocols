@@ -85,6 +85,10 @@
     }
   },
   "$defs": {
+    "matcherPolicy": {
+      "type": "string",
+      "enum": ["wrapped_command"]
+    },
     "agentCalling": {
       "type": "object",
       "additionalProperties": false,
@@ -108,7 +112,7 @@
       "pattern": "^[a-z][a-z0-9_-]*$"
     },
     "typedActionKind": {
-      "enum": ["read", "edit", "search", "enumerate", "execute", "unknown"]
+      "enum": ["read", "edit", "search", "enumerate", "execute", "mcp", "spawn-agent", "unknown"]
     },
     "capabilityPolicy": {
       "type": "object",
@@ -423,12 +427,9 @@
         "platform": {
           "enum": ["codex", "claude", "unknown"]
         },
-        "actions": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "$ref": "#/$defs/typedActionKind"
-          }
+        "matcher": {
+          "type": ["string", "null"],
+          "pattern": "^[^|\\s]+(?:\\|[^|\\s]+)*$"
         },
         "hostInvocations": {
           "type": "array",
@@ -466,10 +467,9 @@
       "enum": [
         "read",
         "edit",
-        "search",
-        "enumerate",
         "execute",
         "mcp",
+        "spawn-agent",
         "unknown"
       ]
     },

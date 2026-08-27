@@ -23,10 +23,14 @@
       "asp-client-search-request.schema.json",
       "asp-client-exact-query-request.schema.json",
       "asp-client-exact-query-response.schema.json",
+      "asp-client-exact-query-failure.schema.json",
+      "asp-client-work-counters.schema.json",
+      "asp-client-schema-bundle-request.schema.json",
+      "asp-client-schema-bundle-response.schema.json",
       "asp-client-owner-search-request.schema.json",
-    "asp-client-workspace-source-mutation.schema.json",
-    "asp-client-cancellation-probe-request.schema.json",
-    "asp-client-cancellation-probe-response.schema.json"
+      "asp-client-workspace-source-mutation.schema.json",
+      "asp-client-cancellation-probe-request.schema.json",
+      "asp-client-cancellation-probe-response.schema.json"
     ],
     "project-resolution": [
       "provider-project-resolution-request.schema.json",

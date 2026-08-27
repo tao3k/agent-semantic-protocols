@@ -160,9 +160,10 @@ pub(crate) async fn collect_source_index_scope_with_runtime_service_async(
     project_root: &std::path::Path,
     provider_registry: &agent_semantic_client_core::RuntimeProviderProjection,
     scope: &SourceIndexCollectionScope,
+    cancellation: agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation,
 ) -> Result<SourceIndexCollectionReceipt, String> {
     collect_source_index_scope_with_executor_async(
-        ProviderScopeExecutor::RuntimeService(runtime.clone()),
+        ProviderScopeExecutor::RuntimeService(runtime.clone(), cancellation),
         project_root,
         provider_registry,
         scope,
@@ -172,7 +173,10 @@ pub(crate) async fn collect_source_index_scope_with_runtime_service_async(
 
 #[derive(Clone)]
 enum ProviderScopeExecutor {
-    RuntimeService(agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle),
+    RuntimeService(
+        agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
+        agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation,
+    ),
 }
 
 async fn collect_source_index_scope_with_executor_async(
@@ -233,7 +237,7 @@ async fn collect_source_index_scope_with_executor_async(
                 ProviderSourceInventorySelection::ProjectResolution => {
                     let package_root_path = std::path::PathBuf::from(&provider.binary);
                         let resolution = match executor {
-                            ProviderScopeExecutor::RuntimeService(runtime) => {
+ProviderScopeExecutor::RuntimeService(runtime, cancellation) => {
                                 let (request, candidates) =
                                     agent_semantic_client_server::encode_provider_project_resolution_request(
                                         &project_root,
@@ -249,18 +253,20 @@ async fn collect_source_index_scope_with_executor_async(
                                     )
                                     .await?;
                                 runtime
-    .provider_runtime_await_ready(
-                                        project_root.clone(),
-                                        provider.language_id.as_str().to_owned(),
-                                    )
+        .provider_runtime_await_ready(
+            project_root.clone(),
+            provider.language_id.as_str().to_owned(),
+            cancellation.clone(),
+        )
                                     .await?;
                                 let response = runtime
                                     .provider_operation(
                                         project_root.clone(),
                                         provider.language_id.as_str().to_owned(),
-                                        "project-resolution".to_owned(),
-                                        request,
-                                    )
+            "project-resolution".to_owned(),
+            request,
+            cancellation,
+        )
                                     .await?;
                                 agent_semantic_client_server::project_resolution_from_stdout(
                                     &response,

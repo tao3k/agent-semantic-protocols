@@ -69,6 +69,7 @@ pub struct RuntimeLifecycleEvent {
     pub owner_epoch: u64,
     pub workspace_identity: Option<String>,
     pub generation_digest: Option<String>,
+    pub candidate_digest: Option<String>,
     pub transition: String,
     pub state: String,
     pub elapsed_micros: u64,
@@ -89,8 +90,13 @@ impl RuntimeLifecycleEvent {
         );
         observation.workspace_identity = self.workspace_identity;
         observation.generation_digest = self.generation_digest;
-        observation.event_identity =
-            Some(format!("owner-{}:{}", self.owner_epoch, self.transition));
+        observation.event_identity = Some(match self.candidate_digest {
+            Some(candidate_digest) => format!(
+                "owner-{}:{}:candidate={candidate_digest}",
+                self.owner_epoch, self.transition
+            ),
+            None => format!("owner-{}:{}", self.owner_epoch, self.transition),
+        });
         observation.source_bytes = Some(self.read_bytes);
         observation.projection_bytes = Some(self.retained_bytes);
         observation.runtime_alive_tasks = Some(self.active_task_count);

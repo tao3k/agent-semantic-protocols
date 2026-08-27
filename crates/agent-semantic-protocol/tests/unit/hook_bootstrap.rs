@@ -66,18 +66,23 @@ fn bootstrap_intercepts_events_but_not_lifecycle_diagnostics() {
 }
 
 #[test]
-fn unrelated_codex_actions_never_enter_the_runtime_server_path() {
+fn precise_pre_tool_delivery_does_not_use_a_second_rust_action_allowlist() {
     for tool_name in ["update_plan", "view_image", "collaboration.send_message"] {
         let input = serde_json::to_vec(&serde_json::json!({
             "tool_name": tool_name,
             "tool_input": {"value": "not a source or command action"}
         }))
         .expect("Hook payload");
-        for event in ["pre-tool", "permission-request", "post-tool"] {
+        assert!(
+            hook_event_requires_policy_evaluation("pre-tool", &input)
+                .expect("physical PreTool delivery"),
+            "a delivered PreTool event must not be reclassified by a Rust tool-name allowlist"
+        );
+        for event in ["permission-request", "post-tool"] {
             assert!(
                 !hook_event_requires_policy_evaluation(event, &input)
-                    .expect("local action classification"),
-                "{event} {tool_name} must be an in-process passthrough"
+                    .expect("observational action classification"),
+                "{event} {tool_name} remains observational"
             );
         }
     }

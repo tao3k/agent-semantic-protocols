@@ -14,16 +14,15 @@ use super::storage_bootstrap::bootstrap_turso_agent_session_schema;
 pub(in crate::agent_session_registry) use super::storage_bootstrap::{
     block_on_agent_session_registry_async, connect_turso_agent_session_registry,
 };
-use super::types::{
-    AGENT_SESSION_REGISTRY_DB_NAME, AgentSessionRecord, AgentSessionRegisterRequest,
-    AgentSessionToolEventRequest,
-};
+use super::types::{AgentSessionRecord, AgentSessionRegisterRequest, AgentSessionToolEventRequest};
 
 const AGENT_SESSION_EXPIRED_REFRESH_LOCK_STALE_AFTER: Duration = Duration::from_secs(60);
 static AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS: AtomicBool = AtomicBool::new(false);
 
-fn runtime_server_endpoint_is_published(state_home: &Path) -> Result<bool, String> {
-    Ok(crate::read_runtime_server_endpoint(state_home)?.is_some())
+async fn runtime_server_endpoint_is_published(state_home: &Path) -> Result<bool, String> {
+    Ok(crate::read_runtime_server_endpoint(state_home)
+        .await?
+        .is_some())
 }
 
 struct ExpiredRefreshLock {
@@ -121,35 +120,35 @@ impl AgentSessionRegistry {
 
     #[must_use]
     pub fn db_path_for_state_root(state_root: impl AsRef<Path>) -> PathBuf {
-        state_root.as_ref().join(AGENT_SESSION_REGISTRY_DB_NAME)
+        super::publication::physical_current_db_path(state_root.as_ref())
     }
 
-    pub fn open_or_create_project(project_root: impl AsRef<Path>) -> Result<Self, String> {
+    pub async fn open_or_create_project(project_root: impl AsRef<Path>) -> Result<Self, String> {
         let project_root = project_root.as_ref();
         let state = ResolvedState::resolve(project_root)?;
         state.ensure_minimal_layout()?;
-        if let Some(proxy) = Self::runtime_proxy(&state, project_root)? {
+        if let Some(proxy) = Self::runtime_proxy(&state, project_root).await? {
             return Ok(proxy);
         }
         let endpoint_path = crate::runtime_server_endpoint_path(&state.state_home)?;
         Err(format!(
             "project registry create/open requires Runtime Server typed IPC; direct-open is forbidden: endpoint={} endpointPublished={} runtimeOwnerProcess={}",
             endpoint_path.display(),
-            runtime_server_endpoint_is_published(&state.state_home)?,
+            runtime_server_endpoint_is_published(&state.state_home).await?,
             AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS.load(Ordering::Acquire)
         ))
     }
 
-    pub fn open_runtime_project_proxy(
+    pub async fn open_runtime_project_proxy(
         project_root: impl AsRef<Path>,
     ) -> Result<Option<Self>, String> {
         let project_root = project_root.as_ref();
         let state = ResolvedState::resolve(project_root)?;
-        if let Some(proxy) = Self::runtime_proxy(&state, project_root)? {
+        if let Some(proxy) = Self::runtime_proxy(&state, project_root).await? {
             return Ok(Some(proxy));
         }
         let endpoint_path = crate::runtime_server_endpoint_path(&state.state_home)?;
-        if runtime_server_endpoint_is_published(&state.state_home)? {
+        if runtime_server_endpoint_is_published(&state.state_home).await? {
             return Err(format!(
                 "read-only project registry direct-open is forbidden while Runtime Server endpoint is published: endpoint={} runtimeOwnerProcess={}",
                 endpoint_path.display(),
@@ -159,17 +158,19 @@ impl AgentSessionRegistry {
         Ok(None)
     }
 
-    pub fn open_existing_project(project_root: impl AsRef<Path>) -> Result<Option<Self>, String> {
+    pub async fn open_existing_project(
+        project_root: impl AsRef<Path>,
+    ) -> Result<Option<Self>, String> {
         let project_root = project_root.as_ref();
         let state = ResolvedState::resolve(project_root)?;
-        if let Some(proxy) = Self::runtime_proxy(&state, project_root)? {
+        if let Some(proxy) = Self::runtime_proxy(&state, project_root).await? {
             return Ok(Some(proxy));
         }
         let endpoint_path = crate::runtime_server_endpoint_path(&state.state_home)?;
         Err(format!(
             "project registry read requires Runtime Server typed IPC; direct-open is forbidden: endpoint={} endpointPublished={} runtimeOwnerProcess={}",
             endpoint_path.display(),
-            runtime_server_endpoint_is_published(&state.state_home)?,
+            runtime_server_endpoint_is_published(&state.state_home).await?,
             AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS.load(Ordering::Acquire)
         ))
     }
@@ -182,7 +183,9 @@ impl AgentSessionRegistry {
                 state_root.as_ref().display()
             )
         })?;
-        let db_path = Self::db_path_for_state_root(state_root);
+        let db_path = block_on_agent_session_registry_async(
+            super::publication::ensure_current_registry_published(state_root.as_ref()),
+        )?;
         let registry = Self::open_path(&db_path).map_err(|error| {
             let caller = std::panic::Location::caller();
             format!(
@@ -211,19 +214,20 @@ impl AgentSessionRegistry {
                 )
             })?;
         let registry = Self {
-            db_path: Self::db_path_for_state_root(state_root),
+            db_path: super::publication::ensure_current_registry_published(state_root).await?,
             runtime_project_root: None,
         };
         bootstrap_turso_agent_session_schema(&registry.db_path).await?;
         Ok(registry)
     }
 
-    #[track_caller]
-    pub fn open_existing_state_root(state_root: impl AsRef<Path>) -> Result<Option<Self>, String> {
-        let db_path = Self::db_path_for_state_root(state_root);
-        if !db_path.is_file() {
+    pub async fn open_existing_state_root(
+        state_root: impl AsRef<Path>,
+    ) -> Result<Option<Self>, String> {
+        let Some(db_path) = super::publication::read_current_registry_path(state_root.as_ref())?
+        else {
             return Ok(None);
-        }
+        };
         let registry = Self::open_path(&db_path).map_err(|error| {
             let caller = std::panic::Location::caller();
             format!(
@@ -233,17 +237,17 @@ impl AgentSessionRegistry {
             )
         })?;
         registry.ensure_schema()?;
-        registry.refresh_expired_sessions()?;
+        registry.refresh_expired_sessions().await?;
         Ok(Some(registry))
     }
 
     pub fn open_existing_state_root_read_only(
         state_root: impl AsRef<Path>,
     ) -> Result<Option<Self>, String> {
-        let db_path = Self::db_path_for_state_root(state_root);
-        if !db_path.is_file() {
+        let Some(db_path) = super::publication::read_current_registry_path(state_root.as_ref())?
+        else {
             return Ok(None);
-        }
+        };
         Ok(Some(Self {
             db_path,
             runtime_project_root: None,
@@ -264,8 +268,11 @@ impl AgentSessionRegistry {
         Ok(registry)
     }
 
-    fn runtime_proxy(state: &ResolvedState, project_root: &Path) -> Result<Option<Self>, String> {
-        if !runtime_server_endpoint_is_published(&state.state_home)? {
+    async fn runtime_proxy(
+        state: &ResolvedState,
+        project_root: &Path,
+    ) -> Result<Option<Self>, String> {
+        if !runtime_server_endpoint_is_published(&state.state_home).await? {
             return Ok(None);
         }
         let project_root = fs::canonicalize(project_root).map_err(|error| {
@@ -274,8 +281,12 @@ impl AgentSessionRegistry {
                 project_root.display()
             )
         })?;
+        let Some(db_path) = super::publication::read_current_registry_path(&state.state_home)?
+        else {
+            return Ok(None);
+        };
         Ok(Some(Self {
-            db_path: Self::db_path_for_state_root(&state.state_home),
+            db_path,
             runtime_project_root: Some(project_root),
         }))
     }
@@ -292,13 +303,13 @@ impl AgentSessionRegistry {
         session.call_agent_session_registry(operation).await
     }
 
-    pub(in crate::agent_session_registry) fn runtime_operation(
+    pub(in crate::agent_session_registry) async fn runtime_operation(
         &self,
         operation: crate::workspace_db_ipc::AgentSessionRegistryIpcOperation,
     ) -> Result<Option<crate::workspace_db_ipc::AgentSessionRegistryIpcResult>, String> {
         let Some(project_root) = self.runtime_project_root.clone() else {
             let runtime_endpoint_present = match self.db_path.parent() {
-                Some(state_home) => runtime_server_endpoint_is_published(state_home)?,
+                Some(state_home) => runtime_server_endpoint_is_published(state_home).await?,
                 None => false,
             };
             if runtime_endpoint_present
@@ -333,120 +344,11 @@ pub(super) async fn turso_register_session(
     turso_register_session_once(db_path, &request).await
 }
 
-pub(super) async fn turso_claim_resident_session(
-    db_path: &Path,
-    request: AgentSessionRegisterRequest<'_>,
-) -> Result<AgentSessionRecord, String> {
-    let connection = connect_turso_agent_session_registry(db_path).await?;
-    execute_turso_operation(
-        || async {
-            connection
-                .execute(
-                    "DELETE FROM asp_agent_sessions
-                     WHERE project_id = ?1
-                       AND root_session_id = ?2
-                       AND name = ?3
-                       AND status IN ('archived', 'closed')",
-                    (&request.project_id, &request.root_session_id, &request.name),
-                )
-                .await
-                .map_err(|error| error.to_string())?;
-
-            connection
-                .execute(
-                    "INSERT INTO asp_agent_sessions (
-        project_id,
-        root_session_id,
-        session_id,
-        message_target_id,
-        parent_session_id,
-        name,
-        role,
-        model,
-        model_observation_source,
-        model_observed_at,
-        model_evidence_ref,
-        status,
-        created_at,
-        updated_at,
-        last_seen_at,
-        last_heartbeat_at,
-        expires_at,
-        metadata_json
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13, ?13, ?13, ?14, ?15)
-    ON CONFLICT DO NOTHING",
-                    (
-                        &request.project_id,
-                        &request.root_session_id,
-                        &request.session_id,
-                        request.message_target_id.as_ref(),
-                        request.parent_session_id.as_ref(),
-                        &request.name,
-                        &request.role,
-                        request
-                            .model_observation
-                            .as_ref()
-                            .map(|observation| observation.model),
-                        request
-                            .model_observation
-                            .as_ref()
-                            .map(|observation| observation.source.as_str()),
-                        request
-                            .model_observation
-                            .as_ref()
-                            .map(|observation| observation.observed_at),
-                        request
-                            .model_observation
-                            .as_ref()
-                            .and_then(|observation| observation.evidence_ref),
-                        &request.status,
-                        request.now,
-                        request.expires_at,
-                        &request.metadata_json,
-                    ),
-                )
-                .await
-                .map_err(|error| error.to_string())
-        },
-        "failed to claim Turso resident session",
-    )
-    .await?;
-    turso_session_by_name(
-        db_path,
-        request.project_id.as_str(),
-        request.root_session_id.as_str(),
-        request.name.as_str(),
-    )
-    .await?
-    .ok_or_else(|| "claimed Turso resident session was not readable".to_string())
-}
-
 async fn turso_register_session_once(
     db_path: &Path,
     request: &AgentSessionRegisterRequest<'_>,
 ) -> Result<AgentSessionRecord, String> {
     let connection = connect_turso_agent_session_registry(db_path).await?;
-    execute_turso_operation(
-        || async {
-            connection
-                .execute(
-                    "DELETE FROM asp_agent_sessions
-             WHERE project_id = ?1
-               AND session_id = ?2
-               AND NOT (root_session_id = ?3 AND name = ?4)",
-                    (
-                        &request.project_id,
-                        &request.session_id,
-                        &request.root_session_id,
-                        &request.name,
-                    ),
-                )
-                .await
-                .map_err(|error| error.to_string())
-        },
-        "failed to clear stale Turso session mapping",
-    )
-    .await?;
     execute_turso_operation(
         || async {
             connection
@@ -477,14 +379,8 @@ async fn turso_register_session_once(
         CASE WHEN json_valid(?15) AND json_extract(?15, '$.event') = 'subagent-start' AND json_extract(?15, '$.native') = 1 THEN json_extract(?15, '$.agentType') END,
         CASE WHEN json_valid(?15) AND json_extract(?15, '$.event') = 'subagent-start' AND json_extract(?15, '$.native') = 1 THEN ?15 END
     )
-    ON CONFLICT(project_id, root_session_id, name) DO UPDATE SET
-        project_id = excluded.project_id,
-        root_session_id = excluded.root_session_id,
-        session_id = excluded.session_id,
+    ON CONFLICT(project_id, session_id) DO UPDATE SET
                 message_target_id = excluded.message_target_id,
-                parent_session_id = excluded.parent_session_id,
-                name = excluded.name,
-                role = excluded.role,
                 model = CASE
                     WHEN excluded.model IS NOT NULL
                      AND (asp_agent_sessions.model_observed_at IS NULL
@@ -513,7 +409,10 @@ async fn turso_register_session_once(
                 metadata_json = excluded.metadata_json,
                 configured_agent_type = COALESCE(excluded.configured_agent_type, asp_agent_sessions.configured_agent_type),
                 profile_evidence_json = COALESCE(excluded.profile_evidence_json, asp_agent_sessions.profile_evidence_json)
-        WHERE asp_agent_sessions.session_id = excluded.session_id",
+        WHERE asp_agent_sessions.root_session_id = excluded.root_session_id
+          AND asp_agent_sessions.parent_session_id IS excluded.parent_session_id
+          AND asp_agent_sessions.name = excluded.name
+          AND asp_agent_sessions.role = excluded.role",
                     (
                         &request.project_id,
                         &request.root_session_id,
@@ -547,19 +446,29 @@ async fn turso_register_session_once(
         "failed to register Turso session",
     )
     .await?;
-    let registered = turso_session_by_name(
+    let registered = turso_session_by_id(
         db_path,
         request.project_id.as_str(),
-        request.root_session_id.as_str(),
-        request.name.as_str(),
+        request.session_id.as_str(),
     )
     .await?
     .ok_or_else(|| "registered Turso session was not readable".to_string())?;
-    if registered.session_id() != request.session_id {
+    if registered.root_session_id() != request.root_session_id
+        || registered.parent_session_id() != request.parent_session_id.as_deref()
+        || registered.name() != request.name
+        || registered.role() != request.role
+    {
         return Err(format!(
-            "resident slot is owned by generation {} (child {}); replacement requires exact compare-and-swap",
-            registered.physical_generation,
-            registered.session_id()
+            "agent-session-child-identity-rebind-denied: child={} storedRoot={} requestedRoot={} storedParent={:?} requestedParent={:?} storedRoute={} requestedRoute={} storedRole={} requestedRole={}",
+            request.session_id,
+            registered.root_session_id(),
+            request.root_session_id,
+            registered.parent_session_id(),
+            request.parent_session_id.as_deref(),
+            registered.name(),
+            request.name,
+            registered.role(),
+            request.role,
         ));
     }
     Ok(registered)
@@ -591,7 +500,18 @@ pub(in crate::agent_session_registry) async fn turso_session_by_name(
     else {
         return Ok(None);
     };
-    super::record::from_turso_row(&row).map(Some)
+    let record = super::record::from_turso_row(&row)?;
+    if rows
+        .next()
+        .await
+        .map_err(|error| format!("failed to detect ambiguous Turso session route: {error}"))?
+        .is_some()
+    {
+        return Err(format!(
+            "agent-session-route-ambiguous: projectId={project_id} rootSessionId={root_session_id} name={name}; select one concrete childSessionId"
+        ));
+    }
+    Ok(Some(record))
 }
 
 pub(super) async fn turso_query_sessions(
@@ -671,7 +591,13 @@ pub(super) async fn turso_query_sessions(
         .await
         .map_err(|error| format!("failed to read Turso session row: {error}"))?
     {
-        records.push(super::record::from_turso_row(&row)?);
+        let record = super::record::from_turso_row(&row)?;
+        if record.project_id() == project_id
+            && root_session_id.is_none_or(|root| record.root_session_id() == root)
+            && name.is_none_or(|route| record.name() == route)
+        {
+            records.push(record);
+        }
     }
     Ok(records)
 }
@@ -702,7 +628,7 @@ pub(super) async fn turso_query_all_sessions(
     Ok(records)
 }
 
-pub(super) async fn turso_session_by_id(
+pub(in crate::agent_session_registry) async fn turso_session_by_id(
     db_path: &Path,
     project_id: &str,
     session_id: &str,
@@ -936,55 +862,6 @@ pub(super) async fn turso_refresh_expired_sessions(db_path: &Path, now: i64) -> 
                 .map_err(|error| error.to_string())
         },
         "failed to refresh Turso expired session rows",
-    )
-    .await?;
-    Ok(())
-}
-
-pub(super) async fn turso_record_host_non_match(
-    db_path: &Path,
-    observation: &crate::workspace_db_ipc::AgentHostNonMatchIpc,
-) -> Result<(), String> {
-    let connection = connect_turso_agent_session_registry(db_path).await?;
-    execute_turso_operation(
-        || async {
-            connection
-                .execute(
-                    "INSERT INTO asp_host_child_match_decisions (
-                        project_id, root_session_id, child_session_id, host_task_name,
-                        match_decision, lifecycle_state, payload_digest, observed_at
-                     ) VALUES (?1, ?2, ?3, ?4, 'none', ?5, ?6, ?7)
-                     ON CONFLICT(project_id, root_session_id, child_session_id) DO UPDATE SET
-                        host_task_name = excluded.host_task_name,
-                        lifecycle_state = excluded.lifecycle_state,
-                        payload_digest = excluded.payload_digest,
-                        observed_at = excluded.observed_at
-                     WHERE excluded.observed_at >= asp_host_child_match_decisions.observed_at",
-                    (
-                        observation.project_id.as_str(),
-                        observation.root_session_id.as_str(),
-                        observation.child_session_id.as_str(),
-                        observation.host_task_name.as_str(),
-                        match observation.kind {
-                            crate::workspace_db_ipc::AgentHostLifecycleEventKind::Started
-                            | crate::workspace_db_ipc::AgentHostLifecycleEventKind::Resumed => {
-                                "live"
-                            }
-                            crate::workspace_db_ipc::AgentHostLifecycleEventKind::Stopped => {
-                                "stopped"
-                            }
-                            crate::workspace_db_ipc::AgentHostLifecycleEventKind::Achieved => {
-                                "achieved"
-                            }
-                        },
-                        observation.payload_digest.as_str(),
-                        observation.observed_at,
-                    ),
-                )
-                .await
-                .map_err(|error| error.to_string())
-        },
-        "failed to persist Host child matchDecision=none",
     )
     .await?;
     Ok(())

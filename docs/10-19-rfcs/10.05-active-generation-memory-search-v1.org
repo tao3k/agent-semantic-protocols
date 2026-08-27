@@ -187,11 +187,21 @@ request connection does not own the build lifetime and MUST NOT wait for a
 generation to become =Ready=.  =Status= is the observation surface for the
 eventual =Ready=, =Failed=, or =Cancelled= terminal receipt.
 
-Every admitted generation attempt owns a bounded Runtime Server lease.  Lease
-expiry cancels the generation builder, completes its single-writer lane, wakes
-waiters, and publishes one terminal failure or cancellation receipt.  A later
-explicit refresh may start a new attempt; an expired attempt MUST NOT leave the
-workspace permanently =Building=.
+Every admitted generation attempt owns one Runtime Server task envelope that
+couples the builder to its terminal receipt authority, cancellation authority,
+and single-writer lane.  Normal completion consumes the authority.  Join
+failure, dispatcher closure, actor abort, and Runtime drain publish one typed
+failure or cancellation receipt, complete the lane, and wake observers.  A
+later explicit refresh may start a new attempt; no actor-loss path may leave the
+workspace permanently =Building=.  This liveness invariant is event-driven and
+MUST NOT depend on a request timeout, sleep, or polling lease.
+
+A live task is not sufficient evidence of progress.  Provider readiness,
+provider operations, source snapshotting, projection, and materialization all
+consume the same generation cancellation authority and expose a typed
+=Ready=/=Failed=/=Cancelled= event boundary.  Cancellation of the admitted
+attempt must tear down every nested await and publish =Cancelled=; a live but
+detached provider/source-index future is an orphaned =Building= state.
 
 Cold search, owner, and exact-query paths consume only an already-published
 immutable mmap generation.  They never join the build lease, wait for provider

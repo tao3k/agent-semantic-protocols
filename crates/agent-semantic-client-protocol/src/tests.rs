@@ -55,7 +55,13 @@ fn exact_query_response_carries_falsifiable_resident_performance() {
         provider_id: "asp-rust".to_owned(),
         generation_digest: format!("blake3-256:{}", "a".repeat(64)),
         root_digest: "b".repeat(64),
-        result: serde_json::json!({"state": "projection"}),
+        result: serde_json::json!({
+            "state": "projection",
+            "generationDigest": format!("blake3-256:{}", "a".repeat(64)),
+            "rootDigest": "b".repeat(64),
+            "resolvedSelector": "rust://example.rs#item/function/main",
+            "bytes": [102, 110, 32, 109, 97, 105, 110]
+        }),
         resident_read_elapsed_micros: 7,
         service_elapsed_micros: 3,
         elapsed_micros: 10,
@@ -66,6 +72,126 @@ fn exact_query_response_carries_falsifiable_resident_performance() {
     let encoded = serde_json::to_value(response).expect("encode exact-query response");
     assert_eq!(encoded["residentReadElapsedMicros"], 7);
     assert_eq!(encoded["workCounters"]["filesystemReadCount"], 0);
+}
+
+#[test]
+fn exact_query_response_rejects_empty_ready_and_failure_is_a_distinct_terminal() {
+    let response = crate::AspClientExactQueryResponse {
+        schema_id: "agent.semantic-protocols.asp-client-exact-query-response".to_owned(),
+        schema_version: "1".to_owned(),
+        operation_id: "query-terminal".to_owned(),
+        language_id: "rust".to_owned(),
+        provider_id: "asp-rust".to_owned(),
+        generation_digest: format!("blake3-256:{}", "a".repeat(64)),
+        root_digest: "b".repeat(64),
+        result: serde_json::json!({"state": "projection", "bytes": []}),
+        resident_read_elapsed_micros: 7,
+        service_elapsed_micros: 3,
+        elapsed_micros: 10,
+        work_counters: crate::AspClientRuntimeWorkCounters::default(),
+    };
+    assert!(
+        response
+            .validate()
+            .unwrap_err()
+            .contains("empty byte payload")
+    );
+
+    let failure = crate::AspClientExactQueryFailure {
+        schema_id: "agent.semantic-protocols.asp-client-exact-query-failure".to_owned(),
+        schema_version: "1".to_owned(),
+        state: "failed".to_owned(),
+        operation_id: "query-terminal".to_owned(),
+        language_id: "rust".to_owned(),
+        provider_id: "asp-rust".to_owned(),
+        requested_selector: Some("rust://src/lib.rs#item/function/missing".to_owned()),
+        resolved_selector: None,
+        projection_kind: Some("source".to_owned()),
+        phase: "resident-selector-read".to_owned(),
+        reason_kind: "projection-missing".to_owned(),
+        generation_digest: Some(format!("blake3-256:{}", "a".repeat(64))),
+        root_digest: Some("b".repeat(64)),
+        recommended_next: serde_json::json!({"action": "query-owner-or-admitted-scope"}),
+        resident_read_elapsed_micros: 7,
+        service_elapsed_micros: 3,
+        elapsed_micros: 10,
+        work_counters: crate::AspClientRuntimeWorkCounters::default(),
+        details: serde_json::json!({"selectorState": "projection-missing"}),
+    };
+    failure.validate().expect("typed exact-query failure");
+}
+
+#[test]
+fn schema_bundle_terminals_keep_receipt_authority_out_of_language_clients() {
+    let request = crate::SchemaBundleRequest {
+        schema_id: crate::SCHEMA_BUNDLE_REQUEST_SCHEMA_ID.to_owned(),
+        schema_version: crate::SCHEMA_VERSION.to_owned(),
+        language_id: "python".to_owned(),
+        root_set_ids: vec!["client-protocol".to_owned()],
+        known_bundle_digest: Some(format!("blake3-256:{}", "b".repeat(64))),
+    };
+    request.validate().expect("registered profile selector");
+
+    let receipt = crate::SchemaBundleReceipt {
+        language_id: "python".to_owned(),
+        root_set_ids: vec!["client-protocol".to_owned()],
+        bundle_digest: format!("blake3-256:{}", "b".repeat(64)),
+    };
+    let entry = crate::SchemaBundleEntry {
+        family_id: "asp.schema-family.asp-client".to_owned(),
+        schema_id: "https://schemas.agent-semantic-protocols.dev/asp-client-frame.schema.json"
+            .to_owned(),
+        schema_version: crate::SCHEMA_VERSION.to_owned(),
+        name: "asp-client-frame.schema.json".to_owned(),
+        digest: format!("blake3-256:{}", "c".repeat(64)),
+    };
+    let ready = crate::SchemaBundleResponse::Ready {
+        schema_id: crate::SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
+        schema_version: crate::SCHEMA_VERSION.to_owned(),
+        receipt: receipt.clone(),
+        entries: vec![entry.clone()],
+        documents: vec![crate::SchemaBundleDocument {
+            entry: entry.clone(),
+            document: serde_json::json!({"type": "object"}),
+        }],
+    };
+    ready.validate().expect("ready schema bundle");
+    let encoded = serde_json::to_value(&ready).expect("encode ready schema bundle");
+    assert_eq!(encoded["receipt"]["rootSetIds"][0], "client-protocol");
+    assert!(encoded["receipt"].get("profileId").is_none());
+    assert_eq!(
+        encoded["documents"][0]["entry"]["digest"],
+        encoded["entries"][0]["digest"]
+    );
+    let decoded_ready: crate::SchemaBundleResponse =
+        serde_json::from_value(encoded).expect("decode strict Ready schema bundle");
+    assert_eq!(decoded_ready, ready);
+
+    let unchanged = crate::SchemaBundleResponse::Unchanged {
+        schema_id: crate::SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
+        schema_version: crate::SCHEMA_VERSION.to_owned(),
+        receipt,
+        entries: vec![entry],
+    };
+    unchanged.validate().expect("unchanged schema bundle");
+
+    let failed = crate::SchemaBundleResponse::Failed {
+        schema_id: crate::SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
+        schema_version: crate::SCHEMA_VERSION.to_owned(),
+        language_id: "missing-language".to_owned(),
+        reason_kind: "schema-profile-not-registered".to_owned(),
+        recommended_next: serde_json::json!({"action": "inspect-schema-profile-registry"}),
+        details: serde_json::json!({"registered": false}),
+    };
+    failed.validate().expect("failed schema bundle");
+    let encoded_failed = serde_json::to_value(&failed).expect("encode Failed schema bundle");
+    let decoded_failed: crate::SchemaBundleResponse =
+        serde_json::from_value(encoded_failed).expect("decode strict Failed schema bundle");
+    assert_eq!(decoded_failed, failed);
+
+    let mut unknown = serde_json::to_value(&failed).expect("encode Failed schema bundle");
+    unknown["unexpected"] = serde_json::json!(true);
+    assert!(serde_json::from_value::<crate::SchemaBundleResponse>(unknown).is_err());
 }
 
 #[test]

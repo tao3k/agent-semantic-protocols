@@ -27,13 +27,90 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "*",
+        "matcher": "Read",
         "hooks": [
           {
             "type": "command",
-            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" pre-tool --client codex",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" pre-tool --client codex --host-match Read",
             "timeout": 1,
-            "statusMessage": "Checking Agent Semantic Protocol search policy"
+            "statusMessage": "Checking Agent Semantic Protocol read policy"
+          }
+        ]
+      },
+      {
+        "matcher": "apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" pre-tool --client codex --host-match apply_patch",
+            "timeout": 1,
+            "statusMessage": "Checking Agent Semantic Protocol edit policy"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" pre-tool --client codex --host-match Write",
+            "timeout": 1,
+            "statusMessage": "Checking Agent Semantic Protocol edit policy"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" pre-tool --client codex --host-match Edit",
+            "timeout": 1,
+            "statusMessage": "Checking Agent Semantic Protocol edit policy"
+          }
+        ]
+      },
+      {
+        "matcher": "NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" pre-tool --client codex --host-match NotebookEdit",
+            "timeout": 1,
+            "statusMessage": "Checking Agent Semantic Protocol edit policy"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" pre-tool --client codex --host-match Bash",
+            "timeout": 1,
+            "statusMessage": "Checking Agent Semantic Protocol command policy"
+          }
+        ]
+      },
+      {
+        "matcher": "spawn_agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" pre-tool --client codex --host-match spawn_agent",
+            "timeout": 1,
+            "statusMessage": "Checking Agent Semantic Protocol agent policy"
+          }
+        ]
+      },
+      {
+        "matcher": "^mcp__.*$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$PLUGIN_ROOT/bin/asp-hook\" pre-tool --client codex --host-match-prefix mcp__",
+            "timeout": 1,
+            "statusMessage": "Checking Agent Semantic Protocol MCP policy"
           }
         ]
       }

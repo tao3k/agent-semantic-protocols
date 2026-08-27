@@ -8,15 +8,22 @@ license = "MIT"
 [dependencies]
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
-agent-semantic-http-json.workspace = true
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio.workspace = true
+tokio-stream.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true
+prost.workspace = true
+tower.workspace = true
+hyper-util.workspace = true
 
 
 [dev-dependencies]
 asp-rust-project-harness-policy.workspace = true
+tempfile.workspace = true
 
 [build-dependencies]
 asp-rust-project-harness-policy.workspace = true
+tonic-prost-build.workspace = true

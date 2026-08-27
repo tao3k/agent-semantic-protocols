@@ -181,14 +181,12 @@ The planes are:
 An explicitly inherited =ASP_NO_AGENT=1= is the process-level emergency bypass
 for the Host Hook adapter.  For an actual Hook event, the bootstrap MUST return
 the empty Host success response before reading the action payload, loading
-matcher state, or evaluating policy.  The equivalent one-command form is a
-declarative v1 Hook Matcher rule.  Its parser-owned
-=leadingEnvironmentAssignmentAny= predicate matches the exact assignment only
-in the leading assignment block of the first shell AST stage, and its winning
-allow decision is terminal.  Classifier orchestration does not know the
-variable name.  Values other than the exact text =1=, similarly named
-variables, assignments passed to =env=, nested shell operands, later command
-stages, and lexical substring matches MUST NOT bypass policy.  This bypass does
+matcher state, or evaluating policy. A command-payload assignment is not
+equivalent: it is ordinary data observed after the Host already launched the
+Hook process and MUST NOT bypass policy. Classifier orchestration and matcher
+configuration do not create a second recovery authority. Values other than the
+exact inherited process value =1= and similarly named variables MUST NOT
+bypass policy. This bypass does
 not change ASP command, Runtime Server, workspace-generation, provider, or
 schema semantics; callers MUST remove it when verifying the repaired normal
 path.

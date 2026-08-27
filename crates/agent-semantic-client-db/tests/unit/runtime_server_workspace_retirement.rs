@@ -64,42 +64,6 @@ async fn removed_workspace_is_drained_and_retired_once() {
 }
 
 #[tokio::test]
-async fn ipc_request_guard_keeps_removed_workspace_resident_until_response() {
-    let state_root = tempfile::tempdir().expect("state root");
-    let missing_workspace = state_root.path().join("removed-during-request");
-    let registry =
-        RuntimeServerWorkspaceRegistry::new(state_root.path().join("runtime")).expect("registry");
-
-    registry
-        .entry("workspace-request", &missing_workspace)
-        .await
-        .expect("resident entry");
-    let request = registry
-        .begin_request("workspace-request")
-        .expect("request admission")
-        .expect("resident request guard");
-
-    assert!(
-        registry
-            .retire_inactive()
-            .await
-            .expect("guarded sweep")
-            .is_empty()
-    );
-    assert_eq!(registry.workspace_count(), 1);
-
-    drop(request);
-    assert_eq!(
-        registry
-            .retire_inactive()
-            .await
-            .expect("post-response sweep")
-            .len(),
-        1
-    );
-}
-
-#[tokio::test]
 async fn existing_workspace_retires_only_after_one_hour_idle() {
     let state_root = tempfile::tempdir().expect("state root");
     let workspace = tempfile::tempdir().expect("workspace");

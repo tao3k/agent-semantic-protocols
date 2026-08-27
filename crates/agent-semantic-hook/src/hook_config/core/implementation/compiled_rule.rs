@@ -143,8 +143,11 @@ impl CompiledHookRule {
         paths: &[String],
         structured_source_operands: Option<&[String]>,
     ) -> HookDecision {
-        let matched_subject_paths = self.match_config.agent_action.needs_subjects().then(|| {
+        let matched_subject_paths = (self.match_config.agent_action.needs_subjects()
+            || self.match_config.needs_profile_subjects())
+        .then(|| {
             self.match_config.agent_action.matching_subject_paths(
+                platform,
                 runtime,
                 action,
                 paths,
@@ -180,7 +183,7 @@ impl CompiledHookRule {
             .map(|(key, value)| (key.clone(), serde_json::Value::String(value.clone())))
             .collect::<std::collections::BTreeMap<_, _>>();
         if let Some(agent_action) =
-            self.agent_action_receipt(runtime, action, paths, structured_source_operands)
+            self.agent_action_receipt(runtime, platform, action, paths, structured_source_operands)
         {
             decision_fields.insert("agentAction".to_string(), agent_action);
         }
@@ -294,7 +297,7 @@ impl RuleMatch {
         Ok(Self {
             agent_action: action_match::AgentActionMatch::new(
                 action_match::AgentActionMatchConfig {
-                    action_any: std::mem::take(&mut config.action_any),
+                    native_matcher_any: std::mem::take(&mut config.native_matcher_any),
                     host_invocation_any: std::mem::take(&mut config.host_invocation_any),
                     subject_kind_any: std::mem::take(&mut config.subject_kind_any),
                     policy_all: policies.all,
@@ -329,11 +332,13 @@ impl RuleMatch {
     fn matches_before_paths(
         &self,
         registry: &HookRuntime,
+        platform: &str,
         action: &ToolAction,
         command_tokens: Option<&[String]>,
         match_paths: Option<&[String]>,
     ) -> bool {
-        self.agent_action.matches(registry, action, match_paths)
+        self.agent_action
+            .matches(registry, platform, action, match_paths)
             && self.matches_untyped_facts(registry, action, command_tokens)
     }
 
@@ -587,19 +592,37 @@ impl CompiledHookRule {
                 })
                 .flat_map(|policy| policy.semantic_capability_any.iter().copied())
                 .collect::<Vec<_>>();
-            let host_actions_are_typed_read = !config.match_config.action_any.is_empty()
+            let native_matchers_are_read = !config.match_config.native_matcher_any.is_empty()
                 && config
                     .match_config
-                    .action_any
+                    .native_matcher_any
                     .iter()
-                    .all(|action| *action == agent_semantic_config::HookClientActionKind::Read);
+                    .all(|matcher| matcher == "Read");
             let semantic_capabilities_are_typed_read = !referenced_semantic_capabilities.is_empty()
                 && referenced_semantic_capabilities.iter().all(|capability| {
                     *capability == agent_semantic_config::HookClientActionKind::Read
                 });
-            if !host_actions_are_typed_read && !semantic_capabilities_are_typed_read {
+            let semantic_capabilities_are_typed_unknown = !referenced_semantic_capabilities
+                .is_empty()
+                && referenced_semantic_capabilities.iter().all(|capability| {
+                    *capability == agent_semantic_config::HookClientActionKind::Unknown
+                });
+            let unresolved_source_access_contract = semantic_capabilities_are_typed_unknown
+                || (config
+                    .match_config
+                    .native_matcher_any
+                    .iter()
+                    .all(|matcher| matcher == "Bash")
+                    && config
+                        .match_config
+                        .host_invocation_any
+                        .contains(&agent_semantic_config::HookClientHostInvocationKind::Execute));
+            if !native_matchers_are_read
+                && !semantic_capabilities_are_typed_read
+                && !unresolved_source_access_contract
+            {
                 return Err(format!(
-                    "rule `{}` expands registered source without an exact Read SemanticCapability contract",
+                    "rule `{}` expands registered source without an exact Read contract or Execute plus Unknown unresolved-source-access contract",
                     config.id
                 ));
             }

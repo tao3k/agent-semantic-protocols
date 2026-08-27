@@ -9,7 +9,6 @@ struct TestListeners {
     _control: tokio::net::UnixListener,
     _data: tokio::net::UnixListener,
     provider: Option<tokio::net::UnixListener>,
-    _client: tokio::net::TcpListener,
 }
 
 async fn endpoint_with_listeners(root: &Path) -> (RuntimeServerEndpoint, TestListeners) {
@@ -19,16 +18,12 @@ async fn endpoint_with_listeners(root: &Path) -> (RuntimeServerEndpoint, TestLis
     let control = tokio::net::UnixListener::bind(&control_path).expect("bind control");
     let data = tokio::net::UnixListener::bind(&data_path).expect("bind data");
     let provider = tokio::net::UnixListener::bind(&provider_path).expect("bind provider");
-    let client = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
-        .await
-        .expect("bind client HTTP");
-    let client_endpoint = format!(
-        "http://{}",
-        client.local_addr().expect("client HTTP address")
-    );
+    let runtime_binary_identity = runtime_identity();
+    let binary_content_digest = match &runtime_binary_identity {
+        RuntimeBinaryIdentity::Content { digest } => digest.to_string(),
+    };
     let endpoint = RuntimeServerEndpoint {
-        binary_content_digest:
-            "blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
+        binary_content_digest,
         runtime_generation_digest:
             "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
         schema_digest:
@@ -39,16 +34,15 @@ async fn endpoint_with_listeners(root: &Path) -> (RuntimeServerEndpoint, TestLis
         owner_epoch: 41,
         owner_process_id: std::process::id(),
         runtime_artifact_path: root.join("asp").display().to_string(),
-        runtime_binary_identity: runtime_identity(),
+        runtime_binary_identity: runtime_binary_identity.clone(),
         monitor_capability: true,
-        observed_runtime_binary_identity: runtime_identity(),
+        observed_runtime_binary_identity: runtime_binary_identity,
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "1".repeat(64)),
         binding_token: "test-binding".to_owned(),
         socket_path: control_path.display().to_string(),
         data_plane_socket_path: data_path.display().to_string(),
         provider_plane_socket_path: provider_path.display().to_string(),
-        client_http_endpoint: client_endpoint,
         workspace_store_path: root.join("workspaces").display().to_string(),
         status_memory_path: root.join("status.memory").display().to_string(),
     };
@@ -58,16 +52,12 @@ async fn endpoint_with_listeners(root: &Path) -> (RuntimeServerEndpoint, TestLis
             _control: control,
             _data: data,
             provider: Some(provider),
-            _client: client,
         },
     )
 }
 
 fn runtime_identity() -> RuntimeBinaryIdentity {
-    RuntimeBinaryIdentity::Content {
-        value: "2".repeat(64),
-        algorithm: "blake3-256".to_owned(),
-    }
+    RuntimeBinaryIdentity::from_bytes(b"runtime-endpoint-generation")
 }
 
 #[tokio::test]

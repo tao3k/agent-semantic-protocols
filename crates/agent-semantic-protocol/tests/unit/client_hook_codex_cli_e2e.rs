@@ -55,19 +55,12 @@ fn assert_codex_cli_hook_enforced(stdout: &str) {
         "Codex CLI Hook E2E is a publication gate; configured-but-not-enforced, missing delivery, and source leakage are failures: stdout={stdout}"
     );
     assert!(
-        stdout.contains("enforcementReason=hook-deny-observed"),
+        stdout.contains("enforcementReason=hook-generation-bound-deny-observed"),
         "enforced Codex CLI probe did not report the deny reason: stdout={stdout}"
     );
     assert!(
         stdout.contains("sentinel=false"),
         "enforced Codex CLI probe leaked the protected source sentinel: stdout={stdout}"
-    );
-}
-
-#[test]
-fn codex_cli_publication_gate_accepts_observed_deny_without_source_bytes() {
-    assert_codex_cli_hook_enforced(
-        "enforcement=enforced enforcementReason=hook-deny-observed sentinel=false",
     );
 }
 

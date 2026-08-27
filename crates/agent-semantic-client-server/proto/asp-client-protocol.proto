@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package asp.client.protocol.v1;
+
+// The public wire envelope deliberately contains the shared ClientFrame JSON.
+// Lifecycle and route semantics remain owned by agent-semantic-client-protocol.
+message ClientFrameEnvelope {
+  bytes client_frame_json = 1;
+}
+
+service AspClientProtocol {
+  rpc Session(stream ClientFrameEnvelope) returns (stream ClientFrameEnvelope);
+}

@@ -1,4 +1,4 @@
-use agent_semantic_config::{HookClientActionKind, HookClientConfigFile, HookClientMatcherPolicy};
+use agent_semantic_config::{HookClientConfigFile, HookClientMatcherPolicy};
 
 fn default_config() -> HookClientConfigFile {
     agent_semantic_config::default_hook_client_config_file()
@@ -15,7 +15,7 @@ fn source_read_rule_is_owned_only_by_action_and_language_profiles() {
         .expect("Read plus language profiles route should exist");
     let dispatch = rule.dispatch.as_ref().expect("Read route dispatch");
     assert_eq!(dispatch.agent.as_str(), "asp_explorer");
-    assert_eq!(rule.actions, [HookClientActionKind::Read]);
+    assert_eq!(rule.matcher.as_deref(), Some("Read"));
     assert!(!rule.profiles_list.is_empty());
     assert_eq!(
         config.agent_calling.symbol("codex", "asp_explorer"),
@@ -47,7 +47,7 @@ fn default_template_uses_rule_local_matcher_policies() {
         .expect("native Read route rule");
     assert!(native_read_rule.matcher_policies.is_empty());
 
-    assert_eq!(native_read_rule.actions, [HookClientActionKind::Read]);
+    assert_eq!(native_read_rule.matcher.as_deref(), Some("Read"));
     assert!(native_read_rule.profiles_list.contains(&"rust".to_owned()));
     assert!(
         native_read_rule

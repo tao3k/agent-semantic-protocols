@@ -6,8 +6,12 @@ mod cache_cli;
 pub use cache_cli::{project_registry_clean_clap_command, project_registry_gc_clap_command};
 pub mod cli;
 mod cli_args;
+mod language_command;
 pub mod provider_runtime_storage;
-mod runtime_http_client;
+mod runtime_language_client;
+#[cfg(test)]
+#[path = "../tests/unit/runtime_language_client.rs"]
+mod runtime_language_client_tests;
 mod search_history;
 pub mod source_index;
 mod syntax_query_preflight;
@@ -15,7 +19,13 @@ mod syntax_query_preflight;
 #[path = "../tests/unit/support.rs"]
 mod test_support;
 mod tools_cli;
-pub use runtime_http_client::AspClient;
+pub use language_command::{
+    LanguageCommandApplication, LanguageCommandClient, LanguageCommandDispatchFuture,
+    LanguageCommandFuture, LanguageCommandOperation, LanguageCommandRequest,
+    LanguageCommandResponse, RuntimeLanguageCommandApplication, RuntimeLanguageCommandClient,
+    execute_language_command,
+};
+pub use runtime_language_client::AspClient;
 
 pub use agent_semantic_client_core::LanguageId;
 pub use agent_semantic_client_server::{

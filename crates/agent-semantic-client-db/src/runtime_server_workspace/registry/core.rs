@@ -249,19 +249,6 @@ impl RuntimeServerWorkspaceRegistry {
         Ok((project_root, generation_digest))
     }
 
-    pub(crate) fn begin_request(
-        &self,
-        workspace_identity: &str,
-    ) -> Result<Option<crate::runtime_server_workspace::lease::WorkspaceResidentRequestGuard>, String>
-    {
-        self.entries
-            .read()
-            .get(workspace_identity)
-            .cloned()
-            .map(|resident| resident.activity.begin_request())
-            .transpose()
-    }
-
     pub fn subscribe_workspace_count(&self) -> watch::Receiver<usize> {
         self.workspace_count.subscribe()
     }

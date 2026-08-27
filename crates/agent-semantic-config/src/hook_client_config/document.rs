@@ -111,6 +111,8 @@ pub struct HookClientProfileConfig {
     pub language_id: String,
     pub provider_id: String,
     pub extension_any: Vec<String>,
+    #[serde(default)]
+    pub source_root_any: Vec<String>,
 }
 
 /// Build-generated provider facade identity admitted for Hook search/query routing.
@@ -213,9 +215,16 @@ pub struct AspProjectHookConfig {
 /// `agents/config.toml` plus the platform projection files and cannot be overlaid here.
 pub fn materialize_profile_rule_ir(config: &mut HookClientConfigFile) -> Result<(), String> {
     for rule in &mut config.rules {
-        for action in &rule.actions {
-            if !rule.match_config.action_any.contains(action) {
-                rule.match_config.action_any.push(*action);
+        if let Some(matcher) = &rule.matcher {
+            for native in matcher.split('|') {
+                if !rule
+                    .match_config
+                    .native_matcher_any
+                    .iter()
+                    .any(|existing| existing == native)
+                {
+                    rule.match_config.native_matcher_any.push(native.to_owned());
+                }
             }
         }
 
@@ -249,6 +258,16 @@ pub fn materialize_profile_rule_ir(config: &mut HookClientConfigFile) -> Result<
                     rule.match_config
                         .profile_extension_any
                         .push(extension.clone());
+                }
+            }
+            for source_root in &profile.source_root_any {
+                let source_root = source_root.trim().trim_end_matches('/').to_owned();
+                if !rule.match_config.path_any.contains(&source_root) {
+                    rule.match_config.path_any.push(source_root.clone());
+                }
+                let descendant_glob = format!("{source_root}/**");
+                if !rule.match_config.path_glob_any.contains(&descendant_glob) {
+                    rule.match_config.path_glob_any.push(descendant_glob);
                 }
             }
         }

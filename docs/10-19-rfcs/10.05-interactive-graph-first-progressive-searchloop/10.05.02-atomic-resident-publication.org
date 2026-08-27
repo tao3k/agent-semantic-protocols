@@ -1,6 +1,8 @@
 #+TITLE: 10.05.02 Atomic Resident Runtime Publication
 #+OPTIONS: toc:2 num:nil
 
+Parent architecture: [[file:../10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
 * Status
 
 Normative. This module owns the zero-downtime publication contract for the ASP
@@ -60,12 +62,64 @@ provider spawning, generation restore, polling, or a compatibility route.
 * Package ownership
 
 - =agent-semantic-client-protocol=: wire generation identity and mismatch type.
-- =agent-semantic-runtime-server=: candidate publication, Ready validation,
-  atomic current/fallback switch, admission isolation, and drain.
+- =agent-semantic-runtime-server=: activation consumption, Ready validation,
+  serving-generation admission isolation, Tokio lifecycle, and drain.
 - =agent-semantic-client=: expected generation handshake and typed rendering.
-- =agent-semantic-protocol=: CLI composition and installer coordination only.
-- =agent-semantic-runtime=: immutable content-addressed artifact storage only;
-  it does not own active server lifecycle.
+- =agent-semantic-protocol=: thin CLI composition and typed receipt rendering only.
+- =agent-semantic-artifacts=: immutable content-addressed storage, the sole
+  =active=/=healthy= two-slot publication transaction, Release Activity,
+  provenance, and retention.
+- =agent-semantic-runtime=: reusable Tokio actor/process primitives only; it
+  owns neither artifact publication nor the active server lifecycle.
+
+* Activation event and resident actor
+
+Installation MUST materialize the immutable content-addressed candidate outside
+the publication lock. It then publishes exactly one pending activation event
+containing the typed candidate digest, immutable artifact path, runtime and
+schema identities, nonce, and the candidate RuntimeArtifactIdentityReceipt.
+The event and receipt MUST bind to the same digest and nonce. This step MUST
+NOT mutate =active=, =healthy=, or the stable client alias.
+
+Exactly one Tokio activation actor is mounted in the production ASP Server.
+At startup it recovers the durable pending event; while online it consumes
+datagram/watch wakeups for the same event stream. It launches only the
+event-bound candidate path and receipt, never a stale global receipt or the
+stable alias. Readiness and child exit are terminalized through Tokio
+cancellation-aware selection; polling, sleeping, and outer timeouts are
+forbidden. Every launch/readiness failure writes a typed Failed terminal and
+leaves the actor supervised and alive.
+
+Only a typed Ready receipt whose digest, runtime generation, schema identity,
+artifact bytes, and event nonce all match MAY enter the Artifacts commit. That
+short atomic commit sets =healthy= to the exact currently serving artifact
+identity, =active= to the candidate, updates the stable alias to =active=, and
+writes the applied acknowledgement. The old generation is drained only after
+this commit. Before commit, any failure leaves =active=, =healthy=, and the
+stable alias unchanged.
+
+The canonical two-slot vocabulary is =active=/=healthy=. On an initial
+installation with no serving generation, a Ready candidate sets both slots to
+the same immutable artifact. After every successful commit, retention removes
+all artifacts unreachable from =active=, =healthy=, or one live pending event;
+pending candidates are bounded and recoverable. No third runtime pointer or
+second activation actor exists.
+
+* Resident replacement observation
+
+The resident replacement identity is exactly the canonical applied activation
+and serving transaction tuple =(activationGeneration, artifactDigest,
+ownerEpoch)=.  The Runtime monitor may observe only that tuple.  A pending
+activation is input to the resident activation actor and is not an applied or
+serving identity until the actor commits it.
+
+A developer source-generation receipt, build output, stable-link target, or
+artifact-identity side receipt cannot request handoff and cannot retire a
+healthy owner.  Missing, malformed, or unknown applied authority is a typed
+observation failure: it never fabricates a replacement and never drains the
+last healthy resident.  A new applied generation is distinct even when its
+content digest is unchanged, and it emits one generation-bound replacement
+observation.
 
 * Deterministic acceptance
 

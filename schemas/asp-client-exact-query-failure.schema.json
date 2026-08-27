@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp-client-exact-query-failure.schema.json",
+  "title": "ASP Client Exact Query Failure",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId", "schemaVersion", "state", "operationId", "languageId",
+    "providerId", "phase", "reasonKind", "recommendedNext",
+    "residentReadElapsedMicros", "serviceElapsedMicros", "elapsedMicros",
+    "workCounters", "details"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.asp-client-exact-query-failure"
+    },
+    "schemaVersion": { "const": "1" },
+    "state": { "const": "failed" },
+    "operationId": { "type": "string", "minLength": 1 },
+    "languageId": { "type": "string", "minLength": 1 },
+    "providerId": { "type": "string", "minLength": 1 },
+    "requestedSelector": { "type": ["string", "null"] },
+    "resolvedSelector": { "type": ["string", "null"] },
+    "projectionKind": { "type": ["string", "null"] },
+    "phase": { "type": "string", "minLength": 1 },
+    "reasonKind": { "type": "string", "minLength": 1 },
+    "generationDigest": {
+      "type": ["string", "null"],
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "rootDigest": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "recommendedNext": {},
+    "residentReadElapsedMicros": { "type": "integer", "minimum": 0 },
+    "serviceElapsedMicros": { "type": "integer", "minimum": 0 },
+    "elapsedMicros": { "type": "integer", "minimum": 0 },
+    "workCounters": { "$ref": "asp-client-work-counters.schema.json" },
+    "details": { "type": "object" }
+  }
+}

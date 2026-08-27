@@ -88,6 +88,94 @@ theorem recovery_override_breaks_recursive_repair_deadlock :
     repairReachable true false false false = true := by
   rfl
 
+inductive RuntimeAuthority where
+  | missing
+  | legacyV1Stale
+  | malformed
+  | currentV1Validated
+  deriving DecidableEq
+
+inductive ExecutionMode where
+  | normal
+  | processRecovery
+  deriving DecidableEq
+
+/-- Only the fully validated stable-v1 launcher observation is Runtime health
+authority. A legacy stable-v1 shape is evidence that re-observation is needed,
+not permission to assert health. -/
+def runtimeHealthy : RuntimeAuthority → Bool
+  | .currentV1Validated => true
+  | _ => false
+
+theorem legacy_v1_stale_does_not_assert_runtime_health :
+    runtimeHealthy .legacyV1Stale = false := by
+  rfl
+
+theorem malformed_receipt_does_not_assert_runtime_health :
+    runtimeHealthy .malformed = false := by
+  rfl
+
+/-- The process recovery edge is decided without consulting Runtime authority.
+This is the formal non-interference boundary that keeps a broken observation
+from disabling the repair process itself. -/
+def entryRecoveryAllows
+    (mode : ExecutionMode) (_runtime : RuntimeAuthority) : Bool :=
+  mode == .processRecovery
+
+theorem runtime_authority_cannot_change_process_recovery
+    (left right : RuntimeAuthority) :
+    entryRecoveryAllows .processRecovery left =
+      entryRecoveryAllows .processRecovery right := by
+  rfl
+
+theorem process_recovery_is_reachable_from_every_runtime_state
+    (runtime : RuntimeAuthority) :
+    entryRecoveryAllows .processRecovery runtime = true := by
+  rfl
+
+theorem normal_mode_cannot_consume_recovery_authority
+    (runtime : RuntimeAuthority) :
+    entryRecoveryAllows .normal runtime = false := by
+  rfl
+
+/-- A validated stable-v1 candidate restores normal Runtime authority without
+changing the public receipt schema version. -/
+def validateCandidate : RuntimeAuthority := .currentV1Validated
+
+theorem validated_candidate_restores_normal_runtime_authority :
+    runtimeHealthy validateCandidate = true := by
+  rfl
+
+inductive RecoveryPhase where
+  | bootstrapFailed
+  | processOverrideObserved
+  | repairLaunched
+  | normalAuthorityRestored
+  deriving DecidableEq
+
+def recoveryRank : RecoveryPhase → Nat
+  | .bootstrapFailed => 0
+  | .processOverrideObserved => 1
+  | .repairLaunched => 2
+  | .normalAuthorityRestored => 3
+
+def recoveryStep : RecoveryPhase → RecoveryPhase → Prop
+  | .bootstrapFailed, .processOverrideObserved => True
+  | .processOverrideObserved, .repairLaunched => True
+  | .repairLaunched, .normalAuthorityRestored => True
+  | _, _ => False
+
+theorem recovery_step_strictly_advances
+    {left right : RecoveryPhase}
+    (step : recoveryStep left right) :
+    recoveryRank left < recoveryRank right := by
+  cases left <;> cases right <;> simp_all [recoveryStep, recoveryRank]
+
+theorem recovery_transition_is_acyclic
+    (phase : RecoveryPhase) :
+    ¬ recoveryStep phase phase := by
+  cases phase <;> simp [recoveryStep]
+
 /-- Publication and one-shot readers must derive authority from the same
 normalized workspace identity. Comparing raw lexical paths admits aliases such
 as `root` and `root/.` as different authorities. -/

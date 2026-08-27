@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 mod routes;
+mod schema_bundle;
 mod server_method_catalog;
 #[cfg(test)]
 #[path = "../tests/unit/server_method_catalog.rs"]
@@ -13,10 +14,15 @@ pub mod workspace_source_mutation;
 #[path = "../tests/unit/workspace_source_mutation.rs"]
 mod workspace_source_mutation_tests;
 pub use routes::{
-    AspClientExactQueryRequest, AspClientExactQueryResponse, AspClientOwnerSearchRequest,
-    AspClientRuntimeWorkCounters, AspClientSearchRequest, ProviderNativeExactProjection,
-    ProviderNativeExactRequest, ProviderNativeOwnerSearchRequest,
+    AspClientExactQueryFailure, AspClientExactQueryRequest, AspClientExactQueryResponse,
+    AspClientOwnerSearchRequest, AspClientRuntimeWorkCounters, AspClientSearchRequest,
+    ProviderNativeExactProjection, ProviderNativeExactRequest, ProviderNativeOwnerSearchRequest,
     ProviderNativeOwnerSearchResponse, RuntimeProviderSearchRequest,
+};
+pub use schema_bundle::{
+    SCHEMA_BUNDLE_METHOD, SCHEMA_BUNDLE_REQUEST_SCHEMA_ID, SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID,
+    SchemaBundleDocument, SchemaBundleEntry, SchemaBundleReceipt, SchemaBundleRequest,
+    SchemaBundleResponse,
 };
 pub use server_method_catalog::{
     CANCELLATION_PROBE_METHOD, CANCELLATION_PROBE_REQUEST_SCHEMA_ID,
@@ -123,6 +129,7 @@ pub struct ClientParameter {
 #[serde(rename_all = "kebab-case")]
 pub enum ClientParameterType {
     String,
+    StringArray,
     WorkspaceRelativePath,
     StructuralSelector,
     Presentation,
@@ -662,6 +669,9 @@ fn parameter_value_matches(value_type: ClientParameterType, value: &Value) -> bo
         | ClientParameterType::WorkspaceRelativePath
         | ClientParameterType::StructuralSelector
         | ClientParameterType::Presentation => value.is_string(),
+        ClientParameterType::StringArray => value
+            .as_array()
+            .is_some_and(|values| !values.is_empty() && values.iter().all(Value::is_string)),
         ClientParameterType::Boolean => value.is_boolean(),
         ClientParameterType::UnsignedInteger => value.as_u64().is_some(),
         ClientParameterType::Json => true,

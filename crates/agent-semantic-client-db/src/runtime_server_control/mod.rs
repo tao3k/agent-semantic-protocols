@@ -1,4 +1,5 @@
 mod client;
+pub use client::call_runtime_server_for_state_home;
 mod connection_pool;
 mod endpoint;
 mod endpoint_cleanup;
@@ -42,6 +43,7 @@ pub use listener::{
 pub use model::{
     AgentSessionControlPlaneState, GraphTurboResidentState, GraphTurboResidentStatus,
     RuntimeServerAgentSessionLifecycleState, RuntimeServerAgentSessionStatus,
+    RuntimeServerClientBootstrapAuthority, RuntimeServerClientBootstrapReceipt,
     RuntimeServerControlReceipt, RuntimeServerControlRequest, RuntimeServerEndpoint,
     RuntimeServerEndpointOwnerBinding, RuntimeServerOperation, RuntimeServerRequestReadError,
     RuntimeServerState, WorkspaceGenerationControlReceipt,

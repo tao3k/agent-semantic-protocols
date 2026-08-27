@@ -95,3 +95,7 @@ pub(super) fn append_materialization_fields(
         serde_json::Value::String("static-route".to_string()),
     );
 }
+
+#[cfg(test)]
+#[path = "../../../tests/unit/registered_asp.rs"]
+mod tests;

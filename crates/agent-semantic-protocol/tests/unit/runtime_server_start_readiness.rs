@@ -1,173 +1,404 @@
-use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::os::unix::fs::PermissionsExt as _;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+use std::thread;
 
-use agent_semantic_client_db::runtime_server_endpoint_path;
+use agent_semantic_artifacts::runtime_artifact_publication::{
+    publish_runtime_artifact, read_runtime_artifact_activation_event,
+};
 
-fn isolated_state_home() -> std::path::PathBuf {
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock must be after the Unix epoch")
-        .as_nanos();
-    std::env::temp_dir().join(format!(
-        "asp-runtime-start-readiness-{}-{nonce}",
-        std::process::id()
-    ))
+const RUNTIME_CLIENT_QUERY_ARGS: &[&str] = &[
+    "rust",
+    "query",
+    "--selector",
+    "rust://src/lib.rs#item/function/missing",
+    "--workspace",
+    ".",
+    "--projection",
+    "source",
+];
+
+fn asp_binary() -> PathBuf {
+    PathBuf::from(env!("CARGO_BIN_EXE_asp"))
 }
 
-#[test]
-fn start_publishes_a_healthy_endpoint_after_owner_spawn() {
-    let state_home = isolated_state_home();
-    std::fs::create_dir_all(&state_home).expect("create isolated ASP state home");
-    let state_home = std::fs::canonicalize(state_home).expect("canonical ASP state home");
-    let installed_binary = state_home.join("runtime/bin/asp");
-
-    let install = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .env("ASP_STATE_HOME", &state_home)
-        .args(["install", "binary"])
+fn run_asp(state_home: &Path, args: &[&str]) -> Output {
+    Command::new(asp_binary())
+        .env("ASP_STATE_HOME", state_home)
+        .args(args)
         .output()
-        .expect("install isolated ASP binary");
-    assert!(
-        install.status.success(),
-        "isolated binary install failed: stdout={} stderr={}",
-        String::from_utf8_lossy(&install.stdout),
-        String::from_utf8_lossy(&install.stderr)
-    );
-
-    let start = Command::new(&installed_binary)
-        .env("ASP_STATE_HOME", &state_home)
-        .args(["server", "start"])
-        .output()
-        .expect("start isolated Runtime Server");
-    let output = format!(
-        "{}\n{}",
-        String::from_utf8_lossy(&start.stdout),
-        String::from_utf8_lossy(&start.stderr)
-    );
-    assert!(
-        start.status.success(),
-        "owner spawn must publish a healthy endpoint: {output}"
-    );
-    assert!(
-        output.contains("\"state\":\"healthy\""),
-        "start must wait for the published healthy receipt: {output}"
-    );
-
-    let stop = Command::new(&installed_binary)
-        .env("ASP_STATE_HOME", &state_home)
-        .args(["server", "stop"])
-        .output()
-        .expect("stop isolated Runtime Server");
-    assert!(
-        stop.status.success(),
-        "stop must clean the endpoint after a ready owner: stdout={} stderr={}",
-        String::from_utf8_lossy(&stop.stdout),
-        String::from_utf8_lossy(&stop.stderr)
-    );
-
-    let stale_endpoint =
-        runtime_server_endpoint_path(&state_home).expect("resolve isolated Runtime endpoint");
-    std::fs::create_dir_all(
-        stale_endpoint
-            .parent()
-            .expect("Runtime endpoint has a parent directory"),
-    )
-    .expect("create stale Runtime endpoint parent");
-    std::fs::write(&stale_endpoint, b"stale endpoint")
-        .expect("publish deliberately stale Runtime endpoint");
-
-    let restarted = Command::new(&installed_binary)
-        .env("ASP_STATE_HOME", &state_home)
-        .args(["server", "start"])
-        .output()
-        .expect("self-heal stale Runtime endpoint");
-    let restarted_output = format!(
-        "{}\n{}",
-        String::from_utf8_lossy(&restarted.stdout),
-        String::from_utf8_lossy(&restarted.stderr)
-    );
-    assert!(
-        restarted.status.success() && restarted_output.contains("\"state\":\"healthy\""),
-        "stale endpoint must self-heal to a healthy owner: {restarted_output}"
-    );
-
-    let final_stop = Command::new(&installed_binary)
-        .env("ASP_STATE_HOME", &state_home)
-        .args(["server", "stop"])
-        .output()
-        .expect("stop self-healed Runtime Server");
-    assert!(
-        final_stop.status.success() && !stale_endpoint.exists(),
-        "stop must remove the self-healed endpoint: stdout={} stderr={}",
-        String::from_utf8_lossy(&final_stop.stdout),
-        String::from_utf8_lossy(&final_stop.stderr)
-    );
-    std::fs::remove_dir_all(&state_home).expect("remove isolated ASP state home");
+        .expect("run isolated ASP command")
 }
 
-#[test]
-fn concurrent_starts_share_one_runtime_server_owner() {
-    let state_home = isolated_state_home();
-    std::fs::create_dir_all(&state_home).expect("create isolated ASP state home");
-    let state_home = std::fs::canonicalize(state_home).expect("canonical ASP state home");
-    let installed_binary = state_home.join("runtime/bin/asp");
-
-    let install = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .env("ASP_STATE_HOME", &state_home)
-        .args(["install", "binary"])
-        .output()
-        .expect("install isolated ASP binary");
-    assert!(install.status.success(), "isolated binary install failed");
-
-    let barrier = std::sync::Arc::new(std::sync::Barrier::new(3));
-    let starts = (0..2)
-        .map(|_| {
-            let barrier = std::sync::Arc::clone(&barrier);
-            let binary = installed_binary.clone();
-            let state = state_home.clone();
-            std::thread::spawn(move || {
-                barrier.wait();
-                Command::new(binary)
-                    .env("ASP_STATE_HOME", state)
-                    .args(["server", "start"])
-                    .output()
-                    .expect("concurrent Runtime Server start")
-            })
-        })
-        .collect::<Vec<_>>();
-    barrier.wait();
-    let outputs = starts
-        .into_iter()
-        .map(|start| start.join().expect("concurrent start worker"))
-        .collect::<Vec<_>>();
+fn assert_success(output: &Output, operation: &str) {
     assert!(
-        outputs.iter().all(|output| output.status.success()),
-        "all concurrent starts must converge on the one ready owner: {outputs:?}"
+        output.status.success(),
+        "{operation} failed: status={} stdout={} stderr={}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
+}
 
+async fn publish_pending_runtime(state_home: &Path) {
+    let source = asp_binary();
+    let target = state_home.join("runtime/bin/asp");
+    publish_runtime_artifact(state_home, &source, &target, "dev", None)
+        .await
+        .expect("publish immutable Runtime artifact activation");
     assert!(
-        outputs.iter().all(|output| String::from_utf8_lossy(&output.stdout)
-            .contains("\"state\":\"healthy\"")),
-        "each concurrent caller must observe the same ready Runtime owner: {outputs:?}"
+        read_runtime_artifact_activation_event(state_home)
+            .await
+            .expect("read Runtime artifact activation")
+            .is_some(),
+        "publication must leave a durable pending activation event"
     );
-    let owner_spawn = state_home.join("runtime/server/owner-spawn.v1.json");
-    let owner: serde_json::Value = serde_json::from_slice(
-        &std::fs::read(&owner_spawn).expect("read the single durable owner receipt"),
-    )
-    .expect("decode the single durable owner receipt");
+}
+
+fn stop_isolated_runtime(state_home: &Path) {
+    let output = run_asp(state_home, &["server", "stop"]);
+    assert_success(&output, "isolated Runtime stop");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn pending_activation_bootstrap_spawns_one_supervised_runtime_owner() {
+    let temporary = tempfile::tempdir().expect("create isolated state home");
+    let state_home = temporary.path().to_path_buf();
+    publish_pending_runtime(&state_home).await;
+
+    let bootstrap = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
+    assert_success(&bootstrap, "client bootstrap activation reconciliation");
+    assert!(
+        state_home
+            .join("runtime/server/owner-spawn.v1.json")
+            .is_file()
+    );
+    let bootstrap_receipt: serde_json::Value = serde_json::from_slice(&bootstrap.stdout)
+        .expect("decode nonblocking client bootstrap receipt");
+    assert_eq!(bootstrap_receipt["state"], "starting");
     assert_eq!(
-        owner["schemaId"],
-        "agent.semantic-protocols.runtime-server-owner-spawn.v1"
-    );
-    assert!(
-        owner["processId"].as_u64().is_some(),
-        "the converged Runtime must retain one concrete owner process"
+        bootstrap_receipt["reasonKind"],
+        "runtime-server-activation-spawn-accepted"
     );
 
-    let stop = Command::new(&installed_binary)
-        .env("ASP_STATE_HOME", &state_home)
-        .args(["server", "stop"])
-        .output()
-        .expect("stop concurrent Runtime Server owner");
-    assert!(stop.status.success(), "concurrent owner cleanup failed");
-    std::fs::remove_dir_all(&state_home).expect("remove isolated ASP state home");
+    stop_isolated_runtime(&state_home);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn explicit_activation_waits_for_one_bound_resident_transaction_without_polling() {
+    let temporary = tempfile::tempdir().expect("create isolated state home");
+    let state_home = temporary.path().to_path_buf();
+    publish_pending_runtime(&state_home).await;
+
+    let start = run_asp(&state_home, &["server", "start"]);
+    assert_success(&start, "supervised Runtime activation");
+    let transaction =
+        agent_semantic_client_db::runtime_server_lifecycle::observe_resident_transaction(
+            &state_home,
+        )
+        .await
+        .expect("observe one bound Runtime resident transaction");
+    assert_eq!(transaction.state, "ready");
+    assert!(transaction.activation_generation > 0);
+    assert_eq!(
+        transaction.activation_generation,
+        transaction.applied_activation_generation
+    );
+    assert_eq!(
+        transaction.launcher_artifact_digest,
+        transaction.applied_artifact_digest
+    );
+    assert_eq!(
+        transaction.launcher_artifact_digest,
+        transaction.endpoint_binary_content_digest
+    );
+    assert!(std::path::Path::new(&transaction.launcher_artifact_path).is_absolute());
+    assert_eq!(transaction.spawn_argv, ["server", "daemon"]);
+    assert!(std::path::Path::new(&transaction.control_endpoint).is_absolute());
+    assert!(std::path::Path::new(&transaction.data_endpoint).is_absolute());
+    assert!(std::path::Path::new(&transaction.provider_endpoint).is_absolute());
+    assert_eq!(transaction.previous_drain_state, "not-required");
+
+    stop_isolated_runtime(&state_home);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn activation_child_exit_terminalizes_and_preserves_pending_without_polling() {
+    let temporary = tempfile::tempdir().expect("create isolated state home");
+    let state_home = temporary.path().to_path_buf();
+    let source = temporary.path().join("exiting-asp");
+    std::fs::write(&source, b"#!/bin/sh\nexit 17\n").expect("write exiting Runtime candidate");
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755))
+        .expect("make exiting Runtime candidate executable");
+    publish_runtime_artifact(
+        &state_home,
+        &source,
+        &state_home.join("runtime/bin/asp"),
+        "dev",
+        None,
+    )
+    .await
+    .expect("publish exiting Runtime candidate");
+
+    let start = run_asp(&state_home, &["server", "start"]);
+    assert!(
+        !start.status.success(),
+        "exiting Runtime candidate must fail"
+    );
+    let terminal = String::from_utf8_lossy(&start.stderr);
+    assert!(
+        terminal.contains("runtime-owner-exited-before-ready"),
+        "unexpected child-exit terminal: {terminal}"
+    );
+    assert!(
+        read_runtime_artifact_activation_event(&state_home)
+            .await
+            .expect("read activation after child exit")
+            .is_some(),
+        "child exit before ready must preserve the pending activation"
+    );
+    assert!(
+        agent_semantic_artifacts::runtime_artifact_publication::
+            read_applied_runtime_artifact_activation_event(&state_home)
+            .await
+            .expect("read applied activation after child exit")
+            .is_none(),
+        "child exit before ready must not forge an applied activation"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn concurrent_pending_activation_bootstraps_share_one_runtime_server_owner() {
+    let temporary = tempfile::tempdir().expect("create isolated state home");
+    let state_home = temporary.path().to_path_buf();
+    publish_pending_runtime(&state_home).await;
+
+    let first_home = state_home.clone();
+    let second_home = state_home.clone();
+    let first = thread::spawn(move || run_asp(&first_home, RUNTIME_CLIENT_QUERY_ARGS));
+    let second = thread::spawn(move || run_asp(&second_home, RUNTIME_CLIENT_QUERY_ARGS));
+    assert_success(
+        &first.join().expect("join first bootstrap"),
+        "first bootstrap",
+    );
+    assert_success(
+        &second.join().expect("join second bootstrap"),
+        "second bootstrap",
+    );
+
+    let owner_receipt = std::fs::read(state_home.join("runtime/server/owner-spawn.v1.json"))
+        .expect("read canonical owner receipt");
+    let owner: serde_json::Value =
+        serde_json::from_slice(&owner_receipt).expect("decode canonical owner receipt");
+    assert!(
+        owner
+            .get("processId")
+            .and_then(serde_json::Value::as_u64)
+            .is_some()
+    );
+
+    stop_isolated_runtime(&state_home);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn operator_stop_suppresses_old_activation_until_a_newer_publication() {
+    let temporary = tempfile::tempdir().expect("create isolated state home");
+    let state_home = temporary.path().to_path_buf();
+    publish_pending_runtime(&state_home).await;
+    let stopped_event = read_runtime_artifact_activation_event(&state_home)
+        .await
+        .expect("read stopped-through activation")
+        .expect("pending activation");
+    agent_semantic_client_db::runtime_server_lifecycle::mark_operator_stopped(&state_home)
+        .await
+        .expect("mark operator stopped");
+
+    let suppressed = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
+    assert_success(&suppressed, "suppressed client bootstrap");
+    assert!(
+        !state_home
+            .join("runtime/server/owner-spawn.v1.json")
+            .exists(),
+        "healthcheck/bootstrap must not cross operator-stop authority"
+    );
+    let tombstone =
+        agent_semantic_client_db::runtime_server_lifecycle::read_operator_stop_receipt(&state_home)
+            .await
+            .expect("read operator-stop receipt")
+            .expect("operator-stop receipt");
+    assert_eq!(
+        tombstone.stopped_through_activation_generation,
+        stopped_event.activation_generation
+    );
+
+    publish_pending_runtime(&state_home).await;
+    let newer_event = read_runtime_artifact_activation_event(&state_home)
+        .await
+        .expect("read newer activation")
+        .expect("newer pending activation");
+    assert!(newer_event.activation_generation > stopped_event.activation_generation);
+
+    let resumed = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
+    assert_success(&resumed, "newer activation bootstrap");
+    assert!(
+        state_home
+            .join("runtime/server/owner-spawn.v1.json")
+            .is_file(),
+        "strictly newer activation must reacquire supervisor authority"
+    );
+
+    stop_isolated_runtime(&state_home);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn current_schema_v1_operator_stop_suppresses_covered_activation() {
+    let temporary = tempfile::tempdir().expect("create isolated state home");
+    let state_home = temporary.path().to_path_buf();
+    publish_pending_runtime(&state_home).await;
+    let stopped_event = read_runtime_artifact_activation_event(&state_home)
+        .await
+        .expect("read stopped-through activation")
+        .expect("pending activation");
+    let stop_path = state_home.join("runtime/server/operator-stop.v1.json");
+    std::fs::create_dir_all(stop_path.parent().expect("operator stop parent"))
+        .expect("create operator stop parent");
+    std::fs::write(
+        &stop_path,
+        serde_json::to_vec(&serde_json::json!({
+            "schemaId": "agent.semantic-protocols.runtime-server-operator-stop",
+            "schemaVersion": "1",
+            "state": "stopped",
+            "stoppedThroughActivationGeneration": stopped_event.activation_generation,
+        }))
+        .expect("encode current schema v1 operator stop"),
+    )
+    .expect("seed current schema v1 operator stop");
+
+    let suppressed = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
+    assert_success(&suppressed, "current v1 suppressed bootstrap");
+    assert!(
+        !state_home
+            .join("runtime/server/owner-spawn.v1.json")
+            .exists()
+    );
+    let canonical =
+        agent_semantic_client_db::runtime_server_lifecycle::read_operator_stop_receipt(&state_home)
+            .await
+            .expect("read current operator stop")
+            .expect("current operator stop");
+    assert_eq!(
+        canonical.stopped_through_activation_generation,
+        stopped_event.activation_generation
+    );
+
+    publish_pending_runtime(&state_home).await;
+    let resumed = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
+    assert_success(&resumed, "newer activation after canonical stop");
+    assert!(
+        state_home
+            .join("runtime/server/owner-spawn.v1.json")
+            .is_file()
+    );
+    stop_isolated_runtime(&state_home);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn invalid_operator_stop_receipts_fail_closed_without_starting_an_owner() {
+    let cases = [
+        ("malformed", "{"),
+        (
+            "stale-v1-missing-generation",
+            r#"{"schemaId":"agent.semantic-protocols.runtime-server-operator-stop","schemaVersion":"1","state":"stopped"}"#,
+        ),
+        (
+            "unreleased-schema-version-2",
+            r#"{"schemaId":"agent.semantic-protocols.runtime-server-operator-stop","schemaVersion":"2","state":"stopped"}"#,
+        ),
+        (
+            "unknown-version",
+            r#"{"schemaId":"agent.semantic-protocols.runtime-server-operator-stop","schemaVersion":"9","state":"stopped","stoppedThroughActivationGeneration":0}"#,
+        ),
+    ];
+    for (case, receipt) in cases {
+        let temporary = tempfile::tempdir().expect("create isolated state home");
+        let state_home = temporary.path().to_path_buf();
+        publish_pending_runtime(&state_home).await;
+        let stop_path = state_home.join("runtime/server/operator-stop.v1.json");
+        std::fs::create_dir_all(stop_path.parent().expect("operator stop parent"))
+            .expect("create operator stop parent");
+        std::fs::write(&stop_path, receipt).expect("seed invalid operator stop");
+
+        let bootstrap = run_asp(&state_home, RUNTIME_CLIENT_QUERY_ARGS);
+        assert!(
+            !bootstrap.status.success(),
+            "{case} operator-stop receipt must fail closed"
+        );
+        let failure = format!(
+            "{}{}",
+            String::from_utf8_lossy(&bootstrap.stdout),
+            String::from_utf8_lossy(&bootstrap.stderr)
+        );
+        assert!(failure.contains("operator-stop"), "{case}: {failure}");
+        assert!(stop_path.is_file(), "{case} marker must be preserved");
+        assert!(
+            !state_home
+                .join("runtime/server/owner-spawn.v1.json")
+                .exists(),
+            "{case} marker must not start an owner"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn concurrent_current_schema_v1_reads_are_idempotent() {
+    let temporary = tempfile::tempdir().expect("create isolated state home");
+    let state_home = temporary.path().to_path_buf();
+    publish_pending_runtime(&state_home).await;
+    let stopped_event = read_runtime_artifact_activation_event(&state_home)
+        .await
+        .expect("read stopped-through activation")
+        .expect("pending activation");
+    let stop_path = state_home.join("runtime/server/operator-stop.v1.json");
+    std::fs::create_dir_all(stop_path.parent().expect("operator stop parent"))
+        .expect("create operator stop parent");
+    std::fs::write(
+        &stop_path,
+        serde_json::to_vec(&serde_json::json!({
+            "schemaId": "agent.semantic-protocols.runtime-server-operator-stop",
+            "schemaVersion": "1",
+            "state": "stopped",
+            "stoppedThroughActivationGeneration": stopped_event.activation_generation,
+        }))
+        .expect("encode current schema v1 operator stop"),
+    )
+    .expect("seed current schema v1 operator stop");
+
+    let (first, second) = tokio::join!(
+        agent_semantic_client_db::runtime_server_lifecycle::read_operator_stop_receipt(&state_home),
+        agent_semantic_client_db::runtime_server_lifecycle::read_operator_stop_receipt(&state_home)
+    );
+    let first = first
+        .expect("first current v1 read")
+        .expect("first receipt");
+    let second = second
+        .expect("second current v1 read")
+        .expect("second receipt");
+    assert_eq!(first, second);
+
+    let current_receipt =
+        agent_semantic_client_db::runtime_server_lifecycle::read_operator_stop_receipt(&state_home)
+            .await
+            .expect("read current receipt")
+            .expect("current receipt");
+    assert_eq!(current_receipt.schema_version, "1");
+    assert_eq!(
+        current_receipt.stopped_through_activation_generation,
+        stopped_event.activation_generation
+    );
+    assert!(stop_path.is_file());
+    assert!(
+        !state_home
+            .join("runtime/server/owner-spawn.v1.json")
+            .exists()
+    );
 }

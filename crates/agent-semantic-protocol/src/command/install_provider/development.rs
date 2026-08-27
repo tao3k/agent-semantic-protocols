@@ -2,31 +2,11 @@
 
 use std::path::Path;
 
-use crate::command::provider_install_registry::ProviderInstallArtifactDomain;
-
 pub(super) struct DevelopmentArtifactProvenance {
     pub source_snapshot_root: String,
     pub source_leaf_count: usize,
     pub provider_digest: String,
     pub build_recipe_digest: String,
-}
-
-pub(super) fn development_artifact_is_authorized(
-    provider_source_root: &Path,
-    state_home: &Path,
-    registered_binary: &str,
-    artifact_domain: ProviderInstallArtifactDomain,
-    artifact: &Path,
-) -> bool {
-    match artifact_domain {
-        ProviderInstallArtifactDomain::Checkout => artifact.starts_with(provider_source_root),
-        ProviderInstallArtifactDomain::StateHomeProviderStaging => artifact.starts_with(
-            state_home
-                .join("runtime/provider-artifacts")
-                .join(registered_binary)
-                .join("develop"),
-        ),
-    }
 }
 
 pub(super) fn capture_development_artifact_provenance(

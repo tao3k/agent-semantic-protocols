@@ -14,7 +14,14 @@ mod unix {
         let mut child = Command::new(env!("CARGO_BIN_EXE_asp"))
             .current_dir(&root)
             .env("ASP_STATE_HOME", &state_home)
-            .args(["hook", "pre-tool", "--client", "codex"])
+            .args([
+                "hook",
+                "pre-tool",
+                "--client",
+                "codex",
+                "--host-match",
+                "Read",
+            ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

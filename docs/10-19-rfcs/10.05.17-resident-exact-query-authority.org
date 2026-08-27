@@ -1,6 +1,8 @@
 #+title: Resident Exact Query Authority
 #+startup: overview
 
+Parent architecture: [[file:10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
 * Status
 
 Normative. This document refines the interactive graph-first SearchLoop for
@@ -62,4 +64,3 @@ failure. A budget exceedance is a defect receipt, not a retry policy.
 - empirical: repeated exact selectors on a large dirty worktree return current
   owner bytes without =selector-stale=, =item-not-in-live-owner=, or duplicate
   output.
-

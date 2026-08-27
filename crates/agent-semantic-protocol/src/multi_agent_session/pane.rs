@@ -16,9 +16,8 @@ pub(super) fn render_session_pane(
     inbox_reconciliation_failure: Option<&str>,
     choices: &[AdmittedAgentInteractiveChoice],
 ) -> Result<String, String> {
-    if let SessionRegistryContext::Ready(resolved) = context
-        && resolved.name != route.platform_host_agent_name.as_str()
-    {
+    let SessionRegistryContext::Ready(resolved) = context;
+    if resolved.name != route.platform_host_agent_name.as_str() {
         return Err("runtime-server-session-route-mismatch".to_owned());
     }
     let generation = context.generation();
@@ -137,12 +136,10 @@ pub(crate) fn hook_inbox_reconciliation_receipt(failure: Option<&str>) -> serde_
 }
 
 fn pane_history_cursor(context: &SessionRegistryContext, generation: u64) -> String {
-    match context {
-        SessionRegistryContext::Ready(state) => format!(
-            "{}:{}:session:{generation}",
-            state.project_id.as_deref().unwrap_or("unavailable"),
-            state.root_session_id.as_deref().unwrap_or("unavailable"),
-        ),
-        SessionRegistryContext::Blocked { .. } => format!("unavailable:session:{generation}"),
-    }
+    let SessionRegistryContext::Ready(state) = context;
+    format!(
+        "{}:{}:session:{generation}",
+        state.project_id.as_deref().unwrap_or("unavailable"),
+        state.root_session_id.as_deref().unwrap_or("unavailable"),
+    )
 }

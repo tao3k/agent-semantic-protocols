@@ -285,6 +285,76 @@ decision = "allow"
 }
 
 #[test]
+fn language_profile_rejects_non_relative_source_roots() {
+    for (label, source_root) in [
+        ("parent", "../crates"),
+        ("absolute", "/workspace/crates"),
+        ("glob", "crates/**"),
+    ] {
+        let root = temp_root(label);
+        let config_path = root.join("config.toml");
+        write_canonical_config_overlay(
+            &config_path,
+            &format!(
+                r#"
+[profiles.invalid-root]
+languageId = "rust"
+providerId = "asp-rust"
+extensionAny = ["rs"]
+sourceRootAny = ["{source_root}"]
+"#
+            ),
+        );
+        let error = load_hook_client_config_file(&config_path).expect_err("invalid source root");
+        assert!(
+            error.contains("sourceRootAny entries must be normalized relative source roots"),
+            "{error}"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+}
+
+#[test]
+fn canonical_source_routing_uses_action_profiles_without_the_legacy_search_set() {
+    let config = default_hook_client_config_file().expect("canonical Hook config");
+    assert!(
+        config
+            .rules
+            .iter()
+            .all(|rule| rule.id != "deny-uncontrolled-source-search-commands")
+    );
+    let route = config
+        .rules
+        .iter()
+        .find(|rule| rule.id == "route-read-to-asp-languages")
+        .expect("registered source routing rule");
+    assert_eq!(route.matcher.as_deref(), Some("Read"));
+    assert!(route.match_config.argv_prefix_any.is_empty());
+    assert_eq!(
+        route.profiles_list,
+        [
+            "rust",
+            "typescript",
+            "python",
+            "julia",
+            "gerbil-scheme",
+            "org",
+            "markdown",
+        ]
+    );
+    for profile_id in &route.profiles_list {
+        let profile = config
+            .profiles
+            .get(profile_id)
+            .expect("route profile exists");
+        assert!(
+            !profile.source_root_any.is_empty(),
+            "profile {profile_id} must declare sourceRootAny"
+        );
+    }
+}
+
+#[test]
 fn project_hook_rejects_duplicate_policy_identities() {
     let root = temp_root("project-hook-duplicate-identities");
     let config_path = root.join(".agents/asp.toml");
@@ -321,4 +391,63 @@ commandAny = ["cargo"]
     );
 
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn rule_matcher_rejects_duplicate_native_aliases() {
+    let root = temp_root("duplicate-platform-action-matcher");
+    let config_path = root.join("config.toml");
+    write_canonical_config_overlay(
+        &config_path,
+        r#"
+[[rules]]
+id = "duplicate-native-alias"
+platform = "codex"
+matcher = "Read|Read"
+decision = "deny"
+"#,
+    );
+
+    let error = load_hook_client_config_file(&config_path)
+        .expect_err("duplicate native alias must fail closed");
+    assert!(
+        error.contains("matcher contains duplicate native alias \"Read\""),
+        "{error}"
+    );
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn rule_matcher_aliases_reject_empty_or_padded_branches() {
+    for (name, matcher) in [
+        ("empty-action-alias", "Read||NotebookRead"),
+        ("padded-action-alias", "Read| NotebookRead"),
+    ] {
+        let root = temp_root(name);
+        let config_path = root.join("config.toml");
+        write_canonical_config_overlay(
+            &config_path,
+            &format!(
+                r#"
+[[rules]]
+id = "native-action-{name}"
+platform = "codex"
+decision = "deny"
+matcher = "{matcher}"
+"#
+            ),
+        );
+
+        let error = load_hook_client_config_file(&config_path)
+            .expect_err("invalid native Action alias expression");
+        assert!(
+            error.contains(
+                "must contain non-empty `|`-separated native aliases without surrounding whitespace"
+            ),
+            "{error}"
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
 }

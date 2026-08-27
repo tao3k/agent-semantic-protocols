@@ -63,7 +63,10 @@ async fn concurrent_generation_rebuild_admission_is_single_flight_and_sub_millis
     while let Some(result) = requests.join_next().await {
         let (receipt, elapsed) = result.expect("join locator reconciliation request");
         let receipt = receipt.expect("admit locator reconciliation");
-        assert_eq!(receipt.state, WorkspaceGenerationAdmissionState::Building);
+        assert!(matches!(
+            receipt.state,
+            WorkspaceGenerationAdmissionState::Queued | WorkspaceGenerationAdmissionState::Building
+        ));
         assert_eq!(receipt.attempt, 2);
         accepted += usize::from(receipt.accepted);
         latencies.push(elapsed);

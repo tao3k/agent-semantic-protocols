@@ -1,8 +1,12 @@
 use bytes::Bytes;
+use tokio::io::AsyncWriteExt;
 use tokio::{net::TcpListener, sync::watch};
 
 use super::{AspClientServerHttpClient, AspClientServerPeer, AspClientServerSpec, utf8_chunks};
-use crate::{AspClientServerRequest, AspClientServerResponse, serve_asp_client_server};
+use crate::{
+    AspClientServerRequest, AspClientServerResponse, serve_asp_client_server,
+    spawn_provider_runtime_peer_actor,
+};
 
 fn serve_request(
     request: AspClientServerRequest,
@@ -170,6 +174,63 @@ async fn provider_exit_before_bootstrap_reports_launch_and_bounded_stderr() {
     assert!(error.contains("status=exit status: 23"));
     assert!(error.contains("program=/bin/sh"));
     assert!(error.contains("provider-bootstrap-sentinel"));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn pending_production_handshake_observes_child_exit_as_typed_failed_terminal() {
+    static NEXT_FIXTURE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+    let fixture_id = NEXT_FIXTURE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let fifo = std::env::temp_dir().join(format!(
+        "asp-client-server-child-exit-{}-{fixture_id}.fifo",
+        std::process::id()
+    ));
+    let status = std::process::Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .expect("create child lifecycle FIFO");
+    assert!(status.success(), "mkfifo failed: {status}");
+
+    let mut spec = AspClientServerSpec::new(
+        "/bin/sh",
+        std::env::current_dir().expect("current test directory"),
+    );
+    spec.args = vec![
+        "-c".to_owned(),
+        "read _ < \"$1\"; printf 'pending-child-exit' >&2; exit 29".to_owned(),
+        "asp-child-fixture".to_owned(),
+        fifo.to_string_lossy().into_owned(),
+    ];
+    let peer = AspClientServerPeer::start(spec)
+        .await
+        .expect("start pending child fixture");
+    let authority = spawn_provider_runtime_peer_actor(8, peer);
+    let mut client = authority.client();
+
+    let mut release = tokio::fs::OpenOptions::new()
+        .write(true)
+        .open(&fifo)
+        .await
+        .expect("open child lifecycle FIFO");
+    release
+        .write_all(b"exit\n")
+        .await
+        .expect("release pending child");
+    drop(release);
+
+    let error = client
+        .wait_ready()
+        .await
+        .expect_err("child exit must fail readiness");
+    assert!(
+        error.contains("reasonKind=provider-runtime-peer-eof")
+            || (error.contains("provider HTTP server exited before bootstrap")
+                && error.contains("status=exit status: 29")),
+        "unexpected child terminal: {error}"
+    );
+    authority.shutdown().await.expect("join failed actor");
+    std::fs::remove_file(&fifo).expect("remove child lifecycle FIFO");
 }
 
 #[test]

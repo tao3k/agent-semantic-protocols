@@ -95,8 +95,8 @@ healthcheck transition under its own bounded phase.
 =ASP_NO_AGENT=1= is an explicit operator-owned execution boundary, distinct
 from command-scoped break glass. An inherited exact value is consumed at
 process entry before stdin, Runtime discovery, or policy loading. An inline
-exact leading environment assignment is consumed by the same Rust bootstrap
-after structural shell parsing. Both return Host passthrough and MUST remain
+assignment in the protected command is too late and remains ordinary policy
+input. The process-level branch returns Host passthrough and MUST remain
 reachable through the active/healthy artifact slots even when the public
 =runtime/bin/asp= alias is missing. The plugin launcher MUST NOT recognize this
 variable, inspect commands, or implement a second bypass policy.

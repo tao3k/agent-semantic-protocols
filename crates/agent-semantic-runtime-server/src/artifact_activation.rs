@@ -84,8 +84,18 @@ where
     let task_endpoint = endpoint.clone();
     let task = tokio::spawn(async move {
         if let Some(event) = read_runtime_artifact_activation_event(&state_home).await? {
-            let receipt = activate_and_acknowledge(&state_home, &activate, event).await?;
-            let _ = receipt_tx.send(Some(receipt));
+            match activate_and_acknowledge(&state_home, &activate, event.clone()).await {
+                Ok(receipt) => {
+                    let _ = receipt_tx.send(Some(receipt));
+                }
+                Err(error) => {
+                    let _ = receipt_tx.send(Some(RuntimeArtifactActivationReceipt {
+                        artifact_digest: event.artifact_digest,
+                        state: "failed",
+                        reason: Some(error),
+                    }));
+                }
+            }
         }
         let mut buffer = vec![0_u8; 16 * 1024];
         loop {
@@ -96,8 +106,18 @@ where
                         .map_err(|error| format!("receive Runtime artifact activation event: {error}"))?;
                     let event: RuntimeArtifactActivationEvent = serde_json::from_slice(&buffer[..received])
                         .map_err(|error| format!("decode Runtime artifact activation datagram: {error}"))?;
-                    let receipt = activate_and_acknowledge(&state_home, &activate, event).await?;
-                    let _ = receipt_tx.send(Some(receipt));
+                    match activate_and_acknowledge(&state_home, &activate, event.clone()).await {
+                        Ok(receipt) => {
+                            let _ = receipt_tx.send(Some(receipt));
+                        }
+                        Err(error) => {
+                            let _ = receipt_tx.send(Some(RuntimeArtifactActivationReceipt {
+                                artifact_digest: event.artifact_digest,
+                                state: "failed",
+                                reason: Some(error),
+                            }));
+                        }
+                    }
                 }
             }
         }
@@ -213,6 +233,134 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+        actor.shutdown().await.expect("shutdown activation actor");
+    }
+
+    #[tokio::test]
+    async fn developer_link_activation_is_event_bound_and_failure_preserves_slots() {
+        let temporary = tempfile::tempdir().expect("temporary state");
+        let state_home = temporary.path().join("state");
+        let mutable_source = temporary.path().join("target/debug/asp");
+        let developer_link = temporary.path().join("dev-bin/asp");
+        let stable_target = temporary.path().join("bin/asp");
+        tokio::fs::create_dir_all(mutable_source.parent().unwrap())
+            .await
+            .expect("create mutable source parent");
+        tokio::fs::create_dir_all(developer_link.parent().unwrap())
+            .await
+            .expect("create developer link parent");
+        tokio::fs::write(&mutable_source, b"#!/bin/sh\nexit 77\n")
+            .await
+            .expect("write mutable Developer artifact");
+        std::fs::set_permissions(&mutable_source, std::fs::Permissions::from_mode(0o755))
+            .expect("Developer artifact permissions");
+        std::os::unix::fs::symlink(&mutable_source, &developer_link)
+            .expect("create real Developer symlink");
+
+        let profiles = state_home.join("runtime/profiles/asp");
+        let old_active = temporary.path().join("artifacts/old-active/asp");
+        let old_healthy = temporary.path().join("artifacts/old-healthy/asp");
+        tokio::fs::create_dir_all(old_active.parent().unwrap())
+            .await
+            .expect("create active artifact parent");
+        tokio::fs::create_dir_all(old_healthy.parent().unwrap())
+            .await
+            .expect("create healthy artifact parent");
+        tokio::fs::write(&old_active, b"old active")
+            .await
+            .expect("write old active");
+        tokio::fs::write(&old_healthy, b"old healthy")
+            .await
+            .expect("write old healthy");
+        tokio::fs::create_dir_all(&profiles)
+            .await
+            .expect("create profiles");
+        std::os::unix::fs::symlink(&old_active, profiles.join("active")).expect("seed active slot");
+        std::os::unix::fs::symlink(&old_healthy, profiles.join("healthy"))
+            .expect("seed healthy slot");
+        let first_publication =
+            publish_runtime_artifact(&state_home, &developer_link, &stable_target, "dev", None)
+                .await
+                .expect("materialize first immutable event-bound candidate");
+        let first_event =
+            agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(
+                &state_home,
+            )
+            .await
+            .expect("read first pending activation")
+            .expect("first pending activation generation");
+        assert_eq!(
+            first_event.artifact_digest,
+            first_publication.artifact_digest
+        );
+        agent_semantic_artifacts::runtime_artifact_publication::commit_runtime_artifact_activation(
+            &state_home,
+            &first_event,
+            None,
+        )
+        .await
+        .expect("commit first activation generation");
+        let active_before = tokio::fs::read_link(profiles.join("active"))
+            .await
+            .expect("read active before failed newer claim");
+        let healthy_before = tokio::fs::read_link(profiles.join("healthy"))
+            .await
+            .expect("read healthy before failed newer claim");
+
+        let publication = publish_runtime_artifact(
+            &state_home,
+            &developer_link,
+            &stable_target,
+            "dev",
+            Some(&first_event.artifact_digest),
+        )
+        .await
+        .expect("materialize newer same-digest event-bound candidate");
+        let expected_digest = publication.artifact_digest.clone();
+        let actor = mount_runtime_daemon_artifact_activation(state_home.clone(), move |event| {
+            let expected_digest = expected_digest.clone();
+            async move {
+                assert_eq!(event.artifact_digest, expected_digest);
+                let metadata = tokio::fs::symlink_metadata(&event.artifact_path)
+                    .await
+                    .expect("candidate metadata");
+                assert!(metadata.file_type().is_file());
+                assert!(!metadata.file_type().is_symlink());
+                Err("candidate-server-start-failed".to_owned())
+            }
+        })
+        .await
+        .expect("mount production activation composition");
+
+        let mut receipts = actor.receipts();
+        receipts
+            .changed()
+            .await
+            .expect("failed activation terminal");
+        let terminal = receipts.borrow().clone().expect("typed failed terminal");
+        assert_eq!(terminal.state, "failed");
+        assert_eq!(terminal.artifact_digest, publication.artifact_digest);
+        assert_eq!(
+            tokio::fs::read_link(profiles.join("active"))
+                .await
+                .expect("read active after"),
+            active_before
+        );
+        assert_eq!(
+            tokio::fs::read_link(profiles.join("healthy"))
+                .await
+                .expect("read healthy after"),
+            healthy_before
+        );
+        let pending = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(
+            &state_home,
+        )
+        .await
+        .expect("read pending activation after failed claim")
+        .expect("failed activation must preserve its pending generation");
+        assert_eq!(pending.artifact_digest, publication.artifact_digest);
+        assert!(pending.activation_generation > first_event.activation_generation);
+        assert!(pending.artifact_path.is_file());
         actor.shutdown().await.expect("shutdown activation actor");
     }
 }

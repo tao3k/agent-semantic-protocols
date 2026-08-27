@@ -86,33 +86,20 @@ The retired dependency chain admits this concrete cycle:
    cannot become executable work;
 4. canonical install requires the replacement binary that step 1 prevented.
 
-The new ordering has two explicit layers.  An inherited
+The new ordering has one explicit recovery layer. An inherited
 =ASP_NO_AGENT=1= in the Hook process environment is a bootstrap recovery
-override evaluated before payload or matcher state access.  The one-command
-form is a declarative Binary-v1 matcher rule whose
-=leadingEnvironmentAssignmentAny= predicate is interpreted by the generic
-command matcher and whose winning allow decision is terminal.  Classifier
-orchestration MUST NOT know the variable name.  Both forms emit an empty
-Host-success response and terminate, but only the inherited process variable
-is pre-matcher recovery authority.  This precedence is scoped by the CLI
+override evaluated before payload or matcher state access. An assignment in
+the protected command is not inherited by the already-running Hook and cannot
+be recovery authority. Classifier orchestration and matcher configuration MUST
+NOT create a second bypass. The process-level form emits an empty Host-success
+response and terminates. This precedence is scoped by the CLI
 grammar: the process must first be an actual =asp hook <event>= dispatch.
 =ASP_NO_AGENT=1 asp --version= remains an ordinary CLI invocation and cannot be
 captured by the synchronous Hook bootstrap.
 
-The same config compiler publishes leading-environment decisions into both the
-=ShellRead= and =ShellCommand= mmap shards.  Runtime selection is one generic
-command-matcher operation; it does not duplicate bypass logic by Host action
-kind.  A cheap check that the raw command contains no equals sign may skip AST
-construction on the common prefix-only path, but it is only a negative
-performance gate.  Every positive
-environment match is still decided by the parser-owned first-stage assignment
-predicate.
-
-The leading-environment layer is terminal before every specialized command
-shard, including structured projection.  A structured projector grammar MUST
-NOT preempt a winning declarative environment decision.  This ordering is one
-generic matcher operation and does not name =ASP_NO_AGENT=, a projector binary,
-or a document format in classifier orchestration.
+The generic leading-environment matcher remains available for ordinary policy
+composition, but it is not recovery authority and the production policy does
+not bind it to =ASP_NO_AGENT=.
 
 Config-independent provider-binary admission uses a constant-time registry
 candidate gate before constructing a shell action graph.  Commands whose
@@ -164,6 +151,53 @@ The Lean refinement is
 =ASPProof.HookMatcherPublicationSeparation=.  Its coupled-model counterexample
 shows that evaluation-owned publication can self-wait; the separated model
 proves missing generation terminates and evaluation preserves generation.
+
+* Host Action identity and semantic Action projection
+:PROPERTIES:
+:CONTRACT_ID: ASP-RFC-10.15.02.16-ACTION-PROJECTION
+:END:
+
+The installed Host payload and the policy DSL have different responsibilities.
+Each physical =hooks.json= matcher entry names exactly one native Host Action or
+one open-ended native family whose members are individually named by the Host,
+such as =mcp__<server>__<tool>=.  Every PreTool entry invokes ASP with either
+one exact =--host-match= or one =--host-match-prefix=.  ASP binds that single
+physical signal to the payload's
+=tool_name= before policy evaluation.  Missing, unknown, or mismatched signals
+terminate as one valid JSON deny with
+=reasonKind=host-action-authority-unavailable=; they never fall through to an
+allow decision and never exit through a panic.  A wildcard entry must not erase
+the native Action identity before ASP receives the event.
+
+Each physical plugin entry passes only the native matcher fact through
+=--host-match= or =--host-match-prefix=.  Rust validates it against the payload
+and projects its typed Action once.  There is no parallel =--host-action= fact
+that could disagree with the matcher.
+
+The Config V1 Rule DSL consumes the same native identity directly through one
+optional =matcher= expression.  Aliases may be grouped with =|=, for example
+=matcher = "apply_patch|Write|Edit|NotebookEdit"=.  There is no top-level
+=actionMatchers= or =hostActions= projection table and no compatibility parser
+for either retired shape.  Profile, capability-policy, decision, and dispatch
+remain independent Rule axes.
+
+Read and Edit Action identity is not by itself a filesystem permission proof.
+A Read or Write permission fact is materialized only when the Host payload or a
+parser-owned shell behavior fact supplies a concrete subject.  Without a
+subject, Action IR retains the semantic Action and emits no null-subject
+permission.  Dominance is subject-local: Write dominates Read only for the same
+subject.
+
+Executable names are not a permission authority.  The classifier must not use
+lists such as =cat=, =sed=, =head=, or =bat= to infer Read/Edit behavior.  Native
+Host Action identity, subject-bearing filesystem facts, and parser-owned shell
+behavior facts are the admissible evidence layers.
+
+The physical Bash matcher always remains Host Action =execute=.  Bash AST facts
+may materialize subject-bound read or write permissions and semantic
+capabilities for the Rule DSL, but they cannot rewrite the Host action to Read
+or Edit.  Conversely, a native Read/Edit matcher supplies the Host action while
+the concrete payload path supplies its filesystem subject.
 
 * Native Host acceptance envelope
 :PROPERTIES:

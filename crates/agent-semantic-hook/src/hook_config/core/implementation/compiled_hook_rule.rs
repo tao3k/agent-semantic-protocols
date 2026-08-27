@@ -40,6 +40,7 @@ impl CompiledHookRule {
                 .is_none_or(|expected| canonical_event(expected) == canonical_event(event))
             && self.match_config.matches_before_paths(
                 runtime,
+                platform,
                 action,
                 command_tokens,
                 Some(action.paths.as_slice()),
@@ -48,13 +49,20 @@ impl CompiledHookRule {
     pub(super) fn agent_action_receipt(
         &self,
         runtime: &HookRuntime,
+        platform: &str,
         action: &ToolAction,
         paths: &[String],
         structured_source_operands: Option<&[String]>,
     ) -> Option<serde_json::Value> {
         self.match_config
             .agent_action
-            .derive_agent_action_for_rule(runtime, action, Some(paths), structured_source_operands)
+            .derive_agent_action_for_rule(
+                runtime,
+                platform,
+                action,
+                Some(paths),
+                structured_source_operands,
+            )
             .map(|agent_action| agent_action.receipt_value())
     }
     pub(super) fn matches_language(&self, runtime: &HookRuntime, paths: &[String]) -> bool {

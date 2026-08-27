@@ -141,10 +141,10 @@ argvSourceExcludeFlagAny = ["--output"]
             }),
         });
 
-        assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
         assert_eq!(
-            decision.fields["configRuleId"], "route-read-to-asp-languages",
-            "the custom argv matcher must exclude the output operand before dominance"
+            decision.decision,
+            DecisionKind::Allow,
+            "an output operand must not be reclassified as a source read: {command}"
         );
     }
 
@@ -236,8 +236,48 @@ commandContainsAny = ["same-action-witness"]
 fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads_by_language() {
     let root = temp_root("builtin-source-argv-command-name");
     let config = ClientHookConfig::default();
-    let registry = registry();
-
+    let mut registry = registry();
+    let source_config = agent_semantic_config::default_hook_client_config_file()
+        .expect("load canonical Hook client config");
+    let source_rule = source_config
+        .rules
+        .iter()
+        .find(|rule| rule.id == "registered-asp-reasoning-search")
+        .expect("registered ASP reasoning-search rule");
+    assert!(source_rule.matcher.is_none());
+    assert_eq!(
+        source_rule.host_invocations,
+        [agent_semantic_config::HookClientHostInvocationKind::Execute]
+    );
+    assert_eq!(
+        source_rule.match_config.argv_pattern_any,
+        [vec![
+            "asp".to_owned(),
+            "<registered-language>".to_owned(),
+            "search".to_owned(),
+        ]]
+    );
+    config
+        .apply_language_provider_projection(&mut registry)
+        .expect("apply canonical language/provider projections");
+    assert!(
+        registry
+            .policy_providers
+            .iter()
+            .any(|provider| provider.language_id.as_str() == "rust"),
+        "canonical projection must register Rust"
+    );
+    let search_command = "asp rust search pipe 'HookDecision' --workspace . --view seeds";
+    let stages = agent_semantic_shell_parser::parse_bash_command_candidates(search_command)
+        .expect("parse direct ASP search command");
+    assert!(
+        agent_semantic_shell_parser::command_stages_match_wrapped_prefix(
+            &stages,
+            &["asp".to_owned(), "rust".to_owned(), "search".to_owned()],
+        )
+        .routes_protected(),
+        "direct ASP search must satisfy the wrapped-prefix matcher"
+    );
     let asp_search_decision = classify_hook_with_config(HookClassificationRequest {
         registry: &registry,
         config: &config,
@@ -245,11 +285,15 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
         event: "pre-tool",
         payload: &json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "asp rust search pipe 'HookDecision' --workspace . --view seeds"}
+            "tool_input": {"command": search_command}
         }),
     });
 
-    assert_eq!(asp_search_decision.decision, DecisionKind::Deny);
+    assert_eq!(
+        asp_search_decision.decision,
+        DecisionKind::Deny,
+        "decision={asp_search_decision:#?}; config={config:#?}"
+    );
     assert_eq!(
         asp_search_decision
             .fields
@@ -322,23 +366,6 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
             .all(|value| value.as_str() != Some("asp sync"))
     );
 
-    let asp_query_decision = classify_hook_with_config(HookClassificationRequest {
-        registry: &registry,
-        config: &config,
-        platform: "codex",
-        event: "pre-tool",
-        payload: &json!({
-            "tool_name": "Bash",
-            "tool_input": {
-                "command": "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source"
-            }
-        }),
-    });
-
-    assert_eq!(asp_query_decision.decision, DecisionKind::Allow);
-    assert!(asp_query_decision.fields.get("configRuleId").is_none());
-    assert!(asp_query_decision.fields.get("intent").is_none());
-
     for (language_id, command) in [
         (
             "org",
@@ -376,7 +403,7 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
         );
     }
 
-    let direct_rg_decision = classify_hook_with_config(HookClassificationRequest {
+    let structured_query_decision = classify_hook_with_config(HookClassificationRequest {
         registry: &registry,
         config: &config,
         platform: "codex",
@@ -384,17 +411,31 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
         payload: &json!({
             "session_id": "session-ABC_123",
             "tool_name": "Bash",
-            "tool_input": {"command": "rg HookDecision src/cli/agent-hooks.ts"}
+            "tool_input": {
+                "command": "asp rust query --selector rust://src/lib.rs#item/function/run --workspace . --projection source"
+            }
         }),
     });
 
-    assert_eq!(direct_rg_decision.decision, DecisionKind::Deny);
     assert_eq!(
-        direct_rg_decision
+        structured_query_decision.decision,
+        DecisionKind::Deny,
+        "exact ASP query must dispatch as structured projection: {structured_query_decision:#?}"
+    );
+    assert_eq!(structured_query_decision.event, "pre-tool");
+    assert_eq!(
+        structured_query_decision
             .fields
             .get("configRuleId")
-            .and_then(|id| id.as_str()),
-        Some("route-read-to-asp-languages")
+            .and_then(|value| value.as_str()),
+        Some("registered-asp-structured-projection")
+    );
+    assert_eq!(
+        structured_query_decision
+            .fields
+            .get("intent")
+            .and_then(|value| value.as_str()),
+        Some("structured-projection")
     );
 
     for command in ["asp help"] {

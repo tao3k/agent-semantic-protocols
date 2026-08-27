@@ -6,7 +6,9 @@ use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
 
 fn endpoint() -> RuntimeServerEndpoint {
     RuntimeServerEndpoint {
-        binary_content_digest: "blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
+        binary_content_digest: RuntimeBinaryIdentity::from_bytes(b"running-runtime")
+            .content_digest()
+            .to_string(),
         runtime_generation_digest: "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
         schema_digest: "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(),
         schema_id: ENDPOINT_SCHEMA_ID.to_owned(),
@@ -16,15 +18,9 @@ fn endpoint() -> RuntimeServerEndpoint {
         owner_epoch: 7,
         owner_process_id: 77,
         runtime_artifact_path: "/runtime/asp".to_owned(),
-        runtime_binary_identity: RuntimeBinaryIdentity::Content {
-            value: "blake3-256:running-runtime".to_owned(),
-            algorithm: "blake3-256".to_owned(),
-        },
+        runtime_binary_identity: RuntimeBinaryIdentity::from_bytes(b"running-runtime"),
         monitor_capability: true,
-        observed_runtime_binary_identity: RuntimeBinaryIdentity::Content {
-            value: "blake3-256:running-runtime".to_owned(),
-            algorithm: "blake3-256".to_owned(),
-        },
+        observed_runtime_binary_identity: RuntimeBinaryIdentity::from_bytes(b"running-runtime"),
         artifact_mode: "release".to_owned(),
         artifact_catalog_digest:
             "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
@@ -32,7 +28,6 @@ fn endpoint() -> RuntimeServerEndpoint {
         socket_path: "/runtime/control.sock".to_owned(),
         data_plane_socket_path: "/runtime/data.sock".to_owned(),
         provider_plane_socket_path: "/runtime/providers.sock".to_owned(),
-        client_http_endpoint: "http://127.0.0.1:1".to_owned(),
         workspace_store_path: "/runtime/workspaces".to_owned(),
         status_memory_path: "/runtime/status.memory".to_owned(),
     }
@@ -44,10 +39,7 @@ fn request(operation: RuntimeServerOperation) -> RuntimeServerControlRequest {
         schema_version: SCHEMA_VERSION.to_owned(),
         operation,
         project_root: None,
-        expected_runtime_binary_identity: RuntimeBinaryIdentity::Content {
-            value: "blake3-256:running-runtime".to_owned(),
-            algorithm: "blake3-256".to_owned(),
-        },
+        expected_runtime_binary_identity: RuntimeBinaryIdentity::from_bytes(b"running-runtime"),
         request_id: "supervisor-control".to_owned(),
         transport_contract_digest: "blake3-256:running-transport".to_owned(),
         owner_epoch: 7,
@@ -142,7 +134,15 @@ fn stop_fallback_requires_epoch_process_and_executable_binding() {
         process_id: endpoint.owner_process_id,
         nonce: format!("owner-{}", endpoint.owner_process_id),
         state_home: "/runtime".to_owned(),
-        runtime_artifact_path: endpoint.runtime_artifact_path.clone(),
+        activation_generation: 1,
+        launcher_artifact_path: endpoint.runtime_artifact_path.clone(),
+        launcher_artifact_digest:
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+                b"owner fixture",
+            ),
+        spawn_argv: vec!["server".to_owned(), "daemon".to_owned()],
+        previous_serving_digest: None,
+        previous_owner_epoch: None,
     };
 
     agent_semantic_client_db::runtime_server_supervisor::validate_runtime_server_owner_binding(
@@ -192,7 +192,9 @@ async fn identity_handoff_retires_only_the_bound_runtime_server_owner() {
     let mut endpoint = agent_semantic_client_db::prepare_runtime_server_endpoint(
         state_home.path(),
         &runtime_artifact_path,
-        "test-runtime-artifact",
+        &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+            b"test-runtime-artifact",
+        ),
         "dev",
         "blake3-256:0000000000000000000000000000000000000000000000000000000000000000",
         7,
@@ -207,7 +209,15 @@ async fn identity_handoff_retires_only_the_bound_runtime_server_owner() {
         process_id: endpoint.owner_process_id,
         nonce: format!("owner-{}", endpoint.owner_process_id),
         state_home: state_home.path().to_string_lossy().into_owned(),
-        runtime_artifact_path: endpoint.runtime_artifact_path.clone(),
+        activation_generation: 1,
+        launcher_artifact_path: endpoint.runtime_artifact_path.clone(),
+        launcher_artifact_digest:
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+                b"owner fixture",
+            ),
+        spawn_argv: vec!["server".to_owned(), "daemon".to_owned()],
+        previous_serving_digest: None,
+        previous_owner_epoch: None,
     };
     let endpoint_path =
         agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(

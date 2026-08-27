@@ -504,7 +504,4 @@ impl RuntimeServerWorkspaceRegistry {
     }
 }
 
-#[cfg(test)]
-#[path = "../../../tests/unit/runtime_server_workspace_registry_publication.rs"]
-mod acceptance_tests;
 use crate::runtime_server_workspace::WorkspaceRuntimeSelectorRebind;

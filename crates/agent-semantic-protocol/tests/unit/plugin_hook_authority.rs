@@ -29,7 +29,32 @@ fn bundled_manifest_uses_standard_hook_directory_without_unsupported_fields() {
         .and_then(serde_json::Value::as_object)
         .expect("plugin hook event map");
     assert_eq!(events.len(), 8);
-    for event in ["PreToolUse", "PermissionRequest", "PostToolUse"] {
+    let pre_tool_matchers = events["PreToolUse"]
+        .as_array()
+        .expect("PreToolUse matcher groups")
+        .iter()
+        .map(|group| {
+            group
+                .get("matcher")
+                .and_then(serde_json::Value::as_str)
+                .expect("native Action matcher")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        pre_tool_matchers,
+        [
+            "Read",
+            "apply_patch",
+            "Write",
+            "Edit",
+            "NotebookEdit",
+            "Bash",
+            "spawn_agent",
+            "^mcp__.*$",
+        ]
+    );
+
+    for event in ["PermissionRequest", "PostToolUse"] {
         let groups = events[event]
             .as_array()
             .unwrap_or_else(|| panic!("plugin Hook event {event} must contain matcher groups"));
@@ -38,7 +63,7 @@ fn bundled_manifest_uses_standard_hook_directory_without_unsupported_fields() {
                 group.get("matcher").and_then(serde_json::Value::as_str),
                 None | Some("") | Some("*")
             )),
-            "plugin Hook event {event} must use a Codex match-all matcher (`*`, empty, or omitted) so Read, MCP, apply_patch, and Bash all reach the internal action classifier: encodedMatcher={} actual={groups:?}",
+            "observational plugin Hook event {event} must retain its match-all delivery contract: encodedMatcher={} actual={groups:?}",
             serde_json::to_string(&groups[0]["matcher"]).expect("encode matcher diagnostic")
         );
     }
@@ -72,10 +97,23 @@ fn bundled_manifest_uses_standard_hook_directory_without_unsupported_fields() {
                     "Stop" => "stop",
                     _ => panic!("unexpected plugin event {event}"),
                 };
-                assert_eq!(
-                    handler["command"].as_str(),
-                    Some(format!("\"$PLUGIN_ROOT/bin/asp-hook\" {suffix} --client codex").as_str())
+                let command = handler["command"].as_str().expect("Hook command");
+                let base = format!("\"$PLUGIN_ROOT/bin/asp-hook\" {suffix} --client codex");
+                assert!(
+                    command.starts_with(&base),
+                    "event={event} command={command}"
                 );
+                if event == "PreToolUse" {
+                    assert!(
+                        command.contains("--host-match ")
+                            || command.contains("--host-match-prefix "),
+                        "{command}"
+                    );
+                    assert!(!command.contains("--host-action "), "{command}");
+                    assert!(!command.contains("--host-matcher"), "{command}");
+                } else {
+                    assert_eq!(command, base);
+                }
             }
         }
     }
@@ -111,7 +149,7 @@ fn plugin_launcher_types_missing_binary_instead_of_exiting_127() {
     assert!(
         receipt["hookSpecificOutput"]["permissionDecisionReason"]
             .as_str()
-            .is_some_and(|reason| reason.contains("active and healthy artifact slots"))
+            .is_some_and(|reason| reason.contains("canonical runtime artifact"))
     );
     std::fs::remove_dir_all(root).expect("remove isolated launcher state");
 }
@@ -166,13 +204,13 @@ fn plugin_launcher_executes_only_the_canonical_one_shot_hook_binary() {
 
 #[cfg(unix)]
 #[test]
-fn plugin_launcher_uses_healthy_slot_when_public_and_active_slots_are_unavailable() {
+fn plugin_launcher_never_falls_back_to_legacy_profile_slots() {
     use std::os::unix::fs::PermissionsExt;
 
     let root = temp_root("launcher-healthy-fallback");
     let profile = root.join("runtime/profiles/asp");
     std::fs::create_dir_all(&profile).expect("create ASP artifact profile");
-    let invocation = root.join("healthy-invocation.txt");
+    let invocation = root.join("legacy-invocation.txt");
     let artifact = root
         .join("runtime/artifacts/blake3-256")
         .join("a".repeat(64))
@@ -207,16 +245,20 @@ fn plugin_launcher_uses_healthy_slot_when_public_and_active_slots_are_unavailabl
         .env("ASP_STATE_HOME", &root)
         .env("PATH", "")
         .output()
-        .expect("run launcher through healthy slot");
+        .expect("run launcher with only legacy slots");
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(
-        std::fs::read_to_string(invocation).unwrap(),
-        "hook pre-tool --client codex\n"
-    );
-    assert_eq!(
         serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
-        serde_json::json!({"decision": "allow"})
+        serde_json::json!({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": "ASP Hook evaluator is unavailable (canonical runtime artifact is missing or non-executable). Publish a verified ASP artifact with: asp install binary"
+            },
+            "systemMessage": "ASP Hook evaluator is unavailable (canonical runtime artifact is missing or non-executable). Publish a verified ASP artifact with: asp install binary"
+        })
     );
+    assert!(!invocation.exists(), "legacy artifact must never execute");
     std::fs::remove_dir_all(root).expect("remove fallback fixture");
 }
 

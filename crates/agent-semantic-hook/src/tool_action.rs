@@ -37,8 +37,10 @@ const ACTION_SCAN_KEYS: &[&str] = &[
     "toolCalls",
 ];
 pub(crate) use crate::action_ir::{
-    AgentAction, AgentActionKind, AgentActionSubject, AgentActionSubjectKind, HostInvocationFact,
-    HostInvocationKind, SemanticCapability, SemanticCapabilityEvidence, action_kind_matches,
+    AgentAction, AgentActionKind, AgentActionSubject, AgentActionSubjectKind,
+    FilesystemPermissionFact, FilesystemPermissionKind, FilesystemPermissionSource,
+    HostInvocationFact, HostInvocationKind, SemanticCapability, SemanticCapabilityEvidence,
+    action_kind_matches,
 };
 
 pub(crate) fn subject_kind_matches(
@@ -69,6 +71,9 @@ pub(crate) struct ToolAction {
     pub(crate) tool_name: String,
     pub(crate) host_payload: Value,
     pub(crate) invocation_source: Option<String>,
+    /// Immutable Host action supplied by the exact plugin matcher entry.
+    /// Shell parsing may add semantic capabilities but never rewrites this fact.
+    pub(crate) host_action: HostInvocationKind,
     pub(crate) surface: ToolSurface,
     pub(crate) operation: OperationIntent,
     pub(crate) command: Option<String>,
@@ -81,9 +86,10 @@ pub(crate) struct ToolAction {
 impl ToolAction {
     pub(crate) fn normalized_direct_policy_action(path: String) -> Self {
         Self {
-            tool_name: String::new(),
+            tool_name: "Read".to_owned(),
             host_payload: serde_json::json!({ "path": path.as_str() }),
             invocation_source: None,
+            host_action: HostInvocationKind::Read,
             surface: ToolSurface::CodexDirectRead,
             operation: OperationIntent::DirectRead,
             command: None,
@@ -96,9 +102,10 @@ impl ToolAction {
     pub(crate) fn normalized_shell_policy_action(command: String, path: String) -> Self {
         let command_tokens = semantic_shell_tokens(&command);
         Self {
-            tool_name: String::new(),
+            tool_name: "Bash".to_owned(),
             host_payload: serde_json::json!({ "command": command.as_str(), "path": path.as_str() }),
             invocation_source: None,
+            host_action: HostInvocationKind::Execute,
             surface: ToolSurface::CodexShell,
             operation: OperationIntent::ShellCommand,
             command: Some(command),
@@ -110,10 +117,16 @@ impl ToolAction {
 
     pub(crate) fn normalized_shell_command_action(command: String, tool_name: String) -> Self {
         let command_tokens = semantic_shell_tokens(&command);
+        let host_action = if tool_name == "Bash" {
+            HostInvocationKind::Execute
+        } else {
+            HostInvocationKind::Unknown
+        };
         Self {
             tool_name,
             host_payload: serde_json::json!({ "command": command.as_str() }),
             invocation_source: None,
+            host_action,
             surface: ToolSurface::CodexShell,
             operation: OperationIntent::ShellCommand,
             command: Some(command),
@@ -128,41 +141,96 @@ impl ToolAction {
     }
 
     pub(crate) fn derive_agent_action(&self) -> AgentAction {
-        let semantic_action = self.operation.agent_action_kind();
+        self.derive_agent_action_with_shell_facts().0
+    }
+
+    pub(crate) fn derive_agent_action_with_shell_facts(
+        &self,
+    ) -> (
+        AgentAction,
+        Vec<agent_semantic_shell_parser::CommandStage>,
+        Vec<agent_semantic_shell_parser::ShellBehaviorFact>,
+    ) {
         let mut action = AgentAction {
             host: HostInvocationFact {
-                action: self.surface.host_invocation_kind(),
+                action: self.host_action,
                 tool_name: self.tool_name.clone(),
                 surface: self.surface.as_str().to_owned(),
                 payload: self.host_payload.clone(),
                 invocation_source: self.invocation_source.clone(),
             },
-            capabilities: vec![SemanticCapability {
-                action: semantic_action,
-                evidence: SemanticCapabilityEvidence::HostInvocation,
-            }],
+            filesystem_permissions: Vec::new(),
+            capabilities: Vec::new(),
             subjects: Vec::new(),
         };
-        let behavior_facts = self
-            .semantic_command_text()
-            .and_then(|command| {
-                agent_semantic_shell_parser::parse_bash_command_candidates(command).ok()
-            })
-            .into_iter()
-            .flatten()
-            .flat_map(|stage| agent_semantic_shell_parser::command_stage_behavior_facts(&stage))
-            .collect::<Vec<_>>();
-        for fact in behavior_facts {
-            let semantic_action = match fact.access {
-                agent_semantic_shell_parser::ShellAccessKind::Read => AgentActionKind::Read,
-                agent_semantic_shell_parser::ShellAccessKind::Write => AgentActionKind::Edit,
-            };
+        let semantic_action = match self.host_action {
+            HostInvocationKind::Read => AgentActionKind::Read,
+            HostInvocationKind::Edit => AgentActionKind::Edit,
+            HostInvocationKind::Execute => AgentActionKind::Execute,
+            HostInvocationKind::Mcp => AgentActionKind::Mcp,
+            HostInvocationKind::SpawnAgent => AgentActionKind::SpawnAgent,
+            HostInvocationKind::Unknown => AgentActionKind::Unknown,
+        };
+        let permission = match semantic_action {
+            AgentActionKind::Read => Some(FilesystemPermissionKind::Read),
+            AgentActionKind::Edit => Some(FilesystemPermissionKind::Write),
+            _ => None,
+        };
+        if let Some(permission) = permission {
+            if self.paths.is_empty() {
+                action.add_capability(SemanticCapability {
+                    action: semantic_action,
+                    evidence: SemanticCapabilityEvidence::HostMatcher,
+                });
+            } else {
+                for path in &self.paths {
+                    action.add_filesystem_permission(FilesystemPermissionFact::new(
+                        permission,
+                        FilesystemPermissionSource::HostMatcher,
+                        Some(path.clone()),
+                    ));
+                }
+            }
+        } else if semantic_action != AgentActionKind::Unknown {
             action.add_capability(SemanticCapability {
                 action: semantic_action,
-                evidence: SemanticCapabilityEvidence::ShellRedirection,
+                evidence: SemanticCapabilityEvidence::HostMatcher,
             });
         }
-        action
+        let command_stages = if matches!(
+            self.surface,
+            ToolSurface::CodexShell | ToolSurface::CodexStdinContinuation
+        ) {
+            self.semantic_command_text()
+                .and_then(|command| {
+                    agent_semantic_shell_parser::parse_bash_command_candidates(command).ok()
+                })
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        let behavior_facts = command_stages
+            .iter()
+            .flat_map(agent_semantic_shell_parser::command_stage_behavior_facts)
+            .collect::<Vec<_>>();
+        for fact in &behavior_facts {
+            let permission = match fact.access {
+                agent_semantic_shell_parser::ShellAccessKind::Read => {
+                    crate::action_ir::FilesystemPermissionKind::Read
+                }
+                agent_semantic_shell_parser::ShellAccessKind::Write => {
+                    crate::action_ir::FilesystemPermissionKind::Write
+                }
+            };
+            action.add_filesystem_permission(FilesystemPermissionFact::new(
+                permission,
+                FilesystemPermissionSource::ShellRedirection,
+                fact.subject.clone(),
+            ));
+        }
+        (action, command_stages, behavior_facts)
     }
 
     pub(crate) fn command_tokens(&self) -> Option<Cow<'_, [String]>> {
@@ -191,18 +259,6 @@ pub(crate) enum ToolSurface {
 }
 
 impl ToolSurface {
-    fn host_invocation_kind(&self) -> HostInvocationKind {
-        match self {
-            Self::CodexApplyPatch => HostInvocationKind::Edit,
-            Self::CodexDirectRead => HostInvocationKind::Read,
-            Self::CodexDirectoryRead => HostInvocationKind::Enumerate,
-            Self::CodexFuzzyFileSearch => HostInvocationKind::Search,
-            Self::CodexMcpRead => HostInvocationKind::Mcp,
-            Self::CodexShell | Self::CodexStdinContinuation => HostInvocationKind::Execute,
-            Self::CodexNestedTools | Self::Unknown => HostInvocationKind::Unknown,
-        }
-    }
-
     pub(crate) fn from_tool_name(tool_name: &str) -> Self {
         let lower = tool_name.to_ascii_lowercase();
         if lower.starts_with("mcp__") && lower.contains("__read") {
@@ -299,17 +355,6 @@ pub(crate) enum OperationIntent {
 }
 
 impl OperationIntent {
-    pub(crate) fn agent_action_kind(self) -> AgentActionKind {
-        match self {
-            Self::ApplyPatch => AgentActionKind::Edit,
-            Self::DirectoryRead => AgentActionKind::Enumerate,
-            Self::DirectRead => AgentActionKind::Read,
-            Self::FileSearch => AgentActionKind::Search,
-            Self::ShellCommand | Self::StdinContinuation => AgentActionKind::Execute,
-            Self::NestedTools | Self::Unknown => AgentActionKind::Unknown,
-        }
-    }
-
     pub(crate) fn from_action(
         surface: ToolSurface,
         command: Option<&str>,
@@ -585,6 +630,7 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
             tool_name: format!("{tool_name}.command_action.{action_type}"),
             host_payload: value.clone(),
             invocation_source: None,
+            host_action: HostInvocationKind::Unknown,
             surface,
             operation,
             command,
@@ -610,8 +656,12 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
     let tool_input = decoded_tool_input.as_ref().unwrap_or(tool_input);
     let surface = ToolSurface::from_tool_name(tool_name);
     let command = extract_command_direct(surface, tool_name, tool_input);
+    let opaque_control_payload = command
+        .as_deref()
+        .is_some_and(is_hook_break_glass_mint_control_command);
     let scans_nested_actions = tool_input_needs_action_scan(tool_name, tool_input);
     if surface == ToolSurface::CodexShell
+        && !opaque_control_payload
         && let Some(command) = command.as_deref()
         && let Some(compound_actions) =
             shell_segments::split_shell_command(tool_name, command, tool_input, None)
@@ -643,7 +693,7 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
                 paths.push(path);
             }
         }
-        if surface != ToolSurface::CodexApplyPatch {
+        if surface != ToolSurface::CodexApplyPatch && !opaque_control_payload {
             let command_paths = agent_semantic_shell_parser::command_source_paths(
                 command,
                 command_tokens.as_deref().unwrap_or_default(),
@@ -660,6 +710,7 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
         tool_name: tool_name.to_string(),
         host_payload: tool_input.clone(),
         invocation_source: None,
+        host_action: HostInvocationKind::Unknown,
         surface,
         operation,
         command,
@@ -676,6 +727,12 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
     }
     push_unique_action(&mut actions, envelope_action);
     actions
+}
+
+fn is_hook_break_glass_mint_control_command(command: &str) -> bool {
+    semantic_shell_tokens(command)
+        .get(..4)
+        .is_some_and(|prefix| prefix == ["asp", "hook", "break-glass", "mint"])
 }
 
 /// Projects workspace mutation paths directly from the canonical tool-action

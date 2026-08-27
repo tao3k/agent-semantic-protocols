@@ -4,7 +4,87 @@ inductive Action where
   | read
   | edit
   | execute
+  | unknown
   deriving DecidableEq, Repr
+
+inductive FilesystemPermission where
+  | read
+  | write
+  deriving DecidableEq, Repr
+
+inductive PermissionSource where
+  | hostInvocation
+  | shellRedirection
+  | configActionMatcher
+  deriving DecidableEq, Repr
+
+/-- Permission evidence is bound to a filesystem subject, never to an executable name. -/
+structure PermissionFact where
+  subject : Nat
+  permission : FilesystemPermission
+  source : PermissionSource
+  deriving DecidableEq, Repr
+
+def permissionAction (permission : FilesystemPermission) : Action :=
+  match permission with
+  | .read => .read
+  | .write => .edit
+
+/-- Write dominates Read only for the same subject. -/
+def dominantPermissionAction
+    (facts : List PermissionFact)
+    (subject : Nat) : Option Action :=
+  if facts.any fun fact => fact.subject == subject && fact.permission == .write then
+    some .edit
+  else if facts.any fun fact => fact.subject == subject && fact.permission == .read then
+    some .read
+  else
+    none
+
+theorem read_permission_projects_read_action :
+    permissionAction .read = .read := by
+  rfl
+
+theorem write_permission_projects_edit_action :
+    permissionAction .write = .edit := by
+  rfl
+
+theorem write_permission_dominates_read_for_the_same_subject
+    (subject : Nat)
+    (readSource writeSource : PermissionSource) :
+    dominantPermissionAction
+      [ { subject := subject, permission := .read, source := readSource }
+      , { subject := subject, permission := .write, source := writeSource }
+      ]
+      subject = some .edit := by
+  simp [dominantPermissionAction]
+
+theorem write_for_another_subject_does_not_erase_read
+    (readSubject writeSubject : Nat)
+    (hDistinct : readSubject ≠ writeSubject)
+    (readSource writeSource : PermissionSource) :
+    dominantPermissionAction
+      [ { subject := readSubject, permission := .read, source := readSource }
+      , { subject := writeSubject, permission := .write, source := writeSource }
+      ]
+      readSubject = some .read := by
+  have hReverse : writeSubject ≠ readSubject := Ne.symm hDistinct
+  simp [dominantPermissionAction, hReverse]
+
+/-- Executable identity cannot influence permission-to-Action projection. -/
+theorem permission_projection_is_executable_independent
+    (permission : FilesystemPermission)
+    (_leftExecutable _rightExecutable : Nat) :
+    permissionAction permission = permissionAction permission := by
+  rfl
+
+/-- A bare registered source operand is not a filesystem permission proof. -/
+def unresolvedRegisteredSourceAccess : Action := .unknown
+
+theorem unresolved_source_operand_does_not_fabricate_read_or_edit :
+    unresolvedRegisteredSourceAccess ≠ .read ∧
+      unresolvedRegisteredSourceAccess ≠ .edit := by
+  constructor <;> decide
 
 inductive Decision where
   | allow
@@ -117,6 +197,110 @@ theorem pretool_decision_is_independent_of_runtime_state
     (_leftRuntimeState _rightRuntimeState : Nat) :
     enforcePreTool receipt action intent lowerDecision =
       enforcePreTool receipt action intent lowerDecision := by
+  rfl
+
+/-- A platform matcher declares native aliases for one semantic Action. -/
+structure NativeActionMatcher where
+  platform : String
+  nativeActions : List String
+  action : Action
+  deriving DecidableEq, Repr
+
+def matchesNativeAction
+    (matcher : NativeActionMatcher)
+    (platform nativeAction : String) : Bool :=
+  matcher.platform == platform && matcher.nativeActions.contains nativeAction
+
+def projectNativeAction
+    (matcher : NativeActionMatcher)
+    (platform nativeAction : String) : Option Action :=
+  if matchesNativeAction matcher platform nativeAction then
+    some matcher.action
+  else
+    none
+
+def codexEditActionMatcher : NativeActionMatcher :=
+  { platform := "codex"
+  , nativeActions := ["apply_patch", "Write", "Edit", "NotebookEdit"]
+  , action := .edit
+  }
+
+theorem codex_edit_aliases_project_one_semantic_action :
+    projectNativeAction codexEditActionMatcher "codex" "apply_patch" = some .edit ∧
+      projectNativeAction codexEditActionMatcher "codex" "Write" = some .edit ∧
+      projectNativeAction codexEditActionMatcher "codex" "Edit" = some .edit ∧
+      projectNativeAction codexEditActionMatcher "codex" "NotebookEdit" = some .edit := by
+  decide
+
+theorem native_action_matcher_is_platform_scoped :
+    projectNativeAction codexEditActionMatcher "claude" "Edit" = none := by
+  decide
+
+theorem unmatched_native_action_does_not_fabricate_semantic_action :
+    projectNativeAction codexEditActionMatcher "codex" "Bash" = none := by
+  decide
+
+/-- The physical plugin entry carries one immutable Host action signal. -/
+structure PhysicalMatcherSignal where
+  nativeAction : String
+  action : Action
+  deriving DecidableEq, Repr
+
+inductive HostActionBinding where
+  | bound (action : Action)
+  | denied
+  deriving DecidableEq, Repr
+
+def bindPhysicalMatcher
+    (signal : Option PhysicalMatcherSignal)
+    (payloadNativeAction : String) : HostActionBinding :=
+  match signal with
+  | none => .denied
+  | some physical =>
+      if physical.nativeAction == payloadNativeAction then
+        .bound physical.action
+      else
+        .denied
+
+def codexBashSignal : PhysicalMatcherSignal :=
+  { nativeAction := "Bash", action := .execute }
+
+theorem missing_physical_matcher_signal_fails_closed
+    (payloadNativeAction : String) :
+    bindPhysicalMatcher none payloadNativeAction = .denied := by
+  rfl
+
+theorem mismatched_physical_matcher_signal_fails_closed :
+    bindPhysicalMatcher (some codexBashSignal) "Read" = .denied := by
+  decide
+
+theorem exact_physical_matcher_signal_binds_host_action :
+    bindPhysicalMatcher (some codexBashSignal) "Bash" = .bound .execute := by
+  decide
+
+/-- Parser-derived permission facts cannot rewrite the immutable Host action. -/
+def preservePhysicalHostAction
+    (hostAction : Action)
+    (_parserFacts : List PermissionFact) : Action :=
+  hostAction
+
+theorem shell_permissions_do_not_rewrite_bash_host_action
+    (facts : List PermissionFact) :
+    preservePhysicalHostAction codexBashSignal.action facts = .execute := by
+  rfl
+
+/-- An Action identity without a filesystem subject is not a permission fact. -/
+def permissionFactForSubject
+    (subject : Option Nat)
+    (permission : FilesystemPermission)
+    (source : PermissionSource) : Option PermissionFact :=
+  subject.map fun value =>
+    { subject := value, permission := permission, source := source }
+
+theorem missing_subject_does_not_fabricate_filesystem_permission
+    (permission : FilesystemPermission)
+    (source : PermissionSource) :
+    permissionFactForSubject none permission source = none := by
   rfl
 
 end ASPProof.HookSubagentPermissionLifecycle

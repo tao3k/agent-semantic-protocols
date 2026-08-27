@@ -83,7 +83,8 @@ async fn run_providers(parsed: ParsedArgs) -> Result<(), String> {
         }
     };
     let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
-    let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&state_home)?
+    let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&state_home)
+        .await?
         .ok_or_else(|| "runtime-server-endpoint-unavailable".to_owned())?;
     let request = agent_semantic_provider_protocol::ProviderRegisterRequest {
         schema_id: agent_semantic_provider_protocol::PROVIDER_REGISTER_REQUEST_SCHEMA_ID.to_owned(),
@@ -134,11 +135,9 @@ async fn run_providers(parsed: ParsedArgs) -> Result<(), String> {
 async fn run_doctor(parsed: ParsedArgs) -> Result<(), String> {
     validate_doctor_args(&parsed)?;
     let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
-    let runtime_base = agent_semantic_client_db::runtime_server_runtime_base(&state_home)?;
-    match agent_semantic_client_db::runtime_server_health::cached_runtime_server_health_at(
-        &runtime_base,
-    )
-    .await
+    match agent_semantic_client_db::runtime_server_health::
+        cached_runtime_server_health_for_state_home(&state_home)
+        .await
     {
         Ok(health) => println!(
             "[asp-doctor] status={} backend=runtime-server state={:?} elapsedMicros={}",

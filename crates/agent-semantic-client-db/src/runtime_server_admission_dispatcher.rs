@@ -1,12 +1,97 @@
 //! Runtime-owned dispatcher for generation admission and mutation futures.
 
-use std::{future::Future, pin::Pin, sync::Arc};
+use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
 type AdmissionBuildFuture = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
+type AdmissionBuildStartFuture = Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'static>>;
+
+pub(crate) struct AdmissionBuildEnvelope {
+    start: Option<AdmissionBuildStartFuture>,
+    build: Option<AdmissionBuildFuture>,
+    terminalize: Option<AdmissionBuildFuture>,
+}
+
+struct AdmissionBuildTerminalizers(HashMap<tokio::task::Id, AdmissionBuildFuture>);
+
+impl AdmissionBuildTerminalizers {
+    fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    fn insert(&mut self, id: tokio::task::Id, terminalize: AdmissionBuildFuture) {
+        self.0.insert(id, terminalize);
+    }
+
+    fn remove(&mut self, id: &tokio::task::Id) -> Option<AdmissionBuildFuture> {
+        self.0.remove(id)
+    }
+
+    async fn terminalize_remaining(&mut self) {
+        for (_, terminalize) in self.0.drain() {
+            terminalize.await;
+        }
+    }
+}
+
+impl Drop for AdmissionBuildTerminalizers {
+    fn drop(&mut self) {
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        for (_, terminalize) in self.0.drain() {
+            runtime.spawn(terminalize);
+        }
+    }
+}
+
+impl AdmissionBuildEnvelope {
+    pub(crate) fn new(
+        start: AdmissionBuildStartFuture,
+        build: AdmissionBuildFuture,
+        terminalize: AdmissionBuildFuture,
+    ) -> Self {
+        Self {
+            start: Some(start),
+            build: Some(build),
+            terminalize: Some(terminalize),
+        }
+    }
+
+    pub(crate) fn detached(build: AdmissionBuildFuture) -> Self {
+        Self::new(Box::pin(async { Ok(()) }), build, Box::pin(async {}))
+    }
+
+    fn take_parts(
+        &mut self,
+    ) -> (
+        AdmissionBuildStartFuture,
+        AdmissionBuildFuture,
+        AdmissionBuildFuture,
+    ) {
+        (
+            self.start.take().expect("admission start is owned"),
+            self.build.take().expect("admission build is owned"),
+            self.terminalize
+                .take()
+                .expect("admission terminalizer is owned"),
+        )
+    }
+}
+
+impl Drop for AdmissionBuildEnvelope {
+    fn drop(&mut self) {
+        let Some(terminalize) = self.terminalize.take() else {
+            return;
+        };
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(terminalize);
+        }
+    }
+}
 
 enum AdmissionDispatcherCommand {
     Warmup,
-    Spawn(AdmissionBuildFuture),
+    Spawn(AdmissionBuildEnvelope),
     Shutdown(tokio::sync::oneshot::Sender<usize>),
 }
 
@@ -26,28 +111,70 @@ impl RuntimeServerAdmissionDispatcher {
         let task = task_scope
             .spawn("generation-admission-dispatcher", async move {
                 let mut builds = tokio::task::JoinSet::new();
+                let mut terminalizers = AdmissionBuildTerminalizers::new();
                 loop {
                     tokio::select! {
                         command = receiver.recv() => match command {
                             Some(AdmissionDispatcherCommand::Warmup) => {}
-                            Some(AdmissionDispatcherCommand::Spawn(build)) => {
-                                builds.spawn(build);
+                            Some(AdmissionDispatcherCommand::Spawn(mut envelope)) => {
+                                let (start, build, terminalize) = envelope.take_parts();
+                                if start.await.is_ok() {
+                                    let task = builds.spawn(build);
+                                    terminalizers.insert(task.id(), terminalize);
+                                } else {
+                                    terminalize.await;
+                                }
                             }
                             Some(AdmissionDispatcherCommand::Shutdown(receipt)) => {
                                 receiver.close();
                                 builds.abort_all();
                                 let task_count = builds.len();
-                                while builds.join_next().await.is_some() {}
+                                while let Some(result) = builds.join_next_with_id().await {
+                                    match result {
+                                        Ok((id, ())) => {
+                                            terminalizers.remove(&id);
+                                        }
+                                        Err(error) => {
+                                            if let Some(terminalize) = terminalizers.remove(&error.id()) {
+                                                terminalize.await;
+                                            }
+                                        }
+                                    }
+                                }
+                                terminalizers.terminalize_remaining().await;
                                 let _ = receipt.send(task_count);
                                 break;
                             }
                             None => {
                                 builds.abort_all();
-                                while builds.join_next().await.is_some() {}
+                                while let Some(result) = builds.join_next_with_id().await {
+                                    match result {
+                                        Ok((id, ())) => {
+                                            terminalizers.remove(&id);
+                                        }
+                                        Err(error) => {
+                                            if let Some(terminalize) = terminalizers.remove(&error.id()) {
+                                                terminalize.await;
+                                            }
+                                        }
+                                    }
+                                }
+                                terminalizers.terminalize_remaining().await;
                                 break;
                             }
                         },
-                        Some(_) = builds.join_next(), if !builds.is_empty() => {}
+                        Some(result) = builds.join_next_with_id(), if !builds.is_empty() => {
+                            match result {
+                                Ok((id, ())) => {
+                                    terminalizers.remove(&id);
+                                }
+                                Err(error) => {
+                                    if let Some(terminalize) = terminalizers.remove(&error.id()) {
+                                        terminalize.await;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             })
@@ -63,7 +190,10 @@ impl RuntimeServerAdmissionDispatcher {
         dispatcher
     }
 
-    pub(crate) fn spawn(&self, build: AdmissionBuildFuture) -> Result<(), AdmissionBuildFuture> {
+    pub(crate) fn spawn(
+        &self,
+        build: AdmissionBuildEnvelope,
+    ) -> Result<(), AdmissionBuildEnvelope> {
         self.sender
             .try_send(AdmissionDispatcherCommand::Spawn(build))
             .map_err(|error| match error.into_inner() {

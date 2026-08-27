@@ -57,6 +57,7 @@ import ASPProof.HookSessionLifecycle
 import ASPProof.HookSessionMaterialization
 import ASPProof.HookLazyLoaderCapability
 import ASPProof.HookBootstrapRepair
+import ASPProof.HookRegistrationDeadlock
 import ASPProof.HookExecutionPlane
 import ASPProof.HookPolicyAntiHardcoding
 import ASPProof.RustHarnessPackageAtomicity

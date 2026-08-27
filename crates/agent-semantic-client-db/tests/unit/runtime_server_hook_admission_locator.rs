@@ -19,15 +19,11 @@ fn endpoint(root: &std::path::Path) -> RuntimeServerEndpoint {
         owner_epoch: 7,
         owner_process_id: 0,
         runtime_artifact_path: root.join("runtime/bin/asp").display().to_string(),
-        runtime_binary_identity: RuntimeBinaryIdentity::Content {
-            value: format!("blake3-256:{}", "2".repeat(64)),
-            algorithm: "blake3-256".to_owned(),
-        },
+        runtime_binary_identity: RuntimeBinaryIdentity::from_bytes(b"hook-admission-runtime"),
         monitor_capability: true,
-        observed_runtime_binary_identity: RuntimeBinaryIdentity::Content {
-            value: format!("blake3-256:{}", "2".repeat(64)),
-            algorithm: "blake3-256".to_owned(),
-        },
+        observed_runtime_binary_identity: RuntimeBinaryIdentity::from_bytes(
+            b"hook-admission-runtime",
+        ),
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "3".repeat(64)),
         binding_token: "binding-token".to_owned(),
@@ -40,7 +36,6 @@ fn endpoint(root: &std::path::Path) -> RuntimeServerEndpoint {
             .join("runtime/server/providers.sock")
             .display()
             .to_string(),
-        client_http_endpoint: "http://127.0.0.1:1".to_owned(),
         workspace_store_path: root.join("runtime/server/workspaces").display().to_string(),
         status_memory_path: root
             .join("runtime/server/status.memory")

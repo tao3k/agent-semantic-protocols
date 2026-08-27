@@ -192,15 +192,28 @@ fn insert_choice_plane_recovery_action_fields(decision: &mut HookDecision) {
 pub fn latest_hook_session_agent_route(
     project_root: &Path,
 ) -> Result<Option<HookSessionAgentRoute>, String> {
+    latest_hook_session_agent_route_for_root(project_root, None)
+}
+
+pub fn latest_hook_session_agent_route_for_root(
+    project_root: &Path,
+    root_session_id: Option<&str>,
+) -> Result<Option<HookSessionAgentRoute>, String> {
     let state_path = ensure_project_hook_state_dir(project_root)?.join(HOOK_EVENT_STATE_FILE);
     if !state_path.is_file() {
         return Ok(None);
     }
     let lines = read_hook_event_state_tail(&state_path)?;
-    Ok(latest_hook_session_agent_route_from_lines(&lines))
+    Ok(latest_hook_session_agent_route_from_lines(
+        &lines,
+        root_session_id,
+    ))
 }
 
-fn latest_hook_session_agent_route_from_lines(lines: &[String]) -> Option<HookSessionAgentRoute> {
+fn latest_hook_session_agent_route_from_lines(
+    lines: &[String],
+    required_root_session_id: Option<&str>,
+) -> Option<HookSessionAgentRoute> {
     lines.iter().rev().find_map(|line| {
         let event = serde_json::from_str::<Value>(line).ok()?;
         if !matches!(
@@ -217,6 +230,13 @@ fn latest_hook_session_agent_route_from_lines(lines: &[String]) -> Option<HookSe
         {
             return None;
         }
+        let root_session_id = event
+            .pointer("/fields/hostRootSessionId")
+            .or_else(|| event.pointer("/fields/sessionId"))
+            .and_then(Value::as_str)?;
+        if required_root_session_id.is_some_and(|required| required != root_session_id) {
+            return None;
+        }
         Some(HookSessionAgentRoute {
             command_digest: event
                 .pointer("/fields/commandDigest")
@@ -229,7 +249,7 @@ fn latest_hook_session_agent_route_from_lines(lines: &[String]) -> Option<HookSe
                 .and_then(Value::as_str)
                 .map(str::to_owned),
             reason_kind: required_event_string(&event, "/reasonKind")?,
-            root_session_id: required_event_string(&event, "/fields/sessionId")?,
+            root_session_id: root_session_id.to_owned(),
             subject_command: event
                 .pointer("/subject/command")
                 .and_then(Value::as_str)

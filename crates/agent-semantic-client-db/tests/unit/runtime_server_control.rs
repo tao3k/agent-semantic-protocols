@@ -4,33 +4,12 @@ use std::time::Duration;
 use agent_semantic_client_db::WorkspaceDbRegistry;
 use agent_semantic_client_db::runtime_server::{RuntimeServer, RuntimeServerExit};
 use agent_semantic_client_db::runtime_server_control::{
-    RuntimeServerControlRequest, RuntimeServerEndpoint, RuntimeServerOperation, RuntimeServerState,
-    call_runtime_server, cleanup_runtime_server_endpoint, prepare_runtime_server_endpoint,
+    RuntimeServerEndpoint, RuntimeServerOperation, RuntimeServerState, call_runtime_server,
+    cleanup_runtime_server_endpoint, prepare_runtime_server_endpoint,
     prepare_runtime_server_endpoint_in, prewarm_runtime_server_status_memory,
     publish_runtime_server_endpoint, runtime_server_endpoint_path,
     runtime_server_status_memory_metrics, runtime_server_transport_contract_digest,
 };
-
-pub(super) fn record_admission_fixture_candidate(project_root: &std::path::Path) {
-    let digest = format!(
-        "blake3:{}",
-        blake3::hash(project_root.as_os_str().as_encoded_bytes()).to_hex()
-    );
-    agent_semantic_client_db::runtime_server_admission::record_workspace_generation_candidate(
-        project_root.to_path_buf(),
-        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateIdentity {
-            candidate_generation: agent_semantic_runtime::git::RepositoryCandidateGeneration {
-                algorithm: "blake3-worktree-state-v1".to_owned(),
-                digest: digest.clone(),
-                authorities: vec![
-                    agent_semantic_runtime::git::RepositoryCandidateAuthority::GitIndex,
-                ],
-            },
-            policy_overlay_digest: digest,
-        },
-    )
-    .expect("record atomic admission fixture candidate");
-}
 
 #[test]
 fn runtime_transport_identity_binds_control_workspace_and_provider_planes() {
@@ -46,6 +25,7 @@ fn runtime_transport_identity_binds_control_workspace_and_provider_planes() {
         include_bytes!("../../../../schemas/provider-register-request.schema.json");
     let provider_register_response =
         include_bytes!("../../../../schemas/provider-register-response.schema.json");
+    let asp_client_frame = include_bytes!("../../../../schemas/asp-client-frame.schema.json");
     let mut expected = blake3::Hasher::new();
     expected.update(domain);
     for (contract_name, contract_bytes) in [
@@ -67,6 +47,7 @@ fn runtime_transport_identity_binds_control_workspace_and_provider_planes() {
             b"provider-register-response".as_slice(),
             provider_register_response.as_slice(),
         ),
+        (b"asp-client-frame".as_slice(), asp_client_frame.as_slice()),
     ] {
         expected.update(&(contract_name.len() as u64).to_le_bytes());
         expected.update(contract_name);
@@ -105,7 +86,9 @@ pub(super) async fn fixture_endpoint(
     let endpoint = prepare_runtime_server_endpoint_in(
         runtime_dir.path(),
         std::path::Path::new("/runtime/asp"),
-        "runtime-digest",
+        &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+            b"runtime-digest",
+        ),
         catalog.mode_label(),
         &catalog.digest(),
         epoch,
@@ -154,14 +137,9 @@ async fn concurrent_runtime_status_wave(
 
 #[path = "runtime_server_control/election.rs"]
 mod election;
-#[path = "runtime_server_control/generation_admission.rs"]
-mod generation_admission;
 #[path = "runtime_server_control/performance.rs"]
 mod performance;
 #[path = "runtime_server_control/server_lifecycle.rs"]
 mod server_lifecycle;
 #[path = "runtime_server_control/transport.rs"]
 mod transport;
-
-#[path = "runtime_server_control/shared_admission.rs"]
-mod shared_admission;

@@ -11,6 +11,7 @@ mod domain;
 mod file_artifact;
 mod hashing;
 mod model;
+mod schema_contract_identity;
 mod source_snapshot;
 pub mod structural_selector;
 mod value;
@@ -44,6 +45,7 @@ pub use model::{
     ArtifactChildRef, ArtifactIdentityDocument, ArtifactLeafInput, ArtifactNodeInput,
     ArtifactRootInput, ArtifactRootRef,
 };
+pub use schema_contract_identity::{SchemaContractIdentity, schema_contract_identities};
 pub use source_snapshot::{
     ResolutionAuthority, ResolutionEvidence, ResolutionState, SOURCE_RESOLUTION_SCHEMA_ID,
     SOURCE_SNAPSHOT_ALGORITHM, SOURCE_SNAPSHOT_SCHEMA_ID, SnapshotBoundResolution,
@@ -64,6 +66,10 @@ mod source_snapshot_tests;
 #[cfg(test)]
 #[path = "../tests/unit/source_snapshot_contract.rs"]
 mod source_snapshot_contract_tests;
+
+#[cfg(test)]
+#[path = "../tests/unit/schema_contract_identity.rs"]
+mod schema_contract_identity_tests;
 mod store;
 
 pub use store::ContentAddressedStore;

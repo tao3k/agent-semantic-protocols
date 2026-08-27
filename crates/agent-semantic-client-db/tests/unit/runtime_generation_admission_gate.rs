@@ -29,7 +29,13 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_sub_millis
         let peak_builds = Arc::clone(&peak_builds);
         let build_count = Arc::clone(&build_count);
         let release = Arc::clone(&release);
-        move |_, _, candidate, _, _changed_paths, _provider_target, _cancellation| {
+        move |workspace_identity,
+              _,
+              candidate,
+              _,
+              _changed_paths,
+              _provider_target,
+              _cancellation| {
             let active_builds = Arc::clone(&active_builds);
             let peak_builds = Arc::clone(&peak_builds);
             let build_count = Arc::clone(&build_count);
@@ -52,7 +58,7 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_sub_millis
                 agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildCompletion::new(
                     candidate,
                     agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
-    projection_capability: agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest::single_selector("blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(), "rust://fixture/src/lib.rs#item/function/fixture".to_owned(), "src/lib.rs".to_owned(), std::collections::BTreeSet::from([agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionMode::Source])).expect("test projection capability manifest").into_ready_receipt("workspace-test".to_owned(), "generation-test".to_owned(), "root-test".to_owned(), 1).expect("test projection capability receipt"),
+    projection_capability: agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionCapabilityManifest::single_selector("blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(), "rust://fixture/src/lib.rs#item/function/fixture".to_owned(), "src/lib.rs".to_owned(), std::collections::BTreeSet::from([agent_semantic_client_db::active_generation_projection_capability::ActiveGenerationProjectionMode::Source])).expect("test projection capability manifest").into_ready_receipt(workspace_identity, "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(), "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(), 1).expect("test projection capability receipt"),
                         active_epoch: 1,
                         generation_digest: "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
                         source_root_digest: "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(),

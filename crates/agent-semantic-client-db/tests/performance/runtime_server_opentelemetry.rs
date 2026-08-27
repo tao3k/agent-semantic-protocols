@@ -161,7 +161,20 @@ async fn multi_workspace_multi_session_telemetry_remains_nonblocking_and_drains(
         "bounded Telemetry ingress must account for all sessions and workspaces"
     );
     enqueue_latencies.sort_unstable();
+    let samples = enqueue_latencies.len();
+    let p50 = enqueue_latencies[samples * 50 / 100];
+    let p95 = enqueue_latencies[samples * 95 / 100];
     let p99 = enqueue_latencies[enqueue_latencies.len() * 99 / 100];
+    let max = *enqueue_latencies
+        .last()
+        .expect("Telemetry performance receipt requires at least one sample");
+    eprintln!(
+        "runtime-telemetry-enqueue samples={samples} p50Micros={} p95Micros={} p99Micros={} maxMicros={}",
+        p50.as_micros(),
+        p95.as_micros(),
+        p99.as_micros(),
+        max.as_micros()
+    );
     assert!(
         p99 < Duration::from_millis(1),
         "multi-workspace Telemetry enqueue p99 must remain sub-millisecond: {p99:?}"

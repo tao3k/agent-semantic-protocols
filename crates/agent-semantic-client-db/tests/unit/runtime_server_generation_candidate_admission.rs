@@ -71,7 +71,7 @@ async fn ensure_rebuilds_when_repository_candidate_generation_advances() {
         )
         .await
         .expect("admit advanced candidate");
-    assert_eq!(advanced.state, WorkspaceGenerationAdmissionState::Building);
+    assert_eq!(advanced.state, WorkspaceGenerationAdmissionState::Queued);
     assert_eq!(advanced.attempt, 2);
     let ready = admission
         .wait_terminal("workspace-candidate-advance", &project_root)
@@ -202,7 +202,7 @@ async fn tracked_source_edit_discovers_and_admits_a_new_generation() {
         )
         .await
         .expect("admit advanced tracked candidate");
-    assert_eq!(building.state, WorkspaceGenerationAdmissionState::Building);
+    assert_eq!(building.state, WorkspaceGenerationAdmissionState::Queued);
     assert_eq!(building.attempt, 2);
     let ready = admission
         .wait_terminal("workspace-tracked-source-edit", project_root)
@@ -378,7 +378,7 @@ async fn ensure_coalesces_an_advanced_candidate_behind_an_inflight_build() {
         )
         .await
         .expect("queue advanced candidate");
-    assert_eq!(queued.state, WorkspaceGenerationAdmissionState::Building);
+    assert_eq!(queued.state, WorkspaceGenerationAdmissionState::Queued);
     assert_eq!(queued.attempt, 2);
     first_release.wait().await;
     let ready = admission

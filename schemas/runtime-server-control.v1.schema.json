@@ -50,7 +50,6 @@
       "bindingToken",
       "dataPlaneSocketPath",
       "providerPlaneSocketPath",
-      "clientHttpEndpoint",
       "socketPath",
         "workspaceStorePath"
         ,"statusMemoryPath"
@@ -105,10 +104,6 @@
       "providerPlaneSocketPath": {
         "type": "string",
         "minLength": 1
-      },
-      "clientHttpEndpoint": {
-        "type": "string",
-        "pattern": "^http://(127\\.0\\.0\\.1|\\[::1\\]):[0-9]+$"
       },
       "workspaceStorePath": {
           "type": "string",

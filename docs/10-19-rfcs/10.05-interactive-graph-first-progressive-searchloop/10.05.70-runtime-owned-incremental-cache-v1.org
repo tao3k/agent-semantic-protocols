@@ -1,6 +1,8 @@
 #+title: Runtime-owned incremental search cache v1
 #+startup: overview
 
+Parent architecture: [[file:../10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
 * Status
 
 This document is the canonical v1 contract for cold search admission, warm

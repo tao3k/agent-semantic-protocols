@@ -1,4 +1,6 @@
 use super::ClientHookConfig;
+use crate::HookRuntime;
+use crate::tool_action::ToolAction;
 
 #[test]
 fn complete_durable_hook_artifact_recovery_has_bounded_typical_and_hard_latency() {
@@ -41,6 +43,71 @@ fn complete_durable_hook_artifact_recovery_has_bounded_typical_and_hard_latency(
         max < std::time::Duration::from_millis(500),
         "one-time durable Hook generation recovery exceeded the 500ms hard boundary: {max:?}"
     );
+}
+
+#[test]
+fn compiled_registered_asp_search_rule_matches_its_production_action() {
+    let config = ClientHookConfig::default();
+    let rule = config
+        .rules
+        .iter()
+        .find(|rule| rule.id == "registered-asp-reasoning-search")
+        .expect("compiled registered ASP search rule");
+    let runtime = HookRuntime {
+        policy_providers: config.provider_projections.clone(),
+        project_root: ".".to_owned(),
+        rankers: Vec::new(),
+        providers: Vec::new(),
+    };
+    let action = ToolAction::normalized_shell_command_action(
+        "asp rust search pipe 'HookDecision' --workspace . --view seeds".to_owned(),
+        "Bash".to_owned(),
+    );
+
+    assert!(!rule.match_config.needs_command_tokens());
+    assert!(
+        rule.matches_before_paths(&runtime, "codex", "pre-tool", &action, None),
+        "the compiled rule must preserve its host invocation and declarative argv pattern"
+    );
+    assert!(
+        config
+            .classify_candidate(&runtime, "codex", "pre-tool", &action)
+            .is_some(),
+        "registered ASP search candidate"
+    );
+}
+
+#[test]
+fn durable_hydration_rematerializes_declarative_actions_and_profiles() {
+    let source = ClientHookConfig::default();
+    let mut artifact = source.durable_snapshot_config();
+    let declared = artifact
+        .config
+        .rules
+        .iter_mut()
+        .find(|rule| rule.id == "route-read-to-asp-languages")
+        .expect("declarative source-read rule");
+    declared.match_config.native_matcher_any.clear();
+    declared.match_config.profile_any.clear();
+    declared.match_config.profile_extension_any.clear();
+
+    let hydrated = ClientHookConfig::from_durable_snapshot_config(artifact)
+        .expect("hydrate declarative durable matcher");
+    let rule = hydrated
+        .rules
+        .iter()
+        .find(|rule| rule.id == "route-read-to-asp-languages")
+        .expect("hydrated source-read rule");
+    let runtime = HookRuntime {
+        policy_providers: hydrated.provider_projections.clone(),
+        project_root: ".".to_owned(),
+        rankers: Vec::new(),
+        providers: Vec::new(),
+    };
+    let action = ToolAction::normalized_direct_policy_action("docs/plan.org".to_owned());
+
+    assert!(rule.matches_before_paths(&runtime, "codex", "pre-tool", &action, None));
+    assert!(rule.matches_after_paths(&runtime, &action.paths));
 }
 
 #[test]

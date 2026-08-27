@@ -46,10 +46,14 @@ fn root_search_infers_rust_from_profile_extension() {
         .output()
         .expect("run root search with profile inference");
 
-    assert!(!output.status.success());
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("UTF-8 stdout");
     let stderr = String::from_utf8(output.stderr).expect("UTF-8 stderr");
     assert!(!stderr.contains("requires --language"), "{stderr}");
-    assert!(stderr.contains("endpoint"), "{stderr}");
+    assert!(
+        stdout.contains("runtime-server-activation-unavailable"),
+        "{stdout}"
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 

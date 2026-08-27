@@ -5,7 +5,13 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
 pub fn runtime_artifact_source_generation(source_path: &Path) -> Result<String, String> {
-    let metadata = std::fs::metadata(source_path).map_err(|error| {
+    let source_path = std::fs::canonicalize(source_path).map_err(|error| {
+        format!(
+            "resolve Runtime artifact source generation {}: {error}",
+            source_path.display()
+        )
+    })?;
+    let metadata = std::fs::metadata(&source_path).map_err(|error| {
         format!(
             "inspect Runtime artifact source generation {}: {error}",
             source_path.display()
@@ -129,6 +135,16 @@ pub enum RuntimeBinaryIdentity {
 }
 
 impl RuntimeBinaryIdentity {
+    pub fn from_content_digest(digest: crate::blake3_content_digest::Blake3ContentDigest) -> Self {
+        Self::Content { digest }
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        Self::from_content_digest(
+            crate::blake3_content_digest::Blake3ContentDigest::from_bytes(bytes),
+        )
+    }
+
     pub fn kind(&self) -> &'static str {
         "content"
     }
@@ -695,6 +711,15 @@ fn publish_content_artifact(
 }
 
 fn publish_runtime_artifact_link(artifact: &Path, target: &Path) -> Result<(), String> {
+    let parent = target
+        .parent()
+        .ok_or_else(|| format!("Runtime artifact link has no parent: {}", target.display()))?;
+    std::fs::create_dir_all(parent).map_err(|error| {
+        format!(
+            "create Runtime artifact link directory {}: {error}",
+            parent.display()
+        )
+    })?;
     let staged = temporary_runtime_artifact_path(target);
     remove_stale_staged_artifact(&staged)?;
     stage_runtime_artifact_link(artifact, &staged)?;
@@ -1060,19 +1085,27 @@ pub async fn load_runtime_artifact_catalog(
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeArtifactSlotAuthority {
     root: PathBuf,
+    artifact_kind: String,
 }
 
 impl RuntimeArtifactSlotAuthority {
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        Self::for_artifact(root, "asp")
+    }
+
+    pub fn for_artifact(root: impl Into<PathBuf>, artifact_kind: impl Into<String>) -> Self {
+        Self {
+            root: root.into(),
+            artifact_kind: artifact_kind.into(),
+        }
     }
 
     pub fn active_path(&self) -> PathBuf {
-        self.root.join("active")
+        self.root.join("active").join(&self.artifact_kind)
     }
 
     pub fn healthy_path(&self) -> PathBuf {
-        self.root.join("healthy")
+        self.root.join("healthy").join(&self.artifact_kind)
     }
 
     pub async fn active_target(&self) -> Result<Option<PathBuf>, String> {
@@ -1095,24 +1128,39 @@ impl RuntimeArtifactSlotAuthority {
         candidate_dir: &Path,
         artifact: &Path,
     ) -> Result<(), String> {
-        publish_runtime_artifact_slot(artifact, &candidate_dir.join("asp")).await
+        publish_runtime_artifact_slot(artifact, &candidate_dir.join(&self.artifact_kind)).await
     }
 
     pub async fn prune_unreachable_publications(&self) -> Result<(), String> {
         let root = self.root.clone();
         tokio::task::spawn_blocking(move || {
             let mut protected = std::collections::BTreeSet::new();
-            for slot in [root.join("active"), root.join("healthy")] {
-                match std::fs::canonicalize(&slot) {
-                    Ok(target) => {
-                        protected.insert(target);
-                    }
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            for slot_root in [root.join("active"), root.join("healthy")] {
+                let entries = match std::fs::read_dir(&slot_root) {
+                    Ok(entries) => entries,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
                     Err(error) => {
                         return Err(format!(
-                            "resolve Runtime artifact slot {}: {error}",
-                            slot.display()
+                            "read Runtime artifact slots {}: {error}",
+                            slot_root.display()
                         ));
+                    }
+                };
+                for entry in entries {
+                    let slot = entry
+                        .map_err(|error| format!("read Runtime artifact slot: {error}"))?
+                        .path();
+                    match std::fs::canonicalize(&slot) {
+                        Ok(target) => {
+                            protected.insert(target);
+                        }
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                        Err(error) => {
+                            return Err(format!(
+                                "resolve Runtime artifact slot {}: {error}",
+                                slot.display()
+                            ));
+                        }
                     }
                 }
             }
@@ -1213,10 +1261,17 @@ pub async fn publish_resident_runtime_alias(
                 ));
             }
         }
+        let artifact_kind = target.file_name().ok_or_else(|| {
+            format!(
+                "resident Runtime alias has no artifact kind: {}",
+                target.display()
+            )
+        })?;
         #[cfg(unix)]
-        std::os::unix::fs::symlink(resident_root.join("active").join("asp"), &staged).map_err(
-            |error| format!("stage resident Runtime alias {}: {error}", staged.display()),
-        )?;
+        std::os::unix::fs::symlink(resident_root.join("active").join(artifact_kind), &staged)
+            .map_err(|error| {
+                format!("stage resident Runtime alias {}: {error}", staged.display())
+            })?;
         #[cfg(not(unix))]
         return Err("resident Runtime publication requires atomic symlink support".to_owned());
         std::fs::rename(&staged, &target).map_err(|error| {
@@ -1244,11 +1299,26 @@ pub async fn prepare_runtime_artifact_candidate(
     candidate_dir: &Path,
     source: &Path,
 ) -> Result<PreparedRuntimeArtifact, String> {
+    prepare_runtime_artifact_candidate_for_kind(state_home, candidate_dir, source, "asp").await
+}
+
+pub async fn prepare_runtime_artifact_candidate_for_kind(
+    state_home: &Path,
+    candidate_dir: &Path,
+    source: &Path,
+    artifact_kind: &str,
+) -> Result<PreparedRuntimeArtifact, String> {
     let state_home = state_home.to_path_buf();
     let candidate_dir = candidate_dir.to_path_buf();
     let source = source.to_path_buf();
+    let artifact_kind = artifact_kind.to_owned();
     tokio::task::spawn_blocking(move || {
-        prepare_runtime_artifact_candidate_blocking(&state_home, &candidate_dir, &source)
+        prepare_runtime_artifact_candidate_blocking(
+            &state_home,
+            &candidate_dir,
+            &source,
+            &artifact_kind,
+        )
     })
     .await
     .map_err(|error| format!("prepare Runtime artifact candidate task failed: {error}"))?
@@ -1258,13 +1328,14 @@ fn prepare_runtime_artifact_candidate_blocking(
     state_home: &Path,
     candidate_dir: &Path,
     source: &Path,
+    artifact_kind: &str,
 ) -> Result<PreparedRuntimeArtifact, String> {
     let content_digest = runtime_artifact_content_digest(source)?;
     let digest_hex = content_digest.content_digest().as_str();
     let path = state_home
         .join("runtime/artifacts/blake3-256")
         .join(digest_hex)
-        .join("asp");
+        .join(artifact_kind);
     if path.exists() {
         let observed = runtime_artifact_content_digest(&path)?;
         if observed != content_digest {
@@ -1295,7 +1366,7 @@ fn prepare_runtime_artifact_candidate_blocking(
             candidate_dir.display()
         )
     })?;
-    let staged = candidate_dir.join("asp.immutable");
+    let staged = candidate_dir.join(format!("{artifact_kind}.immutable"));
     stage_runtime_artifact(source, &staged)?;
     let staged_digest = runtime_artifact_content_digest(&staged)?;
     if staged_digest != content_digest {

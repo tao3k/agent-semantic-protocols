@@ -25,7 +25,7 @@ pub(super) struct HostAcceptanceReceipt {
     plugin_loaded: bool,
     probe_call_observed: bool,
     hook_event_observed: bool,
-    deny_observed: bool,
+    generation_bound_deny_observed: bool,
     source_bytes_returned: bool,
 }
 
@@ -75,7 +75,8 @@ struct HostAcceptanceEvidence {
     probe_call_observed: bool,
     probe_call_ids: std::collections::HashSet<String>,
     hook_event_observed: bool,
-    deny_observed: bool,
+    typed_deny_observed: bool,
+    generation_bound_deny_observed: bool,
     source_bytes_returned: bool,
 }
 
@@ -136,10 +137,15 @@ pub(super) fn inspect_host_rollout(
         ("rejected", "source-bytes-leaked")
     } else if !evidence.hook_event_observed {
         ("rejected", "hook-event-missing")
-    } else if !evidence.deny_observed {
+    } else if !evidence.typed_deny_observed {
         ("rejected", "hook-deny-missing")
+    } else if !evidence.generation_bound_deny_observed {
+        ("rejected", "hook-deny-publication-identity-missing")
     } else {
-        ("accepted", "normal-task-hook-deny-observed")
+        (
+            "accepted",
+            "normal-task-hook-generation-bound-deny-observed",
+        )
     };
 
     Ok(HostAcceptanceReceipt {
@@ -150,7 +156,7 @@ pub(super) fn inspect_host_rollout(
         plugin_loaded: evidence.plugin_loaded,
         probe_call_observed: evidence.probe_call_observed,
         hook_event_observed: evidence.hook_event_observed,
-        deny_observed: evidence.deny_observed,
+        generation_bound_deny_observed: evidence.generation_bound_deny_observed,
         source_bytes_returned: evidence.source_bytes_returned,
     })
 }
@@ -265,13 +271,53 @@ fn observe_rollout_item(
         evidence.plugin_loaded = true;
         evidence.hook_event_observed = true;
     }
-    if asp_hook_evidence
-        && (serialized.contains("\\\"permissionDecision\\\":\\\"deny\\\"")
-            || serialized.contains("\\\"decision\\\":\\\"deny\\\"")
-            || serialized.contains("permissionDecision=deny"))
-    {
-        evidence.deny_observed = true;
+    if value_contains_generation_bound_hook_deny(value) {
+        evidence.generation_bound_deny_observed = true;
     }
+    if value_contains_typed_hook_deny(value) {
+        evidence.typed_deny_observed = true;
+    }
+}
+
+fn value_contains_typed_hook_deny(value: &Value) -> bool {
+    if agent_semantic_hook::is_typed_hook_deny(value) {
+        return true;
+    }
+    match value {
+        Value::String(text) => hook_decision_from_text(text)
+            .as_ref()
+            .is_some_and(agent_semantic_hook::is_typed_hook_deny),
+        Value::Array(values) => values.iter().any(value_contains_typed_hook_deny),
+        Value::Object(fields) => fields.values().any(value_contains_typed_hook_deny),
+        Value::Null | Value::Bool(_) | Value::Number(_) => false,
+    }
+}
+
+fn value_contains_generation_bound_hook_deny(value: &Value) -> bool {
+    if agent_semantic_hook::is_generation_bound_hook_deny(value) {
+        return true;
+    }
+    match value {
+        Value::String(text) => hook_decision_from_text(text)
+            .as_ref()
+            .is_some_and(agent_semantic_hook::is_generation_bound_hook_deny),
+        Value::Array(values) => values.iter().any(value_contains_generation_bound_hook_deny),
+        Value::Object(fields) => fields
+            .values()
+            .any(value_contains_generation_bound_hook_deny),
+        Value::Null | Value::Bool(_) | Value::Number(_) => false,
+    }
+}
+
+fn hook_decision_from_text(text: &str) -> Option<Value> {
+    let marker_offset = ["[asp-hook]", "[agent-hook-decision]"]
+        .iter()
+        .filter_map(|marker| text.find(marker).map(|offset| offset + marker.len()))
+        .min()?;
+    let document = &text[marker_offset..];
+    let start = document.find('{')?;
+    let end = document.rfind('}')?;
+    serde_json::from_str(&document[start..=end]).ok()
 }
 
 fn value_contains_text(value: &Value, needle: &str) -> bool {

@@ -10,6 +10,7 @@ fn event(transition: &str, state: &str) -> RuntimeLifecycleEvent {
         owner_epoch: 1,
         workspace_identity: Some("ws".to_owned()),
         generation_digest: None,
+        candidate_digest: None,
         transition: transition.to_owned(),
         state: state.to_owned(),
         elapsed_micros: 1,

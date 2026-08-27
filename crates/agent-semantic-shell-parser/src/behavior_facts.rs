@@ -22,7 +22,7 @@ pub enum ShellBehaviorEvidence {
     ReadWriteRedirection,
 }
 
-/// A semantic capability projected from one command stage without command-name heuristics.
+/// A semantic capability projected from one command stage by shell grammar.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ShellBehaviorFact {
     /// The filesystem capability proven by the syntax.

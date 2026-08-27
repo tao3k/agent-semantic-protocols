@@ -5,8 +5,8 @@ mod fixture;
 
 #[path = "unit/active_generation_projection_capability.rs"]
 mod active_generation_projection_capability;
-#[path = "unit/agent_session_dispatch_ipc.rs"]
-mod agent_session_dispatch_ipc;
+#[path = "unit/agent_session_registry_publication.rs"]
+mod agent_session_registry_publication;
 #[path = "unit/agent_session_runtime_proxy.rs"]
 mod agent_session_runtime_proxy;
 #[path = "unit/codex_multi_agent_control_plane_owner.rs"]
@@ -45,8 +45,12 @@ mod runtime_generation_admission_gate;
 mod runtime_provider_register;
 #[path = "unit/runtime_search_authority_fixture.rs"]
 mod runtime_search_authority_fixture;
+#[path = "unit/runtime_search_service_cancellation.rs"]
+mod runtime_search_service_cancellation;
 #[path = "unit/runtime_server_admission_catalog.rs"]
 mod runtime_server_admission_catalog;
+#[path = "unit/runtime_server_admission_query_demand.rs"]
+mod runtime_server_admission_query_demand;
 #[path = "unit/runtime_server_control.rs"]
 mod runtime_server_control;
 #[path = "unit/runtime_server_control_authority.rs"]
@@ -61,18 +65,20 @@ mod runtime_server_endpoint_v1_migration;
 mod runtime_server_generation_admission;
 #[path = "unit/runtime_server_generation_restore.rs"]
 mod runtime_server_generation_restore;
-#[path = "unit/runtime_server_graph_turbo.rs"]
-mod runtime_server_graph_turbo;
 #[path = "unit/runtime_server_health.rs"]
 mod runtime_server_health;
 #[path = "unit/runtime_server_lifecycle_coordinator.rs"]
 mod runtime_server_lifecycle_coordinator;
+#[path = "unit/runtime_server_operator_stop.rs"]
+mod runtime_server_operator_stop;
 #[path = "unit/runtime_server_overlay_admission.rs"]
 mod runtime_server_overlay_admission;
 #[path = "unit/runtime_server_runtime.rs"]
 mod runtime_server_runtime;
 #[path = "unit/runtime_server_state_home_isolation.rs"]
 mod runtime_server_state_home_isolation;
+#[path = "unit/runtime_server_supervisor_endpoint_v1_migration.rs"]
+mod runtime_server_supervisor_endpoint_v1_migration;
 #[path = "unit/runtime_server_supervisor_reconciliation.rs"]
 mod runtime_server_supervisor_reconciliation;
 #[path = "unit/runtime_server_workspace.rs"]

@@ -93,24 +93,34 @@ pub(super) fn resolve_dispatch_decision(
         .or_else(|| payload.get("agentId"))
         .and_then(serde_json::Value::as_str)
         .filter(|value| !value.trim().is_empty());
-    let target_agent = dispatch_target_field(&decision, "targetAgent");
-    let agent_matches = target_agent.is_some_and(|target| {
-        current_agent.is_some_and(|current| {
-            current
-                .chars()
-                .map(|ch| if ch == '-' { '_' } else { ch })
-                .eq(target.chars().map(|ch| if ch == '-' { '_' } else { ch }))
-        })
-    });
     let registration_verified = payload
         .get("registration_verified")
         .or_else(|| payload.get("registrationVerified"))
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false);
+    let registered_agent_name = registration_verified
+        .then(|| {
+            payload
+                .get("registered_agent_name")
+                .or_else(|| payload.get("registeredAgentName"))
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+        })
+        .flatten();
+    let target_agent = dispatch_target_field(&decision, "targetAgent");
+    let agent_matches = target_agent.is_some_and(|target| {
+        registered_agent_name.is_some_and(|registered| {
+            registered
+                .chars()
+                .map(|ch| if ch == '-' { '_' } else { ch })
+                .eq(target.chars().map(|ch| if ch == '-' { '_' } else { ch }))
+        })
+    });
     let registered_intent_matches = registered_profile_allows_decision_intent(&decision, payload);
     if registration_verified
         && current_agent.is_some()
         && current_agent_id.is_some()
+        && registered_agent_name.is_some()
         && agent_matches
         && registered_intent_matches
     {
@@ -119,7 +129,7 @@ pub(super) fn resolve_dispatch_decision(
         decision.routes.clear();
         decision.message = format!(
             "Allowed: this command is already executing inside the configured typed `{}` Agent; dispatch is idempotent and must not recurse.",
-            current_agent.unwrap_or("subagent")
+            registered_agent_name.unwrap_or("subagent")
         );
         decision.fields.insert(
             "dispatchSatisfied".to_owned(),
@@ -128,6 +138,10 @@ pub(super) fn resolve_dispatch_decision(
         decision.fields.insert(
             "currentAgentType".to_owned(),
             serde_json::Value::String(current_agent.unwrap_or_default().to_owned()),
+        );
+        decision.fields.insert(
+            "currentRegisteredAgentName".to_owned(),
+            serde_json::Value::String(registered_agent_name.unwrap_or_default().to_owned()),
         );
         decision.fields.insert(
             "dispatchAdmission".to_owned(),
@@ -181,11 +195,6 @@ fn enforce_registered_subagent_capability(
         return decision;
     }
 
-    let dispatch_satisfied = decision
-        .fields
-        .get("dispatchSatisfied")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false);
     let registration_verified = payload
         .get("registration_verified")
         .and_then(serde_json::Value::as_bool)
@@ -196,11 +205,14 @@ fn enforce_registered_subagent_capability(
         .and_then(serde_json::Value::as_array)
         .is_some_and(|denied| denied.iter().any(|action| action.as_str() == Some("edit")));
     let attempts_edit = actions.iter().any(|action| {
-        action
-            .derive_agent_action()
-            .capabilities
-            .iter()
-            .any(|capability| capability.action == crate::action_ir::AgentActionKind::Edit)
+        action.host_action == crate::action_ir::HostInvocationKind::Edit
+            || action
+                .derive_agent_action()
+                .filesystem_permissions
+                .iter()
+                .any(|permission| {
+                    permission.permission == crate::action_ir::FilesystemPermissionKind::Write
+                })
     });
     if registration_verified && edit_is_denied && attempts_edit {
         let agent_name = payload
@@ -273,7 +285,15 @@ fn enforce_registered_subagent_capability(
     if decision.decision != DecisionKind::Allow {
         return decision;
     }
-    if dispatch_satisfied && registration_verified && profile_allows_intent {
+    if registration_verified && profile_allows_intent {
+        decision.fields.insert(
+            "capabilityAdmission".to_owned(),
+            serde_json::Value::String("verified-registration-intent".to_owned()),
+        );
+        decision.fields.insert(
+            "registeredAgentName".to_owned(),
+            serde_json::Value::String(registered_agent_name.to_owned()),
+        );
         return decision;
     }
 
@@ -343,7 +363,11 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
         return with_hook_match_receipt(decision, request.payload, &actions, request.config);
     }
     let decision = resolve_dispatch_decision(decision, request.payload);
-    let mut decision = enforce_registered_subagent_capability(decision, request.payload, &actions);
+    let mut decision = if matches!(request.event, "pre-tool" | "permission-request") {
+        enforce_registered_subagent_capability(decision, request.payload, &actions)
+    } else {
+        decision
+    };
     if decision.reason_kind == ReasonKind::RegisteredSourceRouteRequired {
         super::materialize_source_access_deny_message(&mut decision);
     }
@@ -376,20 +400,7 @@ fn with_hook_match_receipt(
             .message
             .push_str(&format!("\nDenied command: `{command}`."));
     }
-    if let Some((generation_digest, kernel_version)) = config.hook_policy_receipt() {
-        decision.fields.insert(
-            "hookPolicySnapshotDigest".to_string(),
-            Value::String(generation_digest.to_owned()),
-        );
-        decision.fields.insert(
-            "hookPolicyKernelVersion".to_string(),
-            Value::String(kernel_version.to_owned()),
-        );
-        decision.fields.insert(
-            "hookPolicySynchronousDependencies".to_string(),
-            Value::Array(Vec::new()),
-        );
-    }
+    config.attach_hook_policy_receipt(&mut decision);
     decision
 }
 
@@ -482,7 +493,13 @@ pub(super) fn collect_payload_tool_actions(payload: &Value) -> Vec<ToolAction> {
         .or_else(|| payload.get("input"))
         .or_else(|| payload.get("arguments"))
         .unwrap_or(payload);
-    collect_tool_actions(&tool_name, tool_input)
+    let host_action = crate::tool_action_host_binding::plugin_host_action(payload)
+        .unwrap_or(crate::action_ir::HostInvocationKind::Unknown);
+    let mut actions = collect_tool_actions(&tool_name, tool_input);
+    for action in &mut actions {
+        action.host_action = host_action;
+    }
+    actions
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -514,11 +531,10 @@ pub fn direct_read_source_key(payload: &Value) -> Option<DirectReadSourceKey> {
 pub(super) fn direct_read_source_key_from_actions(
     actions: &[ToolAction],
 ) -> Option<DirectReadSourceKey> {
-    let mut relevant = actions
-        .iter()
-        .filter(|action| action.operation == crate::tool_action::OperationIntent::DirectRead);
-    let action = relevant.next()?;
-    if relevant.next().is_some() {
+    let [action] = actions else {
+        return None;
+    };
+    if action.operation != crate::tool_action::OperationIntent::DirectRead {
         return None;
     }
     let [path] = action.paths.as_slice() else {

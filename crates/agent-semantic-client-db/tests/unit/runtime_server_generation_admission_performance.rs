@@ -63,7 +63,10 @@ async fn thirty_run_admission_p99_within_durable_publication_boundary() {
             );
         }
         latencies.push(elapsed);
-        if receipt.state == WorkspaceGenerationAdmissionState::Building {
+        if matches!(
+            receipt.state,
+            WorkspaceGenerationAdmissionState::Queued | WorkspaceGenerationAdmissionState::Building
+        ) {
             admission
                 .wait_terminal(&workspace_identity, &project_root)
                 .await

@@ -111,6 +111,61 @@ impl AgentsRegistry {
             .get(&(platform.to_owned(), agent_name.to_owned()))
             .cloned())
     }
+
+    /// Resolve the unique route that declaratively owns the exact Host role.
+    pub fn compile_route_for_platform_host_role(
+        &self,
+        platform: &str,
+        role: &str,
+    ) -> Result<Option<CompiledAgentRoute>, String> {
+        let routes = self
+            .registry
+            .agents
+            .iter()
+            .filter(|(_, route)| route.roles.iter().any(|candidate| candidate == role))
+            .filter_map(|(route_key, _)| {
+                self.compiled_routes
+                    .get(&(route_key.clone(), platform.to_owned()))
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        if routes.is_empty() {
+            return Ok(None);
+        }
+        if routes.len() != 1 {
+            let owners = routes
+                .iter()
+                .map(|route| route.route_key.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(format!(
+                "agent role `{role}` is ambiguous in the `{platform}` platform registry: {owners}"
+            ));
+        }
+        Ok(routes.first().cloned())
+    }
+
+    /// Resolve either a canonical Host agent name or a native Host role.
+    pub fn compile_route_for_platform_host_identity(
+        &self,
+        platform: &str,
+        identity: &str,
+    ) -> Result<Option<CompiledAgentRoute>, String> {
+        let by_name = self.compile_route_for_platform_host_agent_name(platform, identity)?;
+        let by_role = self.compile_route_for_platform_host_role(platform, identity)?;
+        match (by_name, by_role) {
+            (None, None) => Ok(None),
+            (Some(route), None) | (None, Some(route)) => Ok(Some(route)),
+            (Some(by_name), Some(by_role)) if by_name.route_key == by_role.route_key => {
+                Ok(Some(by_name))
+            }
+            (Some(by_name), Some(by_role)) => Err(format!(
+                "Host identity `{identity}` resolves to both `{}` and `{}` in the `{platform}` platform registry",
+                by_name.route_key.as_str(),
+                by_role.route_key.as_str(),
+            )),
+        }
+    }
 }
 
 pub const CODEX_AGENT_DEFINITION_SCHEMA_ID: &str =
@@ -254,6 +309,7 @@ fn load_agent_route_registry_for_platforms(
         .to_path_buf();
     let mut compiled_routes = BTreeMap::new();
     let mut compiled_platform_names = BTreeMap::new();
+    let mut compiled_platform_roles = BTreeMap::new();
     if let Some(platform) = selected_platform
         && !registry.platforms.contains_key(platform)
     {
@@ -289,6 +345,13 @@ fn load_agent_route_registry_for_platforms(
                     existing.route_key.as_str(),
                     route_key,
                 ));
+            }
+            for role in &route.roles {
+                let role_key = (platform.clone(), role.clone());
+                compiled_platform_roles
+                    .entry(role_key)
+                    .or_insert_with(Vec::new)
+                    .push(compiled.clone());
             }
             compiled_routes.insert((route_key.clone(), platform.clone()), compiled);
         }

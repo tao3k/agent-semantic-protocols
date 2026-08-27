@@ -1,6 +1,6 @@
 use agent_semantic_client_db::runtime_server_control::prewarm_runtime_server_status_memory;
 use agent_semantic_client_db::{
-    RuntimeServerControlReceipt, RuntimeServerOperation, call_runtime_server,
+    RuntimeServerControlReceipt, RuntimeServerOperation, call_runtime_server_for_state_home,
 };
 use clap::{Command, CommandFactory, Parser, Subcommand};
 use sha2::{Digest, Sha256};
@@ -30,7 +30,6 @@ enum ServerCommand {
     /// Start the single ASP Server owned by the ASP State Home.
     Start,
     Status,
-    Restart,
     /// Drain and stop the single ASP Server owned by the ASP State Home.
     Stop,
     /// Query resident OpenTelemetry performance receipts without opening Turso.
@@ -44,9 +43,6 @@ enum ServerCommand {
 pub(crate) fn runtime_server_command() -> Command {
     ServerArgs::command()
 }
-
-pub(crate) const RUNTIME_SERVER_SUPERVISOR_EXECUTION_BUDGET: std::time::Duration =
-    std::time::Duration::from_millis(800);
 
 pub(crate) async fn runtime_server_workspace_session_async(
     project_root: &Path,
@@ -109,7 +105,6 @@ pub(crate) async fn run_runtime_server_command(args: &[String]) -> Result<(), St
         ServerCommand::Daemon => runtime_server_daemon::run_daemon().await,
         ServerCommand::Start => run_start().await,
         ServerCommand::Status => run_status().await,
-        ServerCommand::Restart => run_restart().await,
         ServerCommand::Stop => runtime_server_stop::run_stop().await,
         ServerCommand::Telemetry(args) => {
             runtime_server_telemetry_command::run_telemetry_query(args).await
@@ -128,7 +123,8 @@ async fn run_control_status() -> Result<(), String> {
     validate_runtime_server_service_publication(&endpoint).await?;
     let request_id = request_identity("control").await?;
     prewarm_runtime_server_status_memory(&endpoint).await?;
-    let receipt = call_runtime_server(
+    let receipt = call_runtime_server_for_state_home(
+        &state_home,
         &endpoint,
         RuntimeServerOperation::Status,
         endpoint.runtime_binary_identity.clone(),
@@ -138,124 +134,46 @@ async fn run_control_status() -> Result<(), String> {
     print_receipt(&receipt).await
 }
 
-pub(super) async fn await_healthy_runtime_server_after_spawn() -> Result<(), String> {
-    await_healthy_runtime_server_after_spawn_inner().await
-}
-
-async fn await_healthy_runtime_server_after_spawn_inner() -> Result<(), String> {
-    const PROBE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(10);
-
-    let state_home = state_home()?;
-    loop {
-        if let Some(owner) =
-            agent_semantic_client_db::runtime_server_lifecycle::read_owner_receipt(&state_home)
-                .await?
-            && let Some(exit) =
-                agent_semantic_client_db::runtime_server_lifecycle::read_owner_exit_for(
-                    &state_home,
-                    u64::from(owner.process_id),
-                )
-                .await?
-        {
-            return Err(serde_json::json!({
-                "schemaId": "agent.semantic-protocols.runtime-server-daemon-exit",
-                "schemaVersion": "1",
-                "state": "failed",
-                "ownerEpoch": exit.owner_epoch,
-                "cleanDrain": exit.clean_drain,
-                "errors": exit.errors,
-                "reasonKind": "runtime-server-daemon-terminal-before-readiness",
-            })
-            .to_string());
-        }
-        let endpoint_path =
-            agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(
-                &state_home,
-            )
-            .await?;
-        if let Ok(endpoint) = read_supervisor_endpoint(&endpoint_path).await {
-            if let Some(exit) =
-                agent_semantic_client_db::runtime_server_lifecycle::read_owner_exit_for(
-                    &state_home,
-                    endpoint.owner_epoch,
-                )
-                .await?
-            {
-                return Err(serde_json::json!({
-                    "schemaId": "agent.semantic-protocols.runtime-server-daemon-exit",
-                    "schemaVersion": "1",
-                    "state": "failed",
-                    "ownerEpoch": exit.owner_epoch,
-                    "cleanDrain": exit.clean_drain,
-                    "errors": exit.errors,
-                    "reasonKind": "runtime-server-daemon-terminal-before-readiness",
-                })
-                .to_string());
-            }
-        }
-        let last_state = match observe_runtime_server_readiness(&state_home).await {
-            Ok(receipt)
-                if receipt.state
-                    == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy =>
-            {
-                let endpoint_path = agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(
-                    &state_home,
-                )
-                .await?;
-                let endpoint = read_supervisor_endpoint(&endpoint_path).await?;
-                let active_path = tokio::fs::canonicalize(
-                    state_home.join("runtime/profiles/asp/active"),
-                )
-                .await
-                .map_err(|error| format!("failed to resolve active Runtime artifact: {error}"))?;
-                let active_digest = agent_semantic_content_identity::
-                    blake3_digest_from_canonical_artifact_path(&active_path)
-                    .ok_or_else(|| "active Runtime artifact is not digest-addressed".to_owned())?;
-                if endpoint.runtime_binary_identity.value() != active_digest {
-                    return Err(serde_json::json!({
-                        "schemaId": "agent.semantic-protocols.runtime-server-endpoint",
-                        "schemaVersion": "1",
-                        "state": "failed",
-                        "reasonKind": "runtime-artifact-digest-mismatch",
-                        "repair": "asp install binary",
-                    })
-                    .to_string());
-                }
-                agent_semantic_artifacts::runtime_artifact_catalog::
-                    promote_active_runtime_artifact_to_healthy(
-                        &state_home,
-                        "asp",
-                        &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
-                            &active_digest,
-                        )?,
-                    )
-                    .await?;
-                return Ok(());
-            }
-            Ok(receipt) => receipt.reason.unwrap_or_else(|| format!("{:?}", receipt.state)),
-            Err(error) => error,
-        };
-        // A detached Runtime owner owns readiness.  The client never expires a
-        // healthy-in-progress owner with an arbitrary wall-clock budget; it
-        // waits for either the immutable status-memory publication above or the
-        // daemon-owned terminal receipt checked before it.
-        let _ = last_state;
-        tokio::time::sleep(PROBE_INTERVAL).await;
-    }
-}
-
 async fn run_start() -> Result<(), String> {
     run_start_inner().await?;
-    await_healthy_runtime_server_after_spawn().await?;
     run_status().await
 }
 
 async fn run_start_inner() -> Result<(), String> {
     let state_home = state_home()?;
-    match super::runtime_server_wire_adapter::ensure_runtime_server(&state_home, true).await? {
-        Some(receipt) => print_receipt(&receipt).await,
-        None => run_status().await,
+    let event = operator_start_activation_event(&state_home)
+        .await?
+        .ok_or_else(|| {
+        "state=runtime-server-activation-unavailable reasonKind=pending-activation-event-missing"
+            .to_owned()
+    })?;
+    super::runtime_server_wire_adapter::ensure_healthy_runtime_server_for_activation_event(
+        &state_home,
+        &event,
+        None,
+    )
+    .await?;
+    Ok(())
+}
+
+async fn operator_start_activation_event(
+    state_home: &Path,
+) -> Result<
+    Option<agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent>,
+    String,
+> {
+    if let Some(event) =
+        agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(
+            state_home,
+        )
+        .await?
+    {
+        return Ok(Some(event));
     }
+    agent_semantic_artifacts::runtime_artifact_publication::read_applied_runtime_artifact_activation_event(
+        state_home,
+    )
+    .await
 }
 
 async fn run_status() -> Result<(), String> {
@@ -287,68 +205,10 @@ async fn run_status() -> Result<(), String> {
     }
 }
 
-async fn run_restart() -> Result<(), String> {
-    run_restart_inner().await?;
-    await_healthy_runtime_server_after_spawn().await?;
-    run_status().await
-}
-
-async fn run_restart_inner() -> Result<(), String> {
-    let state_home = state_home()?;
-    match restart_runtime_server_at(&state_home).await? {
-        Some(receipt) => print_receipt(&receipt).await,
-        None => run_status().await,
-    }
-}
-
-async fn restart_runtime_server_at(
-    state_home: &Path,
-) -> Result<Option<super::runtime_server_wire_adapter::RuntimeServerSpawnReceipt>, String> {
-    let endpoint_path =
-        agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(
-            state_home,
-        )
-        .await?;
-    if let Ok(endpoint) = read_supervisor_endpoint(&endpoint_path).await {
-        agent_semantic_client_db::runtime_server_lifecycle::remove_stale(&state_home).await?;
-        super::runtime_server_wire_adapter::request_runtime_server_drain(&state_home).await?;
-        let exit = agent_semantic_client_db::runtime_server_lifecycle::await_owner_exit(
-            &state_home,
-            endpoint.owner_epoch,
-        )
-        .await?;
-        if !exit.clean_drain {
-            return Err("Runtime Server restart stopped after a failed service drain".to_owned());
-        }
-        cleanup_endpoint(&state_home, &endpoint).await?;
-    }
-    super::runtime_server_wire_adapter::ensure_runtime_server(state_home, true).await
-}
-
 pub(crate) async fn ensure_runtime_server_for_healthcheck(
     state_home: &Path,
 ) -> Result<RuntimeServerControlReceipt, String> {
-    super::runtime_server_wire_adapter::ensure_healthy_runtime_server(state_home).await
-}
-
-pub(crate) async fn observe_agent_facing_runtime_server(
-    state_home: &Path,
-) -> Result<RuntimeServerControlReceipt, String> {
-    let endpoint_path =
-        agent_semantic_client_db::runtime_server_control::runtime_server_endpoint_path_async(
-            state_home,
-        )
-        .await?;
-    let endpoint = read_endpoint(&endpoint_path).await?;
-    let request_id = request_identity("session-choice-plane").await?;
-    prewarm_runtime_server_status_memory(&endpoint).await?;
-    call_runtime_server(
-        &endpoint,
-        RuntimeServerOperation::Status,
-        endpoint.runtime_binary_identity.clone(),
-        request_id,
-    )
-    .await
+    observe_runtime_server_readiness(state_home).await
 }
 
 pub(super) async fn observe_runtime_server_readiness(
@@ -416,14 +276,175 @@ async fn print_receipt<T: serde::Serialize>(receipt: &T) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn state_home() -> Result<PathBuf, String> {
-    if let Some(path) = std::env::var_os("ASP_STATE_HOME").filter(|value| !value.is_empty()) {
-        return Ok(PathBuf::from(path));
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RuntimeServerClientBootstrapDisposition {
+    Continue,
+    Terminal,
+}
+
+pub(crate) fn runtime_server_client_bootstrap_continues(
+    disposition: RuntimeServerClientBootstrapDisposition,
+) -> bool {
+    disposition == RuntimeServerClientBootstrapDisposition::Continue
+}
+
+pub(crate) fn runtime_server_client_bootstrap_receipt(
+    outcome: agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome,
+    activation_generation: u64,
+    artifact_digest: String,
+    authority: &agent_semantic_client_db::runtime_server_control::RuntimeServerClientBootstrapAuthority,
+) -> Option<agent_semantic_client_db::runtime_server_control::RuntimeServerClientBootstrapReceipt> {
+    use agent_semantic_client_db::runtime_server_control::{
+        RuntimeServerClientBootstrapReceipt, RuntimeServerState,
+    };
+
+    match outcome {
+        agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome::AlreadyResident => {
+            None
+        }
+        agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome::SpawnAccepted => {
+            Some(RuntimeServerClientBootstrapReceipt::new(
+                RuntimeServerState::Starting,
+                "runtime-server-activation-spawn-accepted",
+                Some(activation_generation),
+                Some(artifact_digest),
+                "observe-runtime-server-activation",
+                authority.clone(),
+            ))
+        }
+        agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome::OwnerStale => {
+            Some(RuntimeServerClientBootstrapReceipt::new(
+                RuntimeServerState::Degraded,
+                "runtime-server-owner-stale",
+                Some(activation_generation),
+                Some(artifact_digest),
+                "inspect-runtime-server-owner-receipt",
+                authority.clone(),
+            ))
+        }
+        agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome::Failed => {
+            Some(RuntimeServerClientBootstrapReceipt::new(
+                RuntimeServerState::Degraded,
+                "runtime-server-supervisor-failed",
+                Some(activation_generation),
+                Some(artifact_digest),
+                "inspect-runtime-server-supervisor-receipt",
+                authority.clone(),
+            ))
+        }
     }
-    let home = std::env::var_os("HOME")
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| "ASP_STATE_HOME and HOME are both unset".to_owned())?;
-    Ok(PathBuf::from(home).join(".agent-semantic-protocols"))
+}
+
+pub(crate) async fn reconcile_pending_runtime_activation_for_client_bootstrap()
+-> Result<RuntimeServerClientBootstrapDisposition, String> {
+    let state_resolution = agent_semantic_runtime::state_core::resolve_state_home_projection()?;
+    let state_home = state_resolution.state_home.clone();
+    let authority = agent_semantic_client_db::runtime_server_control::RuntimeServerClientBootstrapAuthority {
+        cwd: std::env::current_dir()
+            .map_err(|error| format!("resolve Runtime client bootstrap cwd: {error}"))?,
+        executable_path: std::env::current_exe()
+            .map_err(|error| format!("resolve Runtime client bootstrap executable: {error}"))?,
+        state_home: state_home.clone(),
+        state_home_source: state_resolution.source,
+        asp_state_home_present: state_resolution.asp_state_home_present,
+        home_present: state_resolution.home_present,
+        pending_activation_path: agent_semantic_artifacts::runtime_artifact_publication::runtime_artifact_activation_event_path(&state_home),
+        applied_activation_path: state_home.join("runtime/activation/applied.json"),
+        runtime_endpoint_path: agent_semantic_client_db::runtime_server_endpoint_path(&state_home)?,
+    };
+    let Some(activation_event) = operator_start_activation_event(&state_home).await? else {
+        // Reusing an already-published endpoint is the only no-activation path
+        // that depends on owner authority.  Validate that authority before
+        // admitting the endpoint: a legacy owner observation is typed stale,
+        // while malformed or unknown observations remain fail-closed.
+        let current_owner =
+            agent_semantic_client_db::runtime_server_lifecycle::read_owner_receipt(&state_home)
+                .await?;
+        if matches!(
+            observe_runtime_server_readiness(&state_home).await,
+            Ok(receipt)
+                if receipt.state
+                    == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
+                    && current_owner.is_some()
+        ) {
+            return Ok(RuntimeServerClientBootstrapDisposition::Continue);
+        }
+        print_receipt(
+            &agent_semantic_client_db::runtime_server_control::RuntimeServerClientBootstrapReceipt::new(
+                agent_semantic_client_db::runtime_server_control::RuntimeServerState::Degraded,
+                "runtime-server-activation-unavailable",
+                None,
+                None,
+                "publish-runtime-artifact-activation",
+                authority.clone(),
+            ),
+        )
+        .await?;
+        return Ok(RuntimeServerClientBootstrapDisposition::Terminal);
+    };
+
+    if !agent_semantic_client_db::runtime_server_lifecycle::admit_activation_after_operator_stop(
+        &state_home,
+        activation_event.activation_generation,
+    )
+    .await?
+    {
+        print_receipt(
+            &agent_semantic_client_db::runtime_server_control::RuntimeServerClientBootstrapReceipt::new(
+                agent_semantic_client_db::runtime_server_control::RuntimeServerState::Degraded,
+                "runtime-server-operator-stopped",
+            Some(activation_event.activation_generation),
+            Some(activation_event.artifact_digest.to_string()),
+                "publish-newer-runtime-artifact-activation",
+                authority.clone(),
+            ),
+        )
+        .await?;
+        return Ok(RuntimeServerClientBootstrapDisposition::Terminal);
+    }
+
+    let outcome = super::runtime_server_wire_adapter::ensure_runtime_server_for_activation_event(
+        &state_home,
+        &activation_event,
+        activation_event.previous_artifact_digest.as_ref(),
+    )
+    .await?;
+    if outcome
+        == agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome::AlreadyResident
+        && !matches!(
+            observe_runtime_server_readiness(&state_home).await,
+            Ok(receipt)
+                if receipt.state
+                    == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
+        )
+    {
+        print_receipt(
+            &agent_semantic_client_db::runtime_server_control::RuntimeServerClientBootstrapReceipt::new(
+                agent_semantic_client_db::runtime_server_control::RuntimeServerState::Starting,
+                "runtime-server-activation-owner-starting",
+                Some(activation_event.activation_generation),
+                Some(activation_event.artifact_digest.to_string()),
+                "observe-runtime-server-activation",
+                authority.clone(),
+            ),
+        )
+        .await?;
+        return Ok(RuntimeServerClientBootstrapDisposition::Terminal);
+    }
+    let Some(receipt) = runtime_server_client_bootstrap_receipt(
+        outcome,
+        activation_event.activation_generation,
+        activation_event.artifact_digest.to_string(),
+        &authority,
+    ) else {
+        return Ok(RuntimeServerClientBootstrapDisposition::Continue);
+    };
+    print_receipt(&receipt).await?;
+    Ok(RuntimeServerClientBootstrapDisposition::Terminal)
+}
+
+pub(crate) fn state_home() -> Result<PathBuf, String> {
+    agent_semantic_runtime::state_core::resolve_state_home()
 }
 
 pub(crate) fn runtime_server_telemetry_socket_path(state_home: &Path) -> Result<PathBuf, String> {
@@ -472,9 +493,7 @@ async fn os_entropy() -> Result<[u8; 32], String> {
         .map_err(|error| format!("failed to read OS entropy: {error}"))?;
     Ok(entropy)
 }
-use agent_semantic_client_db::runtime_server_control::{
-    cleanup_endpoint, read_endpoint, read_supervisor_endpoint,
-};
+use agent_semantic_client_db::runtime_server_control::{read_endpoint, read_supervisor_endpoint};
 
 #[cfg(test)]
 #[path = "../../tests/unit/server/runtime_server_lifecycle_cli.rs"]

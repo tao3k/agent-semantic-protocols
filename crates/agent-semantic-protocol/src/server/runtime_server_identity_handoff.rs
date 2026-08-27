@@ -72,9 +72,17 @@ impl<'a> RuntimeIdentityHandoffCoordinator<'a> {
         cleanup_endpoint(self.state_home, self.endpoint).await
     }
 
-    pub(super) async fn admit_successor(&self) -> Result<(), String> {
-        crate::server::runtime_server_wire_adapter::ensure_healthy_runtime_server_after_identity_handoff(
+    pub(super) async fn admit_successor(
+        &self,
+        event: &agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent,
+        serving_digest: Option<
+            &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+        >,
+    ) -> Result<(), String> {
+        crate::server::runtime_server_wire_adapter::ensure_healthy_runtime_server_for_activation_event(
             self.state_home,
+            event,
+            serving_digest,
         )
         .await
         .map(|_| ())

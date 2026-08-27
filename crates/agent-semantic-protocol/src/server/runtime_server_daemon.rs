@@ -54,46 +54,53 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         .map_err(|error| format!("failed to prepare Runtime Server workspace store: {error}"))?;
     let runtime_artifact_path = std::env::current_exe()
         .map_err(|error| format!("failed to resolve running ASP artifact: {error}"))?;
-    let runtime_binary_identity =
-        if let Some(expected_digest) = std::env::var_os("ASP_RUNTIME_BINARY_CONTENT_DIGEST") {
-            let expected_digest = expected_digest.to_string_lossy().into_owned();
-            let canonical_artifact = tokio::fs::canonicalize(&runtime_artifact_path)
-                .await
-                .map_err(|error| format!("canonicalize candidate Runtime artifact: {error}"))?;
-            let observed_digest =
-                agent_semantic_content_identity::blake3_digest_from_canonical_artifact_path(
-                    &canonical_artifact,
+    let runtime_binary_identity = if let Some(expected_digest) =
+        std::env::var_os("ASP_RUNTIME_BINARY_CONTENT_DIGEST")
+    {
+        let expected_digest = expected_digest.to_string_lossy().into_owned();
+        let expected_digest =
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
+                &expected_digest,
+            )
+            .map_err(|error| {
+                format!(
+                    "owner=runtime_server_daemon field=expectedDigest reasonKind=runtime-binary-identity-invalid {error}"
                 )
-                .ok_or_else(|| "candidate Runtime artifact is not content-addressed".to_owned())?;
-            if observed_digest != expected_digest {
-                return Err(serde_json::json!({
-                    "schemaId": "agent.semantic-protocols.runtime-server-generation-mismatch",
-                    "schemaVersion": "1",
-                    "reasonKind": "runtime-server-generation-mismatch",
-                    "expectedBinaryContentDigest": expected_digest,
-                    "observedBinaryContentDigest": observed_digest,
-                })
-                .to_string());
-            }
-            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
-                value: expected_digest,
-                algorithm: "blake3-256".to_owned(),
-            }
-        } else {
-            let runtime_artifact_identity =
-                agent_semantic_runtime::runtime_artifact_identity::read_runtime_artifact_identity(
-                    state_home, "asp",
-                )
-                .await?;
-            agent_semantic_runtime::runtime_artifact_identity::admit_runtime_invoker(
-                &runtime_artifact_path,
-                &runtime_artifact_identity,
-                &state_home.join("runtime/bin/asp"),
-            )?;
-            runtime_artifact_identity.identity()
-        };
-    let (client_http_listener, client_http_endpoint) =
-        runtime_asp_client::bind_http_listener().await?;
+            })?;
+        let canonical_artifact = tokio::fs::canonicalize(&runtime_artifact_path)
+            .await
+            .map_err(|error| format!("canonicalize candidate Runtime artifact: {error}"))?;
+        let observed_digest =
+            agent_semantic_content_identity::blake3_digest_from_canonical_artifact_path(
+                &canonical_artifact,
+            )
+            .ok_or_else(|| "candidate Runtime artifact is not content-addressed".to_owned())?;
+        if observed_digest != expected_digest.content_digest().as_str() {
+            return Err(serde_json::json!({
+                "schemaId": "agent.semantic-protocols.runtime-server-generation-mismatch",
+                "schemaVersion": "1",
+                "reasonKind": "runtime-server-generation-mismatch",
+                "expectedBinaryContentDigest": expected_digest.to_string(),
+                "observedBinaryContentDigest": observed_digest,
+            })
+            .to_string());
+        }
+        agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
+            digest: expected_digest,
+        }
+    } else {
+        let runtime_artifact_identity =
+            agent_semantic_runtime::runtime_artifact_identity::read_runtime_artifact_identity(
+                state_home, "asp",
+            )
+            .await?;
+        agent_semantic_runtime::runtime_artifact_identity::admit_runtime_invoker(
+            &runtime_artifact_path,
+            &runtime_artifact_identity,
+            &state_home.join("runtime/bin/asp"),
+        )?;
+        runtime_artifact_identity.identity()?
+    };
     let artifact_catalog =
         agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_artifact_catalog(
             &state_home,
@@ -108,7 +115,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         &artifact_catalog.digest(),
         owner_epoch,
         &binding_token,
-        &client_http_endpoint,
     )
     .await?;
     let provider_register_state_path =
@@ -165,12 +171,15 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     let generation_builder_runtime_search = runtime_search_service.clone();
     let generation_builder: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateBuilder =
         std::sync::Arc::new(
-            move |_workspace_identity, project_root, changed_paths, provider_target| {
+        move |_workspace_identity, project_root, changed_paths, provider_target, cancellation| {
                 let state_home = generation_builder_state_home.clone();
                 let provider_register =
                     std::sync::Arc::clone(&generation_builder_provider_register);
-                let runtime_search_service = generation_builder_runtime_search.clone();
-                Box::pin(async move {
+            let runtime_search_service = generation_builder_runtime_search.clone();
+            Box::pin(async move {
+                if cancellation.is_cancelled() {
+                    return Err("generation build cancelled before provider admission".to_owned());
+                }
                     let changed_path_count = changed_paths.len();
                     let runtime_provider_catalog = crate::command::installed_provider_artifacts::
                         load_runtime_provider_artifacts(&state_home)
@@ -237,11 +246,12 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                     };
                     let mut build = agent_semantic_client::source_index::
                         prepare_runtime_server_workspace_generation_with_runtime_service_async(
-                            runtime_search_service,
-                            project_root,
-                            registry,
-                            collection_scope,
-                        )
+                    runtime_search_service,
+                    project_root,
+                    registry,
+                    collection_scope,
+                    cancellation,
+                )
                         .await
                         .map_err(|error| {
                             format!(
@@ -257,7 +267,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     let owner_builder_provider_register = std::sync::Arc::clone(&provider_register);
     let owner_builder_runtime_search = runtime_search_service.clone();
     let owner_projection_builder: agent_semantic_client_db::runtime_server_admission::WorkspaceOwnerProjectionBuilder =
-        std::sync::Arc::new(move |workspace_identity, project_root, owner_path| {
+    std::sync::Arc::new(move |workspace_identity, project_root, owner_path, cancellation| {
             let state_home = owner_builder_state_home.clone();
             let provider_register = std::sync::Arc::clone(&owner_builder_provider_register);
             let runtime_search_service = owner_builder_runtime_search.clone();
@@ -289,7 +299,11 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                     .provider_runtime(project_root.clone(), language_id.clone())
                     .await?;
                 runtime_search_service
-                    .provider_runtime_await_ready(project_root.clone(), language_id.clone())
+                .provider_runtime_await_ready(
+                    project_root.clone(),
+                    language_id.clone(),
+                    cancellation,
+                )
                     .await?;
                 runtime_search_service
                     .provider_owner(
@@ -313,16 +327,14 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             &state_home,
         )
         .await?;
-    let server = RuntimeServer::bind_and_publish_with_artifact_catalog(
+    let server = RuntimeServer::bind_with_artifact_catalog(
         endpoint.clone(),
         std::sync::Arc::new(WorkspaceDbRegistry::default()),
-        &endpoint_path,
         workspace_store,
         std::sync::Arc::new(artifact_catalog),
     )
     .await
-    .map_err(|error| format!("failed to bind and publish Runtime Server: {error}"))?;
-    endpoint.validate_service_reachability().await?;
+    .map_err(|error| format!("failed to bind Runtime Server control plane: {error}"))?;
     let server = server
         .with_provider_register(std::sync::Arc::clone(&provider_register))
         .with_event_sender(diagnostic_events)
@@ -339,7 +351,16 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     let client_generation_admission = server.workspace_generation_admission().ok_or_else(|| {
         "Runtime Server client activation requires generation admission".to_owned()
     })?;
-    let client_http_service = runtime_asp_client::build_http_service(
+    let client_protocol_listener = agent_semantic_client_server::bind_asp_client_grpc_unix(
+        std::path::Path::new(&endpoint.data_plane_socket_path),
+    )
+    .await?;
+    let schema_bundles = runtime_asp_client::RuntimeSchemaBundleCatalog::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
+    )
+    .await?;
+    let client_grpc_service = runtime_asp_client::build_frame_service(
+        schema_bundles,
         runtime_search_service.clone(),
         std::sync::Arc::clone(server.workspace_registry()),
         runtime_provider_catalog.generation().to_owned(),
@@ -348,18 +369,22 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         query_generation_authority.clone(),
         lifecycle_bus.sender.clone(),
     )?;
+    server
+        .publish_endpoint_after_required_planes(&endpoint_path)
+        .await
+        .map_err(|error| format!("failed to publish ready Runtime Server endpoint: {error}"))?;
     let task_scope = RuntimeServerTaskScope::new("runtime-server-daemon");
-    let (client_http_shutdown, client_http_shutdown_receiver) = tokio::sync::watch::channel(false);
-    let mut generation_shutdown = client_http_shutdown.subscribe();
-    let (client_http_done_sender, mut client_http_done_receiver) = tokio::sync::oneshot::channel();
-    let client_http_task = task_scope.spawn("asp-client-http", async move {
-        let result = agent_semantic_client_server::serve_asp_client_protocol_http(
-            client_http_listener,
-            client_http_shutdown_receiver,
-            client_http_service,
+    let (client_grpc_shutdown, client_grpc_shutdown_receiver) = tokio::sync::watch::channel(false);
+    let mut generation_shutdown = client_grpc_shutdown.subscribe();
+    let (client_grpc_done_sender, mut client_grpc_done_receiver) = tokio::sync::oneshot::channel();
+    let client_grpc_task = task_scope.spawn("asp-client-grpc", async move {
+        let result = agent_semantic_client_server::serve_asp_client_grpc_unix(
+            client_protocol_listener,
+            client_grpc_service,
+            client_grpc_shutdown_receiver,
         )
         .await;
-        let _ = client_http_done_sender.send(result.clone());
+        let _ = client_grpc_done_sender.send(result.clone());
         result
     })?;
     let (provider_stream_shutdown, provider_stream_shutdown_receiver) =
@@ -430,9 +455,131 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
             }
         }
     })?;
+    let running_artifact_digest =
+        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
+            &std::env::var("ASP_RUNTIME_BINARY_CONTENT_DIGEST").map_err(|_| {
+                "Runtime daemon requires ASP_RUNTIME_BINARY_CONTENT_DIGEST activation authority"
+                    .to_owned()
+            })?,
+        )?;
+    let startup_activation = agent_semantic_artifacts::runtime_artifact_publication::
+        read_runtime_artifact_activation_event(state_home)
+        .await?
+        .ok_or_else(|| {
+            "Runtime daemon requires a pending activation generation before owner admission"
+                .to_owned()
+        })?;
+    if startup_activation.artifact_digest != running_artifact_digest {
+        return Err(
+            "Runtime daemon pending activation and launcher artifact identities differ".to_owned(),
+        );
+    }
+    let service_failure_shutdown = server.shutdown_handle();
+    let activation_state_home = state_home.to_path_buf();
+    let activation_endpoint = endpoint.clone();
+    let activation_running_artifact_digest = running_artifact_digest.clone();
+    let startup_activation_matches_running = true;
+    let activation_actor =
+        runtime_asp_client::artifact_activation::mount_runtime_daemon_artifact_activation(
+            activation_state_home.clone(),
+            move |event| {
+                let state_home = activation_state_home.clone();
+                let endpoint = activation_endpoint.clone();
+                let running_artifact_digest = activation_running_artifact_digest.clone();
+                async move {
+                    if running_artifact_digest == event.artifact_digest {
+                        agent_semantic_artifacts::runtime_artifact_publication::
+                            commit_runtime_artifact_activation(
+                                &state_home,
+                                &event,
+                                event.previous_artifact_digest.as_ref(),
+                            )
+                            .await?;
+                        let transaction = agent_semantic_client_db::runtime_server_lifecycle::
+                            observe_resident_transaction(&state_home)
+                            .await?;
+                        eprintln!(
+                            "[runtime-server-resident-transaction] {}",
+                            serde_json::to_string(&transaction).map_err(|error| format!(
+                                "encode Runtime resident transaction receipt: {error}"
+                            ))?
+                        );
+                        if let Some(ready_socket) =
+                            std::env::var_os("ASP_RUNTIME_ACTIVATION_READY_SOCKET")
+                        {
+                            let spawn = agent_semantic_client_db::runtime_server_lifecycle::
+                                read_owner_receipt(&state_home)
+                                .await?
+                                .ok_or_else(|| {
+                                    "Runtime activation ready publication requires owner-spawn authority"
+                                        .to_owned()
+                                })?;
+                            let launcher_receipt_digest =
+                                agent_semantic_client_db::runtime_server_lifecycle::
+                                    spawn_receipt_digest(&spawn)?;
+                            agent_semantic_client_db::runtime_server_lifecycle::
+                                publish_activation_ready(
+                                    std::path::Path::new(&ready_socket),
+                                    &agent_semantic_client_db::
+                                        RuntimeServerActivationReadyReceipt {
+                                        schema_id: "agent.semantic-protocols.runtime-activation-ready-receipt"
+                                            .to_owned(),
+                                        schema_version: "1".to_owned(),
+                                        state: "ready".to_owned(),
+                                        activation_generation: transaction.activation_generation,
+                                        artifact_digest: transaction.applied_artifact_digest,
+                                        owner_epoch: transaction.endpoint_owner_epoch,
+                                        launcher_receipt_digest,
+                                    },
+                                )
+                                .await?;
+                        }
+                        return Ok(());
+                    }
+                    RuntimeIdentityHandoffCoordinator::new(&state_home, &endpoint)
+                        .admit_successor(&event, Some(&running_artifact_digest))
+                        .await
+                }
+            },
+        )
+        .await?;
+    if startup_activation_matches_running {
+        let mut activation_receipts = activation_actor.receipts();
+        if activation_receipts.borrow().is_none() {
+            activation_receipts.changed().await.map_err(|_| {
+                "Runtime activation actor closed before startup transaction terminalized".to_owned()
+            })?;
+        }
+        let activation_receipt =
+            activation_receipts
+                .borrow_and_update()
+                .clone()
+                .ok_or_else(|| {
+                    "Runtime activation actor did not publish startup transaction authority"
+                        .to_owned()
+                })?;
+        if activation_receipt.state != "ready" {
+            return Err(format!(
+                "Runtime startup activation transaction failed: artifactDigest={} reason={}",
+                activation_receipt.artifact_digest,
+                activation_receipt
+                    .reason
+                    .unwrap_or_else(|| "unknown".to_owned())
+            ));
+        }
+    }
+    // The identity monitor observes the durable applied activation. Starting it
+    // before the startup transaction commits lets Tokio's immediate first
+    // interval tick see the previous applied generation and incorrectly drain
+    // the candidate that is still becoming active.
     let monitor_state_home = state_home.to_path_buf();
-    let mut identity_monitor =
-        spawn_runtime_identity_monitor(monitor_state_home.clone(), "asp".to_owned(), owner_epoch);
+    let mut identity_monitor = spawn_runtime_identity_monitor(
+        monitor_state_home.clone(),
+        owner_epoch,
+        startup_activation.activation_generation,
+        running_artifact_digest.clone(),
+        endpoint.artifact_mode.as_str(),
+    );
     let (identity_change_sender, mut identity_change_receiver) = tokio::sync::mpsc::channel(1);
     let monitor = task_scope.spawn("runtime-identity-monitor", async move {
         if let Some(identity_change) = identity_monitor.next_event().await {
@@ -442,33 +589,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         }
         identity_monitor.shutdown().await;
     })?;
-    let service_failure_shutdown = server.shutdown_handle();
-    let activation_state_home = state_home.to_path_buf();
-    let activation_endpoint = endpoint.clone();
-    let running_artifact_digest = std::env::var("ASP_RUNTIME_BINARY_CONTENT_DIGEST")
-        .ok()
-        .map(|value| {
-            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(&value)
-        })
-        .transpose()?;
-    let activation_actor =
-        runtime_asp_client::artifact_activation::mount_runtime_daemon_artifact_activation(
-            activation_state_home.clone(),
-            move |event| {
-                let state_home = activation_state_home.clone();
-                let endpoint = activation_endpoint.clone();
-                let running_artifact_digest = running_artifact_digest.clone();
-                async move {
-                    if running_artifact_digest.as_ref() == Some(&event.artifact_digest) {
-                        return Ok(());
-                    }
-                    RuntimeIdentityHandoffCoordinator::new(&state_home, &endpoint)
-                        .admit_successor()
-                        .await
-                }
-            },
-        )
-        .await?;
     let (server_done_sender, mut server_done_receiver) = tokio::sync::oneshot::channel();
     let server_task = task_scope.spawn("runtime-server", async move {
         let result = server.serve().await;
@@ -477,19 +597,19 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     })?;
     let winner = tokio::select! {
         result = &mut server_done_receiver => ("server", result),
-        result = &mut client_http_done_receiver => ("client-http", result),
+        result = &mut client_grpc_done_receiver => ("client-grpc", result),
         result = &mut provider_stream_done_receiver => ("provider-stream", result),
     };
     activation_actor.shutdown().await?;
     if winner.0 != "server" {
         service_failure_shutdown.shutdown();
     }
-    let _ = client_http_shutdown.send(true);
+    let _ = client_grpc_shutdown.send(true);
     let _ = provider_stream_shutdown.send(true);
-    let http_result = client_http_task
+    let grpc_result = client_grpc_task
         .join()
         .await
-        .map_err(|error| format!("ASP Client Protocol HTTP task failed: {error}"))?;
+        .map_err(|error| format!("ASP Client Protocol gRPC task failed: {error}"))?;
     let provider_stream_result = provider_stream_task
         .join()
         .await
@@ -500,22 +620,23 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
         .map_err(|error| format!("Runtime Server task failed: {error}"))?;
     let _ = generation_task.join().await;
     query_generation_authority.clear_all();
+    let identity_change = identity_change_receiver.try_recv().ok();
     let server_result = server_result.map(|_| ());
-    let server_result = match (winner.0, http_result, provider_stream_result, server_result) {
-        ("client-http", Ok(()), Ok(()), Ok(())) => {
-            Err("ASP Client Protocol HTTP service stopped before Runtime Server".to_owned())
+    let service_result = match (winner.0, grpc_result, provider_stream_result, server_result) {
+        ("client-grpc", Ok(()), Ok(()), Ok(())) => {
+            Err("ASP Client Protocol gRPC service stopped before Runtime Server".to_owned())
         }
-        ("client-http", Err(error), _, _) => Err(error),
+        ("client-grpc", Err(error), _, _) => Err(error),
         ("provider-stream", Ok(()), Ok(()), Ok(())) => {
             Err("ASP ProviderSession stream stopped before Runtime Server".to_owned())
         }
         ("provider-stream", _, Err(error), _) => Err(error),
         (_, Err(error), _, _) => Err(error),
         (_, _, Err(error), _) => Err(error),
-        (_, _, _, Err(error)) => Err(error),
-        (_, _, _, Ok(())) => Ok(()),
+        (_, _, _, result) => result,
     };
-    let identity_change = identity_change_receiver.try_recv().ok();
+    let server_result =
+        normalize_server_shutdown_for_identity_handoff(identity_change.is_some(), service_result);
     monitor.abort();
     // Once the accept loop has stopped, all independent resident services are
     // drained concurrently. Serial draining made stop latency additive and
@@ -546,6 +667,7 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
                 owner_epoch,
                 workspace_identity: None,
                 generation_digest: None,
+                candidate_digest: None,
                 transition: format!("service-drain:{service}"),
                 state: if state { "drained" } else { "failed" }.to_owned(),
                 elapsed_micros: elapsed.as_micros().try_into().unwrap_or(u64::MAX),
@@ -648,30 +770,6 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     RuntimeIdentityHandoffCoordinator::new(&state_home, &endpoint)
         .cleanup()
         .await?;
-    if identity_handoff
-        && !agent_semantic_client_db::runtime_server_lifecycle::operator_stopped(&state_home)
-            .await?
-    {
-        if let Err(error) = RuntimeIdentityHandoffCoordinator::new(&state_home, &endpoint)
-            .admit_successor()
-            .await
-        {
-            let failure =
-                format!("Runtime Server identity successor failed readiness admission: {error}");
-            eprintln!(
-                "[runtime-server-identity-handoff] {}",
-                serde_json::json!({
-                    "schemaId": "agent.semantic-protocols.runtime-server-identity-handoff",
-                    "schemaVersion": "1",
-                    "state": "failed",
-                    "ownerEpoch": owner_epoch,
-                    "reasonKind": "successor-readiness-failed",
-                    "error": failure,
-                })
-            );
-            return Err(failure);
-        }
-    }
     agent_semantic_client_db::runtime_server_lifecycle::publish_with_errors(
         &state_home,
         owner_epoch,
@@ -686,3 +784,18 @@ async fn run_daemon_at(state_home: &std::path::Path) -> Result<(), String> {
     .await?;
     result
 }
+
+fn normalize_server_shutdown_for_identity_handoff(
+    identity_handoff_requested: bool,
+    server_result: Result<(), String>,
+) -> Result<(), String> {
+    if identity_handoff_requested {
+        Ok(())
+    } else {
+        server_result
+    }
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/server/runtime_server_identity_monitor_shutdown.rs"]
+mod identity_handoff_shutdown_tests;

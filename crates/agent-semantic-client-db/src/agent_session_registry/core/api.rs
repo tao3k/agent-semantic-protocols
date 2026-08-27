@@ -1,14 +1,12 @@
 //! Synchronous public registry operations over the Turso-owned core.
 
 use super::AgentSessionRegistry;
-use super::host_execution::turso_observe_host_execution;
 use super::storage::{
-    block_on_agent_session_registry_async, turso_claim_resident_session, turso_delete_session,
-    turso_query_all_sessions, turso_query_sessions, turso_record_host_non_match,
-    turso_record_tool_event, turso_refresh_expired_sessions, turso_register_session,
-    turso_session_by_id, turso_session_by_id_any_project, turso_session_by_name,
-    turso_session_for_root_session_id_any_project, turso_set_archived_status,
-    turso_update_session_status,
+    block_on_agent_session_registry_async, turso_delete_session, turso_query_all_sessions,
+    turso_query_sessions, turso_record_tool_event, turso_refresh_expired_sessions,
+    turso_register_session, turso_session_by_id, turso_session_by_id_any_project,
+    turso_session_by_name, turso_session_for_root_session_id_any_project,
+    turso_set_archived_status, turso_update_session_status,
 };
 use crate::agent_session_registry::types::{
     AGENT_SESSION_STATUS_ACTIVE, AGENT_SESSION_STATUS_ARCHIVED, AGENT_SESSION_STATUS_INVALID,
@@ -20,62 +18,6 @@ use crate::agent_session_registry::types::{
 };
 
 impl AgentSessionRegistry {
-    pub(crate) async fn record_host_execution_observation_local(
-        &self,
-        observation: &crate::workspace_db_ipc::AgentHostExecutionObservationIpc,
-    ) -> Result<bool, String> {
-        let Some(current) = self
-            .query_sessions_local(
-                observation.project_id.clone(),
-                Some(observation.root_session_id.clone().into()),
-                Some(observation.platform_host_agent_name.clone().into()),
-            )
-            .await?
-            .into_iter()
-            .next()
-        else {
-            // Host execution is refinement evidence, not registration authority.
-            // The matching HostLifecycleEvent::Started carries the complete
-            // role/model/sandbox/binding identity needed to create generation 1.
-            return Ok(false);
-        };
-        if current.session_id() != observation.child_session_id {
-            return Err(format!(
-                "host-execution-observation-identity-mismatch: currentChild={} observedChild={}",
-                current.session_id(),
-                observation.child_session_id
-            ));
-        }
-        if matches!(current.status(), "achieved" | AGENT_SESSION_STATUS_INVALID) {
-            return Err(format!(
-                "host-execution-observation-terminal-namespace: status={}",
-                current.status()
-            ));
-        }
-        let mut metadata = serde_json::from_str::<serde_json::Value>(current.metadata_json())
-            .map_err(|_| "host-execution-observation-invalid-metadata".to_owned())?;
-        let binding = metadata
-            .get_mut("hostBinding")
-            .and_then(serde_json::Value::as_object_mut)
-            .ok_or_else(|| "host-execution-observation-requires-host-binding".to_owned())?;
-        binding.insert(
-            "hostChildId".to_owned(),
-            serde_json::Value::String(observation.child_session_id.as_str().to_owned()),
-        );
-        binding.insert(
-            "agentInstanceId".to_owned(),
-            serde_json::Value::String(observation.child_session_id.as_str().to_owned()),
-        );
-        binding.insert("lifecycleState".to_owned(), "live".into());
-        binding.insert("routable".to_owned(), true.into());
-        metadata["lastExecutionObservation"] = serde_json::json!({
-            "observationId": observation.observation_id,
-            "transcriptPath": observation.transcript_path,
-            "observedAt": observation.observed_at,
-        });
-        turso_observe_host_execution(&self.db_path, observation, &metadata.to_string()).await
-    }
-
     pub async fn record_host_execution_observation_async(
         &self,
         observation: crate::workspace_db_ipc::AgentHostExecutionObservationIpc,
@@ -123,7 +65,8 @@ impl AgentSessionRegistry {
         name: &str,
     ) -> Result<crate::runtime_server_control::AgentSessionControlPlaneState, String> {
         let state = agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)?;
-        let endpoint = crate::read_runtime_server_endpoint(&state.state_home)?
+        let endpoint = crate::read_runtime_server_endpoint(&state.state_home)
+            .await?
             .ok_or_else(|| "Runtime Server endpoint is unavailable".to_owned())?;
         let workspace_id = Self::workspace_id(project_root)?;
         let sessions = crate::read_runtime_server_agent_sessions(&endpoint).await?;
@@ -136,41 +79,47 @@ impl AgentSessionRegistry {
         )
     }
 
-    pub fn register_session(
+    pub async fn register_session(
         &self,
         request: AgentSessionRegisterRequest<'_>,
     ) -> Result<AgentSessionRecord, String> {
-        if self.session_is_retired(request.project_id.as_str(), request.session_id.as_str())? {
+        if self
+            .session_is_retired(request.project_id.as_str(), request.session_id.as_str())
+            .await?
+        {
             return Err(format!(
                 "retired physical session generation cannot be registered again: projectId={} sessionId={}",
                 request.project_id, request.session_id
             ));
         }
-        if let Some(result) = self.runtime_operation(
-            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::Register {
-                request: crate::workspace_db_ipc::AgentSessionRegisterIpcRequest {
-                    project_id: request.project_id.clone(),
-                    root_session_id: request.root_session_id.clone(),
-                    session_id: request.session_id.clone(),
-                    message_target_id: request.message_target_id.clone(),
-                    parent_session_id: request.parent_session_id.clone(),
-                    name: request.name.clone(),
-                    role: request.role.clone(),
-                    model_observation: request.model_observation.map(|observation| {
-                        crate::workspace_db_ipc::AgentSessionModelObservationIpc {
-                            model: observation.model.into(),
-                            source: observation.source.as_str().into(),
-                            observed_at: observation.observed_at,
-                            evidence_ref: observation.evidence_ref.map(Into::into),
-                        }
-                    }),
-                    status: request.status.clone(),
-                    expires_at: request.expires_at,
-                    metadata_json: request.metadata_json.clone(),
-                    now: request.now,
+        if let Some(result) = self
+            .runtime_operation(
+                crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::Register {
+                    request: crate::workspace_db_ipc::AgentSessionRegisterIpcRequest {
+                        project_id: request.project_id.clone(),
+                        root_session_id: request.root_session_id.clone(),
+                        session_id: request.session_id.clone(),
+                        message_target_id: request.message_target_id.clone(),
+                        parent_session_id: request.parent_session_id.clone(),
+                        name: request.name.clone(),
+                        role: request.role.clone(),
+                        model_observation: request.model_observation.map(|observation| {
+                            crate::workspace_db_ipc::AgentSessionModelObservationIpc {
+                                model: observation.model.into(),
+                                source: observation.source.as_str().into(),
+                                observed_at: observation.observed_at,
+                                evidence_ref: observation.evidence_ref.map(Into::into),
+                            }
+                        }),
+                        status: request.status.clone(),
+                        expires_at: request.expires_at,
+                        metadata_json: request.metadata_json.clone(),
+                        now: request.now,
+                    },
                 },
-            },
-        )? {
+            )
+            .await?
+        {
             return match result {
                 crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Registered { session } => {
                     Ok(session)
@@ -184,7 +133,7 @@ impl AgentSessionRegistry {
     }
 
     /// Publish one Host-native child lifecycle event through the Runtime Server owner.
-    pub fn record_host_lifecycle_event(
+    pub async fn record_host_lifecycle_event(
         &self,
         event: crate::workspace_db_ipc::AgentHostLifecycleEventIpc,
     ) -> Result<crate::workspace_db_ipc::AgentSessionRegistryIpcResult, String> {
@@ -192,7 +141,8 @@ impl AgentSessionRegistry {
             crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::RecordHostLifecycleEvent {
                 event,
             },
-        )?
+        )
+        .await?
         .ok_or_else(|| "Host lifecycle events require the Runtime Server registry proxy".to_owned())
     }
 
@@ -208,7 +158,7 @@ impl AgentSessionRegistry {
         .await
     }
 
-    pub fn record_host_non_match(
+    pub async fn record_host_non_match(
         &self,
         observation: crate::workspace_db_ipc::AgentHostNonMatchIpc,
     ) -> Result<crate::workspace_db_ipc::AgentSessionRegistryIpcResult, String> {
@@ -216,18 +166,9 @@ impl AgentSessionRegistry {
             crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::RecordHostNonMatch {
                 observation,
             },
-        )?
+        )
+        .await?
         .ok_or_else(|| "Host match decisions require the Runtime Server registry proxy".to_owned())
-    }
-
-    pub(crate) fn record_host_non_match_local(
-        &self,
-        observation: &crate::workspace_db_ipc::AgentHostNonMatchIpc,
-    ) -> Result<(), String> {
-        block_on_agent_session_registry_async(turso_record_host_non_match(
-            &self.db_path,
-            observation,
-        ))
     }
 
     pub async fn register_control_plane_agent(
@@ -295,29 +236,24 @@ impl AgentSessionRegistry {
         }
     }
 
-    /// Claim a resident route without replacing the child that already owns it.
-    pub fn claim_resident_session(
-        &self,
-        request: AgentSessionRegisterRequest<'_>,
-    ) -> Result<AgentSessionRecord, String> {
-        block_on_agent_session_registry_async(turso_claim_resident_session(&self.db_path, request))
-    }
-
     /// Return registered sessions for one project, optionally narrowed by root session and name.
-    pub fn query_sessions(
+    pub async fn query_sessions(
         &self,
         project_id: impl Into<AgentSessionProjectId>,
         root_session_id: Option<AgentSessionRootSessionId>,
         name: Option<AgentSessionResidentName>,
     ) -> Result<Vec<AgentSessionRecord>, String> {
         let project_id = project_id.into();
-        if let Some(result) = self.runtime_operation(
-            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::Query {
-                project_id: project_id.clone(),
-                root_session_id: root_session_id.clone(),
-                name: name.clone(),
-            },
-        )? {
+        if let Some(result) = self
+            .runtime_operation(
+                crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::Query {
+                    project_id: project_id.clone(),
+                    root_session_id: root_session_id.clone(),
+                    name: name.clone(),
+                },
+            )
+            .await?
+        {
             return match result {
                 crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Sessions { sessions } => {
                     Ok(sessions)
@@ -341,38 +277,23 @@ impl AgentSessionRegistry {
     /// `query_sessions`: the public synchronous adapter may proxy back through
     /// the Runtime Server and would otherwise recursively enter the same IPC
     /// owner while it is materializing a control-plane snapshot.
-    pub(crate) async fn query_sessions_local(
-        &self,
-        project_id: impl Into<AgentSessionProjectId>,
-        root_session_id: Option<AgentSessionRootSessionId>,
-        name: Option<AgentSessionResidentName>,
-    ) -> Result<Vec<AgentSessionRecord>, String> {
-        let project_id = project_id.into();
-        turso_query_sessions(
-            &self.db_path,
-            project_id.as_str(),
-            root_session_id
-                .as_ref()
-                .map(AgentSessionRootSessionId::as_str),
-            name.as_ref().map(AgentSessionResidentName::as_str),
-        )
-        .await
-    }
-
     /// Return one registered session by its concrete session id.
-    pub fn session_by_id(
+    pub async fn session_by_id(
         &self,
         project_id: impl Into<AgentSessionProjectId>,
         session_id: impl Into<AgentSessionId>,
     ) -> Result<Option<AgentSessionRecord>, String> {
         let project_id = project_id.into();
         let session_id = session_id.into();
-        if let Some(result) = self.runtime_operation(
-            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionById {
-                project_id: project_id.clone(),
-                session_id: session_id.clone(),
-            },
-        )? {
+        if let Some(result) = self
+            .runtime_operation(
+                crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionById {
+                    project_id: project_id.clone(),
+                    session_id: session_id.clone(),
+                },
+            )
+            .await?
+        {
             return match result {
                 crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Session { session } => {
                     Ok(session)
@@ -388,7 +309,7 @@ impl AgentSessionRegistry {
     }
 
     /// Return one registered session by its stable root/name route.
-    pub fn session_by_name(
+    pub async fn session_by_name(
         &self,
         project_id: impl Into<AgentSessionProjectId>,
         root_session_id: impl Into<AgentSessionRootSessionId>,
@@ -397,13 +318,16 @@ impl AgentSessionRegistry {
         let project_id = project_id.into();
         let root_session_id = root_session_id.into();
         let name = name.into();
-        if let Some(result) = self.runtime_operation(
-            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionByName {
-                project_id: project_id.clone(),
-                root_session_id: root_session_id.clone(),
-                name: name.clone(),
-            },
-        )? {
+        if let Some(result) = self
+            .runtime_operation(
+                crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionByName {
+                    project_id: project_id.clone(),
+                    root_session_id: root_session_id.clone(),
+                    name: name.clone(),
+                },
+            )
+            .await?
+        {
             return match result {
                 crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Session { session } => {
                     Ok(session)
@@ -427,21 +351,25 @@ impl AgentSessionRegistry {
     }
 
     /// Claim, poll, or rebind one exact resident-child dispatch identity.
-    pub fn claim_dispatch(
+    pub async fn claim_dispatch(
         &self,
         request: AgentSessionDispatchClaimRequest<'_>,
     ) -> Result<AgentSessionDispatchClaimResult, String> {
-        if let Some(result) = self.runtime_operation(
-            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::ClaimDispatch {
-                project_id: request.project_id.into(),
-                root_session_id: request.root_session_id.into(),
-                name: request.name.into(),
-                dispatch_identity: request.dispatch_identity.into(),
-                command_digest: request.command_digest.into(),
-                delivery_target_override: request.delivery_target_override.map(Into::into),
-                now: request.now,
-            },
-        )? {
+        if let Some(result) = self
+            .runtime_operation(
+                crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::ClaimDispatch {
+                    project_id: request.project_id.into(),
+                    root_session_id: request.root_session_id.into(),
+                    child_session_id: request.child_session_id.into(),
+                    name: request.name.into(),
+                    dispatch_identity: request.dispatch_identity.into(),
+                    command_digest: request.command_digest.into(),
+                    delivery_target_override: request.delivery_target_override.map(Into::into),
+                    now: request.now,
+                },
+            )
+            .await?
+        {
             return match result {
                 crate::workspace_db_ipc::AgentSessionRegistryIpcResult::DispatchClaimed {
                     result,
@@ -455,21 +383,24 @@ impl AgentSessionRegistry {
     }
 
     /// Record the terminal receipt for one exact resident-child dispatch identity.
-    pub fn complete_dispatch(
+    pub async fn complete_dispatch(
         &self,
         request: AgentSessionDispatchCompleteRequest<'_>,
     ) -> Result<AgentSessionDispatchLeaseRecord, String> {
-        if let Some(result) = self.runtime_operation(
-            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::CompleteDispatch {
-                project_id: request.project_id.into(),
-                root_session_id: request.root_session_id.into(),
-                name: request.name.into(),
-                dispatch_identity: request.dispatch_identity.into(),
-                command_digest: request.command_digest.into(),
-                evidence_ref: request.evidence_ref.into(),
-                now: request.now,
-            },
-        )? {
+        if let Some(result) = self
+            .runtime_operation(
+                crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::CompleteDispatch {
+                    project_id: request.project_id.into(),
+                    root_session_id: request.root_session_id.into(),
+                    name: request.name.into(),
+                    dispatch_identity: request.dispatch_identity.into(),
+                    command_digest: request.command_digest.into(),
+                    evidence_ref: request.evidence_ref.into(),
+                    now: request.now,
+                },
+            )
+            .await?
+        {
             return match result {
                 crate::workspace_db_ipc::AgentSessionRegistryIpcResult::DispatchCompleted {
                     lease,
@@ -501,29 +432,34 @@ impl AgentSessionRegistry {
     }
 
     /// Generic lookup used by registry CLI commands.
-    pub fn lookup_session(
+    pub async fn lookup_session(
         &self,
         request: AgentSessionLookupRequest,
     ) -> Result<Option<AgentSessionRecord>, String> {
         if let Some(session_id) = request.session_id.as_ref() {
-            return self.session_by_id(request.project_id.clone(), session_id.clone());
+            return self
+                .session_by_id(request.project_id.clone(), session_id.clone())
+                .await;
         }
         if let (Some(root_session_id), Some(name)) =
             (request.root_session_id.as_ref(), request.name.as_ref())
         {
-            return self.session_by_name(
-                request.project_id.clone(),
-                root_session_id.clone(),
-                name.clone(),
-            );
+            return self
+                .session_by_name(
+                    request.project_id.clone(),
+                    root_session_id.clone(),
+                    name.clone(),
+                )
+                .await;
         }
-        let sessions =
-            self.query_sessions(request.project_id, request.root_session_id, request.name)?;
+        let sessions = self
+            .query_sessions(request.project_id, request.root_session_id, request.name)
+            .await?;
         Ok(sessions.into_iter().next())
     }
 
     /// Update one session row to the supplied routing status.
-    pub fn update_session_status(
+    pub async fn update_session_status(
         &self,
         project_id: impl Into<AgentSessionProjectId>,
         session_id: impl Into<AgentSessionId>,
@@ -533,14 +469,17 @@ impl AgentSessionRegistry {
         let project_id = project_id.into();
         let session_id = session_id.into();
         let status = status.into();
-        if let Some(result) = self.runtime_operation(
-            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::UpdateStatus {
-                project_id: project_id.clone(),
-                session_id: session_id.clone(),
-                status: status.clone(),
-                now,
-            },
-        )? {
+        if let Some(result) = self
+            .runtime_operation(
+                crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::UpdateStatus {
+                    project_id: project_id.clone(),
+                    session_id: session_id.clone(),
+                    status: status.clone(),
+                    now,
+                },
+            )
+            .await?
+        {
             return match result {
                 crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Changed { changed } => {
                     Ok(changed)
@@ -558,7 +497,7 @@ impl AgentSessionRegistry {
     }
 
     /// Mark one session row invalid.
-    pub fn mark_session_invalid(
+    pub async fn mark_session_invalid(
         &self,
         project_id: impl Into<AgentSessionProjectId>,
         session_id: impl Into<AgentSessionId>,
@@ -567,10 +506,11 @@ impl AgentSessionRegistry {
         let project_id = project_id.into();
         let session_id = session_id.into();
         self.update_session_status(project_id, session_id, AGENT_SESSION_STATUS_INVALID, now)
+            .await
     }
 
     /// Archive one session row.
-    pub fn archive_session(
+    pub async fn archive_session(
         &self,
         project_id: impl Into<AgentSessionProjectId>,
         session_id: impl Into<AgentSessionId>,
@@ -578,14 +518,17 @@ impl AgentSessionRegistry {
     ) -> Result<bool, String> {
         let project_id = project_id.into();
         let session_id = session_id.into();
-        if let Some(result) = self.runtime_operation(
-            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SetArchivedStatus {
-                project_id: project_id.clone(),
-                session_id: session_id.clone(),
-                archived: true,
-                now,
-            },
-        )? {
+        if let Some(result) = self
+            .runtime_operation(
+                crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SetArchivedStatus {
+                    project_id: project_id.clone(),
+                    session_id: session_id.clone(),
+                    archived: true,
+                    now,
+                },
+            )
+            .await?
+        {
             return match result {
                 crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Changed { changed } => {
                     Ok(changed)
@@ -604,7 +547,7 @@ impl AgentSessionRegistry {
     }
 
     /// Unarchive one session row.
-    pub fn unarchive_session(
+    pub async fn unarchive_session(
         &self,
         project_id: impl Into<AgentSessionProjectId>,
         session_id: impl Into<AgentSessionId>,
@@ -612,14 +555,17 @@ impl AgentSessionRegistry {
     ) -> Result<bool, String> {
         let project_id = project_id.into();
         let session_id = session_id.into();
-        if let Some(result) = self.runtime_operation(
-            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SetArchivedStatus {
-                project_id: project_id.clone(),
-                session_id: session_id.clone(),
-                archived: false,
-                now,
-            },
-        )? {
+        if let Some(result) = self
+            .runtime_operation(
+                crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SetArchivedStatus {
+                    project_id: project_id.clone(),
+                    session_id: session_id.clone(),
+                    archived: false,
+                    now,
+                },
+            )
+            .await?
+        {
             return match result {
                 crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Changed { changed } => {
                     Ok(changed)
@@ -655,19 +601,22 @@ impl AgentSessionRegistry {
     }
 
     /// Return whether an exact physical session generation has been retired.
-    pub fn session_is_retired(
+    pub async fn session_is_retired(
         &self,
         project_id: impl Into<AgentSessionProjectId>,
         session_id: impl Into<AgentSessionId>,
     ) -> Result<bool, String> {
         let project_id = project_id.into();
         let session_id = session_id.into();
-        if let Some(result) = self.runtime_operation(
-            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionIsRetired {
-                project_id: project_id.clone(),
-                session_id: session_id.clone(),
-            },
-        )? {
+        if let Some(result) = self
+            .runtime_operation(
+                crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionIsRetired {
+                    project_id: project_id.clone(),
+                    session_id: session_id.clone(),
+                },
+            )
+            .await?
+        {
             return match result {
                 crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Changed { changed } => {
                     Ok(changed)
@@ -683,10 +632,13 @@ impl AgentSessionRegistry {
     }
 
     /// Refresh expired routable sessions in this registry DB.
-    pub fn refresh_expired_sessions(&self) -> Result<(), String> {
-        if let Some(result) = self.runtime_operation(
-            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::RefreshExpired,
-        )? {
+    pub async fn refresh_expired_sessions(&self) -> Result<(), String> {
+        if let Some(result) = self
+            .runtime_operation(
+                crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::RefreshExpired,
+            )
+            .await?
+        {
             return match result {
                 crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Refreshed => Ok(()),
                 _ => Err("Runtime Server returned an unexpected session refresh result".to_owned()),
@@ -697,16 +649,19 @@ impl AgentSessionRegistry {
     }
 
     /// Return one registered session by its concrete session id across all projects.
-    pub fn session_by_id_any_project(
+    pub async fn session_by_id_any_project(
         &self,
         session_id: impl Into<AgentSessionId>,
     ) -> Result<Option<AgentSessionRecord>, String> {
         let session_id = session_id.into();
-        if let Some(result) = self.runtime_operation(
-            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionByIdAnyProject {
-                session_id: session_id.clone(),
-            },
-        )? {
+        if let Some(result) = self
+            .runtime_operation(
+                crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionByIdAnyProject {
+                    session_id: session_id.clone(),
+                },
+            )
+            .await?
+        {
             return match result {
                 crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Session { session } => {
                     Ok(session)
@@ -723,7 +678,7 @@ impl AgentSessionRegistry {
     }
 
     /// Return the project id for the most recent session registered under one root.
-    pub fn project_id_for_root_session_id(
+    pub async fn project_id_for_root_session_id(
         &self,
         root_session_id: impl Into<AgentSessionRootSessionId>,
     ) -> Result<Option<String>, String> {
@@ -732,7 +687,7 @@ impl AgentSessionRegistry {
             crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::ProjectIdForRootSessionId {
                 root_session_id: root_session_id.clone(),
             },
-        )? {
+        ).await? {
             return match result {
                 crate::workspace_db_ipc::AgentSessionRegistryIpcResult::ProjectId {
                     project_id,

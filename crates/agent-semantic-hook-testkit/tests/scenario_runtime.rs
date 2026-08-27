@@ -91,7 +91,10 @@ async fn timed_out_hook_kills_process_group() {
     let mut spec = HookProcessSpec::new(&script, dir.path());
     spec.env
         .push(("CHILD_PID_FILE".to_owned(), pid_file.display().to_string()));
-    spec.timeout = Duration::from_secs(2);
+    // This fixture must first prove that a descendant exists before asserting
+    // group cleanup. Keep the production default at two seconds; allow this
+    // scheduler-pressure oracle a bounded five-second launch window.
+    spec.timeout = Duration::from_secs(5);
     let result = run_hook_process(&spec, &json!({})).await;
     assert!(matches!(result, Err(HookTestKitError::Timeout { .. })));
 

@@ -102,7 +102,10 @@ impl WorkspaceDbIpcSession {
             transport_contract_digest: endpoint.transport_contract_digest.clone(),
             owner_epoch: endpoint.owner_epoch,
             runtime_binary_path: endpoint.runtime_artifact_path.clone(),
-            runtime_binary_digest: endpoint.runtime_binary_identity.value().to_owned(),
+            runtime_binary_digest: endpoint
+                .runtime_binary_identity
+                .content_digest()
+                .to_string(),
             binding_token: endpoint.binding_token.clone(),
             socket_path: endpoint.data_plane_socket_path.clone(),
             generation_pointer_path,
@@ -129,7 +132,10 @@ impl WorkspaceDbIpcSession {
             transport_contract_digest: endpoint.transport_contract_digest.clone(),
             owner_epoch: endpoint.owner_epoch,
             runtime_binary_path: endpoint.runtime_artifact_path.clone(),
-            runtime_binary_digest: endpoint.runtime_binary_identity.value().to_owned(),
+            runtime_binary_digest: endpoint
+                .runtime_binary_identity
+                .content_digest()
+                .to_string(),
             binding_token: endpoint.binding_token.clone(),
             socket_path: endpoint.data_plane_socket_path.clone(),
             generation_pointer_path: None,
@@ -152,7 +158,10 @@ impl WorkspaceDbIpcSession {
             transport_contract_digest: endpoint.transport_contract_digest.clone(),
             owner_epoch: endpoint.owner_epoch,
             runtime_binary_path: endpoint.runtime_artifact_path.clone(),
-            runtime_binary_digest: endpoint.runtime_binary_identity.value().to_owned(),
+            runtime_binary_digest: endpoint
+                .runtime_binary_identity
+                .content_digest()
+                .to_string(),
             binding_token: endpoint.binding_token.clone(),
             socket_path: endpoint.data_plane_socket_path.clone(),
             generation_pointer_path: None,

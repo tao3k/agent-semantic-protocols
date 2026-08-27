@@ -28,6 +28,14 @@ fn owner(path: &str, selector: &str, bytes: &[u8]) -> WorkspaceOwnerSnapshot {
     }
 }
 
+fn callable_owner(path: &str, selector: &str, bytes: &[u8]) -> WorkspaceOwnerSnapshot {
+    let mut owner = owner(path, selector, bytes);
+    owner.selectors[0].derived_projections = vec![
+        crate::projection_fixture::callable_skeleton_projection_fixture(selector, "run_search"),
+    ];
+    owner
+}
+
 fn generation(
     workspace_identity: &str,
     epoch: u64,
@@ -75,7 +83,7 @@ fn generation(
             owners: vec![owner],
         },
     )
-    .expect("typed runtime workspace generation")
+    .unwrap_or_else(|error| panic!("typed runtime workspace generation: {error}"))
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -525,7 +533,7 @@ async fn generation_pointer_never_exposes_a_torn_epoch_during_publication() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn published_search_generation_reads_lexical_and_owner_sections_without_full_generation() {
+async fn published_generation_exposes_parser_owned_selectors_without_hidden_lexical_scan() {
     let temporary = tempdir().expect("temporary runtime root");
     let publisher = WorkspaceGenerationPublisher::new(temporary.path().join("published"))
         .await
@@ -535,7 +543,7 @@ async fn published_search_generation_reads_lexical_and_owner_sections_without_fu
             generation(
                 "workspace-search",
                 1,
-                owner(
+                callable_owner(
                     "src/lib.rs",
                     "rust://src/lib.rs#item/function/run_search",
                     b"fn run_search() {}",
@@ -557,8 +565,10 @@ async fn published_search_generation_reads_lexical_and_owner_sections_without_fu
     let lookup = client
         .read_source_index("run_search", None, 8)
         .expect("read lexical section");
-    assert_eq!(lookup.hits.len(), 1);
-    assert_eq!(lookup.hits[0].owner_path, "src/lib.rs");
+    assert!(
+        lookup.hits.is_empty(),
+        "source bytes must not become a hidden lexical-search implementation"
+    );
     assert_eq!(
         client
             .parser_owned_callable_selector_pairs(&["src/lib.rs".to_owned()])
@@ -578,18 +588,6 @@ async fn published_search_generation_reads_lexical_and_owner_sections_without_fu
         cached_elapsed < std::time::Duration::from_millis(1),
         "repeat resident search exceeded 1ms: {cached_elapsed:?}"
     );
-    let different_query_started = std::time::Instant::now();
-    let different_query = client
-        .read_source_index("fn", None, 8)
-        .expect("read a different query from the admitted typed tables");
-    let different_query_elapsed = different_query_started.elapsed();
-    assert_eq!(different_query.hits.len(), 1);
-    assert_eq!(different_query.hits[0].owner_path, "src/lib.rs");
-    assert!(
-        different_query_elapsed < std::time::Duration::from_millis(1),
-        "different resident search reparsed the generation: {different_query_elapsed:?}"
-    );
-
     let read = client.read_owner("src/lib.rs").expect("read owner section");
     let agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerRead::Owner {
         owner,

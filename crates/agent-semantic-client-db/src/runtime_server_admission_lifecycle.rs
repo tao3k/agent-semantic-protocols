@@ -20,7 +20,7 @@ impl WorkspaceGenerationAdmission {
             .map(|entry| entry.observed())
     }
 
-    pub async fn status(
+    pub fn status(
         &self,
         workspace_identity: &str,
         project_root: &std::path::Path,
@@ -46,7 +46,7 @@ impl WorkspaceGenerationAdmission {
                 project_root: project_root.to_path_buf(),
             },
         )?;
-        match self.status(workspace_identity, project_root).await {
+        match self.status(workspace_identity, project_root) {
             Some(receipt)
                 if !matches!(
                     receipt.state,
@@ -107,14 +107,17 @@ impl WorkspaceGenerationAdmission {
             changed.as_mut().enable();
             let receipt = self
                 .status(workspace_identity, project_root)
-                .await
                 .ok_or_else(|| {
                     format!(
                         "workspace generation admission is unknown: workspaceIdentity={workspace_identity} projectRoot={}",
                         project_root.display()
                     )
                 })?;
-            if receipt.state != WorkspaceGenerationAdmissionState::Building {
+            if !matches!(
+                receipt.state,
+                WorkspaceGenerationAdmissionState::Queued
+                    | WorkspaceGenerationAdmissionState::Building
+            ) {
                 if let Some(catalog) = &self.catalog {
                     catalog.wait_durable().await?;
                 }
@@ -136,7 +139,6 @@ impl WorkspaceGenerationAdmission {
             changed.as_mut().enable();
             let receipt = self
                 .status(workspace_identity, project_root)
-                .await
                 .ok_or_else(|| {
                     format!(
                         "workspace generation admission is unknown: workspaceIdentity={workspace_identity} projectRoot={}",
@@ -150,7 +152,11 @@ impl WorkspaceGenerationAdmission {
                 ));
             }
             if receipt.attempt == expected_attempt
-                && receipt.state != WorkspaceGenerationAdmissionState::Building
+                && !matches!(
+                    receipt.state,
+                    WorkspaceGenerationAdmissionState::Queued
+                        | WorkspaceGenerationAdmissionState::Building
+                )
             {
                 if let Some(catalog) = &self.catalog {
                     catalog.wait_durable().await?;

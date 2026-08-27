@@ -17,8 +17,9 @@ pub use identity::{
 };
 pub use layout::{
     ASP_STATE_HOME_ENV, CLIENT_DB_FILE, DEFAULT_SCOPE_ID, DEFAULT_STATE_HOME_DIR,
-    STATE_LAYOUT_VERSION, STATE_MANIFEST_FILE, StatePaths, TURSO_BACKEND, resolve_state_home,
-    resolve_state_home_from,
+    STATE_LAYOUT_VERSION, STATE_MANIFEST_FILE, StateHomeResolution, StateHomeResolutionSource,
+    StatePaths, TURSO_BACKEND, resolve_state_home, resolve_state_home_from,
+    resolve_state_home_projection, resolve_state_home_projection_from,
 };
 pub use registry_gc::{
     ProjectRegistryGcCandidate, ProjectRegistryGcOptions, ProjectRegistryGcReport,

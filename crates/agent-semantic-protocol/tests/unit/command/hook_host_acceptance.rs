@@ -50,7 +50,7 @@ fn hook_deny() -> serde_json::Value {
             "role": "user",
             "content": [{
                 "type": "input_text",
-                "text": "<hook_prompt>[asp-hook] {\"schemaId\":\"agent.semantic-protocols.hook.decision\",\"decision\":\"deny\"}</hook_prompt>"
+                "text": "<hook_prompt>[asp-hook] {\"schemaId\":\"agent.semantic-protocols.hook.decision\",\"schemaVersion\":\"1\",\"event\":\"pre-tool\",\"decision\":\"deny\",\"fields\":{\"configRuleId\":\"route-read-to-asp-languages\",\"hookMatcherGeneration\":\"mmap-hit\",\"hookPolicySnapshotDigest\":\"blake3-256:policy\",\"hookRuntimeArtifactFingerprint\":\"blake3-256:artifact\"}}</hook_prompt>"
             }]
         }
     })
@@ -105,7 +105,41 @@ fn normal_task_deny_without_source_bytes_is_accepted() {
     );
     let receipt = inspect_host_rollout(&path, PROBE_PATH, SENTINEL).expect("inspect rollout");
     assert!(receipt.accepted(), "{receipt:?}");
-    assert_eq!(receipt.reason_kind(), "normal-task-hook-deny-observed");
+    assert_eq!(
+        receipt.reason_kind(),
+        "normal-task-hook-generation-bound-deny-observed"
+    );
+    std::fs::remove_file(path).expect("remove rollout");
+}
+
+#[test]
+fn arbitrary_deny_without_publication_identity_is_rejected() {
+    let unbound_deny = json!({
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "user",
+            "content": [{
+                "type": "input_text",
+                "text": "<hook_prompt>[asp-hook] {\"schemaId\":\"agent.semantic-protocols.hook.decision\",\"schemaVersion\":\"1\",\"event\":\"pre-tool\",\"decision\":\"deny\"}</hook_prompt>"
+            }]
+        }
+    });
+    let path = write_rollout(
+        "unbound-deny",
+        &[
+            world_state(true),
+            probe_call(),
+            unbound_deny,
+            probe_output(""),
+        ],
+    );
+    let receipt = inspect_host_rollout(&path, PROBE_PATH, SENTINEL).expect("inspect rollout");
+    assert!(!receipt.accepted(), "{receipt:?}");
+    assert_eq!(
+        receipt.reason_kind(),
+        "hook-deny-publication-identity-missing"
+    );
     std::fs::remove_file(path).expect("remove rollout");
 }
 
@@ -123,7 +157,10 @@ fn unified_exec_deny_without_source_bytes_is_accepted() {
     );
     let receipt = inspect_host_rollout(&path, PROBE_PATH, SENTINEL).expect("inspect rollout");
     assert!(receipt.accepted(), "{receipt:?}");
-    assert_eq!(receipt.reason_kind(), "normal-task-hook-deny-observed");
+    assert_eq!(
+        receipt.reason_kind(),
+        "normal-task-hook-generation-bound-deny-observed"
+    );
     std::fs::remove_file(path).expect("remove rollout");
 }
 
@@ -192,7 +229,10 @@ fn long_rollout_uses_bounded_prefix_and_tail_windows() {
 
     let receipt = inspect_host_rollout(&path, PROBE_PATH, SENTINEL).expect("inspect rollout");
     assert!(receipt.accepted(), "{receipt:?}");
-    assert_eq!(receipt.reason_kind(), "normal-task-hook-deny-observed");
+    assert_eq!(
+        receipt.reason_kind(),
+        "normal-task-hook-generation-bound-deny-observed"
+    );
     std::fs::remove_file(path).expect("remove rollout");
 }
 

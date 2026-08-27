@@ -19,8 +19,14 @@ mod action_ir;
 mod codex_project_trust;
 mod codex_trust;
 mod command;
+mod execution_failure;
+pub use execution_failure::{HookExecutionFailure, HookExecutionFailureKind, HookExecutionPhase};
+mod publication_identity;
+pub use publication_identity::{is_generation_bound_hook_deny, is_typed_hook_deny};
+pub mod runtime_config;
 pub use command::semantic_shell_tokens;
 pub use tool_action::{codex_tool_event_requires_policy_evaluation, direct_source_read_paths};
+pub use tool_action_host_binding::bind_plugin_host_matcher;
 mod event_replay;
 mod event_state;
 mod event_state_subagent_model_drift;
@@ -57,6 +63,7 @@ pub use provider_registry::{materialize_provider_routes, semantic_registry_diges
 mod execute_rule_facts;
 mod source_selector;
 mod tool_action;
+mod tool_action_host_binding;
 
 pub use crate::active_artifact_receipt::{
     ActiveAspArtifactMaterialization, active_asp_artifact_receipt_path,
@@ -84,7 +91,8 @@ pub use dev_context::{ActiveContextRecord, record_active_context};
 pub use event_state::{
     HookSessionAgentRoute, append_hook_event_state, apply_repeated_deny_replay,
     has_recorded_subagent_context, latest_hook_session_agent_route,
-    remove_incompatible_hook_event_state, try_append_hook_event_state,
+    latest_hook_session_agent_route_for_root, remove_incompatible_hook_event_state,
+    try_append_hook_event_state,
 };
 pub use event_state_subagent_model_drift::{
     SubagentModelDriftObservation, SubagentProfileDriftObservation,

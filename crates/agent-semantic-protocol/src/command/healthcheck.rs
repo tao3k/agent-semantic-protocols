@@ -33,24 +33,40 @@ pub(super) async fn run_healthcheck_command(args: &[String]) -> Result<(), Strin
     let options = HealthcheckOptions::parse(args)?;
     let state_home = crate::server::runtime_server::state_home()?;
     crate::server::runtime_server::ensure_runtime_server_for_healthcheck(&state_home).await?;
-    let health = agent_semantic_client_db::runtime_server_health::cached_runtime_server_health_at(
-        &agent_semantic_client_db::runtime_server_control::runtime_server_runtime_base(
-            &state_home,
-        )?,
-    )
-    .await?;
+    let health = agent_semantic_client_db::runtime_server_health::
+        cached_runtime_server_health_for_state_home(&state_home).await?;
     if health.is_healthy() {
-        agent_semantic_artifacts::runtime_artifact_catalog::promote_active_runtime_artifact_to_healthy(
+        if agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_developer_root(
             &state_home,
-            "asp",
-            &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
-                &format!(
-                    "blake3-256:{}",
-                    health.resident.runtime_binary_identity.value()
-                ),
-            )?,
-        )
-        .await?;
+        )?
+        .is_some()
+        {
+            let identity =
+                agent_semantic_runtime::runtime_artifact_identity::read_runtime_artifact_identity(
+                    &state_home,
+                    "asp",
+                )
+                .await?;
+            if identity.identity()? != health.resident.runtime_binary_identity {
+                return Err(
+                    "Developer Runtime health identity differs from the direct-link publication"
+                        .to_owned(),
+                );
+            }
+            agent_semantic_runtime::runtime_artifact_identity::admit_runtime_invoker(
+                &std::env::current_exe()
+                    .map_err(|error| format!("resolve healthcheck Runtime executable: {error}"))?,
+                &identity,
+                &state_home.join("runtime/bin/asp"),
+            )?;
+        } else {
+            agent_semantic_artifacts::runtime_artifact_catalog::promote_active_runtime_artifact_to_healthy(
+                &state_home,
+                "asp",
+                health.resident.runtime_binary_identity.content_digest(),
+            )
+            .await?;
+        }
     }
     if options.json {
         println!(
@@ -68,7 +84,11 @@ pub(super) async fn run_healthcheck_command(args: &[String]) -> Result<(), Strin
                 "degraded"
             },
             health.elapsed_micros,
-            health.resident.runtime_binary_identity.value(),
+            health
+                .resident
+                .runtime_binary_identity
+                .content_digest()
+                .as_str(),
             health.resident.transport_contract_digest,
             health.resident.workspace_entry_count,
         );

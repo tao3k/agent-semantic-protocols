@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
@@ -52,7 +52,6 @@ pub struct RuntimeServerEndpoint {
     pub socket_path: String,
     pub data_plane_socket_path: String,
     pub provider_plane_socket_path: String,
-    pub client_http_endpoint: String,
     pub workspace_store_path: String,
     pub status_memory_path: String,
 }
@@ -112,7 +111,6 @@ impl RuntimeServerEndpoint {
         if self.owner_epoch == 0
             || self.transport_contract_digest.is_empty()
             || self.runtime_artifact_path.is_empty()
-            || self.runtime_binary_identity.value().is_empty()
             || self.binary_content_digest.is_empty()
             || self.runtime_generation_digest.is_empty()
             || self.schema_digest.is_empty()
@@ -122,41 +120,34 @@ impl RuntimeServerEndpoint {
             || self.socket_path.is_empty()
             || self.data_plane_socket_path.is_empty()
             || self.provider_plane_socket_path.is_empty()
-            || self.client_http_endpoint.is_empty()
             || self.workspace_store_path.is_empty()
             || self.status_memory_path.is_empty()
         {
             return Err("Runtime Server endpoint is incomplete".to_owned());
         }
-        if self.binary_content_digest != self.runtime_binary_identity.value() {
+        if self.binary_content_digest != self.runtime_binary_identity.content_digest().as_str() {
             return Err(
                 "reasonKind=runtime-server-endpoint-identity-incomplete binaryContentDigest does not match canonical Runtime binary identity"
                     .to_owned(),
             );
         }
-        if !is_blake3_digest(&self.runtime_generation_digest)
-            || !is_blake3_digest(&self.schema_digest)
-        {
-            return Err(
-                "reasonKind=runtime-server-endpoint-identity-incomplete Runtime generation or schema digest is invalid"
-                    .to_owned(),
-            );
+        if !is_blake3_digest(&self.runtime_generation_digest) {
+            return Err(format!(
+                "reasonKind=runtime-server-endpoint-identity-incomplete field=runtimeGenerationDigest value={} Runtime generation digest is invalid",
+                self.runtime_generation_digest
+            ));
+        }
+        if !is_blake3_digest(&self.schema_digest) {
+            return Err(format!(
+                "reasonKind=runtime-server-endpoint-identity-incomplete field=schemaDigest value={} Runtime schema digest is invalid",
+                self.schema_digest
+            ));
         }
         if !Path::new(&self.socket_path).is_absolute() {
             return Err("Runtime Server socket path must be absolute".to_owned());
         }
         if !Path::new(&self.data_plane_socket_path).is_absolute() {
             return Err("Runtime Server data-plane socket path must be absolute".to_owned());
-        }
-        let client_endpoint = self
-            .client_http_endpoint
-            .strip_prefix("http://")
-            .ok_or_else(|| "Runtime Server client HTTP endpoint must use http".to_owned())?;
-        let client_address: std::net::SocketAddr = client_endpoint
-            .parse()
-            .map_err(|error| format!("Runtime Server client HTTP endpoint is invalid: {error}"))?;
-        if !client_address.ip().is_loopback() {
-            return Err("Runtime Server client HTTP endpoint must be loopback-only".to_owned());
         }
         if !Path::new(&self.workspace_store_path).is_absolute() {
             return Err("Runtime Server workspace store path must be absolute".to_owned());
@@ -177,12 +168,6 @@ impl RuntimeServerEndpoint {
     /// mmap snapshot plus a newer or partially drained listener set.
     pub async fn validate_service_reachability(&self) -> Result<(), String> {
         self.validate()?;
-        let client_address = self
-            .client_http_endpoint
-            .strip_prefix("http://")
-            .expect("validated Runtime client endpoint must use HTTP")
-            .parse::<std::net::SocketAddr>()
-            .expect("validated Runtime client endpoint must contain a socket address");
         let control = async {
             tokio::net::UnixStream::connect(&self.socket_path)
                 .await
@@ -216,18 +201,7 @@ impl RuntimeServerEndpoint {
                     )
                 })
         };
-        let client = async {
-            tokio::net::TcpStream::connect(client_address)
-                .await
-                .map(|_| ())
-                .map_err(|error| {
-                    format!(
-                        "Runtime Server ASP Client listener is unreachable for endpoint generation {}: {error}",
-                        self.owner_epoch
-                    )
-                })
-        };
-        tokio::try_join!(control, data, provider, client)?;
+        tokio::try_join!(control, data, provider)?;
         Ok(())
     }
 }
@@ -274,7 +248,6 @@ impl RuntimeServerControlRequest {
             return Err("Runtime Server control request schema identity mismatch".to_owned());
         }
         if self.request_id.is_empty()
-            || self.expected_runtime_binary_identity.value().is_empty()
             || self.transport_contract_digest.is_empty()
             || self.owner_epoch != endpoint.owner_epoch
             || self.binding_token != endpoint.binding_token
@@ -432,6 +405,7 @@ impl RuntimeServerStatusSnapshot {
             workspace_entry_count: self.workspace_entry_count,
             workspace_generation: None,
             graph_turbo_resident: self.graph_turbo_resident.clone(),
+            resident_transaction: None,
             reason: None,
         })
     }
@@ -449,7 +423,61 @@ impl RuntimeServerStatusSnapshot {
             workspace_entry_count: self.workspace_entry_count,
             workspace_generation: None,
             graph_turbo_resident: self.graph_turbo_resident.clone(),
+            resident_transaction: None,
             reason: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeServerClientBootstrapAuthority {
+    pub cwd: PathBuf,
+    pub executable_path: PathBuf,
+    pub state_home: PathBuf,
+    pub state_home_source: agent_semantic_runtime::state_core::StateHomeResolutionSource,
+    pub asp_state_home_present: bool,
+    pub home_present: bool,
+    pub pending_activation_path: PathBuf,
+    pub applied_activation_path: PathBuf,
+    pub runtime_endpoint_path: PathBuf,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeServerClientBootstrapReceipt {
+    pub schema_id: &'static str,
+    pub schema_version: &'static str,
+    pub state: RuntimeServerState,
+    pub reason_kind: &'static str,
+    pub activation_generation: Option<u64>,
+    pub artifact_digest: Option<String>,
+    pub recommended_next: &'static str,
+    pub authority: RuntimeServerClientBootstrapAuthority,
+}
+
+impl RuntimeServerClientBootstrapReceipt {
+    pub const SCHEMA_ID: &'static str =
+        "agent.semantic-protocols.runtime-server-client-bootstrap-receipt";
+    pub const SCHEMA_VERSION: &'static str = "1";
+
+    pub fn new(
+        state: RuntimeServerState,
+        reason_kind: &'static str,
+        activation_generation: Option<u64>,
+        artifact_digest: Option<String>,
+        recommended_next: &'static str,
+        authority: RuntimeServerClientBootstrapAuthority,
+    ) -> Self {
+        Self {
+            schema_id: Self::SCHEMA_ID,
+            schema_version: Self::SCHEMA_VERSION,
+            state,
+            reason_kind,
+            activation_generation,
+            artifact_digest,
+            recommended_next,
+            authority,
         }
     }
 }
@@ -470,6 +498,8 @@ pub struct RuntimeServerControlReceipt {
     pub workspace_generation: Option<WorkspaceGenerationControlReceipt>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub graph_turbo_resident: Option<GraphTurboResidentStatus>,
+    pub resident_transaction:
+        Option<crate::runtime_server_owner_receipt::RuntimeServerResidentTransactionReceipt>,
     pub reason: Option<String>,
 }
 
@@ -522,6 +552,7 @@ impl RuntimeServerControlReceipt {
             workspace_entry_count,
             workspace_generation: None,
             graph_turbo_resident: None,
+            resident_transaction: None,
             reason: None,
         }
     }
@@ -556,6 +587,7 @@ impl RuntimeServerControlReceipt {
             workspace_entry_count: 0,
             workspace_generation: None,
             graph_turbo_resident: None,
+            resident_transaction: None,
             reason: Some(reason),
         }
     }

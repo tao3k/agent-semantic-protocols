@@ -1,0 +1,73 @@
+use super::{
+    AgentAction, AgentActionKind, AgentActionSubjectKind, HostInvocationKind, SemanticCapability,
+    SemanticCapabilityEvidence,
+};
+use crate::HookRuntime;
+use crate::tool_action::{OperationIntent, ToolAction};
+
+/// Projects host and parser facts into the Action IR before any rule is evaluated.
+///
+/// Rules consume this envelope; they never manufacture semantic actions. A registered
+/// source operand carried by an executable requires source-read permission regardless
+/// of the executable name. Profile and extension matching remain independent subject
+/// axes for the Rule DSL.
+pub(crate) fn project_agent_action(
+    registry: &HookRuntime,
+    action: &ToolAction,
+    match_paths: Option<&[String]>,
+    structured_source_operands: Option<&[String]>,
+) -> AgentAction {
+    let (mut agent_action, command_stages, behavior_facts) =
+        action.derive_agent_action_with_shell_facts();
+
+    let mut subject_paths = structured_source_operands.unwrap_or_default().to_vec();
+    let mut candidate_subject_paths = command_stages
+        .iter()
+        .flat_map(|stage| stage.words().iter().skip(1).cloned())
+        .collect::<Vec<_>>();
+    for path in match_paths.unwrap_or_default() {
+        if !candidate_subject_paths.contains(path) {
+            candidate_subject_paths.push(path.clone());
+        }
+    }
+    let projected_subject_paths = if action.operation == OperationIntent::ShellCommand {
+        crate::source_selector::project_shell_subject_paths(registry, &candidate_subject_paths)
+    } else {
+        candidate_subject_paths
+    };
+    for operand in projected_subject_paths {
+        if !subject_paths.contains(&operand) {
+            subject_paths.push(operand);
+        }
+    }
+    for subject in behavior_facts
+        .iter()
+        .filter_map(|fact| fact.subject.as_ref())
+    {
+        if !subject_paths.contains(subject) {
+            subject_paths.push(subject.clone());
+        }
+    }
+    subject_paths.dedup();
+
+    let subjects = crate::source_selector::derive_agent_action_subjects(registry, &subject_paths);
+    if agent_action.host.action == HostInvocationKind::Execute {
+        for subject in subjects
+            .iter()
+            .filter(|subject| subject.kind == AgentActionSubjectKind::RegisteredLanguageSource)
+        {
+            let subject_has_explicit_permission = agent_action
+                .filesystem_permissions
+                .iter()
+                .any(|permission| permission.subject.as_deref() == Some(subject.value.as_str()));
+            if !subject_has_explicit_permission {
+                agent_action.add_capability(SemanticCapability {
+                    action: AgentActionKind::Unknown,
+                    evidence: SemanticCapabilityEvidence::RegisteredSourceOperand,
+                });
+            }
+        }
+    }
+    agent_action.subjects = subjects;
+    agent_action
+}

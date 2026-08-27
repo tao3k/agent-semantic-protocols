@@ -216,6 +216,11 @@ impl RuntimeProviderArtifacts {
             "ASP_PROVIDER_RUNTIME_CONTRACT_DIGEST".to_owned(),
             expected_receipt.contract_digest.clone(),
         );
+        spec.env.insert(
+            "ASP_PROVIDER_RUNTIME_OPERATIONS_JSON".to_owned(),
+            serde_json::to_string(&expected_receipt.operations)
+                .map_err(|error| format!("encode provider runtime contract operations: {error}"))?,
+        );
         Ok(RuntimeProviderLaunch {
             key: format!(
                 "{}:{}:{}:{}:{}",
@@ -269,7 +274,7 @@ pub(super) fn publish_installed_provider_artifacts(
                 language_id: receipt.language_id.clone(),
                 provider_id: receipt.provider_id.clone(),
                 materialized_path: receipt.installed_path.to_string_lossy().into_owned(),
-                artifact_digest: integrity_ref(&receipt.installed_entrypoint_digest),
+                artifact_digest: integrity_ref(&receipt.artifact_digest),
                 artifact_metadata_digest: integrity_ref(
                     &receipt.installed_entrypoint_metadata_digest,
                 ),
@@ -343,12 +348,11 @@ pub(crate) fn publish_current_installed_provider_artifacts(
     state_home: &Path,
 ) -> Result<InstalledProviderArtifactsPublication, String> {
     let provider_lock_dir = agent_semantic_runtime::provider_receipt_dir(state_home);
-    let canonical_artifact_root = state_home
-        .join("runtime")
-        .join("artifacts")
-        .join("blake3-256")
-        .canonicalize()
-        .map_err(|error| format!("resolve provider artifact CAS root: {error}"))?;
+    let developer_mode =
+        agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_developer_root(
+            state_home,
+        )?
+        .is_some();
     let mut receipts = Vec::new();
     for registration in super::super::provider_install_registry::provider_install_registrations()? {
         let lock_path = provider_lock_dir.join(format!("{}.lock.toml", registration.language_id));
@@ -378,11 +382,33 @@ pub(crate) fn publish_current_installed_provider_artifacts(
                 receipt.installed_path.display()
             )
         })?;
-        if !canonical_artifact.starts_with(&canonical_artifact_root) {
-            return Err(format!(
-                "installed provider artifact escapes CAS root: languageId={} artifact={}",
+        let artifact_authority_root = if developer_mode {
+            state_home
+                .join("runtime/provider-artifacts")
+                .join(&receipt.provider_id)
+                .join("artifacts")
+        } else {
+            state_home.join("runtime/artifacts/blake3-256")
+        }
+        .canonicalize()
+        .map_err(|error| {
+            format!(
+                "resolve provider artifact authority root: languageId={} root={} error={error}",
                 receipt.language_id,
-                canonical_artifact.display()
+                if developer_mode {
+                    "developer-provider-staging"
+                } else {
+                    "managed-release-cas"
+                }
+            )
+        })?;
+        if !canonical_artifact.starts_with(&artifact_authority_root) {
+            return Err(format!(
+                "installed provider artifact escapes mode authority: languageId={} mode={} artifact={} authorityRoot={}",
+                receipt.language_id,
+                if developer_mode { "dev" } else { "release" },
+                canonical_artifact.display(),
+                artifact_authority_root.display(),
             ));
         }
         if !super::super::provider_install_receipt::provider_install_receipt_matches_artifact(

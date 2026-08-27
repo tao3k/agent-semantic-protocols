@@ -8,8 +8,105 @@ fn canonical_registry_path() -> std::path::PathBuf {
 }
 
 #[test]
+fn codex_worker_and_default_roles_resolve_only_to_owner_scoped_coding() {
+    let loaded =
+        load_agent_route_registry(&canonical_registry_path()).expect("canonical agent registry");
+
+    for host_role in ["worker", "default"] {
+        let coding = loaded
+            .compile_route_for_platform_host_role("codex", host_role)
+            .expect("Codex role lookup")
+            .expect("configured coding role");
+        assert_eq!(coding.route_key.as_str(), "asp_coding");
+        assert_eq!(coding.platform_host_agent_name.as_str(), "asp_coding");
+        assert_eq!(coding.allowed_rule_intents, ["owner-scoped-mutation"]);
+        assert_eq!(coding.sandbox_mode.as_deref(), Some("workspace-write"));
+    }
+}
+
+#[test]
+fn embedded_registry_preserves_native_role_resolution() {
+    let state_home = tempfile::tempdir().expect("temporary embedded agent state");
+    for asset in crate::embedded_agent_assets::embedded_agent_assets() {
+        std::fs::write(state_home.path().join(asset.file_name), asset.contents)
+            .expect("materialize embedded agent asset");
+    }
+
+    let registry = load_agent_route_registry(&state_home.path().join("config.toml"))
+        .expect("load embedded agent registry");
+    let native = registry
+        .compile_route_for_platform_host_identity("codex", "explorer")
+        .expect("resolve native explorer role")
+        .expect("native explorer route");
+    let canonical = registry
+        .compile_route_for_platform_host_identity("codex", "asp_explorer")
+        .expect("resolve canonical explorer name")
+        .expect("canonical explorer route");
+
+    assert_eq!(native.route_key.as_str(), "asp_explorer");
+    assert_eq!(native, canonical);
+}
+
+#[test]
 fn canonical_registry_compiles_host_routes() {
     let loaded = load_agent_route_registry(&canonical_registry_path()).expect("canonical registry");
+    let explorer_role = loaded
+        .compile_route_for_platform_host_role("codex", "explorer")
+        .expect("Codex explorer role lookup")
+        .expect("configured explorer role");
+    assert_eq!(explorer_role.route_key.as_str(), "asp_explorer");
+    assert_eq!(
+        explorer_role.platform_host_agent_name.as_str(),
+        "asp_explorer"
+    );
+    assert_eq!(
+        explorer_role.allowed_rule_intents,
+        ["reasoning-search", "structured-projection"]
+    );
+    assert_eq!(explorer_role.sandbox_mode.as_deref(), Some("read-only"));
+    let testing_role = loaded
+        .compile_route_for_platform_host_role("codex", "testing")
+        .expect("Codex testing role lookup")
+        .expect("configured testing role");
+    assert_eq!(testing_role.route_key.as_str(), "asp_testing");
+    assert_eq!(
+        testing_role.platform_host_agent_name.as_str(),
+        "asp_testing"
+    );
+    assert_eq!(
+        loaded
+            .compile_route_for_platform_host_identity("codex", "explorer")
+            .expect("native explorer identity")
+            .expect("configured explorer identity")
+            .route_key
+            .as_str(),
+        "asp_explorer"
+    );
+    assert_eq!(
+        loaded
+            .compile_route_for_platform_host_identity("codex", "asp_testing")
+            .expect("canonical testing identity")
+            .expect("configured testing identity")
+            .route_key
+            .as_str(),
+        "asp_testing"
+    );
+    assert!(
+        loaded
+            .compile_route_for_platform_host_role("codex", "unknown-role")
+            .expect("unknown role lookup")
+            .is_none()
+    );
+    assert!(
+        loaded
+            .compile_route_for_platform_host_role("unknown-platform", "explorer")
+            .expect("cross-platform role lookup")
+            .is_none()
+    );
+    let ambiguous = loaded
+        .compile_route_for_platform_host_role("codex", "subagent")
+        .expect_err("shared generic role must fail closed at resolution");
+    assert!(ambiguous.contains("agent role `subagent` is ambiguous"));
     assert_eq!(
         loaded
             .compile_route_for_platform_host_agent_name("codex", "asp_explorer")
@@ -96,6 +193,27 @@ fn canonical_registry_compiles_host_routes() {
     assert_eq!(testing.description, "for build and test jobs");
     assert!(testing.profile_path.ends_with("asp_testing_codex.toml"));
     assert_eq!(testing.sandbox_mode.as_deref(), Some("read-only"));
+    let coding = compile_agent_route(&loaded, "asp_coding", "codex").expect("Codex coding route");
+    assert_eq!(coding.platform_host_agent_name.as_str(), "asp_coding");
+    assert_eq!(coding.focus_mode, super::AgentFocusMode::Leaf);
+    assert_eq!(coding.agent_kind, "Subagent");
+    assert_eq!(coding.display_role, "Owner-scoped Coding Worker");
+    assert_eq!(
+        coding.roles,
+        vec!["coding", "default", "subagent", "worker"]
+    );
+    assert_eq!(coding.allowed_rule_intents, vec!["owner-scoped-mutation"]);
+    assert_eq!(
+        coding.description,
+        "for edits restricted to explicitly registered owner paths"
+    );
+    assert!(coding.profile_path.ends_with("asp_coding_codex.toml"));
+    assert_eq!(coding.sandbox_mode.as_deref(), Some("workspace-write"));
+    assert!(
+        !coding
+            .effective_permissions
+            .denies(super::AgentPermissionAction::Edit)
+    );
     let claude_testing =
         compile_agent_route(&loaded, "asp_testing", "claude").expect("Claude testing route");
     assert_eq!(

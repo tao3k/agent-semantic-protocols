@@ -133,6 +133,11 @@ fn runtime_source_index_projection_is_derived_from_live_register() {
         launch.spec.env["ASP_PROVIDER_RUNTIME_CONTRACT_DIGEST"],
         launch.expected_receipt.contract_digest
     );
+    let launched_operations: Vec<
+        agent_semantic_provider_transport::ProviderRuntimeContractOperation,
+    > = serde_json::from_str(&launch.spec.env["ASP_PROVIDER_RUNTIME_OPERATIONS_JSON"])
+        .expect("decode launched provider operations");
+    assert_eq!(launched_operations, launch.expected_receipt.operations);
 }
 
 #[cfg(unix)]
@@ -169,9 +174,10 @@ fn guarded_install_publication_is_atomic_and_rejects_receipt_drift() {
             .expect("registered Rust provider");
     let receipt_path = receipt_dir.join("rust.lock.toml");
     let receipt = format!(
-        "schemaId = \"asp.provider-install-lock.v1\"\nlanguage = \"rust\"\nprovider = \"{}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{}\"\ninstalledEntrypointMetadataDigest = \"{}\"\nexecutionCommandDigest = \"{}\"\n",
+        "schemaId = \"asp.provider-install-lock.v1\"\nlanguage = \"rust\"\nprovider = \"{}\"\ninstalledPath = \"{}\"\nartifactDigest = \"{}\"\ninstalledEntrypointDigest = \"{}\"\ninstalledEntrypointMetadataDigest = \"{}\"\nexecutionCommandDigest = \"{}\"\n",
         registration.provider_id,
         stable.display(),
+        content,
         content,
         metadata,
         execution_command_digest,
@@ -196,6 +202,27 @@ fn guarded_install_publication_is_atomic_and_rejects_receipt_drift() {
         artifact
             .canonicalize()
             .expect("canonical provider artifact")
+    );
+
+    let next_artifact_digest = format!("blake3-256:{}", "d".repeat(64));
+    let changed_artifact_receipt = receipt.replacen(
+        &format!("artifactDigest = \"{content}\""),
+        &format!("artifactDigest = \"{next_artifact_digest}\""),
+        1,
+    );
+    std::fs::write(&receipt_path, changed_artifact_receipt)
+        .expect("write changed provider artifact identity");
+    let changed = publish_current_installed_provider_artifacts(&root)
+        .expect("publish changed provider artifact identity");
+    assert!(changed.artifact_write);
+    assert_eq!(changed.changed_leaf_count, 2);
+    let changed_document: InstalledProviderArtifactsDocument = serde_json::from_slice(
+        &std::fs::read(document_path(&root)).expect("read changed provider snapshot"),
+    )
+    .expect("decode changed provider snapshot");
+    assert_eq!(
+        changed_document.providers[0].artifact_digest,
+        next_artifact_digest
     );
 
     std::fs::write(

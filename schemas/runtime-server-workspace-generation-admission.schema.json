@@ -49,7 +49,7 @@
     "requestLifetimeIndependent": { "const": true },
     "candidateGeneration": { "$ref": "https://schemas.agent-semantic-protocols.dev/repository-candidate-snapshot.v1.schema.json#/$defs/candidateGeneration" },
     "policyOverlayDigest": { "type": "string", "minLength": 1 },
-    "state": { "enum": ["building", "ready", "failed", "cancelled"] },
+    "state": { "enum": ["queued", "building", "ready", "failed", "cancelled"] },
     "accepted": { "type": "boolean" },
     "attempt": { "type": "integer", "minimum": 1 },
     "commit": {

@@ -1,18 +1,25 @@
 use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
 use std::sync::{Arc, RwLock};
 
-use crate::{RuntimeServerAgentSessionLifecycleState, RuntimeServerAgentSessionStatus};
+use crate::{
+    RuntimeServerAgentSessionLifecycleState, RuntimeServerAgentSessionStatus,
+    RuntimeServerResidentTransactionReceipt,
+};
 
 use super::{
     RuntimeServerEndpoint, RuntimeServerState, RuntimeServerStatusMemoryWriter,
-    read_runtime_server_agent_sessions, read_runtime_server_cached_health_status,
-    read_runtime_server_status, resolve_runtime_server_agent_session_status,
+    attach_resident_transaction, read_runtime_server_agent_sessions,
+    read_runtime_server_cached_health_status, read_runtime_server_status,
+    resolve_runtime_server_agent_session_status, validate_resident_transaction,
 };
 
 fn fixture_endpoint(root: &std::path::Path, owner_epoch: u64) -> RuntimeServerEndpoint {
     RuntimeServerEndpoint {
-        binary_content_digest:
-            "blake3-256:0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
+        binary_content_digest: RuntimeBinaryIdentity::from_bytes(
+            format!("runtime-{owner_epoch}").as_bytes(),
+        )
+        .content_digest()
+        .to_string(),
         runtime_generation_digest:
             "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
         schema_digest:
@@ -23,25 +30,111 @@ fn fixture_endpoint(root: &std::path::Path, owner_epoch: u64) -> RuntimeServerEn
         owner_epoch,
         owner_process_id: 0,
         runtime_artifact_path: "/runtime/asp".to_owned(),
-        runtime_binary_identity: RuntimeBinaryIdentity::Content {
-            value: format!("runtime-{owner_epoch}"),
-            algorithm: "blake3-256".to_owned(),
-        },
+        runtime_binary_identity: RuntimeBinaryIdentity::from_bytes(
+            format!("runtime-{owner_epoch}").as_bytes(),
+        ),
         monitor_capability: true,
-        observed_runtime_binary_identity: RuntimeBinaryIdentity::Content {
-            value: format!("runtime-{owner_epoch}"),
-            algorithm: "blake3-256".to_owned(),
-        },
+        observed_runtime_binary_identity: RuntimeBinaryIdentity::from_bytes(
+            format!("runtime-{owner_epoch}").as_bytes(),
+        ),
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "a".repeat(64)),
         binding_token: format!("binding-{owner_epoch}"),
         socket_path: root.join("control.sock").to_string_lossy().into_owned(),
         data_plane_socket_path: root.join("data.sock").to_string_lossy().into_owned(),
         provider_plane_socket_path: root.join("providers.sock").to_string_lossy().into_owned(),
-        client_http_endpoint: "http://127.0.0.1:1".to_owned(),
         workspace_store_path: root.join("workspaces").to_string_lossy().into_owned(),
         status_memory_path: root.join("status.memory").to_string_lossy().into_owned(),
     }
+}
+
+fn fixture_resident_transaction(
+    endpoint: &RuntimeServerEndpoint,
+) -> RuntimeServerResidentTransactionReceipt {
+    let digest = endpoint.runtime_binary_identity.content_digest().clone();
+    RuntimeServerResidentTransactionReceipt {
+        schema_id: "agent.semantic-protocols.runtime-server-resident-transaction-receipt"
+            .to_owned(),
+        schema_version: "1".to_owned(),
+        state: "ready".to_owned(),
+        activation_generation: 7,
+        launcher_artifact_path: endpoint.runtime_artifact_path.clone(),
+        launcher_artifact_digest: digest.clone(),
+        spawn_argv: vec![endpoint.runtime_artifact_path.clone(), "serve".to_owned()],
+        applied_artifact_digest: digest.clone(),
+        applied_activation_generation: 7,
+        endpoint_owner_epoch: endpoint.owner_epoch,
+        endpoint_binary_content_digest: digest,
+        endpoint_runtime_generation_digest: endpoint.runtime_generation_digest.clone(),
+        control_endpoint: endpoint.socket_path.clone(),
+        data_endpoint: endpoint.data_plane_socket_path.clone(),
+        provider_endpoint: endpoint.provider_plane_socket_path.clone(),
+        previous_serving_digest: None,
+        previous_owner_epoch: None,
+        previous_drain_state: "not-required".to_owned(),
+    }
+}
+
+#[tokio::test]
+async fn public_status_without_state_home_fails_closed_before_endpoint_access() {
+    let state_home = std::env::temp_dir().join("asp-status-without-state-home");
+    let endpoint = fixture_endpoint(&state_home, 1);
+    let error = agent_semantic_client_db::call_runtime_server(
+        &endpoint,
+        agent_semantic_client_db::RuntimeServerOperation::Status,
+        endpoint.runtime_binary_identity.clone(),
+        "status-without-state-home".to_owned(),
+    )
+    .await
+    .expect_err("Status without canonical state-home authority must fail closed");
+    assert_eq!(
+        error,
+        "state=runtime-server-status-not-current reasonKind=runtime-status-state-home-authority-required phase=runtime-server-control"
+    );
+}
+
+#[tokio::test]
+async fn public_healthy_status_rejects_missing_resident_transaction() {
+    let root = tempfile::tempdir().expect("status memory fixture");
+    let endpoint = fixture_endpoint(root.path(), 11);
+    let receipt = super::RuntimeServerControlReceipt::healthy("status".to_owned(), &endpoint, 0);
+
+    let error = attach_resident_transaction(root.path(), &endpoint, receipt)
+        .await
+        .expect_err("healthy status must require the canonical resident transaction");
+    assert!(
+        error.contains("resident transaction") || error.contains("receipt"),
+        "unexpected missing resident transaction terminal: {error}"
+    );
+}
+
+#[test]
+fn resident_transaction_validator_accepts_one_v1_applied_generation() {
+    let root = tempfile::tempdir().expect("status memory fixture");
+    let endpoint = fixture_endpoint(root.path(), 12);
+    let transaction = fixture_resident_transaction(&endpoint);
+
+    let observed = validate_resident_transaction(&endpoint, transaction.clone())
+        .expect("one canonical V1 transaction must validate");
+    assert_eq!(observed, transaction);
+}
+
+#[test]
+fn resident_transaction_validator_rejects_cross_generation_and_endpoint_authority() {
+    let root = tempfile::tempdir().expect("status memory fixture");
+    let endpoint = fixture_endpoint(root.path(), 13);
+
+    let mut cross_generation = fixture_resident_transaction(&endpoint);
+    cross_generation.applied_activation_generation += 1;
+    assert!(validate_resident_transaction(&endpoint, cross_generation).is_err());
+
+    let mut cross_endpoint = fixture_resident_transaction(&endpoint);
+    cross_endpoint.endpoint_runtime_generation_digest = format!("blake3-256:{}", "f".repeat(64));
+    assert!(validate_resident_transaction(&endpoint, cross_endpoint).is_err());
+
+    let mut cross_launcher = fixture_resident_transaction(&endpoint);
+    cross_launcher.launcher_artifact_path = root.path().join("other-asp").display().to_string();
+    assert!(validate_resident_transaction(&endpoint, cross_launcher).is_err());
 }
 
 fn session_status(
@@ -369,7 +462,8 @@ async fn replacement_epoch_reopens_once_for_concurrent_sessions() {
                 )
                 .await?;
                 if receipt.state != RuntimeServerState::Healthy
-                    || receipt.runtime_binary_identity.value() != "runtime-2"
+                    || receipt.runtime_binary_identity
+                        != RuntimeBinaryIdentity::from_bytes(b"runtime-2")
                     || receipt.workspace_entry_count != 7
                 {
                     return Err(format!("stale replacement receipt: {receipt:?}"));

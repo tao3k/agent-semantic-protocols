@@ -82,6 +82,27 @@ fn lifecycle_commands_delegate_to_hook_runtime() {
 }
 
 #[test]
+fn hook_control_commands_are_runtime_independent_and_events_are_not() {
+    for command in [
+        "accept-host",
+        "break-glass",
+        "doctor",
+        "enablement",
+        "paths",
+        "refresh",
+    ] {
+        assert!(hook::is_runtime_independent_control_command(&args(&[
+            command
+        ])));
+    }
+    for command in ["pre-tool", "post-tool", "session-start", "unknown"] {
+        assert!(!hook::is_runtime_independent_control_command(&args(&[
+            command
+        ])));
+    }
+}
+
+#[test]
 fn help_requests_do_not_forward_to_hook_runtime() {
     for values in [&["--help"][..], &["-h"][..], &["help"][..]] {
         assert!(hook::is_help_request(&args(values)), "{values:?}");
@@ -123,7 +144,7 @@ fn accept_host_cli_returns_a_schema_valid_success_receipt() {
         concat!(
             "{\"type\":\"world_state\",\"payload\":{\"state\":{\"plugins_instructions\":true}}}\n",
             "{\"type\":\"response_item\",\"payload\":{\"type\":\"function_call\",\"arguments\":\"probe.rs\"}}\n",
-            "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"content\":\"<hook_prompt>[asp-hook] {\\\"schemaId\\\":\\\"agent.semantic-protocols.hook.decision\\\",\\\"decision\\\":\\\"deny\\\"}</hook_prompt>\"}}\n",
+        "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"content\":\"<hook_prompt>[asp-hook] {\\\"schemaId\\\":\\\"agent.semantic-protocols.hook.decision\\\",\\\"schemaVersion\\\":\\\"1\\\",\\\"event\\\":\\\"pre-tool\\\",\\\"decision\\\":\\\"deny\\\",\\\"fields\\\":{\\\"configRuleId\\\":\\\"route-read-to-asp-languages\\\",\\\"hookMatcherGeneration\\\":\\\"mmap-hit\\\",\\\"hookPolicySnapshotDigest\\\":\\\"blake3-256:policy\\\",\\\"hookRuntimeArtifactFingerprint\\\":\\\"blake3-256:artifact\\\"}}</hook_prompt>\"}}\n",
             "{\"type\":\"response_item\",\"payload\":{\"type\":\"function_call_output\",\"output\":\"\"}}\n"
         ),
     )
@@ -152,7 +173,10 @@ fn accept_host_cli_returns_a_schema_valid_success_receipt() {
     let receipt: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("parse Host acceptance receipt");
     assert_eq!(receipt["state"], "accepted");
-    assert_eq!(receipt["reasonKind"], "normal-task-hook-deny-observed");
+    assert_eq!(
+        receipt["reasonKind"],
+        "normal-task-hook-generation-bound-deny-observed"
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 

@@ -3,24 +3,30 @@ use std::sync::Arc;
 use agent_semantic_client_db::runtime_server_admission::{
     WorkspaceGenerationAdmission, WorkspaceGenerationAdmissionState,
 };
+use agent_semantic_client_db::runtime_telemetry_bus::{RuntimeTelemetryBus, RuntimeTelemetryEvent};
 
 use super::candidate_identity;
 
 #[tokio::test]
 async fn panicking_generation_builder_publishes_a_failed_terminal_receipt() {
-    let admission = WorkspaceGenerationAdmission::new(Arc::new(
-        |_workspace_identity,
-         _project_root,
-         _candidate,
-         _build_mode,
-         _changed_paths,
-         _provider_target,
-         _cancellation| {
-            Box::pin(async move {
-                panic!("synthetic generation builder panic");
-            })
-        },
-    ));
+    let bus = RuntimeTelemetryBus::new();
+    let mut telemetry = bus.receiver;
+    let admission = WorkspaceGenerationAdmission::new_with_telemetry_sender(
+        Arc::new(
+            |_workspace_identity,
+             _project_root,
+             _candidate,
+             _build_mode,
+             _changed_paths,
+             _provider_target,
+             _cancellation| {
+                Box::pin(async move {
+                    panic!("synthetic generation builder panic");
+                })
+            },
+        ),
+        bus.sender,
+    );
     let project_root = std::env::temp_dir().join("asp-generation-admission-panic");
 
     admission
@@ -46,6 +52,23 @@ async fn panicking_generation_builder_publishes_a_failed_terminal_receipt() {
         "panic must be represented by the typed terminal receipt: {receipt:?}"
     );
     receipt.validate().expect("valid panic failure receipt");
+    let terminal_event = loop {
+        match telemetry.recv().await.expect("generation lifecycle event") {
+            RuntimeTelemetryEvent::Lifecycle(event)
+                if event.transition == "generation-terminal" =>
+            {
+                break event;
+            }
+            RuntimeTelemetryEvent::Lifecycle(_)
+            | RuntimeTelemetryEvent::SearchIncident(_)
+            | RuntimeTelemetryEvent::Performance(_) => {}
+        }
+    };
+    assert_eq!(terminal_event.state, "failed");
+    assert_eq!(
+        terminal_event.workspace_identity.as_deref(),
+        Some("workspace-panicking-builder")
+    );
     admission.shutdown().await.expect("shutdown admission");
 }
 
@@ -131,7 +154,7 @@ async fn dropping_the_request_handle_does_not_cancel_the_runtime_owned_build() {
         .await
         .expect("request task")
         .expect("submit Runtime-owned build");
-    assert_eq!(submitted.state, WorkspaceGenerationAdmissionState::Building);
+    assert_eq!(submitted.state, WorkspaceGenerationAdmissionState::Queued);
     started.notified().await;
     release.notify_one();
 
@@ -154,4 +177,19 @@ async fn dropping_the_request_handle_does_not_cancel_the_runtime_owned_build() {
     );
     terminal.validate().expect("valid terminal receipt");
     admission.shutdown().await.expect("shutdown Runtime owner");
+}
+
+#[test]
+fn dispatcher_abort_paths_retain_entry_bound_terminal_authority() {
+    let source = include_str!("../../src/runtime_server_admission_dispatcher.rs");
+    assert!(source.contains("struct AdmissionBuildEnvelope"));
+    assert!(source.contains("start: Option<AdmissionBuildStartFuture>"));
+    assert!(source.contains("terminalize: Option<AdmissionBuildFuture>"));
+    assert!(source.contains("impl Drop for AdmissionBuildEnvelope"));
+    assert!(source.contains("join_next_with_id"));
+    assert!(source.contains("terminalizers.remove(&error.id())"));
+    assert!(source.contains("terminalizers.terminalize_remaining().await"));
+    assert!(source.contains("impl Drop for AdmissionBuildTerminalizers"));
+    assert!(!source.contains("Spawn(AdmissionBuildFuture)"));
+    assert!(!source.contains("Some(_) = builds.join_next()"));
 }

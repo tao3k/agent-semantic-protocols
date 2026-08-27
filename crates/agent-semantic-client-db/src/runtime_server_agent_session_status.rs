@@ -111,24 +111,4 @@ impl AgentSessionStatusHandle {
         let generation = *self.generation.borrow();
         self.published_generation.send_replace(generation);
     }
-
-    pub(crate) async fn wait_published(&self, required_generation: u64) -> Result<(), String> {
-        let mut published = self.published_generation.subscribe();
-        loop {
-            if *published.borrow() >= required_generation {
-                return Ok(());
-            }
-            published.changed().await.map_err(|_| {
-                "Runtime Server agent-session status publication channel closed".to_owned()
-            })?;
-        }
-    }
-
-    pub(crate) async fn refresh_and_wait_published(
-        &self,
-        registry: &crate::AgentSessionRegistry,
-    ) -> Result<(), String> {
-        let generation = self.refresh(registry).await?;
-        self.wait_published(generation).await
-    }
 }

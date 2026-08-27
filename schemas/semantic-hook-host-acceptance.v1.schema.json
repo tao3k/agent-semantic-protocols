@@ -12,7 +12,7 @@
     "pluginLoaded",
     "probeCallObserved",
     "hookEventObserved",
-    "denyObserved",
+    "generationBoundDenyObserved",
     "sourceBytesReturned"
   ],
   "properties": {
@@ -21,7 +21,7 @@
     "state": { "enum": ["accepted", "rejected"] },
     "reasonKind": {
       "enum": [
-        "normal-task-hook-deny-observed",
+        "normal-task-hook-generation-bound-deny-observed",
         "plugin-not-loaded",
         "probe-call-missing",
         "source-bytes-leaked",
@@ -32,7 +32,7 @@
     "pluginLoaded": { "type": "boolean" },
     "probeCallObserved": { "type": "boolean" },
     "hookEventObserved": { "type": "boolean" },
-    "denyObserved": { "type": "boolean" },
+    "generationBoundDenyObserved": { "type": "boolean" },
     "sourceBytesReturned": { "type": "boolean" }
   }
 }

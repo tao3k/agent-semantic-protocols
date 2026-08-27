@@ -3,8 +3,8 @@
 use std::collections::BTreeSet;
 
 use super::{
-    HookClientActionKind, HookClientActionSubjectKind, HookClientConfigDecision,
-    HookClientConfigFile, HookClientRuleConfig,
+    HookClientActionSubjectKind, HookClientConfigDecision, HookClientConfigFile,
+    HookClientRuleConfig,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -57,8 +57,9 @@ pub fn derive_hook_policy_coverage_cases(
         .find(|rule| {
             rule.enabled
                 && rule
-                    .actions
-                    .contains(&crate::hook_client_config::routing::HookClientActionKind::Read)
+                    .matcher
+                    .as_deref()
+                    .is_some_and(|matcher| matcher.split('|').any(|native| native == "Read"))
                 && !rule.profiles_list.is_empty()
         })
         .ok_or_else(|| {
@@ -150,10 +151,11 @@ fn is_shell_registered_read_rule(rule: &HookClientRuleConfig) -> bool {
     let match_config = &rule.match_config;
     rule.enabled
         && matches!(rule.decision, HookClientConfigDecision::Deny)
-        && (rule.actions.contains(&HookClientActionKind::Read)
-            || match_config
-                .action_any
-                .contains(&HookClientActionKind::Read))
+        && rule.matcher.as_deref().is_some_and(|matcher| {
+            matcher
+                .split('|')
+                .any(|native| native == "Read" || native == "Bash")
+        })
         && !rule.profiles_list.is_empty()
         && (match_config.subject_kind_any.is_empty()
             || match_config

@@ -147,6 +147,10 @@ impl ProtocolBinaryInstallPlan {
             "current-executable"
         }
     }
+
+    pub(crate) fn current_exe(&self) -> &Path {
+        &self.current_exe
+    }
 }
 
 /// Runtime-owned transaction guard for artifact mutation and its coupled
@@ -208,8 +212,10 @@ pub(crate) async fn ensure_protocol_binary_installed(
         &plan.binary_identity,
     )
     .await?;
-    for alias in &plan.managed_path_aliases {
-        install_protocol_binary_alias(alias, &plan.target, &plan.artifact_root)?;
+    if install.status != "published-activation-pending" {
+        for alias in &plan.managed_path_aliases {
+            install_protocol_binary_alias(alias, &plan.target, &plan.artifact_root)?;
+        }
     }
     Ok(install)
 }
@@ -227,8 +233,10 @@ pub(crate) async fn ensure_protocol_binary_installed_transaction(
         &plan.binary_identity,
     )
     .await?;
-    for alias in &plan.managed_path_aliases {
-        install_protocol_binary_alias(alias, &plan.target, &plan.artifact_root)?;
+    if install.status != "published-activation-pending" {
+        for alias in &plan.managed_path_aliases {
+            install_protocol_binary_alias(alias, &plan.target, &plan.artifact_root)?;
+        }
     }
     Ok(install)
 }
@@ -443,12 +451,28 @@ async fn install_protocol_binary_target_transaction(
             target.display()
         ));
     }
-    if agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_developer_root(state_home)?
-        .is_none()
-    {
+    let artifact_kind = binary_name.to_string_lossy().into_owned();
+    let mut developer_source = qualified_source.is_some();
+    if let Some(authority) = qualified_source.as_ref() {
+        authority.validate_source(state_home, source, &artifact_kind)?;
+    }
+    let developer_root =
+        agent_semantic_artifacts::runtime_artifact_catalog::load_runtime_developer_root(
+            state_home,
+        )?;
+    if let Some(developer_root) = developer_root.as_ref() {
+        let source_identity = std::fs::canonicalize(source).map_err(|error| {
+            format!(
+                "failed to resolve Developer Runtime binary {}: {error}",
+                source.display()
+            )
+        })?;
+        if source_identity.starts_with(developer_root) {
+            developer_source = true;
+        }
+    } else {
         validate_protocol_entry_for_repair(target, artifact_root)?;
     }
-    let artifact_kind = binary_name.to_string_lossy().into_owned();
     let previous_identity =
         agent_semantic_runtime::runtime_artifact_identity::read_runtime_artifact_identity(
             state_home,
@@ -456,30 +480,10 @@ async fn install_protocol_binary_target_transaction(
         )
         .await
         .ok();
-    if let Some(receipt) = previous_identity.as_ref()
-        && receipt.source_generation_matches(source)?
-        && protocol_binary_artifact_path_digest(target).as_deref()
-            == Some(receipt.artifact_digest())
-    {
-        return Ok(ProtocolBinaryInstall {
-            path: target.to_path_buf(),
-            status: "current",
-            artifact_digest: receipt.artifact_digest().to_owned(),
-            lock_acquisition_count: 0,
-            quiescence_operation: None,
-            quiescence_lease_nonce: None,
-            lease_producer_process_id: None,
-            lease_consumer_process_id: None,
-        });
-    }
     let previous_artifact_digest = previous_identity
         .as_ref()
         .map(|receipt| receipt.artifact_digest().to_owned());
-    let artifact_mode = if qualified_source.is_some() {
-        "dev"
-    } else {
-        "release"
-    };
+    let artifact_mode = if developer_source { "dev" } else { "release" };
     let previous_artifact_digest = previous_artifact_digest
         .as_deref()
         .map(agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse)

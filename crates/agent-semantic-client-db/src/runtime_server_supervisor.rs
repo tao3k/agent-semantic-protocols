@@ -7,6 +7,11 @@ use serde::Serialize;
 pub struct SupervisorRequest {
     pub state_home: PathBuf,
     pub expected_executable: PathBuf,
+    pub activation_generation: u64,
+    pub artifact_digest: agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+    pub previous_artifact_digest:
+        Option<agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest>,
+    pub previous_owner_epoch: Option<u64>,
     pub launch: agent_semantic_runtime::runtime_process_lifecycle::RuntimeProcessLaunchSpec,
 }
 
@@ -16,6 +21,12 @@ pub enum SupervisorOutcome {
     SpawnAccepted,
     OwnerStale,
     Failed,
+}
+
+pub struct RuntimeServerSupervision {
+    pub outcome: SupervisorOutcome,
+    pub process:
+        Option<agent_semantic_runtime::runtime_process_lifecycle::RuntimeProcessLaunchHandle>,
 }
 
 pub struct RuntimeServerSupervisor;
@@ -70,7 +81,7 @@ pub fn validate_runtime_server_owner_binding(
         return Err("Runtime Server owner changed during verified termination".to_owned());
     }
     if owner.process_id != endpoint.owner_process_id
-        || owner.runtime_artifact_path != endpoint.runtime_artifact_path
+        || owner.launcher_artifact_path != endpoint.runtime_artifact_path
     {
         return Err("Runtime Server endpoint and owner receipt identities differ".to_owned());
     }
@@ -100,9 +111,13 @@ async fn classify_endpoint_owner(
     state_home: &std::path::Path,
     endpoint: &crate::runtime_server_control::RuntimeServerEndpoint,
 ) -> Result<crate::runtime_server_lifecycle_coordinator::OwnerClassification, String> {
-    let owner = crate::runtime_server_lifecycle::read_owner_receipt(state_home)
-        .await?
-        .ok_or_else(|| "Runtime Server owner receipt is missing".to_owned())?;
+    let Some(owner) = crate::runtime_server_lifecycle::read_owner_receipt(state_home).await? else {
+        // An endpoint without an owner receipt cannot establish liveness or
+        // identity.  Treat it as stale so the already-held supervisor
+        // transaction can retire the endpoint and publish exactly one owner;
+        // never admit it as resident and never attempt an unbound kill.
+        return Ok(crate::runtime_server_lifecycle_coordinator::OwnerClassification::Stale);
+    };
     let current_endpoint =
         crate::runtime_server_control::read_runtime_server_supervisor_endpoint(state_home)
             .await?
@@ -130,13 +145,24 @@ fn runtime_server_status_requires_drain(
 mod lifecycle_transition_tests;
 
 async fn retire_undecodable_endpoint_owner(request: &SupervisorRequest) -> Result<bool, String> {
-    let Some(owner) =
-        crate::runtime_server_lifecycle::read_owner_receipt(&request.state_home).await?
+    let Some(owner_state) =
+        crate::runtime_server_lifecycle::read_owner_receipt_state(&request.state_home).await?
     else {
         // With no independently verified live owner, the supervisor may remove
         // only the canonical invalid endpoint path.  It must not parse or trust
         // attacker-controlled endpoint contents to discover other paths.
         return Ok(false);
+    };
+    let owner = match owner_state {
+        crate::RuntimeServerSpawnReceiptRead::Current(owner) => owner,
+        crate::RuntimeServerSpawnReceiptRead::Stale(_) => {
+            // A caller reaches this path only after supplying a validated,
+            // positive activation generation.  A legacy observation cannot
+            // authorize termination, but it also cannot veto the newer
+            // activation claim.  Malformed and unknown receipts still fail in
+            // read_owner_receipt_state before this branch.
+            return Ok(false);
+        }
     };
     let Some(binding) = crate::runtime_server_control::read_runtime_server_endpoint_owner_binding(
         &request.state_home,
@@ -146,7 +172,7 @@ async fn retire_undecodable_endpoint_owner(request: &SupervisorRequest) -> Resul
         return Ok(false);
     };
     if owner.process_id != binding.owner_process_id
-        || owner.runtime_artifact_path != binding.runtime_artifact_path
+        || owner.launcher_artifact_path != binding.runtime_artifact_path
         || owner.state_home != request.state_home.display().to_string()
     {
         return Err(
@@ -184,12 +210,65 @@ async fn retire_undecodable_endpoint_owner(request: &SupervisorRequest) -> Resul
     Ok(true)
 }
 
+impl SupervisorRequest {
+    pub fn for_activation(
+        state_home: std::path::PathBuf,
+        expected_executable: std::path::PathBuf,
+        activation_generation: u64,
+        artifact_digest: agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+        previous_artifact_digest: Option<
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+        >,
+        program: std::path::PathBuf,
+        args: Vec<String>,
+        current_dir: Option<std::path::PathBuf>,
+        environment: Vec<(String, String)>,
+        stderr: std::path::PathBuf,
+    ) -> Self {
+        Self {
+            state_home,
+            expected_executable,
+            activation_generation,
+            artifact_digest,
+            previous_artifact_digest,
+            previous_owner_epoch: None,
+            launch: agent_semantic_runtime::runtime_process_lifecycle::RuntimeProcessLaunchSpec {
+                program,
+                args,
+                current_dir,
+                environment,
+                stderr,
+            },
+        }
+    }
+}
+
 impl RuntimeServerSupervisor {
     pub async fn ensure_runtime_server(
         &self,
         request: SupervisorRequest,
         explicit: bool,
     ) -> Result<SupervisorOutcome, String> {
+        self.ensure_runtime_server_with_monitor(request, explicit, false)
+            .await
+            .map(|supervision| supervision.outcome)
+    }
+
+    pub async fn ensure_runtime_server_monitored(
+        &self,
+        request: SupervisorRequest,
+        explicit: bool,
+    ) -> Result<RuntimeServerSupervision, String> {
+        self.ensure_runtime_server_with_monitor(request, explicit, true)
+            .await
+    }
+
+    async fn ensure_runtime_server_with_monitor(
+        &self,
+        mut request: SupervisorRequest,
+        explicit: bool,
+        monitor_process: bool,
+    ) -> Result<RuntimeServerSupervision, String> {
         if explicit {
             crate::runtime_server_lifecycle::clear_operator_stopped(&request.state_home).await?;
         } else if crate::runtime_server_lifecycle::operator_stopped(&request.state_home).await? {
@@ -215,29 +294,36 @@ impl RuntimeServerSupervisor {
         .await
         {
             Ok(Some(endpoint)) => {
+                request.previous_owner_epoch = Some(endpoint.owner_epoch);
                 let desired_identity =
                     agent_semantic_runtime::runtime_artifact_identity::read_runtime_artifact_identity(
                         &request.state_home,
                         "asp",
                     )
                     .await?
-                    .identity();
-                let status = crate::runtime_server_control::call_runtime_server(
+                    .identity()?;
+                let status = crate::runtime_server_control::call_runtime_server_for_state_home(
+                    &request.state_home,
                     &endpoint,
                     crate::runtime_server_control::RuntimeServerOperation::Status,
                     endpoint.runtime_binary_identity.clone(),
                     lifecycle_request_id("status"),
                 )
                 .await;
+                let endpoint_reachable = endpoint.validate_service_reachability().await.is_ok();
                 if status.as_ref().is_ok_and(|receipt| {
                     receipt.state == crate::runtime_server_control::RuntimeServerState::Healthy
                         && endpoint.runtime_binary_identity == desired_identity
-                }) {
-                    return Ok(SupervisorOutcome::AlreadyResident);
+                }) && endpoint_reachable
+                {
+                    return Ok(RuntimeServerSupervision {
+                        outcome: SupervisorOutcome::AlreadyResident,
+                        process: None,
+                    });
                 }
                 let owner_was_live = match status.as_ref() {
                     Ok(receipt) if runtime_server_status_requires_drain(&receipt.state) => {
-                        request_runtime_server_drain(&endpoint).await?;
+                        request_runtime_server_drain(&request.state_home, &endpoint).await?;
                         true
                     }
                     Ok(_) => {
@@ -298,7 +384,8 @@ impl RuntimeServerSupervisor {
                 crate::runtime_server_lifecycle::remove_owner_receipt(&request.state_home).await?;
             }
         }
-        self.ensure_owner_in_transaction(request, transaction).await
+        self.ensure_owner_in_transaction(request, transaction, monitor_process)
+            .await
     }
 
     pub async fn classify_owner(
@@ -306,20 +393,43 @@ impl RuntimeServerSupervisor {
         request: &SupervisorRequest,
     ) -> Result<SupervisorOutcome, String> {
         let receipt =
-            crate::runtime_server_lifecycle::read_owner_receipt(&request.state_home).await?;
+            crate::runtime_server_lifecycle::read_owner_receipt_state(&request.state_home).await?;
         let coordinator =
             crate::runtime_server_lifecycle_coordinator::RuntimeServerLifecycleCoordinator::new(
                 &request.state_home,
                 &request.expected_executable,
             );
         Ok(match receipt {
-            Some(receipt)
+            Some(crate::RuntimeServerSpawnReceiptRead::Stale(_)) => SupervisorOutcome::OwnerStale,
+            Some(crate::RuntimeServerSpawnReceiptRead::Current(receipt))
+                if receipt.activation_generation < request.activation_generation =>
+            {
+                SupervisorOutcome::OwnerStale
+            }
+            Some(crate::RuntimeServerSpawnReceiptRead::Current(receipt))
+                if receipt.activation_generation > request.activation_generation =>
+            {
+                return Err(format!(
+                    "reasonKind=runtime-server-owner-generation-ahead-of-activation ownerGeneration={} activationGeneration={}",
+                    receipt.activation_generation, request.activation_generation
+                ));
+            }
+            Some(crate::RuntimeServerSpawnReceiptRead::Current(receipt))
+                if receipt.launcher_artifact_digest != request.artifact_digest
+                    || receipt.launcher_artifact_path
+                        != request.expected_executable.display().to_string() =>
+            {
+                return Err(
+                    "reasonKind=runtime-server-owner-activation-binding-mismatch".to_owned(),
+                );
+            }
+            Some(crate::RuntimeServerSpawnReceiptRead::Current(receipt))
                 if coordinator.classify(Some(receipt.process_id)).await?
                     == crate::runtime_server_lifecycle_coordinator::OwnerClassification::Live =>
             {
                 SupervisorOutcome::AlreadyResident
             }
-            Some(_) => SupervisorOutcome::OwnerStale,
+            Some(crate::RuntimeServerSpawnReceiptRead::Current(_)) => SupervisorOutcome::OwnerStale,
             None => SupervisorOutcome::SpawnAccepted,
         })
     }
@@ -329,14 +439,17 @@ impl RuntimeServerSupervisor {
         request: SupervisorRequest,
     ) -> Result<SupervisorOutcome, String> {
         let transaction = acquire_supervisor_transaction(&request.state_home).await?;
-        self.ensure_owner_in_transaction(request, transaction).await
+        self.ensure_owner_in_transaction(request, transaction, false)
+            .await
+            .map(|supervision| supervision.outcome)
     }
 
     async fn ensure_owner_in_transaction(
         &self,
         request: SupervisorRequest,
         transaction: crate::runtime_server_control::RuntimeServerSupervisorTransaction,
-    ) -> Result<SupervisorOutcome, String> {
+        monitor_process: bool,
+    ) -> Result<RuntimeServerSupervision, String> {
         let reservation = match crate::runtime_server_control::try_acquire_runtime_server_election(
             &request.state_home,
         )
@@ -351,27 +464,70 @@ impl RuntimeServerSupervisor {
             }
         };
         match self.classify_owner(&request).await? {
-            SupervisorOutcome::AlreadyResident => return Ok(SupervisorOutcome::AlreadyResident),
+            SupervisorOutcome::AlreadyResident => {
+                return Ok(RuntimeServerSupervision {
+                    outcome: SupervisorOutcome::AlreadyResident,
+                    process: None,
+                });
+            }
             SupervisorOutcome::OwnerStale => {
                 crate::runtime_server_lifecycle::remove_owner_receipt(&request.state_home).await?;
             }
             SupervisorOutcome::SpawnAccepted | SupervisorOutcome::Failed => {}
         }
-        let launch =
-            agent_semantic_runtime::runtime_process_lifecycle::launch_detached(request.launch)
-                .await?;
+        if request.launch.program != request.expected_executable {
+            return Err(format!(
+                "reasonKind=runtime-server-launcher-artifact-path-mismatch expected={} actual={}",
+                request.expected_executable.display(),
+                request.launch.program.display()
+            ));
+        }
+        let launcher_bytes = tokio::fs::read(&request.launch.program)
+            .await
+            .map_err(|error| format!("read Runtime Server launcher artifact: {error}"))?;
+        let launcher_digest =
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+                &launcher_bytes,
+            );
+        if launcher_digest != request.artifact_digest {
+            return Err(format!(
+                "reasonKind=runtime-server-launcher-artifact-digest-mismatch expected={} actual={}",
+                request.artifact_digest, launcher_digest
+            ));
+        }
+        let launcher_artifact_path = request.launch.program.clone();
+        let spawn_argv = request.launch.args.clone();
+        let (process_id, process) = if monitor_process {
+            let process =
+                agent_semantic_runtime::runtime_process_lifecycle::launch_monitored(request.launch)
+                    .await?;
+            (process.process_id(), Some(process))
+        } else {
+            let launch =
+                agent_semantic_runtime::runtime_process_lifecycle::launch_detached(request.launch)
+                    .await?;
+            (launch.process_id, None)
+        };
         let receipt = crate::RuntimeServerSpawnReceipt {
             schema_id: "agent.semantic-protocols.runtime-server-owner-spawn.v1".into(),
             schema_version: "1".into(),
-            process_id: launch.process_id,
-            nonce: format!("owner-{}", launch.process_id),
+            process_id,
+            nonce: format!("owner-{process_id}"),
             state_home: request.state_home.display().to_string(),
-            runtime_artifact_path: request.expected_executable.display().to_string(),
+            activation_generation: request.activation_generation,
+            launcher_artifact_path: launcher_artifact_path.display().to_string(),
+            launcher_artifact_digest: launcher_digest,
+            spawn_argv,
+            previous_serving_digest: request.previous_artifact_digest,
+            previous_owner_epoch: request.previous_owner_epoch,
         };
         crate::runtime_server_lifecycle::write_owner_receipt(&request.state_home, &receipt).await?;
         drop(reservation);
         drop(transaction);
-        Ok(SupervisorOutcome::SpawnAccepted)
+        Ok(RuntimeServerSupervision {
+            outcome: SupervisorOutcome::SpawnAccepted,
+            process,
+        })
     }
 
     pub async fn stop_runtime_server(
@@ -384,7 +540,8 @@ impl RuntimeServerSupervisor {
             crate::runtime_server_control::read_runtime_server_supervisor_endpoint(state_home)
                 .await?;
         if let Some(endpoint) = endpoint.as_ref() {
-            let graceful_drain = crate::runtime_server_control::call_runtime_server(
+            let graceful_drain = crate::runtime_server_control::call_runtime_server_for_state_home(
+                state_home,
                 endpoint,
                 crate::runtime_server_control::RuntimeServerOperation::Restart,
                 endpoint.runtime_binary_identity.clone(),
@@ -469,9 +626,11 @@ impl RuntimeServerSupervisor {
 }
 
 pub async fn request_runtime_server_drain(
+    state_home: &std::path::Path,
     endpoint: &crate::runtime_server_control::RuntimeServerEndpoint,
 ) -> Result<(), String> {
-    let receipt = crate::runtime_server_control::call_runtime_server(
+    let receipt = crate::runtime_server_control::call_runtime_server_for_state_home(
+        state_home,
         endpoint,
         crate::runtime_server_control::RuntimeServerOperation::Restart,
         endpoint.runtime_binary_identity.clone(),

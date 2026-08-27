@@ -24,8 +24,9 @@ pub struct HookClientRuleConfig {
     pub reason_kind: Option<HookClientConfigReasonKind>,
     #[serde(default)]
     pub message: Option<String>,
+    /// Native Host matcher aliases admitted by this rule, joined with `|`.
     #[serde(default)]
-    pub actions: Vec<HookClientActionKind>,
+    pub matcher: Option<String>,
     #[serde(default)]
     pub host_invocations: Vec<HookClientHostInvocationKind>,
     #[serde(default)]
@@ -108,6 +109,8 @@ pub enum HookClientActionKind {
     Search,
     Enumerate,
     Execute,
+    Mcp,
+    SpawnAgent,
     Unknown,
 }
 
@@ -117,10 +120,9 @@ pub enum HookClientActionKind {
 pub enum HookClientHostInvocationKind {
     Read,
     Edit,
-    Search,
-    Enumerate,
     Execute,
     Mcp,
+    SpawnAgent,
     Unknown,
 }
 
@@ -160,7 +162,7 @@ pub struct HookClientRuleMatchConfig {
     #[serde(default)]
     pub command_set_any: Vec<String>,
     #[serde(default, skip_deserializing, skip_serializing)]
-    pub action_any: Vec<HookClientActionKind>,
+    pub native_matcher_any: Vec<String>,
     #[serde(default, skip_deserializing, skip_serializing)]
     pub host_invocation_any: Vec<HookClientHostInvocationKind>,
     #[serde(default)]

@@ -21,27 +21,25 @@ typed target/lane, and scoped command that advances the state.
 
 * Architecture
 
-=ASP_NO_AGENT= has two explicit Host-Hook projections.  An inherited
-=ASP_NO_AGENT=1= is an entry-plane recovery override whose precedence is
+=ASP_NO_AGENT=1= has exactly one Host-Hook projection. An inherited process
+environment value is an entry-plane recovery override whose precedence is
 absolute:
 
 #+begin_example
-parse bounded Host envelope
-  -> detect process-environment ASP_NO_AGENT=1
+detect process-environment ASP_NO_AGENT=1
   -> terminal allow receipt
   -> stop
 #+end_example
 
 The terminal branch MUST execute before workspace discovery, configuration or
 provider projection, mmap/file locks, Runtime or ASP Server access, lifecycle
-observation, and telemetry.  The inherited value must be exactly =1=.
-Command-scoped assignments are a separate declarative v1 Hook Matcher rule,
-recognized from the structured normalized shell-token projection by the
-generic matcher engine.  Its terminal allow decision may name
-=ASP_NO_AGENT=1= in configuration, but classifier orchestration MUST NOT contain
-that variable name or an equivalent special branch. The complete recovery
-decision path, including bounded
-payload parsing, MUST satisfy =hookDecisionCpuMicros < 1000=. This exclusive
+observation, and telemetry. The inherited value must be exactly =1=. An
+assignment inside the protected command is too late: the Host has already
+launched the enforcing Hook process, so it is ordinary command data and cannot
+grant recovery authority. Neither matcher configuration nor classifier
+orchestration may create a second command-scoped bypass. The complete recovery
+decision path performs no payload parsing and MUST satisfy
+=hookDecisionCpuMicros < 1000=. This exclusive
 hard boundary measures work owned by Hook; =hookDecisionElapsedMicros= remains
 an observed wall receipt and MUST NOT be relabeled as deterministic algorithm
 work because Host scheduling delay is external to the decision function.

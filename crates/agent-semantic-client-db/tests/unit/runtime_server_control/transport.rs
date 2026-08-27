@@ -15,6 +15,7 @@ fn runtime_transport_identity_binds_control_workspace_and_provider_planes() {
         include_bytes!("../../../../../schemas/provider-register-request.schema.json");
     let provider_register_response =
         include_bytes!("../../../../../schemas/provider-register-response.schema.json");
+    let asp_client_frame = include_bytes!("../../../../../schemas/asp-client-frame.schema.json");
     let mut expected = blake3::Hasher::new();
     expected.update(domain);
     for (contract_name, contract_bytes) in [
@@ -36,6 +37,7 @@ fn runtime_transport_identity_binds_control_workspace_and_provider_planes() {
             b"provider-register-response".as_slice(),
             provider_register_response.as_slice(),
         ),
+        (b"asp-client-frame".as_slice(), asp_client_frame.as_slice()),
     ] {
         expected.update(&(contract_name.len() as u64).to_le_bytes());
         expected.update(contract_name);

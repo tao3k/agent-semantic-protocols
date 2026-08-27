@@ -15,6 +15,7 @@ use tokio::{
 };
 
 pub mod hook_scenarios;
+pub mod installed_publication;
 
 pub const DEFAULT_HOOK_TIMEOUT: Duration = Duration::from_secs(2);
 pub const DEFAULT_SCENARIO_CONCURRENCY: usize = 8;
@@ -54,6 +55,14 @@ pub struct HookScenario {
 pub struct HookScenarioReceipt {
     pub scenario_id: String,
     pub decision: Value,
+    pub stderr: String,
+    pub elapsed: Duration,
+}
+
+#[derive(Clone, Debug)]
+pub struct HookProcessRecoveryReceipt {
+    pub decision: Value,
+    pub stderr: String,
     pub elapsed: Duration,
 }
 
@@ -63,6 +72,8 @@ pub enum HookTestKitError {
     Io(std::io::Error),
     Timeout {
         timeout: Duration,
+        stdout: Vec<u8>,
+        stderr: Vec<u8>,
     },
     Exit {
         status: ExitStatus,
@@ -83,10 +94,16 @@ impl std::fmt::Display for HookTestKitError {
         match self {
             Self::Spawn(error) => write!(formatter, "spawn Hook process: {error}"),
             Self::Io(error) => write!(formatter, "Hook process I/O: {error}"),
-            Self::Timeout { timeout } => write!(
+            Self::Timeout {
+                timeout,
+                stdout,
+                stderr,
+            } => write!(
                 formatter,
-                "Hook process exceeded {}ms and was killed and reaped",
-                timeout.as_millis()
+                "Hook process exceeded {}ms and was killed and reaped: stdout={} stderr={}",
+                timeout.as_millis(),
+                String::from_utf8_lossy(stdout),
+                String::from_utf8_lossy(stderr),
             ),
             Self::Exit {
                 status,
@@ -130,6 +147,27 @@ pub fn classify_hook_scenario(
         },
     );
     serde_json::to_value(decision).map_err(HookTestKitError::Encode)
+}
+
+pub fn classify_codex_plugin_scenario(
+    registry: &agent_semantic_hook::HookRuntime,
+    config: &agent_semantic_hook::ClientHookConfig,
+    event: &str,
+    payload: &Value,
+    exact_matcher: Option<&str>,
+    matcher_prefix: Option<&str>,
+) -> Result<Value, HookTestKitError> {
+    let mut bound_payload = payload.clone();
+    agent_semantic_hook::bind_plugin_host_matcher(
+        &mut bound_payload,
+        exact_matcher,
+        matcher_prefix,
+    )
+    .map_err(|message| HookTestKitError::Scenario {
+        scenario_id: format!("codex-{event}-host-matcher"),
+        message,
+    })?;
+    classify_hook_scenario(registry, config, "codex", event, &bound_payload)
 }
 
 pub async fn run_hook_process(
@@ -190,6 +228,8 @@ pub async fn run_hook_process(
             terminate_hook_process_tree(&mut child).await;
             return Err(HookTestKitError::Timeout {
                 timeout: spec.timeout,
+                stdout: Vec::new(),
+                stderr: Vec::new(),
             });
         }
     };
@@ -204,7 +244,28 @@ pub async fn run_hook_process(
     Ok(HookScenarioReceipt {
         scenario_id: String::new(),
         decision,
+        stderr: String::from_utf8_lossy(&stderr).into_owned(),
         elapsed: started.elapsed(),
+    })
+}
+
+/// Prove that the process-level recovery edge wins before an intentionally
+/// invalid payload can reach parsing, Runtime, configuration, or state locks.
+/// The ordinary TestKit timeout still kills and reaps the complete process
+/// group if that terminal edge regresses.
+pub async fn run_process_entry_no_agent_recovery_probe(
+    spec: &HookProcessSpec,
+) -> Result<HookProcessRecoveryReceipt, HookTestKitError> {
+    let mut recovery_spec = spec.clone();
+    recovery_spec.env.retain(|(key, _)| key != "ASP_NO_AGENT");
+    recovery_spec
+        .env
+        .push(("ASP_NO_AGENT".to_owned(), "1".to_owned()));
+    let receipt = run_hook_process(&recovery_spec, &Value::Null).await?;
+    Ok(HookProcessRecoveryReceipt {
+        decision: receipt.decision,
+        stderr: receipt.stderr,
+        elapsed: receipt.elapsed,
     })
 }
 
@@ -305,7 +366,11 @@ where
             let started = tokio::time::Instant::now();
             let decision = tokio::time::timeout(timeout, execute(scenario.payload.clone()))
                 .await
-                .map_err(|_| HookTestKitError::Timeout { timeout })?
+                .map_err(|_| HookTestKitError::Timeout {
+                    timeout,
+                    stdout: Vec::new(),
+                    stderr: Vec::new(),
+                })?
                 .map_err(|message| HookTestKitError::Scenario {
                     scenario_id: scenario.scenario_id.clone(),
                     message,
@@ -316,6 +381,7 @@ where
                 HookScenarioReceipt {
                     scenario_id: scenario.scenario_id,
                     decision,
+                    stderr: String::new(),
                     elapsed: started.elapsed(),
                 },
             ))

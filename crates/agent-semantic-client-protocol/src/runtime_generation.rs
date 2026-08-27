@@ -1,3 +1,4 @@
+use agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest;
 use serde::{Deserialize, Serialize};
 
 pub const RUNTIME_SERVER_GENERATION_MISMATCH: &str = "runtime-server-generation-mismatch";
@@ -20,19 +21,13 @@ impl RuntimeServerGenerationIdentity {
         owner_epoch: u64,
     ) -> Self {
         let binary_content_digest = binary_content_digest.into();
-        let schema_digest = blake3::hash(
-            format!("{schema_id}\0{schema_version}\0{transport_contract_digest}").as_bytes(),
-        )
-        .to_hex()
-        .to_string();
-        let runtime_generation_digest = blake3::hash(
-            format!(
-                "{binary_content_digest}\0{schema_digest}\0{artifact_catalog_digest}\0{owner_epoch}"
-            )
-            .as_bytes(),
-        )
-        .to_hex()
-        .to_string();
+        let schema_material = format!("{schema_id}\0{schema_version}\0{transport_contract_digest}");
+        let schema_digest = Blake3ContentDigest::from_bytes(schema_material.as_bytes()).to_string();
+        let runtime_generation_material = format!(
+            "{binary_content_digest}\0{schema_digest}\0{artifact_catalog_digest}\0{owner_epoch}"
+        );
+        let runtime_generation_digest =
+            Blake3ContentDigest::from_bytes(runtime_generation_material.as_bytes()).to_string();
         Self {
             binary_content_digest,
             runtime_generation_digest,

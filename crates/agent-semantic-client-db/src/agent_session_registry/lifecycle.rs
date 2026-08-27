@@ -2,10 +2,7 @@
 
 use crate::engine::turso_statement::execute_turso_operation;
 
-use super::core::{
-    AgentSessionRegistry, block_on_agent_session_registry_async,
-    connect_turso_agent_session_registry,
-};
+use super::core::{AgentSessionRegistry, connect_turso_agent_session_registry};
 use super::types::{AgentSessionId, AgentSessionProjectId, AgentSessionRecord, AgentSessionStatus};
 
 impl AgentSessionRegistry {
@@ -16,7 +13,7 @@ impl AgentSessionRegistry {
     /// Keeping either the target id or `messageTargetBinding` would allow
     /// status/bootstrap projections to resurrect a route the host can no
     /// longer resolve.
-    pub fn invalidate_session_live_binding(
+    pub async fn invalidate_session_live_binding(
         &self,
         project_id: impl Into<AgentSessionProjectId>,
         session_id: impl Into<AgentSessionId>,
@@ -26,18 +23,18 @@ impl AgentSessionRegistry {
         let project_id = project_id.into();
         let session_id = session_id.into();
         let status = status.into();
-        let changed =
-            block_on_agent_session_registry_async(turso_invalidate_session_live_binding(
-                self.db_path(),
-                project_id.as_str(),
-                session_id.as_str(),
-                status.as_str(),
-                now,
-            ))?;
+        let changed = turso_invalidate_session_live_binding(
+            self.db_path(),
+            project_id.as_str(),
+            session_id.as_str(),
+            status.as_str(),
+            now,
+        )
+        .await?;
         if !changed {
             return Ok(None);
         }
-        self.session_by_id(project_id, session_id)
+        self.session_by_id(project_id, session_id).await
     }
 }
 

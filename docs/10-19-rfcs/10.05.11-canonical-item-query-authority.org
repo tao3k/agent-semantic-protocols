@@ -1,6 +1,8 @@
 #+TITLE: RFC 10.05.11 Canonical Item Query Authority
 #+OPTIONS: toc:2 num:nil
 
+Parent architecture: [[file:10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
 * Status
 
 Accepted for implementation.
@@ -78,4 +80,3 @@ canonical item selector.
 - route gate: syntax evidence never materializes a =Query= decision route;
 - installed-artifact gate: the formerly failing command cannot reach
   =wrapper-snapshot-required=.
-

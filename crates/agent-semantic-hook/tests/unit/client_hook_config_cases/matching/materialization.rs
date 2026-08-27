@@ -3,18 +3,24 @@ use super::{
     load_client_config, temp_root, with_direct_dispatch_roles,
 };
 
+fn bound_read(mut payload: serde_json::Value) -> serde_json::Value {
+    agent_semantic_hook::bind_plugin_host_matcher(&mut payload, Some("Read"), None)
+        .expect("bind native Read matcher");
+    payload
+}
+
 #[test]
 fn builtin_materialization_rule_is_permanent_and_source_scoped() {
     let config = ClientHookConfig::default();
     let registry = crate::classifier::rust_registry();
-    let source_payload = json!({
+    let source_payload = bound_read(json!({
         "session_id": "permanent-source-deny",
         "transcript_path": "/tmp/permanent-source-deny.jsonl",
-        "tool_name": "Bash",
+        "tool_name": "Read",
         "tool_input": {
-            "command": "sed -n 1p crates/agent-semantic-hook/src/hook_config/core/implementation.rs"
+            "file_path": "crates/agent-semantic-hook/src/hook_config/core/implementation.rs"
         }
-    });
+    }));
 
     for _ in 0..2 {
         let decision = classify_hook_with_config(HookClassificationRequest {
@@ -60,94 +66,19 @@ fn builtin_materialization_rule_is_permanent_and_source_scoped() {
 }
 
 #[test]
-fn registered_source_operands_project_read_without_executable_name_tables() {
+fn native_read_projects_registered_source_without_executable_name_tables() {
     let config = ClientHookConfig::default();
     let registry = crate::classifier::rust_registry();
-
-    for command in [
-        "rtk read crates/agent-semantic-hook/src/tool_action.rs",
-        "rtk read *.rs",
-    ] {
-        let decision = classify_hook_with_config(HookClassificationRequest {
-            registry: &registry,
-            config: &config,
-            platform: "codex",
-            event: "pre-tool",
-            payload: &json!({
-                "tool_name": "Bash",
-                "tool_input": {"command": command}
-            }),
-        });
-        assert_eq!(
-            decision.decision,
-            DecisionKind::Deny,
-            "{command}: {decision:?}"
-        );
-        assert_eq!(
-            decision
-                .fields
-                .get("configRuleId")
-                .and_then(|id| id.as_str()),
-            Some("route-read-to-asp-languages"),
-            "{command}"
-        );
-        let host_action = decision
-            .fields
-            .get("agentAction")
-            .expect("typed agent action receipt");
-        assert_eq!(
-            host_action["hostInvocation"]["action"], "execute",
-            "{command}"
-        );
-        assert!(
-            host_action["semanticCapabilities"]
-                .as_array()
-                .is_some_and(|capabilities| capabilities
-                    .iter()
-                    .any(|capability| capability["action"] == "read"
-                        && capability["evidence"] == "shell-source-operand")),
-            "registered source operand must project Read independently of executable names: {command}: {host_action}"
-        );
-        assert!(
-            matches!(
-                host_action["subjects"][0]["kind"].as_str(),
-                Some("registered-language-source" | "registered-language-source-pattern")
-            ),
-            "{command}: {host_action}"
-        );
-    }
-
-    for command in ["unregistered-reader *.rs", "git restore source.rs"] {
-        let decision = classify_hook_with_config(HookClassificationRequest {
-            registry: &registry,
-            config: &config,
-            platform: "codex",
-            event: "pre-tool",
-            payload: &json!({
-                "tool_name": "Bash",
-                "tool_input": {"command": command}
-            }),
-        });
-        assert_eq!(
-            decision.decision,
-            DecisionKind::Deny,
-            "registered-source operation must project Read and fail closed: {command}: {decision:?}"
-        );
-        assert_eq!(
-            decision.fields["configRuleId"],
-            "route-read-to-asp-languages"
-        );
-    }
 
     let native_read = classify_hook_with_config(HookClassificationRequest {
         registry: &registry,
         config: &config,
         platform: "codex",
         event: "pre-tool",
-        payload: &json!({
+        payload: &bound_read(json!({
             "tool_name": "Read",
             "tool_input": {"file_path": "crates/agent-semantic-hook/src/tool_action.rs"}
-        }),
+        })),
     });
     assert_eq!(native_read.decision, DecisionKind::Deny);
     assert_eq!(
@@ -156,7 +87,7 @@ fn registered_source_operands_project_read_without_executable_name_tables() {
     );
     assert_eq!(
         native_read.fields["agentAction"]["semanticCapabilities"][0]["evidence"],
-        "host-invocation"
+        "host-matcher"
     );
     assert_eq!(
         native_read.fields["configRuleId"],
@@ -195,7 +126,7 @@ fn registered_source_operands_project_read_without_executable_name_tables() {
 }
 
 #[test]
-fn registered_source_read_action_matches_real_payload_field_variants() {
+fn canonical_read_matcher_accepts_supported_payload_field_variants() {
     let config = ClientHookConfig::default();
     let registry = crate::classifier::rust_registry();
 
@@ -210,13 +141,6 @@ fn registered_source_read_action_matches_real_payload_field_variants() {
             }),
         ),
         (
-            "desktop-camel-case",
-            json!({
-                "toolName": "functions.read_file",
-                "toolInput": {"path": "hook_runtime.rs"}
-            }),
-        ),
-        (
             "arguments-envelope-glob",
             json!({
                 "toolName": "Read",
@@ -226,6 +150,7 @@ fn registered_source_read_action_matches_real_payload_field_variants() {
     ];
 
     for (label, payload) in cases {
+        let payload = bound_read(payload);
         let decision = classify_hook_with_config(HookClassificationRequest {
             registry: &registry,
             config: &config,
@@ -265,7 +190,7 @@ fn registered_source_read_action_matches_real_payload_field_variants() {
 }
 
 #[test]
-fn later_denied_action_wins_over_earlier_allowed_envelope() {
+fn nested_payload_shape_does_not_invent_a_native_read_matcher() {
     let root = temp_root("blocking-action-dominates-allow");
     let config_path = root.join("config.toml");
     fs::write(
@@ -311,15 +236,8 @@ toolAny = ["multi_tool_use.parallel"]
         payload: &payload,
     });
 
-    assert_eq!(decision.decision, DecisionKind::Deny, "{decision:?}");
-    assert_eq!(
-        decision.fields["configRuleId"],
-        "route-read-to-asp-languages"
-    );
-    assert_eq!(
-        decision.subject.tool_name.as_deref(),
-        Some("functions.read_file")
-    );
+    assert_eq!(decision.decision, DecisionKind::Allow, "{decision:?}");
+    assert_eq!(decision.fields["configRuleId"], "allow-parallel-envelope");
     assert_eq!(
         decision.fields["normalizedActions"]
             .as_array()

@@ -9,7 +9,8 @@ use std::collections::BTreeSet;
 use crate::{
     CLIENT_CATALOG_SCHEMA_ID, CLIENT_PROTOCOL_ID, CLIENT_PROTOCOL_VERSION, ClientCapabilities,
     ClientMethod, ClientParameter, ClientParameterCardinality, ClientParameterSource,
-    ClientParameterType, ClientProtocolCatalog, ClientTransport, SCHEMA_VERSION,
+    ClientParameterType, ClientProtocolCatalog, ClientTransport, SCHEMA_BUNDLE_METHOD,
+    SCHEMA_BUNDLE_REQUEST_SCHEMA_ID, SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID, SCHEMA_VERSION,
 };
 
 const ROUTE_FAILURE_SCHEMA_ID: &str = "agent.semantic-protocols.route-failure";
@@ -63,8 +64,28 @@ pub fn server_client_methods(
             owner_search_method(&language_id),
         ]);
     }
+    methods.push(schema_bundle_method());
     methods.sort_by(|left, right| left.method.cmp(&right.method));
     Ok(methods)
+}
+
+fn schema_bundle_method() -> ClientMethod {
+    ClientMethod {
+        method: SCHEMA_BUNDLE_METHOD.to_owned(),
+        route_id: SCHEMA_BUNDLE_METHOD.to_owned(),
+        request_schema_id: SCHEMA_BUNDLE_REQUEST_SCHEMA_ID.to_owned(),
+        response_schema_id: SCHEMA_BUNDLE_RESPONSE_SCHEMA_ID.to_owned(),
+        error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
+        parameters: vec![
+            required_string("schemaId"),
+            required_string("schemaVersion"),
+            required_string("languageId"),
+            required("rootSetIds", ClientParameterType::StringArray),
+            optional("knownBundleDigest", ClientParameterType::String),
+        ],
+        cancellable: false,
+        streaming: false,
+    }
 }
 
 fn cancellation_probe_method() -> ClientMethod {

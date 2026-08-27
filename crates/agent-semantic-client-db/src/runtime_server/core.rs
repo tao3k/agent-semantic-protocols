@@ -45,7 +45,6 @@ pub struct RuntimeServer {
         Option<crate::runtime_search_service::RuntimeSearchServiceHandle>,
     pub(super) endpoint: RuntimeServerEndpoint,
     pub(super) listener: UnixListener,
-    pub(super) data_listener: UnixListener,
     pub(super) provider_register: Arc<crate::runtime_provider_register::RuntimeProviderRegister>,
     pub(super) registry: Arc<WorkspaceDbRegistry>,
     pub(super) workspace_count: watch::Receiver<usize>,
@@ -58,14 +57,9 @@ pub struct RuntimeServer {
     pub(super) events: Option<crate::runtime_server_observability::RuntimeServerEventPublisher>,
     pub(super) generation_admission:
         Option<Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>>,
-    pub(super) graph_turbo_evaluation_builder: Option<GraphTurboEvaluationBuilder>,
     pub(super) graph_turbo_resident_status: Option<GraphTurboResidentStatusHandle>,
     pub(crate) agent_session_registry_owner: Option<Arc<crate::AgentSessionRegistry>>,
-    pub(crate) session_control_plane_runtime_registry:
-        Arc<crate::SessionControlPlaneRuntimeRegistry>,
     pub(crate) agent_session_status: Option<AgentSessionStatusHandle>,
-    pub(super) codex_multi_agent_control_plane_owner:
-        Arc<crate::codex_multi_agent_control_plane_owner::CodexMultiAgentControlPlaneOwner>,
     pub(super) telemetry_sender: Option<crate::runtime_telemetry_bus::RuntimeTelemetryBusSender>,
 }
 
@@ -160,14 +154,6 @@ impl RuntimeServer {
         self
     }
 
-    pub fn with_graph_turbo_evaluation_builder(
-        mut self,
-        builder: GraphTurboEvaluationBuilder,
-    ) -> Self {
-        self.graph_turbo_evaluation_builder = Some(builder);
-        self
-    }
-
     pub fn with_graph_turbo_resident_status(
         mut self,
         status: GraphTurboResidentStatusHandle,
@@ -211,17 +197,18 @@ impl RuntimeServer {
           provider_target: Option<
             crate::runtime_server_admission::WorkspaceGenerationProviderTarget,
           >,
-          _cancellation: crate::runtime_generation_cancellation::GenerationCancellation| {
+          cancellation: crate::runtime_generation_cancellation::GenerationCancellation| {
                 let durable_registry = Arc::clone(&durable_registry);
                 let memory_registry = Arc::clone(&memory_registry);
                 let generation_publication = generation_publication.clone();
-                let source_builder = source_builder.clone();
+        let source_builder = source_builder.clone();
+        let source_builder_cancellation = cancellation.clone();
                 let mutation_owner_projection_builder =
                     mutation_owner_projection_builder.clone();
                 let events = events.clone();
                 let workspace_for_build = workspace_identity.clone();
                 Box::pin(async move {
-                    if _cancellation.is_cancelled() {
+            if cancellation.is_cancelled() {
                         return Err(crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
                             crate::runtime_server_admission::WorkspaceGenerationFailureStage::GenerationBuilderSupervision,
                             "generation build cancelled",
@@ -230,7 +217,7 @@ impl RuntimeServer {
                     let diagnostic_workspace_identity = workspace_identity.clone();
                     let diagnostic_events = events.clone();
                     let result = async move {
-                    if _cancellation.is_cancelled() {
+            if cancellation.is_cancelled() {
                         return Err(crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
                             crate::runtime_server_admission::WorkspaceGenerationFailureStage::GenerationBuilderSupervision,
                             "generation build cancelled",
@@ -260,18 +247,31 @@ impl RuntimeServer {
                             workspace_identity.clone(),
                             operation_id.clone(),
                         );
-                    let session = await_stage(
+let session = await_stage(
                         &workspace_identity,
                         &operation_id,
                         Stage::WorkspaceBootstrap,
                         async {
-                            crate::workspace_db_ipc_server::admitted_or_bootstrap_workspace(
-                                &durable_registry,
-                                &workspace_identity,
-                                &project_root,
-                            )
-                            .await
-                            .map_err(|error| {
+        async {
+            if workspace_identity.trim().is_empty() {
+                return Err(
+                    "workspace admission requires a non-empty workspace identity".to_owned(),
+                );
+            }
+            if let Some(session) = durable_registry.loaded_session(&workspace_identity) {
+                return Ok(session);
+            }
+            let session = durable_registry.bootstrap_workspace(&project_root).await?;
+            if session.workspace_identity() != workspace_identity {
+                return Err(format!(
+                    "workspace admission identity mismatch: requested={workspace_identity} resolved={}",
+                    session.workspace_identity()
+                ));
+            }
+            Ok(session)
+        }
+        .await
+        .map_err(|error| {
                                 crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
                                     crate::runtime_server_admission::WorkspaceGenerationFailureStage::WorkspaceBootstrap,
                                     error,
@@ -401,7 +401,7 @@ impl RuntimeServer {
                                     "runtime mutation owner projection builder is unavailable",
                                 )
                             })?;
-                        return super::generation_builder::publish_mutation_generation(
+        return super::generation_builder::publish_mutation_generation(
                             owner_projection_builder,
                             &memory_registry,
                             &workspace_identity,
@@ -411,8 +411,9 @@ impl RuntimeServer {
                                 "daemon-admission-mutation-{workspace_identity}-{}",
                                 candidate.candidate_generation.digest
                             ),
-                            candidate,
-                        )
+            candidate,
+            cancellation.clone(),
+        )
                         .await;
                     }
                     let source_builder = source_builder.as_ref().ok_or_else(|| {
@@ -434,12 +435,13 @@ impl RuntimeServer {
                             // publication or builder error; a client-era wall
                             // clock budget both cancels useful I/O and leaves a
                             // facade permanently without a resident generation.
-                            source_builder(
-                                workspace_for_build,
-                                project_root.clone(),
-                                changed_paths,
-                                provider_target,
-                            )
+                    source_builder(
+                        workspace_for_build,
+                        project_root.clone(),
+                        changed_paths,
+                        provider_target,
+                        source_builder_cancellation,
+                    )
                             .await
                             .map_err(|error| {
                                 crate::runtime_server_admission::WorkspaceGenerationBuildFailure::new(
@@ -610,10 +612,9 @@ impl RuntimeServer {
         let Self {
             artifact_catalog: _artifact_catalog,
             workspace_registry,
-            runtime_search_service,
+            runtime_search_service: _,
             endpoint,
             listener,
-            data_listener,
             provider_register: _provider_register,
             registry,
             mut workspace_count,
@@ -622,13 +623,10 @@ impl RuntimeServer {
             mut status_memory,
             events,
             generation_admission,
-            graph_turbo_evaluation_builder,
             graph_turbo_resident_status,
             agent_session_registry_owner,
-            session_control_plane_runtime_registry,
             agent_session_status,
-            codex_multi_agent_control_plane_owner,
-            telemetry_sender,
+            telemetry_sender: _,
             readiness_sender,
             generation_publication,
         } = self;
@@ -674,215 +672,167 @@ impl RuntimeServer {
             status.refresh(owner).await?;
         }
         let exit = loop {
-            let runtime_search_service_for_connection = runtime_search_service.clone();
             tokio::select! {
-                            connection = listener.accept(), if connection_supervisor.has_capacity() => {
-                                let (stream, _) = connection.map_err(|error| {
-                                    format!("failed to accept runtime server request: {error}")
-                                })?;
-                                crate::runtime_server_control::validate_runtime_server_peer_fd(
-                                    std::os::fd::AsRawFd::as_raw_fd(&stream),
-                                )?;
-                                let lease = connection_supervisor
-                                    .try_admit()
-                                    .expect("capacity guard must admit one control connection");
-                                let connection_endpoint = endpoint.clone();
-                                let connection_registry = Arc::clone(&registry);
-                                let connection_generation_admission = generation_admission.clone();
-                                let connection_lifecycle = lifecycle.clone();
-                                let connection_graph_turbo_status = graph_turbo_resident_status.clone();
-                                let connection_drain = drain_receiver.clone();
-                                let connection_replay_guard = Arc::clone(&control_replay_guard);
-                                connections.spawn(async move {
-                                    let result = super::control_connection::serve_connection(
-                                        stream,
-                                        connection_endpoint,
-                                        connection_registry,
-                                        connection_generation_admission,
-                                        connection_lifecycle,
-                                        connection_graph_turbo_status,
-                                        connection_drain,
-                                        connection_replay_guard,
-                                    )
-                                    .await;
-                                    (lease, result)
-                                });
-                            }
-                            connection = data_listener.accept(), if connection_supervisor.has_capacity() => {
-                                let (stream, _) = connection.map_err(|error| {
-                                    format!("failed to accept Runtime Server data-plane request: {error}")
-                                })?;
-                                crate::runtime_server_control::validate_runtime_server_peer_fd(
-                                    std::os::fd::AsRawFd::as_raw_fd(&stream),
-                                )?;
-                                let endpoint = endpoint.clone();
-                                let registry = Arc::clone(&registry);
-                                let memory_registry = Arc::clone(&workspace_registry);
-                                let generation_admission = generation_admission.clone();
-                                let graph_turbo_evaluation_builder = graph_turbo_evaluation_builder.clone();
-            let agent_session_registry_owner = agent_session_registry_owner.clone();
-            let session_control_plane_runtime_registry =
-                Arc::clone(&session_control_plane_runtime_registry);
-            let agent_session_status = agent_session_status.clone();
-                                let codex_multi_agent_control_plane_owner =
-                                    Arc::clone(&codex_multi_agent_control_plane_owner);
-                                let telemetry_sender = telemetry_sender.clone();
-                                let connection_drain = drain_receiver.clone();
-                                let lease = connection_supervisor
-                                    .try_admit()
-                                    .expect("capacity guard must admit one data-plane connection");
-                                connections.spawn(async move {
-                                    let result = crate::workspace_db_ipc_server::serve_runtime_server_workspace_stream(
-                                        stream,
-                                        crate::workspace_db_ipc_server::RuntimeServerWorkspaceStreamContext {
-                                            endpoint: &endpoint,
-                                            registry: &registry,
-                                            memory_registry: &memory_registry,
-                                            generation_admission: generation_admission.as_ref(),
-                                            graph_turbo_evaluation_builder: graph_turbo_evaluation_builder.as_ref(),
-                                            runtime_search_service: runtime_search_service_for_connection.as_ref(),
-                                            agent_session_registry_owner: agent_session_registry_owner.as_ref(),
-                                            session_control_plane_runtime_registry: &session_control_plane_runtime_registry,
-                                            agent_session_status: agent_session_status.as_ref(),
-                                            codex_multi_agent_control_plane_owner: &codex_multi_agent_control_plane_owner,
-                                            telemetry_sender: telemetry_sender.as_ref(),
-                                            drain: connection_drain,
-                                        },
-                                    )
-                                    .await
-                                    .map(|()| false);
-                                    (lease, result)
-                                });
-                            }
-                            completed = connections.join_next(), if !connections.is_empty() => {
-                                match completed {
-                                    Some(Ok((_lease, Ok(true)))) => {
-                                        let entry_counts = registry.workspace_entry_counts();
-                                        let slot_count = entry_counts.slot_count;
-                                        let loaded_entry_count = entry_counts.loaded_entry_count;
-                                        status_memory.publish(
-                                            crate::runtime_server_control::RuntimeServerState::Draining,
-                                            slot_count
-                                                .max(loaded_entry_count)
-                                                .max(*workspace_count.borrow()),
-                                        )?;
-                                        let _ = drain_sender.send(true);
-                                        break RuntimeServerExit::RestartRequested;
-                                    }
-                                    Some(Ok((_lease, Ok(false)))) => {}
-                                    Some(Ok((_lease, Err(error)))) => {
-                                        publish_event(
-                                            events.as_ref(),
-                                            RuntimeServerEvent::ConnectionRejected(error),
-                                        );
-                                    }
-                                    Some(Err(error)) => {
-                                        publish_event(
-                                            events.as_ref(),
-                                            RuntimeServerEvent::ConnectionTaskFailed(error.to_string()),
-                                        );
-                                    }
-                                    None => break RuntimeServerExit::ListenerClosed,
-                                }
-                            }
-                            changed = workspace_count.changed() => {
-                                if changed.is_err() {
-                                    break RuntimeServerExit::ListenerClosed;
-                                }
-                                let entry_counts = registry.workspace_entry_counts();
-                                let slot_count = entry_counts.slot_count;
-                                let loaded_entry_count = entry_counts.loaded_entry_count;
-                                status_memory.publish(
-                                    crate::runtime_server_control::RuntimeServerState::Healthy,
-                                    slot_count
-                                        .max(loaded_entry_count)
-                                        .max(*workspace_count.borrow_and_update()),
-                                )?;
-                            }
-                            _ = retirement_sweep.tick() => {
-                                if let (Some(status), Some(owner)) =
-                                    (agent_session_status.as_ref(), agent_session_registry_owner.as_ref())
-                                {
-                                    status.refresh(owner).await?;
-                                }
-                                let retirement_receipts = workspace_registry.retire_inactive().await?;
-                                for receipt in retirement_receipts {
-                                    eprintln!(
-                                        "[runtime-server-workspace-retirement] schemaId={} schemaVersion={} workspaceIdentity={} reason={:?} checkpointCompleted={} writerLaneDrained={} endpointRetired={}",
-                                        receipt.schema_id,
-                                        receipt.schema_version,
-                                        receipt.workspace_identity,
-                                        receipt.reason,
-                                        receipt.checkpoint_completed,
-                                        receipt.writer_lane_drained,
-                                        receipt.endpoint_retired,
-                                    );
-                                }
-                            }
-                            changed = async {
-                                match graph_turbo_status_changes.as_mut() {
-                                    Some(changes) => Some(changes.changed().await),
-                                    None => std::future::pending().await,
-                                }
-                            }, if graph_turbo_status_changes.is_some() => {
-                                changed
-                                    .expect("Graph Turbo status branch requires a receiver")
-                                    .map_err(|_| "Graph Turbo resident status owner closed".to_owned())?;
-                                let entry_counts = registry.workspace_entry_counts();
-                                let slot_count = entry_counts.slot_count;
-                                let loaded_entry_count = entry_counts.loaded_entry_count;
-                                status_memory.publish(
-                                    crate::runtime_server_control::RuntimeServerState::Healthy,
-                                    slot_count
-                                        .max(loaded_entry_count)
-                                        .max(*workspace_count.borrow()),
-                                )?;
-                                if let Some(status) = agent_session_status.as_ref() {
-                                    status.mark_current_published();
-                                }
-                            }
-                            changed = async {
-                                match agent_session_status_changes.as_mut() {
-                                    Some(changes) => Some(changes.changed().await),
-                                    None => std::future::pending().await,
-                                }
-                            }, if agent_session_status_changes.is_some() => {
-                                changed
-                                    .expect("Agent session status branch requires a receiver")
-                                    .map_err(|_| "Agent session status owner closed".to_owned())?;
-                                let entry_counts = registry.workspace_entry_counts();
-                                let slot_count = entry_counts.slot_count;
-                                let loaded_entry_count = entry_counts.loaded_entry_count;
-                                status_memory.publish(
-                                    crate::runtime_server_control::RuntimeServerState::Healthy,
-                                    slot_count
-                                        .max(loaded_entry_count)
-                                        .max(*workspace_count.borrow()),
-                                )?;
-                                if let Some(status) = agent_session_status.as_ref() {
-                                    status.mark_current_published();
-                                }
-                            }
-                            changed = shutdown.changed() => {
-                                if changed.is_err() || *shutdown.borrow_and_update() {
-                                    let entry_counts = registry.workspace_entry_counts();
-                                    let slot_count = entry_counts.slot_count;
-                                    let loaded_entry_count = entry_counts.loaded_entry_count;
-                                    status_memory.publish(
-                                        crate::runtime_server_control::RuntimeServerState::Draining,
-                                        slot_count
-                                            .max(loaded_entry_count)
-                                            .max(*workspace_count.borrow()),
-                                    )?;
-                                    let _ = drain_sender.send(true);
-                                    break RuntimeServerExit::ShutdownRequested;
-                                }
-                            }
+                connection = listener.accept(), if connection_supervisor.has_capacity() => {
+                    let (stream, _) = connection.map_err(|error| {
+                        format!("failed to accept runtime server request: {error}")
+                    })?;
+                    crate::runtime_server_control::validate_runtime_server_peer_fd(
+                        std::os::fd::AsRawFd::as_raw_fd(&stream),
+                    )?;
+                    let lease = connection_supervisor
+                        .try_admit()
+                        .expect("capacity guard must admit one control connection");
+                    let connection_endpoint = endpoint.clone();
+                    let connection_registry = Arc::clone(&registry);
+                    let connection_generation_admission = generation_admission.clone();
+                    let connection_lifecycle = lifecycle.clone();
+                    let connection_graph_turbo_status = graph_turbo_resident_status.clone();
+                    let connection_drain = drain_receiver.clone();
+                    let connection_replay_guard = Arc::clone(&control_replay_guard);
+                    connections.spawn(async move {
+                        let result = super::control_connection::serve_connection(
+                            stream,
+                            connection_endpoint,
+                            connection_registry,
+                            connection_generation_admission,
+                            connection_lifecycle,
+                            connection_graph_turbo_status,
+                            connection_drain,
+                            connection_replay_guard,
+                        )
+                        .await;
+                        (lease, result)
+                    });
+                }
+                completed = connections.join_next(), if !connections.is_empty() => {
+                    match completed {
+                        Some(Ok((_lease, Ok(true)))) => {
+                            let entry_counts = registry.workspace_entry_counts();
+                            let slot_count = entry_counts.slot_count;
+                            let loaded_entry_count = entry_counts.loaded_entry_count;
+                            status_memory.publish(
+                                crate::runtime_server_control::RuntimeServerState::Draining,
+                                slot_count
+                                    .max(loaded_entry_count)
+                                    .max(*workspace_count.borrow()),
+                            )?;
+                            let _ = drain_sender.send(true);
+                            break RuntimeServerExit::RestartRequested;
                         }
+                        Some(Ok((_lease, Ok(false)))) => {}
+                        Some(Ok((_lease, Err(error)))) => {
+                            publish_event(
+                                events.as_ref(),
+                                RuntimeServerEvent::ConnectionRejected(error),
+                            );
+                        }
+                        Some(Err(error)) => {
+                            publish_event(
+                                events.as_ref(),
+                                RuntimeServerEvent::ConnectionTaskFailed(error.to_string()),
+                            );
+                        }
+                        None => break RuntimeServerExit::ListenerClosed,
+                    }
+                }
+                changed = workspace_count.changed() => {
+                    if changed.is_err() {
+                        break RuntimeServerExit::ListenerClosed;
+                    }
+                    let entry_counts = registry.workspace_entry_counts();
+                    let slot_count = entry_counts.slot_count;
+                    let loaded_entry_count = entry_counts.loaded_entry_count;
+                    status_memory.publish(
+                        crate::runtime_server_control::RuntimeServerState::Healthy,
+                        slot_count
+                            .max(loaded_entry_count)
+                            .max(*workspace_count.borrow_and_update()),
+                    )?;
+                }
+                _ = retirement_sweep.tick() => {
+                    if let (Some(status), Some(owner)) =
+                        (agent_session_status.as_ref(), agent_session_registry_owner.as_ref())
+                    {
+                        status.refresh(owner).await?;
+                    }
+                    let retirement_receipts = workspace_registry.retire_inactive().await?;
+                    for receipt in retirement_receipts {
+                        eprintln!(
+                            "[runtime-server-workspace-retirement] schemaId={} schemaVersion={} workspaceIdentity={} reason={:?} checkpointCompleted={} writerLaneDrained={} endpointRetired={}",
+                            receipt.schema_id,
+                            receipt.schema_version,
+                            receipt.workspace_identity,
+                            receipt.reason,
+                            receipt.checkpoint_completed,
+                            receipt.writer_lane_drained,
+                            receipt.endpoint_retired,
+                        );
+                    }
+                }
+                changed = async {
+                    match graph_turbo_status_changes.as_mut() {
+                        Some(changes) => Some(changes.changed().await),
+                        None => std::future::pending().await,
+                    }
+                }, if graph_turbo_status_changes.is_some() => {
+                    changed
+                        .expect("Graph Turbo status branch requires a receiver")
+                        .map_err(|_| "Graph Turbo resident status owner closed".to_owned())?;
+                    let entry_counts = registry.workspace_entry_counts();
+                    let slot_count = entry_counts.slot_count;
+                    let loaded_entry_count = entry_counts.loaded_entry_count;
+                    status_memory.publish(
+                        crate::runtime_server_control::RuntimeServerState::Healthy,
+                        slot_count
+                            .max(loaded_entry_count)
+                            .max(*workspace_count.borrow()),
+                    )?;
+                    if let Some(status) = agent_session_status.as_ref() {
+                        status.mark_current_published();
+                    }
+                }
+                changed = async {
+                    match agent_session_status_changes.as_mut() {
+                        Some(changes) => Some(changes.changed().await),
+                        None => std::future::pending().await,
+                    }
+                }, if agent_session_status_changes.is_some() => {
+                    changed
+                        .expect("Agent session status branch requires a receiver")
+                        .map_err(|_| "Agent session status owner closed".to_owned())?;
+                    let entry_counts = registry.workspace_entry_counts();
+                    let slot_count = entry_counts.slot_count;
+                    let loaded_entry_count = entry_counts.loaded_entry_count;
+                    status_memory.publish(
+                        crate::runtime_server_control::RuntimeServerState::Healthy,
+                        slot_count
+                            .max(loaded_entry_count)
+                            .max(*workspace_count.borrow()),
+                    )?;
+                    if let Some(status) = agent_session_status.as_ref() {
+                        status.mark_current_published();
+                    }
+                }
+                changed = shutdown.changed() => {
+                    if changed.is_err() || *shutdown.borrow_and_update() {
+                        let entry_counts = registry.workspace_entry_counts();
+                        let slot_count = entry_counts.slot_count;
+                        let loaded_entry_count = entry_counts.loaded_entry_count;
+                        status_memory.publish(
+                            crate::runtime_server_control::RuntimeServerState::Draining,
+                            slot_count
+                                .max(loaded_entry_count)
+                                .max(*workspace_count.borrow()),
+                        )?;
+                        let _ = drain_sender.send(true);
+                        break RuntimeServerExit::ShutdownRequested;
+                    }
+                }
+            }
         };
         let _ = drain_sender.send(true);
         drop(listener);
-        drop(data_listener);
         if tokio::time::timeout(CONNECTION_DRAIN_BOUNDARY, async {
             while let Some(completed) = connections.join_next().await {
                 publish_connection_completion(events.as_ref(), completed);

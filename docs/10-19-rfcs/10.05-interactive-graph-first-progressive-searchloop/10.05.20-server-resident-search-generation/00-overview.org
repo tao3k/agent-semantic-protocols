@@ -2,6 +2,8 @@
 #+startup: overview
 #+property: header-args:typst :eval yes :session none :results replace :exports code :cache no :noweb no :hlines no :tangle no
 
+Parent architecture: [[file:../../10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
 * Status
 
 Draft. The architecture and Lean statements are proposed. The failure

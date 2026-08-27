@@ -21,8 +21,8 @@ pub(super) struct MutationClaimReceipt {
 }
 
 enum AdmissionEntryCommand {
-    StartBuild(tokio::sync::oneshot::Sender<u64>),
-    BeginClaimed {
+    QueueBuild(tokio::sync::oneshot::Sender<u64>),
+    StartQueued {
         attempt: u64,
         completed: tokio::sync::oneshot::Sender<()>,
     },
@@ -82,9 +82,8 @@ impl AdmissionEntryAuthority {
             let mut pending_mutations = std::collections::VecDeque::new();
             while let Some(command) = receiver.recv().await {
                 match command {
-                    AdmissionEntryCommand::StartBuild(completed) => {
+                    AdmissionEntryCommand::QueueBuild(completed) => {
                         if !current.building {
-                            current.building = true;
                             current.attempt = current.attempt.saturating_add(1);
                             state_sender.send_replace(current);
                         }
@@ -151,7 +150,7 @@ impl AdmissionEntryAuthority {
                         }));
                         let _ = completed.send(mutation);
                     }
-                    AdmissionEntryCommand::BeginClaimed { attempt, completed } => {
+                    AdmissionEntryCommand::StartQueued { attempt, completed } => {
                         current.building = true;
                         current.attempt = current.attempt.max(attempt);
                         state_sender.send_replace(current);
@@ -186,14 +185,14 @@ impl AdmissionEntryAuthority {
         *self.state.borrow()
     }
 
-    pub(super) async fn start_build(&self) -> Result<u64, String> {
+    pub(super) async fn queue_build(&self) -> Result<u64, String> {
         let (completed, receipt) = tokio::sync::oneshot::channel();
         self.commands
-            .send(AdmissionEntryCommand::StartBuild(completed))
+            .send(AdmissionEntryCommand::QueueBuild(completed))
             .await
             .map_err(|_| "workspace generation admission entry authority is closed".to_owned())?;
         receipt.await.map_err(|_| {
-            "workspace generation admission entry closed without a start receipt".to_owned()
+            "workspace generation admission entry closed without a queue receipt".to_owned()
         })
     }
 
@@ -260,10 +259,10 @@ impl AdmissionEntryAuthority {
         })
     }
 
-    pub(super) async fn begin_claimed(&self, attempt: u64) -> Result<(), String> {
+    pub(super) async fn start_queued(&self, attempt: u64) -> Result<(), String> {
         let (completed, receipt) = tokio::sync::oneshot::channel();
         self.commands
-            .send(AdmissionEntryCommand::BeginClaimed { attempt, completed })
+            .send(AdmissionEntryCommand::StartQueued { attempt, completed })
             .await
             .map_err(|_| "workspace generation admission entry authority is closed".to_owned())?;
         receipt.await.map_err(|_| {

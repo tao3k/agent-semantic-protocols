@@ -1,6 +1,8 @@
 #+title: Exact Selector Provider Generation Authority
 #+startup: overview
 
+Parent architecture: [[file:10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
 * Status
 
 Implemented for the v1 exact-selector source envelope contract.

@@ -1,6 +1,8 @@
 #+title: Runtime Generation Memory Authority and Capability-Lazy Search
 #+startup: overview
 
+Parent architecture: [[file:10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
 * Status
 
 Normative.  This RFC defines the memory and ownership invariants for resident

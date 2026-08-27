@@ -3,8 +3,8 @@ use crate::workspace_db_ipc::{
     AgentSessionRegistryIpcResult,
 };
 
-#[test]
-fn host_stop_resume_and_achieve_preserve_one_durable_generation() {
+#[tokio::test]
+async fn host_stop_resume_and_achieve_preserve_one_durable_generation() {
     let root = tempfile::tempdir().expect("Host lifecycle registry tempdir");
     let registry =
         crate::AgentSessionRegistry::open_or_create_state_root(root.path().join("state"))
@@ -35,6 +35,7 @@ fn host_stop_resume_and_achieve_preserve_one_durable_generation() {
     };
 
     let registered = super::record_host_lifecycle_event(&registry, start.clone())
+        .await
         .expect("record Host start event");
     let AgentSessionRegistryIpcResult::Registered { session } = registered else {
         panic!("Host start must return the registered generation");
@@ -66,6 +67,7 @@ fn host_stop_resume_and_achieve_preserve_one_durable_generation() {
             ..start.clone()
         },
     )
+    .await
     .expect("record Host stop event");
     assert_eq!(
         stopped,
@@ -73,6 +75,7 @@ fn host_stop_resume_and_achieve_preserve_one_durable_generation() {
     );
     let stopped = registry
         .session_by_id("workspace-1", "child-1")
+        .await
         .expect("query stopped generation")
         .expect("stopped generation exists");
     assert_eq!(stopped.status.as_str(), "stopped");
@@ -88,9 +91,11 @@ fn host_stop_resume_and_achieve_preserve_one_durable_generation() {
             ..start.clone()
         },
     )
+    .await
     .expect("resume exact durable namespace");
     let resumed = registry
         .session_by_id("workspace-1", "child-1")
+        .await
         .expect("query resumed generation")
         .expect("resumed generation exists");
     assert_eq!(resumed.status.as_str(), "active");
@@ -106,9 +111,11 @@ fn host_stop_resume_and_achieve_preserve_one_durable_generation() {
             ..start
         },
     )
+    .await
     .expect("achieve exact durable namespace");
     let achieved = registry
         .session_by_id("workspace-1", "child-1")
+        .await
         .expect("query achieved generation")
         .expect("achieved generation exists");
     assert_eq!(achieved.status.as_str(), "achieved");
@@ -146,7 +153,9 @@ async fn host_execution_observation_resumes_exact_namespace_without_new_generati
         transcript_path: Some("/tmp/child.jsonl".to_owned().into()),
         observed_at: 10,
     };
-    super::record_host_lifecycle_event(&registry, start.clone()).expect("start namespace");
+    super::record_host_lifecycle_event(&registry, start.clone())
+        .await
+        .expect("start namespace");
     super::record_host_lifecycle_event(
         &registry,
         AgentHostLifecycleEventIpc {
@@ -157,6 +166,7 @@ async fn host_execution_observation_resumes_exact_namespace_without_new_generati
             ..start
         },
     )
+    .await
     .expect("stop namespace");
 
     let tasks = (0..64).map(|index| {
@@ -256,7 +266,9 @@ async fn host_execution_observation_never_creates_or_rebinds_a_namespace() {
         transcript_path: Some("/tmp/child.jsonl".to_owned().into()),
         observed_at: 10,
     };
-    super::record_host_lifecycle_event(&registry, start.clone()).expect("start namespace");
+    super::record_host_lifecycle_event(&registry, start.clone())
+        .await
+        .expect("start namespace");
 
     let wrong_child = registry
         .record_host_execution_observation_local(&AgentHostExecutionObservationIpc {
@@ -280,6 +292,7 @@ async fn host_execution_observation_never_creates_or_rebinds_a_namespace() {
             ..start
         },
     )
+    .await
     .expect("achieve namespace");
     let achieved = registry
         .record_host_execution_observation_local(&observation)
@@ -288,14 +301,15 @@ async fn host_execution_observation_never_creates_or_rebinds_a_namespace() {
     assert!(!achieved.is_empty());
     let terminal = registry
         .session_by_id("workspace-1", "child-1")
+        .await
         .expect("query achieved namespace")
         .expect("achieved namespace exists");
     assert_eq!(terminal.status, "achieved");
     assert_eq!(terminal.physical_generation, 1);
 }
 
-#[test]
-fn existing_namespace_rejects_second_start_and_requires_native_resume() {
+#[tokio::test]
+async fn existing_namespace_rejects_second_start_and_requires_native_resume() {
     let root = tempfile::tempdir().expect("Host lifecycle registry tempdir");
     let registry =
         crate::AgentSessionRegistry::open_or_create_state_root(root.path().join("state"))
@@ -325,6 +339,7 @@ fn existing_namespace_rejects_second_start_and_requires_native_resume() {
         observed_at: 10,
     };
     super::record_host_lifecycle_event(&registry, start.clone())
+        .await
         .expect("first resident registration");
 
     let duplicate = AgentHostLifecycleEventIpc {
@@ -333,6 +348,7 @@ fn existing_namespace_rejects_second_start_and_requires_native_resume() {
         ..start.clone()
     };
     let duplicate_error = super::record_host_lifecycle_event(&registry, duplicate)
+        .await
         .expect_err("a live resident must be called or resumed before another spawn");
     assert!(duplicate_error.starts_with("existing-host-namespace-identity-mismatch:"));
 
@@ -346,6 +362,7 @@ fn existing_namespace_rejects_second_start_and_requires_native_resume() {
             ..start.clone()
         },
     )
+    .await
     .expect("terminalize exact resident");
     let reuse_error = super::record_host_lifecycle_event(
         &registry,
@@ -357,6 +374,7 @@ fn existing_namespace_rejects_second_start_and_requires_native_resume() {
             ..start.clone()
         },
     )
+    .await
     .expect_err("existing child identity must use resume");
     assert!(reuse_error.starts_with("existing-host-namespace-requires-resume:"));
 
@@ -370,9 +388,11 @@ fn existing_namespace_rejects_second_start_and_requires_native_resume() {
             ..start
         },
     )
+    .await
     .expect("resume existing child identity");
     let resumed = registry
         .session_by_id("workspace-1", "child-1")
+        .await
         .expect("query resumed namespace")
         .expect("resumed namespace exists");
     assert_eq!(resumed.status.as_str(), "active");

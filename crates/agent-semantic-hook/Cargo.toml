@@ -6,7 +6,7 @@ license = "MIT"
 description = "Root semantic agent hook runtime for provider manifests and project activations."
 
 [build-dependencies]
-asp-provider-registry-build.workspace = true
+agent-semantic-schema-manager.workspace = true
 
 [dependencies]
 agent-semantic-artifacts.workspace = true
@@ -20,6 +20,7 @@ aho-corasick.workspace = true
 base64.workspace = true
 fs2.workspace = true
 globset.workspace = true
+memmap2.workspace = true
 postcard.workspace = true
 regex-automata.workspace = true
 regex-syntax.workspace = true
@@ -34,3 +35,4 @@ gix.workspace = true
 gix-config.workspace = true
 jsonschema.workspace = true
 libc.workspace = true
+tempfile.workspace = true

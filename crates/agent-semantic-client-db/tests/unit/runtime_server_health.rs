@@ -8,7 +8,7 @@ use agent_semantic_client_db::runtime_server_control::{
     RuntimeServerOperation, RuntimeServerState, call_runtime_server,
     prepare_runtime_server_endpoint_in, runtime_server_endpoint_path,
 };
-use agent_semantic_client_db::runtime_server_health::cached_runtime_server_health_at;
+use agent_semantic_client_db::runtime_server_health::cached_runtime_server_health;
 use agent_semantic_config::runtime_dev::RuntimeArtifactMode;
 
 #[tokio::test(flavor = "multi_thread")]
@@ -19,7 +19,9 @@ async fn concurrent_cached_health_is_sub_millisecond_at_p99() {
     let endpoint = prepare_runtime_server_endpoint_in(
         state_home.path(),
         std::path::Path::new("/runtime/asp"),
-        "runtime-digest",
+        &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+            b"runtime-digest",
+        ),
         catalog.mode_label(),
         &catalog.digest(),
         1,
@@ -28,15 +30,24 @@ async fn concurrent_cached_health_is_sub_millisecond_at_p99() {
     .await
     .expect("prepare Runtime Server endpoint");
     let health_endpoint = endpoint.clone();
-    let server = RuntimeServer::bind_and_publish_with_catalog(
-        endpoint,
+    let server = RuntimeServer::bind_with_catalog(
+        endpoint.clone(),
         Arc::new(WorkspaceDbRegistry::default()),
-        &runtime_server_endpoint_path(state_home.path())
-            .expect("derive Runtime Server endpoint path"),
         catalog,
     )
     .await
-    .expect("bind and publish Runtime Server");
+    .expect("bind Runtime Server control plane");
+    let _client_grpc_listener = tokio::net::UnixListener::bind(&endpoint.data_plane_socket_path)
+        .expect("bind ASP Client gRPC plane");
+    let _provider_listener = tokio::net::UnixListener::bind(&endpoint.provider_plane_socket_path)
+        .expect("bind provider plane");
+    server
+        .publish_endpoint_after_required_planes(
+            &runtime_server_endpoint_path(state_home.path())
+                .expect("derive Runtime Server endpoint path"),
+        )
+        .await
+        .expect("publish ready Runtime Server endpoint");
     let shutdown = server.shutdown_handle();
     let server = tokio::spawn(server.serve());
 
@@ -50,8 +61,7 @@ async fn concurrent_cached_health_is_sub_millisecond_at_p99() {
     .expect("synchronize with serving Runtime Server");
     assert_eq!(serving.state, RuntimeServerState::Healthy);
 
-    let runtime_base = state_home.path().to_path_buf();
-    let health = cached_runtime_server_health_at(&runtime_base)
+    let health = cached_runtime_server_health(&health_endpoint)
         .await
         .expect("admit cached health endpoint");
     assert!(health.is_healthy());
@@ -63,10 +73,10 @@ async fn concurrent_cached_health_is_sub_millisecond_at_p99() {
         .clamp(32, 512);
     let mut requests = tokio::task::JoinSet::new();
     for _ in 0..request_count {
-        let runtime_base = runtime_base.clone();
+        let health_endpoint = health_endpoint.clone();
         requests.spawn(async move {
             let started = tokio::time::Instant::now();
-            let health = cached_runtime_server_health_at(&runtime_base)
+            let health = cached_runtime_server_health(&health_endpoint)
                 .await
                 .expect("read cached health");
             assert!(health.is_healthy());

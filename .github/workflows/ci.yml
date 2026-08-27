@@ -256,14 +256,27 @@ jobs:
 
       - name: Python provider schema gates
         run: |
-          uv run --frozen --with pytest pytest \
-            tests/unit/harness/test_semantic_cli_direct_read.py \
-            tests/unit/harness/test_semantic_schema_registry.py \
+          cargo test -p agent-semantic-schema-manager \
+            canonical_client_profile_publishes_the_shared_schema_bundle_route \
+            --quiet
+          cargo test -p agent-semantic-runtime-server \
+            host_uds_schema_bundle_route_bypasses_workspace_generation \
+            --quiet
+          uv run --project languages/python-lang-project-harness --frozen --with pytest pytest \
+            languages/python-lang-project-harness/tests/unit/harness/test_semantic_language_schemas.py \
             -q
-        working-directory: languages/python-lang-project-harness
+
+      - name: Gerbil central schema profile gates
+        run: |
+          cargo test -p agent-semantic-schema-manager \
+            canonical_registry_verifies_every_registered_language_bundle \
+            --quiet
+          cargo test -p agent-semantic-runtime-server \
+            canonical_profiles_project_ready_and_unchanged_in_process_under_one_millisecond \
+            --quiet
 
       - name: Python provider policy gate
-        run: uv run --project languages/python-lang-project-harness --frozen py-harness check --full .
+        run: uv run --project languages/python-lang-project-harness --frozen asp-python check --full .
 
       - name: Build asp binary
         run: cargo build --bin asp
@@ -280,7 +293,14 @@ jobs:
               cli_search_policy_renders_semantic_handles
 
       - name: Rust provider schema gates
-        run: cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml schema --features cli --quiet
+        run: |
+          cargo run --quiet --bin asp -- schema materialize --workspace . --language rust
+          cargo run --quiet --bin asp -- schema verify --workspace . --language rust
+          cargo run --quiet --bin asp -- schema publish-client \
+            --workspace . \
+            --language rust \
+            --output languages/rust-lang-project-harness/schemas
+          cargo test --manifest-path languages/rust-lang-project-harness/Cargo.toml schema --features cli --quiet
 
       - name: TypeScript provider schema gates
         run: |

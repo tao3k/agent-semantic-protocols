@@ -6,7 +6,8 @@ use std::process::Stdio;
 
 use bytes::Bytes;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
+use tokio::process::{ChildStdin, ChildStdout, Command};
+use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::{
     ProviderRuntimeContractReceipt, ProviderRuntimePeer, ProviderRuntimeRequestFrame,
@@ -38,15 +39,29 @@ impl ProviderRuntimeProcessSpec {
 
 pub struct ProviderRuntimeProcessPeer {
     state: tokio::sync::Mutex<ProviderRuntimeProcessState>,
+    lifecycle: watch::Receiver<ProviderRuntimeProcessLifecycle>,
+    lifecycle_control: mpsc::Sender<ProviderRuntimeProcessControl>,
 }
 
 struct ProviderRuntimeProcessState {
-    child: Child,
-    stdin: ChildStdin,
+    stdin: Option<ChildStdin>,
     stdout: ChildStdout,
-    stderr_task: tokio::task::JoinHandle<Result<u64, std::io::Error>>,
     max_frame_bytes: usize,
     next_request_id: u64,
+}
+
+#[derive(Clone, Debug)]
+enum ProviderRuntimeProcessLifecycle {
+    Running,
+    Exited,
+    Failed(String),
+}
+
+enum ProviderRuntimeProcessControl {
+    Stop {
+        force: bool,
+        response: oneshot::Sender<Result<(), String>>,
+    },
 }
 
 impl ProviderRuntimeProcessPeer {
@@ -82,15 +97,93 @@ impl ProviderRuntimeProcessPeer {
             .ok_or_else(|| "resident provider runtime stderr is unavailable".to_owned())?;
         let stderr_task =
             tokio::spawn(async move { tokio::io::copy(&mut stderr, &mut tokio::io::sink()).await });
+        let (lifecycle_control, mut lifecycle_commands) = mpsc::channel(1);
+        let (lifecycle_writer, lifecycle) =
+            watch::channel(ProviderRuntimeProcessLifecycle::Running);
+        tokio::spawn(async move {
+            enum ChildOutcome {
+                Exited(Result<std::process::ExitStatus, std::io::Error>),
+                Stop {
+                    force: bool,
+                    response: oneshot::Sender<Result<(), String>>,
+                },
+            }
+
+            let outcome = tokio::select! {
+                status = child.wait() => ChildOutcome::Exited(status),
+                command = lifecycle_commands.recv() => match command {
+                    Some(ProviderRuntimeProcessControl::Stop { force, response }) => {
+                        ChildOutcome::Stop { force, response }
+                    }
+                    None => ChildOutcome::Exited(child.wait().await),
+                },
+            };
+            let (status, stop_response) = match outcome {
+                ChildOutcome::Exited(status) => (status, None),
+                ChildOutcome::Stop { force, response } => {
+                    if force {
+                        if let Err(error) = child.kill().await {
+                            let reason = format!(
+                                "reasonKind=provider-runtime-process-kill-failed phase=shutdown error={error}"
+                            );
+                            lifecycle_writer.send_replace(ProviderRuntimeProcessLifecycle::Failed(
+                                reason.clone(),
+                            ));
+                            let _ = response.send(Err(reason));
+                            return;
+                        }
+                    }
+                    (child.wait().await, Some(response))
+                }
+            };
+            let stderr_result = stderr_task.await;
+            let terminal = match status {
+                Ok(status) => {
+                    tracing::info!(
+                        target: "asp.client_server",
+                        phase = "child-lifecycle",
+                        reason_kind = "provider-runtime-process-exited",
+                        status = %status,
+                    );
+                    ProviderRuntimeProcessLifecycle::Exited
+                }
+                Err(error) => {
+                    let reason = format!(
+                        "reasonKind=provider-runtime-process-wait-failed phase=child-lifecycle error={error}"
+                    );
+                    tracing::error!(
+                        target: "asp.client_server",
+                        phase = "child-lifecycle",
+                        reason_kind = "provider-runtime-process-wait-failed",
+                        error = %error,
+                    );
+                    ProviderRuntimeProcessLifecycle::Failed(reason)
+                }
+            };
+            let stop_result = match (&terminal, stderr_result) {
+                (ProviderRuntimeProcessLifecycle::Failed(reason), _) => Err(reason.clone()),
+                (_, Err(error)) => Err(format!(
+                    "reasonKind=provider-runtime-process-stderr-task-failed phase=child-lifecycle error={error}"
+                )),
+                (_, Ok(Err(error))) => Err(format!(
+                    "reasonKind=provider-runtime-process-stderr-read-failed phase=child-lifecycle error={error}"
+                )),
+                (_, Ok(Ok(_))) => Ok(()),
+            };
+            lifecycle_writer.send_replace(terminal);
+            if let Some(response) = stop_response {
+                let _ = response.send(stop_result);
+            }
+        });
         Ok(Self {
             state: tokio::sync::Mutex::new(ProviderRuntimeProcessState {
-                child,
-                stdin,
+                stdin: Some(stdin),
                 stdout,
-                stderr_task,
                 max_frame_bytes: spec.max_frame_bytes.max(1),
                 next_request_id: 1,
             }),
+            lifecycle,
+            lifecycle_control,
         })
     }
 
@@ -127,8 +220,11 @@ impl ProviderRuntimeProcessPeer {
                 state.max_frame_bytes
             ));
         }
-        state
+        let stdin = state
             .stdin
+            .as_mut()
+            .ok_or_else(|| "resident provider runtime stdin is closed".to_owned())?;
+        stdin
             .write_u32(
                 frame
                     .len()
@@ -137,16 +233,30 @@ impl ProviderRuntimeProcessPeer {
             )
             .await
             .map_err(|error| format!("write resident provider frame length: {error}"))?;
-        state
-            .stdin
+        stdin
             .write_all(frame)
             .await
             .map_err(|error| format!("write resident provider frame payload: {error}"))?;
-        state
-            .stdin
+        stdin
             .flush()
             .await
             .map_err(|error| format!("flush resident provider frame: {error}"))
+    }
+
+    async fn wait_lifecycle_terminal(&self) -> Result<ProviderRuntimeProcessLifecycle, String> {
+        let mut lifecycle = self.lifecycle.clone();
+        loop {
+            let current = lifecycle.borrow().clone();
+            match current {
+                ProviderRuntimeProcessLifecycle::Running => {
+                    lifecycle.changed().await.map_err(|_| {
+                        "reasonKind=provider-runtime-process-lifecycle-closed phase=child-lifecycle"
+                            .to_owned()
+                    })?;
+                }
+                terminal => return Ok(terminal),
+            }
+        }
     }
 }
 
@@ -203,29 +313,44 @@ impl ProviderRuntimePeer for ProviderRuntimeProcessPeer {
 
     fn shutdown(&self) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
         Box::pin(async move {
-            let mut state = self.state.lock().await;
-            let _ = state.stdin.shutdown().await;
-            if state
-                .child
-                .try_wait()
-                .map_err(|error| {
-                    format!("inspect resident provider runtime during shutdown: {error}")
-                })?
-                .is_none()
-            {
-                state
-                    .child
-                    .kill()
-                    .await
-                    .map_err(|error| format!("kill resident provider runtime: {error}"))?;
+            if !matches!(
+                self.lifecycle.borrow().clone(),
+                ProviderRuntimeProcessLifecycle::Running
+            ) {
+                return Ok(());
             }
-            state
-                .child
-                .wait()
+            let stdin = self.state.lock().await.stdin.take();
+            if let Some(mut stdin) = stdin {
+                stdin
+                    .shutdown()
+                    .await
+                    .map_err(|error| format!("close resident provider runtime stdin: {error}"))?;
+            }
+            let (response, stopped) = oneshot::channel();
+            if self
+                .lifecycle_control
+                .send(ProviderRuntimeProcessControl::Stop {
+                    force: false,
+                    response,
+                })
                 .await
-                .map_err(|error| format!("reap resident provider runtime: {error}"))?;
-            state.stderr_task.abort();
-            Ok(())
+                .is_err()
+            {
+                return self.wait_lifecycle_terminal().await.map(|_| ());
+            }
+            stopped.await.map_err(|_| {
+                "reasonKind=provider-runtime-process-stop-receipt-dropped phase=shutdown".to_owned()
+            })?
+        })
+    }
+
+    fn wait_terminated(&self) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
+        Box::pin(async move {
+            match self.wait_lifecycle_terminal().await? {
+                ProviderRuntimeProcessLifecycle::Exited => Ok(()),
+                ProviderRuntimeProcessLifecycle::Failed(reason) => Err(reason),
+                ProviderRuntimeProcessLifecycle::Running => unreachable!(),
+            }
         })
     }
 }

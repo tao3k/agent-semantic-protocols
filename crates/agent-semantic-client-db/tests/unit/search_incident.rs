@@ -160,6 +160,7 @@ async fn terminal_incident_lane_is_not_starved_by_transition_pressure() {
             owner_epoch: sequence as u64,
             workspace_identity: Some("workspace-pressure".to_owned()),
             generation_digest: None,
+            candidate_digest: None,
             transition: "coalescable".to_owned(),
             state: "building".to_owned(),
             elapsed_micros: 0,

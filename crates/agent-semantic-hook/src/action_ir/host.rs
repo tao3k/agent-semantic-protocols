@@ -2,9 +2,9 @@
 pub(crate) enum AgentActionKind {
     Read,
     Edit,
-    Search,
-    Enumerate,
     Execute,
+    Mcp,
+    SpawnAgent,
     Unknown,
 }
 
@@ -12,10 +12,9 @@ pub(crate) enum AgentActionKind {
 pub(crate) enum HostInvocationKind {
     Read,
     Edit,
-    Search,
-    Enumerate,
     Execute,
     Mcp,
+    SpawnAgent,
     Unknown,
 }
 

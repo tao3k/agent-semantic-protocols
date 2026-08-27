@@ -54,15 +54,9 @@ async fn stalled_control_exchange_is_bounded_and_discards_the_lane() {
         owner_epoch: 1,
         owner_process_id: 0,
         runtime_artifact_path: "/runtime/asp".to_owned(),
-        runtime_binary_identity: RuntimeBinaryIdentity::Content {
-            value: "runtime-digest".to_owned(),
-            algorithm: "blake3-256".to_owned(),
-        },
+        runtime_binary_identity: RuntimeBinaryIdentity::from_bytes(b"runtime-digest"),
         monitor_capability: true,
-        observed_runtime_binary_identity: RuntimeBinaryIdentity::Content {
-            value: "runtime-digest".to_owned(),
-            algorithm: "blake3-256".to_owned(),
-        },
+        observed_runtime_binary_identity: RuntimeBinaryIdentity::from_bytes(b"runtime-digest"),
         artifact_mode: "dev".to_owned(),
         artifact_catalog_digest: format!("blake3-256:{}", "0".repeat(64)),
         binding_token: "binding".to_owned(),
@@ -73,7 +67,6 @@ async fn stalled_control_exchange_is_bounded_and_discards_the_lane() {
             .join("providers.sock")
             .display()
             .to_string(),
-        client_http_endpoint: "http://127.0.0.1:1".to_owned(),
         workspace_store_path: temporary.path().join("workspace").display().to_string(),
         status_memory_path: temporary.path().join("status").display().to_string(),
     };
@@ -82,10 +75,9 @@ async fn stalled_control_exchange_is_bounded_and_discards_the_lane() {
         schema_version: "1".to_owned(),
         operation: RuntimeServerOperation::Restart,
         expected_runtime_binary_identity:
-            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
-                value: "next-runtime-digest".to_owned(),
-                algorithm: "blake3-256".to_owned(),
-            },
+            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::from_bytes(
+                b"next-runtime-digest",
+            ),
         request_id: "bounded-control-exchange".to_owned(),
         transport_contract_digest: endpoint.transport_contract_digest.clone(),
         owner_epoch: endpoint.owner_epoch,

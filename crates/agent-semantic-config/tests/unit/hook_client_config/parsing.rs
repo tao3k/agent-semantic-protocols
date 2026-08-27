@@ -59,10 +59,7 @@ fn default_template_round_trips_through_config_parser() {
         testing_dispatch.receipt_kind.as_str(),
         "asp-testing-execution-v1"
     );
-    for rule_id in [
-        "registered-asp-reasoning-search",
-        "deny-raw-registered-source-search-action",
-    ] {
+    for rule_id in ["registered-asp-reasoning-search"] {
         let dispatch = config
             .rules
             .iter()
@@ -146,7 +143,7 @@ fn default_template_round_trips_through_config_parser() {
             .argv_prefix_any
             .contains(&vec!["git".to_owned(), "grep".to_owned()])
     );
-    assert_eq!(config.rules.len(), 15);
+    assert_eq!(config.rules.len(), 16);
     assert_eq!(
         config
             .rules
@@ -154,22 +151,30 @@ fn default_template_round_trips_through_config_parser() {
             .map(|rule| rule.id.as_str())
             .collect::<Vec<_>>(),
         [
+            "allow-owner-scoped-mutation",
             "registered-asp-reasoning-search",
+            "registered-asp-structured-projection",
             "testing-role-dispatch",
             "rust-format-check-role-dispatch",
             "review-role-dispatch",
             "git-history-inspection-dispatch",
             "live-corpus-qualification-dispatch",
             "gerbil-build-role-dispatch",
-            "deny-raw-registered-source-search-action",
-            "allow-explicit-no-agent-host-bypass",
             "deny-agent-search-json",
             "route-read-to-asp-languages",
+            "route-unresolved-source-access-to-asp-languages",
             "route-structured-document-read",
             "allow-bounded-json-projection",
             "allow-bounded-toml-projection",
             "deny-unbounded-structured-projection",
         ]
+    );
+    assert!(
+        config
+            .rules
+            .iter()
+            .all(|rule| rule.id != "deny-raw-registered-source-search-action"),
+        "the retired command-name search rule must not re-enter the matcher DSL"
     );
     let rendered = canonical_default_template();
     for removed_key in [
@@ -365,10 +370,28 @@ fn template_uses_capability_policies_without_argv_compatibility() {
         .iter()
         .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("Read route");
-    assert_eq!(
-        read_route.actions,
-        [agent_semantic_config::HookClientActionKind::Read]
-    );
+    assert_eq!(read_route.matcher.as_deref(), Some("Read"));
     assert!(!read_route.profiles_list.is_empty());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn template_declares_native_aliases_on_the_rules_that_consume_them() {
+    let root = temp_root("hook-client-template-native-matchers");
+    let config_path = root.join("hooks").join("config.toml");
+    fs::create_dir_all(config_path.parent().expect("config parent")).expect("config dir");
+    fs::write(&config_path, canonical_default_template()).expect("write config");
+
+    let config = load_hook_client_config_file(&config_path).expect("load config");
+    let edit_rule = config
+        .rules
+        .iter()
+        .find(|rule| rule.id == "allow-owner-scoped-mutation")
+        .expect("native Edit rule");
+    assert_eq!(
+        edit_rule.matcher.as_deref(),
+        Some("apply_patch|Write|Edit|NotebookEdit")
+    );
+
     let _ = fs::remove_dir_all(root);
 }

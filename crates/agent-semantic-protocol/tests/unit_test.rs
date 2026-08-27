@@ -36,8 +36,14 @@ mod hook_command;
 mod hook_execution_plane;
 #[path = "unit/hook_paths.rs"]
 mod hook_paths;
+#[path = "unit/install_binary_existing_state_production_command.rs"]
+mod install_binary_existing_state_production_command;
+#[path = "unit/install_binary_production_command.rs"]
+mod install_binary_production_command;
 #[path = "unit/install_provider_cli.rs"]
 mod install_provider_cli;
+#[path = "unit/command/live_corpus_public_route.rs"]
+mod live_corpus_public_route;
 #[path = "unit/live_corpus_registered_languages.rs"]
 mod live_corpus_registered_languages;
 #[path = "unit/paths_command.rs"]
@@ -46,14 +52,8 @@ mod paths_command;
 mod provider_language_facade;
 #[path = "unit/provider_root_profile.rs"]
 mod provider_root_profile;
-#[path = "unit/query_owner_freshness.rs"]
-mod query_owner_freshness;
 #[path = "unit/rfc_search_frame.rs"]
 mod rfc_search_frame;
-#[path = "unit/runtime_server_query_purity.rs"]
-mod runtime_server_query_purity;
-#[path = "unit/runtime_server_restart_readiness.rs"]
-mod runtime_server_restart_readiness;
 #[path = "unit/runtime_server_start_readiness.rs"]
 mod runtime_server_start_readiness;
 #[path = "unit/sandtable_fixtures.rs"]

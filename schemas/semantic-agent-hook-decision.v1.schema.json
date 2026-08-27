@@ -53,7 +53,8 @@
     },
     "reasonKind": {
       "enum": [
-        "none",
+      "none",
+      "host-action-authority-unavailable",
       "direct-source-read",
       "registered-source-route-required",
       "structured-source-read",

@@ -98,8 +98,22 @@ fn infer_agent_action_subject_kind(
                             || contains_path_component_sequence(normalized, root)
                     })
             });
-    if registered_source_scope
-        && is_path_shaped
+    let registered_root_alias = !normalized.contains('/')
+        && crate::protocol_activation::provider_routing::hook_provider_projections(registry)
+            .iter()
+            .any(|provider| {
+                provider.package_roots.iter().any(|root| {
+                    root != "."
+                        && root
+                            .trim_end_matches(['/', '\\'])
+                            .rsplit(['/', '\\'])
+                            .next()
+                            .is_some_and(|root_leaf| root_leaf == normalized)
+                })
+            });
+
+    if (registered_source_scope || registered_root_alias)
+        && (is_path_shaped || registered_root_alias)
         && (value.ends_with(['/', '\\']) || !leaf.contains('.'))
     {
         return AgentActionSubjectKind::RegisteredLanguageSourcePattern;

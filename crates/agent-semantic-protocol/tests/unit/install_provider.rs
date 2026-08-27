@@ -1,7 +1,55 @@
 use super::{
-    ProviderArtifactAuthority, asset_name, checksum_name, parse_sha256_checksum, path_segment,
-    provider_release, validate_target,
+    ProviderArtifactAuthority, ProviderInstallLock, asset_name, checksum_name,
+    parse_sha256_checksum, path_segment, provider_release, validate_target, write_provider_lock,
 };
+
+#[test]
+fn provider_lock_serializes_canonical_artifact_digest_without_legacy_generation_key() {
+    let root = std::env::temp_dir().join(format!(
+        "asp-provider-lock-artifact-identity-{}",
+        std::process::id()
+    ));
+    let path = root.join("python.lock.toml");
+    let artifact = root.join("asp-python");
+    write_provider_lock(
+        &path,
+        &ProviderInstallLock {
+            schema_id: "asp.provider-install-lock.v1",
+            scope: "global",
+            language_id: "python",
+            provider_id: "asp-python",
+            source_kind: "develop-workspace-tree",
+            checkout_root: Some(&root),
+            provider_source_root: Some(&root),
+            repo: None,
+            rev: None,
+            target: "aarch64-apple-darwin",
+            binary: "asp-python",
+            installed_path: &artifact,
+            package_path: &root,
+            sha256: "fixture-sha256",
+            source: root.display().to_string(),
+            source_snapshot_root: None,
+            source_snapshot_algorithm: None,
+            source_leaf_count: None,
+            provider_digest: None,
+            build_recipe_digest: None,
+            artifact_digest: Some("blake3-256:artifact"),
+            artifact_leaf_count: None,
+            artifact_entrypoint: None,
+            artifact_entrypoint_sha256: None,
+            installed_entrypoint_digest: Some("blake3-256:entrypoint"),
+            installed_entrypoint_metadata_digest: "blake3-256:metadata",
+            execution_command_digest: "blake3-256:command",
+            launcher_digest: None,
+        },
+    )
+    .expect("write canonical provider lock");
+    let contents = std::fs::read_to_string(&path).expect("read provider lock");
+    assert!(contents.contains("artifactDigest = \"blake3-256:artifact\""));
+    assert!(!contents.contains("binarySourceGeneration"));
+    std::fs::remove_dir_all(root).expect("remove provider lock fixture");
+}
 
 #[test]
 fn asset_names_are_rev_independent_and_target_selected() {
@@ -171,21 +219,13 @@ fn global_provider_state_is_separate_from_runtime_bin_and_project_state() {
 #[test]
 fn developer_mode_never_selects_locked_release_or_path_fallback() {
     let root = std::path::PathBuf::from("/checkout/agent-semantic-protocols");
-    let artifact = root.join("target/debug/asp-rs-harness");
     let mode = agent_semantic_config::runtime_dev::parse_runtime_artifact_mode(&format!(
         "[dev]\nenabled = true\nroot = {:?}\n",
         root
     ))
     .expect("parse developer runtime mode");
     assert_eq!(
-        super::provider_artifact_authority(&mode, Some(&artifact)).expect("dev artifact"),
-        ProviderArtifactAuthority::Develop {
-            root: root.as_path(),
-            artifact: artifact.as_path(),
-        }
-    );
-    assert_eq!(
-        super::provider_artifact_authority(&mode, None).expect("dev build authority"),
+        super::provider_artifact_authority(&mode).expect("dev build authority"),
         ProviderArtifactAuthority::DevelopBuild {
             root: root.as_path(),
         }
@@ -193,14 +233,10 @@ fn developer_mode_never_selects_locked_release_or_path_fallback() {
 }
 
 #[test]
-fn release_mode_never_accepts_development_receipt() {
+fn release_mode_selects_only_locked_release() {
     let mode = agent_semantic_config::runtime_dev::RuntimeArtifactMode::Release;
     assert_eq!(
-        super::provider_artifact_authority(&mode, None).expect("locked release"),
+        super::provider_artifact_authority(&mode).expect("locked release"),
         ProviderArtifactAuthority::LockedRelease
-    );
-    assert!(
-        super::provider_artifact_authority(&mode, Some(std::path::Path::new("/tmp/provider")))
-            .is_err()
     );
 }

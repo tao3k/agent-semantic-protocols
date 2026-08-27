@@ -1,5 +1,6 @@
 use agent_semantic_client_db::runtime_server_control::read_supervisor_endpoint;
 use serde_json::{Value, json};
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
 fn old_v1_endpoint(owner_process_id: u32) -> Value {
     let digest = format!("blake3-256:{}", "a".repeat(64));
@@ -42,6 +43,9 @@ async fn old_schema_v1_endpoint_migrates_identity_without_stopping_healthy_owner
     )
     .await
     .expect("write old endpoint");
+    tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))
+        .await
+        .expect("set old endpoint permissions");
 
     let endpoint = read_supervisor_endpoint(&path)
         .await
@@ -49,7 +53,7 @@ async fn old_schema_v1_endpoint_migrates_identity_without_stopping_healthy_owner
     assert_eq!(endpoint.owner_process_id, owner_process_id);
     assert_eq!(
         endpoint.binary_content_digest,
-        endpoint.runtime_binary_identity.value()
+        endpoint.runtime_binary_identity.content_digest().as_str()
     );
     assert!(
         endpoint
@@ -67,6 +71,40 @@ async fn old_schema_v1_endpoint_migrates_identity_without_stopping_healthy_owner
     assert!(rewritten.get("binaryContentDigest").is_some());
     assert!(rewritten.get("runtimeGenerationDigest").is_some());
     assert!(rewritten.get("schemaDigest").is_some());
+    let metadata = tokio::fs::symlink_metadata(&path)
+        .await
+        .expect("migrated endpoint metadata");
+    assert!(metadata.file_type().is_file());
+    assert!(!metadata.file_type().is_symlink());
+    assert_eq!(metadata.mode() & 0o777, 0o600);
+}
+
+#[tokio::test]
+async fn writable_schema_v1_endpoint_is_not_canonicalized_or_decoded() {
+    let temporary = tempfile::tempdir().expect("temporary endpoint home");
+    let path = temporary.path().join("endpoint.v1.json");
+    tokio::fs::write(
+        &path,
+        serde_json::to_vec(&old_v1_endpoint(std::process::id())).expect("encode old endpoint"),
+    )
+    .await
+    .expect("write old endpoint");
+    tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o622))
+        .await
+        .expect("set writable endpoint permissions");
+
+    let error = read_supervisor_endpoint(&path)
+        .await
+        .expect_err("group/world-writable endpoint must fail closed");
+    assert!(error.contains("not a non-writable, non-symlink current-UID file"));
+    assert_eq!(
+        tokio::fs::symlink_metadata(&path)
+            .await
+            .expect("endpoint metadata")
+            .mode()
+            & 0o777,
+        0o622
+    );
 }
 
 #[tokio::test]

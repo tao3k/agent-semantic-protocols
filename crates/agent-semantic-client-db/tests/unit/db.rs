@@ -18,8 +18,8 @@ use agent_semantic_client_db::{
     source_index_relative_path, source_index_scope_dirs,
 };
 
-#[test]
-fn schema_version_stays_on_first_turso_release_contract() {
+#[tokio::test]
+async fn schema_version_stays_on_first_turso_release_contract() {
     assert_eq!(
         agent_semantic_client_db::AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION,
         1
@@ -36,8 +36,8 @@ async fn runtime_registry_bootstrap_does_not_start_a_nested_tokio_runtime() {
     assert!(registry.db_path().is_file());
 }
 
-#[test]
-fn absent_host_target_atomically_revokes_live_binding() {
+#[tokio::test]
+async fn absent_host_target_atomically_revokes_live_binding() {
     let root = temp_root("agent-session-absent-target");
     let registry = AgentSessionRegistry::open_or_create_state_root(root.join("state"))
         .expect("create registry");
@@ -72,6 +72,7 @@ fn absent_host_target_atomically_revokes_live_binding() {
             metadata_json: (&metadata).into(),
             now: 10,
         })
+        .await
         .expect("register live child");
     assert!(
         agent_semantic_client_db::agent_session_message_target_is_live_bound(
@@ -82,6 +83,7 @@ fn absent_host_target_atomically_revokes_live_binding() {
 
     let orphaned = registry
         .invalidate_session_live_binding("project-1", "child-session", "orphan-risk", 11)
+        .await
         .expect("invalidate live binding")
         .expect("updated session");
 
@@ -132,8 +134,8 @@ fn absent_host_target_atomically_revokes_live_binding() {
     );
 }
 
-#[test]
-fn typed_profile_evidence_survives_same_generation_heartbeat() {
+#[tokio::test]
+async fn typed_profile_evidence_survives_same_generation_heartbeat() {
     let root = temp_root("agent-session-profile-evidence");
     let registry = AgentSessionRegistry::open_or_create_state_root(root.join("state"))
         .expect("create registry");
@@ -153,6 +155,7 @@ fn typed_profile_evidence_survives_same_generation_heartbeat() {
             metadata_json: typed_start.into(),
             now: 10,
         })
+        .await
         .expect("register typed start");
     let heartbeat = registry
         .register_session(AgentSessionRegisterRequest {
@@ -169,6 +172,7 @@ fn typed_profile_evidence_survives_same_generation_heartbeat() {
             metadata_json: r#"{"event":"task_complete"}"#.into(),
             now: 11,
         })
+        .await
         .expect("record same-generation heartbeat");
     assert_eq!(heartbeat.physical_generation, 1);
     assert_eq!(
@@ -182,8 +186,8 @@ fn typed_profile_evidence_survives_same_generation_heartbeat() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn resident_session_replacement_is_exact_compare_and_swap() {
+#[tokio::test]
+async fn same_route_children_coexist_and_route_only_lookup_is_ambiguous() {
     let root = temp_root("agent-session-exact-replacement");
     let registry = AgentSessionRegistry::open_or_create_state_root(root.join("state"))
         .expect("create registry");
@@ -202,16 +206,18 @@ fn resident_session_replacement_is_exact_compare_and_swap() {
             metadata_json: "{}".into(),
             now: 10,
         })
+        .await
         .expect("register old child");
     assert_eq!(
         registry
             .session_by_name("project-1", "root-session", "asp-explore")
+            .await
             .expect("read initial route")
             .expect("initial route exists")
             .physical_generation,
         1
     );
-    let non_cas_replacement = registry.register_session(AgentSessionRegisterRequest {
+    let second_child = registry.register_session(AgentSessionRegisterRequest {
         project_id: "project-1".into(),
         root_session_id: "root-session".into(),
         session_id: "child-rogue".into(),
@@ -225,70 +231,36 @@ fn resident_session_replacement_is_exact_compare_and_swap() {
         metadata_json: "{}".into(),
         now: 10,
     });
+    let second_child = second_child
+        .await
+        .expect("ordinary registration creates a distinct child execution instance");
+    assert_eq!(second_child.session_id(), "child-rogue");
+    assert_eq!(second_child.physical_generation, 1);
+    assert_eq!(
+        registry
+            .query_sessions(
+                "project-1",
+                Some("root-session".into()),
+                Some("asp-explore".into()),
+            )
+            .await
+            .expect("read both child instances")
+            .len(),
+        2
+    );
     assert!(
-        non_cas_replacement
-            .expect_err("ordinary registration cannot replace a slot generation")
-            .contains("replacement requires exact compare-and-swap")
+        registry
+            .session_by_name("project-1", "root-session", "asp-explore")
+            .await
+            .expect_err("route-only lookup must not choose between child instances")
+            .contains("agent-session-route-ambiguous")
     );
 
-    let binding = r#"{"messageTargetBinding":{"source":"codex-hook-payload-plus-rollout-profile","boundRootSessionId":"root-session","childSessionId":"child-new","messageTargetId":"/root/asp_explorer"}}"#;
-    let replaced = registry
-        .replace_resident_session(
-            "child-old",
-            AgentSessionRegisterRequest {
-                project_id: "project-1".into(),
-                root_session_id: "root-session".into(),
-                session_id: "child-new".into(),
-                message_target_id: Some("/root/asp_explorer".into()),
-                parent_session_id: Some("root-session".into()),
-                name: "asp-explore".into(),
-                role: "asp_explorer".into(),
-                model_observation: None,
-                status: "active".into(),
-                expires_at: None,
-                metadata_json: binding.into(),
-                now: 11,
-            },
-        )
-        .expect("replace exact old child");
-    assert_eq!(replaced.session_id(), "child-new");
-    assert_eq!(replaced.physical_generation, 2);
-    assert!(
-        agent_semantic_client_db::agent_session_message_target_is_live_bound(
-            &replaced,
-            "root-session"
-        )
-    );
-
-    let stale = registry.replace_resident_session(
-        "child-old",
-        AgentSessionRegisterRequest {
-            project_id: "project-1".into(),
-            root_session_id: "root-session".into(),
-            session_id: "child-late".into(),
-            message_target_id: Some("/root/asp_explorer".into()),
-            parent_session_id: Some("root-session".into()),
-            name: "asp-explore".into(),
-            role: "asp_explorer".into(),
-            model_observation: None,
-            status: "active".into(),
-            expires_at: None,
-            metadata_json: "{}".into(),
-            now: 12,
-        },
-    );
-    assert!(stale.is_err());
-    let current = registry
-        .session_by_name("project-1", "root-session", "asp-explore")
-        .expect("read route")
-        .expect("route exists");
-    assert_eq!(current.session_id(), "child-new");
-    assert_eq!(current.physical_generation, 2);
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn dispatch_rebind_replays_once_and_terminal_receipt_stops_replay() {
+#[tokio::test]
+async fn dispatch_rebind_replays_once_and_terminal_receipt_stops_replay() {
     let root = temp_root("agent-session-dispatch-rebind");
     let registry = AgentSessionRegistry::open_or_create_state_root(root.join("state"))
         .expect("create registry");
@@ -307,18 +279,22 @@ fn dispatch_rebind_replays_once_and_terminal_receipt_stops_replay() {
             metadata_json: r#"{"messageTargetBinding":{"source":"codex.subagent-start","boundRootSessionId":"root-session","childSessionId":"child-1","messageTargetId":"child-1"}}"#.into(),
             now: 10,
         })
-        .expect("register first child");
+.await.expect("register first child");
 
-    let claim = |now| AgentSessionDispatchClaimRequest {
+    let claim = |child_session_id, now| AgentSessionDispatchClaimRequest {
         project_id: "project-1",
         root_session_id: "root-session",
+        child_session_id,
         name: "asp-explore",
         dispatch_identity: "dispatch-1",
         command_digest: "sha256:command",
         delivery_target_override: None,
         now,
     };
-    let first = registry.claim_dispatch(claim(11)).expect("claim dispatch");
+    let first = registry
+        .claim_dispatch(claim("child-1", 11))
+        .await
+        .expect("claim dispatch");
     assert_eq!(first.action, "send");
     assert_eq!(first.lease.attempt_count, 1);
     assert_eq!(first.lease.delivery_target_id.as_deref(), Some("child-1"));
@@ -326,17 +302,22 @@ fn dispatch_rebind_replays_once_and_terminal_receipt_stops_replay() {
         first.lease.delivery_generation_id.as_deref(),
         Some("child-1")
     );
-    let duplicate = registry.claim_dispatch(claim(12)).expect("poll dispatch");
+    let duplicate = registry
+        .claim_dispatch(claim("child-1", 12))
+        .await
+        .expect("poll dispatch");
     assert_eq!(duplicate.action, "wait");
     assert_eq!(duplicate.lease.attempt_count, 1);
 
     registry
         .invalidate_session_live_binding("project-1", "child-1", "orphan-risk", 13)
+        .await
         .expect("invalidate first child")
         .expect("first child existed");
     let same_generation_replay = registry.claim_dispatch(AgentSessionDispatchClaimRequest {
         project_id: "project-1",
         root_session_id: "root-session",
+        child_session_id: "child-1",
         name: "asp-explore",
         dispatch_identity: "dispatch-1",
         command_digest: "sha256:command",
@@ -345,11 +326,12 @@ fn dispatch_rebind_replays_once_and_terminal_receipt_stops_replay() {
     });
     assert!(
         same_generation_replay
+            .await
             .expect_err("orphaned delivery cannot replay within the same generation")
             .contains("not deliverable in the current generation")
     );
     registry
-        .replace_resident_session("child-1", AgentSessionRegisterRequest {
+        .register_session(AgentSessionRegisterRequest {
             project_id: "project-1".into(),
             root_session_id: "root-session".into(),
             session_id: "child-2".into(),
@@ -363,10 +345,12 @@ fn dispatch_rebind_replays_once_and_terminal_receipt_stops_replay() {
             metadata_json: r#"{"messageTargetBinding":{"source":"codex.subagent-start","boundRootSessionId":"root-session","childSessionId":"child-2","messageTargetId":"child-2"}}"#.into(),
             now: 14,
         })
-        .expect("register replacement child");
+        .await
+        .expect("register second child instance");
 
     let replay = registry
-        .claim_dispatch(claim(15))
+        .claim_dispatch(claim("child-2", 15))
+        .await
         .expect("claim replay after verified rebind");
     assert_eq!(replay.action, "send");
     assert_eq!(replay.lease.attempt_count, 2);
@@ -375,7 +359,10 @@ fn dispatch_rebind_replays_once_and_terminal_receipt_stops_replay() {
         replay.lease.delivery_generation_id.as_deref(),
         Some("child-2")
     );
-    let replay_duplicate = registry.claim_dispatch(claim(16)).expect("poll replay");
+    let replay_duplicate = registry
+        .claim_dispatch(claim("child-2", 16))
+        .await
+        .expect("poll replay");
     assert_eq!(replay_duplicate.action, "wait");
     assert_eq!(replay_duplicate.lease.attempt_count, 2);
 
@@ -389,11 +376,13 @@ fn dispatch_rebind_replays_once_and_terminal_receipt_stops_replay() {
             evidence_ref: "receipt:done",
             now: 17,
         })
+        .await
         .expect("record terminal receipt");
     assert_eq!(terminal.status, "terminal");
     assert_eq!(terminal.evidence_ref.as_deref(), Some("receipt:done"));
     let after_terminal = registry
-        .claim_dispatch(claim(18))
+        .claim_dispatch(claim("child-2", 18))
+        .await
         .expect("poll terminal dispatch");
     assert_eq!(after_terminal.action, "complete");
     assert_eq!(after_terminal.lease.attempt_count, 2);
@@ -401,8 +390,8 @@ fn dispatch_rebind_replays_once_and_terminal_receipt_stops_replay() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn agent_session_registry_storage_is_turso_owned() {
+#[tokio::test]
+async fn agent_session_registry_storage_is_turso_owned() {
     let root = temp_root("agent-session-registry");
     let state_root = root.join("agent");
     let db_path = AgentSessionRegistry::db_path_for_state_root(&state_root);
@@ -411,9 +400,13 @@ fn agent_session_registry_storage_is_turso_owned() {
         db_path.file_name().and_then(|name| name.to_str()),
         Some(AGENT_SESSION_REGISTRY_DB_NAME)
     );
-    assert_eq!(AGENT_SESSION_REGISTRY_DB_NAME, "session-registry.turso");
+    assert_eq!(
+        AGENT_SESSION_REGISTRY_DB_NAME,
+        "session-registry.current.turso"
+    );
     assert!(
         AgentSessionRegistry::open_existing_state_root(&state_root)
+            .await
             .expect("open missing session registry")
             .is_none()
     );
@@ -440,7 +433,7 @@ fn agent_session_registry_storage_is_turso_owned() {
             metadata_json: "{\"route\":\"db-owned\"}".into(),
             now: 1_800_000_000,
         })
-        .expect("register session through Turso DB crate");
+.await.expect("register session through Turso DB crate");
 
     assert_eq!(record.root_session_id(), "root-session");
     assert_eq!(record.session_id(), "child-session");
@@ -463,6 +456,7 @@ fn agent_session_registry_storage_is_turso_owned() {
                     "asp-explore",
                 )),
             )
+            .await
             .expect("query session")
             .len(),
         1
@@ -488,9 +482,11 @@ fn agent_session_registry_storage_is_turso_owned() {
             metadata_json: "{\"route\":\"db-owned\"}".into(),
             now: 1_800_000_001,
         })
+        .await
         .expect("ignore stale model observation");
     let retained = registry
         .session_by_id("project-1", "child-session")
+        .await
         .expect("lookup model observation")
         .expect("session exists");
     assert_eq!(retained.model.as_deref(), Some("gpt-test"));
@@ -510,6 +506,7 @@ fn agent_session_registry_storage_is_turso_owned() {
     );
     let updated = registry
         .session_by_id("project-1", "child-session")
+        .await
         .expect("lookup updated session")
         .expect("session exists");
     assert_eq!(updated.last_tool_event.as_deref(), Some("search"));
@@ -522,8 +519,8 @@ fn agent_session_registry_storage_is_turso_owned() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn agent_session_registry_project_open_requires_runtime_owner() {
+#[tokio::test]
+async fn agent_session_registry_project_open_requires_runtime_owner() {
     let root = temp_root("agent-session-registry-state-home");
     let state_home = root.join("state");
     let project_root = root.join("project");
@@ -544,8 +541,8 @@ fn agent_session_registry_project_open_requires_runtime_owner() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn agent_session_registry_project_open_without_runtime_owner_helper() {
+#[tokio::test]
+async fn agent_session_registry_project_open_without_runtime_owner_helper() {
     if env::var("ASP_SESSION_STATE_HOME_CHILD").ok().as_deref() != Some("1") {
         return;
     }
@@ -559,7 +556,7 @@ fn agent_session_registry_project_open_without_runtime_owner_helper() {
     let state_root =
         AgentSessionRegistry::state_root_for_project(&project_root).expect("resolve project root");
     assert_eq!(state_root, state.state_home);
-    let error = match AgentSessionRegistry::open_or_create_project(&project_root) {
+    let error = match AgentSessionRegistry::open_or_create_project(&project_root).await {
         Ok(_) => panic!("client project open without Runtime Server must fail closed"),
         Err(error) => error,
     };
@@ -590,8 +587,8 @@ fn agent_session_registry_project_open_without_runtime_owner_helper() {
     );
 }
 
-#[test]
-fn agent_session_register_moves_same_child_from_stale_root_mapping() {
+#[tokio::test]
+async fn agent_session_register_rejects_same_child_rebind_from_stale_root_mapping() {
     let root = temp_root("agent-session-registry-move-child");
     let state_root = root.join("agent");
     let registry =
@@ -611,9 +608,10 @@ fn agent_session_register_moves_same_child_from_stale_root_mapping() {
             metadata_json: "{}".into(),
             now: 1_800_000_000,
         })
+        .await
         .expect("register stale mapping");
 
-    let record = registry
+    let error = registry
         .register_session(AgentSessionRegisterRequest {
             project_id: "project-1".into(),
             root_session_id: "new-root".into(),
@@ -628,9 +626,13 @@ fn agent_session_register_moves_same_child_from_stale_root_mapping() {
             metadata_json: "{}".into(),
             now: 1_800_000_010,
         })
-        .expect("move stale child mapping to new root");
+        .await
+        .expect_err("one child ThreadId must not be rebound to a different root");
 
-    assert_eq!(record.root_session_id(), "new-root");
+    assert!(
+        error.contains("agent-session-child-identity-rebind-denied"),
+        "unexpected child rebind terminal: {error}"
+    );
     assert_eq!(
         registry
             .query_sessions(
@@ -642,17 +644,19 @@ fn agent_session_register_moves_same_child_from_stale_root_mapping() {
                     "asp-explore",
                 )),
             )
+            .await
             .expect("query old root")
             .len(),
-        0
+        1
     );
     assert_eq!(
         registry
             .session_by_id("project-1", "child-session")
-            .expect("lookup moved child")
+            .await
+            .expect("lookup retained child")
             .expect("child exists")
             .root_session_id(),
-        "new-root"
+        "old-root"
     );
 
     let _ = std::fs::remove_dir_all(root);
@@ -684,36 +688,31 @@ fn concurrent_session_request(
     }
 }
 
-#[test]
-fn agent_session_registry_one_owner_accepts_concurrent_session_routes() {
+#[tokio::test]
+async fn agent_session_registry_one_owner_accepts_concurrent_session_routes() {
     let root = temp_root("agent-session-registry-process-stress");
     let state_root = root.join("agent");
     let writer_count = 6usize;
     let registry = Arc::new(
         AgentSessionRegistry::open_or_create_state_root(&state_root).expect("open registry"),
     );
-    tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(4)
-        .enable_all()
-        .build()
-        .expect("build multi-session runtime")
-        .block_on(async {
-            let mut tasks = Vec::new();
-            for writer_id in 0..writer_count {
-                let registry = Arc::clone(&registry);
-                tasks.push(tokio::task::spawn_blocking(move || {
-                    registry.register_session(concurrent_session_request(
-                        writer_id,
-                        format!("root-session-{writer_id}"),
-                    ))
-                }));
-            }
-            for task in tasks {
-                task.await
-                    .expect("join resident owner session")
-                    .expect("register resident owner session");
-            }
-        });
+    let mut tasks = Vec::new();
+    for writer_id in 0..writer_count {
+        let registry = Arc::clone(&registry);
+        tasks.push(tokio::spawn(async move {
+            registry
+                .register_session(concurrent_session_request(
+                    writer_id,
+                    format!("root-session-{writer_id}"),
+                ))
+                .await
+        }));
+    }
+    for task in tasks {
+        task.await
+            .expect("join resident owner session")
+            .expect("register resident owner session");
+    }
     let sessions = registry
         .query_sessions(
             "project-session-stress",
@@ -722,6 +721,7 @@ fn agent_session_registry_one_owner_accepts_concurrent_session_routes() {
                 "asp-explore",
             )),
         )
+        .await
         .expect("query process stress sessions");
     assert_eq!(sessions.len(), writer_count);
     for writer_id in 0..writer_count {
@@ -736,41 +736,35 @@ fn agent_session_registry_one_owner_accepts_concurrent_session_routes() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn agent_session_registry_one_owner_converges_shared_route_with_exact_cas() {
+#[tokio::test]
+async fn agent_session_registry_retains_concurrent_children_on_one_shared_route() {
     let root = temp_root("agent-session-registry-process-shared-route-stress");
     let state_root = root.join("agent");
     let writer_count = 6usize;
     let registry = Arc::new(
         AgentSessionRegistry::open_or_create_state_root(&state_root).expect("open registry"),
     );
-    let successful_writers = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(4)
-        .enable_all()
-        .build()
-        .expect("build shared-route runtime")
-        .block_on(async {
-            let mut tasks = Vec::new();
-            for writer_id in 0..writer_count {
-                let registry = Arc::clone(&registry);
-                tasks.push(tokio::task::spawn_blocking(move || {
-                    registry.register_session(concurrent_session_request(
+    let successful_writers = {
+        let mut tasks = Vec::new();
+        for writer_id in 0..writer_count {
+            let registry = Arc::clone(&registry);
+            tasks.push(tokio::spawn(async move {
+                registry
+                    .register_session(concurrent_session_request(
                         writer_id,
                         "root-session".to_owned(),
                     ))
-                }));
-            }
-            let mut successful_writers = 0usize;
-            for task in tasks {
-                successful_writers +=
-                    usize::from(task.await.expect("join shared-route session").is_ok());
-            }
-            successful_writers
-        });
-    assert_eq!(
-        successful_writers, 1,
-        "exactly one concurrent child may activate a physical generation"
-    );
+                    .await
+            }));
+        }
+        let mut successful_writers = 0usize;
+        for task in tasks {
+            successful_writers +=
+                usize::from(task.await.expect("join shared-route session").is_ok());
+        }
+        successful_writers
+    };
+    assert_eq!(successful_writers, writer_count);
 
     let sessions = registry
         .query_sessions(
@@ -782,23 +776,27 @@ fn agent_session_registry_one_owner_converges_shared_route_with_exact_cas() {
                 "asp-explore",
             )),
         )
+        .await
         .expect("query shared route process stress session");
     assert_eq!(
         sessions.len(),
-        1,
-        "shared route register should converge to one routable row"
+        writer_count,
+        "shared route identity must not overwrite concrete child executions"
     );
-    assert!(
-        sessions[0].session_id().starts_with("child-session-"),
-        "unexpected shared route winner: {:?}",
-        sessions[0]
-    );
+    for writer_id in 0..writer_count {
+        assert!(
+            sessions
+                .iter()
+                .any(|session| session.session_id() == format!("child-session-{writer_id}")),
+            "missing shared-route child {writer_id}: {sessions:?}"
+        );
+    }
 
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn source_index_import_assembly_uses_turso_ready_contract_rows() {
+#[tokio::test]
+async fn source_index_import_assembly_uses_turso_ready_contract_rows() {
     let root = temp_root("source-index-import");
     let src = root.join("src");
     std::fs::create_dir_all(&src).expect("create src dir");
@@ -886,8 +884,8 @@ fn source_index_import_assembly_uses_turso_ready_contract_rows() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn source_index_refresh_request_remains_db_engine_owned() {
+#[tokio::test]
+async fn source_index_refresh_request_remains_db_engine_owned() {
     let root = temp_root("source-index-refresh");
     let import = build_fixture_source_index_import(ClientDbSourceIndexImportRequest {
         source_blobs: Default::default(),

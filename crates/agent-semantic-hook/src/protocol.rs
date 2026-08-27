@@ -304,6 +304,7 @@ pub enum DecisionKind {
 /// Reason category for a hook decision.
 pub enum ReasonKind {
     None,
+    HostActionAuthorityUnavailable,
     ActivationUnavailable,
     RegisteredSourceRouteRequired,
     StructuredSourceRead,
@@ -456,6 +457,18 @@ pub fn render_platform_response(decision: &HookDecision) -> Result<Value, AgentH
         "[agent-hook-decision] {}",
         serde_json::to_string(&decision_value).map_err(AgentHookError::InvalidOutput)?
     );
+    if decision.platform == "codex"
+        && decision.event == "post-tool"
+        && !matches!(decision.decision, DecisionKind::Allow)
+    {
+        return Ok(json!({
+            "hookSpecificOutput": {
+                "hookEventName": "PostToolUse",
+                "additionalContext": decision_context,
+            },
+            "systemMessage": message.as_ref(),
+        }));
+    }
     match decision.decision {
         DecisionKind::Deny => {
             if decision.platform == "codex" && decision.event == "permission-request" {

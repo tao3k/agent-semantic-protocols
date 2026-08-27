@@ -28,6 +28,7 @@ fn shell_action(command: &str) -> ToolAction {
         tool_name: "exec_command".to_string(),
         host_payload: serde_json::json!({ "command": command }),
         invocation_source: None,
+        host_action: crate::action_ir::HostInvocationKind::Unknown,
         surface: ToolSurface::CodexShell,
         operation: OperationIntent::ShellCommand,
         command: Some(command.to_string()),

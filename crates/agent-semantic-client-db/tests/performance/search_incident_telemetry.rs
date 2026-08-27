@@ -212,6 +212,7 @@ async fn terminal_incident_lane_survives_transition_queue_pressure() {
             owner_epoch: sequence as u64,
             workspace_identity: Some("workspace-pressure-e2e".to_owned()),
             generation_digest: None,
+            candidate_digest: None,
             transition: "coalescable".to_owned(),
             state: "building".to_owned(),
             elapsed_micros: 0,

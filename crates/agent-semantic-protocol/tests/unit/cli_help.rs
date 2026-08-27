@@ -1,8 +1,8 @@
 use super::install_command;
 
 #[test]
-fn install_language_record_installed_receipt_is_clap_owned_but_hidden() {
-    install_command()
+fn install_language_rejects_removed_record_installed_receipt_bridge() {
+    let error = install_command()
         .try_get_matches_from([
             "install",
             "language",
@@ -10,19 +10,8 @@ fn install_language_record_installed_receipt_is_clap_owned_but_hidden() {
             "--record-installed-receipt",
             "/tmp/rs-harness",
         ])
-        .expect("clap must own the root-Justfile receipt bridge");
-
-    let mut help = Vec::new();
-    install_command()
-        .find_subcommand_mut("language")
-        .expect("install language subcommand")
-        .write_long_help(&mut help)
-        .expect("render install language help");
-    let help = String::from_utf8(help).expect("utf-8 install help");
-    assert!(
-        !help.contains("--record-installed-receipt"),
-        "root-Justfile receipt bridge must stay off the downstream install surface: {help}"
-    );
+        .expect_err("removed receipt bridge must not remain accepted");
+    assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
 }
 
 #[test]

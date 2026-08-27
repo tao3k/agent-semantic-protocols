@@ -3,18 +3,17 @@
 //! Tokio client lifecycle and request contracts for ASP language servers.
 
 mod client_protocol;
-mod http_client;
+mod grpc;
 mod provider_project_resolution;
 
-pub use agent_semantic_http_json::{
-    HttpJsonRequest, HttpJsonResponse, run_http_json, serve_http_json, serve_http_json_h2,
-};
 pub use client_protocol::{
     AspClientCancelFuture, AspClientDispatchError, AspClientDispatchFuture,
-    AspClientDispatchRequest, AspClientDispatcher, AspClientProtocolHttpService,
-    serve_asp_client_protocol_http,
+    AspClientDispatchRequest, AspClientDispatcher, AspClientFrameService,
 };
-pub use http_client::AspClientProtocolHttpClient;
+pub use grpc::{
+    AspClientGrpcService, AspClientGrpcTransport, bind_asp_client_grpc_unix,
+    serve_asp_client_grpc_unix,
+};
 
 pub use provider_project_resolution::provider_capabilities_permit_project_resolution;
 pub use provider_project_resolution::{

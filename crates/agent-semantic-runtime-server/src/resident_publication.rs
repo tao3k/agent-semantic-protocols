@@ -287,6 +287,11 @@ mod tests {
     use super::*;
     use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
 
+    const OLD_DIGEST: &str =
+        "blake3-256:1111111111111111111111111111111111111111111111111111111111111111";
+    const NEW_DIGEST: &str =
+        "blake3-256:2222222222222222222222222222222222222222222222222222222222222222";
+
     fn endpoint(binary: &str, owner_epoch: u64) -> RuntimeServerEndpoint {
         let schema_id = "agent.semantic-protocols.runtime-server-endpoint".to_owned();
         let schema_version = "1".to_owned();
@@ -311,13 +316,19 @@ mod tests {
             owner_process_id: 7,
             runtime_artifact_path: format!("/artifacts/{binary}/asp"),
             runtime_binary_identity: RuntimeBinaryIdentity::Content {
-                value: binary.to_owned(),
-                algorithm: "blake3-256".to_owned(),
+                digest:
+                    agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
+                        binary,
+                    )
+                    .expect("fixture Runtime binary digest"),
             },
             monitor_capability: true,
             observed_runtime_binary_identity: RuntimeBinaryIdentity::Content {
-                value: binary.to_owned(),
-                algorithm: "blake3-256".to_owned(),
+                digest:
+                    agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
+                        binary,
+                    )
+                    .expect("fixture Runtime binary digest"),
             },
             artifact_mode: "release".to_owned(),
             artifact_catalog_digest,
@@ -325,7 +336,6 @@ mod tests {
             socket_path: format!("/tmp/{owner_epoch}.sock"),
             data_plane_socket_path: format!("/tmp/{owner_epoch}.data.sock"),
             provider_plane_socket_path: format!("/tmp/{owner_epoch}.provider.sock"),
-            client_http_endpoint: "http://127.0.0.1:1".to_owned(),
             workspace_store_path: "/tmp/workspaces".to_owned(),
             status_memory_path: format!("/tmp/{owner_epoch}.status"),
         }
@@ -346,7 +356,9 @@ mod tests {
                 process_id: endpoint.owner_process_id,
                 owner_epoch: endpoint.owner_epoch,
                 endpoint_binding_token: endpoint.binding_token.clone(),
-                runtime_binary_identity: endpoint.runtime_binary_identity.value().to_owned(),
+                runtime_binary_identity: match &endpoint.runtime_binary_identity {
+                    RuntimeBinaryIdentity::Content { digest } => digest.as_str().to_owned(),
+                },
                 artifact_catalog_digest: endpoint.artifact_catalog_digest.clone(),
                 transport_contract_digest: endpoint.transport_contract_digest.clone(),
                 reason_kind: Some("runtime-server-ready".to_owned()),
@@ -375,7 +387,7 @@ mod tests {
     async fn candidate_not_ready_does_not_switch_active_authority() {
         let root = tempfile::tempdir().unwrap();
         let publisher = AtomicResidentPublisher::new(root.path().join("resident"));
-        let (endpoint, candidate) = stage(&publisher, root.path(), "new", 2).await;
+        let (endpoint, candidate) = stage(&publisher, root.path(), NEW_DIGEST, 2).await;
         let error = publisher
             .publish_ready(
                 &candidate,
@@ -391,7 +403,7 @@ mod tests {
     async fn ready_switch_is_atomic_and_healthy_retains_previous() {
         let root = tempfile::tempdir().unwrap();
         let publisher = AtomicResidentPublisher::new(root.path().join("resident"));
-        let (old_endpoint, old_candidate) = stage(&publisher, root.path(), "old", 1).await;
+        let (old_endpoint, old_candidate) = stage(&publisher, root.path(), OLD_DIGEST, 1).await;
         publisher
             .publish_ready(
                 &old_candidate,
@@ -399,7 +411,7 @@ mod tests {
             )
             .await
             .unwrap();
-        let (new_endpoint, new_candidate) = stage(&publisher, root.path(), "new", 2).await;
+        let (new_endpoint, new_candidate) = stage(&publisher, root.path(), NEW_DIGEST, 2).await;
         publisher
             .publish_ready(
                 &new_candidate,
@@ -415,7 +427,7 @@ mod tests {
                 .unwrap()
                 .identity
                 .binary_content_digest,
-            "new"
+            NEW_DIGEST
         );
         assert_eq!(
             publisher
@@ -425,7 +437,7 @@ mod tests {
                 .unwrap()
                 .identity
                 .binary_content_digest,
-            "old"
+            OLD_DIGEST
         );
     }
 
@@ -456,6 +468,7 @@ where
     DrainFuture: std::future::Future<Output = Result<(), String>>,
 {
     let candidate = publisher.stage_candidate(binary, endpoint).await?;
+    endpoint.validate_service_reachability().await?;
     let active = match publisher.publish_ready(&candidate, ready).await {
         Ok(active) => active,
         Err(error) => {
@@ -530,13 +543,19 @@ mod production_transaction_tests {
             owner_process_id: 77,
             runtime_artifact_path: binary.to_string_lossy().into_owned(),
             runtime_binary_identity: RuntimeBinaryIdentity::Content {
-                value: binary_content_digest.clone(),
-                algorithm: "blake3-256".to_owned(),
+                digest:
+                    agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
+                        &binary_content_digest,
+                    )
+                    .expect("fixture Runtime binary digest"),
             },
             monitor_capability: true,
             observed_runtime_binary_identity: RuntimeBinaryIdentity::Content {
-                value: binary_content_digest.clone(),
-                algorithm: "blake3-256".to_owned(),
+                digest:
+                    agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
+                        &binary_content_digest,
+                    )
+                    .expect("fixture Runtime binary digest"),
             },
             artifact_mode: "release".to_owned(),
             artifact_catalog_digest: artifact_catalog_digest.clone(),
@@ -544,7 +563,6 @@ mod production_transaction_tests {
             socket_path: "/runtime/candidate-control.sock".to_owned(),
             data_plane_socket_path: "/runtime/candidate-data.sock".to_owned(),
             provider_plane_socket_path: "/runtime/candidate-provider.sock".to_owned(),
-            client_http_endpoint: "http://127.0.0.1:1".to_owned(),
             workspace_store_path: "/runtime/workspaces".to_owned(),
             status_memory_path: "/runtime/status.memory".to_owned(),
         };
@@ -569,6 +587,89 @@ mod production_transaction_tests {
         let drain_called = Arc::new(AtomicBool::new(false));
         let drain_observer = Arc::clone(&drain_called);
         let publisher = AtomicResidentPublisher::new(temporary.path().join("resident"));
+        let socket_root = tempfile::tempdir().expect("create candidate socket root");
+        let mut endpoint = endpoint;
+        endpoint.socket_path = socket_root
+            .path()
+            .join("control.sock")
+            .display()
+            .to_string();
+        endpoint.data_plane_socket_path =
+            socket_root.path().join("data.sock").display().to_string();
+        endpoint.provider_plane_socket_path = socket_root
+            .path()
+            .join("provider.sock")
+            .display()
+            .to_string();
+
+        for socket_path in [
+            &endpoint.socket_path,
+            &endpoint.data_plane_socket_path,
+            &endpoint.provider_plane_socket_path,
+        ] {
+            std::fs::create_dir_all(
+                std::path::Path::new(socket_path)
+                    .parent()
+                    .expect("runtime socket parent"),
+            )
+            .expect("create runtime socket parent");
+        }
+        let _control_listener = tokio::net::UnixListener::bind(&endpoint.socket_path)
+            .expect("bind candidate control plane");
+        let _provider_listener =
+            tokio::net::UnixListener::bind(&endpoint.provider_plane_socket_path)
+                .expect("bind candidate provider plane");
+
+        let active_before_failure = publisher
+            .active()
+            .await
+            .expect("read active before data-plane failure")
+            .map(|slot| slot.identity);
+        let healthy_before_failure = publisher
+            .healthy()
+            .await
+            .expect("read healthy before data-plane failure")
+            .map(|slot| slot.identity);
+        let failed_drain_observer = drain_called.clone();
+        let failure = publish_candidate_transaction(
+            &publisher,
+            &binary,
+            &endpoint,
+            &ready,
+            move || async move {
+                failed_drain_observer.store(true, Ordering::Release);
+                Ok(())
+            },
+        )
+        .await
+        .expect_err("missing data plane must reject resident candidate");
+        assert!(
+            failure.contains("data"),
+            "typed failure must identify the missing data plane: {failure}"
+        );
+        assert_eq!(
+            publisher
+                .active()
+                .await
+                .expect("read active after data-plane failure")
+                .map(|slot| slot.identity),
+            active_before_failure
+        );
+        assert_eq!(
+            publisher
+                .healthy()
+                .await
+                .expect("read healthy after data-plane failure")
+                .map(|slot| slot.identity),
+            healthy_before_failure
+        );
+        assert!(
+            !drain_called.load(Ordering::Acquire),
+            "precommit data-plane failure must not drain the serving generation"
+        );
+        let _data_listener = tokio::net::UnixListener::bind(&endpoint.data_plane_socket_path)
+            .expect("bind candidate data plane");
+
         let receipt = publish_candidate_transaction(
             &publisher,
             &binary,
@@ -643,10 +744,9 @@ pub async fn resident_readiness_root(
                 runtime_uid_root.display()
             )
         })?;
-    let root = std::path::PathBuf::from("/tmp")
-        .join(format!("asp-r-{uid}"))
-        .join(&identity[..24]);
-    for directory in [root.as_path()] {
+    let readiness_uid_root = std::path::PathBuf::from("/tmp").join(format!("asp-r-{uid}"));
+    let root = readiness_uid_root.join(&identity[..24]);
+    for directory in [readiness_uid_root.as_path(), root.as_path()] {
         match tokio::fs::create_dir(directory).await {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}

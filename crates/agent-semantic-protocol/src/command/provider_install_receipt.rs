@@ -66,6 +66,7 @@ pub(super) fn read_provider_install_receipt(
         language_id: language_id.to_owned(),
         provider_id: field("provider")?.to_owned(),
         installed_path: PathBuf::from(field("installedPath")?),
+        artifact_digest: field("artifactDigest")?.to_owned(),
         installed_entrypoint_digest: field("installedEntrypointDigest")?.to_owned(),
         installed_entrypoint_metadata_digest: field("installedEntrypointMetadataDigest")?
             .to_owned(),

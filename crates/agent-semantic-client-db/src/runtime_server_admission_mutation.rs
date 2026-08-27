@@ -604,7 +604,6 @@ impl WorkspaceGenerationAdmission {
             return Ok(entry.observed());
         }
         if !entry.lane.observed().building {
-            entry.lane.begin_claimed(claimed_attempt).await?;
             let attempt = claimed_attempt;
             let accepted = claimed_submission.clone();
             let build_mode = observed_mutation_build_mode(&entry.observed());
@@ -671,7 +670,7 @@ fn mutation_submission_receipt(
         request_lifetime_independent: true,
         candidate_generation: candidate.candidate_generation.clone(),
         policy_overlay_digest: candidate.policy_overlay_digest.clone(),
-        state: WorkspaceGenerationAdmissionState::Building,
+        state: WorkspaceGenerationAdmissionState::Queued,
         accepted: true,
         attempt,
         commit: None,

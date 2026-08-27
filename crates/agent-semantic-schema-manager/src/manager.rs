@@ -495,6 +495,12 @@ pub async fn verify_bundle_receipt(
         .map_err(|error| format!("schema bundle receipt verification task failed: {error}"))?
 }
 
+pub fn load_verified_bundle_receipt(
+    receipt_path: impl AsRef<Path>,
+) -> Result<LanguageSchemaBundleReceipt, String> {
+    verify_bundle_receipt_blocking(receipt_path.as_ref())
+}
+
 fn report(
     profile: &LanguageSchemaProfile,
     receipt: &LanguageSchemaBundleReceipt,

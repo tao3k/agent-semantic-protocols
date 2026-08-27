@@ -86,6 +86,7 @@
         "valueType": {
           "enum": [
             "string",
+            "string-array",
             "workspace-relative-path",
             "structural-selector",
             "presentation",

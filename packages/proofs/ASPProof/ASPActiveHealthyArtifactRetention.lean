@@ -51,6 +51,43 @@ theorem empty_store_publication_seeds_both_slots (digest : ContentDigest) :
     publishVerified ⟨none, none⟩ digest = ⟨some digest, some digest⟩ := by
   rfl
 
+structure PublicationState where
+  active : Option ContentDigest
+  healthy : Option ContentDigest
+  pending : Option ContentDigest
+
+def readyCommit
+    (state : PublicationState)
+    (candidate serving : ContentDigest) : PublicationState :=
+  if state.pending = some candidate then
+    ⟨some candidate, some serving, none⟩
+  else
+    state
+
+def failedActivation (state : PublicationState) : PublicationState :=
+  state
+
+theorem pending_does_not_mutate_serving_slots
+    (active healthy candidate : ContentDigest) :
+    ({ active := some active, healthy := some healthy,
+       pending := some candidate } : PublicationState).active = some active ∧
+    ({ active := some active, healthy := some healthy,
+       pending := some candidate } : PublicationState).healthy = some healthy := by
+  simp
+
+theorem ready_commit_consumes_bound_pending_candidate
+    (serving candidate : ContentDigest) :
+    readyCommit
+      ⟨some serving, some serving, some candidate⟩ candidate serving =
+      ⟨some candidate, some serving, none⟩ := by
+  simp [readyCommit]
+
+theorem failed_activation_preserves_last_known_good
+    (state : PublicationState) :
+    (failedActivation state).active = state.active ∧
+    (failedActivation state).healthy = state.healthy := by
+  simp [failedActivation]
+
 theorem later_publication_preserves_healthy
     (active healthy next : ContentDigest) :
     publishVerified ⟨some active, some healthy⟩ next =

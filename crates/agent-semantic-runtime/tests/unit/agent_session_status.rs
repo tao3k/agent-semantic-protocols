@@ -8,7 +8,8 @@ use crate::codex_rollout_sessions::codex_rollout_session_index;
 
 static CODEX_HOME_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 static AGENT_SESSION_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-const AGENT_SESSION_ENV_VARS: [&str; 5] = [
+const AGENT_SESSION_ENV_VARS: [&str; 6] = [
+    "CODEX_SESSION_ID",
     "CODEX_THREAD_ID",
     "CLAUDE_CODE_SESSION_ID",
     "CLAUDE_CODE_REMOTE_SESSION_ID",

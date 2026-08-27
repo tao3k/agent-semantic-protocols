@@ -1,51 +1,8 @@
 //! Thin Protocol adapter for Runtime Server lifecycle requests.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub(crate) use agent_semantic_client_db::RuntimeServerSpawnReceipt;
-
-fn server_dir(state_home: &Path) -> PathBuf {
-    state_home.join("runtime/server")
-}
-
-pub(crate) async fn ensure_runtime_server(
-    state_home: &Path,
-    explicit: bool,
-) -> Result<Option<RuntimeServerSpawnReceipt>, String> {
-    let request = supervisor_request(state_home).await?;
-    ensure_runtime_server_with_request(request, explicit).await
-}
-
-pub(crate) async fn ensure_runtime_server_after_identity_handoff(
-    state_home: &Path,
-) -> Result<Option<RuntimeServerSpawnReceipt>, String> {
-    let request = supervisor_request_for_active_artifact(state_home).await?;
-    ensure_runtime_server_with_request(request, false).await
-}
-
-async fn ensure_runtime_server_with_request(
-    request: agent_semantic_client_db::runtime_server_supervisor::SupervisorRequest,
-    explicit: bool,
-) -> Result<Option<RuntimeServerSpawnReceipt>, String> {
-    let state_home = request.state_home.clone();
-    let outcome = agent_semantic_client_db::runtime_server_supervisor::RuntimeServerSupervisor
-        .ensure_runtime_server(request, explicit)
-        .await?;
-    match outcome {
-        agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome::AlreadyResident => {
-            Ok(None)
-        }
-        agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome::SpawnAccepted => {
-            read_runtime_server_spawn_receipt(&state_home)
-                .await?
-                .map(Some)
-                .ok_or_else(|| "Runtime Server spawn completed without an owner receipt".to_owned())
-        }
-        unexpected => Err(format!(
-            "Runtime Server supervisor returned an invalid ensure outcome: {unexpected:?}"
-        )),
-    }
-}
 
 pub(crate) async fn read_runtime_server_spawn_receipt(
     state_home: &Path,
@@ -53,109 +10,242 @@ pub(crate) async fn read_runtime_server_spawn_receipt(
     agent_semantic_client_db::runtime_server_lifecycle::read_owner_receipt(state_home).await
 }
 
-pub(crate) async fn request_runtime_server_drain(state_home: &Path) -> Result<(), String> {
-    let endpoint =
-        agent_semantic_client_db::runtime_server_control::read_runtime_server_supervisor_endpoint(
-            state_home,
-        )
-        .await?
-        .ok_or_else(|| "Runtime Server endpoint is unavailable for drain".to_owned())?;
-    agent_semantic_client_db::runtime_server_supervisor::request_runtime_server_drain(&endpoint)
-        .await
+pub(crate) enum RuntimeServerActivationReconciliation {
+    Supervisor(agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome),
+    Healthy(agent_semantic_client_db::runtime_server_control::RuntimeServerControlReceipt),
 }
 
-pub(crate) async fn ensure_healthy_runtime_server(
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RuntimeServerActivationAuthority {
+    OperatorStart,
+    ClientBootstrap,
+}
+
+impl RuntimeServerActivationAuthority {
+    pub(crate) const fn is_explicit_operator_start(self) -> bool {
+        matches!(self, Self::OperatorStart)
+    }
+}
+
+pub(crate) fn validate_activation_ready_binding(
+    receipt: &agent_semantic_client_db::RuntimeServerActivationReadyReceipt,
+    event: &agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent,
+    spawn: &agent_semantic_client_db::RuntimeServerSpawnReceipt,
+) -> Result<(), String> {
+    let spawn_receipt_digest =
+        agent_semantic_client_db::runtime_server_lifecycle::spawn_receipt_digest(spawn)?;
+    if receipt.schema_id != "agent.semantic-protocols.runtime-activation-ready-receipt"
+        || receipt.schema_version != "1"
+        || receipt.state != "ready"
+        || receipt.activation_generation != event.activation_generation
+        || receipt.artifact_digest != event.artifact_digest
+        || receipt.owner_epoch == 0
+        || receipt.launcher_receipt_digest != spawn_receipt_digest
+    {
+        return Err(
+            "state=runtime-activation-ready-failed reasonKind=ready-authority-binding-mismatch"
+                .to_owned(),
+        );
+    }
+    Ok(())
+}
+
+pub(crate) async fn ensure_healthy_runtime_server_for_activation_event(
     state_home: &Path,
+    event: &agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent,
+    serving_digest: Option<&agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest>,
 ) -> Result<agent_semantic_client_db::runtime_server_control::RuntimeServerControlReceipt, String> {
-    ensure_runtime_server(state_home, false).await?;
-    super::runtime_server::await_healthy_runtime_server_after_spawn().await?;
-    super::runtime_server::observe_runtime_server_readiness(state_home).await
-}
-
-pub(crate) async fn ensure_healthy_runtime_server_after_identity_handoff(
-    state_home: &Path,
-) -> Result<agent_semantic_client_db::runtime_server_control::RuntimeServerControlReceipt, String> {
-    ensure_runtime_server_after_identity_handoff(state_home).await?;
-    super::runtime_server::await_healthy_runtime_server_after_spawn().await?;
-    super::runtime_server::observe_runtime_server_readiness(state_home).await
-}
-
-async fn supervisor_request(
-    state_home: &Path,
-) -> Result<agent_semantic_client_db::runtime_server_supervisor::SupervisorRequest, String> {
-    let current_exe =
-        std::env::current_exe().map_err(|error| format!("resolve ASP invoker: {error}"))?;
-    let receipt =
-        agent_semantic_runtime::runtime_artifact_identity::read_runtime_artifact_identity(
-            state_home, "asp",
-        )
-        .await?;
-    agent_semantic_runtime::runtime_artifact_identity::admit_runtime_invoker(
-        &current_exe,
-        &receipt,
-        &state_home.join("runtime/bin/asp"),
-    )?;
-    supervisor_request_for_active_artifact_with_receipt(state_home, &receipt).await
-}
-
-async fn supervisor_request_for_active_artifact(
-    state_home: &Path,
-) -> Result<agent_semantic_client_db::runtime_server_supervisor::SupervisorRequest, String> {
-    let receipt =
-        agent_semantic_runtime::runtime_artifact_identity::read_runtime_artifact_identity(
-            state_home, "asp",
-        )
-        .await?;
-    supervisor_request_for_active_artifact_with_receipt(state_home, &receipt).await
-}
-
-async fn supervisor_request_for_active_artifact_with_receipt(
-    state_home: &Path,
-    receipt: &agent_semantic_runtime::runtime_artifact_identity::RuntimeArtifactIdentityReceipt,
-) -> Result<agent_semantic_client_db::runtime_server_supervisor::SupervisorRequest, String> {
-    let runtime_artifact = canonical_runtime_artifact(state_home).await?;
-    agent_semantic_runtime::runtime_artifact_identity::admit_runtime_invoker(
-        &runtime_artifact,
-        receipt,
-        &state_home.join("runtime/bin/asp"),
-    )?;
-    Ok(
-        agent_semantic_client_db::runtime_server_supervisor::SupervisorRequest {
-            state_home: state_home.to_owned(),
-            expected_executable: runtime_artifact.clone(),
-            launch: agent_semantic_runtime::runtime_process_lifecycle::RuntimeProcessLaunchSpec {
-                program: runtime_artifact,
-                args: vec!["server".to_owned(), "daemon".to_owned()],
-                current_dir: None,
-                environment: vec![(
-                    "ASP_STATE_HOME".to_owned(),
-                    state_home.to_string_lossy().into_owned(),
-                )],
-                stderr: server_dir(state_home).join("owner-stderr.log"),
-            },
-        },
+    match reconcile_runtime_server_activation_event(
+        state_home,
+        event,
+        serving_digest,
+        true,
+        RuntimeServerActivationAuthority::OperatorStart,
     )
+    .await?
+    {
+        RuntimeServerActivationReconciliation::Healthy(receipt) => Ok(receipt),
+        RuntimeServerActivationReconciliation::Supervisor(_) => {
+            Err("Runtime activation reconciliation returned before healthy publication".to_owned())
+        }
+    }
 }
 
-async fn canonical_runtime_artifact(state_home: &Path) -> Result<PathBuf, String> {
-    let stable_entry = state_home.join("runtime/bin/asp");
-    let resolved = agent_semantic_runtime::runtime_process_lifecycle::canonicalize(&stable_entry)
+pub(crate) async fn ensure_runtime_server_for_activation_event(
+    state_home: &Path,
+    event: &agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent,
+    serving_digest: Option<&agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest>,
+) -> Result<agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome, String> {
+    match reconcile_runtime_server_activation_event(
+        state_home,
+        event,
+        serving_digest,
+        false,
+        RuntimeServerActivationAuthority::ClientBootstrap,
+    )
+    .await?
+    {
+        RuntimeServerActivationReconciliation::Supervisor(supervisor) => Ok(supervisor),
+        RuntimeServerActivationReconciliation::Healthy(_) => Err(
+            "Runtime bootstrap reconciliation crossed the healthy publication boundary".to_owned(),
+        ),
+    }
+}
+
+pub(crate) async fn reconcile_runtime_server_activation_event(
+    state_home: &Path,
+    event: &agent_semantic_artifacts::runtime_artifact_publication::RuntimeArtifactActivationEvent,
+    serving_digest: Option<&agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest>,
+    wait_for_healthy: bool,
+    authority: RuntimeServerActivationAuthority,
+) -> Result<RuntimeServerActivationReconciliation, String> {
+    if event.artifact_digest != event.candidate_identity.artifact_digest
+        || event.artifact_path != event.candidate_identity.artifact_path
+        || event.publication_nonce != event.candidate_identity.publication_nonce
+    {
+        return Err(
+            "state=runtime-server-activation-failed reasonKind=candidate-identity-binding-mismatch"
+                .to_owned(),
+        );
+    }
+    let bytes = tokio::fs::read(&event.artifact_path)
         .await
-        .map_err(|error| {
-            format!(
-                "canonical ASP Runtime Server binary is unavailable at {}: {error}",
-                stable_entry.display()
-            )
-        })?;
-    if !resolved.is_file() {
+        .map_err(|error| format!("read event-bound Runtime candidate: {error}"))?;
+    let observed =
+        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(&bytes);
+    if observed != event.artifact_digest {
         return Err(format!(
-            "canonical ASP Runtime Server binary target is not a file: {}",
-            resolved.display()
+            "state=runtime-server-activation-failed reasonKind=candidate-content-digest-mismatch expected={} observed={}",
+            event.artifact_digest, observed
         ));
     }
-    // The stable entry is an invocation pointer, not process identity.  Owners
-    // must be launched and recorded by their immutable digest-addressed path so
-    // a subsequent active publication cannot rewrite the identity of a live
-    // process and make verified drain impossible.
-    Ok(resolved)
+
+    let mut ready_listener = if wait_for_healthy {
+        Some(
+            agent_semantic_client_db::runtime_server_lifecycle::bind_activation_ready_listener(
+                state_home,
+                event.activation_generation,
+                &event.publication_nonce,
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
+    let mut environment = vec![
+        (
+            "ASP_STATE_HOME".to_owned(),
+            state_home.to_string_lossy().into_owned(),
+        ),
+        (
+            "ASP_RUNTIME_BINARY_CONTENT_DIGEST".to_owned(),
+            event.artifact_digest.to_string(),
+        ),
+    ];
+    if let Some(listener) = ready_listener.as_ref() {
+        environment.push((
+            "ASP_RUNTIME_ACTIVATION_READY_SOCKET".to_owned(),
+            listener.path().to_string_lossy().into_owned(),
+        ));
+    }
+    let owner_stderr_path = state_home.join("runtime/server/owner-stderr.log");
+    let request =
+        agent_semantic_client_db::runtime_server_supervisor::SupervisorRequest::for_activation(
+            state_home.to_owned(),
+            event.artifact_path.clone(),
+            event.activation_generation,
+            event.artifact_digest.clone(),
+            event.previous_artifact_digest.clone(),
+            event.artifact_path.clone(),
+            vec!["server".to_owned(), "daemon".to_owned()],
+            None,
+            environment,
+            owner_stderr_path.clone(),
+        );
+    if !wait_for_healthy {
+        let supervisor =
+            agent_semantic_client_db::runtime_server_supervisor::RuntimeServerSupervisor
+                .ensure_runtime_server(request, authority.is_explicit_operator_start())
+                .await?;
+        return Ok(RuntimeServerActivationReconciliation::Supervisor(
+            supervisor,
+        ));
+    }
+    let mut supervision =
+        agent_semantic_client_db::runtime_server_supervisor::RuntimeServerSupervisor
+            .ensure_runtime_server_monitored(request, authority.is_explicit_operator_start())
+            .await?;
+    if supervision.outcome
+        == agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome::SpawnAccepted
+    {
+        let mut process = supervision.process.take().ok_or_else(|| {
+            "Runtime activation SpawnAccepted outcome requires a monitored child".to_owned()
+        })?;
+        let listener = ready_listener
+            .as_mut()
+            .ok_or_else(|| "Runtime activation wait requires a bound ready listener".to_owned())?;
+        let receipt = tokio::select! {
+            receipt = listener.receive() => receipt?,
+            exit = process.wait() => {
+                let exit = exit?;
+                let daemon_stderr = tokio::fs::read_to_string(&owner_stderr_path)
+                    .await
+                    .unwrap_or_else(|error| format!("unavailable: {error}"));
+                return Err(serde_json::json!({
+                    "schemaId": "agent.semantic-protocols.runtime-activation-ready-receipt",
+                    "schemaVersion": "1",
+                    "state": "failed",
+                    "reasonKind": "runtime-owner-exited-before-ready",
+                    "exitStatus": exit.to_string(),
+                    "daemonStderr": daemon_stderr,
+                    "activationGeneration": event.activation_generation,
+                    "artifactDigest": event.artifact_digest,
+                }).to_string());
+            }
+        };
+        let spawn =
+            agent_semantic_client_db::runtime_server_lifecycle::read_owner_receipt(state_home)
+                .await?
+                .ok_or_else(|| {
+                    "Runtime activation ready receipt has no owner-spawn authority".to_owned()
+                })?;
+        validate_activation_ready_binding(&receipt, event, &spawn)?;
+        if let Some(exit) = process.try_wait()? {
+            return Err(serde_json::json!({
+                "schemaId": "agent.semantic-protocols.runtime-activation-ready-receipt",
+                "schemaVersion": "1",
+                "state": "failed",
+                "reasonKind": "runtime-owner-exited-after-ready",
+                "exitStatus": exit.to_string(),
+                "activationGeneration": event.activation_generation,
+                "artifactDigest": event.artifact_digest,
+            })
+            .to_string());
+        }
+    }
+    let ready = crate::server::runtime_server::observe_runtime_server_readiness(state_home).await?;
+    let transaction =
+        agent_semantic_client_db::runtime_server_lifecycle::observe_resident_transaction(
+            state_home,
+        )
+        .await?;
+    eprintln!(
+        "[runtime-server-resident-transaction] {}",
+        serde_json::to_string(&transaction)
+            .map_err(|error| format!("encode Runtime resident transaction receipt: {error}"))?
+    );
+    if transaction.activation_generation != event.activation_generation
+        || transaction.applied_artifact_digest != event.artifact_digest
+    {
+        return Err(
+            "state=runtime-activation-ready-failed reasonKind=transaction-authority-mismatch"
+                .to_owned(),
+        );
+    }
+    let _ = serving_digest;
+    Ok(RuntimeServerActivationReconciliation::Healthy(ready))
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/server/runtime_server_wire_adapter.rs"]
+mod tests;

@@ -18,7 +18,7 @@ mod validation;
 use runtime_generation::MutationWorkspaceLane;
 use session_pool::resident_state;
 use transport::runtime_server_data_connect_error;
-pub(crate) use transport::{read_frame, read_optional_frame, write_frame};
+pub(crate) use transport::{read_frame, write_frame};
 use validation::{
     deserialize_changed_paths, deserialize_mutation_id, workspace_db_ipc_read_lane_capacity,
 };

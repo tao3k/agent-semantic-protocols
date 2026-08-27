@@ -10,8 +10,6 @@ set -u
 event="${1:-unknown}"
 state_home="${ASP_STATE_HOME:-${HOME:-}/.agent-semantic-protocols}"
 runtime_bin="${state_home}/runtime/bin/asp"
-active_bin="${state_home}/runtime/profiles/asp/active"
-healthy_bin="${state_home}/runtime/profiles/asp/healthy"
 
 emit_unavailable() {
   detail="$1"
@@ -29,11 +27,13 @@ emit_unavailable() {
   esac
 }
 
-for candidate in "$runtime_bin" "$active_bin" "$healthy_bin"; do
-  if [ -f "$candidate" ] && [ -x "$candidate" ]; then
-    exec "$candidate" hook "$@"
-  fi
-done
+if [ -f "$runtime_bin" ] && [ -x "$runtime_bin" ]; then
+  ASP_HOOK_LAUNCHER_BINARY="$runtime_bin"
+  ASP_HOOK_LAUNCHER_PATH="$0"
+  ASP_HOOK_LAUNCHER_STATE_HOME="$state_home"
+  export ASP_HOOK_LAUNCHER_BINARY ASP_HOOK_LAUNCHER_PATH ASP_HOOK_LAUNCHER_STATE_HOME
+  exec "$runtime_bin" hook "$@"
+fi
 
-emit_unavailable "active and healthy artifact slots are missing or non-executable"
+emit_unavailable "canonical runtime artifact is missing or non-executable"
 exit 0

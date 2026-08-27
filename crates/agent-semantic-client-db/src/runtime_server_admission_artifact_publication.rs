@@ -34,7 +34,10 @@ impl WorkspaceGenerationAdmission {
                 Arc::default(),
             )
             .await?;
-        if receipt.state == WorkspaceGenerationAdmissionState::Building {
+        if matches!(
+            receipt.state,
+            WorkspaceGenerationAdmissionState::Queued | WorkspaceGenerationAdmissionState::Building
+        ) {
             self.wait_terminal(&workspace_identity, &project_root).await
         } else {
             Ok(receipt)
@@ -84,7 +87,13 @@ impl WorkspaceGenerationAdmission {
 
         if self
             .current(&workspace_identity, &project_root)
-            .is_some_and(|receipt| receipt.state == WorkspaceGenerationAdmissionState::Building)
+            .is_some_and(|receipt| {
+                matches!(
+                    receipt.state,
+                    WorkspaceGenerationAdmissionState::Queued
+                        | WorkspaceGenerationAdmissionState::Building
+                )
+            })
         {
             let _ = self
                 .wait_terminal(&workspace_identity, &project_root)
@@ -110,7 +119,10 @@ impl WorkspaceGenerationAdmission {
             )
             .await?;
 
-        if receipt.state == WorkspaceGenerationAdmissionState::Building {
+        if matches!(
+            receipt.state,
+            WorkspaceGenerationAdmissionState::Queued | WorkspaceGenerationAdmissionState::Building
+        ) {
             self.wait_terminal(&workspace_identity, &project_root).await
         } else {
             Ok(receipt)

@@ -6,7 +6,6 @@ use agent_semantic_client_protocol::{
     ClientFrame, ClientFrameBase, ClientOutcome, ClientProtocolCatalog, ClientRequestId,
     ClientSessionId, ClientWorkspaceIdentity,
 };
-use agent_semantic_http_json::{HttpJsonRequest, HttpJsonResponse};
 use serde_json::{Value, json};
 
 pub type AspClientDispatchFuture =
@@ -26,6 +25,7 @@ pub struct AspClientDispatchRequest {
 pub struct AspClientDispatchError {
     pub reason_kind: String,
     pub message: String,
+    pub details: Option<Value>,
 }
 
 pub trait AspClientDispatcher: Send + Sync + 'static {
@@ -51,10 +51,13 @@ type CatalogResolver = dyn Fn(String, String, String) -> CatalogResolution + Sen
 /// Admission holds a per-session lock only for the synchronous state
 /// transition; dispatch runs after the lock is released so cancellation and
 /// unrelated requests cannot deadlock behind a long operation.
-pub struct AspClientProtocolHttpService<D> {
+pub struct AspClientFrameService<D> {
     dispatcher: Arc<D>,
     resolve_catalog: Arc<CatalogResolver>,
 }
+
+/// Compatibility name for the HTTP binding. Both HTTP and gRPC call the same
+/// transport-neutral frame owner.
 
 async fn execute_admitted<D: AspClientDispatcher>(
     dispatcher: Arc<D>,
@@ -107,17 +110,17 @@ async fn execute_admitted<D: AspClientDispatcher>(
                     } else {
                         ClientOutcome::Error
                     };
-                    response(
-                        base,
-                        request_id,
-                        outcome,
-                        None,
-                        Some(json!({
-                            "reasonKind": error.reason_kind,
-                            "message": error.message,
-                        })),
-                        None,
-                    )
+                    let mut error_payload = json!({
+                        "reasonKind": error.reason_kind,
+                        "message": error.message,
+                    });
+                    if let Some(details) = error.details {
+                        error_payload
+                            .as_object_mut()
+                            .expect("ASP Client dispatch error payload must be an object")
+                            .insert("terminal".to_owned(), details);
+                    }
+                    response(base, request_id, outcome, None, Some(error_payload), None)
                 }
             })
         }
@@ -158,7 +161,7 @@ async fn execute_admitted<D: AspClientDispatcher>(
     }
 }
 
-impl<D: AspClientDispatcher> AspClientProtocolHttpService<D> {
+impl<D: AspClientDispatcher> AspClientFrameService<D> {
     pub fn new(
         dispatcher: Arc<D>,
         resolve_catalog: impl Fn(&str) -> Result<ClientProtocolCatalog, String> + Send + Sync + 'static,
@@ -189,88 +192,26 @@ impl<D: AspClientDispatcher> AspClientProtocolHttpService<D> {
         }
     }
 
-    pub async fn handle(&self, request: HttpJsonRequest) -> Result<HttpJsonResponse, String> {
-        if request.method == "GET" && request.path == "/health" {
-            return HttpJsonResponse::json(
-                200,
-                &json!({
-                    "protocolId": agent_semantic_client_protocol::CLIENT_PROTOCOL_ID,
-                    "protocolVersion": agent_semantic_client_protocol::CLIENT_PROTOCOL_VERSION,
-                    "state": "ready",
-                }),
-            );
-        }
-        if request.method != "POST" || request.path != "/protocol/frame" {
-            return HttpJsonResponse::json(
-                404,
-                &json!({
-                    "reasonKind": "client-http-route-missing",
-                    "message": "ASP Client Protocol uses POST /protocol/frame",
-                }),
-            );
-        }
-        let frame: ClientFrame = match serde_json::from_slice(&request.body) {
-            Ok(frame) => frame,
-            Err(error) => {
-                return HttpJsonResponse::json(
-                    400,
-                    &json!({
-                        "reasonKind": "client-frame-decode-failed",
-                        "message": error.to_string(),
-                    }),
-                );
-            }
-        };
+    /// Apply the shared ASP Client Protocol admission and dispatch semantics to
+    /// one typed frame, independent of its HTTP or gRPC transport.
+    pub async fn handle_frame(&self, frame: ClientFrame) -> Result<Option<ClientFrame>, String> {
         let base = frame.base().clone();
-
         let catalog = if let ClientFrame::Initialize { project_root, .. }
         | ClientFrame::Dispatch { project_root, .. } = &frame
         {
             Some(
-                match (self.resolve_catalog)(
+                (self.resolve_catalog)(
                     base.workspace_identity.as_str().to_owned(),
                     base.session_id.as_str().to_owned(),
                     project_root.clone(),
                 )
-                .await
-                {
-                    Ok(catalog) => catalog,
-                    Err(message) => {
-                        return HttpJsonResponse::json(
-                            409,
-                            &json!({
-                                "reasonKind": "client-workspace-catalog-unavailable",
-                                "message": message,
-                            }),
-                        );
-                    }
-                },
+                .await?,
             )
         } else {
             None
         };
-        let response_frame = execute_admitted(Arc::clone(&self.dispatcher), catalog, frame).await;
-        match response_frame {
-            Some(response_frame) => HttpJsonResponse::json(
-                200,
-                &serde_json::to_value(response_frame)
-                    .map_err(|error| format!("encode ASP Client Protocol frame: {error}"))?,
-            ),
-            None => HttpJsonResponse::json(200, &json!({"state": "exited"})),
-        }
+        Ok(execute_admitted(Arc::clone(&self.dispatcher), catalog, frame).await)
     }
-}
-
-pub async fn serve_asp_client_protocol_http<D: AspClientDispatcher>(
-    listener: tokio::net::TcpListener,
-    shutdown: tokio::sync::watch::Receiver<bool>,
-    service: Arc<AspClientProtocolHttpService<D>>,
-) -> Result<(), String> {
-    agent_semantic_http_json::serve_http_json_h2(listener, shutdown, move |request| {
-        let service = Arc::clone(&service);
-        async move { service.handle(request).await }
-    })
-    .await
 }
 
 fn response(

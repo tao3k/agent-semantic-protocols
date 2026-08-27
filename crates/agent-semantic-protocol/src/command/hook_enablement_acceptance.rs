@@ -95,8 +95,8 @@ async fn accept(project_root: &Path) -> Result<HookEnablementAcceptanceReceipt, 
     let runtime_state = agent_semantic_runtime::project_runtime_state(project_root)?;
     let runtime_root = runtime_state.protocol_home.join("runtime");
     let public = runtime_root.join("bin/asp");
-    let active_slot = runtime_root.join("profiles/asp/active");
-    let healthy_slot = runtime_root.join("profiles/asp/healthy");
+    let active_slot = runtime_root.join("resident/active/asp");
+    let healthy_slot = runtime_root.join("resident/healthy/asp");
     require_symlink_target(&public, &active_slot, "public ASP alias").await?;
     let active = canonical_executable(&active_slot, "active ASP artifact").await?;
     let healthy = canonical_executable(&healthy_slot, "healthy ASP artifact").await?;
@@ -109,14 +109,7 @@ async fn accept(project_root: &Path) -> Result<HookEnablementAcceptanceReceipt, 
 
     let policy_decision_max_cpu_micros =
         policy_decision_acceptance(&active, project_root, &runtime_state.protocol_home).await?;
-    let mut samples = Vec::with_capacity(LAUNCHER_SAMPLE_COUNT);
-    samples.extend(
-        launcher_scenario_samples(&launcher, &active, "active", LAUNCHER_SAMPLE_COUNT / 2).await?,
-    );
-    samples.extend(
-        launcher_scenario_samples(&launcher, &healthy, "healthy", LAUNCHER_SAMPLE_COUNT / 2)
-            .await?,
-    );
+    let mut samples = launcher_scenario_samples(&launcher, &active, LAUNCHER_SAMPLE_COUNT).await?;
     samples.sort_unstable();
     let launcher_max_micros = *samples
         .last()
@@ -322,7 +315,6 @@ async fn policy_decision_sample(
 async fn launcher_scenario_samples(
     launcher: &Path,
     artifact: &Path,
-    slot: &str,
     count: usize,
 ) -> Result<Vec<u64>, String> {
     let root = std::env::temp_dir().join(format!(
@@ -330,11 +322,11 @@ async fn launcher_scenario_samples(
         std::process::id(),
         ACCEPTANCE_NONCE.fetch_add(1, Ordering::Relaxed)
     ));
-    let slot_path = root.join("runtime/profiles/asp").join(slot);
-    tokio::fs::create_dir_all(slot_path.parent().expect("slot parent"))
+    let public_path = root.join("runtime/bin/asp");
+    tokio::fs::create_dir_all(public_path.parent().expect("public binary parent"))
         .await
         .map_err(|error| format!("create Hook acceptance scenario: {error}"))?;
-    create_file_symlink(artifact, &slot_path).await?;
+    create_file_symlink(artifact, &public_path).await?;
     let mut samples = Vec::with_capacity(count);
     let result = async {
         for _ in 0..count {
@@ -349,18 +341,18 @@ async fn launcher_scenario_samples(
             )
             .await
             .map_err(|error| {
-                format!("isolated {slot} launcher acceptance failed: {error}")
+                format!("isolated canonical launcher acceptance failed: {error}")
             })?;
             let elapsed = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
             let value: serde_json::Value = serde_json::from_slice(&output).map_err(|error| {
                 format!(
-                    "parse isolated {slot} launcher output: reasonKind=launcher-output-invalid error={error} output={}",
+                    "parse isolated canonical launcher output: reasonKind=launcher-output-invalid error={error} output={}",
                     String::from_utf8_lossy(&output)
                 )
             })?;
             if value != serde_json::json!({}) {
                 return Err(format!(
-                    "isolated {slot} launcher did not passthrough: reasonKind=launcher-passthrough-drift output={value}"
+                    "isolated canonical launcher did not passthrough: reasonKind=launcher-passthrough-drift output={value}"
                 ));
             }
             samples.push(elapsed);

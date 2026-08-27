@@ -32,6 +32,7 @@ pub struct TargetProviderSourceEnvelopePublicationRequestV1<'a> {
 pub async fn publish_target_provider_source_envelope_v1(
     runtime: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
     publication: TargetProviderSourceEnvelopePublicationRequestV1<'_>,
+    cancellation: agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation,
 ) -> Result<PathBuf, String> {
     let requested_provider = match &publication.collection_scope {
         super::collect::SourceIndexCollectionScope::TargetProvider {
@@ -79,6 +80,7 @@ pub async fn publish_target_provider_source_envelope_v1(
         publication.project_root,
         publication.provider_registry,
         &publication.collection_scope,
+        cancellation,
     )
     .await?;
     if collection.files.is_empty()

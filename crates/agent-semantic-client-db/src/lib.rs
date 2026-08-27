@@ -8,7 +8,6 @@ pub use agent_session_registry::{
     AgentSessionModelObservationRef, AgentSessionModelObservationSource,
 };
 pub mod artifact_pointer_store;
-mod codex_multi_agent_control_plane_materializer;
 pub mod codex_multi_agent_control_plane_owner;
 pub mod context_run_mvcc;
 mod dependency_index;
@@ -36,6 +35,7 @@ pub mod runtime_server_admission_catalog;
 mod runtime_server_agent_control_plane;
 mod runtime_server_agent_session_status;
 pub mod runtime_server_control;
+pub use runtime_server_control::call_runtime_server_for_state_home;
 pub mod runtime_server_lifecycle;
 pub mod runtime_server_lifecycle_coordinator;
 pub mod runtime_server_owner_receipt;
@@ -43,7 +43,10 @@ pub mod runtime_server_publication;
 pub mod runtime_server_supervisor;
 pub mod workspace_generation_qualification;
 pub use runtime_server_owner_receipt::{
-    RuntimeServerDrainReceipt, RuntimeServerExitReceipt, RuntimeServerSpawnReceipt,
+    RUNTIME_SERVER_OWNER_SPAWN_SCHEMA_ID, RUNTIME_SERVER_OWNER_SPAWN_SCHEMA_VERSION,
+    RuntimeServerActivationReadyReceipt, RuntimeServerDrainReceipt, RuntimeServerExitReceipt,
+    RuntimeServerResidentTransactionReceipt, RuntimeServerSpawnReceipt,
+    RuntimeServerSpawnReceiptRead, StaleRuntimeServerSpawnReceipt,
 };
 pub mod runtime_server_diagnostics;
 mod runtime_server_generation_admission;
@@ -85,7 +88,6 @@ pub mod turso_mvcc_store;
 pub mod turso_sync_storage;
 mod types;
 pub mod workspace_db_ipc;
-mod workspace_db_ipc_server;
 pub use types::ClientDbProviderCommandSelectionInput;
 pub use workspace_db_ipc::WorkspaceDbIpcSession;
 

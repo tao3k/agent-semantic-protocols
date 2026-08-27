@@ -87,13 +87,13 @@ protocolId = "agent.semantic-protocols.hook"
 protocolVersion = "1"
 
 [[rules]]
-id = "allow-explicit-no-agent-host-bypass"
+id = "allow-explicit-ci-mode"
 priority = 200000
 decision = "allow"
 terminal = true
 
 [rules.match]
-leadingEnvironmentAssignmentAny = ["ASP_NO_AGENT=1"]
+leadingEnvironmentAssignmentAny = ["CI_MODE=1"]
 
 [[rules]]
 id = "deny-shell-fallback"
@@ -108,10 +108,7 @@ toolAny = ["Bash", "functions.exec_command"]
     let config = load_client_config(&config_path).expect("load client config");
     let runtime = crate::classifier::registry_without_providers();
 
-    for command in [
-        "ASP_NO_AGENT=1 cargo test",
-        "TRACE=1 ASP_NO_AGENT=1 cargo test",
-    ] {
+    for command in ["CI_MODE=1 cargo test", "TRACE=1 CI_MODE=1 cargo test"] {
         let decision = classify_hook_with_config(HookClassificationRequest {
             registry: &runtime,
             config: &config,
@@ -128,16 +125,15 @@ toolAny = ["Bash", "functions.exec_command"]
                 .fields
                 .get("configRuleId")
                 .and_then(serde_json::Value::as_str),
-            Some("allow-explicit-no-agent-host-bypass")
+            Some("allow-explicit-ci-mode")
         );
     }
 
     for command in [
-        "NOT_ASP_NO_AGENT=1 cargo test",
-        "ASP_NO_AGENT_PLATFORM=1 cargo test",
-        "env ASP_NO_AGENT=1 cargo test",
-        "printf warmup && ASP_NO_AGENT=1 cargo test",
-        "bash -lc 'ASP_NO_AGENT=1 cargo test'",
+        "NOT_CI_MODE=1 cargo test",
+        "env CI_MODE=1 cargo test",
+        "printf warmup && CI_MODE=1 cargo test",
+        "bash -lc 'CI_MODE=1 cargo test'",
     ] {
         let decision = classify_hook_with_config(HookClassificationRequest {
             registry: &runtime,
@@ -342,10 +338,12 @@ argvPrefixAny = [[]]
 fn action_plus_profile_read_projects_explore_choice_plane_guidance() {
     let config = ClientHookConfig::default();
     let registry = registry();
-    let payload = json!({
-        "tool_name": "functions.exec_command",
-        "tool_input": {"cmd": "future-consumer src/app.ts"}
+    let mut payload = json!({
+        "tool_name": "Read",
+        "tool_input": {"file_path": "src/app.ts"}
     });
+    agent_semantic_hook::bind_plugin_host_matcher(&mut payload, Some("Read"), None)
+        .expect("bind native Read matcher");
     let decision = classify_hook_with_config(HookClassificationRequest {
         registry: &registry,
         config: &config,
@@ -400,10 +398,7 @@ fn action_plus_profile_read_projects_explore_choice_plane_guidance() {
             "Hook must not materialize Runtime lifecycle state through {forbidden}"
         );
     }
-    assert_eq!(
-        decision.subject.command.as_deref(),
-        Some("future-consumer src/app.ts")
-    );
+    assert_eq!(decision.subject.command, None);
     let decision_json = serde_json::to_value(&decision).expect("serialize hook decision");
     assert!(
         decision_json.get("interactiveCommand").is_none(),
@@ -412,9 +407,9 @@ fn action_plus_profile_read_projects_explore_choice_plane_guidance() {
     assert_eq!(
         decision_json["fields"]["normalizedActions"],
         json!([{
-            "toolName": "functions.exec_command",
-            "toolSurface": "shell-command",
-            "operationIntent": "shell-command",
+            "toolName": "Read",
+            "toolSurface": "direct-read",
+            "operationIntent": "direct-read",
             "paths": ["src/app.ts"]
         }])
     );
@@ -473,8 +468,8 @@ fn claude_platform_uses_configured_native_agent_symbol() {
     let config = ClientHookConfig::default();
     let runtime = registry();
     let payload = json!({
-        "tool_name": "Bash",
-        "tool_input": {"command": "future-consumer src/app.ts"}
+        "tool_name": "Read",
+        "tool_input": {"file_path": "src/app.ts"}
     });
     let decision = classify_hook_with_config(HookClassificationRequest {
         registry: &runtime,
@@ -497,16 +492,16 @@ fn configurable_hook_default_rule_classification_stays_fast() {
     let registry = registry();
     let payloads = [
         json!({
-            "tool_name": "Bash",
-            "tool_input": {"command": "rg HookDecision src/cli/agent-hooks.ts"}
+            "tool_name": "Read",
+            "tool_input": {"file_path": "src/cli/agent-hooks.ts"}
         }),
         json!({
-            "tool_name": "Bash",
-            "tool_input": {"command": "sed -n '1,40p' src/cli/agent-hooks.ts"}
+            "tool_name": "Read",
+            "tool_input": {"file_path": "src/cli/agent-hooks.ts"}
         }),
         json!({
-            "tool_name": "Bash",
-            "tool_input": {"command": "wl --output src/cli/agent-hooks.ts README.md"}
+            "tool_name": "Read",
+            "tool_input": {"file_path": "README.md"}
         }),
         json!({
             "tool_name": "Bash",
@@ -591,20 +586,33 @@ fn configurable_hook_default_rule_classification_stays_fast() {
 fn break_glass_command_value_is_not_reclassified_as_registered_search() {
     let config = ClientHookConfig::default();
     let registry = registry();
-    let payload = json!({
-        "tool_name": "Bash",
-        "tool_input": {
-            "command": "asp hook break-glass mint --defect-kind local-hook-policy-authority-unavailable --command \"asp rust search --workspace . --treesitter-query '(identifier) @id'\" ."
-        }
-    });
+    for protected_command in [
+        "asp rust search --workspace . --treesitter-query '(identifier) @id'",
+        "jq . /tmp/runtime-server-owner-spawn.v1.json",
+        "git diff -- crates/agent-semantic-hook/src/tool_action.rs",
+    ] {
+        let payload = json!({
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": format!(
+                    "asp hook break-glass mint --defect-kind local-hook-policy-authority-unavailable --command \"{protected_command}\" ."
+                )
+            }
+        });
 
-    let decision = classify_hook_with_config(HookClassificationRequest {
-        registry: &registry,
-        config: &config,
-        platform: "codex",
-        event: "pre-tool",
-        payload: &payload,
-    });
+        let decision = classify_hook_with_config(HookClassificationRequest {
+            registry: &registry,
+            config: &config,
+            platform: "codex",
+            event: "pre-tool",
+            payload: &payload,
+        });
 
-    assert_eq!(decision.decision, DecisionKind::Allow);
+        assert_eq!(
+            decision.decision,
+            DecisionKind::Allow,
+            "{protected_command}"
+        );
+        assert!(decision.subject.paths.is_empty(), "{protected_command}");
+    }
 }

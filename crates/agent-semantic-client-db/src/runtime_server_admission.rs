@@ -57,6 +57,7 @@ pub(crate) struct WorkspaceGenerationAdmissionKey {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WorkspaceGenerationAdmissionState {
+    Queued,
     Building,
     Ready,
     Failed,
@@ -198,7 +199,13 @@ impl WorkspaceGenerationAdmissionReceipt {
         }
         .validate()?;
         match (&self.state, &self.commit, &self.error, &self.failure_stage) {
-            (WorkspaceGenerationAdmissionState::Building, None, None, None) => Ok(()),
+            (
+                WorkspaceGenerationAdmissionState::Queued
+                | WorkspaceGenerationAdmissionState::Building,
+                None,
+                None,
+                None,
+            ) => Ok(()),
             (WorkspaceGenerationAdmissionState::Failed, None, Some(_), Some(_))
             | (WorkspaceGenerationAdmissionState::Cancelled, None, Some(_), Some(_)) => Ok(()),
             (WorkspaceGenerationAdmissionState::Ready, Some(commit), None, None) => {
@@ -259,7 +266,7 @@ impl AdmissionEntry {
         let (sender, _) = watch::channel(receipt.clone());
         let (active_mutation_sender, _) = watch::channel(active_mutation.clone());
         let lane = AdmissionEntryAuthority::new(
-            true,
+            receipt.state == WorkspaceGenerationAdmissionState::Building,
             attempt,
             active_mutation.as_ref(),
             active_mutation_sender.clone(),
@@ -311,6 +318,7 @@ impl WorkspaceGenerationAdmission {
                         owner_epoch: 0,
                         workspace_identity: Some(workspace_identity),
                         generation_digest: None,
+                        candidate_digest: None,
                         transition: "workspace-admission-catalog-durability-failed".to_owned(),
                         state: "failed".to_owned(),
                         elapsed_micros: 0,
@@ -357,9 +365,11 @@ impl WorkspaceGenerationAdmission {
         &self,
         task: impl std::future::Future<Output = ()> + Send + 'static,
     ) -> Result<(), String> {
-        self.build_dispatcher.spawn(Box::pin(task)).map_err(|_| {
-            "Runtime generation admission dispatcher is not accepting mutations".to_owned()
-        })
+        self.build_dispatcher
+            .spawn(dispatcher::AdmissionBuildEnvelope::detached(Box::pin(task)))
+            .map_err(|_| {
+                "Runtime generation admission dispatcher is not accepting mutations".to_owned()
+            })
     }
 
     pub async fn admit(
@@ -431,7 +441,7 @@ impl WorkspaceGenerationAdmission {
             request_lifetime_independent: true,
             candidate_generation: candidate.candidate_generation.clone(),
             policy_overlay_digest: candidate.policy_overlay_digest.clone(),
-            state: WorkspaceGenerationAdmissionState::Building,
+            state: WorkspaceGenerationAdmissionState::Queued,
             accepted: true,
             attempt: 1,
             failure_stage: None,
@@ -504,6 +514,9 @@ impl WorkspaceGenerationAdmission {
             if reusable_ready(&observed, build_mode) {
                 return Ok(observed);
             }
+            if observed.state == WorkspaceGenerationAdmissionState::Queued {
+                return Ok(observed);
+            }
             if entry.lane.observed().building
                 && same_candidate(&observed)
                 && (cold_target_paths.is_empty() || entry.building_covers(&cold_target_paths))
@@ -537,6 +550,7 @@ impl WorkspaceGenerationAdmission {
 
                     let observed = entry.observed();
                     if reusable_ready(&observed, build_mode)
+                        || observed.state == WorkspaceGenerationAdmissionState::Queued
                         || (entry.lane.observed().building
                             && (cold_target_paths.is_empty()
                                 || entry.building_covers(&cold_target_paths)))
@@ -551,6 +565,9 @@ impl WorkspaceGenerationAdmission {
         if reusable_ready(&observed, build_mode) {
             return Ok(observed);
         }
+        if observed.state == WorkspaceGenerationAdmissionState::Queued {
+            return Ok(observed);
+        }
         if entry.lane.observed().building {
             return Ok(observed);
         }
@@ -563,7 +580,7 @@ impl WorkspaceGenerationAdmission {
         {
             entry.lane.clear_pending().await?;
         }
-        let attempt = entry.lane.start_build().await?;
+        let attempt = entry.lane.queue_build().await?;
         entry.begin_query_targets(&cold_target_paths)?;
         let receipt = WorkspaceGenerationAdmissionReceipt {
             schema_id: WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID.to_owned(),
@@ -576,7 +593,7 @@ impl WorkspaceGenerationAdmission {
             request_lifetime_independent: true,
             candidate_generation: candidate.candidate_generation.clone(),
             policy_overlay_digest: candidate.policy_overlay_digest.clone(),
-            state: WorkspaceGenerationAdmissionState::Building,
+            state: WorkspaceGenerationAdmissionState::Queued,
             accepted: true,
             attempt,
             commit: None,
@@ -585,20 +602,6 @@ impl WorkspaceGenerationAdmission {
         };
         receipt.validate()?;
         entry.receipt.send_replace(receipt.clone());
-        self.telemetry_sender.try_send_transition(
-            crate::runtime_server_opentelemetry::RuntimeLifecycleEvent {
-                owner_epoch: attempt,
-                workspace_identity: Some(workspace_identity.clone()),
-                generation_digest: None,
-                transition: "generation-building".to_owned(),
-                state: "building".to_owned(),
-                elapsed_micros: 0,
-                read_bytes: 0,
-                retained_bytes: 0,
-                active_task_count: 1,
-                active_child_count: 0,
-            },
-        );
         entry.mutation_changed.notify_waiters();
         drop(transition);
         self.spawn_build(
@@ -636,6 +639,17 @@ impl WorkspaceGenerationAdmission {
         let admission_owner = self.clone();
         let cancellation = entry.cancellation.clone();
         let completed_entry = Arc::clone(&entry);
+        let dispatcher_start_entry = Arc::clone(&entry);
+        let dispatcher_start_changes = Arc::clone(&self.changes);
+        let dispatcher_start_telemetry = telemetry_sender.clone();
+        let dispatcher_start_workspace_identity = workspace_identity.clone();
+        let dispatcher_start_candidate_digest = candidate.candidate_generation.digest.clone();
+        let dispatcher_terminal_entry = Arc::clone(&entry);
+        let dispatcher_terminal_changes = Arc::clone(&self.changes);
+        let dispatcher_terminal_telemetry = telemetry_sender.clone();
+        let dispatcher_terminal_workspace_identity = workspace_identity.clone();
+        let dispatcher_terminal_candidate_digest = candidate.candidate_generation.digest.clone();
+        let dispatcher_terminal_started = std::time::Instant::now();
         let task = Box::pin(async move {
             if let Err(error) = admission_owner.record_catalog_resident(
                 crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry {
@@ -741,19 +755,25 @@ impl WorkspaceGenerationAdmission {
                             request_lifetime_independent: true,
                             candidate_generation: candidate.candidate_generation.clone(),
                             policy_overlay_digest: candidate.policy_overlay_digest.clone(),
-                            state: WorkspaceGenerationAdmissionState::Building,
+                            state: WorkspaceGenerationAdmissionState::Queued,
                             accepted: false,
                             failure_stage: None,
                             attempt,
                             commit: None,
                             error: None,
                         });
+                    completed_entry.mutation_changed.notify_waiters();
+                    changes.notify_waiters();
+                    let mut building = completed_entry.observed();
+                    building.state = WorkspaceGenerationAdmissionState::Building;
+                    completed_entry.receipt.send_replace(building);
                     let _ = telemetry_sender.try_send_transition(
                         crate::runtime_server_opentelemetry::RuntimeLifecycleEvent {
                             owner_epoch: attempt,
                             workspace_identity: Some(workspace_identity.clone()),
                             generation_digest: None,
-                            transition: "generation-rebuilding".to_owned(),
+                            candidate_digest: Some(candidate.candidate_generation.digest.clone()),
+                            transition: "generation-build-started".to_owned(),
                             state: "building".to_owned(),
                             elapsed_micros: 0,
                             read_bytes: 0,
@@ -774,6 +794,7 @@ impl WorkspaceGenerationAdmission {
                             .commit
                             .as_ref()
                             .map(|commit| commit.source_root_digest.clone()),
+                        candidate_digest: Some(candidate.candidate_generation.digest.clone()),
                         transition: "generation-terminal".to_owned(),
                         state: format!("{:?}", completed.state).to_lowercase(),
                         elapsed_micros: build_started.elapsed().as_micros() as u64,
@@ -791,6 +812,97 @@ impl WorkspaceGenerationAdmission {
                 break;
             }
         });
+        let start_build = Box::pin(async move {
+            let transition = dispatcher_start_entry.transition.lock().await;
+            let mut building = dispatcher_start_entry.observed();
+            if building.state != WorkspaceGenerationAdmissionState::Queued {
+                return Err(format!(
+                    "workspace generation admission dispatcher cannot acquire non-queued attempt: state={:?} attempt={attempt}",
+                    building.state
+                ));
+            }
+            dispatcher_start_entry.lane.start_queued(attempt).await?;
+            building.state = WorkspaceGenerationAdmissionState::Building;
+            building.accepted = false;
+            dispatcher_start_entry.receipt.send_replace(building);
+            dispatcher_start_telemetry.try_send_transition(
+                crate::runtime_server_opentelemetry::RuntimeLifecycleEvent {
+                    owner_epoch: attempt,
+                    workspace_identity: Some(dispatcher_start_workspace_identity),
+                    generation_digest: None,
+                    candidate_digest: Some(dispatcher_start_candidate_digest),
+                    transition: "generation-build-started".to_owned(),
+                    state: "building".to_owned(),
+                    elapsed_micros: 0,
+                    read_bytes: 0,
+                    retained_bytes: 0,
+                    active_task_count: 1,
+                    active_child_count: 0,
+                },
+            );
+            dispatcher_start_entry.mutation_changed.notify_waiters();
+            dispatcher_start_changes.notify_waiters();
+            drop(transition);
+            Ok(())
+        });
+        let terminalize_dispatcher_exit = Box::pin(async move {
+            let observed_state = dispatcher_terminal_entry.observed().state;
+            if !matches!(
+                observed_state,
+                WorkspaceGenerationAdmissionState::Queued
+                    | WorkspaceGenerationAdmissionState::Building
+            ) {
+                return;
+            }
+            dispatcher_terminal_entry.cancellation.cancel();
+            let mut failed = dispatcher_terminal_entry.observed();
+            if !matches!(
+                failed.state,
+                WorkspaceGenerationAdmissionState::Queued
+                    | WorkspaceGenerationAdmissionState::Building
+            ) {
+                return;
+            }
+            let terminal_state = if failed.state == WorkspaceGenerationAdmissionState::Queued {
+                WorkspaceGenerationAdmissionState::Cancelled
+            } else {
+                WorkspaceGenerationAdmissionState::Failed
+            };
+            failed.state = terminal_state.clone();
+            failed.accepted = false;
+            failed.commit = None;
+            failed.failure_stage =
+                Some(WorkspaceGenerationFailureStage::GenerationBuilderSupervision);
+            failed.error = Some(
+                if terminal_state == WorkspaceGenerationAdmissionState::Cancelled {
+                    "workspace generation admission dispatcher closed before build start".to_owned()
+                } else {
+                    "workspace generation admission dispatcher exited before terminal publication"
+                        .to_owned()
+                },
+            );
+            dispatcher_terminal_telemetry.try_send_transition(
+                crate::runtime_server_opentelemetry::RuntimeLifecycleEvent {
+                    owner_epoch: attempt,
+                    workspace_identity: Some(dispatcher_terminal_workspace_identity),
+                    generation_digest: None,
+                    candidate_digest: Some(dispatcher_terminal_candidate_digest),
+                    transition: "generation-terminal".to_owned(),
+                    state: format!("{terminal_state:?}").to_lowercase(),
+                    elapsed_micros: dispatcher_terminal_started.elapsed().as_micros() as u64,
+                    read_bytes: 0,
+                    retained_bytes: 0,
+                    active_task_count: 0,
+                    active_child_count: 0,
+                },
+            );
+            dispatcher_terminal_entry.receipt.send_replace(failed);
+            dispatcher_terminal_entry.mutation_changed.notify_waiters();
+            dispatcher_terminal_changes.notify_waiters();
+            dispatcher_terminal_entry.lane.complete().await;
+        });
+        let task =
+            dispatcher::AdmissionBuildEnvelope::new(start_build, task, terminalize_dispatcher_exit);
         if self.build_dispatcher.spawn(task).is_err() {
             let mut failed = entry.observed();
             failed.state = WorkspaceGenerationAdmissionState::Failed;
@@ -812,7 +924,11 @@ impl WorkspaceGenerationAdmission {
         let telemetry_sender = self.telemetry_sender.clone();
         for entry in entries {
             let mut cancelled = entry.observed();
-            if cancelled.state == WorkspaceGenerationAdmissionState::Building {
+            if matches!(
+                cancelled.state,
+                WorkspaceGenerationAdmissionState::Queued
+                    | WorkspaceGenerationAdmissionState::Building
+            ) {
                 cancelled.state = WorkspaceGenerationAdmissionState::Cancelled;
                 cancelled.error = Some(
                     "workspace generation admission cancelled during Runtime Server shutdown"
@@ -825,6 +941,7 @@ impl WorkspaceGenerationAdmission {
                         owner_epoch: entry.lane.observed().attempt,
                         workspace_identity: Some(entry.observed().workspace_identity),
                         generation_digest: None,
+                        candidate_digest: Some(entry.observed().candidate_generation.digest),
                         transition: "generation-cancelled".to_owned(),
                         state: "cancelled".to_owned(),
                         elapsed_micros: 0,

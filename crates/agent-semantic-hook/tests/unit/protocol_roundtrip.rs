@@ -75,3 +75,40 @@ fn hook_decision_accepts_a_pathless_runtime_subject() {
         .expect("pathless Hook decision remains a valid wire value");
     assert!(decoded.subject.paths.is_empty());
 }
+
+#[test]
+fn codex_post_tool_non_allow_decisions_use_the_observational_output_contract() {
+    for decision_kind in [DecisionKind::Deny, DecisionKind::Block] {
+        let mut decision = decision();
+        decision.decision = decision_kind;
+        decision.message = "post-tool policy evidence".to_owned();
+
+        let rendered = agent_semantic_hook::render_platform_response(&decision)
+            .expect("render Codex PostToolUse response");
+        let hook_output = rendered
+            .get("hookSpecificOutput")
+            .and_then(serde_json::Value::as_object)
+            .expect("PostToolUse hook output");
+
+        assert_eq!(
+            hook_output
+                .get("hookEventName")
+                .and_then(serde_json::Value::as_str),
+            Some("PostToolUse")
+        );
+        assert!(hook_output.get("permissionDecision").is_none());
+        assert!(hook_output.get("permissionDecisionReason").is_none());
+        assert!(
+            hook_output
+                .get("additionalContext")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|context| context.starts_with("[agent-hook-decision] "))
+        );
+        assert_eq!(
+            rendered
+                .get("systemMessage")
+                .and_then(serde_json::Value::as_str),
+            Some("post-tool policy evidence")
+        );
+    }
+}

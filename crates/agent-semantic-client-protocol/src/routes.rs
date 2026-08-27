@@ -8,6 +8,7 @@ const CLIENT_SEARCH_REQUEST: &str = "agent.semantic-protocols.asp-client-search-
 const CLIENT_EXACT_QUERY_REQUEST: &str = "agent.semantic-protocols.asp-client-exact-query-request";
 const CLIENT_EXACT_QUERY_RESPONSE: &str =
     "agent.semantic-protocols.asp-client-exact-query-response";
+const CLIENT_EXACT_QUERY_FAILURE: &str = "agent.semantic-protocols.asp-client-exact-query-failure";
 const CLIENT_OWNER_SEARCH_REQUEST: &str =
     "agent.semantic-protocols.asp-client-owner-search-request";
 const EXACT_REQUEST: &str = "agent.semantic-protocols.provider-native-exact-request";
@@ -58,6 +59,30 @@ pub struct AspClientExactQueryResponse {
     pub service_elapsed_micros: u64,
     pub elapsed_micros: u64,
     pub work_counters: AspClientRuntimeWorkCounters,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspClientExactQueryFailure {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub state: String,
+    pub operation_id: String,
+    pub language_id: String,
+    pub provider_id: String,
+    pub requested_selector: Option<String>,
+    pub resolved_selector: Option<String>,
+    pub projection_kind: Option<String>,
+    pub phase: String,
+    pub reason_kind: String,
+    pub generation_digest: Option<String>,
+    pub root_digest: Option<String>,
+    pub recommended_next: Value,
+    pub resident_read_elapsed_micros: u64,
+    pub service_elapsed_micros: u64,
+    pub elapsed_micros: u64,
+    pub work_counters: AspClientRuntimeWorkCounters,
+    pub details: Value,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -229,12 +254,74 @@ impl AspClientExactQueryResponse {
         if !self.result.is_object() {
             return Err("exact-query response result must be an object".to_owned());
         }
+        let state = self
+            .result
+            .get("state")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "exact-query response result state is missing".to_owned())?;
+        match state {
+            "projection" | "provider-projection" => {
+                let bytes = self
+                    .result
+                    .get("bytes")
+                    .and_then(Value::as_array)
+                    .ok_or_else(|| "exact-query Ready result has no byte payload".to_owned())?;
+                if bytes.is_empty() {
+                    return Err("exact-query Ready result has an empty byte payload".to_owned());
+                }
+            }
+            _ => {
+                return Err(format!(
+                    "exact-query response result state {state} is not terminal"
+                ));
+            }
+        }
         if self.elapsed_micros
             != self
                 .resident_read_elapsed_micros
                 .saturating_add(self.service_elapsed_micros)
         {
             return Err("exact-query response elapsedMicros is inconsistent".to_owned());
+        }
+        Ok(())
+    }
+}
+
+impl AspClientExactQueryFailure {
+    pub fn validate(&self) -> Result<(), String> {
+        check(
+            &self.schema_id,
+            CLIENT_EXACT_QUERY_FAILURE,
+            &self.schema_version,
+        )?;
+        if self.state != "failed" {
+            return Err("exact-query failure state must be failed".to_owned());
+        }
+        if self.operation_id.trim().is_empty()
+            || self.language_id.trim().is_empty()
+            || self.provider_id.trim().is_empty()
+            || self.phase.trim().is_empty()
+            || self.reason_kind.trim().is_empty()
+        {
+            return Err("exact-query failure identity fields must be non-empty".to_owned());
+        }
+        if let Some(generation_digest) = &self.generation_digest {
+            validate_digest("generationDigest", generation_digest, true)?;
+        }
+        if let Some(root_digest) = &self.root_digest {
+            validate_digest("rootDigest", root_digest, false)?;
+        }
+        if self.recommended_next.is_null() || !self.details.is_object() {
+            return Err(
+                "exact-query failure requires recommendedNext and object details".to_owned(),
+            );
+        }
+        if self.elapsed_micros
+            != self
+                .resident_read_elapsed_micros
+                .saturating_add(self.service_elapsed_micros)
+        {
+            return Err("exact-query failure elapsedMicros is inconsistent".to_owned());
         }
         Ok(())
     }

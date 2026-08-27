@@ -8,6 +8,7 @@ pub mod runtime_artifact_catalog;
 pub mod runtime_artifact_publication;
 pub mod runtime_artifact_quiescence;
 pub mod runtime_artifact_retention;
+mod schema_v1_digest;
 
 pub use agent_semantic_content_identity::{
     ResolutionAuthority, ResolutionEvidence, ResolutionState, SOURCE_RESOLUTION_SCHEMA_ID,

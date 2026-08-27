@@ -115,6 +115,7 @@ pub(super) async fn serve_runtime_search_requests(
             RuntimeSearchServiceRequest::ProviderRuntimeAwaitReady {
                 project_root,
                 language_id,
+                cancellation,
                 response,
             } => {
                 let result = (|| {
@@ -134,10 +135,11 @@ pub(super) async fn serve_runtime_search_requests(
                     let mut response = response;
                     let result = match result {
                         Ok((mut client, expected_receipt)) => {
-                            match tokio::select! {
-                                ready = client.wait_ready() => Some(ready),
-                                _ = response.closed() => None,
-                            } {
+                match agent_semantic_runtime_server::provider_readiness::await_provider_runtime_ready_terminal(
+                    client.wait_ready(),
+                    cancellation,
+                    response.closed(),
+                ).await {
                                 None => return,
                                 Some(ready) => match ready {
                                     Ok(receipt) if receipt != expected_receipt => Err(format!(
@@ -200,6 +202,7 @@ pub(super) async fn serve_runtime_search_requests(
                 language_id,
                 operation,
                 payload,
+                cancellation,
                 response,
             } => {
                 let result = (|| {
@@ -249,9 +252,12 @@ pub(super) async fn serve_runtime_search_requests(
                     let mut response = response;
                     let result = match result {
                         Ok(runtime) => match runtime.begin_request(operation, payload).await {
-                            Ok(request) => match tokio::select! {
-                                result = request => Some(result.map(|payload| payload.to_vec())),
-                                _ = response.closed() => None,
+                Ok(request) => match tokio::select! {
+                    result = request => Some(result.map(|payload| payload.to_vec())),
+                    _ = cancellation.cancelled() => Some(Err(
+                        "runtime-generation-cancelled: provider operation cancelled".to_owned()
+                    )),
+                    _ = response.closed() => None,
                             } {
                                 Some(result) => result,
                                 None => return,

@@ -86,7 +86,7 @@ fn wrapped_gxi_profile_requires_an_ss_operand() {
 }
 
 #[test]
-fn leading_no_agent_assignment_is_a_terminal_escape() {
+fn command_payload_no_agent_assignment_is_not_process_recovery_authority() {
     let scenario = gerbil_build_scenario();
     let gerbil_build = scenario["positiveCommands"]
         .as_array()
@@ -103,9 +103,9 @@ fn leading_no_agent_assignment_is_a_terminal_escape() {
     )
     .expect("classify explicit no-Agent escape");
 
-    assert_eq!(decision["decision"], "allow");
+    assert_eq!(decision["decision"], "deny");
     assert_eq!(
         decision["fields"]["configRuleId"],
-        "allow-explicit-no-agent-host-bypass"
+        "gerbil-build-role-dispatch"
     );
 }

@@ -1,1774 +1,307 @@
-#+title: ASP Server-First Agent Search Architecture
-#+subtitle: Resident client-server lifecycle, graph reasoning, and progressive evidence navigation
-#+options: toc:3 num:t
+#+TITLE: Interactive Graph-First Progressive SearchLoop
+#+OPTIONS: toc:2 num:nil
+#+STARTUP: overview
+
+* Global architecture invariant
+
+ASP Server-First Agent Search Architecture.
+The public gRPC ClientFrame is the sole public search/query route; the command entry is a thin typed CLI adapter.
+Git history is the only historical architecture archive; this working tree describes only the current server-first design.
 
 * Status
 
-This document is the canonical architectural root for RFC 10.05.
+Normative architectural root for RFC 10.05.
 
-The four governing principles are:
+This file is intentionally a compact index.  Detailed state machines,
+algorithms, receipts, proofs, provider rules, and acceptance gates live in the
+linked child owners.  Git is the only archive; the working tree contains only
+the current server-first architecture.
+
+The governing principles are:
 
 - server-first;
 - agent-first;
 - graph-first; and
 - progressive-first.
 
-Git history is the only historical record; the working tree contains only this
-architecture and exposes no alternate execution model to Agent context.
+* Decision
 
-* Server-first decision
-
-The executable architecture is:
+ASP exposes one SearchLoop data plane:
 
 #+begin_example
-agent or human
-  -> ASP client surface (CLI, hook, or future typed client)
-  -> Runtime IPC
-  -> ASP Server
-  -> resident asp-client-server
-  -> provider-native parser/compiler facts
+typed request client
+  -> shared agent-semantic-client
+  -> ClientFrame gRPC/Tokio stream
+  -> Runtime-owned bounded Unix data socket
+  -> ASP Runtime Server admission
+  -> resident provider/generation/search authority
+  -> typed terminal receipt and client presentation
 #+end_example
 
-The CLI is a first-class typed client of ASP Server.  It is not a fallback,
-degraded mode, compatibility executor, provider process launcher, cache owner,
-or lifecycle owner.  Server absence returns typed unavailable evidence; it
-never authorizes a one-shot provider command or local semantic execution.
-
-ASP Server owns workspace identity, provider admission, lazy client-server start,
-lifecycle, bounded concurrency, cancellation, immutable generation publication,
-cache identity, and OpenTelemetry receipts.  Each language client-server owns
-its native parser/compiler, language project model, provider-native facts, and
-execution of admitted typed operations.  Request clients own none of that
-mutable state.
-
-Provider admission is extension- and capability-driven.  ASP Server starts and
-warms only the selected language client-server, publishes Ready only after the
-declared operation catalog and health receipt match, and drains idle clients
-under the same lifecycle authority.  Query handling never starts, repairs, or
-restarts a provider.
-
-The public control protocol has no generic =reconcile= operation.  Its former
-matching-digest branch was only a second spelling of =status=, while its drift
-branch was only an implicit spelling of =restart=.  Runtime availability is
-closed by idempotent server =start=/lazy ensure, workspace readiness by
-=EnsureWorkspace=, and an operator-requested generation replacement by typed
-=restart=.  Provider artifact and receipt publication is one ASP Server-owned
-transaction; install clients never repair persisted state directly.
-
-Installing the ASP binary, Hook payload, or client plugin MUST NOT enumerate,
-materialize, repair, or report language-provider binaries.  Those artifacts
-belong to provider publication and lazy ASP Server admission.  Coupling them to
-binary/Hook installation creates an unrelated multi-provider write transaction
-and a second lifecycle authority.
-
-SCM support follows the same boundary.  ASP loads the provider-owned =.scm= and
-compiles its S-expression surface into a grammarless typed plan.  The resident
-language client-server executes that plan against its superior native facts.
-No Tree-sitter grammar crate, parser C source, scanner, QueryCursor, or second
-source parser belongs in ASP Server.
-
-* Naming decision
-
-The canonical short name is:
-
-#+begin_example
-ASP Server-First Agent Search Architecture
-#+end_example
-
-The three adjectives describe different protocol dimensions.
-
-** Interactive-first
-
-The primary consumer is an agent participating in a stateful reasoning loop.
-Each turn observes current evidence state, chooses a bounded next action,
-receives a compact receipt, and updates the session frontier.
-
-Interaction does not mean a terminal prompt or a human menu. It means that
-search semantics are organized around state transitions rather than one large
-request.
-
-** Graph-first
-
-The searchable substrate is an evidence graph:
-
-- semantic owners are nodes;
-- dependencies and proof obligations are edges;
-- routers select short valid paths;
-- receipts record traversed evidence; and
-- cache identity binds reusable graph conclusions.
-
-Commands are transports for graph operations. They are not the ontology.
-
-** Progressive-first
-
-Every turn expands only enough evidence to support the next decision.
-
-Progressive search minimizes:
-
-- graph distance to a justified conclusion;
-- evidence tokens returned to the model;
-- agent/tool interaction rounds;
-- repeated traversal of already proven subgraphs; and
-- invalid cache reuse.
-
-Progressive does not mean incomplete or best-effort evidence. Every accepted
-conclusion remains fail-closed and receipt-backed.
-
-* Primary protocol loop
-
-The canonical SearchLoop is:
-
-#+begin_example
-observe evidence state
-  -> classify the unresolved frontier
-  -> choose one bounded graph action
-  -> execute through the owning provider
-  -> validate and merge its receipt
-  -> stop, branch, or continue
-#+end_example
-
-The loop state, not a command transcript, is the durable protocol object.
-
-** Typed topology before compact rendering
-
-Every SearchLoop entry path, including a user-supplied exact selector, MUST
-first construct the same typed graph facts consumed by Graph Turbo: stable
-nodes, directed edges, and typed action-frontier entries.  A selector seed is
-therefore not a second text protocol.  It contributes an intent node, a
-language/provider node, and—only after canonical selector validation—owner and
-item nodes with =targets_item=, =serves_owner=, and =owns_item= relations.
-Executable actions reference those graph identities; presentation ordinals
-such as =A1= are not durable node identities.
-
-Compact Render is a projection over that typed topology.  It MAY preserve
-small human-facing lines such as =ownerSeed=, =actionFrontier=, and
-=recommendedNext=, but it MUST NOT parse the selector again, invent another
-owner/symbol fact, or choose an action independently.  A malformed or
-cross-language selector may retain an unresolved input node for explanation,
-but it MUST produce no owner/item relation and no executable exact-query
-action.  This separation is the prerequisite for a later session cursor to
-jump directly to an already materialized node without replaying the complete
-SearchLoop.
-
-* Architecture layers
-
-** 10.05.00 Foundations and invariants
-
-Owns terminology, state-machine invariants, safety boundaries, and the
-relationship among interaction, graph navigation, progressive disclosure, and
-proof receipts.
-
-Language-scoped search, query, check, and cache operations MUST preserve lazy
-provider admission.  A language facade resolves through the registered provider
-registry to exactly one provider identity; absence of an explicit index-owner
-argument MUST NOT widen that operation to complete-generation or global
-source-index resolution.  Only an explicitly unscoped operation may request a
-complete generation.  Runtime evidence for a language-scoped operation MUST
-therefore report no commands or processes for unrelated providers; a missing
-runtime for the selected provider is a typed provider-local failure, not a
-reason to prepare a shared runtime such as Node.
-
-*** Resident provider authority and memory evidence
-**** Public-route qualification boundary
-***** Server-owned lazy client session
-Package ownership and the single server-first lifecycle are normative in
-[[file:10.05-interactive-graph-first-progressive-searchloop/10.05.01-server-client-package-responsibility.org][10.05.01 Server/Client Package Responsibility]].
-
-Public =asp <language> search/query= commands are request facades, not session
-owners.  They MUST reduce arguments to one typed request over the shared Tokio
-HTTP/gRPC channel.  The CLI MUST NOT initialize or shut down a protocol
-session, spawn a provider, restore a generation, reconcile a catalog, or open
-=WorkspaceDbIpc= for each command.
-
-The Runtime Server owns a lazy session keyed by workspace identity and client
-identity.  Concurrent requests multiplex through the resident server session;
-dropping a client channel handle does not close that session.  Catalog,
-provider, generation, and cache authority remain atomic and server-owned.
-There is no compatibility branch for the former per-command lifecycle.
-
-Qualification records separate phases for request transport, server admission,
-resident memory lookup, and client rendering.  Every phase emits immediate
-=started= and typed terminal receipts with elapsed time.  Compilation, process
-startup, and whole-CLI wall time are reported separately from the Runtime
-service gate.
-
-Public =asp <language> search/query= is one server-first route: the shared ASP
-client sends the request over the managed HTTP transport, Runtime Server route
-catalog admission binds the provider operation, and only then may the resident
-generation data plane execute it.  There is no CLI-local provider execution,
-compatibility route, or semantic fast path beside that route.
-
-Live Corpus and Scenarios qualification MUST exercise this public route for at
-least Rust, Python, and Gerbil Scheme and MUST retain typed admission plus
-terminal search/query receipts.  A direct
-=WorkspaceDbIpcSession::provider_search= call is an internal owner unit-test
-surface only; it MUST NOT satisfy public-route qualification or performance
-evidence by itself.  Resident cold-prime readiness and warm search/query MUST
-share the same Runtime route and single generation authority.  Qualification
-MUST NOT manufacture completion with an outer timeout, sleep, polling loop, or
-an alternate cancellation path.
-
-Live Corpus qualification MUST publish a structured phase receipt before and
-after every lifecycle boundary that can suspend: generation restore, client
-protocol cancellation, resident search, exact projection, and Merkle proof.
-The receipt uses the same case/resource/language/provider identity as the final
-qualification receipt and includes =state=, =phase=, and =elapsedMicros=; a
-failed terminal receipt also includes =reasonKind=.  A silent outer timeout is
-not evidence and MUST NOT be used to infer which phase failed.  These phase
-receipts are the CLI projection of the same OpenTelemetry lifecycle events, not
-a second supervision or timeout mechanism.
-
-Live Corpus generation admission is lifecycle setup, not resident search or
-exact-query latency.  Restoring an immutable active-generation pointer MUST
-coalesce through the Runtime Server's existing single-flight workspace entry
-and MUST reach a typed terminal receipt.  A client wall-clock timeout or
-disconnect MUST NOT cancel the shared =OnceCell= initialization future: later
-clients observe the same admission state instead of restarting pointer restore.
-Only the subsequent resident search/query samples participate in latency gates.
-
-The shared ASP Client catalog MUST expose one language-neutral cancellable
-lifecycle probe.  The probe is admitted through the same request registry,
-cancellation token, dispatcher, and response framing as language search, but
-its operation remains pending until the client cancels it.  A conforming
-server returns typed =Cancelled= outcomes for both the probe request and the
-cancel acknowledgement.  Live Corpus qualification MUST use this probe to
-prove cancellation propagation; it MUST NOT slow a real resident search,
-insert a sleep, or assume that =yield_now= makes cancellation win a race with
-an already sub-millisecond operation.  The probe owns no provider process,
-filesystem read, database read, or mutable language state.
-
-=EnsureWorkspace= is an idempotent workspace-generation admission and polling
-operation.  It MUST return the currently admitted =Building=, =Ready=, =Failed=,
-or =Cancelled= receipt within the bounded control exchange; it MUST NOT wait for
-the generation to become terminal before writing a response.  A =Building=
-receipt leaves the server-owned single-flight build running.  Repeating the same
-admission observes or coalesces that build, while a later request returns its
-terminal receipt.  Client timeout or disconnect MUST NOT cancel the admitted
-generation task.
-
-*** Server-owned incremental index authority
-
-Ready is a qualified read state, not merely the presence of a generation
-digest.  A search or query MAY return =no-matches= only when the active
-generation proves coverage for the requested workspace source owner and
-provider.  =Ready-empty=, an uncovered source, a missing owner, or a generation
-whose source snapshot does not contain the requested path is query demand, not
-a terminal empty result.
-
-The Runtime Server MUST coalesce that demand through one single-flight key
-covering workspace identity, language, provider, source snapshot root, and
-requested coverage.  Concurrent HTTP/gRPC clients observe the same Building or
-terminal receipt; they MUST NOT start provider processes or index publications
-independently.  A read completes only with a coverage-qualified immutable
-generation, or a typed Failed/Cancelled receipt carrying the shared demand id.
-
-OpenTelemetry spans and Live Corpus receipts MUST expose the demand id,
-generation transition, requested and published coverage, coalesced waiter
-count, provider work, filesystem work, database work, and publication latency.
-The bounded admission/read path remains subject to the sub-millisecond gate;
-provider compilation or asynchronous generation construction is reported
-separately and is never disguised as query latency.
-
-Workspace attach and source mutation admission, not =search= or =query=, own
-index construction.  The northbound HTTP/gRPC search interface MUST read only
-an already published immutable workspace generation.  It MUST NOT scan source
-files, parse command-line arguments, invoke a language executable, call
-=EnsureWorkspace=, compile an index, or wait for a generation build.  When no
-readable generation exists, it returns the current typed admission state and
-generation identity; the request MUST NOT create a hidden synchronous fallback.
-
-ASP Server owns exactly one incremental-index writer lane per workspace.  A
-language =asp-client-server= publishes shared-schema owner deltas through the
-southbound gRPC stream.  Each delta binds the workspace identity, base
-generation digest, source-mutation identity, language and provider identities,
-provider schema digest, and one typed owner operation: upsert, tombstone, or
-relocate.  Provider-specific syntax facts remain provider-owned fields, while
-the mutation envelope and publication receipt remain language-neutral shared
-schemas distributed by Schema Manager.  HTTP, gRPC, and downstream-language
-clients MUST NOT reconstruct these messages from CLI argv.
-
-Immutable search projection storage is owned by
-=agent-semantic-search-projection=.  That package owns the language-neutral
-projection model, segment and sorted-table codecs, content commitments, and
-read-only mmap admission/reader.  It MUST NOT own HTTP/gRPC transport, provider
-lifecycle, mutation scheduling, query decomposition, ranking, or database
-transactions; it is a Search projection layer, not a second Protocol package.
-=agent-semantic-search= owns query decomposition, shallow owner selection,
-owner-local dynamic projection caches, Merkle/search traversal, and ranking.
-Runtime Server owns generation admission and atomic publication.  Neither
-Search package may depend on a database package or Turso.
-
-=agent-semantic-client-db= owns only Turso schemas, transactions, source-index
-import, and durable writer-side materialization adapters; it MUST NOT own
-resident search/query DTOs, warm lookup adapters, mmap readers, or Runtime
-Server lifecycle.  Runtime Server depends on SearchProjection and Search only
-through their direct owner APIs and MUST NOT preserve the former mixed boundary
-with compatibility re-exports or a second search-data-plane package.
-
-A successful warm search returns
-=agent.semantic-protocols.resident-search-result= directly from the admitted
-immutable generation.  Its only state is =Ready=; missing, corrupt, cancelled,
-or unavailable generations are typed admission/control-plane errors and MUST
-NOT masquerade as query-result states.  The Runtime provider search receipt
-binds that ready result to operation and latency evidence.  It MUST NOT contain
-the former database =readState=, =empty-index=/=cold-required= branches, or CLI
-=stdout=/=stderr=/=statusCode= fields.  Zero request-time database, filesystem,
-provider-process, socket, and scheduler work is carried by the shared resident
-work counters and is validated before the receipt is emitted.
-
-The writer consumes deltas with Tokio streams, coalesces mutations by source
-identity, validates the base generation, and builds content-addressed owner,
-exact-projection, search, and Merkle segments outside the query path.  Segment
-bytes and their commitments form one durable commit digest.  Publication MUST
-fsync staged CAS artifacts before atomically advancing the generation pointer;
-only after that pointer is durable may resident mmap/search authorities observe
-the new generation.  Crash recovery reads the last valid pointer and immutable
-segments.  It MUST NOT reconstruct authority by scanning or reconciling mutable
-directories.
-
-Initial indexing is the same writer protocol with a typed bootstrap mutation;
-it is not a second full-index architecture.  Incremental and initial admission
-therefore share one queue, one single-writer owner, one CAS segment format, one
-atomic pointer, and one OpenTelemetry vocabulary.  Legacy CLI-first cold
-assembly, request-time index preparation, repair/reconcile subcommands, and
-wall-clock timeout guards such as 30-second or 900-second index budgets MUST be
-removed from code, tests, schemas, and documentation.
-
-OpenTelemetry MUST distinguish mutation admission, provider projection,
-segment encoding, durable CAS publication, pointer advancement, mmap admission,
-and warm query execution.  A warm =search= or exact =query= measures only the
-resident execution interval; compilation and initial index construction are
-reported separately.  Repository acceptance requires warm P99 below 1 ms for
-each supported language and Live Corpus evidence for large repositories.  A
-timeout increase, retry loop, or synchronous scan is not acceptable evidence
-for this gate.
-
-*** Stability, graph evidence, and storage-route planning
-
-Database use is selected by semantic stability, sharing scope, and graph cost;
-it is neither forbidden globally nor inferred from package names.  Durable
-control-plane records such as Agent session identity, lifecycle state, provider
-registration, audit ledger, and publication receipts remain transactional
-database data owned by their control-plane packages.  They do not pass through
-the semantic Search planner.
-
-Semantic projection publication MUST attach an explicit storage profile with
-mutation class, sharing scope, tree depth, identity binding, and algorithm
-evidence.  =agent-semantic-search-projection= owns that language-neutral
-contract.  =agent-semantic-search= owns the cost-based route decision and MUST
-use the same decision algorithm for every provider:
-
-- exact owner path plus structural selector routes directly to immutable mmap;
-- high-mutation or owner-content-bound facts, and workspace syntax nodes with
-  tree depth greater than one, route to owner-local resident memory;
-- generation-bound workspace navigation nodes with tree depth zero or one MAY
-  route to the shallow Turso FTS index;
-- toolchain-version, package-version, standard-library/API documentation, and
-  other immutable or low-mutation shared dependency facts route to a static
-  incremental database index even when their logical graph depth is greater
-  than one;
-- Agent session and lifecycle lookups route to their transactional DB owner and
-  are never treated as semantic-search candidates.
-
-Tree depth is therefore a database cutoff only inside the high-mutation
-workspace syntax tree.  Static dependency and version graphs are classified by
-version/content identity and cross-workspace reuse.  Every database search MUST
-receive an explicit planner decision; a DB adapter rejects an unspecified or
-resident-memory route.  Every route binds the same generation or immutable
-version digest and fails closed on drift.  It MUST NOT refresh, rebuild, or
-fall back to another storage tier during a request.
-
-The planner consumes algorithm evidence rather than using depth alone.  Merkle
-incremental deltas define mutation locality and invalidate only changed owners
-plus their shallow generation projection.  Graph sparsity, bounded traversal
-radius, component/cut evidence, dependency fan-out, reuse count, and rank cost
-guide candidate materialization and traversal.  Shared sparsity and owner rank
-remain Rust Search-core algorithms.  A Python provider MAY calculate optional
-provider-native graph features using SciPy sparse/csgraph or another declared
-library, but it publishes those facts through the shared schema during provider
-projection; Rust Runtime MUST NOT invoke Python as an implicit query-time
-planner or duplicate the storage authority.
-
-Search orchestration MUST use the workspace Tokio runtime and bounded
-=tokio-stream= pipelines end to end.  HTTP/gRPC request admission creates one
-cancellation-aware request scope; resident owner candidates, admitted shallow
-DB candidates, provider-published facts, and graph evidence enter typed streams
-with explicit capacity and per-workspace concurrency limits.  Fan-out and
-fan-in use =StreamExt= combinators, preserve deterministic rank/tie ordering,
-and stop work when the request scope is cancelled.  No Search path may create a
-private runtime, OS thread, synchronous =block_on= bridge, unbounded channel,
-manual process fast path, or request-time provider process.
-
-Pure in-memory tree, Merkle, sparsity, rank, and route-cost functions remain
-synchronous value kernels so they can be inlined and benchmarked below one
-millisecond; Tokio owns scheduling and isolation around those kernels rather
-than adding one task per node.  This distinction is mandatory: "Tokio-native"
-means one async stream execution architecture, not async wrappers around every
-constant-time calculation.  A DB row stream is only an explicitly admitted
-stream source and MUST NOT become a fallback or lifecycle authority.
-
-Every language provider is admitted as a resident =asp-client-server= owned by
-ASP Server.  ASP Server owns process-group creation, warmup, health admission,
-cancellation, bounded concurrency, memory admission, drain, termination, and
-lifecycle evidence.  A language provider MUST NOT implement a private
-lifecycle authority, and the CLI is a typed Runtime IPC client rather than an
-adapter over process execution.
-
-The default provider memory ceiling is 2 GiB (=2147483648= bytes).  The ceiling
-applies to the combined resident memory of the complete provider process group,
-not only the direct child PID.  A configured provider profile MAY choose a
-lower ceiling.  Disabling the ceiling is test-only behavior and MUST NOT be
-inferred from a missing per-call override.  On platforms where an address-space
-rlimit is reliable, ASP SHOULD apply it before exec as an early barrier; ASP
-MUST also use parent-owned observation whenever that rlimit cannot establish
-the process-group resident-memory guarantee.
-
-When observed process-group resident memory exceeds the ceiling, ASP MUST
-terminate the complete process group, classify the result as
-=memory-limit-exceeded=, and return a typed provider-local failure.  The
-termination receipt MUST report =memoryLimitEnforced=true=,
-=memoryLimitExceeded=true=, and the applied =memoryLimitBytes=.  Observability
-MUST record the language identity, provider identity, command digest, applied
-ceiling, observed process-group resident bytes, observed process count, elapsed
-time, and termination action without recording provider stdin or source
-content.  A timeout, cancellation, signal, ordinary exit code, and memory-limit
-termination remain distinct outcomes.
-
-Provider requests are isolated tasks inside a resident service.  Request
-completion never terminates the admitted provider process.  Provider drain and
-shutdown are lifecycle transitions owned only by ASP Server; they close
-admission, cancel or finish accepted work, stop the complete process group, and
-prove zero residual descendants.  A client disconnect cancels only its request
-scope and cannot restart, drain, or stop the provider.
-
-*** Provider route DSL and admission
-
-The route =routeId= is a globally dotted semantic identity.  The route =operation=
-is the exact provider operation key and MAY be either a single semantic segment
-(for example =query= or =projection-batch=) or a dotted semantic key (for example
-=search.owner=).  Runtime admission MUST compare the declared operation exactly;
-clients and servers MUST NOT add hidden aliasing or command-name normalization.
-
-A provider route is a typed semantic program owned by Runtime registration and
-its compiled route projection.  It is not an argv template, shell fragment, provider binary
-invocation, or client-specific command spelling.  The canonical Route DSL uses
-an unversioned schema identity and carries =schemaVersion: "1"= inside the
-document.  A route declares:
-
-- a stable =routeId= and semantic =operation=;
-- ASP Server as dispatch authority and a language/provider target identity;
-- closed, typed input slots with required/optional cardinality;
-- capability and generation-state admission requirements;
-- read/write effect, idempotency, cancellation, and concurrency semantics;
-- result and typed failure schema identities;
-- generation-pinned cache key inputs and cache authority;
-- OpenTelemetry span identity and the admissible non-source attributes.
-
-Literal argv tokens, positional interpolation, implicit environment lookup,
-provider-private fallback, and transport selection are not Route DSL
-semantics.  They are compiler projections.  One shared compiler validates slot
-closure, identity ownership, capability availability, result-schema existence,
-cache-key completeness, and absence of route cycles before a provider can
-become Ready.  Compilation produces two distinct artifacts:
-
-1. a Runtime dispatch projection consumed by ASP Server and the resident
-   provider transport; and
-2. an optional client rendering projection used by typed CLI or Hook guidance.
-
-Neither projection is an independent authority.  A client projection cannot
-launch a provider, select a fallback transport, weaken admission, reconstruct a
-missing owner, or change cache identity.  CLI facades such as =asp rust search=
-compile to the same admitted Route DSL operation used by other clients.
-
-The identity register owns only canonical =(languageId, providerId)= pairs.
-Provider registration owns Route DSL declarations and runtime capabilities.
-The live register owns the admitted, digest-bound compiled route projection.  ASP
-Server owns route instances, lifecycle, scheduling, cancellation, cache access,
-and telemetry.  Hook matcher publication consumes only the register-owned
-client projection; it never reads provider method descriptors or constructs
-provider argv.
-
-The provider query-pack descriptor always carries a stable descriptor identity,
-version, and language identity.  Its recipe set MAY be explicitly empty when a
-provider exposes no composition recipes.  An empty recipe set means that no
-recipe can be selected; it MUST NOT activate a hidden default, legacy query
-grammar, or provider-private fallback.
-
-*** Language plugin onboarding
-
-A language integration is one declarative provider plugin, not a branch in ASP
-Server and not a language-specific CLI adapter.  Its package MUST own a
-=provider-workspace-install= descriptor, one =provider-registration= document,
-the provider binary, and a Schema Manager materialization receipt for every
-shared schema referenced by those documents.  The workspace descriptor resolves the registration by a
-package-relative path.  The registration declares source discovery, Route DSL,
-query-pack identity, and exactly one =runtimeContract=.  ASP Server admits these
-documents through the same schema validator and lifecycle for every language;
-adding a language MUST NOT require a language match arm in the core server.
-
-The runtime contract is the sole southbound provider wire authority.  It
-declares the shared bidirectional =RuntimeStreamService= contract over
-Tonic/Tokio streams and a closed set of provider fact/projection operations
-whose request and response identities resolve to shared schemas.  Public
-=search=, =query=, and =search.owner= are ASP Server-local northbound routes and
-MUST NOT be repeated in =runtimeContract.operations=.  Each public route owns
-its =requestSchemaId= directly; provider runtime operations cannot add, remove,
-or shadow a public method.  A northbound route MUST reference an ASP Client
-Protocol request schema; it MUST NOT reuse a southbound provider-runtime
-request merely because both operations contain a search term or selector.
-The client schemas own only the normalized public intent
-(=operation/query=, =selector/projection=, or =ownerPath/query/view=), while
-ASP Server alone enriches that intent with workspace, generation, provider,
-parser, source, and transport identities required by a southbound request.
-Provider registrations project these client schemas and their parameter slots
-from the shared Schema Manager bundle, so a downstream client can implement
-the public protocol without importing a provider harness or reconstructing
-CLI argv.
-
-Ready-generation mmap execution time is measured
-inside the route operation and emitted through the Runtime Server's single
-=RuntimeTelemetryBus=.  Client/HTTP/IPC, process startup, generation build,
-provider compile, and artifact installation time are separate observations and
-MUST NOT be reported as Search/Query execution latency.  Route DSL remains the Agent-facing semantic program
-and MUST NOT be used to reconstruct provider wire methods.  Provider code MAY
-use any native parser, compiler, scheduler, or internal cache, but its lifecycle
-is the single ProviderSession stream: admission, facts, cancellation, drain,
-and shutdown.  No provider HTTP or CLI execution fallback exists.
-
-Each admitted provider has a dedicated process-group and request namespace.
-Provider state, in-flight limits, cache keys, cancellation tokens, failures,
-memory accounting, and OpenTelemetry attributes are scoped by provider,
-workspace generation, and request identity.  A provider failure MUST NOT drain,
-restart, invalidate, or expose the cache of another provider.  Shared transport
-and lifecycle code is a library/contract surface, never a shared mutable
-language runtime.  Lazy activation is triggered from registered source
-extensions and project markers, and idle drain is owned only by ASP Server.
-
-*** Downstream schema clients and DSLs
-
-Downstream clients consume the live compiled northbound route projection.
-=runtimeContract.operations= identities are private to ASP Server and the
-provider session and cannot become public client methods.  Clients do not inspect provider
-binaries, manifests, argv, environment variables, or language implementation
-details.  A client generator MAY produce Rust, TypeScript, Python, Julia,
-Gerbil, a DSL, or another language binding from those schemas, but every binding
-MUST consume a content-addressed bundle published by the Rust Schema Manager.
-Every binding MUST preserve the same operation identity, request/response
-validation, cancellation scope, typed failure, generation pin, and trace
-context.
-The manager resolves the canonical =$ref= closure from the registered language
-profile and emits the same versioned receipt whether the destination is an
-in-tree provider package or an external client SDK.  Provider installation
-binds code ownership through =packageRoot= and protocol publication through a
-distinct =bundleRoot=; multiple language providers in one package therefore
-retain independent receipts and cannot overwrite one another.  Provider installation
-MUST materialize that bundle before validating the workspace descriptor; it
-MUST NOT require a separately run copy/sync command.  External client tooling
-MUST be able to publish the identical canonical closure to an arbitrary output
-root by =languageId=.  Hand-maintained shared schema copies and language-local
-schema synchronization implementations are forbidden; provider-owned schemas
-remain local extensions and are never silently exported as shared contracts.
-
-A downstream DSL is a client-side composition language over admitted semantic
-routes.  It cannot create new provider operations, launch or stop a provider,
-select a private transport, weaken schema validation, bypass readiness, or
-change cache authority.  Compilation resolves each DSL step to a registered
-route and emits the same typed Runtime IPC request as any other client.  Thus a
-CLI, Hook, generated SDK, and DSL are interchangeable clients of one server
-architecture rather than compatibility layers or competing execution paths.
-
-Every route admission and completion emits a trace-correlated typed receipt.
-Live Corpus qualification MUST use one Runtime endpoint for the typed ASP
-Client lifecycle sequence =Initialize=, catalog admission, =Request=, =Cancel=
-with typed =Cancelled= outcomes for both cancel and the in-flight request, and
-=Shutdown=.  This sequence applies to all 17 locked cases, uses no second
-provider/catalog authority or direct provider transport, and remains within
-the 1000 microsecond resident budget.  The plan and receipt bind these phases
-and their telemetry once at top level.
-Live-corpus qualification must validate the same Route DSL through Scenarios
-and real provider execution for every supported language.  The qualification
-separates client rendering, Runtime IPC, ASP Server admission, provider service,
-cache/mmap access, and response projection latency.  A provider-local latency
-pass cannot substitute for the complete Agent-facing route latency gate.
-
-Runtime unavailability is a Tokio lifecycle transition, not a file fallback.
-The ASP client-server submits one typed ensure-runtime intent to the resident
-supervisor boundary.  Concurrent callers join the same kernel-backed election
-and the same start generation; they do not rebuild provider catalogs, spawn a
-provider directly, or poll endpoint files.  Election
-handoff awaits the asynchronous file-lock future.  Readiness and terminal
-failure are published through Tokio =watch=, per-request completion uses
-=oneshot=, bounded provider work uses =mpsc=, and shutdown/cancellation uses a
-Tokio cancellation signal.  Fixed sleep loops and second-scale correctness
-timeouts are forbidden.
-
-After Runtime becomes Ready, a language-trigger Hook sends only an
-=EnsureProviderRuntime= intent containing the admitted language/provider
-identity and workspace generation.  ASP Server performs single-flight lazy
-start, handshake, Route DSL registration and compilation, then atomically
-publishes the provider Ready receipt and compiled route generation.  A stopped
-provider returns to the immutable identity seed; it never restores an argv
-descriptor or a locally synthesized registration.  Operator stop remains an
-explicit terminal authority and is never silently overridden by lazy load.
-
-*** Provider workspace artifact admission
-
-After a provider-workspace-install receipt is committed, the provider-owned registration
-artifact MUST be submitted through the live provider Register operation before the
-provider-runtime handshake may publish Ready.  The Ready receipt MUST bind the same
-registrationDigest, artifactDigest, and compiled route operation set.
-
-The bootstrap order is normative: publish the qualified immutable provider artifact,
-commit its live Register generation, publish the workspace installed-artifact projection,
-then admit the provider-runtime handshake as Ready.  Workspace projection MUST NOT be a
-precondition for live Register, because that would make first registration depend on an
-already executable provider route.  A failure after live Register remains a non-Ready,
-retryable installation generation; it MUST NOT be reported as a completed installation.
-
-Development-provider installation MUST be driven by the selected provider's
-registered =provider-workspace-install= descriptor.  The provider install
-register stores only the repository-relative descriptor reference; build
-commands, environment, artifact root, entrypoint, and optional launch adapter
-remain provider-owned.  ASP MUST NOT duplicate those language-specific facts
-in the root CLI or Justfile.
-
-ASP owns execution of the registered workspace build through the Provider
-Execution Gate and admission of the resulting artifact.  A directory artifact
-MUST be captured as one immutable, digest-addressed tree, preserving the
-relative layout required by its entrypoint (for example =bin/= and =lib/=).
-Publishing only the entrypoint file from a declared directory artifact is an
-identity error.  The provider install receipt MUST bind the tree digest, leaf
-count, immutable artifact entrypoint, installed launcher identity, and final
-execution-command digest.
-
-The PATH-visible provider entry is an ASP-owned atomic launcher/profile.  It
-MAY execute a provider-declared launch program or the immutable artifact
-entrypoint directly, but it MUST resolve all artifact-relative programs and
-arguments against the admitted tree.  Runtime reconciliation MUST treat a
-receipt-covered launcher as current and MUST NOT collapse the tree back into a
-single-file installation.  Descriptor identity or path escape failures are
-typed provider-local admission failures; they never authorize falling back to
-the root development installer.
-
-**** Structural branch identity
-
-Exact structural selector v1 applies to every parser-published semantic node that can be a bounded responsibility boundary, including a match arm, conditional branch, and equivalent language-native dispatch alternative. A branch node MUST publish its stable structural selector, =nativeFactId=, =ownerPath=, byte range, and source-projection authority in the same admitted generation as its parent. The selector is an existing v1 selector with a branch-kind segment; it does not create a language-private protocol or a second selector version.
-
-Branch identity is structural rather than presentation-ordinal: it MUST remain stable across unrelated sibling edits, resolve to one bounded source segment, and retain a parent relation to its enclosing item. A provider that cannot publish the node returns a typed projection-scope omission; Runtime and CLI MUST NOT compensate with whole-function source reads, lexical reconstruction, or a provider execution during a Ready resident read. The parser/provider test suite MUST prove bounded branch-segment lookup below one millisecond from an already-published generation.
-
-**** All-provider Live Corpus search/query qualification
-
-Live Corpus performance qualification is part of the stable v1 contract.  Each
-case MUST use =schemaVersion: "1"= and MUST collect at least 128 samples from
-one already-published Runtime generation.  A qualification MUST NOT create a
-v2 schema, a compatibility alias, or a client-owned cache/rebuild path.
-
-Cold and warm cohorts are distinct.  Provider startup, workspace admission,
-generation construction, and atomic publication belong to the cold lifecycle
-receipt; they MUST NOT be charged to warm resident-read latency.  Warm samples
-MUST reuse the same Runtime-owned immutable generation and MUST NOT reopen a
-database, invoke a provider, refresh/import a source index, acquire a
-client-owned single-flight lock, or mutate cache state.
-
-Generation admission validates the mmap segment once and installs immutable,
-generation-owned lexical and owner-directory tables.  A new query reads those
-resident tables; it does not reparse the segment or its sorted-record tables.
-Owner records may be decoded on first demand into a bounded generation-owned
-cache, but client-owned caches and query-triggered source preparation remain
-forbidden.  Search returns a stable parser-owned callable selector paired with
-its owner path; it never derives that selector from query text or a path.
-
-The source snapshot root and the resident owner Merkle root are independent
-authorities.  =sourceRootDigest= names only the source snapshot root, while an
-owner-proof =rootDigest= names the owner Merkle root.  Qualification binds both
-to the same generation but MUST NOT compare the two roots for equality.
-
-Every warm search, exact-source, and callable-skeleton sample MUST report
-Runtime-owned elapsed microseconds.  The v1 aggregate receipt MUST include the
-sample count and p50, p95, p99, and maximum latency for each operation.  The
-resident-read gate fails when any sample exceeds 1000 microseconds; best-of,
-discarded outliers, and client-side stopwatch substitution are forbidden.
-
-The Runtime transport namespace is the unversioned value =runtime-ipc=.
-Transport compatibility is governed exclusively by the schema identity: every
-affected contract retains =schemaVersion: "1"= and its declared =schemaId=.
-Implementations, receipts, fixtures, and tests MUST NOT emit or accept a
-version-suffixed transport aliases; no alias or fallback is
-permitted.
-
-The architecture adopts the useful Language Server Protocol lessons without
-making LSP the runtime authority.  Every admitted request has an operation
-identity, supports cooperative cancellation, and must still publish exactly
-one terminal response after cancellation.  Long control-plane work may publish
-token-bound progress, but progress is never query completion and never extends
-the resident data-plane latency budget.  Capabilities are committed by the
-provider catalog and schema receipt before admission; per-client dynamic
-registration cannot mutate the active provider contract.
-
-The agent-first contract is developed as an RFC, Lean model, shared schema, and
-Tokio implementation together.  A normative concurrency, cache, lifecycle, or
-publication claim is not complete until the Lean model states the invariant and
-the executable receipts provide its witnesses.  Counterexamples found while
-formalizing are design feedback: the RFC and schema change before production
-code is widened.  Rust tests then check that concrete receipts refine the Lean
-state transition rather than merely reproducing an example JSON shape.
-
-The canonical provider identity is derived from the language identity as
-=asp-<languageId>= and is owned by
-=canonical-provider-identity.v1.schema.json=.  For example, Rust is
-=asp-rust=, TypeScript is
-=asp-typescript=, and Gerbil Scheme is =asp-gerbil-scheme=.  Harness, package,
-binary, and implementation names such as =rs-harness=, =py-harness=, or
-=orgize= are artifact metadata and MUST NOT appear as =providerId= in public
-requests, receipts, cache keys, telemetry, or routing authority.  One shared
-implementation MAY serve several languages, but each language retains its own
-canonical provider identity; therefore Org and Markdown are =asp-org= and
-=asp-md= even when both use the same Orgize artifact.  Provider identity lookup
-accepts only canonical IDs.
-
-ASP is agent-first rather than editor-first.  Its unit of authority is not an
-open document or one interactive client session; it is an isolated semantic
-operation bound to a workspace identity, immutable generation, source root,
-provider catalog generation, and cancellation scope.  Many agents MAY query
-the same admitted generation concurrently, but no operation may observe
-another operation's mutable overlay, partial publication, cancellation, or
-ranking state.  Shared caches are content-addressed, immutable, generation
-bound, and safe for concurrent read reuse; mutable session caches and
-last-writer-wins document state are not public authority.
-
-Agent coding also requires finer semantic authority than an editor feature
-matrix.  Providers publish parser-owned owner, item, structural-selector,
-source-scope, relation, project-resolution, and exact-source evidence.  The
-Runtime composes those facts into a cross-file and cross-language project graph
-whose completeness and ambiguity are explicit.  Search, query, exact source,
-graph traversal, and scenario qualification must all preserve the same
-generation/root identity so an agent can prove what it saw before editing.
-
-The architecture rejects the failure modes common to editor-owned language
-servers.  A client cannot spawn or restart a provider, own mutable global
-workspace state, enqueue unbounded notifications, or silently reuse results
-across workspace-generation or source-root changes.  Every request is bound to
-one workspace identity, generation digest, root digest, provider identity, and
-catalog generation.  Tokio cancellation, bounded mailboxes, generation-scoped
-publication leases, reference-counted leases, and terminal OpenTelemetry receipts are the
-only lifecycle mechanisms; missing resident authority fails immediately and
-typed rather than triggering initialization or recovery inside a query.
-
-The =asp-client-server= transport is HTTP-first and uses the unversioned
-namespace =http-json=.  Schema identity remains authoritative: affected
-contracts retain =schemaVersion: "1"= and their declared =schemaId=.  No
-versioned transport alias, CLI subprocess transport, or compatibility fallback
-is permitted.
-
-Tokio is the sole Runtime execution ecosystem.  It owns lifecycle, generation
-publication, cancellation, background construction, and connection handling.
-ASP Server owns the warm data-plane request task.  Already-published resident
-mmap segments enter that task as immediately-ready typed sources; DB and
-provider facts enter only when their storage route and generation were admitted
-before the request.  Search merges those sources through one bounded
-=tokio-stream= fan-in and never launches a provider, opens a file or database,
-or waits for generation construction.  The pure mmap/tree/Merkle/rank kernels
-remain synchronous functions polled inside that request task.  A timeout is not
-a recovery mechanism; reaching one proves that cold or queued work crossed the
-publication boundary and fails architectural qualification.
-
-The qualification plan's ordered =terms= array is encoded as one
-space-delimited resident source-index query, preserving term order.  The
-language-neutral qualification reader uses a fixed limit of 64 candidates;
-providers do not reinterpret the terms or select a private default limit.
-
-Resident-read OpenTelemetry is a Tokio-owned bounded side lane.  The read
-finishes and seals its typed receipt first, then performs a non-blocking
-=try_send= outside the measured interval.  Backpressure drops the observation
-and increments an explicit dropped-observation counter; it never delays,
-cancels, retries, or changes the query result.  Qualification validates the
-sealed operation identity and enqueue/drop evidence without polling a telemetry
+The CLI, Hook, Live Corpus, native integrations, and language clients are equal
+clients of this route.  They do not own provider execution, workspace
+generation, cache construction, projection truth, lifecycle recovery, or a
+semantic fast path.
+
+The Runtime daemon mounts exactly one public =AspClientGrpcService= on the
+existing Runtime data socket.  The service consumes the transport-neutral
+=ClientFrame= schema and serves bounded Tokio streams.  Runtime audits the
+existing =data_socket= before endpoint allocation; it does not create a fourth
 socket.
 
-The resident language-provider lifecycle is descriptor-driven and stable in
-schema v1.  Every registered implementation publishes exactly one public
-=asp-<language> serve= entrypoint implementing the shared HTTP-JSON provider
-runtime contract.  The command layer only validates =serve= and delegates;
-provider-native parsing and scheduling remain behind the common transport and
-must not add a language-specific Runtime RPC branch or dynamically mutate the
-Ready capability catalog.
+The current endpoint field is the Runtime-owned bounded UDS
+=client_endpoint=.  A v1 =client_http_endpoint= record may be consumed only as
+authoritative input to one-way endpoint migration.  It never authorizes an HTTP
+listener, fallback, dual serve, or second current endpoint.  There is no public
+HTTP/JSON or TCP SearchLoop service.
 
-The shared provider-runtime request frame, response frame, contract receipt,
-bootstrap receipt, and client-server descriptor are the only wire authorities.
-Their filenames are unversioned; =schemaVersion: "1"= carries version identity.
-Bootstrap MUST publish =providerId=, =transport: "http-json"=, =state: "ready"=,
-and a loopback endpoint only after warmup and route admission are complete.  A
-provider exposes exactly =GET /health=, =POST /v1/provider-runtime=, and
-=POST /shutdown=.  The request operation is a non-empty registered operation
-name admitted against the immutable descriptor catalog; the shared frame MUST
-NOT encode a closed language-operation enum.  The projection and resolution
-operations are named =projection-batch= and =project-resolution=.
+The package and route contract is owned by
+[[file:10.05-interactive-graph-first-progressive-searchloop/10.05.01-server-client-package-responsibility.org][10.05.01 Server/Client Package Responsibility]].
+Atomic resident activation is owned by
+[[file:10.05-interactive-graph-first-progressive-searchloop/10.05.02-atomic-resident-publication.org][10.05.02 Atomic Resident Publication]].
 
-The HTTP-JSON request and response frames carry a structured JSON =payload=
-validated by the operation's registered schema.  They MUST NOT Base64-wrap a
-CLI stdin frame, retain a length-prefixed subprocess envelope, or dispatch back
-through the command parser.  Provider Server handlers call the provider-native
-operation interface directly; the CLI and HTTP adapters are equally thin
-consumers of that interface.  Binary source content, when required, is encoded
-only at the operation field that owns those bytes rather than wrapping the
-entire request or response a second time.
+* Naming
 
-A corpus-sized projection is a Tokio-streamed sequence of bounded
-=projection-batch= wire frames, never one corpus-sized HTTP body.  Every frame
-carries the same workspace and generation identity, is validated independently,
-and returns complete coverage for exactly its admitted owners.  ASP Server may
-merge frame responses only when provider, parser, query-pack, workspace, and
-generation identities are identical; it publishes the generation atomically
-only after the complete ordered owner set succeeds.  A transport MUST enforce
-its encoded-frame byte budget before sending.  It MUST NOT raise a
-language-server body limit, lower a timeout, silently omit an owner, or retry a
-smaller private batch after a rejection.  Backpressure and cancellation belong
-to the single Tokio stream so one slow language provider cannot retain the
-corpus or block another provider's session.
+The canonical short name is =SearchLoop=.
 
-LSP-style initialization is an ASP Server admission comparison, not a mutable
-provider RPC.  =/health= returns the immutable contract receipt used for that
-comparison.  A client cannot send =initialize=, dynamically register a
-capability, or trigger provider recovery.  Unknown operations and schema drift
-fail with typed response frames before provider work begins.
+=Interactive= means each agent turn observes a typed evidence state, chooses a
+bounded action, receives a compact receipt, and advances a session frontier.
+It does not mean a terminal prompt or human menu.
 
-Each admitted provider request runs in an isolated provider-native lightweight
-task.  Admission is bounded by the resident listener and request budget,
-disconnect or deadline cancellation is cooperative, and each request publishes
-exactly one terminal response.  Backpressure fails fast with typed evidence;
-it must not create a second single-flight authority, unbounded queue, retry
-loop, or compatibility fallback.  Artifact publication, workspace generation,
-incremental cache mutation, filesystem discovery, and other heavy I/O remain
-owned by the sole ASP Server and never move into the language provider.
+=Graph-first= means semantic owners, items, dependencies, capabilities, and
+proof obligations are typed nodes and edges.  Commands transport graph
+operations; command strings are not the ontology.
 
-A resident provider may keep a strictly bounded, non-authoritative memo for a
-pure language projection.  Its key covers the admitted operation and complete
-input bytes, its value is only the deterministic response payload, and eviction
-cannot change protocol truth.  Lookup and publication use a short local
-critical section while parsing remains outside the lock; concurrent misses may
-compute the same value and must not be serialized into a single-flight lane.
-The ASP Server still validates the response against the admitted generation
-before publication, so this memo is never a workspace cache or fallback
-authority.
+=Progressive= means each turn expands only the evidence needed for the next
+decision.  It never weakens fail-closed authority or permits best-effort source
+claims.
 
-Qualification uses a pinned Live Corpus request through the real resident
-HTTP-JSON endpoint after bootstrap warmup.  For the v1 provider performance
-gate, every measured provider-service sample must complete below 1,000
-microseconds.  Same-host loopback p50, p95, p99, and maximum remain mandatory
-diagnostic evidence, but host scheduling is not provider execution.  The
-Agent-facing warm-search p99 has its own below-1,000-microsecond gate against
-the ASP Server immutable mmap generation with zero provider dispatch.  Process
-startup, workspace admission, and artifact construction are cold-path receipts
-and must never be hidden inside either warm measurement.
+* Primary loop
 
-Live Corpus artifact publication and qualification are separate authority
-boundaries.  The release pipeline owns pinned checkout synchronization,
-artifact materialization, complete parser projection, canonical generation
-publication, and the versioned Ready receipt.  No public Runtime command owns
-Code Prepare or indexing.  Checkout qualification must finish before Runtime
-admission.  The admitted Ready generation supplies the canonical content Merkle
-root; only then may the immutable artifact and current pointer be published.
-Every stage must emit progress plus terminal OpenTelemetry evidence.
-
-Cold materialization MUST use the stable v1 typed
-=AdmitRuntimeGenerationForRead= control operation before publishing the immutable
-artifact pointer.  ASP Server owns candidate discovery, provider execution,
-generation construction, atomic publication, and the terminal Ready or Failed
-receipt.  The materializer awaits that one terminal receipt; it MUST NOT submit
-a mutation-shaped cache request, poll generation state, open a workspace
-database, or build a client-side source index.  The materialize receipt is not
-successful until the admitted generation root matches the qualified source
-Merkle root.
-
-The same stable v1 request MUST carry the lock-qualified =languageId= and
-=providerId=.  This is an explicit provider target, not a path-discovery hint:
-ASP Server uses it to select exactly one registered provider.  Target identity
-does not assert a project model.  Within that provider, the declared source
-inventory capabilities remain authoritative: =project-resolution= is selected
-only when its declared entry marker exists in the Git candidate snapshot;
-otherwise a declared Git =document-resolution= capability owns the corpus.
-Absence of an applicable declared capability fails closed.  The Server MUST
-NOT discard the provider binding, manufacture a missing project marker, or
-force project resolution merely because the provider was explicitly selected.
-When applicable, the provider-owned =project-resolution= receipt remains the
-sole authority for package membership, nested projects, source roots, and
-exclusions.  A Ready generation for a non-empty qualified corpus MUST contain a
-resident source index admitted by that provider; an empty generation fails
-closed and cannot publish the immutable artifact pointer.
-
-=live-corpus qualify= is a read-only resident consumer.  Before its first query
-it must validate the immutable artifact pointer and the matching active Ready
-generation.  Missing, stale, partial, or identity-mismatched state returns an
-immediate typed terminal failure.  Qualification never discovers sources,
-launches providers, rebuilds a generation, replays a cache, or waits for cold
-projection.  Its latency measurements cover only the admitted Runtime data
-plane and retain the sub-millisecond per-query budget.
-
-Runtime mutation submission likewise requires an existing Ready generation.
-It may publish an incremental successor, but it never bootstraps a missing
-generation through discovery, provider execution, or source-index refresh.
-The repository MUST own one immutable qualification plan that covers every
-resource in the canonical large-library corpus lock. Qualification is not a
-smoke test over provider package roots. Every locked revision MUST be synced
-into the canonical State Home checkout, materialized under the live-corpus
-artifact contract, admitted as a complete Runtime generation, and exercised by
-both resident search and exact query.
-
-The qualification plan binds =resourceId=, =languageId=, =providerId=, fixed
-search terms, a deterministic parser-owned selector strategy, a zero-match
-query, the live-corpus projection scope, and operation budgets. The lock owns
-revision and Git-tree identity; the plan owns behavior. A qualification receipt
-binds both digests and records generation/root identity, selected selector,
-candidate count, resident search/query latency, and terminal telemetry evidence.
-
-All registered live-corpus languages are mandatory in the same gate. A missing
-checkout, missing provider, partial generation, zero candidates for a positive
-case, selector ambiguity, provider invocation during query, absent terminal
-telemetry, or resident latency above one millisecond fails the whole gate.
-There is no language allowlist, provider-local fallback, packet-first path,
-cache-only replay, or compatibility mode.
-
-**** Runtime generation incremental admission
-
-Every Runtime lifecycle component uses Tokio for execution, synchronization,
-cancellation, and publication.  No second async runtime, unmanaged worker
-thread, or provider-owned executor may participate in Runtime authority.
-Published-generation algorithms remain synchronous computation inside the
-admitted Tokio request task; the stream boundary coordinates complete sources,
-not individual nodes or rank comparisons.  Runtime owns publication of the
-immutable generation pointer, validated mmap segments, capability receipt, and
-bounded source streams.  HTTP, gRPC, CLI, Hook, and generated SDKs are typed
-clients and MUST NOT map Runtime artifacts or own generation pointers.  A warm
-resident source is immediately ready and performs no socket, filesystem,
-database, provider-process, timer, lock, or scheduler work after admission.
-Terminal telemetry is appended through the bounded Tokio side lane and cannot
-delay or authorize the read.
-
-A timeout is not a recovery transition and MUST NOT be used to make a blocking
-read path appear bounded.  Warm reads contain no awaited operation.  Missing or
-invalid mapped authority fails synchronously with a typed readiness receipt;
-cold publication is a separate release/writer operation.
-
-
-Exact source reads and search-derived projections use disjoint Tokio data-plane
-operations.  The exact-source operation accepts a parser-owned selector and
-returns source bytes only.  The search projection operation is Runtime-internal
-and may return callable-skeleton or other derived facts to SearchLoop.  CLI and
-Hook are typed clients of those operations and cannot choose an alternate
-projection, request raw provider JSON, or reinterpret one operation's response
-as the other.
-
-The Runtime Server rejects request/response schema drift at admission.  There
-is no compatibility fallback from exact source to derived projection, no local
-CLI/provider execution path, and no free-form recommended command string.
-
-V1 assigns all provider runtime resolution, workspace mutation, generation
-admission, selector rebind, single-flight coordination, lifecycle completion,
-and timeout authority to the resident ASP Runtime Server.  CLI and Hook
-processes are typed clients only: they may parse public arguments and render
-receipts, but they MUST NOT construct provider runtimes, mutate the live register or
-generation state, open mmap/generation pointers, coordinate daemon ownership,
-or treat elapsed performance thresholds as lifecycle correctness.
-
-Runtime clients MUST declare an explicit capability.  A read-only capability
-MUST reject every mutating operation before transport I/O.  A mutation-capable
-client still receives no mmap or generation-pointer authority; it submits a
-typed V1 operation whose state transition executes in the daemon's Tokio
-writer lane.  A client API whose name or profile claims read-only authority
-MUST NOT be used to publish or rebind selector overlays.
-
-Registered language and provider identity is catalog-derived.  The Runtime
-Server resolves provider selection and executable profiles from the registered
-provider catalog and returns a versioned typed projection.  Language facade,
-Hook, and CLI code MUST NOT carry a hard-coded language set or synthesize a
-provider runtime locally.  Provider processes are supervised by Tokio tasks;
-environment construction and process execution belong to the Runtime command
-operation rather than the CLI dispatcher.
-
-Tokio timeout is a failure containment mechanism, not a performance assertion.
-Lifecycle completion is established by typed owner/start/exit receipts and
-matching epochs.  Fixed elapsed-time gates, busy-yield polling, and local
-preflight loops MUST NOT decide Runtime correctness.  Performance budgets are
-reported separately as telemetry and never change a successful typed state
-transition into a failure.
-
-Registered language runtime cold start is a Tokio Runtime Server operation, not
-a client-side materialization operation.  The client sends a typed
-=EnsureProviderRuntime= intent and consumes the daemon's provider-runtime
-receipt.  The daemon owns provider catalog selection, executable identity,
-single-flight startup, and transition from =cold= to =ready=.  A language
-query MUST NOT read a workspace-local active ASP artifact receipt, rebuild
-provider admission state, or validate the ASP/Graph Turbo binary merely to select
-one provider.  ASP binary and ranker artifacts are daemon-global authority;
-workspace state contains only workspace identity and generation references.
-
-=EnsureProviderRuntime= is a control-plane admission operation, never a process
-launch hidden inside a query.  The daemon validates the live registration's mandatory
-=runtimeContract=, starts and handshakes the resident provider actor once per
-catalog generation, then publishes its immutable Ready receipt through Tokio
-=watch=.  Search requests use only the actor's bounded =mpsc= mailbox and
-=oneshot= response channel.  If that receipt is absent or terminal, the query
-fails immediately with typed =asp-client-server-not-ready= evidence.
-
-Provider readiness evidence comes only from the live register generation and
-the resident client-server Ready receipt.  Failures are typed Runtime
-control-plane states bound to =languageId= and the register generation.
-
-The Runtime data plane MUST model generation bootstrap separately from
-workspace mutation.  =EnsureRuntimeGenerationReady= is a distinct typed IPC
-operation owned by the Runtime daemon; it MUST NOT be encoded as a mutation
-whose =changedPaths= list happens to be empty.  Mutation operations continue to
-require at least one normalized changed path, so their identity, coalescing,
-and incremental-rebuild semantics remain unambiguous.
-
-Provider-native owner and source projection for the current checkout is live
-parser authority, not an artifact-generation privilege.  A provider may
-publish that live owner/source authority before any durable artifact generation
-exists, and exact current-checkout projection MUST remain available while a
-generation is being built, restored, or replaced.  The admitted generation is
-the authority for artifact publication, durability, and generation-bound
-derived reads only; it MUST NOT be a prerequisite for discovering the owner or
-source needed to establish that generation.  In particular,
-=item-not-in-live-owner= may describe an actual current provider snapshot miss,
-but MUST NOT be synthesized merely because the active artifact generation is
-older than the checkout.
-
-The control plane is generation-independent.  A Host lifecycle event MUST
-reach a Runtime-owned admission operation even when the workspace has no active
-generation.  Runtime MUST atomically ensure the workspace generation and the
-durable Agent namespace before returning registration or resume state.  The CLI
-is only a transport adapter: it MUST NOT own namespace creation, maintain a
-second lifecycle inbox, or fall back to process-local or mmap reconciliation.
-
-=search owner=, =search pipe=, and tree-sitter query/search remain distinct V1
-interfaces.  Owner resolves language items, pipe composes search kinds, and
-tree-sitter evaluates provider-owned syntax queries.  They share the same
-Tokio Runtime admission and source-snapshot authority, but one interface MUST
-NOT be reinterpreted as another when recovery is required.
-
-An exact structural selector is the canonical root selector plus an ordered
-sequence of descendant kind/identity segments.  Root item-kind validation MUST
-compare only the root selector.  A missing descendant in the admitted
-generation is a projection-availability failure, never a root kind mismatch.
-
-Persistent receipts are normalized at their shared decode boundary and require
-the materialization-root digest.  The supplied digest is authoritative input
-and MUST fail validation when inconsistent.  Version identity remains in
-=schemaVersion: "1"= rather than the receipt namespace.
-
-Exact source and callable-skeleton projection are terminal consumers of the
-admitted active generation.  After a request has been classified as an exact
-structural-selector query, failure to acquire Runtime generation authority MUST
-remain a typed terminal failure.  The adapter MUST NOT invoke the language
-provider again with the public query argv, because that second dispatch has no
-snapshot byte authority and can reinterpret exact-projection arguments as an
-unrelated provider query surface.
-
-This terminality rule is language-neutral.  Rust, Python, TypeScript, Julia,
-and future programming-language providers receive exact work only through the
-same admitted generation envelope.  Runtime unavailability, host-local IPC
-denial, missing workspace admission, and missing active generation are recovery
-states for the Runtime control plane; none authorizes a provider-native fallback.
-The executable invariant is refined by
-=packages/proofs/ASPProof/ExactProjectionTerminalAuthority.lean=.
-
-=search owner <path> items= is owner discovery, not exact source projection.
-ASP Server MUST own this operation as a stateless Tokio service and dispatch the
-provider-neutral =search/owner-native= interface with source-byte authority
-bounded to that one requested owner.  The CLI is only a typed IPC client; it
-MUST NOT read the owner, spawn the provider, open a database, or construct
-provider admission state.  The service creates no Workspace generation, writes no cache, and
-admits no exact source projection; it returns only canonical item selectors.
-Workspace or Provider generation availability therefore MUST NOT gate owner
-discovery, and a provider-local failure MUST NOT redirect the request through
-Agent ChoicePlane.
-
-Runtime generation admission MUST be single-flight for the tuple of workspace
-identity, provider-registry evidence, schema evidence, and candidate Merkle
-identity.  Concurrent callers observe the same tracked build and receipt; a
-foreground wall budget never owns or cancels the background generation build.
-
-The active generation scope is the only owner-membership authority.  Provider
-fingerprint storage is a byte-bearing cache, not membership authority, because
-it may retain relocated or tombstoned owners.  An unchanged owner may be reused
-only when an active-generation owner row and a scoped provider snapshot join on
-owner path and content digest.  A missing or mismatched join requires rebuilding
-that owner from the live workspace.
-
-Mutation evidence MUST be projected by workspace root before reaching a
-provider builder.  A nested workspace cannot receive a changed path owned only
-by its parent.  The builder overlays rebuilt changed owners and explicit
-tombstones onto the admitted active generation, preserves validated unchanged
-owners, derives a complete successor generation, and publishes that successor in
-one writer lane.  A partial changed-owner file set MUST NOT be published as a
-complete replacement generation.
-
-Publication is latest-candidate-wins: an older build cannot overwrite a newer
-admitted candidate.  Unchanged admission performs no owner-byte rescan, changed
-admission reads only changed or unverifiable owners, and shutdown joins or
-cancels every tracked builder without leaving a worker or writer task behind.
-The Runtime reports single-flight build count, owner bytes read, owner rescan
-count, retained owner count, tombstone count, disk-byte delta, RSS delta, and
-control-plane latency through the resident telemetry buffer.  The normative
-gate is 256 concurrent callers with one build, zero unchanged owner rescans,
-changed-owner-only reconstruction, and thirty-run admission p99 below one
-millisecond.
-
-** 10.05.10 Interactive SearchLoop
-
-Owns:
-
-- session bootstrap;
-- current evidence state;
-- bounded next-action choice;
-- loop continuation and termination;
-- branch and fan-in semantics; and
-- interaction-round accounting.
-
-Formerly command-shaped flows such as prime search belong here only as
-bootstrap policies.
-
-*** Explorer capability and dispatch fixed point
-
-Parser-owned =search= and selector-bearing exact =query= are consecutive
-phases of one =reasoning-search= capability.  Hook policy MUST project both
-operations from the live registered-provider route catalog; it MUST NOT keep a
-client-maintained language allowlist or classify the exact-query phase as an
-unscoped shell command.  This invariant applies equally to programming
-languages, Org/Markdown DSL providers, and future provider plugins.
-
-A verified child-registration receipt binds the child identity, lifecycle
-generation, denied effects, and allowed rule intents.  When that receipt
-allows the intent selected by a Route DSL client projection, Host dispatch has
-reached a fixed point: the current registered child executes the operation
-directly.  It MUST NOT be sent back through ChoicePlane merely because a
-redundant role label is absent from the Host envelope.  Role selection chooses
-an eligible child before registration; the receipt's allowed-intent set is the
-execution authority after registration.
-
-The fixed point does not widen permissions.  A mismatched intent remains
-=subagent-capability-denied=, an unverified registration remains
-=subagent-receipt-required=, and Explorer edit effects remain physically
-denied before execution.  A client must therefore be able to complete
-=search -> exact query= within one registered Explorer session without a
-nested dispatch, while raw source reads and edits remain outside that
-capability.
-
-The public client MUST normalize an exact-query selector exactly once before
-route admission.  The normalized selector drives both provider/language
-validation and the shared Runtime =query= request; admission and request
-construction MUST NOT parse the argv independently.  Every command shape the
-client accepts for a selector therefore resolves to the same schema-owned
-=selector= field, and every selector emitted by =search= MUST be consumable by
-=query= without a second syntax translation or a provider-private fallback.
-Failure to normalize is a typed client-request error before Runtime dispatch,
-never a generic =provider-route-not-admitted= result for an otherwise valid
-canonical selector.
-
-The canonical item fragment delimiter is the rightmost =#= in the selector.
-Project-relative owner paths are source identities and MAY contain =#= as a
-legal filename byte; providers MUST preserve that owner path verbatim, and
-consumers MUST NOT split at the first =#= or reinterpret the selector through a
-generic URL parser.  The suffix after the rightmost delimiter remains the
-canonical =item/<kind>/<symbol>[/scope/...]= identity path.  Search emission,
-Runtime validation, and exact query therefore recover the same owner path even
-for repositories whose filenames contain URI delimiter characters.
-
-Generation-time projection transport MUST preserve source bytes exactly.
-Each owner carries an explicit =sourceEncoding=: UTF-8 owners use =sourceText=
-without an intermediate copy, while non-UTF-8 owners use
-=sourceBytesBase64=.  These are the two arms of one schema-owned tagged union,
-not provider-specific transports.  A provider MUST reject a missing or
-mismatched arm, decode at its HTTP boundary, and pass the original bytes to its
-native parser.  Runtime MUST NOT use lossy Unicode replacement because byte
-ranges, source digests, exact projections, and Merkle membership all refer to
-the original owner bytes.
-
-A native provider MAY construct a byte-length-preserving parser view when an
-upstream language dialect is semantically compatible but its reader spelling
-differs.  Such a view MUST be deterministic, MUST NOT change newline or byte
-offsets, and MUST NOT replace the original bytes used for digests, ranges, or
-exact-source responses.  For R4RS/Gambit input, case-folding only multi-letter
-=#\\<name>= character literals in the temporary Gerbil reader view is valid;
-single-character literals such as =#\\A= remain unchanged.  Skipping the owner,
-silencing the reader failure, or publishing partial definitions is forbidden.
-
-Gerbil projection MUST enter through the native module reader rather than a
-plain datum-reader fast path.  For an explicit =#lang= owner, the declared
-phase-1 reader is the provider-owned extension hook that converts an embedded
-DSL body into Gerbil syntax forms; those forms enter the same canonical
-definition projector as ordinary Gerbil source.  Ordinary owner imports MUST
-NOT be expanded or resolved.  Only the explicit =#lang= hook may load its
-declared reader; general workspace library resolution belongs to the separate
-ProjectResolution/semantic-expansion route.
-
-The bounded projection batch is a source-byte isolation unit, not a
-module-resolution unit.  A provider MAY materialize the immutable owner bytes
-in a unique temporary root when its native reader requires a path, but it MUST
-parse each primary owner without loading unrelated workspace modules.  It
-restores reader state and deletes the root before replying.  The provider MUST
-NOT rescan the real worktree, retain the temporary root, maintain a second
-resident source index, or turn missing imported libraries into projection
-failure.
-
-Provider-declared =sourceInventory.configFiles= are transmitted as
-=auxiliaryOwners= in the same schema-owned batch.  Runtime finds only matching
-config filenames on admitted source-owner ancestor paths, reads them once with
-Tokio during generation, deduplicates them by workspace-relative path, and
-attaches their content digest and bytes to each relevant batch.  Auxiliary
-owners provide generation-bound parser/config policy but never produce
-searchable items or appear in response owner coverage.  They MUST NOT be used
-to execute imports during owner-local projection.  Treating config files as
-source extensions or reading them during query is forbidden.
-
-The same immutable read pass MUST include auxiliary owner path/digest leaves in
-the workspace generation root.  Projection frames and exact-selector Merkle
-proofs use that combined root, while searchable owner coverage remains limited
-to =owners=.  A config edit therefore creates a new generation identity and
-invalidates provider projection caches; attaching unreceipted config bytes to
-an otherwise unchanged generation is forbidden.  Wire admission counts primary
-and auxiliary bytes against one bounded frame budget, and frame planning
-reserves the repeated auxiliary context before grouping primary owners.
-
-One canonical selector identifies one active binding in a generation.  When a
-language permits the same owner to redefine a binding, the provider MUST merge
-those parser facts by canonical selector and publish the last active
-definition, preserving its original byte range.  Providers MUST NOT invent
-line numbers, occurrence counters, or source-order suffixes to make duplicate
-rows appear unique; those are unstable locations rather than semantic
-identity.  Lexically distinct bindings remain distinct only through real
-parser-owned scope identity.
-
-Native source locations remain authoritative only while their decoded extent is
-monotonic.  Some native runtimes cannot represent the end column of an
-arbitrarily long physical line; a wrapped or reversed end location MUST NOT be
-published as a byte range.  In that typed condition the provider derives a
-conservative exclusive upper bound from the next native top-level start in the
-same owner, or from owner EOF for the final form.  This is one owner-local
-projection algorithm, not a lexical fallback parser: the native parser still
-owns item identity and start order, the recovered range remains bounded by the
-same immutable owner bytes, and Runtime proof validation remains fail-closed.
-
-Provider adapters MUST parse selector structure independently from URI segment
-encoding.  In particular, a parser kind such as =def*= may appear as =def%2A=
-inside the parser-owned selector; comparing that encoded segment with the raw
-kind string is invalid.  The adapter normalizes parser kinds to the shared item
-kind and preserves the parser-owned encoded name/scope segments.
-
-** Canonical item identity and atomic projection generations
-
-Exact search identity is a language-neutral typed tuple.  Every registered
-language provider MUST project the tuple fields that apply to its grammar:
-
-- =kind= identifies the parser-owned declaration category;
-- =symbol= identifies the declaration name;
-- =lexicalOwner= identifies the nearest enclosing declaration when the item is
-  nested;
-- =implementationOwner= identifies the implemented type or receiver;
-- =traitOwner= identifies the implemented interface, trait, protocol, or
-  equivalent language construct.
-
-Absent dimensions are omitted, never guessed and never encoded as empty text.
-Two items with the same =kind= and =symbol= remain distinct when any owner
-dimension differs.  A provider MUST NOT collapse an inherent method, a trait
-method declaration, and a trait implementation method into one selector.
-
-ASP owns workspace identity, Git/worktree scope, snapshot evidence, generation
-publication, and resident lifecycle.  A language provider owns package-manager
-scope parsing and syntax projection.  The provider receives an ASP-selected,
-bounded batch of changed owner snapshots; it MUST NOT rediscover or rescan the
-worktree.  The batch header carries only paths, leaf digests, and byte lengths;
-owner bytes follow as bounded length-delimited frames.  Source bytes MUST NOT
-be base64-expanded into a generation JSON document.  One batch response
-contains owners, canonical item identities, selectors, relations, and the
-source leaf digests from which they were parsed.  Projections for unchanged
-owners are reused from the previous complete generation by digest identity.
-
-Every relation is attributed to exactly one owner projection.  Its =from=
-endpoint MUST be either that owner node or an item identity emitted for that
-owner in the same validated batch.  ASP rejects an edge whose source identity
-cannot be joined to its emitting owner; it MUST NOT infer attribution from a
-language-specific endpoint kind.  The generation store persists owner
-attribution with the edge.  An incremental successor clones edges attributed
-to unchanged owners, removes all edges attributed to changed or tombstoned
-owners, and inserts only the newly validated edges for rebuilt owners.
-
-ASP MUST partition generation projection into ordered, short-lived provider
-processes before writing a batch frame.  The default admission bound is at most
-32 owners and at most 4 MiB of aggregate owner source bytes per process; an
-individual owner that exceeds the byte bound is admitted alone and remains
-subject to the Provider Execution Gate.  ASP consumes and validates each batch
-response before starting the next batch, so a provider never retains the ASTs
-or response graph for a complete large workspace.  Batch partitioning is
-language-neutral ASP policy: a Scheme, Python, Rust, or future provider parses
-only the bounded owner bytes supplied to that invocation and MUST NOT retain a
-resident workspace index after exit.
-
-The per-workspace Tokio writer lane builds a complete next generation off the
-read path.  Owner bytes, canonical selectors, relations, moves, tombstones,
-root-depth evidence, MemoryBackend state, and the immutable mmap segment are
-validated together and published with one epoch transition.  Readers retain a
-lease on the previous complete generation until publication succeeds.  A
-generation with owner bytes but missing required provider projections is not
-admissible.
-
-Search and exact query are immutable consumers.  They MUST NOT invoke a
-provider, open or bootstrap Turso, mutate the live register, publish generations, or
-repair a generation.  Filesystem change observation and stale-generation
-reconciliation belong to the resident Tokio supervisor and the affected
-workspace writer lane.  Different workspaces reconcile independently; one
-workspace has one writer lane and an adaptive resident read pool.
-
-Health and cache status read only the resident status snapshot.  A live process
-with a stale admitted generation is =reconciling= or =degraded=, never
-=healthy=.  Installed performance gates MUST exercise cold admission, warm
-reads, multi-workspace parallelism, multi-session contention, move/tombstone
-publication, and provider projection completeness.
-
-** 10.05.20 Evidence graph and routing
-
-Owns:
-
-- evidence nodes and edges;
-- graph router semantics;
-- action frontiers;
-- shortest justified paths;
-- DAG branching and synthesis;
-- competing evidence; and
-- proof-path reachability.
-
-** 10.05.30 Progressive projection and cost
-
-Owns:
-
-- minimal sufficient projections;
-- callable skeletons and exact-source expansion;
-- token-cost accounting;
-- graph-distance objectives;
-- interaction-round cost;
-- stopping rules; and
-- progressive detail disclosure.
-
-** 10.05.40 Receipts, cache identity, and replay
-
-Owns:
-
-- evidence receipts;
-- search-result cache identity;
-- replay protection;
-- semantic invalidation;
-- layered accounting and verdict caches; and
-- the distinction between evidence caching and model prefix caching.
-
-** 10.05.50 Adapters and transports
-
-A Host sandbox denial that prevents a local Runtime or workspace-owner Unix socket
-from being opened before any protocol frame is exchanged is a typed
-execution-capability boundary, not an endpoint transport failure.  It MUST NOT
-degrade an already admitted read-only query into a provider subprocess, a
-database open, or a freshness write.  Runtime owns admission, generation build,
-and atomic publication; agent-facing =search= and =query= consume the published
-workspace identity catalog, generation pointer, and immutable validated mmap
-segments directly.  This read lease MUST validate workspace identity, epoch,
-generation digest, root digest, and projection kind before returning evidence.
-Only missing or invalid published authority is fail closed as
-=active-workspace-generation-required= or
-=active-workspace-generation-recovery-required=.  Unix socket transport remains
-the control/write plane and is never a prerequisite for immutable exact
-projection.  Raw platform =Operation not permitted= text MUST NOT escape as the
-semantic result of a read-only search/query operation.
-
-Owns:
-
-- typed ASP client behavior;
-- plugin and tool-call adapters;
-- API and host integration;
-- human debugging surfaces; and
-- transport-specific rendering.
-
-No adapter may redefine SearchLoop, graph, receipt, or projection semantics.
-
-** 10.05.60 Lean, Typst, and audit
-
-Owns:
-
-- mathematical models;
-- Lean proof modules;
-- Org-Babel Typst presentation;
-- modular JSON audit receipts;
-- counterexamples; and
-- proof-discovered RFC corrections.
-
-** 10.05.70 Hard-cut contract removal
-- V1 is the only active contract generation. Migration MUST erase a superseded
-  command, receipt decoder, renderer, recovery action, matcher branch, test
-  fixture, and agent guidance together; it MUST NOT retain an alias or derive
-  fields omitted by an obsolete receipt.
-- The public language command surface is generated from the active provider
-  registration and its V1 query pack. A command spelling that is absent from
-  that registration is invalid input; hidden positional dispatch and help-only
-  command descriptions are forbidden.
-- Exact query has one schema-owned projection contract. Removed projection
-  flags MUST NOT remain in help, Hook guidance, recommended-next actions, or
-  provider adapters.
-- Defect-capability minting treats its bound command as opaque data. The Hook
-  matcher MUST classify only the outer mint operation and MUST NOT recursively
-  classify or deny the command payload before the capability exists.
-- Host recovery guidance MUST name an executable action from the same active
-  CLI schema. A removed action such as a stale Hook refresh command is a
-  contract error, not a compatibility hint.
-- Registered child identity is bound to the Codex V2 Host lifecycle event and
-  role capability. A host-reported model revision may advance through a typed
-  registration reconciliation; it MUST NOT invalidate an existing, live,
-  unachieved namespace merely because a configured model label is stale.
-
-Owns:
-
-- superseded surface removal;
-- schema transition; and
-- zero-reference verification after deletion.
-
-* Canonical ownership and write policy
-
-This RFC tree is now the canonical owner for all new SearchLoop, evidence
-graph, router, progressive projection, search-cost, receipt, cache-identity,
-Lean, Typst, and proof-audit work.
-
-Layer ownership is semantic rather than chronological:
-
-- forecast-bound plan cost and Pareto scheduling belong to
-  =10.05.30-progressive-projection-cost=;
-- forecast calibration, cache-lane identity, replay, and realization receipts
-  belong to =10.05.40-receipts-cache-identity=;
-- proof methodology and cross-RFC audit infrastructure belong to
-  =10.05.60-lean-typst-audit=;
-- client spelling remains in =10.05.70-hard-cut-removal= only when it is
-  necessary to specify an active typed-client acceptance boundary.
-
-The first physical migration batch is:
-
-- [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.30-progressive-projection-cost/00.79-forecast-bound-pareto-batch-scheduling.org][00.79 Forecast-bound Pareto batch scheduling]];
-- [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.40-receipts-cache-identity/00.80-append-only-forecast-calibration.org][00.80 Append-only forecast calibration]];
-- [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.40-receipts-cache-identity/00.81-robust-windowed-calibration-hysteresis.org][00.81 Robust windowed calibration and hysteresis]].
-
-* Typed client boundary
-
-The CLI is a formal ASP client surface useful for:
-
-- human inspection;
-- deterministic debugging;
-- CI and shell composition;
-- provider conformance tests; and
-- every environment that selects the command-line ASP client.
-
-The CLI MUST encode the same typed operations as every other ASP client and
-send them through Runtime IPC.  It MUST NOT expose provider execution,
-lifecycle, cache, parser, or fallback branches.
-
-A complex CLI command is justified only when it represents a stable human or
-automation workflow that cannot be expressed as a bounded SearchLoop action.
-
-* Interaction receipt
-
-Every loop step SHOULD emit a compact interaction receipt containing:
-
-- prior evidence-state identity;
-- selected graph action;
-- semantic owners consulted;
-- new evidence nodes or conclusions;
-- rejected alternatives and failed predicates;
-- updated frontier;
-- recommended next action;
-- token and interaction-round cost; and
-- cache identities consumed or produced.
-
-The receipt is designed for direct agent consumption and machine audit.
-
-* Optimization objective
-
-Search quality is multi-dimensional. The protocol seeks to minimize:
+The canonical state transition is:
 
 #+begin_example
-graph path length
-  + returned evidence tokens
-  + interaction rounds
-  + repeated uncached work
+intent
+  -> admitted workspace/provider authority
+  -> typed seed topology
+  -> bounded evidence route
+  -> compact inspection
+  -> focused expansion or exact materialization
+  -> receipt-backed conclusion, reroute, or stop
 #+end_example
 
-subject to:
+Loop state, rather than a command transcript, is the durable protocol object.
+A user-supplied exact selector enters the same topology as any other seed.  It
+does not create a second text protocol.
 
-#+begin_example
-semantic ownership
-  + proof-path validity
-  + fail-closed admission
-  + receipt completeness
-#+end_example
+Interactive transition semantics are owned by
+[[file:10.05-interactive-graph-first-progressive-searchloop/10.05.10-interactive-searchloop/00-overview.org][10.05.10 Interactive SearchLoop]].
 
-No single metric may be reduced by hiding an unresolved proof obligation.
+* Global invariants
 
-* Cache distinction
+** One lifecycle authority
 
-Search/evidence caching and model prefix caching are separate:
+ASP Runtime Server owns workspace identity, provider admission, lazy resident
+activation, generation publication, bounded concurrency, cancellation, drain,
+and lifecycle receipts.  A request client owns none of this mutable state.
 
-- evidence caching reuses a conclusion only when semantic owner identity and
-  validation policy permit reuse;
-- model prefix caching reuses inference computation when prompt prefixes align.
+Query handling never starts, repairs, restarts, or locally executes a provider.
+Runtime absence and provider unavailability are typed terminal evidence, not
+permission to construct an alternate route.
 
-A model cache hit does not validate evidence. An evidence cache miss does not
-imply a model cache miss.
+Tokio task ownership, generation-attempt terminalization, and telemetry
+isolation are owned by
+[[file:10.05.11.05-runtime-server-tokio-task-lifecycle.org][10.05.11.05 Runtime Server Tokio Task Lifecycle]].
 
-* Proof obligation
+** Language-scoped lazy admission
 
-** Exact-selector active-generation admission
+A language facade resolves through the registered provider catalog to exactly
+one provider identity.  A language-scoped search, query, check, or cache
+operation does not widen to a complete-generation or all-provider operation
+when an index-owner argument is absent.
 
-The active-generation proof is parameterized by an operation-scoped provider
-closure.  For an ordinary language =search=, language-scoped source-index
-lookup, or exact =query=, that closure contains only the selected provider and
-its explicitly declared provider dependencies.  Installed receipts, registry
-membership, or workspace file extensions MUST NOT widen the closure.
+Only an explicitly unscoped operation may request global coverage.  Runtime
+evidence for a language-scoped operation therefore reports no unrelated
+provider process or preparation work.
 
-Admission MUST prove both provider-closure isolation and schema/transport
-congruence.  A successful provider process invocation is not sufficient when
-the runtime request or response field set differs from the published JSON
-schema, and a project-scoped receipt is not sufficient when a read route still
-materializes unrelated providers.
+Provider package, registration, and server authority are owned by
+[[file:10.05.61-language-provider-server-authority.org][10.05.61 Language Provider Server Authority]].
 
-An exact structural selector is a stable semantic name, not proof that its
-owner still belongs to the active workspace generation.  Before returning a
-projection or an owner diagnostic, the Runtime Server MUST bind the read to
-one admitted generation and return both its generation digest and source root
-digest.
+** Typed topology before rendering
 
-Resolution against that generation has four disjoint outcomes:
+Every SearchLoop entry constructs stable nodes, directed typed relations, and
+typed action-frontier entries before compact rendering.  Canonical selector
+validation precedes any =owns_item= or =targets_item= relation.
 
-- =resolved=: the selector and owner are members of the same active generation;
-- =selector-stale= / =selector-not-in-active-generation=: the owner is absent
-  from the active generation, including a removed or moved owner;
-- =item-missing= / =item-not-in-live-owner=: the owner is active but the named
-  item is absent; and
-- =kind-mismatch= / =snapshot-item-kind-mismatch=: the symbol exists in the
-  active owner under another item kind.
+Presentation ordinals and rendered =recommendedNext= text are not durable node
+identities.  A malformed or cross-language selector may remain as unresolved
+input evidence, but it produces neither an owner/item relation nor an
+executable exact-query action.
 
-=owner-missing= / =owner-not-in-workspace= is not a valid exact-selector
-result because it loses the generation-admission fact and encourages replay of
-an owner command for a path already proven absent.  A =selector-stale= receipt
-MUST recommend symbol-oriented SearchLoop discovery in the active generation;
-it MUST NOT recommend owner-items for the absent path.
+Evidence topology and route selection are owned by
+[[file:10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00-overview.org][10.05.20 Evidence Graph and Routing]].
 
-The owner-items search surface may still observe =owner-missing= before an
-exact selector exists.  That search failure is not an exact-selector result and
-MUST be projected as the bounded
-=agent.semantic-protocols.search-owner-missing-topology= packet.  The packet
-binds the requested language, active generation and root digests, missing owner,
-provider-resolved ProjectResolution/source-scope evidence, and one typed search
-action.  It MUST NOT paste source, invoke a provider, rescan the workspace, or
-repeat the failed owner-items command.  Its project and source-scope nodes come
-from the admitted Runtime Server generation; native candidates do not define
-workspace membership.
+** Active-generation authority
 
-The live Provider Register declares provider capabilities.  Git candidate
-identity, package-manager project resolution, source scope, selector inventory,
-and exact projection are one Runtime Server generation transaction.  No CLI,
-Hook, or Search adapter may independently infer workspace membership or open a
-workspace database to repair this result.
+A search or exact query reads one admitted immutable generation.  =Ready=
+means coverage is proven for the requested workspace owner and provider; an
+empty or uncovered generation is not a successful =no-matches= result.
 
-The installed Global provider catalog and active artifact receipt are the
-immutable executable-identity authority for the query data plane.  A language
-runtime projection MUST consume that published identity and MUST NOT hash or
-read provider/runtime executable bytes during =search= or =query=.  APIs that
-construct a registered-language runtime therefore require an explicit receipt
-locator; an absent locator is a lifecycle admission error, not permission to
-fall back to byte hashing.
+The active generation is the sole membership authority.  Provider fingerprint
+storage and retained bytes are caches, not membership truth.  Concurrent
+generation demand is single-flight and attempt-bound.
 
-=search owner <path> items= and exact-selector projection are distinct Runtime
-Server data-plane services.  Owner discovery MUST route without generation
-construction through the stateless Tokio owner-query service and MUST NOT
-require an admitted generation.  Exact-selector projection MUST consume the
-already admitted immutable generation without provider context, provider
-spawn, database open, or control-socket roundtrip.  A missing generation is a
-lifecycle admission failure only for the exact projection; it MUST NOT be
-projected onto owner discovery.
+Memory ownership and capability-lazy indexes are owned by
+[[file:10.05.11.09-runtime-generation-memory-authority.org][10.05.11.09 Runtime Generation Memory Authority]].
+Generation publication and readiness are indexed by
+[[file:10.05-interactive-graph-first-progressive-searchloop/10.05.20-server-resident-search-generation/00-overview.org][10.05.20 Server-Resident Search Generation]].
 
-Workspace admission is a two-phase typed lifecycle.  An
-=admit-runtime-generation= receipt in =building= state records accepted work;
-it does not authorize the following exact query.  =session-start=,
-=user-prompt=, and =pre-tool= MUST follow admission with
-=ensure-runtime-generation= and may release the client tool call only after a
-validated =ready= receipt.  =building= and =failed= remain fail-closed.  This
-ordering is owned by the Hook/Runtime Server contract, not by a retry loop in
-the exact-query CLI.
+** Exact selector and source authority
 
-The foreground admission operation and the explicit-query gate are distinct
-typed operations.  The former may return =building= immediately after the
-resident writer lane accepts work.  The latter MUST ask the Runtime Server to
-observe that same single-flight attempt through its terminal transition and
-MUST return only a validated published-generation readiness receipt.  An
-admission-catalog =ready= entry alone is insufficient after daemon restart:
-the gate must also prove that the canonical generation lease and Memory Search
-pointer are open in the current Runtime Server process, restoring the committed
-immutable generation when the persistent receipt is valid.  Pointer existence,
-resident generation identity, or a matching generation digest alone is not a
-durability proof.  Reuse requires a successfully decoded current-schema pointer
-whose workspace identity and generation digest equal the resident generation.
-An incompatible pointer MUST be republished through the per-workspace writer
-lane; the old generation remains readable until =DurableReady= commits the new
-pointer.  A terminal readiness receipt MUST NOT be exposed as durable before
-that commit.  It MUST NOT poll from the CLI,
-create another build, infer readiness from a timeout, or translate =building=
-into success.  A failed terminal receipt or transport error MUST make the
-explicit ASP =pre-tool= decision fail closed; recording a non-blocking
-diagnostic while allowing the command violates the generation gate.
+Exact source materialization accepts one parser-owned structural selector and
+returns only the projection declared by the typed operation.  Search-derived
+projection and exact source are distinct operations and cannot reinterpret one
+another after failure.
 
-Once the Hook releases the command, exact projection remains a read-only data
-plane operation: shared Memory Search authority is consulted without socket,
-filesystem, Turso, provider, or scheduler work, followed by owner freshness
-and selector projection inside the admitted immutable generation.  Search and
-query adapters MUST NOT call =ensure-runtime-owner=; filesystem observation,
-provider projection, and owner overlay publication are watcher/writer-lane
-operations.  A read encountering an unadmitted or incomplete generation fails
-closed and MUST never manufacture one.  Thus the only legal cold order is
-=Hook ensure-terminal-ready -> writer publication -> exact projection=, while
-the legal warm order reuses the already published terminal receipt and mapped
+Owner discovery is not exact projection.  It may return canonical item
+selectors without creating a workspace generation, but it cannot manufacture
+source bytes or an exact-query success.
+
+The selector chain is owned by:
+
+- [[file:10.05.11-canonical-item-query-authority.org][10.05.11 Canonical Item Query Authority]];
+- [[file:10.05.12-exact-selector-provider-generation-authority.org][10.05.12 Exact Selector Provider Generation Authority]]; and
+- [[file:10.05.17-resident-exact-query-authority.org][10.05.17 Resident Exact Query Authority]].
+
+** Request-independent generation work
+
+Public requests submit or coalesce generation demand and observe the current
+typed phase.  They do not wait inside the transport future for construction to
+finish.  Dropping a request never detaches or silently cancels admitted work.
+
+Every accepted attempt owns exactly one terminal publisher.  =Queued=,
+=Building=, =Ready=, =Failed=, and =Cancelled= are Runtime states; client
+timeouts, sleeps, polling, and elapsed-time repair cannot create transitions.
+
+Incremental cache and mutation ownership are specified by
+[[file:10.05-interactive-graph-first-progressive-searchloop/10.05.70-runtime-owned-incremental-cache-v1.org][10.05.70 Runtime-Owned Incremental Search Cache]].
+
+** Atomic publication
+
+Candidate generation, source root, provider/schema identity, projection
+capability, and resident locator advance as one validated publication.  Readers
+observe either the previous complete generation or the successor complete
 generation.
 
-Explicit admission and observation are different operations.  A later
-=admit-runtime-generation= for a =ready= workspace MUST be accepted so the
-incremental builder can detect a Git/package-manager generation change and
-atomically publish its successor.  =ensure-runtime-generation= and daemon
-catalog restore MUST only observe the current attempt to its terminal state;
-they MUST NOT schedule a second build when the admitted attempt completed
-between the two IPC requests.  =building= remains the only single-flight
-exclusion state, and repeated daemon restore remains idempotent.
+No install client, provider, request handler, or cache command may repair or
+advance persisted Runtime authority directly.  Publication and serving
+activation remain separate transactions with explicit Ready evidence.
 
-*** Runtime-owned Graph Turbo materialization
+** Bounded streams and cancellation
 
-Graph Turbo is a Runtime-owned local IPC service.  The CLI search adapter MUST
-submit a typed intent only; it MUST NOT construct graph nodes, graph edges,
-provider facts, or a rank payload from the checkout.  At generation
-publication, the per-workspace writer lane materializes the canonical graph
-page from the immutable =GraphRelations= section and publishes its digest with
-the generation.  The Runtime Server sends that page exactly once through the
-=load-generation= IPC message to the resident Python service.  A subsequent
-=rank= message carries only workspace identity, generation digest, page roots,
-terms, profile, budget, and query-local ranking controls.
+All request fan-out/fan-in uses the workspace Tokio runtime, bounded channels,
+deterministic ordering, and one cancellation-aware request scope.  Pure
+in-memory graph, rank, Merkle, and route-cost kernels remain synchronous value
+functions inside that task tree.
 
-The resident Python service MUST reject a rank whose generation/page-root pair
-was not loaded by the Runtime Server.  It MUST NOT read a checkout, open Turso,
-or accept a caller-supplied graph.  A generation replacement atomically makes
-the old page unreachable for new rank intents while in-flight leases retain
-their immutable page.  This yields one authority chain:
+No SearchLoop path creates a private runtime, unmanaged OS thread, nested
+=block_on= bridge, unbounded queue, polling loop, or request-time provider
+process.
 
-#+begin_example
-writer publication -> immutable GraphRelations page -> load-generation IPC
-                  -> resident generation cache -> rank intent -> projection
-#+end_example
+** Receipts are evidence, not lifecycle repair
 
-An agent-facing search failure is an OTel incident, not a normal retry result.
-Its receipt MUST include generation identity, graph page roots, payload bytes,
-process-spawn and generation-load counts, disk read/write bytes, resident
-memory, and event-loop lag.  A warm rank MUST perform zero checkout reads,
-zero Turso opens, zero provider spawns, and zero generation loads.
+Every admitted phase emits an attempt-bound start and exactly one completed,
+failed, or cancelled terminal.  Receipts bind workspace, provider, generation,
+operation, schema, and relevant content identities.
 
-Provider source envelopes bind two deliberately distinct digests.  The
-=addressProviderDigest= is derived from the admitted provider registry and is
-used only to locate the canonical envelope.  The nested
-=sourceSnapshot.providerDigest= commits the provider-owned project resolution
-and source semantics.  Publication and lookup MUST validate both fields; using
-either digest in place of the other is an identity error, not a cache miss.
+Telemetry may observe lifecycle but cannot authorize it.  A timeout, missing
+event, or old receipt never repairs a state transition.  Search-result reuse
+and model prefix-cache reuse remain distinct and separately observable.
 
-The Lean model under =packages/proofs= must establish at least:
+Receipt, cache identity, replay, and recovery ownership is indexed by
+[[file:10.05-interactive-graph-first-progressive-searchloop/10.05.40-receipts-cache-identity/00-overview.org][10.05.40 Receipts, Cache, and Semantic Identity]].
 
-- every =resolved= projection is generation-equal to the active generation;
-- an absent owner cannot be classified as a resolved or live-owner item miss;
-- an active owner with an absent selector cannot be classified as stale-owner;
-- publication changes the visible selector set atomically with its generation;
-- a =building= or =failed= admission cannot release an exact query; and
-- resident readiness plus pointer existence cannot release a query unless the
-  pointer is current-schema and generation-equal to the resident generation;
-- recovery from a stale selector never reuses the absent owner as authority.
+** Hard cut
 
-Future proof work must evaluate not only safety but search efficiency:
+Replacing a public operation, endpoint, schema projection, or transport deletes
+its old parser branch, implementation, fixture, test, dependency, help,
+guidance, and document locator in the same architecture change.
 
-- whether a new receipt shortens a justified graph path;
-- whether a cache layer avoids recomputation without under-binding identity;
-- whether an extra loop turn is logically necessary;
-- whether a projection returns the minimum sufficient evidence; and
-- whether a CLI addition duplicates an agent-native graph action.
+There is no compatibility toggle, legacy executor, fallback route, dual serve,
+or version-suffixed Rust namespace.  Shared wire identity remains
+=schemaVersion: 1= until a genuinely breaking shared schema requires a new
+versioned schema artifact.
 
-The RFC-to-Lean-to-RFC loop remains authoritative:
+Typed resident dispatch removal is owned by
+[[file:10.05.70-typed-resident-search-dispatch.org][10.05.70 Typed Resident Search Dispatch]].
 
-#+begin_example
-interactive architecture
-  -> graph and cost model
-  -> Lean counterexample or theorem
-  -> corrected RFC invariant
-  -> Typst mathematical presentation
-  -> modular JSON audit
-#+end_example
+* Ownership map
 
-** Provider Register is a bounded reference index
+| Concern | Canonical owner |
+|-
+| Root decisions, naming, global cross-owner invariants | this document |
+| Public ClientFrame gRPC route and package responsibility | [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.01-server-client-package-responsibility.org][10.05.01]] |
+| Atomic serving activation and resident publication | [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.02-atomic-resident-publication.org][10.05.02]] |
+| Interactive state transitions and merge | [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.10-interactive-searchloop/00-overview.org][10.05.10]] |
+| Runtime task, cancellation, and terminal lifecycle | [[file:10.05.11.05-runtime-server-tokio-task-lifecycle.org][10.05.11.05]] |
+| Generation memory and lazy capability indexes | [[file:10.05.11.09-runtime-generation-memory-authority.org][10.05.11.09]] |
+| Canonical item and exact selector authority | [[file:10.05.11-canonical-item-query-authority.org][10.05.11]], [[file:10.05.12-exact-selector-provider-generation-authority.org][10.05.12]], [[file:10.05.17-resident-exact-query-authority.org][10.05.17]] |
+| Evidence graph and route algorithms | [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.20-evidence-graph-routing/00-overview.org][10.05.20 Evidence Routing]] |
+| Resident generation and incremental publication | [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.20-server-resident-search-generation/00-overview.org][10.05.20 Resident Generation]] |
+| Receipts, cache keys, replay, and recovery | [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.40-receipts-cache-identity/00-overview.org][10.05.40]] |
+| Lean, Typst, JSON audit, and AXLE validation | [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.60-lean-typst-audit/00-overview.org][10.05.60]] |
+| Language provider and plugin authority | [[file:10.05.61-language-provider-server-authority.org][10.05.61]] |
+| Runtime-owned incremental search cache | [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.70-runtime-owned-incremental-cache-v1.org][10.05.70 Cache]] |
+| Typed resident dispatch hard cut | [[file:10.05.70-typed-resident-search-dispatch.org][10.05.70 Dispatch]] |
+| Agent-facing projection, graph-derived rank, and cost rendering | [[file:10.06-agent-search-projection.org][10.06 Agent Search Projection]] |
 
-The shared Provider Register MUST NOT inline every language's method inventory,
-method descriptors, query pack, and schema inventory.  Its durable root is a
-bounded index whose entries contain only =languageId=, =providerId=, and a
-descriptor =$ref=.  The referenced registration descriptor is owned by the
-language provider and carries that provider's complete registration contract.
+* Projection boundary
 
-Reference resolution is a packaging boundary, not a runtime checkout read.
-The build MUST resolve every referenced descriptor, verify that its
-=languageId= and =providerId= match the index entry, and bundle the resolved
-registry into the ASP artifact.  Runtime dispatch, method lookup, and catalog
-identity continue to consume that resolved registry.  Registry and provider
-descriptor digests therefore cover resolved descriptor content; hashing only
-the reference path is invalid.
+SearchLoop constructs typed evidence and action-frontier state.  The rendering,
+ranking projection, token/byte cost, compact packet shape, and other
+agent-facing projection semantics are owned exclusively by
+[[file:10.06-agent-search-projection.org][RFC 10.06 Agent Search Projection]].
 
-Resolution MUST fail closed for a missing reference, an absolute or
-parent-traversing path, identity drift, duplicate references, duplicate
-languages, or method-inventory drift.  Registering another language adds one
-bounded index reference plus its provider-owned descriptor.  It MUST NOT add a
-language-specific branch to the CLI or a hard-coded language list to the Rust
-loader.
+RFC 10.05 does not duplicate projection syntax or cost formulas.  A compact
+renderer consumes typed topology and cannot parse selectors again, invent
+owner facts, or choose an action independently.
 
-** Runtime identity comes from the live Provider Register
+* Qualification gates
 
-The ASP Server MUST derive Client Server admission from the atomically compiled
-live Provider Register and an immutable installed-artifact receipt.  Runtime
-contract and lifecycle receipts therefore bind a
-=registrationDigest= covering the live registration.  They MUST NOT carry a
-=manifestDigest= field or reuse a manifest-shaped snapshot as a registration
-container.
+The architecture is qualified only when all applicable owner gates pass
+together:
 
-An executable live registration MUST carry its source-inventory projection,
-search capabilities, query-pack descriptor, and compiled route DSL. The source
-inventory includes project/document resolution, source extensions, package
-roots, and config files. The ASP Server builds source-index admission directly
-from that atomic registration generation plus the immutable installed artifact.
+1. the current endpoint record resolves one bounded Runtime UDS and one public
+   ClientFrame gRPC service;
+2. production and public-route tests contain no HTTP/JSON or TCP fallback and
+   no fourth client socket;
+3. language clients, CLI, Hook, and Live Corpus use the shared typed client;
+4. concurrent requests coalesce one admitted generation attempt and every
+   attempt reaches exactly one terminal;
+5. exact source, callable-skeleton, resident search, zero-match, cancellation,
+   backpressure, and payload failure cases retain typed identity evidence;
+6. warm resident operations perform zero provider launch, filesystem scan,
+   database open, publication lock, retry, polling, or lifecycle mutation;
+7. OpenTelemetry and Live Corpus expose phase, service, transport, wall,
+   memory, work-counter, and terminal evidence without turning thresholds into
+   lifecycle correctness;
+8. Lean/AXLE audits refine the same single-route, bounded-stream,
+   cancellation, publication, and receipt invariants; and
+9. Org links resolve, each normative concern has one canonical owner, and the
+   root remains a compact dependency map rather than a second specification.
 
-Live Corpus qualification binds each locked resource to its provider-owned
-=scenarioId=. The qualification plan and receipt carry the same =scenarioId=,
-and admission fails on any scenario/resource/language/provider drift. This makes
-Scenario evidence and full Live Corpus search/query evidence two required layers
-of one qualification rather than unrelated test suites. Both layers require the
-Tokio Runtime, synchronous mmap reads, zero Runtime work counters on resident
-reads, and terminal OpenTelemetry evidence.
+Performance budgets are defined by the relevant child owner and executable
+qualification.  Compilation, installation, daemon startup, provider warmup,
+generation construction, transport time, service time, and whole-command wall
+time are reported separately.
 
-The public exact-query response MUST expose the same falsifiable resident-read
-evidence as Search: =elapsedMicros=, =serviceElapsedMicros=,
-=residentReadElapsedMicros=, and typed =workCounters=. These fields belong to a
-shared ASP Client response schema and wrap the typed projection result; clients
-MUST NOT infer them from CLI wall time or query a second telemetry endpoint.
-Warm exact query qualification requires a stable generation/root pair, a
-resident read below 1ms, and zero database, filesystem, provider-process,
-scheduler-task, and socket operations. Timing a compiler or cold generation
-builder is a separate lifecycle observation and MUST NOT be reported as query
-execution latency.
+* Write policy
 
-Provider workspace builds are Tokio request-owned operations.  Cancellation is
-the dropped request future propagated to the supervised process tree.  A fixed
-wall-clock timeout, including a large "safety" timeout, is not an admission or
-correctness mechanism and MUST NOT be installed by the workspace builder.
+Change the narrowest canonical child owner first.  Update this root only when a
+global decision, invariant, dependency, or owner changes.
 
-* Normative atomic resident publication module
-
-The server-owned zero-downtime handover and generation handshake contract is
-defined in [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.02-atomic-resident-publication.org][10.05.02 Atomic Resident Runtime Publication]].
+Do not append implementation diaries, superseded alternatives, compatibility
+notes, test transcripts, or historical snapshots here.  Git provides that
+history.  New detail belongs in an existing canonical child owner; a new child
+module is justified only when no current owner can express the concern without
+mixing responsibilities.

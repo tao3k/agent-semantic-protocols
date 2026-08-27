@@ -9,7 +9,7 @@
     "actionAny": {
       "type": "array",
       "uniqueItems": true,
-  "items": { "$ref": "agent-action.v1.schema.json#/$defs/actionKind" }
+      "items": { "$ref": "agent-action.v1.schema.json#/$defs/semanticActionKind" }
     },
     "subjectKindAny": {
       "type": "array",

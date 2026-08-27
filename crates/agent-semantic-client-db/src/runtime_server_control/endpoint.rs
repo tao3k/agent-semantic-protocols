@@ -5,8 +5,7 @@ use std::path::Path;
 use fs4::AsyncFileExt;
 
 use super::endpoint_identity::{
-    runtime_server_endpoint_path, runtime_server_endpoint_path_async,
-    runtime_server_runtime_base_async,
+    runtime_server_endpoint_path_async, runtime_server_runtime_base_async,
 };
 use super::model::{
     ENDPOINT_SCHEMA_ID, RuntimeServerEndpoint, RuntimeServerEndpointOwnerBinding, SCHEMA_VERSION,
@@ -35,90 +34,19 @@ pub enum RuntimeServerElectionAttempt {
     Contended,
 }
 
-pub fn read_runtime_server_endpoint(
+pub async fn read_runtime_server_endpoint(
     state_home: &Path,
 ) -> Result<Option<RuntimeServerEndpoint>, String> {
-    let endpoint_path = runtime_server_endpoint_path(state_home)?;
-    let metadata = match std::fs::symlink_metadata(&endpoint_path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => {
-            return Err(format!(
-                "failed to inspect Runtime Server endpoint {}: {error}",
-                endpoint_path.display()
-            ));
-        }
-    };
-    if !metadata.file_type().is_file()
-        || metadata.file_type().is_symlink()
-        || metadata.uid() != unsafe { getuid() }
-        || metadata.mode() & 0o777 != 0o600
-    {
-        return Err(format!(
-            "Runtime Server endpoint is not a private, non-symlink current-UID file: {}",
-            endpoint_path.display()
-        ));
-    }
-    let bytes = match std::fs::read(&endpoint_path) {
-        Ok(bytes) => bytes,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => {
-            return Err(format!(
-                "failed to read Runtime Server endpoint {}: {error}",
-                endpoint_path.display()
-            ));
-        }
-    };
-    let endpoint: RuntimeServerEndpoint = serde_json::from_slice(&bytes).map_err(|error| {
-        format!(
-            "failed to decode Runtime Server endpoint {}: {error}",
-            endpoint_path.display()
-        )
-    })?;
-    endpoint.validate().map_err(|error| {
-        format!(
-            "invalid Runtime Server endpoint {}: {error}",
-            endpoint_path.display()
-        )
-    })?;
-    let installed_binary = std::fs::canonicalize(state_home.join("runtime/bin/asp")).map_err(
-        |error| {
-            serde_json::json!({
-                "schemaId": "agent.semantic-protocols.runtime-server-generation-mismatch",
-                "schemaVersion": "1",
-                "reasonKind": agent_semantic_client_protocol::runtime_generation::RUNTIME_SERVER_GENERATION_MISMATCH,
-                "error": format!("resolve installed ASP Client binary: {error}"),
-            })
-            .to_string()
-        },
-    )?;
-    let expected_binary_content_digest =
-        agent_semantic_content_identity::blake3_digest_from_canonical_artifact_path(
-            &installed_binary,
-        )
-        .ok_or_else(|| {
-            serde_json::json!({
-                "schemaId": "agent.semantic-protocols.runtime-server-generation-mismatch",
-                "schemaVersion": "1",
-                "reasonKind": agent_semantic_client_protocol::runtime_generation::RUNTIME_SERVER_GENERATION_MISMATCH,
-                "error": "installed ASP Client binary is not content-addressed",
-                "installedBinary": installed_binary,
-            })
-            .to_string()
-        })?;
-    super::endpoint_io::validate_runtime_server_generation(
-        &endpoint,
-        &expected_binary_content_digest,
-    )?;
-    Ok(Some(endpoint))
+    read_runtime_server_supervisor_endpoint(state_home).await
 }
 
 pub async fn read_runtime_server_supervisor_endpoint(
     state_home: &Path,
 ) -> Result<Option<RuntimeServerEndpoint>, String> {
+    // All endpoint reads must enter the Schema v1 migration decoder below.
     let endpoint_path = runtime_server_endpoint_path_async(state_home).await?;
-    let metadata = match tokio::fs::symlink_metadata(&endpoint_path).await {
-        Ok(metadata) => metadata,
+    match tokio::fs::symlink_metadata(&endpoint_path).await {
+        Ok(_) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
             return Err(format!(
@@ -126,30 +54,8 @@ pub async fn read_runtime_server_supervisor_endpoint(
                 endpoint_path.display()
             ));
         }
-    };
-    if !metadata.file_type().is_file()
-        || metadata.file_type().is_symlink()
-        || metadata.uid() != unsafe { getuid() }
-        || metadata.mode() & 0o777 != 0o600
-    {
-        return Err(format!(
-            "Runtime Server endpoint is not a private, non-symlink current-UID file: {}",
-            endpoint_path.display()
-        ));
     }
-    let bytes = tokio::fs::read(&endpoint_path).await.map_err(|error| {
-        format!(
-            "failed to read Runtime Server endpoint {}: {error}",
-            endpoint_path.display()
-        )
-    })?;
-    let endpoint: RuntimeServerEndpoint = serde_json::from_slice(&bytes).map_err(|error| {
-        format!(
-            "failed to decode Runtime Server endpoint {}: {error}",
-            endpoint_path.display()
-        )
-    })?;
-    endpoint.validate_supervisor_control()?;
+    let endpoint = super::endpoint_io::read_supervisor_endpoint(&endpoint_path).await?;
     super::endpoint_validation::validate_runtime_server_endpoint_for_state_home(
         state_home, &endpoint,
     )?;
@@ -424,7 +330,7 @@ pub async fn acquire_runtime_server_supervisor_transaction(
 pub async fn prepare_runtime_server_endpoint(
     state_home: &Path,
     runtime_artifact_path: &Path,
-    runtime_artifact_digest: &str,
+    runtime_artifact_digest: &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
     artifact_mode: &str,
     artifact_catalog_digest: &str,
     owner_epoch: u64,
@@ -449,7 +355,7 @@ pub async fn prepare_runtime_server_endpoint_with_workspace_store(
     state_home: &Path,
     workspace_store_path: &Path,
     runtime_artifact_path: &Path,
-    runtime_artifact_digest: &str,
+    runtime_artifact_digest: &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
     artifact_mode: &str,
     artifact_catalog_digest: &str,
     owner_epoch: u64,
@@ -478,10 +384,9 @@ pub async fn prepare_runtime_server_endpoint_with_workspace_store_and_identity(
     artifact_catalog_digest: &str,
     owner_epoch: u64,
     binding_token: &str,
-    client_http_endpoint: &str,
 ) -> Result<RuntimeServerEndpoint, String> {
     let runtime_base = runtime_server_runtime_base_async(state_home).await?;
-    let mut endpoint = prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
+    prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
         &runtime_base,
         workspace_store_path,
         runtime_artifact_path,
@@ -491,15 +396,13 @@ pub async fn prepare_runtime_server_endpoint_with_workspace_store_and_identity(
         owner_epoch,
         binding_token,
     )
-    .await?;
-    endpoint.client_http_endpoint = client_http_endpoint.to_owned();
-    Ok(endpoint)
+    .await
 }
 
 pub async fn prepare_runtime_server_endpoint_in(
     runtime_base: &Path,
     runtime_artifact_path: &Path,
-    runtime_artifact_digest: &str,
+    runtime_artifact_digest: &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
     artifact_mode: &str,
     artifact_catalog_digest: &str,
     owner_epoch: u64,
@@ -523,7 +426,7 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store(
     runtime_base: &Path,
     workspace_store_path: &Path,
     runtime_artifact_path: &Path,
-    runtime_artifact_digest: &str,
+    runtime_artifact_digest: &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
     artifact_mode: &str,
     artifact_catalog_digest: &str,
     owner_epoch: u64,
@@ -534,8 +437,7 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store(
         workspace_store_path,
         runtime_artifact_path,
         &RuntimeBinaryIdentity::Content {
-            value: runtime_artifact_digest.to_owned(),
-            algorithm: "blake3-256".to_owned(),
+            digest: runtime_artifact_digest.clone(),
         },
         artifact_mode,
         artifact_catalog_digest,
@@ -563,7 +465,7 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
         super::listener::prepare_private_runtime_directory(uid_root).await?;
     }
     super::listener::prepare_private_runtime_directory(runtime_base).await?;
-    let binary_content_digest = runtime_binary_identity.value().to_owned();
+    let binary_content_digest = runtime_binary_identity.content_digest().to_string();
     let transport_contract_digest = runtime_server_transport_contract_digest();
     let generation_identity =
         agent_semantic_client_protocol::runtime_generation::RuntimeServerGenerationIdentity::derive(
@@ -577,7 +479,7 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
     let digest = blake3::hash(
         format!(
             "{owner_epoch}\0{binding_token}\0{}",
-            runtime_binary_identity.value()
+            runtime_binary_identity.content_digest()
         )
         .as_bytes(),
     )
@@ -621,7 +523,6 @@ async fn prepare_runtime_server_endpoint_in_with_workspace_store_and_identity(
         socket_path: socket_path.to_string_lossy().into_owned(),
         data_plane_socket_path: data_plane_socket_path.to_string_lossy().into_owned(),
         provider_plane_socket_path: provider_plane_socket_path.to_string_lossy().into_owned(),
-        client_http_endpoint: "http://127.0.0.1:1".to_owned(),
         workspace_store_path: workspace_store_path.to_string_lossy().into_owned(),
         status_memory_path: status_memory_path.to_string_lossy().into_owned(),
     })

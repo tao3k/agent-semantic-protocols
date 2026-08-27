@@ -149,10 +149,11 @@ fn write_provider_lock(
     std::fs::write(
         lock_dir.join(format!("{}.lock.toml", manifest.language_id())),
         format!(
-            "schemaId = \"asp.provider-install-lock.v1\"\nlanguage = \"{}\"\nprovider = \"{}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{}\"\ninstalledEntrypointMetadataDigest = \"{}\"\n",
+            "schemaId = \"asp.provider-install-lock.v1\"\nlanguage = \"{}\"\nprovider = \"{}\"\ninstalledPath = \"{}\"\nartifactDigest = \"{}\"\ninstalledEntrypointDigest = \"{}\"\ninstalledEntrypointMetadataDigest = \"{}\"\n",
             manifest.language_id(),
             manifest.provider_id(),
             provider_path.display(),
+            entrypoint_digest,
             entrypoint_digest,
             metadata_digest,
         ),

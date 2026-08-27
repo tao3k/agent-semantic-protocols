@@ -37,6 +37,7 @@ pub(super) fn split_shell_command(
                     tool_name: tool_name.to_string(),
                     host_payload: host_payload.clone(),
                     invocation_source: invocation_source.map(str::to_owned),
+                    host_action: crate::action_ir::HostInvocationKind::Unknown,
                     surface: ToolSurface::CodexShell,
                     operation: OperationIntent::ShellCommand,
                     command: Some(command),

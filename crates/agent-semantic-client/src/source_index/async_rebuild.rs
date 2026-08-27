@@ -155,6 +155,7 @@ pub async fn prepare_runtime_server_workspace_generation_with_runtime_service_as
     project_root: PathBuf,
     snapshot: RuntimeProviderProjection,
     collection_scope: SourceIndexCollectionScope,
+    cancellation: agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation,
 ) -> Result<
     agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateBuild,
     String,
@@ -169,6 +170,7 @@ pub async fn prepare_runtime_server_workspace_generation_with_runtime_service_as
         &project_root,
         &snapshot,
         &collection_scope,
+        cancellation.clone(),
     )
     .await?;
     trace("scope-files-collected", trace_started);
@@ -184,6 +186,7 @@ pub async fn prepare_runtime_server_workspace_generation_with_runtime_service_as
                 registry: &registry,
                 provider_registry: &snapshot,
             },
+            cancellation,
         )
         .await
         .map(|prepared| prepared.into_runtime_server_build())

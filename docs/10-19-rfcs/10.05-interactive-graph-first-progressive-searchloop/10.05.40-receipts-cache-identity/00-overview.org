@@ -1,5 +1,7 @@
-#+title: Receipts, cache, and semantic identity
-#+property: rfc_layer receipts-cache-identity
+#+TITLE: Receipts, cache, and semantic identity
+#+PROPERTY: rfc_layer receipts-cache-identity
+
+Parent architecture: [[file:../../10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
 
 * Ownership
 
@@ -9,6 +11,10 @@ Search-result reuse and model prefix-cache reuse are separate mechanisms and
 must remain separately observable.
 
 It does not own SearchLoop transition order or graph traversal policy.
+
+Each admitted phase is attempt-bound and has one start plus exactly one
+completed, failed, or cancelled terminal.  Receipt replay may recover evidence;
+it never repairs Runtime lifecycle or advances generation authority.
 
 * Foundational canonical RFCs
 

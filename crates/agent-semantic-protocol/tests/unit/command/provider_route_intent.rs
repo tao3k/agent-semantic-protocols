@@ -1,4 +1,14 @@
-use super::{runtime_owner_intent, runtime_query_intent, runtime_search_intent};
+use std::sync::Mutex;
+
+use agent_semantic_client::{
+    LanguageCommandApplication, LanguageCommandFuture, LanguageCommandOperation,
+    LanguageCommandRequest,
+};
+use agent_semantic_client_protocol::AspClientSearchRequest;
+
+use super::{
+    forward_language_command, runtime_owner_intent, runtime_query_intent, runtime_search_intent,
+};
 
 #[test]
 fn route_intents_are_semantic_and_do_not_forward_argv() {
@@ -7,13 +17,12 @@ fn route_intents_are_semantic_and_do_not_forward_argv() {
     )
     .expect("search intent");
     assert_eq!(
-        search["schemaId"],
+        search.schema_id,
         "agent.semantic-protocols.asp-client-search-request"
     );
-    assert_eq!(search["schemaVersion"], "1");
-    assert_eq!(search["query"], "tokio stream");
-    assert_eq!(search["operation"], "pipe");
-    assert!(search.get("argv").is_none());
+    assert_eq!(search.schema_version, "1");
+    assert_eq!(search.query, "tokio stream");
+    assert_eq!(search.operation, "pipe");
 
     let owner = runtime_owner_intent(
         &[
@@ -28,12 +37,11 @@ fn route_intents_are_semantic_and_do_not_forward_argv() {
     )
     .expect("owner intent");
     assert_eq!(
-        owner["schemaId"],
+        owner.schema_id,
         "agent.semantic-protocols.asp-client-owner-search-request"
     );
-    assert_eq!(owner["ownerPath"], "src/lib.rs");
-    assert_eq!(owner["query"], "Runtime");
-    assert!(owner.get("argv").is_none());
+    assert_eq!(owner.owner_path, "src/lib.rs");
+    assert_eq!(owner.query, "Runtime");
 
     let query = runtime_query_intent(
         &[
@@ -47,12 +55,11 @@ fn route_intents_are_semantic_and_do_not_forward_argv() {
     )
     .expect("query intent");
     assert_eq!(
-        query["schemaId"],
+        query.schema_id.as_str(),
         "agent.semantic-protocols.asp-client-exact-query-request"
     );
-    assert_eq!(query["selector"], "src/lib.rs:1:4");
-    assert_eq!(query["projection"], "source");
-    assert!(query.get("argv").is_none());
+    assert_eq!(query.selector.as_str(), "src/lib.rs:1:4");
+    assert_eq!(query.projection.as_str(), "source");
 
     let machine_query = runtime_query_intent(
         &[
@@ -71,11 +78,11 @@ fn route_intents_are_semantic_and_do_not_forward_argv() {
     );
     assert_eq!(
         super::runtime_query_presentation(&["query", "selector"].map(str::to_owned)),
-        super::ProjectionPresentation::Text
+        false
     );
     assert_eq!(
         super::runtime_query_presentation(&["query", "selector", "--json"].map(str::to_owned)),
-        super::ProjectionPresentation::MachineJson
+        true
     );
 
     let positional_query = runtime_query_intent(
@@ -85,6 +92,53 @@ fn route_intents_are_semantic_and_do_not_forward_argv() {
     assert_eq!(
         positional_query, query,
         "accepted exact-query command shapes must normalize to one Runtime intent"
+    );
+}
+
+#[derive(Default)]
+struct RecordingApplication {
+    requests: Mutex<Vec<LanguageCommandRequest>>,
+}
+
+impl LanguageCommandApplication for RecordingApplication {
+    fn execute(&self, request: LanguageCommandRequest) -> LanguageCommandFuture<'_> {
+        self.requests.lock().expect("request lock").push(request);
+        Box::pin(async { Ok(()) })
+    }
+}
+
+#[tokio::test]
+async fn language_cli_boundary_only_forwards_one_typed_request() {
+    let application = RecordingApplication::default();
+    let project_root = std::path::PathBuf::from("/workspace/project");
+    let operation = LanguageCommandOperation::Search(AspClientSearchRequest {
+        schema_id: "agent.semantic-protocols.asp-client-search-request".to_owned(),
+        schema_version: "1".to_owned(),
+        operation: "pipe".to_owned(),
+        query: "typed request".to_owned(),
+    });
+
+    forward_language_command(
+        &application,
+        "rust",
+        operation.clone(),
+        project_root.clone(),
+        true,
+    )
+    .await
+    .expect("typed forwarding");
+
+    assert_eq!(
+        application
+            .requests
+            .into_inner()
+            .expect("recorded requests"),
+        vec![LanguageCommandRequest {
+            language_id: agent_semantic_client::LanguageId::new("rust"),
+            operation,
+            project_root,
+            machine_readable: true,
+        }]
     );
 }
 

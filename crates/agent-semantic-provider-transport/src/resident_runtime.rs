@@ -199,6 +199,7 @@ impl ProviderRuntimeActorClient {
 pub struct ProviderRuntimeActorAuthority {
     client: ProviderRuntimeActorClient,
     task: tokio::task::JoinHandle<()>,
+    worker_abort: tokio::task::AbortHandle,
 }
 
 pub trait ProviderRuntimePeer: Send + Sync + 'static {
@@ -213,6 +214,76 @@ pub trait ProviderRuntimePeer: Send + Sync + 'static {
     ) -> Pin<Box<dyn Future<Output = Result<Bytes, String>> + Send + '_>>;
 
     fn shutdown(&self) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>>;
+
+    fn wait_terminated(&self) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>>;
+}
+
+fn publish_actor_failure(state_writer: &watch::Sender<ProviderRuntimeActorState>, reason: String) {
+    let published = state_writer.send_if_modified(|state| {
+        if matches!(
+            state,
+            ProviderRuntimeActorState::Failed(_) | ProviderRuntimeActorState::Stopped
+        ) {
+            false
+        } else {
+            *state = ProviderRuntimeActorState::Failed(reason.clone());
+            true
+        }
+    });
+    if published {
+        let reason_kind = reason
+            .split_whitespace()
+            .find_map(|field| field.strip_prefix("reasonKind="))
+            .unwrap_or("provider-runtime-actor-failed");
+        let phase = reason
+            .split_whitespace()
+            .find_map(|field| field.strip_prefix("phase="))
+            .unwrap_or("actor-supervisor");
+        tracing::error!(
+            target: "asp.client_server",
+            reason_kind,
+            phase,
+            terminal_state = "failed",
+            error = %reason,
+        );
+    }
+}
+
+fn supervise_provider_runtime_actor(
+    client: ProviderRuntimeActorClient,
+    state_writer: watch::Sender<ProviderRuntimeActorState>,
+    worker: tokio::task::JoinHandle<()>,
+) -> ProviderRuntimeActorAuthority {
+    let worker_abort = worker.abort_handle();
+    let task = tokio::spawn(async move {
+        match worker.await {
+            Ok(()) => publish_actor_failure(
+                &state_writer,
+                "state=provider-runtime-terminal reasonKind=provider-runtime-actor-task-exited-without-terminal"
+                    .to_owned(),
+            ),
+            Err(error) => {
+                let reason_kind = if error.is_cancelled() {
+                    "provider-runtime-actor-task-aborted"
+                } else if error.is_panic() {
+                    "provider-runtime-actor-task-panicked"
+                } else {
+                    "provider-runtime-actor-task-join-failed"
+                };
+                publish_actor_failure(
+                    &state_writer,
+                    format!(
+                        "state=provider-runtime-terminal reasonKind={reason_kind} joinError={error}"
+                    ),
+                );
+            }
+        }
+    });
+    ProviderRuntimeActorAuthority {
+        client,
+        task,
+        worker_abort,
+    }
 }
 
 impl ProviderRuntimeActorAuthority {
@@ -221,31 +292,39 @@ impl ProviderRuntimeActorAuthority {
     }
 
     pub async fn shutdown(self) -> Result<(), String> {
-        let Self { client, mut task } = self;
+        let Self {
+            client,
+            task,
+            worker_abort: _,
+        } = self;
         let (response, stopped) = oneshot::channel();
-        let graceful = async {
-            let _ = client
-                .commands
-                .send(ProviderRuntimeActorCommand::Shutdown { response })
-                .await;
-            let _ = stopped.await;
-            (&mut task)
-                .await
-                .map_err(|error| format!("provider runtime actor task failed: {error}"))
-        };
-        match tokio::time::timeout(std::time::Duration::from_secs(1), graceful).await {
-            Ok(result) => result,
-            Err(_) => {
-                task.abort();
-                let _ = task.await;
-                Err("provider runtime actor shutdown exceeded 1 second and was aborted".to_owned())
-            }
-        }
+        let _ = client
+            .commands
+            .send(ProviderRuntimeActorCommand::Shutdown { response })
+            .await;
+        let _ = stopped.await;
+        task.await
+            .map_err(|error| format!("provider runtime actor supervisor task failed: {error}"))
+    }
+
+    pub fn abort_actor(&self) {
+        self.worker_abort.abort();
+    }
+
+    pub async fn join(self) -> Result<(), String> {
+        self.task
+            .await
+            .map_err(|error| format!("provider runtime actor supervisor task failed: {error}"))
     }
 
     pub async fn drain(self) -> Result<(), String> {
+        let Self {
+            client,
+            task,
+            worker_abort: _,
+        } = self;
         let (response, drained) = oneshot::channel();
-        self.client
+        client
             .commands
             .send(ProviderRuntimeActorCommand::Drain { response })
             .await
@@ -253,9 +332,8 @@ impl ProviderRuntimeActorAuthority {
         drained
             .await
             .map_err(|_| "asp-client-server-drain: receipt-dropped".to_owned())?;
-        self.task
-            .await
-            .map_err(|error| format!("provider runtime actor task failed: {error}"))
+        task.await
+            .map_err(|error| format!("provider runtime actor supervisor task failed: {error}"))
     }
 }
 
@@ -278,7 +356,9 @@ where
         state,
         next_request_id: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(1)),
     };
-    let task = tokio::spawn(async move {
+    let worker_state_writer = state_writer.clone();
+    let worker = tokio::spawn(async move {
+        let state_writer = worker_state_writer;
         let startup_started = std::time::Instant::now();
         tracing::info!(target: "asp.client_server", state = "starting");
         state_writer.send_replace(ProviderRuntimeActorState::Warming);
@@ -446,7 +526,7 @@ where
         tracing::info!(target: "asp.client_server", event = "idle-closed");
         state_writer.send_replace(ProviderRuntimeActorState::Stopped);
     });
-    ProviderRuntimeActorAuthority { client, task }
+    supervise_provider_runtime_actor(client, state_writer, worker)
 }
 
 #[cfg(test)]
@@ -512,6 +592,8 @@ mod request_lifecycle_tests {
         struct ConcurrentPeer {
             barrier: std::sync::Arc<tokio::sync::Barrier>,
             stopped: std::sync::Arc<std::sync::atomic::AtomicBool>,
+            lifecycle: tokio::sync::watch::Receiver<bool>,
+            lifecycle_writer: tokio::sync::watch::Sender<bool>,
         }
 
         impl ProviderRuntimePeer for ConcurrentPeer {
@@ -541,6 +623,21 @@ mod request_lifecycle_tests {
                 Box::pin(async {
                     self.stopped
                         .store(true, std::sync::atomic::Ordering::SeqCst);
+                    self.lifecycle_writer.send_replace(true);
+                    Ok(())
+                })
+            }
+
+            fn wait_terminated(
+                &self,
+            ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
+                Box::pin(async move {
+                    let mut lifecycle = self.lifecycle.clone();
+                    while !*lifecycle.borrow() {
+                        lifecycle.changed().await.map_err(|_| {
+                            "concurrent peer lifecycle publication closed".to_owned()
+                        })?;
+                    }
                     Ok(())
                 })
             }
@@ -548,11 +645,14 @@ mod request_lifecycle_tests {
 
         let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(2));
         let stopped = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (lifecycle_writer, lifecycle) = tokio::sync::watch::channel(false);
         let authority = spawn_provider_runtime_peer_actor(
             8,
             ConcurrentPeer {
                 barrier,
                 stopped: std::sync::Arc::clone(&stopped),
+                lifecycle,
+                lifecycle_writer,
             },
         );
         let mut client = authority.client();
@@ -684,7 +784,9 @@ where
         next_request_id: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(1)),
     };
     let peer = std::sync::Arc::new(peer);
-    let task = tokio::spawn(async move {
+    let worker_state_writer = state_writer.clone();
+    let worker = tokio::spawn(async move {
+        let state_writer = worker_state_writer;
         let startup_started = std::time::Instant::now();
         tracing::info!(target: "asp.client_server", state = "starting");
         state_writer.send_replace(ProviderRuntimeActorState::Warming);
@@ -702,20 +804,32 @@ where
                     }
                 },
                 command = receiver.recv() => {
-                if let Some(
-                    ProviderRuntimeActorCommand::Shutdown { response }
-                    | ProviderRuntimeActorCommand::Drain { response },
-                ) = command
-                {
-                    state_writer.send_replace(ProviderRuntimeActorState::Draining);
-                tracing::info!(target: "asp.client_server", state = "draining");
-                    let _ = peer.shutdown().await;
-                    state_writer.send_replace(ProviderRuntimeActorState::Stopped);
-                tracing::info!(target: "asp.client_server", state = "stopped", residual_tasks = 0_u64);
-                    let _ = response.send(());
+                    if let Some(
+                        ProviderRuntimeActorCommand::Shutdown { response }
+                        | ProviderRuntimeActorCommand::Drain { response },
+                    ) = command
+                    {
+                        let reason =
+                            "state=provider-runtime-terminal reasonKind=provider-runtime-startup-cancelled"
+                                .to_owned();
+                        publish_actor_failure(&state_writer, reason);
+                        tracing::info!(target: "asp.client_server", state = "cancelled");
+                        let _ = peer.shutdown().await;
+                        let _ = response.send(());
                     }
                     return;
-                }
+                },
+                terminal = peer.wait_terminated() => {
+                    let reason = match terminal {
+                        Ok(()) => "state=provider-runtime-terminal reasonKind=provider-runtime-peer-eof".to_owned(),
+                        Err(error) => format!(
+                            "state=provider-runtime-terminal reasonKind=provider-runtime-peer-lifecycle-failed error={error}"
+                        ),
+                    };
+                    publish_actor_failure(&state_writer, reason);
+                    let _ = peer.shutdown().await;
+                    return;
+                },
         };
         tracing::info!(
             target: "asp.client_server",
@@ -862,6 +976,27 @@ where
                             }
                         }
                     }
+                },
+                terminal = peer.wait_terminated() => {
+                    let reason = match terminal {
+                        Ok(()) => "state=provider-runtime-terminal reasonKind=provider-runtime-peer-eof phase=ready".to_owned(),
+                        Err(error) => format!(
+                            "state=provider-runtime-terminal reasonKind=provider-runtime-peer-lifecycle-failed phase=ready error={error}"
+                        ),
+                    };
+                    publish_actor_failure(&state_writer, reason.clone());
+                    for (request_id, (response, task)) in admitted.drain() {
+                        task.abort();
+                        let _ = response.send(Err(reason.clone()));
+                        tracing::info!(
+                            target: "asp.client_server",
+                            event = "request-terminal",
+                            request_id,
+                            outcome = "peer-terminal",
+                        );
+                    }
+                    while requests.join_next().await.is_some() {}
+                    return;
                 }
             }
         }
@@ -877,7 +1012,7 @@ where
         tracing::info!(target: "asp.client_server", event = "idle-closed");
         tracing::info!(target: "asp.client_server", state = "stopped", residual_tasks = 0_u64);
     });
-    ProviderRuntimeActorAuthority { client, task }
+    supervise_provider_runtime_actor(client, state_writer, worker)
 }
 
 #[cfg(test)]

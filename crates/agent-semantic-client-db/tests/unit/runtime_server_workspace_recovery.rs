@@ -455,7 +455,7 @@ async fn canonical_ready_reuse_republishes_an_obsolete_exact_layout() {
     let bytes = tokio::fs::read(exact_path)
         .await
         .expect("read republished exact segment");
-    assert_eq!(&bytes[..16], b"ASPEXACTMMAP0002");
+    assert_eq!(&bytes[..16], b"ASPEXACTMMAP0003");
     assert!(matches!(
         registry
             .published_generation_state(workspace_identity, &canonical_project_root)

@@ -38,8 +38,8 @@ fn install_language_gerbil_uses_provider_identity_for_release_and_install() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let runtime_bin = home.join(".agent-semantic-protocols/runtime/bin");
-    let bin = runtime_bin.join("asp-gerbil-scheme");
+    let runtime_bin = receipt_path(&stdout, "runtimeBinDir");
+    let bin = receipt_path(&stdout, "installedPath");
     let lock_path = receipt_path(&stdout, "lock");
     let lock = std::fs::read_to_string(&lock_path).expect("read Gerbil lock");
     let package_binary = provider_package_path(&lock).join("bin/asp-gerbil-scheme");
@@ -53,14 +53,10 @@ fn install_language_gerbil_uses_provider_identity_for_release_and_install() {
         "missing Gerbil package binary {}",
         package_binary.display()
     );
-    let canonical_bin = std::fs::canonicalize(&bin).expect("resolve installed provider content");
-    let canonical_artifacts =
-        std::fs::canonicalize(runtime_bin.parent().unwrap().join("artifacts"))
-            .expect("resolve provider artifact store");
-    assert!(
-        canonical_bin.starts_with(canonical_artifacts),
-        "installed provider command must resolve inside the immutable artifact store: {}",
-        canonical_bin.display()
+    assert_eq!(
+        std::fs::read(&bin).expect("read installed provider entry"),
+        std::fs::read(&package_binary).expect("read immutable package binary"),
+        "installed provider entry must preserve the immutable package payload identity"
     );
     assert!(
         std::fs::read(&bin)

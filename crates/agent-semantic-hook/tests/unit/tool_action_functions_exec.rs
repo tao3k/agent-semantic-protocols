@@ -61,11 +61,15 @@ fn canonical_host_envelopes_project_parser_owned_operation_intents() {
             let agent_action = action.derive_agent_action();
             assert_eq!(
                 agent_action.host.action,
-                crate::action_ir::HostInvocationKind::Mcp
+                crate::action_ir::HostInvocationKind::Unknown
             );
-            assert!(agent_action.capabilities.iter().any(|capability| {
-                capability.action == crate::action_ir::AgentActionKind::Read
-            }));
+            assert!(
+                agent_action
+                    .capabilities
+                    .iter()
+                    .all(|capability| capability.action != crate::action_ir::AgentActionKind::Read),
+                "payload shape alone must not invent the native Host matcher"
+            );
         }
     }
 }

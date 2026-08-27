@@ -12,6 +12,58 @@ use super::{
 };
 
 impl WorkspaceGenerationAdmission {
+    /// Enqueue demand without making the request await admission/build work.
+    /// The returned receipt is the server-owned queued snapshot; the dispatcher
+    /// performs the actual admission and terminal transition asynchronously.
+    pub fn enqueue_query_demand_for_candidate(
+        &self,
+        workspace_identity: String,
+        project_root: PathBuf,
+        candidate: super::WorkspaceGenerationCandidateIdentity,
+        target_paths: Vec<PathBuf>,
+        provider_target: Option<super::WorkspaceGenerationProviderTarget>,
+    ) -> Result<super::WorkspaceGenerationAdmissionReceipt, String> {
+        if workspace_identity.trim().is_empty() {
+            return Err("query-demand admission identity must be non-empty".to_owned());
+        }
+        if !project_root.is_absolute() {
+            return Err("query-demand admission root must be absolute".to_owned());
+        }
+        candidate.validate()?;
+        let receipt = super::WorkspaceGenerationAdmissionReceipt {
+            schema_id: super::WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID.to_owned(),
+            schema_version: "1".to_owned(),
+            workspace_identity: workspace_identity.clone(),
+            trigger: super::WorkspaceGenerationAdmissionTrigger::QueryDemand,
+            admission_mode: super::WorkspaceGenerationAdmissionMode::ColdTargeted,
+            build_owner: "runtime-server".to_owned(),
+            cancellation_authority: "runtime-server".to_owned(),
+            request_lifetime_independent: true,
+            candidate_generation: candidate.candidate_generation.clone(),
+            policy_overlay_digest: candidate.policy_overlay_digest.clone(),
+            state: super::WorkspaceGenerationAdmissionState::Queued,
+            accepted: true,
+            attempt: 1,
+            failure_stage: None,
+            commit: None,
+            error: None,
+        };
+        receipt.validate()?;
+        let admission = self.clone();
+        tokio::spawn(async move {
+            let _ = admission
+                .submit_query_demand_for_candidate(
+                    workspace_identity,
+                    project_root,
+                    candidate,
+                    target_paths,
+                    provider_target,
+                )
+                .await;
+        });
+        Ok(receipt)
+    }
+
     /// Enqueues one server-owned cold admission without tying it to the query lifetime.
     pub async fn submit_query_demand(
         &self,
@@ -95,8 +147,11 @@ impl WorkspaceGenerationAdmission {
             let observed = entry.observed();
             if (observed.state == WorkspaceGenerationAdmissionState::Ready
                 && entry.ready_covers(&target_paths))
-                || (observed.state == WorkspaceGenerationAdmissionState::Building
-                    && entry.building_covers(&target_paths))
+                || (matches!(
+                    observed.state,
+                    WorkspaceGenerationAdmissionState::Queued
+                        | WorkspaceGenerationAdmissionState::Building
+                ) && entry.building_covers(&target_paths))
             {
                 return Ok(false);
             }
@@ -116,7 +171,3 @@ impl WorkspaceGenerationAdmission {
         Ok(receipt.accepted)
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/unit/runtime_server_admission_query_demand.rs"]
-mod tests;

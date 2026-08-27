@@ -6,7 +6,7 @@ use crate::engine::turso_statement::{
     execute_turso_operation, execute_turso_statement, run_turso_operation,
 };
 
-use super::core::{connect_turso_agent_session_registry, turso_session_by_name};
+use super::core::{connect_turso_agent_session_registry, turso_session_by_id};
 use super::types::{
     AgentSessionDispatchClaimResult, AgentSessionDispatchIdentity, AgentSessionDispatchLeaseRecord,
     AgentSessionProjectId, AgentSessionResidentName, AgentSessionRootSessionId,
@@ -15,7 +15,7 @@ use super::types::{
 
 impl super::core::AgentSessionRegistry {
     /// Read one exact dispatch lease for capability validation.
-    pub fn dispatch_lease(
+    pub async fn dispatch_lease(
         &self,
         project_id: impl Into<AgentSessionProjectId>,
         root_session_id: impl Into<AgentSessionRootSessionId>,
@@ -26,14 +26,17 @@ impl super::core::AgentSessionRegistry {
         let root_session_id = root_session_id.into();
         let name = name.into();
         let dispatch_identity = dispatch_identity.into();
-        if let Some(result) = self.runtime_operation(
-            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::DispatchLease {
-                project_id: project_id.clone(),
-                root_session_id: root_session_id.clone(),
-                name: name.clone(),
-                dispatch_identity: dispatch_identity.clone(),
-            },
-        )? {
+        if let Some(result) = self
+            .runtime_operation(
+                crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::DispatchLease {
+                    project_id: project_id.clone(),
+                    root_session_id: root_session_id.clone(),
+                    name: name.clone(),
+                    dispatch_identity: dispatch_identity.clone(),
+                },
+            )
+            .await?
+        {
             return match result {
                 crate::workspace_db_ipc::AgentSessionRegistryIpcResult::DispatchLease { lease } => {
                     Ok(lease)
@@ -74,6 +77,7 @@ pub fn derive_agent_session_dispatch_identity(
 
 struct DispatchIdentitySeed<'a> {
     root_session_id: &'a str,
+    child_session_id: &'a str,
     name: &'a str,
     canonical_target: &'a str,
     receipt_kind: &'a str,
@@ -90,6 +94,7 @@ impl<'a> TryFrom<super::types::AgentSessionDispatchIdentityInput<'a>> for Dispat
         use sha2::Digest as _;
 
         let root_session_id = require_dispatch_text(input.root_session_id, "root_session_id")?;
+        let child_session_id = require_dispatch_text(input.child_session_id, "child_session_id")?;
         let name = require_dispatch_text(input.name, "name")?;
         let canonical_target = require_dispatch_text(input.canonical_target, "canonical_target")?;
         let receipt_kind = require_dispatch_text(input.receipt_kind, "receipt_kind")?;
@@ -109,6 +114,7 @@ impl<'a> TryFrom<super::types::AgentSessionDispatchIdentityInput<'a>> for Dispat
         );
         Ok(Self {
             root_session_id,
+            child_session_id,
             name,
             canonical_target,
             receipt_kind,
@@ -134,6 +140,7 @@ fn hash_dispatch_identity(seed: &DispatchIdentitySeed<'_>) -> String {
     for value in [
         "agent.semantic-protocols.dispatch-identity.v1",
         seed.root_session_id,
+        seed.child_session_id,
         seed.name,
         seed.canonical_target,
         seed.receipt_kind,
@@ -169,45 +176,11 @@ pub(super) async fn bootstrap_turso_agent_dispatch_schema(
         "failed to initialize Turso agent dispatch lease schema",
     )
     .await?;
-    ensure_turso_agent_dispatch_generation_column(connection).await?;
     execute_turso_statement(
         connection,
         "CREATE INDEX IF NOT EXISTS idx_asp_agent_dispatch_leases_target
             ON asp_agent_dispatch_leases(project_id, root_session_id, name, delivery_target_id)",
         "failed to initialize Turso agent dispatch lease index",
-    )
-    .await
-}
-
-async fn ensure_turso_agent_dispatch_generation_column(
-    connection: &turso::Connection,
-) -> Result<(), String> {
-    let mut rows = run_turso_operation(
-        || async {
-            connection
-                .query("PRAGMA table_info(asp_agent_dispatch_leases)", ())
-                .await
-                .map_err(|error| error.to_string())
-        },
-        "failed to inspect Turso agent dispatch schema",
-    )
-    .await?;
-    while let Some(row) = rows
-        .next()
-        .await
-        .map_err(|error| format!("failed to inspect Turso agent dispatch column: {error}"))?
-    {
-        let column_name = row
-            .get::<String>(1)
-            .map_err(|error| format!("failed to read Turso agent dispatch column: {error}"))?;
-        if column_name == "delivery_generation_id" {
-            return Ok(());
-        }
-    }
-    execute_turso_statement(
-        connection,
-        "ALTER TABLE asp_agent_dispatch_leases ADD COLUMN delivery_generation_id TEXT",
-        "failed to migrate Turso agent dispatch generation",
     )
     .await
 }
@@ -336,14 +309,19 @@ pub(super) async fn turso_claim_dispatch(
     db_path: &Path,
     request: super::types::AgentSessionDispatchClaimRequest<'_>,
 ) -> Result<super::types::AgentSessionDispatchClaimResult, String> {
-    let session = turso_session_by_name(
-        db_path,
-        request.project_id,
-        request.root_session_id,
-        request.name,
-    )
-    .await?
-    .ok_or_else(|| "resident dispatch requires a registered session".to_string())?;
+    let session = turso_session_by_id(db_path, request.project_id, request.child_session_id)
+        .await?
+        .ok_or_else(|| "resident dispatch requires the exact registered child".to_string())?;
+    if session.root_session_id() != request.root_session_id || session.name() != request.name {
+        return Err(format!(
+            "resident-dispatch-child-binding-mismatch: childSessionId={} storedRoot={} requestedRoot={} storedRoute={} requestedRoute={}",
+            request.child_session_id,
+            session.root_session_id(),
+            request.root_session_id,
+            session.name(),
+            request.name,
+        ));
+    }
     let native_delivery_target = if request.delivery_target_override.is_none() {
         if !agent_session_message_target_is_live_bound(&session, request.root_session_id) {
             return Err("resident dispatch requires a verified live message target".to_string());

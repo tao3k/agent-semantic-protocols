@@ -74,6 +74,7 @@ async fn project_mutation_owner(
     workspace_identity: &str,
     project_root: &std::path::Path,
     changed_path: &std::path::Path,
+    cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
 ) -> Result<MutationOwnerProjection, WorkspaceGenerationBuildFailure> {
     let owner_path = changed_path
         .strip_prefix(project_root)
@@ -102,6 +103,7 @@ async fn project_mutation_owner(
         workspace_identity.to_owned(),
         project_root.to_path_buf(),
         owner_path,
+        cancellation,
     )
     .await
     .map(MutationOwnerProjection::Owner)
@@ -118,6 +120,7 @@ async fn project_mutation_owners(
     workspace_identity: &str,
     project_root: &std::path::Path,
     changed_paths: &std::collections::BTreeSet<std::path::PathBuf>,
+    cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
 ) -> Result<
     (
         Vec<crate::runtime_server_workspace::WorkspaceOwnerSnapshot>,
@@ -129,11 +132,13 @@ async fn project_mutation_owners(
 
     tokio_stream::iter(changed_paths)
         .then(|changed_path| {
+            let cancellation = cancellation.clone();
             project_mutation_owner(
                 owner_projection_builder,
                 workspace_identity,
                 project_root,
                 changed_path,
+                cancellation,
             )
         })
         .collect::<Vec<_>>()
@@ -158,6 +163,7 @@ pub(crate) async fn publish_mutation_generation(
     changed_paths: &std::collections::BTreeSet<std::path::PathBuf>,
     request_id: String,
     mut candidate: crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
+    cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
 ) -> Result<
     crate::runtime_server_admission::WorkspaceGenerationBuildCompletion,
     WorkspaceGenerationBuildFailure,
@@ -167,6 +173,7 @@ pub(crate) async fn publish_mutation_generation(
         workspace_identity,
         project_root,
         changed_paths,
+        cancellation,
     )
     .await?;
     let base_generation_digest = memory_registry

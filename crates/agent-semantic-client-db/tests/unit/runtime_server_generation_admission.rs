@@ -13,6 +13,7 @@ use agent_semantic_client_db::runtime_server_admission::{
 use agent_semantic_client_db::runtime_server_admission_catalog::{
     RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
 };
+use agent_semantic_client_db::runtime_telemetry_bus::{RuntimeTelemetryBus, RuntimeTelemetryEvent};
 use tokio::sync::{Barrier, Mutex};
 
 pub(super) fn candidate_identity() -> WorkspaceGenerationCandidateIdentity {
@@ -106,25 +107,100 @@ fn ready_admission_requires_generation_commit_evidence() {
     committed.validate().expect("committed Ready receipt");
 }
 
-#[test]
-fn ready_admission_with_commit_but_missing_resident_is_rejected() {
-    let source = include_str!("../../src/workspace_db_ipc_server_generation.rs");
-    assert!(
-        source.contains(".lease(workspace_identity, project_root)") && source.contains(".is_ok()")
+#[tokio::test]
+async fn enqueue_is_queued_until_dispatcher_publishes_one_build_started_event() {
+    let build_invoked = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let bus = RuntimeTelemetryBus::new();
+    let mut telemetry = bus.receiver;
+    let admission = WorkspaceGenerationAdmission::new_with_telemetry_sender(
+        Arc::new({
+            let build_invoked = Arc::clone(&build_invoked);
+            let release = Arc::clone(&release);
+            move |_workspace_identity,
+                  _project_root,
+                  candidate,
+                  _build_mode,
+                  _changed_paths,
+                  _provider_target,
+                  _cancellation| {
+                let build_invoked = Arc::clone(&build_invoked);
+                let release = Arc::clone(&release);
+                Box::pin(async move {
+                    build_invoked.notify_one();
+                    release.notified().await;
+                    completed_generation(candidate)
+                })
+            }
+        }),
+        bus.sender,
     );
-    assert!(
-        source.contains("resident-publication-missing") || source.contains("generation-not-ready")
-    );
-    assert!(source.contains("resident_source_index_ready"));
-}
+    let project_root = std::env::temp_dir().join("asp-generation-queued-dispatch");
 
-#[test]
-fn ready_admission_with_commit_but_missing_source_index_is_rejected() {
-    let source = include_str!("../../src/workspace_db_ipc_server_generation.rs");
-    assert!(source.contains("resident_source_index_ready(workspace_identity, project_root)"));
-    let projection =
-        include_str!("../../src/runtime_server_workspace/registry/projection_slots.rs");
-    assert!(projection.contains("resident source-index generation is missing"));
+    let queued = admission
+        .admit(
+            "workspace-queued-dispatch",
+            project_root.clone(),
+            candidate_identity(),
+        )
+        .await
+        .expect("enqueue generation");
+    assert_eq!(queued.state, WorkspaceGenerationAdmissionState::Queued);
+    assert_eq!(queued.attempt, 1);
+    assert_eq!(
+        queued.candidate_generation.digest,
+        candidate_identity().candidate_generation.digest
+    );
+    assert!(queued.accepted);
+
+    let started = loop {
+        match telemetry
+            .recv()
+            .await
+            .expect("generation build-started event")
+        {
+            RuntimeTelemetryEvent::Lifecycle(event)
+                if event.transition == "generation-build-started" =>
+            {
+                break event;
+            }
+            RuntimeTelemetryEvent::Lifecycle(_)
+            | RuntimeTelemetryEvent::SearchIncident(_)
+            | RuntimeTelemetryEvent::Performance(_) => {}
+        }
+    };
+    assert_eq!(started.owner_epoch, 1);
+    assert_eq!(started.state, "building");
+    assert_eq!(started.generation_digest, None);
+    assert_eq!(
+        started.candidate_digest,
+        Some(candidate_identity().candidate_generation.digest)
+    );
+    assert_eq!(started.active_task_count, 1);
+    assert_eq!(
+        admission
+            .current("workspace-queued-dispatch", &project_root)
+            .expect("resident admission")
+            .state,
+        WorkspaceGenerationAdmissionState::Building
+    );
+    build_invoked.notified().await;
+    release.notify_one();
+
+    let terminal = admission
+        .wait_terminal("workspace-queued-dispatch", &project_root)
+        .await
+        .expect("terminal generation");
+    assert_eq!(terminal.state, WorkspaceGenerationAdmissionState::Ready);
+    let mut build_started_count = 1;
+    while let Ok(event) = telemetry.try_recv() {
+        if matches!(event, RuntimeTelemetryEvent::Lifecycle(ref event) if event.transition == "generation-build-started")
+        {
+            build_started_count += 1;
+        }
+    }
+    assert_eq!(build_started_count, 1);
+    admission.shutdown().await.expect("shutdown admission");
 }
 
 #[test]
@@ -142,7 +218,10 @@ fn empty_source_index_projection_cannot_publish_ready_generation() {
 #[test]
 fn cold_restore_publishes_committed_generation_without_live_checkout_probe() {
     let source = include_str!("../../src/runtime_server/core.rs");
-    assert!(source.contains("canonical_materialization_matches_admitted_generation"));
+    assert!(source.contains("let captured_candidate = build.candidate.clone();"));
+    assert!(source.contains(
+        "WorkspaceGenerationBuildCompletion::new(\n                        captured_candidate,"
+    ));
     assert!(!source.contains("canonical_materialization_matches_candidate_generation"));
     assert!(!source.contains("discover_repository_candidate_snapshot"));
     assert!(!source.contains("if materialization.project_resolutions.is_empty()"));
@@ -202,7 +281,11 @@ fn concurrent_256_requests_share_one_server_workspace_writer_lease() {
             let (receipt, elapsed) = result.expect("admission request task");
             let receipt = receipt.expect("admission receipt");
             admission_latencies.push(elapsed);
-            assert_eq!(receipt.state, WorkspaceGenerationAdmissionState::Building);
+            assert!(matches!(
+                receipt.state,
+                WorkspaceGenerationAdmissionState::Queued
+                    | WorkspaceGenerationAdmissionState::Building
+            ));
             accepted_count += u32::from(receipt.accepted);
             receipt.validate().expect("valid admission receipt");
         }
@@ -299,6 +382,7 @@ async fn project_roots_have_independent_admission_flights() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn multi_workspace_admission_uses_independent_server_writer_leases_and_is_sub_millisecond() {
+    let _performance = crate::test_support::performance_lock();
     let machine_parallelism = std::thread::available_parallelism()
         .map(std::num::NonZeroUsize::get)
         .unwrap_or(2);
@@ -375,10 +459,17 @@ async fn multi_workspace_admission_uses_independent_server_writer_leases_and_is_
     }
     assert!(accepted_per_workspace.iter().all(|accepted| *accepted == 1));
     latencies.sort_unstable();
+    let p50 = latencies[(latencies.len() * 50 / 100).min(latencies.len() - 1)];
+    let p95 = latencies[(latencies.len() * 95 / 100).min(latencies.len() - 1)];
     let p99 = latencies[(latencies.len() * 99 / 100).min(latencies.len() - 1)];
+    let max = *latencies.last().expect("admission latency sample");
     eprintln!(
-        "in-process-generation-admission workspaceCount={workspace_count} callsPerWorkspace={calls_per_workspace} p99Micros={}",
-        p99.as_micros()
+        "in-process-generation-admission measurementPath=admit_observed_mutation-to-dispatcher-enqueue sampleCount={} workspaceCount={workspace_count} callsPerWorkspace={calls_per_workspace} p50Nanos={} p95Nanos={} p99Nanos={} maxNanos={}",
+        latencies.len(),
+        p50.as_nanos(),
+        p95.as_nanos(),
+        p99.as_nanos(),
+        max.as_nanos(),
     );
     assert!(
         p99 < std::time::Duration::from_millis(1),
@@ -512,8 +603,11 @@ async fn ensure_schedules_once_without_waiting_for_generation_build() {
         .await
         .expect("observe scheduled generation");
 
-    assert_eq!(first.state, WorkspaceGenerationAdmissionState::Building);
-    assert_eq!(second.state, WorkspaceGenerationAdmissionState::Building);
+    assert_eq!(first.state, WorkspaceGenerationAdmissionState::Queued);
+    assert!(matches!(
+        second.state,
+        WorkspaceGenerationAdmissionState::Queued | WorkspaceGenerationAdmissionState::Building
+    ));
     assert!(first.accepted);
     assert!(second.accepted);
     assert_eq!(first.attempt, 1);
@@ -531,7 +625,10 @@ async fn ensure_schedules_once_without_waiting_for_generation_build() {
             .await
             .expect("observe resident scheduled generation");
         latencies.push(started.elapsed());
-        assert_eq!(observed.state, WorkspaceGenerationAdmissionState::Building);
+        assert!(matches!(
+            observed.state,
+            WorkspaceGenerationAdmissionState::Queued | WorkspaceGenerationAdmissionState::Building
+        ));
         assert_eq!(observed.attempt, 1);
     }
     latencies.sort_unstable();
@@ -613,7 +710,7 @@ async fn failed_generation_build_retries_only_on_explicit_admission() {
         )
         .await
         .expect("explicitly retry failed admission");
-    assert_eq!(retry.state, WorkspaceGenerationAdmissionState::Building);
+    assert_eq!(retry.state, WorkspaceGenerationAdmissionState::Queued);
     assert!(retry.accepted);
     assert_eq!(retry.attempt, 2);
     failed.notified().await;

@@ -117,6 +117,35 @@ impl HookProviderProjection {
         {
             return Some(SourceSelectorKind::ExactPath);
         }
+        let path_shaped = selector.normalized == "." || selector.normalized.contains('/');
+        let selector_has_extension = std::path::Path::new(selector.normalized)
+            .extension()
+            .is_some();
+        if path_shaped
+            && self.package_roots.iter().any(|root| {
+                let exact_root = selector.normalized == root;
+                let root_scope = root == "."
+                    || exact_root
+                    || selector
+                        .normalized
+                        .strip_prefix(root)
+                        .is_some_and(|suffix| suffix.starts_with('/'))
+                    || selector
+                        .normalized
+                        .match_indices(root)
+                        .any(|(start, matched)| {
+                            let end = start + matched.len();
+                            (start == 0
+                                || selector.normalized.as_bytes().get(start.wrapping_sub(1))
+                                    == Some(&b'/'))
+                                && (end == selector.normalized.len()
+                                    || selector.normalized.as_bytes().get(end) == Some(&b'/'))
+                        });
+                root_scope && (exact_root || !selector_has_extension)
+            })
+        {
+            return Some(SourceSelectorKind::Pattern);
+        }
         self.config_files
             .iter()
             .any(|config| selector.normalized.ends_with(config))

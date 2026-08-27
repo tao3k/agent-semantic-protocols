@@ -152,6 +152,7 @@ dependencies = [
 name = "agent-semantic-client-protocol"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-artifacts",
  "asp-rust-project-harness-policy",
  "blake3",
  "serde",
@@ -164,19 +165,25 @@ version = "0.1.0"
 dependencies = [
  "agent-semantic-client-core",
  "agent-semantic-client-protocol",
- "agent-semantic-http-json",
  "agent-semantic-runtime",
  "asp-rust-project-harness-policy",
+ "hyper-util",
+ "prost",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "tower",
 ]
 
 [[package]]
 name = "agent-semantic-config"
 version = "0.1.0"
 dependencies = [
- "asp-provider-registry-build",
  "figment",
  "serde",
  "serde_json",
@@ -212,9 +219,9 @@ dependencies = [
  "agent-semantic-content-identity",
  "agent-semantic-provider-protocol",
  "agent-semantic-runtime",
+ "agent-semantic-schema-manager",
  "agent-semantic-shell-parser",
  "aho-corasick",
- "asp-provider-registry-build",
  "asp-rust-project-harness-policy",
  "base64 0.23.1",
  "blake3",
@@ -224,12 +231,14 @@ dependencies = [
  "globset",
  "jsonschema",
  "libc",
+ "memmap2",
  "postcard",
  "regex-automata",
  "regex-syntax",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tempfile",
  "toml 0.9.12+spec-1.1.0",
 ]
 
@@ -237,6 +246,7 @@ dependencies = [
 name = "agent-semantic-hook-testkit"
 version = "0.1.0"
 dependencies = [
+ "agent-semantic-config",
  "agent-semantic-hook",
  "asp-rust-project-harness-policy",
  "jsonschema",
@@ -286,7 +296,7 @@ dependencies = [
  "agent-semantic-content-identity",
  "agent-semantic-context-product",
  "agent-semantic-hook",
- "agent-semantic-http-json",
+ "agent-semantic-hook-testkit",
  "agent-semantic-loop",
  "agent-semantic-provider-protocol",
  "agent-semantic-provider-transport",
@@ -302,6 +312,7 @@ dependencies = [
  "base64 0.22.1",
  "blake3",
  "clap",
+ "fs2",
  "gix",
  "gix-config",
  "globset",
@@ -309,7 +320,6 @@ dependencies = [
  "insta",
  "jsonschema",
  "libc",
- "memmap2",
  "orgize",
  "proc-macro2",
  "referencing",
@@ -331,7 +341,6 @@ dependencies = [
 name = "agent-semantic-provider-protocol"
 version = "0.1.0"
 dependencies = [
- "asp-provider-registry-build",
  "serde",
  "serde_json",
 ]
@@ -398,7 +407,6 @@ dependencies = [
  "agent-semantic-client-protocol",
  "agent-semantic-client-server",
  "agent-semantic-content-identity",
- "agent-semantic-http-json",
  "agent-semantic-provider-protocol",
  "agent-semantic-provider-transport",
  "agent-semantic-runtime",
@@ -703,13 +711,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.118",
-]
-
-[[package]]
-name = "asp-provider-registry-build"
-version = "0.1.0"
-dependencies = [
- "serde_json",
 ]
 
 [[package]]
@@ -5002,7 +5003,6 @@ name = "rust-lang-project-harness"
 version = "0.1.2"
 dependencies = [
  "agent-semantic-content-identity",
- "agent-semantic-provider-protocol",
  "blake3",
  "cargo-lock",
  "cargo_toml",

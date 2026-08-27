@@ -12,6 +12,7 @@ pub(super) async fn run_schema_command(args: &[String]) -> Result<(), String> {
     }
     let mut workspace = PathBuf::from(".");
     let mut languages = Vec::new();
+    let mut output: Option<PathBuf> = None;
     let mut index = 1;
     while index < args.len() {
         match args[index].as_str() {
@@ -29,6 +30,13 @@ pub(super) async fn run_schema_command(args: &[String]) -> Result<(), String> {
                         .ok_or_else(|| "asp schema --language requires an identity".to_owned())?
                         .clone(),
                 );
+            }
+            "--output" => {
+                index += 1;
+                output =
+                    Some(PathBuf::from(args.get(index).ok_or_else(|| {
+                        "asp schema --output requires a path".to_owned()
+                    })?));
             }
             argument => return Err(format!("unknown asp schema argument: {argument}")),
         }
@@ -52,6 +60,18 @@ pub(super) async fn run_schema_command(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     let reports = match operation {
+        "publish-client" => {
+            if languages.len() != 1 {
+                return Err("asp schema publish-client requires exactly one --language".to_owned());
+            }
+            let output =
+                output.ok_or_else(|| "asp schema publish-client requires --output".to_owned())?;
+            vec![
+                manager
+                    .publish_client_bundle(languages[0].clone(), output)
+                    .await?,
+            ]
+        }
         "materialize" => manager.materialize(&languages).await?,
         "verify" => manager.verify(&languages).await?,
         other => {
@@ -76,6 +96,6 @@ pub(super) async fn run_schema_command(args: &[String]) -> Result<(), String> {
 }
 
 fn usage() -> String {
-    "usage: asp schema <materialize|verify|responsibilities> [--workspace ROOT] [--language ID]..."
+    "usage: asp schema <materialize|verify|publish-client|responsibilities> [--workspace ROOT] [--language ID] [--output DIR]"
         .to_owned()
 }

@@ -84,6 +84,7 @@ pub enum AgentSessionRegistryIpcOperation {
     ClaimDispatch {
         project_id: AgentSessionProjectId,
         root_session_id: AgentSessionRootSessionId,
+        child_session_id: AgentSessionId,
         name: AgentSessionResidentName,
         dispatch_identity: AgentSessionDispatchIdentity,
         command_digest: AgentSessionCommandDigest,

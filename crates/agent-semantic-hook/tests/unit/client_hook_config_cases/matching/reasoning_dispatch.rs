@@ -174,12 +174,30 @@ fn config_rule_scenarios_enforce_composition_witnesses_and_dominance() {
         let case_index = case_sequence.get();
         case_sequence.set(case_index + 1);
         let classify_sample = |config: &ClientHookConfig, sample: &str| {
-            let payload = json!({
+            let mut payload = json!({
                 "session_id": format!("config-driven-match-engine-contract:{case_index}:{case_id}:{sample}"),
                 "cwd": workspace_cwd,
                 "tool_name": tool_name,
                 "tool_input": tool_input
             });
+            match tool_name {
+                "Read" | "apply_patch" | "Write" | "Edit" | "NotebookEdit" | "Bash"
+                | "spawn_agent" => agent_semantic_hook::bind_plugin_host_matcher(
+                    &mut payload,
+                    Some(tool_name),
+                    None,
+                )
+                .expect("bind exact native Host matcher"),
+                name if name.starts_with("mcp__") => {
+                    agent_semantic_hook::bind_plugin_host_matcher(
+                        &mut payload,
+                        None,
+                        Some("mcp__"),
+                    )
+                    .expect("bind native MCP matcher family");
+                }
+                _ => {}
+            }
             classify_hook_with_config(HookClassificationRequest {
                 registry: &registry,
                 config,

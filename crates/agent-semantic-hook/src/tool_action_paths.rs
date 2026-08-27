@@ -7,6 +7,8 @@ const PATH_SCALAR_KEYS: &[&str] = &[
     "fileName",
     "file_path",
     "filePath",
+    "notebook_path",
+    "notebookPath",
     "absolute_path",
     "absolutePath",
     "relative_path",
@@ -34,6 +36,8 @@ const PATH_VALUE_KEYS: &[&str] = &[
     "fileName",
     "file_path",
     "filePath",
+    "notebook_path",
+    "notebookPath",
     "absolute_path",
     "absolutePath",
     "relative_path",
@@ -83,8 +87,10 @@ pub(super) fn extract_apply_patch_text_direct(value: &Value) -> Option<&str> {
     if let Some(patch) = value.as_str() {
         return Some(patch);
     }
-    if let Some(patch) = value.get("patch").and_then(Value::as_str) {
-        return Some(patch);
+    for key in ["patch", "command", "cmd"] {
+        if let Some(patch) = value.get(key).and_then(Value::as_str) {
+            return Some(patch);
+        }
     }
     for key in [
         "tool_input",

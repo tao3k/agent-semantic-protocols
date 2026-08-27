@@ -293,6 +293,20 @@ inline next actions, exact locators, and explicit omission/avoidance facts.
 
 *** Exact projection scope and observability
 
+Exact projection observes Runtime admission without waiting.  A ~Queued~
+terminal snapshot means the candidate/root/attempt identity is bound but the
+dispatcher has not yet taken builder ownership; it renders
+~runtime-generation-queued~ with a typed next action.  ~Building~ is emitted
+only after the dispatcher publishes ~generation-build-started~ and invokes the
+supervised builder.  Projection responses MUST NOT collapse these states or
+invent generation/root identities that have not been bound by admission.
+
+Live Corpus qualification rejects persistent ~Queued~ and persistent
+~Building~ independently.  The former proves dispatch was never acquired; the
+latter proves supervised work failed to publish ~Ready~, ~Failed~, or
+~Cancelled~.  Both failures retain their distinct reason kind, phase, attempt,
+candidate/root identity, and service timing.
+
 Exact structural selector v1 already carries generic path segments. Providers MUST use the existing segment =kind= field for =match-arm= and =branch= identities, and MUST preserve the ordinary v1 envelope fields for owner path, parser identity, generation identity, native fact identity, byte range, and source authority. Runtime publication stores those nodes in the same immutable evidence context as their enclosing item; no v2 schema, language-private side packet, or renderer reconstruction is permitted.
 
 An exact branch selector is a bounded Runtime read: it resolves one branch source segment and its parent relation from the Ready generation. A missing branch entry is a typed projection-scope omission or generation corruption according to the admitted context, never permission to read the enclosing dispatch function, invoke a provider, open a client database, or rebuild a generation during the agent-facing query.
@@ -317,6 +331,35 @@ Runtime MUST never silently widen scope, rebuild a generation, or clean cache
 to satisfy an exact miss.  OpenTelemetry export is derived from the same typed
 receipt, so diagnostic text, metrics, traces, and Runtime behavior cannot
 disagree about the cause.
+
+*** Exact projection terminal and payload contract
+
+The public ASP Client exact-query route has one terminal algebra.  A successful
+=Ready= terminal MUST contain a non-empty projection payload materialized by the
+Search owner for the requested projection kind.  Source projection carries
+source text or bytes; callable-skeleton projection carries its skeleton text or
+bytes.  Runtime MUST NOT serialize a payload-less selector-read state into a
+successful =result= and leave the Client renderer to infer its meaning.
+
+=ProjectionMissing=, =OwnerMissing=, =OwnerForRepair=,
+=RelocationAmbiguous=, projection-scope omission, generation mismatch, provider
+admission failure, and every other non-Ready outcome are typed failures.  Each
+failure MUST preserve its precise =reasonKind= and =recommendedNext= together
+with the operation, language/provider, requested and resolved selector when
+known, projection kind and scope, active generation/root identity, Runtime
+phase, resident-read latency, service latency, total latency, and work
+counters.  A missing provider or generation is itself a typed terminal and
+MUST NOT collapse into generic client presentation text.
+
+The Runtime Server owns this Ready-or-typed-failure mapping and the phase and
+generation receipt.  Search/client-db owns selector resolution and payload
+materialization.  The ASP Client owns presentation only: it renders a Ready
+payload or presents the Runtime typed failure without reclassifying it.  Wire
+schema types and codecs remain in the Client Protocol package; query behavior,
+Runtime lifecycle, and renderer policy MUST NOT migrate into Protocol command
+code.  OpenTelemetry spans and Live Corpus assertions consume the same terminal
+receipt, so every public exact query is either payload-bearing Ready or a
+diagnosable typed failure with no empty-success third state.
 *** RuntimeServer-centered cache authority
 Fallback release transfer MUST be one-shot. Before =Drop= schedules a Tokio
 cleanup task, it MUST mark the transferred guard so cancellation during runtime
@@ -4112,6 +4155,20 @@ Any new compact graph field that changes aliases, relation groups, selector grou
 * Agent-facing render layers
 ** Public client projection presentation
 *** Server-owned query lifecycle
+
+Query routing, admission, provider launch, generation selection, exact lookup,
+and projection materialization are Runtime Server responsibilities.  The
+Protocol binary only parses a projection choice into the shared typed request;
+the client package renders the returned typed terminal.  Protocol-owned
+renderer selection, direct provider/search/cache/index execution, and direct
+Workspace DB qualification are forbidden alternate architectures and are
+removed with their tests and documentation.
+
+The public binding is gRPC/Tokio streams on the existing Runtime data socket.
+It carries concurrent isolated ~ClientFrame~ requests and typed terminal events
+without creating a per-command Runtime session, provider process, or generation
+authority.  HTTP JSON is not a second public binding and is absent from the
+current architecture.
 Projection responsibility is modularized in
 [[file:10.06-agent-search-projection/10.06.01-package-responsibility.org][10.06.01 Projection Package Responsibility]].
 

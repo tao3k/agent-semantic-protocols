@@ -1,5 +1,7 @@
-#+title: Evidence graph and routing
-#+property: rfc_layer evidence-graph-routing
+#+TITLE: Evidence graph and routing
+#+PROPERTY: rfc_layer evidence-graph-routing
+
+Parent architecture: [[file:../../10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
 
 * Ownership
 

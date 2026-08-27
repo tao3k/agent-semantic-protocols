@@ -1,7 +1,15 @@
 use super::{
-    apply_codex_subagent_context, payload_has_complete_typed_agent_identity,
-    payload_indicates_subagent_context,
+    apply_codex_subagent_context, codex_rollout_is_subagent,
+    payload_has_complete_typed_agent_identity, payload_indicates_subagent_context,
 };
+
+#[test]
+fn root_rollout_is_never_enriched_as_a_subagent() {
+    assert!(!codex_rollout_is_subagent("root", "root", "parent"));
+    assert!(!codex_rollout_is_subagent("root", "root", ""));
+    assert!(!codex_rollout_is_subagent("parent", "root", "parent"));
+    assert!(codex_rollout_is_subagent("child", "root", "parent"));
+}
 
 #[test]
 fn typed_rollout_identity_normalizes_subagent_policy_facts() {

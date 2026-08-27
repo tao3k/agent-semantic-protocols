@@ -21,36 +21,43 @@ claude = "@agent-{name-kebab}"
 languageId = "rust"
 providerId = "asp-rust"
 extensionAny = ["rs", "rsx"]
+sourceRootAny = ["crates", "languages/rust-lang-project-harness"]
 
 [profiles.typescript]
 languageId = "typescript"
 providerId = "asp-typescript"
 extensionAny = ["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs"]
+sourceRootAny = ["languages/typescript-lang-project-harness"]
 
 [profiles.python]
 languageId = "python"
 providerId = "asp-python"
 extensionAny = ["py", "pyi"]
+sourceRootAny = ["languages/python-lang-project-harness"]
 
 [profiles.julia]
 languageId = "julia"
 providerId = "asp-julia"
 extensionAny = ["jl"]
+sourceRootAny = ["languages/JuliaLangProjectHarness.jl"]
 
 [profiles.gerbil-scheme]
 languageId = "gerbil-scheme"
 providerId = "asp-gerbil-scheme"
 extensionAny = ["ss", "ssi", "scm", "sld"]
+sourceRootAny = ["languages/gerbil-scheme-language-project-harness"]
 
 [profiles.org]
 languageId = "org"
 providerId = "asp-org"
 extensionAny = ["org"]
+sourceRootAny = ["languages/orgize"]
 
 [profiles.markdown]
 languageId = "md"
 providerId = "asp-md"
 extensionAny = ["md", "markdown"]
+sourceRootAny = ["docs"]
 
 [[commandProfiles]]
 id = "rust-cargo"
@@ -161,9 +168,25 @@ id = "registered-language-source"
 subjectKindAny = ["registered-language-source", "registered-language-source-pattern"]
 
 [[capabilityPolicies]]
-id = "raw-host-search"
-hostInvocationAny = ["search", "execute"]
-semanticCapabilityAny = ["search"]
+id = "filesystem-read"
+semanticCapabilityAny = ["read"]
+
+# Native Host Edit actions with an explicit workspace path receive a stable
+# mutation intent. Agent registration profiles remain the authority that may
+# admit or deny that intent; this rule does not duplicate agent names.
+[[rules]]
+id = "allow-owner-scoped-mutation"
+priority = 150000
+matcher = "apply_patch|Write|Edit|NotebookEdit"
+intent = "owner-scoped-mutation"
+decision = "allow"
+terminal = true
+event = "pre-tool"
+platform = "codex"
+message = "Allowed a path-bearing native Edit action in the registered coding lane."
+
+[rules.match]
+pathGlobAny = ["**"]
 
 # Registered-language reasoning search dispatch. The matcher expands
 # `<registered-language>` from the provider registry; the rule owns the complete
@@ -174,6 +197,7 @@ semanticCapabilityAny = ["search"]
 id = "registered-asp-reasoning-search"
 matcherPolicies = ["wrapped_command"]
 priority = 100000
+hostInvocations = ["execute"]
 intent = "reasoning-search"
 decision = "deny"
 reasonKind = "subagent-receipt-required"
@@ -184,6 +208,25 @@ event = "pre-tool"
 argvPatternAny = [
   ["asp", "<registered-language>", "search"],
 ]
+
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_explorer"
+receiptKind = "asp-explore-search-v1"
+lazyProvider = "matched-language"
+
+[[rules]]
+id = "registered-asp-structured-projection"
+matcherPolicies = ["wrapped_command"]
+priority = 100000
+hostInvocations = ["execute"]
+intent = "structured-projection"
+decision = "deny"
+reasonKind = "subagent-receipt-required"
+event = "pre-tool"
+
+[rules.match]
+argvPatternAny = [["asp", "<registered-language>", "query"]]
 
 [rules.dispatch]
 transport = "host-agent"
@@ -344,35 +387,6 @@ executionLane = "testing"
 blockedCommandClass = "building"
 
 [[rules]]
-id = "deny-raw-registered-source-search-action"
-enabled = true
-event = "pre-tool"
-priority = 20000
-decision = "deny"
-reasonKind = "raw-broad-search"
-message = "Raw search over registered source is denied only in the current Agent; registered source belong in `asp <language> search`. ASP remains available. {{agentDispatchMessage}}"
-
-[rules.match]
-capabilityPolicyAll = ["raw-host-search", "registered-language-source"]
-
-[rules.dispatch]
-transport = "host-agent"
-agent = "asp_explorer"
-receiptKind = "asp-explore-search-v1"
-lazyProvider = "matched-language"
-
-[[rules]]
-id = "allow-explicit-no-agent-host-bypass"
-priority = 200000
-decision = "allow"
-terminal = true
-message = "Explicit parser-owned no-Agent Host policy bypass."
-fields = { bypassOwner = "hook-matcher", bypassScope = "host-policy" }
-
-[rules.match]
-leadingEnvironmentAssignmentAny = ["ASP_NO_AGENT=1"]
-
-[[rules]]
 id = "deny-agent-search-json"
 matcherPolicies = ["wrapped_command"]
 priority = 110000
@@ -390,7 +404,7 @@ commandContainsAny = ["--json"]
 [[rules]]
 id = "route-read-to-asp-languages"
 priority = 40000
-actions = ["read"]
+matcher = "Read"
 profilesList = ["rust", "typescript", "python", "julia", "gerbil-scheme", "org", "markdown"]
 decision = "deny"
 reasonKind = "registered-source-route-required"
@@ -403,14 +417,34 @@ receiptKind = "asp-explore-search-v1"
 lazyProvider = "matched-language"
 
 [[rules]]
-id = "route-structured-document-read"
-priority = 40010
-actions = ["read"]
+id = "route-unresolved-source-access-to-asp-languages"
+priority = 39990
+matcher = "Bash"
+hostInvocations = ["execute"]
+profilesList = ["rust", "typescript", "python", "julia", "gerbil-scheme", "org", "markdown"]
 decision = "deny"
-reasonKind = "structured-source-read"
-message = "Raw structured-document Read is denied only in the current Agent. Delegate the native JSON/TOML file read to the registered ASP Explorer, then use the configured bounded projector there: jq for JSON and yq for TOML."
+reasonKind = "registered-source-route-required"
+message = "A registered {{languageId}} source operand was supplied to an Execute action whose filesystem effect is unresolved. Use the parser-owned ASP route below instead of executing an unproven source access."
 
 [rules.match]
+capabilityPolicyAll = ["filesystem-read"]
+
+[rules.dispatch]
+transport = "host-agent"
+agent = "asp_explorer"
+receiptKind = "asp-explore-search-v1"
+lazyProvider = "matched-language"
+
+[[rules]]
+id = "route-structured-document-read"
+priority = 40010
+matcher = "Read|Bash"
+decision = "deny"
+reasonKind = "structured-source-read"
+message = "Raw structured-document reads are denied only in the current Agent. Delegate the JSON/TOML read to the registered ASP Explorer, then use the configured bounded projector there: jq for JSON and yq for TOML."
+
+[rules.match]
+capabilityPolicyAll = ["filesystem-read"]
 pathGlobAny = ["*.json", "**/*.json", "*.toml", "**/*.toml"]
 
 [rules.dispatch]

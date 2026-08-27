@@ -16,7 +16,7 @@ pub fn validate_runtime_server_endpoint_for_state_home(
             "{}\0{}\0{}",
             endpoint.owner_epoch,
             endpoint.binding_token,
-            endpoint.runtime_binary_identity.value()
+            endpoint.runtime_binary_identity.content_digest()
         )
         .as_bytes(),
     )
@@ -28,7 +28,7 @@ pub fn validate_runtime_server_endpoint_for_state_home(
         &digest,
         MAX_UNIX_SOCKET_PATH_BYTES,
     )?;
-    let expected_status_memory = runtime_base.join("status.v1.memory");
+    let expected_status_memory = runtime_base.join(format!("status-{}.memory", &digest[..16]));
     if Path::new(&endpoint.socket_path) != expected_socket
         || Path::new(&endpoint.data_plane_socket_path) != expected_data_socket
         || Path::new(&endpoint.provider_plane_socket_path) != expected_provider_socket

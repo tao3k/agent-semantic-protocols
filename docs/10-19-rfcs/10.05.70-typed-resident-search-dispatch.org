@@ -1,5 +1,7 @@
 #+title: Typed resident search dispatch
 
+Parent architecture: [[file:10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
 * Status
 
 This document is the breaking v1 contract for resident-owned ASP search,

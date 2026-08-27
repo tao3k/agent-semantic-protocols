@@ -1,26 +1,69 @@
-use super::{parse_args, require_resident_sample_budget, resident_latency_distribution};
+use super::parse_args;
+use crate::command::live_corpus::qualification::client_protocol::{
+    PublicRouteTerminal, typed_terminal,
+};
 
-#[test]
-fn resident_latency_distribution_reports_all_quantiles_for_128_samples() {
-    let distribution = resident_latency_distribution((0..128).collect())
-        .expect("128 resident samples form a distribution");
-
-    assert_eq!(distribution.sample_count, 128);
-    assert_eq!(distribution.min_micros, 0);
-    assert_eq!(distribution.p50_micros, 63);
-    assert_eq!(distribution.p95_micros, 120);
-    assert_eq!(distribution.p99_micros, 125);
-    assert_eq!(distribution.max_micros, 127);
+fn error_frame(
+    reason_kind: &str,
+    admission_state: &str,
+) -> agent_semantic_client_protocol::ClientFrame {
+    serde_json::from_value(serde_json::json!({
+        "kind": "response",
+        "schemaId": "agent.semantic-protocols.client-frame",
+        "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.client",
+        "protocolVersion": "1",
+        "sessionId": "live-corpus-session",
+        "workspaceIdentity": "live-corpus-workspace",
+        "requestId": "live-corpus-request",
+        "outcome": "error",
+        "error": {
+            "reasonKind": reason_kind,
+            "message": "generation is not ready",
+            "details": {
+                "schemaId": "agent.semantic-protocols.asp-client-exact-query-failure",
+                "schemaVersion": "1",
+                "state": "failed",
+                "operationId": "live-corpus-request",
+                "languageId": "rust",
+                "providerId": "asp-rust",
+                "requestedSelector": "rust:item:test",
+                "resolvedSelector": null,
+                "projectionKind": "source",
+                "phase": "workspace-generation-admission",
+                "reasonKind": reason_kind,
+                "generationDigest": null,
+                "rootDigest": null,
+                "recommendedNext": {"action": "observe-runtime-generation"},
+                "residentReadElapsedMicros": 0,
+                "serviceElapsedMicros": 1,
+                "elapsedMicros": 1,
+                "workCounters": {
+                    "databaseReadCount": 0,
+                    "filesystemReadCount": 0,
+                    "providerProcessCount": 0,
+                    "schedulerTaskCount": 0,
+                    "socketOperationCount": 0
+                },
+                "details": {"admissionState": admission_state}
+            }
+        }
+    }))
+    .expect("typed ASP Client error frame fixture")
 }
 
 #[test]
-fn any_resident_sample_above_one_millisecond_fails_the_case() {
-    let error = require_resident_sample_budget("rust.case", "search-total", 73, 1_001, 1_000)
-        .expect_err("one over-budget sample must fail the qualification");
+fn persistent_queued_is_a_typed_rejecting_terminal() {
+    let terminal = typed_terminal(error_frame("runtime-generation-queued", "Queued"))
+        .expect("typed Queued terminal");
+    assert!(matches!(terminal, PublicRouteTerminal::Queued(_)));
+}
 
-    assert!(error.contains("case=rust.case"));
-    assert!(error.contains("sampleIndex=73"));
-    assert!(error.contains("elapsedMicros=1001"));
+#[test]
+fn persistent_building_is_a_typed_rejecting_terminal() {
+    let terminal = typed_terminal(error_frame("runtime-generation-building", "Building"))
+        .expect("typed Building terminal");
+    assert!(matches!(terminal, PublicRouteTerminal::Building(_)));
 }
 
 #[test]

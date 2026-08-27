@@ -53,7 +53,7 @@ fn canonical_config_covers_builtin_programming_native_read_matrix() {
     for profile in profiles.values() {
         for extension in &profile.extension_any {
             let path = format!("src/witness.{extension}");
-            let mut inputs = vec![json!({"type":"read", "path": path})];
+            let mut inputs = Vec::new();
             for key in [
                 "path",
                 "file",
@@ -70,9 +70,9 @@ fn canonical_config_covers_builtin_programming_native_read_matrix() {
             for (tool_name, input_key) in [("toolName", "toolInput"), ("tool_name", "tool_input")] {
                 inputs.push(json!({tool_name:"Read", input_key:{"path":path}}));
             }
-            for input in inputs {
-                let payload =
-                    json!({"toolName":"functions.exec", "toolInput":{"commandActions":[input]}});
+            for mut payload in inputs {
+                agent_semantic_hook::bind_plugin_host_matcher(&mut payload, Some("Read"), None)
+                    .expect("bind canonical Read matcher");
                 let decision = classify_hook_with_config(HookClassificationRequest {
                     registry: &runtime,
                     config: &config,
@@ -112,18 +112,31 @@ fn canonical_config_covers_builtin_programming_native_read_matrix() {
 }
 
 #[test]
-fn bundled_plugin_matcher_covers_every_host_tool_action() {
+fn bundled_plugin_matchers_preserve_one_host_action_identity_per_entry() {
     let hooks: Value = serde_json::from_str(include_str!(
         "../../../../asp-codex-plugin/hooks/hooks.json"
     ))
     .expect("plugin hooks JSON");
-    let matcher = hooks["hooks"]["PreToolUse"][0]["matcher"]
-        .as_str()
-        .expect("PreToolUse matcher");
+    let matchers = hooks["hooks"]["PreToolUse"]
+        .as_array()
+        .expect("PreToolUse entries")
+        .iter()
+        .map(|entry| entry["matcher"].as_str().expect("native matcher"))
+        .collect::<Vec<_>>();
     assert_eq!(
-        matcher, "*",
-        "PreToolUse must deliver every host tool action to the internal policy matcher"
+        matchers,
+        [
+            "Read",
+            "apply_patch",
+            "Write",
+            "Edit",
+            "NotebookEdit",
+            "Bash",
+            "spawn_agent",
+            "^mcp__.*$"
+        ]
     );
+    assert!(!matchers.contains(&"*"));
 }
 
 #[test]
@@ -183,8 +196,8 @@ fn load_policy_with_configured_capabilities(
 
 fn shell(command: &str) -> Value {
     json!({
-        "tool_name": "exec_command",
-        "tool_input": {"cmd": command},
+        "tool_name": "Bash",
+        "tool_input": {"command": command},
     })
 }
 
@@ -193,12 +206,32 @@ fn classify<'a>(
     config: &'a agent_semantic_hook::ClientHookConfig,
     payload: &'a Value,
 ) -> agent_semantic_hook::HookDecision {
+    let mut payload = payload.clone();
+    let tool_name = payload
+        .get("tool_name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+    let binding = match tool_name.as_str() {
+        "Read" | "apply_patch" | "Write" | "Edit" | "NotebookEdit" | "Bash" | "spawn_agent" => {
+            agent_semantic_hook::bind_plugin_host_matcher(
+                &mut payload,
+                Some(tool_name.as_str()),
+                None,
+            )
+        }
+        name if name.starts_with("mcp__") => {
+            agent_semantic_hook::bind_plugin_host_matcher(&mut payload, None, Some("mcp__"))
+        }
+        _ => Ok(()),
+    };
+    binding.expect("bind canonical Host matcher in production scenario");
     classify_hook_with_config(HookClassificationRequest {
         registry: runtime,
         config,
         platform: "codex",
         event: "pre-tool",
-        payload,
+        payload: &payload,
     })
 }
 

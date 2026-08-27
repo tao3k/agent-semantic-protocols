@@ -1,7 +1,6 @@
 [workspace]
 
 members = [
-    "build-support/asp-provider-registry-build",
     "build-support/asp-rust-project-harness-policy",
     "crates/agent-semantic-artifacts",
     "crates/agent-semantic-config",
@@ -46,7 +45,6 @@ agent-semantic-provider-transport = { path = "crates/agent-semantic-provider-tra
 agent-semantic-schema-manager = { path = "crates/agent-semantic-schema-manager" }
 agent-semantic-runtime = { path = "crates/agent-semantic-runtime" }
 agent-semantic-hook = { path = "crates/agent-semantic-hook" }
-asp-provider-registry-build = { path = "build-support/asp-provider-registry-build" }
 jsonschema = { version = "0.48.1", default-features = false }
 aho-corasick = "1.1.5"
 base64 = "0.23.1"
@@ -162,6 +160,9 @@ opt-level = 2
 
 [profile.test.package.agent-semantic-protocol]
 opt-level = 2
+# Keep incremental tests enabled while ensuring crate-local monomorphizations
+# and their private LLVM symbols are emitted into one link unit.
+codegen-units = 1
 
 [profile.dev-build]
 inherits = "dev"

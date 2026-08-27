@@ -35,6 +35,16 @@ pub(crate) async fn run_hook_command(args: &[String]) -> Result<(), String> {
     evaluate_hook_event_locally(&forwarded, input).await
 }
 
+/// Hook configuration and recovery controls are local control-plane work.
+/// Their execution must remain reachable when Runtime activation or provider
+/// data planes are unavailable.
+pub(crate) fn is_runtime_independent_control_command(args: &[String]) -> bool {
+    matches!(
+        args.first().map(String::as_str),
+        Some("accept-host" | "break-glass" | "doctor" | "enablement" | "paths" | "refresh")
+    )
+}
+
 pub(crate) async fn evaluate_hook_event_locally(
     arguments: &[String],
     input: String,

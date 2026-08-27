@@ -91,13 +91,25 @@ fn validate_rule_profile_references(
     profiles: &BTreeMap<String, super::document::HookClientProfileConfig>,
 ) -> Result<(), String> {
     for rule in rules {
-        let mut actions = HashSet::new();
-        for action in &rule.actions {
-            if !actions.insert(*action) {
-                return Err(format!(
-                    "rule {} actions contains duplicate action {action:?}",
-                    rule.id
-                ));
+        if rule.matcher.as_deref().is_some_and(|matcher| {
+            matcher
+                .split('|')
+                .any(|native| native.is_empty() || native.trim() != native)
+        }) {
+            return Err(format!(
+                "rule {} matcher must contain non-empty `|`-separated native aliases without surrounding whitespace",
+                rule.id
+            ));
+        }
+        if let Some(matcher) = &rule.matcher {
+            let mut aliases = HashSet::new();
+            for native in matcher.split('|') {
+                if !aliases.insert(native) {
+                    return Err(format!(
+                        "rule {} matcher contains duplicate native alias {native:?}",
+                        rule.id
+                    ));
+                }
             }
         }
         let mut profile_ids = HashSet::new();
@@ -197,6 +209,32 @@ fn validate_profiles(
             if !extensions.insert(canonical) {
                 return Err(format!(
                     "profiles.{profile_id}.extensionAny contains duplicate extension {extension:?}"
+                ));
+            }
+        }
+        let mut source_roots = HashSet::new();
+        for source_root in &profile.source_root_any {
+            let canonical = source_root.trim().trim_end_matches('/');
+            let valid = !canonical.is_empty()
+                && !canonical.starts_with('/')
+                && !canonical.contains('\\')
+                && !canonical.contains("://")
+                && !canonical.contains(['*', '?', '[', ']', '{', '}'])
+                && canonical.split('/').all(|component| {
+                    !component.is_empty()
+                        && component != ".."
+                        && component
+                            .chars()
+                            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
+                });
+            if !valid {
+                return Err(format!(
+                    "profiles.{profile_id}.sourceRootAny entries must be normalized relative source roots, got {source_root:?}"
+                ));
+            }
+            if !source_roots.insert(canonical.to_ascii_lowercase()) {
+                return Err(format!(
+                    "profiles.{profile_id}.sourceRootAny contains duplicate source root {source_root:?}"
                 ));
             }
         }

@@ -254,3 +254,43 @@ async fn canonical_registry_verifies_every_registered_language_bundle() {
         ]
     );
 }
+
+#[test]
+fn canonical_client_profile_publishes_the_shared_schema_bundle_route() {
+    let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("workspace root");
+    let registry: serde_json::Value = serde_json::from_slice(
+        &fs::read(workspace.join("schemas/language-schema-profiles.json"))
+            .expect("read canonical schema profile registry"),
+    )
+    .expect("decode canonical schema profile registry");
+    let client_roots = registry["rootSets"]["client-protocol"]
+        .as_array()
+        .expect("client-protocol root set")
+        .iter()
+        .map(|value| value.as_str().expect("schema root name"))
+        .collect::<Vec<_>>();
+
+    assert!(client_roots.contains(&"asp-client-schema-bundle-request.schema.json"));
+    assert!(client_roots.contains(&"asp-client-schema-bundle-response.schema.json"));
+    assert!(
+        registry["profiles"]
+            .as_array()
+            .expect("registered profiles")
+            .iter()
+            .all(|profile| profile.get("profileId").is_none()),
+        "canonical profiles are bound by languageId and rootSets, not an invented profileId"
+    );
+    assert!(
+        registry["profiles"]
+            .as_array()
+            .expect("registered profiles")
+            .iter()
+            .all(|profile| profile["rootSets"]
+                .as_array()
+                .is_some_and(|root_sets| root_sets.iter().any(|root| root == "client-protocol"))),
+        "every registered language profile must consume the shared client-protocol root set"
+    );
+}

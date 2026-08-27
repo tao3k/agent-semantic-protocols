@@ -33,17 +33,59 @@ fn canonical_plugin_payload_is_marketplace_owned_and_complete() {
 }
 
 #[test]
-fn plugin_hook_shape_uses_internal_action_classification() {
+fn plugin_hook_shape_uses_one_entry_per_native_action_family() {
     let hooks: serde_json::Value =
         serde_json::from_str(ASP_CODEX_PLUGIN_HOOKS_JSON).expect("valid plugin hooks");
+    let pre_tool_use = hooks["hooks"]["PreToolUse"]
+        .as_array()
+        .expect("PreToolUse action entries");
+    let matchers = pre_tool_use
+        .iter()
+        .map(|entry| entry["matcher"].as_str().expect("action matcher"))
+        .collect::<Vec<_>>();
+
     assert_eq!(
-        hooks["hooks"]["PreToolUse"][0]["matcher"].as_str(),
-        Some("*")
+        matchers,
+        vec![
+            "Read",
+            "apply_patch",
+            "Write",
+            "Edit",
+            "NotebookEdit",
+            "Bash",
+            "spawn_agent",
+            "^mcp__.*$",
+        ]
     );
-    assert_eq!(
-        hooks["hooks"]["PreToolUse"][0]["hooks"][0]["timeout"].as_u64(),
-        Some(1)
-    );
+    assert!(!matchers.contains(&"*"));
+    assert!(pre_tool_use.iter().all(|entry| {
+        entry["hooks"].as_array().is_some_and(|handlers| {
+            handlers.len() == 1 && handlers[0]["timeout"].as_u64() == Some(1)
+        })
+    }));
+    let commands = pre_tool_use
+        .iter()
+        .map(|entry| {
+            entry["hooks"][0]["command"]
+                .as_str()
+                .expect("typed command")
+        })
+        .collect::<Vec<_>>();
+    for expected in [
+        "--host-match Read",
+        "--host-match apply_patch",
+        "--host-match Write",
+        "--host-match Edit",
+        "--host-match NotebookEdit",
+        "--host-match Bash",
+        "--host-match spawn_agent",
+        "--host-match-prefix mcp__",
+    ] {
+        assert!(
+            commands.iter().any(|command| command.ends_with(expected)),
+            "{expected}"
+        );
+    }
 }
 
 #[test]

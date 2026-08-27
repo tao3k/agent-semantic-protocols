@@ -16,7 +16,9 @@ async fn endpoint_publishes_the_bound_workspace_store_authority() {
         &state_home,
         &workspace_store,
         std::path::Path::new("/runtime/asp"),
-        "runtime-digest",
+        &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+            b"runtime-digest",
+        ),
         "dev",
         "catalog-digest",
         7,

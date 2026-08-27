@@ -31,6 +31,11 @@ pub(crate) async fn run_protocol_command_started(
     }
     reject_agent_platform_json_output(&args)?;
     reject_file_workspace_for_search(&args)?;
+    if args.first().is_some_and(|command| command == "hook")
+        && super::hook::is_runtime_independent_control_command(&args[1..])
+    {
+        return run_hook_command(&args[1..]).await;
+    }
     match args.first().map(String::as_str) {
         Some("help" | "--help" | "-h") => {
             println!("{}", usage());

@@ -2,12 +2,21 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.dev/schemas/agent-action.v1.schema.json",
   "title": "Agent Action IR v1",
-  "description": "Separates immutable Host invocation facts from parser-derived semantic capabilities and classified subjects.",
+  "description": "Separates immutable Host invocation facts, subject-bound filesystem permission facts, projected semantic actions, and classified subjects.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["hostInvocation", "semanticCapabilities", "subjects"],
+  "required": [
+    "hostInvocation",
+    "filesystemPermissions",
+    "semanticCapabilities",
+    "subjects"
+  ],
   "properties": {
     "hostInvocation": { "$ref": "#/$defs/hostInvocation" },
+    "filesystemPermissions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/filesystemPermission" }
+    },
     "semanticCapabilities": {
       "type": "array",
       "minItems": 1,
@@ -30,6 +39,7 @@
         "enumerate",
         "execute",
         "mcp",
+        "spawn-agent",
         "unknown"
       ]
     },
@@ -52,8 +62,27 @@
       "properties": {
         "action": { "$ref": "#/$defs/semanticActionKind" },
         "evidence": {
-            "enum": ["host-invocation", "shell-redirection", "shell-source-operand"]
+          "enum": [
+            "host-matcher",
+            "shell-redirection",
+            "registered-source-operand"
+          ]
         }
+      }
+    },
+    "filesystemPermission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["permission", "source", "subject"],
+      "properties": {
+        "permission": { "enum": ["read", "write"] },
+        "source": {
+          "enum": [
+            "host-matcher",
+            "shell-redirection"
+          ]
+        },
+        "subject": { "type": ["string", "null"] }
       }
     },
     "subject": {

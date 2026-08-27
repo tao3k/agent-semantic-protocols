@@ -84,5 +84,8 @@ async fn provider_owner_request_without_an_actor_response_returns_when_receiver_
         Ok(_) => panic!("missing actor response must not leave provider-owner pending"),
         Err(error) => error,
     };
-    assert!(error.contains("not accepting provider owner requests"));
+    assert_eq!(
+        error,
+        "Runtime search service is not accepting owner requests"
+    );
 }

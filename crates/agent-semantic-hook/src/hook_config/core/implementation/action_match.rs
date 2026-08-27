@@ -1,14 +1,12 @@
+use crate::HookRuntime;
+use crate::tool_action::ToolAction;
 use agent_semantic_config::{
     HookClientActionKind, HookClientActionSubjectKind, HookClientHostInvocationKind,
 };
-use agent_semantic_shell_parser::{CommandStage, parse_bash_command_candidates};
-
-use crate::HookRuntime;
-use crate::tool_action::ToolAction;
 
 #[derive(Debug)]
 pub(super) struct AgentActionMatch {
-    action_any: Vec<HookClientActionKind>,
+    native_matcher_any: Vec<String>,
     host_invocation_any: Vec<HookClientHostInvocationKind>,
     subject_kind_any: Vec<HookClientActionSubjectKind>,
     policy_all: Vec<ActionPredicate>,
@@ -29,7 +27,7 @@ mod production_derivation_contract;
 
 #[derive(Default)]
 pub(super) struct AgentActionMatchConfig {
-    pub(super) action_any: Vec<HookClientActionKind>,
+    pub(super) native_matcher_any: Vec<String>,
     pub(super) host_invocation_any: Vec<HookClientHostInvocationKind>,
     pub(super) subject_kind_any: Vec<HookClientActionSubjectKind>,
     pub(super) policy_all: Vec<agent_semantic_config::HookClientCapabilityPolicyConfig>,
@@ -40,7 +38,7 @@ pub(super) struct AgentActionMatchConfig {
 impl AgentActionMatch {
     pub(super) fn new(config: AgentActionMatchConfig) -> Self {
         let AgentActionMatchConfig {
-            action_any,
+            native_matcher_any,
             host_invocation_any,
             subject_kind_any,
             policy_all,
@@ -48,7 +46,7 @@ impl AgentActionMatch {
             policy_none,
         } = config;
         Self {
-            action_any,
+            native_matcher_any,
             host_invocation_any,
             subject_kind_any,
             policy_all: policy_all.into_iter().map(ActionPredicate::from).collect(),
@@ -64,13 +62,29 @@ impl AgentActionMatch {
             || self.policy_none.iter().any(ActionPredicate::needs_subjects)
     }
 
+    pub(super) fn needs_profile_subjects(&self) -> bool {
+        self.native_matcher_any
+            .iter()
+            .any(|matcher| matcher == "Read")
+            || self
+                .policy_all
+                .iter()
+                .chain(self.policy_any.iter())
+                .any(|predicate| {
+                    predicate
+                        .semantic_capability_any
+                        .contains(&HookClientActionKind::Read)
+                })
+    }
+
     pub(super) fn matches(
         &self,
         registry: &HookRuntime,
+        platform: &str,
         action: &ToolAction,
         match_paths: Option<&[String]>,
     ) -> bool {
-        if self.action_any.is_empty()
+        if self.native_matcher_any.is_empty()
             && self.subject_kind_any.is_empty()
             && self.policy_all.is_empty()
             && self.policy_any.is_empty()
@@ -78,19 +92,21 @@ impl AgentActionMatch {
         {
             return true;
         }
-        let agent_action = self.derive_agent_action(registry, action, match_paths, None, false);
+        let agent_action =
+            self.derive_agent_action(registry, platform, action, match_paths, None, false);
         if !self.matches_non_subject_envelope(&agent_action) {
             return false;
         }
         if !self.needs_subjects() {
             return true;
         }
-        let agent_action = self.derive_agent_action(registry, action, match_paths, None, true);
+        let agent_action =
+            self.derive_agent_action(registry, platform, action, match_paths, None, true);
         self.matches_envelope(&agent_action)
     }
 
     fn matches_non_subject_envelope(&self, agent_action: &crate::tool_action::AgentAction) -> bool {
-        self.matches_rule_actions(agent_action)
+        self.matches_native_matcher(agent_action)
             && self.matches_host_invocations(agent_action)
             && self
                 .policy_all
@@ -110,12 +126,14 @@ impl AgentActionMatch {
     pub(super) fn derive_agent_action_for_rule(
         &self,
         registry: &HookRuntime,
+        platform: &str,
         action: &ToolAction,
         match_paths: Option<&[String]>,
         structured_source_operands: Option<&[String]>,
     ) -> Option<crate::tool_action::AgentAction> {
         Some(self.derive_agent_action(
             registry,
+            platform,
             action,
             match_paths,
             structured_source_operands,
@@ -125,6 +143,7 @@ impl AgentActionMatch {
 
     pub(super) fn matching_subject_paths(
         &self,
+        platform: &str,
         registry: &HookRuntime,
         action: &ToolAction,
         match_paths: &[String],
@@ -132,6 +151,7 @@ impl AgentActionMatch {
     ) -> Vec<String> {
         self.derive_agent_action(
             registry,
+            platform,
             action,
             Some(match_paths),
             structured_source_operands,
@@ -146,81 +166,35 @@ impl AgentActionMatch {
     fn derive_agent_action(
         &self,
         registry: &HookRuntime,
+        _platform: &str,
         action: &ToolAction,
         match_paths: Option<&[String]>,
         structured_source_operands: Option<&[String]>,
         include_subjects: bool,
     ) -> crate::tool_action::AgentAction {
-        let mut agent_action = action.derive_agent_action();
-        let needs_command_stages = include_subjects
-            || agent_action.host.action == crate::action_ir::HostInvocationKind::Execute;
-        let command_stages = if needs_command_stages {
-            self.command_stages(action)
+        let mut agent_action = crate::action_ir::project_agent_action(
+            registry,
+            action,
+            match_paths,
+            structured_source_operands,
+        );
+        if include_subjects {
+            if !self.subject_kind_any.is_empty() {
+                agent_action.subjects.retain(|subject| {
+                    self.subject_kind_any.iter().copied().any(|configured| {
+                        crate::tool_action::subject_kind_matches(subject.kind, configured)
+                    })
+                });
+            }
         } else {
-            Vec::new()
-        };
-        let behavior_facts = command_stages
-            .iter()
-            .flat_map(agent_semantic_shell_parser::command_stage_behavior_facts)
-            .collect::<Vec<_>>();
-        if include_subjects
-            || agent_action.host.action == crate::action_ir::HostInvocationKind::Execute
-        {
-            let mut subject_paths = if let Some(source_operands) = structured_source_operands {
-                source_operands.to_vec()
-            } else {
-                let invocation_operands = command_stages
-                    .iter()
-                    .flat_map(|stage| stage.words().iter().skip(1).cloned())
-                    .collect::<Vec<_>>();
-                let invocation_operands = crate::source_selector::project_shell_subject_paths(
-                    registry,
-                    &invocation_operands,
-                );
-                let mut subject_paths =
-                    if action.operation == crate::tool_action::OperationIntent::ShellCommand {
-                        crate::source_selector::project_shell_subject_paths(
-                            registry,
-                            match_paths.unwrap_or_default(),
-                        )
-                    } else {
-                        match_paths.unwrap_or_default().to_vec()
-                    };
-                for operand in invocation_operands {
-                    if !subject_paths.contains(&operand) {
-                        subject_paths.push(operand);
-                    }
-                }
-                subject_paths
-            };
-            for subject in behavior_facts
-                .iter()
-                .filter_map(|fact| fact.subject.as_ref())
-            {
-                if !subject_paths.contains(subject) {
-                    subject_paths.push(subject.clone());
-                }
-            }
-            subject_paths.dedup();
-            let mut subjects =
-                crate::source_selector::derive_agent_action_subjects(registry, &subject_paths);
-            if include_subjects {
-                if !self.subject_kind_any.is_empty() {
-                    subjects.retain(|subject| {
-                        self.subject_kind_any.iter().copied().any(|configured| {
-                            crate::tool_action::subject_kind_matches(subject.kind, configured)
-                        })
-                    });
-                }
-                agent_action.subjects = subjects;
-            }
+            agent_action.subjects.clear();
         }
 
         agent_action
     }
 
     fn matches_envelope(&self, agent_action: &crate::tool_action::AgentAction) -> bool {
-        self.matches_rule_actions(agent_action)
+        self.matches_native_matcher(agent_action)
             && self.matches_host_invocations(agent_action)
             && (self.subject_kind_any.is_empty()
                 || agent_action.subjects.iter().any(|subject| {
@@ -243,13 +217,12 @@ impl AgentActionMatch {
                 .all(|predicate| !predicate.matches(agent_action))
     }
 
-    fn matches_rule_actions(&self, action: &crate::tool_action::AgentAction) -> bool {
-        self.action_any.is_empty()
-            || self.action_any.iter().copied().any(|configured| {
-                action.capabilities.iter().any(|capability| {
-                    crate::tool_action::action_kind_matches(capability.action, configured)
-                })
-            })
+    fn matches_native_matcher(&self, action: &crate::tool_action::AgentAction) -> bool {
+        self.native_matcher_any.is_empty()
+            || self
+                .native_matcher_any
+                .iter()
+                .any(|matcher| matcher == &action.host.tool_name)
     }
 
     fn matches_host_invocations(&self, action: &crate::tool_action::AgentAction) -> bool {
@@ -257,13 +230,6 @@ impl AgentActionMatch {
             || self.host_invocation_any.iter().copied().any(|configured| {
                 crate::action_ir::host_invocation_kind_matches(action.host.action, configured)
             })
-    }
-
-    fn command_stages(&self, action: &ToolAction) -> Vec<CommandStage> {
-        action
-            .semantic_command_text()
-            .and_then(|command| parse_bash_command_candidates(command).ok())
-            .unwrap_or_default()
     }
 }
 

@@ -57,9 +57,12 @@ impl ClientHookConfig {
         runtime: &mut HookRuntime,
     ) -> Result<(), String> {
         self.publish_policy_snapshot(runtime)?;
-        runtime
-            .policy_providers
-            .clone_from(&self.provider_projections);
+        let mut provider_projections = self.provider_projections.clone();
+        crate::hook_config::core::implementation::profile_provider_projection::merge_provider_projection_facts(
+            &mut provider_projections,
+            &runtime.policy_providers,
+        );
+        runtime.policy_providers = provider_projections;
         for provider in &mut runtime.providers {
             let projected = self
                 .profiles
@@ -140,6 +143,25 @@ impl ClientHookConfig {
             .map(|receipt| (receipt.generation_digest.as_str(), receipt.kernel_version))
     }
 
+    pub(crate) fn attach_hook_policy_receipt(&self, decision: &mut crate::HookDecision) {
+        let (generation_digest, kernel_version) = self.hook_policy_receipt().unwrap_or((
+            self.policy_generation_digest.as_str(),
+            crate::protocol::HOOK_POLICY_KERNEL_VERSION,
+        ));
+        decision.fields.insert(
+            "hookPolicySnapshotDigest".to_owned(),
+            serde_json::Value::String(generation_digest.to_owned()),
+        );
+        decision.fields.insert(
+            "hookPolicyKernelVersion".to_owned(),
+            serde_json::Value::String(kernel_version.to_owned()),
+        );
+        decision.fields.insert(
+            "hookPolicySynchronousDependencies".to_owned(),
+            serde_json::Value::Array(Vec::new()),
+        );
+    }
+
     fn candidate_rule_indices(&self, platform: &str, event: &str) -> &[usize] {
         let canonical_event = super::canonical_event(event);
         let event_candidates = self
@@ -179,9 +201,12 @@ impl ClientHookConfig {
         action: &ToolAction,
     ) -> Option<crate::hook_config::HookPolicyCandidate> {
         let mut classification_runtime = runtime.clone();
-        if classification_runtime.policy_providers.is_empty() {
-            classification_runtime.policy_providers = self.provider_projections.clone();
-        }
+        let mut provider_projections = self.provider_projections.clone();
+        crate::hook_config::core::implementation::profile_provider_projection::merge_provider_projection_facts(
+            &mut provider_projections,
+            &classification_runtime.policy_providers,
+        );
+        classification_runtime.policy_providers = provider_projections;
         let runtime = &classification_runtime;
         let mut command_tokens: Option<Option<Cow<'_, [String]>>> = None;
         for rule_index in self.candidate_rule_indices(platform, event) {
@@ -513,7 +538,7 @@ impl ClientHookConfig {
         for (extension, path) in target_paths {
             let action =
                 crate::tool_action::ToolAction::normalized_direct_policy_action(path.clone());
-            let decision = self
+            let mut decision = self
                 .classify_candidate(&runtime, "codex", "pre-tool", &action)
                 .map(|candidate| candidate.decision)
                 .unwrap_or_else(|| {
@@ -521,6 +546,7 @@ impl ClientHookConfig {
                         "codex", "pre-tool", &action,
                     )
                 });
+            self.attach_hook_policy_receipt(&mut decision);
             shards.push((extension, path, decision.to_compact_binary()?));
         }
         Ok(shards)
@@ -582,7 +608,7 @@ impl ClientHookConfig {
                             command,
                             path.clone(),
                         );
-                        let decision = self
+                        let mut decision = self
                             .classify_candidate(&runtime, "codex", "pre-tool", &action)
                             .map(|candidate| candidate.decision)
                             .unwrap_or_else(|| {
@@ -590,6 +616,7 @@ impl ClientHookConfig {
                                     "codex", "pre-tool", &action,
                                 )
                             });
+                        self.attach_hook_policy_receipt(&mut decision);
                         (prefix.clone(), decision)
                     })
                     .collect::<Vec<_>>();
@@ -658,20 +685,7 @@ impl ClientHookConfig {
                     )
                 })?;
             for decision in [&mut bounded_decision, &mut rejected_decision] {
-                decision.fields.insert(
-                    "hookPolicySnapshotDigest".to_owned(),
-                    serde_json::Value::String(self.policy_generation_digest.clone()),
-                );
-                decision.fields.insert(
-                    "hookPolicyKernelVersion".to_owned(),
-                    serde_json::Value::String(
-                        crate::protocol::HOOK_POLICY_KERNEL_VERSION.to_owned(),
-                    ),
-                );
-                decision.fields.insert(
-                    "hookPolicySynchronousDependencies".to_owned(),
-                    serde_json::Value::Array(Vec::new()),
-                );
+                self.attach_hook_policy_receipt(decision);
             }
             entries.push((projection, placeholder, bounded_decision, rejected_decision));
         }
@@ -703,20 +717,7 @@ impl ClientHookConfig {
                             "codex", "pre-tool", &action,
                         )
                     });
-                decision.fields.insert(
-                    "hookPolicySnapshotDigest".to_owned(),
-                    serde_json::Value::String(self.policy_generation_digest.clone()),
-                );
-                decision.fields.insert(
-                    "hookPolicyKernelVersion".to_owned(),
-                    serde_json::Value::String(
-                        crate::protocol::HOOK_POLICY_KERNEL_VERSION.to_owned(),
-                    ),
-                );
-                decision.fields.insert(
-                    "hookPolicySynchronousDependencies".to_owned(),
-                    serde_json::Value::Array(Vec::new()),
-                );
+                self.attach_hook_policy_receipt(&mut decision);
                 (prefix, decision)
             })
             .collect();
@@ -787,7 +788,7 @@ impl ClientHookConfig {
         let DurableHookConfigArtifact {
             schema_id,
             schema_version,
-            config,
+            mut config,
             rule_matchers,
             policy_generation_digest,
             provider_projections,
@@ -797,6 +798,7 @@ impl ClientHookConfig {
         {
             return Err("durable Hook matcher artifact contract mismatch".to_owned());
         }
+        config.materialize_profile_rule_ir()?;
         compile_resolved_config(
             config,
             Some(rule_matchers),

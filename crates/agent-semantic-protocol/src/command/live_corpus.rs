@@ -293,7 +293,8 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
     }
     emit_live_corpus_timing("git-status", &mut step_started);
 
-    let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&state_home)?
+    let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&state_home)
+        .await?
         .ok_or_else(|| {
             "Live Corpus materialization requires a healthy Runtime Server".to_owned()
         })?;
@@ -316,21 +317,30 @@ async fn materialize(request: MaterializeRequest) -> Result<(), String> {
     emit_live_corpus_timing("provider-registration", &mut step_started);
     emit_live_corpus_timing("extension-evidence", &mut step_started);
 
-    let workspace_identity =
-        agent_semantic_client_core::state_core::ResolvedState::resolve(&source)?
-            .workspace
-            .workspace_id
-            .to_string();
-    let session = agent_semantic_client_db::WorkspaceDbIpcSession::for_runtime_server_client(
-        &endpoint,
-        workspace_identity,
-        source.clone(),
-    );
-    let generation = session
-        .admit_runtime_generation_for_read(corpus.language.as_str(), corpus.provider_id.as_str())
-        .await?;
-    let materialized_source =
-        materialized_source_identity(checkout, generation.source_root_digest)?;
+    let client = agent_semantic_client::RuntimeLanguageCommandClient;
+    let response = agent_semantic_client::LanguageCommandClient::dispatch(
+        &client,
+        agent_semantic_client::LanguageCommandRequest {
+            language_id: agent_semantic_client::LanguageId::new(corpus.language.as_str()),
+            operation: agent_semantic_client::LanguageCommandOperation::Search(
+                agent_semantic_client_protocol::AspClientSearchRequest {
+                    schema_id: "agent.semantic-protocols.asp-client-search-request".to_owned(),
+                    schema_version: "1".to_owned(),
+                    operation: "lexical".to_owned(),
+                    query: corpus.inputs.query.clone(),
+                },
+            ),
+            project_root: source.clone(),
+            machine_readable: true,
+        },
+    )
+    .await?;
+    let generation = serde_json::from_value::<
+        agent_semantic_search_projection::RuntimeProviderSearchReceipt,
+    >(response.require_ready_payload()?)
+    .map_err(|error| format!("decode Live Corpus public search payload: {error}"))?;
+    generation.validate()?;
+    let materialized_source = materialized_source_identity(checkout, generation.root_digest)?;
     emit_live_corpus_timing("runtime-generation", &mut step_started);
 
     let resource_lock =

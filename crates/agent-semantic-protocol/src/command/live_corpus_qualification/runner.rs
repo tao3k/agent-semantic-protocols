@@ -1,30 +1,14 @@
-//! Live Corpus qualification runner.
+//! Live Corpus qualification runner over the shared ASP Client application boundary.
 
-use std::path::{Path, PathBuf};
-
-#[path = "phase_receipt.rs"]
-mod phase_receipt;
-use phase_receipt::qualify_phase;
-
-use super::contract::{
-    ClientProtocolReceipt, QualificationCase, QualificationCaseReceipt, QualificationPlan,
-    QualificationReceipt,
+use std::{
+    collections::BTreeSet,
+    path::{Path, PathBuf},
 };
-pub(super) use super::resident_metrics::{
-    ResidentSearchOutcome, require_resident_sample_budget, require_zero_resident_search_work,
-    require_zero_workspace_ipc_work, resident_latency_distribution,
-};
+
+use super::client_protocol::qualify_public_client_case;
 use crate::command::live_corpus::{
     LiveCorpusQualification, live_corpus_git_repository_paths, live_corpus_lock_digest, load_lock,
     resolve_state_home, unique_resource,
-};
-use agent_semantic_client_core::LanguageId;
-use agent_semantic_client_db::runtime_server_workspace::{
-    ExactProjectionKind, RuntimeProjectionScope, WorkspaceRuntimeSelectorRead,
-};
-use agent_semantic_content_identity::{
-    callable_skeleton_projection::{CALLABLE_SKELETON_PAYLOAD_SCHEMA_ID, CallableSkeletonPayload},
-    semantic_projection::{SEMANTIC_PROJECTION_SCHEMA_ID, SemanticProjection},
 };
 
 const DEFAULT_PLAN_PATH: &str = "benchmarks/live-corpus-search-query-qualification.json";
@@ -34,6 +18,20 @@ pub(super) struct QualifyArgs {
     plan_path: PathBuf,
     resource_id: Option<String>,
     json: bool,
+}
+
+struct PreparedCase {
+    case: QualificationCase,
+    checkout_path: PathBuf,
+    qualification: LiveCorpusQualification,
+}
+
+struct PreparedRun {
+    args: QualifyArgs,
+    plan_bytes: Vec<u8>,
+    lock_bytes: Vec<u8>,
+    state_home: PathBuf,
+    cases: Vec<PreparedCase>,
 }
 
 fn publish_qualification_receipt(state_home: &Path, encoded: &str) -> Result<PathBuf, String> {
@@ -70,6 +68,80 @@ fn publish_qualification_receipt(state_home: &Path, encoded: &str) -> Result<Pat
 }
 
 pub(crate) async fn run(args: &[String]) -> Result<(), String> {
+    let args = args.to_vec();
+    let prepared = tokio::task::spawn_blocking(move || prepare_run(&args))
+        .await
+        .map_err(|error| format!("prepare Live Corpus qualification task: {error}"))??;
+    let PreparedRun {
+        args,
+        plan_bytes,
+        lock_bytes,
+        state_home,
+        cases,
+    } = prepared;
+    let mut receipts = Vec::with_capacity(cases.len());
+    for prepared_case in cases {
+        let client = agent_semantic_client::RuntimeLanguageCommandClient;
+        let checkout_path = prepared_case.checkout_path.clone();
+        let source_merkle_root = prepared_case.qualification.source_merkle_root.clone();
+        let qualified = qualify_case(
+            &client,
+            &checkout_path,
+            prepared_case.case,
+            prepared_case.qualification.head_revision,
+            prepared_case.qualification.git_tree,
+        )
+        .await?;
+        if qualified.root_digest != source_merkle_root {
+            return Err(format!(
+                "Live Corpus public route root does not match immutable artifact: case={} artifactRoot={} publicRoot={}",
+                qualified.case_id, source_merkle_root, qualified.root_digest
+            ));
+        }
+        receipts.push(qualified);
+    }
+    let receipt = QualificationReceipt {
+        schema_id: "agent.semantic-protocols.live-corpus-search-query-qualification-receipt",
+        schema_version: "1",
+        plan_digest: live_corpus_lock_digest(&plan_bytes),
+        lock_digest: live_corpus_lock_digest(&lock_bytes),
+        client_protocol: ClientProtocolReceipt {
+            protocol_id: "agent.semantic-protocols.client",
+            protocol_version: "1",
+            transport: "grpc-tokio-streams",
+            application_api: "agent_semantic_client::AspClient::dispatch",
+            routes: ["search", "query"],
+            terminal_outcomes: ["queued", "building", "ready", "failed", "cancelled"],
+            qualified_case_count: receipts.len(),
+        },
+        qualified_case_count: receipts.len(),
+        cases: receipts,
+        status: "qualified",
+    };
+    let encoded = serde_json::to_string(&receipt)
+        .map_err(|error| format!("encode Live Corpus qualification receipt: {error}"))?;
+    let publish_state_home = state_home.clone();
+    let publish_encoded = encoded.clone();
+    let receipt_path = tokio::task::spawn_blocking(move || {
+        publish_qualification_receipt(&publish_state_home, &publish_encoded)
+    })
+    .await
+    .map_err(|error| format!("publish Live Corpus qualification task: {error}"))??;
+    if args.json {
+        println!("{encoded}");
+    } else {
+        println!(
+            "[live-corpus-qualification] cases={} planDigest={} lockDigest={} receipt={} status=qualified",
+            receipt.qualified_case_count,
+            receipt.plan_digest,
+            receipt.lock_digest,
+            receipt_path.display()
+        );
+    }
+    Ok(())
+}
+
+fn prepare_run(args: &[String]) -> Result<PreparedRun, String> {
     let args = parse_args(args)?;
     let plan_bytes = std::fs::read(&args.plan_path).map_err(|error| {
         format!(
@@ -88,12 +160,9 @@ pub(crate) async fn run(args: &[String]) -> Result<(), String> {
     })?;
     let lock = load_lock(&plan.lock_path)?;
     let state_home = resolve_state_home()?;
-    let endpoint = agent_semantic_client_db::read_runtime_server_endpoint(&state_home)?
-        .ok_or_else(|| "Live Corpus qualification requires a healthy Runtime Server".to_owned())?;
 
-    let resident_sample_count = plan.resident_sample_count;
     let cases = select_qualification_cases(plan.cases, args.resource_id.as_deref())?;
-    let mut receipts = Vec::with_capacity(cases.len());
+    let mut prepared_cases = Vec::with_capacity(cases.len());
     for case in cases {
         let corpus = unique_resource(&lock.corpora, &case.resource_id)?;
         if corpus.scenario_id != case.scenario_id
@@ -167,565 +236,56 @@ pub(crate) async fn run(args: &[String]) -> Result<(), String> {
                 artifact_dir.display()
             ));
         }
-        let qualified = qualify_case(
-            &endpoint,
-            &checkout_path,
+        prepared_cases.push(PreparedCase {
             case,
-            resident_sample_count,
-            qualification.head_revision,
-            qualification.git_tree,
-        )
-        .await?;
-        if qualified.root_digest != qualification.source_merkle_root {
-            return Err(format!(
-                "Live Corpus resident generation root does not match immutable artifact: case={} artifactRoot={} residentRoot={}",
-                qualified.case_id, qualification.source_merkle_root, qualified.root_digest
-            ));
-        }
-        receipts.push(qualified);
+            checkout_path,
+            qualification,
+        });
     }
-    let receipt = QualificationReceipt {
-        schema_id: "agent.semantic-protocols.live-corpus-search-query-qualification-receipt",
-        schema_version: "1",
-        plan_digest: live_corpus_lock_digest(&plan_bytes),
-        lock_digest: live_corpus_lock_digest(&lock_bytes),
-        client_protocol: ClientProtocolReceipt {
-            protocol_id: "agent.semantic-protocols.client",
-            protocol_version: "1",
-            transport: "http-json",
-            phases: [
-                "initialize",
-                "catalog",
-                "request",
-                "cancel",
-                "cancelled",
-                "shutdown",
-            ],
-            session_policy: plan.client_protocol.session_policy.clone(),
-            ready_effects: plan.client_protocol.ready_effects.clone(),
-            forbidden_ready_effects: plan.client_protocol.forbidden_ready_effects.clone(),
-            non_ready_dispatch_count: plan.client_protocol.non_ready_dispatch_count,
-            residual_task_count: plan.client_protocol.residual_task_count,
-            cancel_outcome: "cancelled",
-            request_outcome: "cancelled",
-            required_telemetry_events: [
-                "client_protocol_initialize",
-                "client_protocol_catalog",
-                "client_protocol_request",
-                "client_protocol_cancel",
-                "client_protocol_cancelled",
-                "client_protocol_shutdown",
-            ],
-            qualified_case_count: receipts.len(),
-            maximum_resident_micros: plan.client_protocol.maximum_resident_micros,
-            p50_maximum_micros: plan.client_protocol.p50_maximum_micros,
-            p99_maximum_micros: plan.client_protocol.p99_maximum_micros,
-            max_maximum_micros: plan.client_protocol.max_maximum_micros,
-        },
-        qualified_case_count: receipts.len(),
-        cases: receipts,
-        status: "qualified",
-    };
-    let encoded = serde_json::to_string(&receipt)
-        .map_err(|error| format!("encode Live Corpus qualification receipt: {error}"))?;
-    let receipt_path = publish_qualification_receipt(&state_home, &encoded)?;
-    if args.json {
-        println!("{encoded}");
-    } else {
-        println!(
-            "[live-corpus-qualification] cases={} planDigest={} lockDigest={} receipt={} status=qualified",
-            receipt.qualified_case_count,
-            receipt.plan_digest,
-            receipt.lock_digest,
-            receipt_path.display()
-        );
-    }
-    Ok(())
+    Ok(PreparedRun {
+        args,
+        plan_bytes,
+        lock_bytes,
+        state_home,
+        cases: prepared_cases,
+    })
 }
 
-async fn qualify_case(
-    endpoint: &agent_semantic_client_db::RuntimeServerEndpoint,
-    project_root: &Path,
+async fn qualify_case<C: agent_semantic_client::LanguageCommandClient>(
+    client: &C,
+    project_root: &std::path::Path,
     case: QualificationCase,
-    resident_sample_count: usize,
     revision: String,
     git_tree: String,
 ) -> Result<QualificationCaseReceipt, String> {
-    let workspace_identity =
-        agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)?
-            .workspace
-            .workspace_id
-            .to_string();
-    qualify_phase(
-        &case,
-        "public-client-search-query",
-        super::client_protocol::qualify_client_protocol_case(
-            &endpoint.client_http_endpoint,
-            &workspace_identity,
-            project_root,
-            &case,
-        ),
-    )
-    .await?;
-    let session = agent_semantic_client_db::WorkspaceDbIpcSession::for_runtime_server_client(
-        endpoint,
-        workspace_identity.clone(),
-        project_root.to_path_buf(),
-    );
-    let required_generation = qualify_phase(
-        &case,
-        "generation-restore",
-        session.restore_runtime_generation_from_pointer(),
-    )
-    .await?;
-    let resident_generation_digest = required_generation.generation_digest.clone();
-    let resident_root_digest = required_generation.source_root_digest.clone();
-
-    let language_id = LanguageId::from(case.language_id.as_str());
-    let cold_prime = qualify_phase(
-        &case,
-        "resident-search-cold-prime",
-        resident_search(
-            &session,
-            &resident_root_digest,
-            &language_id,
-            &case.search.method,
-            &case.search.view,
-            &case.search.terms,
-            format!("live-corpus-search-{}-cold-prime", case.case_id),
-        ),
-    )
-    .await?;
-    require_zero_resident_search_work(
-        &case.case_id,
-        "search-cold-prime",
-        0,
-        &cold_prime.work_counters,
-    )?;
-    let search = qualify_phase(
-        &case,
-        "resident-search-sample-0",
-        resident_search(
-            &session,
-            &resident_root_digest,
-            &language_id,
-            &case.search.method,
-            &case.search.view,
-            &case.search.terms,
-            format!("live-corpus-search-{}-0", case.case_id),
-        ),
-    )
-    .await?;
-    let search_operation_id = search.operation_id.clone();
-    if search.elapsed_micros > case.search.maximum_resident_micros {
-        return Err(format!(
-            "Live Corpus resident search exceeded budget: case={} residentReadMicros={} serviceMicros={} elapsedMicros={} budgetMicros={}",
-            case.case_id,
-            search.resident_read_elapsed_micros,
-            search.service_elapsed_micros,
-            search.elapsed_micros,
-            case.search.maximum_resident_micros
-        ));
-    }
-    let mut search_resident_read_latency_samples = Vec::with_capacity(resident_sample_count);
-    search_resident_read_latency_samples.push(search.resident_read_elapsed_micros);
-    let mut search_service_latency_samples = Vec::with_capacity(resident_sample_count);
-    search_service_latency_samples.push(search.service_elapsed_micros);
-    let mut search_total_latency_samples = Vec::with_capacity(resident_sample_count);
-    search_total_latency_samples.push(search.elapsed_micros);
-    require_zero_resident_search_work(&case.case_id, "search", 0, &search.work_counters)?;
-    if search.candidate_count < case.search.minimum_candidates {
-        return Err(format!(
-            "Live Corpus resident search returned too few candidates: case={} candidates={} minimum={}",
-            case.case_id, search.candidate_count, case.search.minimum_candidates
-        ));
-    }
-    let selector = search.selectors.first().cloned().ok_or_else(|| {
+    let evidence = qualify_public_client_case(client, project_root, &case).await?;
+    let selector = evidence.search.selectors.first().cloned().ok_or_else(|| {
         format!(
-            "Live Corpus resident search returned no parser-owned selector: case={}",
+            "Live Corpus public search selector missing: case={}",
             case.case_id
         )
     })?;
-    let query_result = qualify_phase(
-        &case,
-        "exact-source-sample-0",
-        session.read_runtime_exact_projection(
-            language_id.clone(),
-            ExactProjectionKind::Source,
-            RuntimeProjectionScope::Production,
-            selector.clone(),
-        ),
-    )
-    .await?;
-    let query_evidence = query_result.evidence.clone();
-    let query = query_result.value;
-    let query_elapsed_micros = query_evidence.elapsed_micros;
-    if query_elapsed_micros > case.query.maximum_resident_micros {
-        return Err(format!(
-            "Live Corpus exact query exceeded budget: case={} elapsedMicros={} budgetMicros={}",
-            case.case_id, query_elapsed_micros, case.query.maximum_resident_micros
-        ));
-    }
-    let mut exact_source_latency_samples = Vec::with_capacity(resident_sample_count);
-    exact_source_latency_samples.push(query_elapsed_micros);
-    require_zero_workspace_ipc_work(
-        &case.case_id,
-        "exact-source",
-        0,
-        &query_evidence.work_counters,
-    )?;
-    let (generation_digest, root_digest, resolved_selector) = match query {
-        WorkspaceRuntimeSelectorRead::Projection {
-            generation_digest,
-            root_digest,
-            resolved_selector,
-            ..
-        } => (generation_digest, root_digest, resolved_selector),
-        other => {
+    for query in [&evidence.source, &evidence.callable_skeleton] {
+        if query.generation_digest != evidence.search.generation_digest
+            || query.root_digest != evidence.search.root_digest
+            || query.provider_id != case.provider_id
+        {
             return Err(format!(
-                "Live Corpus exact query did not return a resident projection: case={} state={other:?}",
-                case.case_id
+                "Live Corpus public route authority drift: case={} searchGeneration={} queryGeneration={} searchRoot={} queryRoot={}",
+                case.case_id,
+                evidence.search.generation_digest,
+                query.generation_digest,
+                evidence.search.root_digest,
+                query.root_digest
             ));
         }
-    };
-    if resolved_selector != selector {
-        return Err(format!(
-            "Live Corpus source query resolved selector drifted: case={} requested={} resolved={}",
-            case.case_id, selector, resolved_selector
-        ));
     }
-    if generation_digest != resident_generation_digest || root_digest != resident_root_digest {
-        return Err(format!(
-            "Live Corpus resident generation authority drifted during query: case={} reasonKind=stale-generation residentGeneration={} queryGeneration={} residentRoot={} queryRoot={} candidates=[]",
-            case.case_id,
-            resident_generation_digest,
-            generation_digest,
-            resident_root_digest,
-            root_digest
-        ));
-    }
-    let projection_result = qualify_phase(
-        &case,
-        "callable-skeleton-sample-0",
-        session.read_runtime_exact_projection(
-            language_id.clone(),
-            ExactProjectionKind::CallableSkeleton,
-            RuntimeProjectionScope::Production,
-            selector.clone(),
-        ),
-    )
-    .await?;
-    let projection_evidence = projection_result.evidence.clone();
-    let projection_read = projection_result.value;
-    let projection_elapsed_micros = projection_evidence.elapsed_micros;
-    if projection_elapsed_micros > case.query.maximum_resident_micros {
-        return Err(format!(
-            "Live Corpus callable-skeleton query exceeded budget: case={} elapsedMicros={} budgetMicros={}",
-            case.case_id, projection_elapsed_micros, case.query.maximum_resident_micros
-        ));
-    }
-    let mut callable_skeleton_latency_samples = Vec::with_capacity(resident_sample_count);
-    callable_skeleton_latency_samples.push(projection_elapsed_micros);
-    require_zero_workspace_ipc_work(
-        &case.case_id,
-        "callable-skeleton",
-        0,
-        &projection_evidence.work_counters,
-    )?;
-    let projection = match projection_read {
-        WorkspaceRuntimeSelectorRead::Projection {
-            generation_digest: projection_generation,
-            root_digest: projection_root,
-            resolved_selector: projection_selector,
-            bytes,
-        } => {
-            if projection_generation != generation_digest
-                || projection_root != root_digest
-                || projection_selector != selector
-            {
-                return Err(format!(
-                    "Live Corpus callable-skeleton authority mismatch: case={}",
-                    case.case_id
-                ));
-            }
-            serde_json::from_slice::<SemanticProjection<CallableSkeletonPayload>>(&bytes).map_err(
-                |error| {
-                    format!(
-                        "Live Corpus callable-skeleton decode failed: case={} error={error}",
-                        case.case_id
-                    )
-                },
-            )?
-        }
-        other => {
-            return Err(format!(
-                "Live Corpus callable-skeleton query did not return a resident projection: case={} state={other:?}",
-                case.case_id
-            ));
-        }
-    };
-    projection.validate().map_err(|error| {
-        format!(
-            "Live Corpus semantic projection validation failed: case={} error={error}",
-            case.case_id
-        )
-    })?;
-    projection.payload.validate().map_err(|error| {
-        format!(
-            "Live Corpus callable-skeleton payload validation failed: case={} error={error}",
-            case.case_id
-        )
-    })?;
-    projection
-        .payload
-        .validate_scope(&projection.root_selector)
-        .map_err(|error| {
-            format!(
-                "Live Corpus callable-skeleton scope validation failed: case={} error={error}",
-                case.case_id
-            )
-        })?;
-    if projection.schema_id != SEMANTIC_PROJECTION_SCHEMA_ID
-        || projection.payload_schema_id != CALLABLE_SKELETON_PAYLOAD_SCHEMA_ID
-        || projection.projection_kind != "callable-skeleton"
-        || projection.language_id != case.language_id
-        || projection.provider_id != case.provider_id
-        || projection.root_selector != selector
+    if evidence.zero_match.generation_digest != evidence.search.generation_digest
+        || evidence.zero_match.root_digest != evidence.search.root_digest
     {
         return Err(format!(
-            "Live Corpus projection identity mismatch: case={} schemaId={} payloadSchemaId={} projectionKind={} languageId={} providerId={} rootSelector={}",
-            case.case_id,
-            projection.schema_id,
-            projection.payload_schema_id,
-            projection.projection_kind,
-            projection.language_id,
-            projection.provider_id,
-            projection.root_selector,
-        ));
-    }
-    for sample_index in 1..resident_sample_count {
-        let search_phase = format!("resident-search-sample-{sample_index}");
-        let search_sample = qualify_phase(
-            &case,
-            &search_phase,
-            resident_search(
-                &session,
-                &resident_root_digest,
-                &language_id,
-                &case.search.method,
-                &case.search.view,
-                &case.search.terms,
-                format!("live-corpus-search-{}-{sample_index}", case.case_id),
-            ),
-        )
-        .await?;
-        require_resident_sample_budget(
-            &case.case_id,
-            "search-total",
-            sample_index,
-            search_sample.elapsed_micros,
-            case.search.maximum_resident_micros,
-        )?;
-        require_zero_resident_search_work(
-            &case.case_id,
-            "search",
-            sample_index,
-            &search_sample.work_counters,
-        )?;
-        if search_sample.selectors.first() != Some(&selector) {
-            return Err(format!(
-                "Live Corpus resident search selector drift: case={} sampleIndex={sample_index}",
-                case.case_id
-            ));
-        }
-        search_resident_read_latency_samples.push(search_sample.resident_read_elapsed_micros);
-        search_service_latency_samples.push(search_sample.service_elapsed_micros);
-        search_total_latency_samples.push(search_sample.elapsed_micros);
-
-        let exact_phase = format!("exact-source-sample-{sample_index}");
-        let exact_sample = qualify_phase(
-            &case,
-            &exact_phase,
-            session.read_runtime_exact_projection(
-                language_id.clone(),
-                ExactProjectionKind::Source,
-                RuntimeProjectionScope::Production,
-                selector.clone(),
-            ),
-        )
-        .await?;
-        require_resident_sample_budget(
-            &case.case_id,
-            "exact-source",
-            sample_index,
-            exact_sample.evidence.elapsed_micros,
-            case.query.maximum_resident_micros,
-        )?;
-        require_zero_workspace_ipc_work(
-            &case.case_id,
-            "exact-source",
-            sample_index,
-            &exact_sample.evidence.work_counters,
-        )?;
-        let exact_elapsed_micros = exact_sample.evidence.elapsed_micros;
-        match exact_sample.value {
-            WorkspaceRuntimeSelectorRead::Projection {
-                generation_digest: sample_generation,
-                root_digest: sample_root,
-                resolved_selector: sample_selector,
-                ..
-            } if sample_generation == generation_digest
-                && sample_root == root_digest
-                && sample_selector == selector => {}
-            other => {
-                return Err(format!(
-                    "Live Corpus exact-source authority drift: case={} sampleIndex={sample_index} state={other:?}",
-                    case.case_id
-                ));
-            }
-        }
-        exact_source_latency_samples.push(exact_elapsed_micros);
-
-        let callable_phase = format!("callable-skeleton-sample-{sample_index}");
-        let callable_sample = qualify_phase(
-            &case,
-            &callable_phase,
-            session.read_runtime_exact_projection(
-                language_id.clone(),
-                ExactProjectionKind::CallableSkeleton,
-                RuntimeProjectionScope::Production,
-                selector.clone(),
-            ),
-        )
-        .await?;
-        require_resident_sample_budget(
-            &case.case_id,
-            "callable-skeleton",
-            sample_index,
-            callable_sample.evidence.elapsed_micros,
-            case.query.maximum_resident_micros,
-        )?;
-        require_zero_workspace_ipc_work(
-            &case.case_id,
-            "callable-skeleton",
-            sample_index,
-            &callable_sample.evidence.work_counters,
-        )?;
-        let callable_elapsed_micros = callable_sample.evidence.elapsed_micros;
-        match callable_sample.value {
-            WorkspaceRuntimeSelectorRead::Projection {
-                generation_digest: sample_generation,
-                root_digest: sample_root,
-                resolved_selector: sample_selector,
-                ..
-            } if sample_generation == generation_digest
-                && sample_root == root_digest
-                && sample_selector == selector => {}
-            other => {
-                return Err(format!(
-                    "Live Corpus callable-skeleton authority drift: case={} sampleIndex={sample_index} state={other:?}",
-                    case.case_id
-                ));
-            }
-        }
-        callable_skeleton_latency_samples.push(callable_elapsed_micros);
-    }
-
-    let search_resident_read_latency_micros =
-        resident_latency_distribution(search_resident_read_latency_samples)?;
-    let search_service_latency_micros =
-        resident_latency_distribution(search_service_latency_samples)?;
-    let search_total_latency_micros = resident_latency_distribution(search_total_latency_samples)?;
-    let exact_source_latency_micros = resident_latency_distribution(exact_source_latency_samples)?;
-    let callable_skeleton_latency_micros =
-        resident_latency_distribution(callable_skeleton_latency_samples)?;
-
-    let merkle_owner_path = search.owner_paths.first().ok_or_else(|| {
-        format!(
-            "runtime-resident-search-owner-path-missing: case={}",
+            "Live Corpus public zero-match route crossed generation authority: case={}",
             case.case_id
-        )
-    })?;
-    let merkle_read_result = qualify_phase(
-        &case,
-        "merkle-owner-proof",
-        session.read_runtime_merkle_owner(merkle_owner_path),
-    )
-    .await?;
-    let merkle_telemetry_digest = merkle_read_result.evidence.telemetry_digest.clone();
-    let merkle_read = merkle_read_result.value;
-    let merkle_receipt = agent_semantic_client_db::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofQualificationReceipt::qualified(
-        agent_semantic_client_db::runtime_merkle_owner_proof_qualification::RuntimeMerkleOwnerProofEvidenceLayer::LiveCorpus,
-        case.case_id.clone(),
-        Some(case.resource_id.clone()),
-        case.language_id.clone(),
-        case.provider_id.clone(),
-        selector.clone(),
-        0,
-        Default::default(),
-        merkle_read,
-    )?;
-    if merkle_receipt.generation_digest.as_deref()
-        != Some(required_generation.generation_digest.as_str())
-        || merkle_receipt.owner_path.as_deref() != Some(merkle_owner_path.as_str())
-        || merkle_receipt.proof_step_count == Some(0)
-    {
-        return Err(format!(
-            "runtime-resident-merkle-authority-mismatch: case={} ownerPath={merkle_owner_path}",
-            case.case_id
-        ));
-    }
-    let merkle_source_blob_digest = merkle_receipt.owner_content_digest.ok_or_else(|| {
-        format!(
-            "runtime-resident-merkle-content-digest-missing: case={}",
-            case.case_id
-        )
-    })?;
-    let merkle_owner_subtree_digest = merkle_receipt.owner_subtree_digest.ok_or_else(|| {
-        format!(
-            "runtime-resident-merkle-subtree-digest-missing: case={}",
-            case.case_id
-        )
-    })?;
-    let merkle_proof_digest = merkle_receipt.proof_digest.ok_or_else(|| {
-        format!(
-            "runtime-resident-merkle-proof-digest-missing: case={}",
-            case.case_id
-        )
-    })?;
-    let merkle_proof_step_count = merkle_receipt.proof_step_count.ok_or_else(|| {
-        format!(
-            "runtime-resident-merkle-proof-steps-missing: case={}",
-            case.case_id
-        )
-    })?;
-    let query_operation_id = format!("live-corpus-query-{}", case.case_id);
-
-    let zero_match_operation_id = format!("live-corpus-zero-match-{}", case.case_id);
-    let zero_match = qualify_phase(
-        &case,
-        "resident-search-zero-match",
-        resident_search(
-            &session,
-            &resident_root_digest,
-            &language_id,
-            "lexical",
-            "seeds",
-            &case.zero_match_terms,
-            zero_match_operation_id.clone(),
-        ),
-    )
-    .await?;
-    if zero_match.candidate_count != 0 {
-        return Err(format!(
-            "Live Corpus zero-match query returned candidates: case={} candidates={}",
-            case.case_id, zero_match.candidate_count
-        ));
-    }
-    if zero_match.elapsed_micros > case.search.maximum_resident_micros {
-        return Err(format!(
-            "runtime-resident-zero-match-budget-exceeded: case={} elapsedMicros={} budgetMicros={}",
-            case.case_id, zero_match.elapsed_micros, case.search.maximum_resident_micros
         ));
     }
     Ok(QualificationCaseReceipt {
@@ -736,98 +296,23 @@ async fn qualify_case(
         provider_id: case.provider_id,
         revision,
         git_tree,
-        generation_digest,
-        root_digest,
-        search_operation_id,
-        search_elapsed_micros: search.elapsed_micros,
-        resident_sample_count,
-        search_resident_read_latency_micros,
-        search_service_latency_micros,
-        search_total_latency_micros,
-        candidate_count: search.candidate_count,
-        selector: selector.clone(),
-        query_operation_id,
-        query_elapsed_micros,
-        exact_source_latency_micros,
-        callable_skeleton_latency_micros,
-        merkle_owner_path: merkle_owner_path.clone(),
-        merkle_source_blob_digest,
-        merkle_owner_subtree_digest,
-        merkle_proof_digest,
-        merkle_proof_step_count,
-        zero_match_operation_id,
-        source_exact_telemetry_digest: query_evidence.telemetry_digest.clone(),
-        source_index_telemetry_digest: query_evidence.telemetry_digest.clone(),
-        callable_skeleton_telemetry_digest: projection_evidence.telemetry_digest.clone(),
-        merkle_telemetry_digest,
-        runtime_ecosystem: "tokio",
-        search_read_mode: "synchronous-mmap",
-        search_read_work_counters:
-            agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadWorkCounters {
-                database_read_count: search.work_counters.database_read_count,
-                filesystem_read_count: search.work_counters.filesystem_read_count,
-                provider_process_count: search.work_counters.provider_process_count,
-                scheduler_task_count: search.work_counters.scheduler_task_count,
-                socket_operation_count: search.work_counters.socket_operation_count,
-            },
-        exact_read_mode: "synchronous-mmap",
-        exact_read_work_counters:
-            agent_semantic_client_db::runtime_resident_read::RuntimeResidentReadWorkCounters {
-                database_read_count: projection_evidence.work_counters.database_opens,
-                filesystem_read_count: projection_evidence.work_counters.filesystem_reads,
-                provider_process_count: projection_evidence.work_counters.provider_spawns,
-                scheduler_task_count: 0,
-                socket_operation_count: projection_evidence.work_counters.control_socket_roundtrips,
-            },
+        generation_digest: evidence.search.generation_digest,
+        root_digest: evidence.search.root_digest,
+        search_operation_id: evidence.search.operation_id,
+        search_elapsed_micros: evidence.search.elapsed_micros,
+        candidate_count: evidence.search.candidate_count,
+        selector,
+        query_operation_id: evidence.source.operation_id,
+        query_elapsed_micros: evidence.source.elapsed_micros,
+        callable_skeleton_operation_id: evidence.callable_skeleton.operation_id,
+        callable_skeleton_elapsed_micros: evidence.callable_skeleton.elapsed_micros,
+        zero_match_operation_id: evidence.zero_match.operation_id,
+        route: "public-typed-asp-client",
+        search_terminal: "ready",
+        query_terminal: "ready",
+        callable_skeleton_terminal: "ready",
+        zero_match_terminal: "ready",
         status: "qualified",
-        semantic_projection_schema_id: projection.schema_id,
-        payload_schema_id: projection.payload_schema_id,
-        payload_digest: projection.payload_digest,
-    })
-}
-
-async fn resident_search(
-    session: &agent_semantic_client_db::WorkspaceDbIpcSession,
-    resident_root: &str,
-    language_id: &agent_semantic_client_core::LanguageId,
-    method: &str,
-    view: &str,
-    terms: &[String],
-    operation_id: String,
-) -> Result<ResidentSearchOutcome, String> {
-    if method != "lexical" || view != "seeds" {
-        return Err(format!(
-            "runtime-resident-search-plan-unsupported: method={method} view={view}"
-        ));
-    }
-    let mut args = vec!["search".to_owned(), "lexical".to_owned()];
-    for term in terms {
-        args.push("--query".to_owned());
-        args.push(term.clone());
-    }
-    args.push("--view".to_owned());
-    args.push(view.to_owned());
-    let receipt = session
-        .provider_search(operation_id, language_id.clone(), args)
-        .await?;
-    let observed_root = receipt.root_digest;
-    if observed_root.trim().is_empty() {
-        return Err("runtime-resident-search-root-digest-missing".to_owned());
-    }
-    if observed_root != resident_root {
-        return Err(format!(
-            "runtime-resident-search-root-mismatch: expected={resident_root} observed={observed_root}"
-        ));
-    }
-    Ok(ResidentSearchOutcome {
-        operation_id: receipt.operation_id,
-        resident_read_elapsed_micros: receipt.resident_read_elapsed_micros,
-        service_elapsed_micros: receipt.service_elapsed_micros,
-        elapsed_micros: receipt.elapsed_micros,
-        candidate_count: receipt.candidate_count,
-        selectors: receipt.selectors,
-        owner_paths: receipt.owner_paths,
-        work_counters: receipt.work_counters,
     })
 }
 
@@ -840,59 +325,47 @@ fn validate_plan(plan: &QualificationPlan) -> Result<(), String> {
     if plan.cases.is_empty() || plan.required_languages.is_empty() {
         return Err("Live Corpus qualification plan is empty".to_owned());
     }
-    if plan.resident_sample_count < 128 {
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let registered = agent_semantic_schema_manager::SchemaManager::new(workspace_root)
+        .registered_language_profiles()?
+        .into_iter()
+        .map(|profile| profile.language_id)
+        .collect::<BTreeSet<_>>();
+    let required = plan
+        .required_languages
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    if required != registered {
         return Err(format!(
-            "Live Corpus qualification requires at least 128 resident samples: actual={}",
-            plan.resident_sample_count
+            "Live Corpus required languages must equal SchemaManager registered profiles: required={required:?} registered={registered:?}"
         ));
     }
-    if plan.client_protocol.protocol_id != "agent.semantic-protocols.client"
-        || plan.client_protocol.protocol_version != "1"
-        || plan.client_protocol.transport != "http-json"
-        || plan.client_protocol.phases
-            != [
-                "initialize",
-                "catalog",
-                "request",
-                "cancel",
-                "cancelled",
-                "shutdown",
-            ]
-        || plan.client_protocol.session_policy != "one-initialize-per-session"
-        || plan.client_protocol.ready_effects != ["mpsc", "oneshot", "cancel", "response"]
-        || plan.client_protocol.forbidden_ready_effects
-            != [
-                "process",
-                "filesystem",
-                "dbWrite",
-                "generationMutation",
-                "providerActivation",
-                "controlPoll",
-            ]
-        || plan.client_protocol.non_ready_dispatch_count != 0
-        || plan.client_protocol.residual_task_count != 0
-        || plan.client_protocol.applies_to_case_count != 17
-        || plan.client_protocol.maximum_resident_micros > 1_000
-        || plan.client_protocol.p50_maximum_micros != 250
-        || plan.client_protocol.p99_maximum_micros != 700
-        || plan.client_protocol.max_maximum_micros != 1_000
-    {
-        return Err("Live Corpus qualification client protocol contract is invalid".to_owned());
+    let case_languages = plan
+        .cases
+        .iter()
+        .map(|case| case.language_id.as_str())
+        .collect::<BTreeSet<_>>();
+    for profile in &registered {
+        if !case_languages.contains(profile.as_str()) {
+            return Err(format!(
+                "Live Corpus has no public-route case for registered language profile: language={profile}"
+            ));
+        }
     }
     for case in &plan.cases {
+        if !registered.contains(&case.language_id) {
+            return Err(format!(
+                "Live Corpus case language is not registered by SchemaManager: case={} language={}",
+                case.case_id, case.language_id
+            ));
+        }
         if case.query.selector_strategy != "first-ranked-parser-owned"
-            || case.query.owner_view != "items"
-            || case.query.projection_scope != "live-corpus"
-            || case.search.maximum_resident_micros > 1_000
-            || case.query.maximum_resident_micros > 1_000
-            || case.required_telemetry_events
-                != [
-                    "runtime_resident_search_terminal",
-                    "runtime_exact_projection_terminal",
-                ]
+            || case.search.method != "lexical"
+            || case.search.view != "seeds"
         {
             return Err(format!(
-                "Live Corpus qualification case violates the resident contract: case={}",
+                "Live Corpus case is not an ordinary public search/query route: case={}",
                 case.case_id
             ));
         }
@@ -964,3 +437,7 @@ fn select_qualification_cases(
 #[cfg(test)]
 #[path = "../../../tests/unit/command/live_corpus_qualification.rs"]
 mod tests;
+use super::contract::{
+    ClientProtocolReceipt, QualificationCase, QualificationCaseReceipt, QualificationPlan,
+    QualificationReceipt,
+};

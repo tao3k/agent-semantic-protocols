@@ -11,7 +11,7 @@ use agent_semantic_hook::{
     DecisionKind, DecisionRoute, DecisionRouteKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID,
     HOOK_DECISION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, HookDecision,
     ReasonKind, StdinMode, append_hook_event_state, has_recorded_subagent_context,
-    latest_hook_session_agent_route,
+    latest_hook_session_agent_route, latest_hook_session_agent_route_for_root,
 };
 use fs2::FileExt;
 use serde_json::Value;
@@ -484,6 +484,47 @@ fn latest_session_route_is_read_only_and_config_selected() {
         Some("/tmp/typed-deny-evidence.jsonl")
     );
 
+    fs::remove_dir_all(project_root).ok();
+}
+
+#[test]
+fn current_root_route_never_falls_back_to_a_newer_different_session() {
+    let _state_home = AspStateHomeGuard::activate_isolated();
+    let project_root = unique_project_root();
+    for (rule, root) in [
+        ("current-route", "current-root"),
+        ("stale-route", "other-root"),
+    ] {
+        let mut selected = decision(rule, 1);
+        insert_registered_agent_dispatch(&mut selected);
+        selected
+            .fields
+            .insert("configRuleId".to_owned(), Value::String(rule.to_owned()));
+        selected.fields.insert(
+            "agentWindowCommand".to_owned(),
+            Value::String("asp session --agents choice-plane".to_owned()),
+        );
+        selected.fields.insert(
+            "choicePlaneOwner".to_owned(),
+            Value::String("org-contract:agent-interactive".to_owned()),
+        );
+        selected.fields.insert(
+            "hostRootSessionId".to_owned(),
+            Value::String(root.to_owned()),
+        );
+        append_hook_event_state(&project_root, &selected).expect("append route");
+    }
+
+    let route = latest_hook_session_agent_route_for_root(&project_root, Some("current-root"))
+        .expect("read current root route")
+        .expect("current root route");
+    assert_eq!(route.config_rule_id, "current-route");
+    assert_eq!(route.root_session_id, "current-root");
+    assert!(
+        latest_hook_session_agent_route_for_root(&project_root, Some("missing-root"))
+            .expect("read missing root route")
+            .is_none()
+    );
     fs::remove_dir_all(project_root).ok();
 }
 

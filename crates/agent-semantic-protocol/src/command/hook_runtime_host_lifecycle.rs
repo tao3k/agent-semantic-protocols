@@ -36,7 +36,6 @@ async fn publish_host_lifecycle_event_locally(
     const SCHEMA_ID: &str = "agent.host-lifecycle-local-authority";
     const LOCK_ATTEMPTS: usize = 50;
     const LOCK_RETRY: std::time::Duration = std::time::Duration::from_millis(2);
-    const LOCK_STALE_AFTER: std::time::Duration = std::time::Duration::from_millis(250);
 
     let namespace_key = lifecycle_event
         .namespace_id
@@ -56,23 +55,25 @@ async fn publish_host_lifecycle_event_locally(
         })?;
 
     let lock_path = authority_dir.join(".publication-lock");
+    let lock_file = std::fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .map_err(|error| {
+            format!(
+                "failed to open Host lifecycle authority lock {}: {error}",
+                lock_path.display()
+            )
+        })?;
     let mut lock_acquired = false;
     for _ in 0..LOCK_ATTEMPTS {
-        match tokio::fs::create_dir(&lock_path).await {
+        match fs2::FileExt::try_lock_exclusive(&lock_file) {
             Ok(()) => {
                 lock_acquired = true;
                 break;
             }
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                if let Ok(metadata) = tokio::fs::metadata(&lock_path).await
-                    && let Ok(modified) = metadata.modified()
-                    && modified
-                        .elapsed()
-                        .is_ok_and(|elapsed| elapsed > LOCK_STALE_AFTER)
-                {
-                    let _ = tokio::fs::remove_dir(&lock_path).await;
-                    continue;
-                }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                 tokio::time::sleep(LOCK_RETRY).await;
             }
             Err(error) => {
@@ -188,7 +189,7 @@ async fn publish_host_lifecycle_event_locally(
         Ok(())
     }
     .await;
-    let unlock_result = tokio::fs::remove_dir(&lock_path).await;
+    let unlock_result = fs2::FileExt::unlock(&lock_file);
     match (publication, unlock_result) {
         (Err(error), _) => Err(error),
         (Ok(()), Err(error)) => Err(format!(

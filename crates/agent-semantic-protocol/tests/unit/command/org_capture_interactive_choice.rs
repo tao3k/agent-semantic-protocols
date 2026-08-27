@@ -85,12 +85,13 @@ fn multi_agent_session_contract_owns_every_lifecycle_instruction() {
             .instruction
             .contains("has no resident-child registration")
     );
-    assert!(missing[0].instruction.contains("First create and Call"));
+    assert!(missing[0].instruction.contains("Create and Call"));
     assert!(
         missing[0]
             .instruction
-            .contains("re-enter the control plane")
+            .contains("without a self-registration command")
     );
+    assert!(!missing[0].instruction.contains("register-current-child"));
     let blocked = choice
         .admit_matching(&[
             ("SESSION_STATE", "blocked"),

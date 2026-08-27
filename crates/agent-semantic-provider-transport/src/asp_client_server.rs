@@ -3,7 +3,8 @@ use std::{collections::BTreeMap, future::Future, path::PathBuf, pin::Pin, proces
 use bytes::Bytes;
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, BufReader, Lines},
-    process::{Child, ChildStdout, Command},
+    process::{ChildStdout, Command},
+    sync::{mpsc, oneshot, watch},
 };
 
 use crate::{
@@ -39,7 +40,10 @@ impl AspClientServerSpec {
 }
 
 pub struct AspClientServerPeer {
-    state: tokio::sync::Mutex<AspClientServerState>,
+    bootstrap_stdout: tokio::sync::Mutex<Option<Lines<BufReader<ChildStdout>>>>,
+    http: tokio::sync::RwLock<Option<AspClientServerHttpClient>>,
+    lifecycle: watch::Receiver<AspClientServerChildLifecycle>,
+    lifecycle_control: mpsc::Sender<AspClientServerChildControl>,
     launch_program: String,
     launch_args: Vec<String>,
     health_path: String,
@@ -49,15 +53,23 @@ pub struct AspClientServerPeer {
     next_request_id: std::sync::atomic::AtomicU64,
 }
 
-struct AspClientServerState {
-    child: Child,
-    stdout: Lines<BufReader<ChildStdout>>,
-    stderr_task: tokio::task::JoinHandle<Result<u64, std::io::Error>>,
-    stderr_capture: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
-    http: Option<AspClientServerHttpClient>,
+#[derive(Clone, Debug)]
+enum AspClientServerChildLifecycle {
+    Running,
+    Exited { status: String, stderr: String },
+    Failed(String),
+}
+
+enum AspClientServerChildControl {
+    Stop {
+        force: bool,
+        response: oneshot::Sender<Result<(), String>>,
+    },
 }
 
 const MAX_BOOTSTRAP_STDERR_BYTES: usize = 16 * 1024;
+const DEFAULT_PROVIDER_HTTP_REQUEST_DEADLINE: std::time::Duration =
+    std::time::Duration::from_secs(2);
 /// Provider HTTP servers must admit this wire-frame size without changing
 /// language-local server limits.  Corpus-sized operations are expressed as a
 /// sequence of bounded frames instead of one unbounded request body.
@@ -75,6 +87,7 @@ impl AspClientServerHttpClient {
             .no_proxy()
             .http1_only()
             .pool_max_idle_per_host(1)
+            .timeout(DEFAULT_PROVIDER_HTTP_REQUEST_DEADLINE)
             .build()
             .map_err(|error| format!("construct ASP Client Server HTTP client: {error}"))?;
         Ok(Self { client, base_url })
@@ -160,31 +173,125 @@ impl AspClientServerPeer {
             .ok_or_else(|| "provider HTTP server stderr is unavailable".to_owned())?;
         let stderr_capture = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let stderr_capture_writer = std::sync::Arc::clone(&stderr_capture);
-        let stderr_task = tokio::spawn(async move {
-            let mut stderr = stderr;
-            let mut buffer = [0_u8; 4096];
-            let mut total = 0_u64;
-            loop {
-                let read = stderr.read(&mut buffer).await?;
-                if read == 0 {
-                    return Ok(total);
+        let stderr_task: tokio::task::JoinHandle<Result<u64, std::io::Error>> =
+            tokio::spawn(async move {
+                let mut stderr = stderr;
+                let mut buffer = [0_u8; 4096];
+                let mut total = 0_u64;
+                loop {
+                    let read = stderr.read(&mut buffer).await?;
+                    if read == 0 {
+                        return Ok(total);
+                    }
+                    total = total.saturating_add(read as u64);
+                    let mut capture = stderr_capture_writer
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let remaining = MAX_BOOTSTRAP_STDERR_BYTES.saturating_sub(capture.len());
+                    capture.extend_from_slice(&buffer[..read.min(remaining)]);
                 }
-                total = total.saturating_add(read as u64);
-                let mut capture = stderr_capture_writer
+            });
+        let (lifecycle_control, mut lifecycle_commands) = mpsc::channel(1);
+        let (lifecycle_writer, lifecycle) = watch::channel(AspClientServerChildLifecycle::Running);
+        let launch_program = spec.program.clone();
+        let launch_args = spec.args.clone();
+        tokio::spawn(async move {
+            enum ChildOutcome {
+                Exited(Result<std::process::ExitStatus, std::io::Error>),
+                Stop {
+                    force: bool,
+                    response: oneshot::Sender<Result<(), String>>,
+                },
+            }
+
+            let outcome = tokio::select! {
+                status = child.wait() => ChildOutcome::Exited(status),
+                command = lifecycle_commands.recv() => match command {
+                    Some(AspClientServerChildControl::Stop { force, response }) => {
+                        ChildOutcome::Stop { force, response }
+                    }
+                    None => ChildOutcome::Exited(child.wait().await),
+                },
+            };
+            let (status, stop_response) = match outcome {
+                ChildOutcome::Exited(status) => (status, None),
+                ChildOutcome::Stop { force, response } => {
+                    if force {
+                        if let Err(error) = child.kill().await {
+                            let reason = format!(
+                                "reasonKind=asp-client-server-child-kill-failed phase=shutdown error={error}"
+                            );
+                            lifecycle_writer.send_replace(AspClientServerChildLifecycle::Failed(
+                                reason.clone(),
+                            ));
+                            tracing::error!(
+                                target: "asp.client_server",
+                                phase = "shutdown",
+                                reason_kind = "asp-client-server-child-kill-failed",
+                                error = %error,
+                            );
+                            let _ = response.send(Err(reason));
+                            return;
+                        }
+                    }
+                    (child.wait().await, Some(response))
+                }
+            };
+            let stderr_result = stderr_task.await;
+            let stderr = String::from_utf8_lossy(
+                &stderr_capture
                     .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                let remaining = MAX_BOOTSTRAP_STDERR_BYTES.saturating_sub(capture.len());
-                capture.extend_from_slice(&buffer[..read.min(remaining)]);
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            )
+            .into_owned();
+            let terminal = match status {
+                Ok(status) => {
+                    tracing::info!(
+                        target: "asp.client_server",
+                        phase = "child-lifecycle",
+                        reason_kind = "asp-client-server-child-exited",
+                        status = %status,
+                        program = %launch_program,
+                        args = ?launch_args,
+                    );
+                    AspClientServerChildLifecycle::Exited {
+                        status: status.to_string(),
+                        stderr,
+                    }
+                }
+                Err(error) => {
+                    let reason = format!(
+                        "reasonKind=asp-client-server-child-wait-failed phase=child-lifecycle error={error}"
+                    );
+                    tracing::error!(
+                        target: "asp.client_server",
+                        phase = "child-lifecycle",
+                        reason_kind = "asp-client-server-child-wait-failed",
+                        error = %error,
+                    );
+                    AspClientServerChildLifecycle::Failed(reason)
+                }
+            };
+            let stop_result = match (&terminal, stderr_result) {
+                (AspClientServerChildLifecycle::Failed(reason), _) => Err(reason.clone()),
+                (_, Err(error)) => Err(format!(
+                    "reasonKind=asp-client-server-stderr-task-failed phase=child-lifecycle error={error}"
+                )),
+                (_, Ok(Err(error))) => Err(format!(
+                    "reasonKind=asp-client-server-stderr-read-failed phase=child-lifecycle error={error}"
+                )),
+                (_, Ok(Ok(_))) => Ok(()),
+            };
+            lifecycle_writer.send_replace(terminal);
+            if let Some(response) = stop_response {
+                let _ = response.send(stop_result);
             }
         });
         Ok(Self {
-            state: tokio::sync::Mutex::new(AspClientServerState {
-                child,
-                stdout: BufReader::new(stdout).lines(),
-                stderr_task,
-                stderr_capture,
-                http: None,
-            }),
+            bootstrap_stdout: tokio::sync::Mutex::new(Some(BufReader::new(stdout).lines())),
+            http: tokio::sync::RwLock::new(None),
+            lifecycle,
+            lifecycle_control,
             launch_program: spec.program,
             launch_args: spec.args,
             health_path: spec.health_path,
@@ -202,38 +309,38 @@ impl AspClientServerPeer {
         body: Option<&[u8]>,
     ) -> Result<Vec<u8>, String> {
         let http = self
-            .state
-            .lock()
-            .await
             .http
+            .read()
+            .await
             .clone()
             .ok_or_else(|| "ASP Client Server HTTP client is not ready".to_owned())?;
         http.json(method, path, body).await
     }
 
     async fn contract_receipt(&self) -> Result<ProviderRuntimeContractReceipt, String> {
-        let mut state = self.state.lock().await;
-        let bootstrap = match state
-            .stdout
+        let mut stdout = self
+            .bootstrap_stdout
+            .lock()
+            .await
+            .take()
+            .ok_or_else(|| "provider HTTP server bootstrap was already consumed".to_owned())?;
+        let bootstrap = match stdout
             .next_line()
             .await
             .map_err(|error| format!("read provider HTTP server bootstrap: {error}"))?
         {
             Some(bootstrap) => bootstrap,
             None => {
-                let status = state.child.wait().await.map_err(|error| {
-                    format!("reap provider HTTP server after bootstrap EOF: {error}")
-                })?;
-                let _ = tokio::time::timeout(
-                    std::time::Duration::from_millis(100),
-                    &mut state.stderr_task,
-                )
-                .await;
-                let stderr = state
-                    .stderr_capture
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                let stderr = String::from_utf8_lossy(&stderr);
+                let terminal = self.wait_child_terminated().await;
+                let (status, stderr) = match terminal {
+                    Ok(AspClientServerChildLifecycle::Exited { status, stderr }) => {
+                        (status, stderr)
+                    }
+                    Ok(AspClientServerChildLifecycle::Failed(reason)) | Err(reason) => {
+                        return Err(reason);
+                    }
+                    Ok(AspClientServerChildLifecycle::Running) => unreachable!(),
+                };
                 return Err(format!(
                     "provider HTTP server exited before bootstrap: status={status} program={} args={:?} stderr={stderr:?}",
                     self.launch_program, self.launch_args
@@ -273,8 +380,10 @@ impl AspClientServerPeer {
         {
             return Err("provider HTTP server bootstrap endpoint is invalid".to_owned());
         }
-        state.http = Some(AspClientServerHttpClient::new(endpoint_url)?);
-        drop(state);
+        self.http
+            .write()
+            .await
+            .replace(AspClientServerHttpClient::new(endpoint_url)?);
         let health_path = self.health_path.clone();
         let response = self.http_json("GET", &health_path, None).await?;
         let receipt = serde_json::from_slice::<ProviderRuntimeContractReceipt>(&response)
@@ -382,39 +491,46 @@ impl AspClientServerPeer {
         final_response.ok_or_else(|| "provider request stream emitted no frames".to_owned())
     }
 
-    async fn stop(&self) -> Result<(), String> {
-        let running = self
-            .state
-            .lock()
-            .await
-            .child
-            .try_wait()
-            .map_err(|error| format!("inspect provider HTTP server: {error}"))?
-            .is_none();
-        if running {
-            let shutdown_path = self.shutdown_path.clone();
-            if self
-                .http_json("POST", &shutdown_path, Some(b"{}"))
-                .await
-                .is_err()
-            {
-                self.state
-                    .lock()
-                    .await
-                    .child
-                    .kill()
-                    .await
-                    .map_err(|error| format!("stop provider HTTP server: {error}"))?;
+    async fn wait_child_terminated(&self) -> Result<AspClientServerChildLifecycle, String> {
+        let mut lifecycle = self.lifecycle.clone();
+        loop {
+            let current = lifecycle.borrow().clone();
+            match current {
+                AspClientServerChildLifecycle::Running => {
+                    lifecycle.changed().await.map_err(|_| {
+                        "reasonKind=asp-client-server-child-lifecycle-closed phase=child-lifecycle"
+                            .to_owned()
+                    })?
+                }
+                terminal => return Ok(terminal),
             }
         }
-        let mut state = self.state.lock().await;
-        state
-            .child
-            .wait()
+    }
+
+    async fn stop(&self) -> Result<(), String> {
+        if !matches!(
+            self.lifecycle.borrow().clone(),
+            AspClientServerChildLifecycle::Running
+        ) {
+            return Ok(());
+        }
+        let shutdown_path = self.shutdown_path.clone();
+        let force = self
+            .http_json("POST", &shutdown_path, Some(b"{}"))
             .await
-            .map_err(|error| format!("reap provider HTTP server: {error}"))?;
-        state.stderr_task.abort();
-        Ok(())
+            .is_err();
+        let (response, stopped) = oneshot::channel();
+        if self
+            .lifecycle_control
+            .send(AspClientServerChildControl::Stop { force, response })
+            .await
+            .is_err()
+        {
+            return self.wait_child_terminated().await.map(|_| ());
+        }
+        stopped.await.map_err(|_| {
+            "reasonKind=asp-client-server-stop-receipt-dropped phase=shutdown".to_owned()
+        })?
     }
 }
 
@@ -450,6 +566,16 @@ impl ProviderRuntimePeer for AspClientServerPeer {
 
     fn shutdown(&self) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
         Box::pin(self.stop())
+    }
+
+    fn wait_terminated(&self) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
+        Box::pin(async move {
+            match self.wait_child_terminated().await? {
+                AspClientServerChildLifecycle::Exited { .. } => Ok(()),
+                AspClientServerChildLifecycle::Failed(reason) => Err(reason),
+                AspClientServerChildLifecycle::Running => unreachable!(),
+            }
+        })
     }
 }
 

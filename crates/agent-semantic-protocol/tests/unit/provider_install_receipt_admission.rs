@@ -17,6 +17,7 @@ fn provider_receipt_requires_content_and_metadata_identity() {
         language_id: "rust".to_owned(),
         provider_id: "asp-rust".to_owned(),
         installed_path: artifact.clone(),
+        artifact_digest: content.clone(),
         installed_entrypoint_digest: content,
         installed_entrypoint_metadata_digest: metadata,
         execution_command_digest: "blake3-256:command".to_owned(),

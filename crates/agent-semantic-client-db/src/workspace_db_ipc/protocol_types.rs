@@ -59,19 +59,6 @@ impl RuntimeResidentReadState {
             Self::Other => "other",
         }
     }
-
-    pub(crate) const fn telemetry_surface(self) -> &'static str {
-        match self {
-            Self::SourceIndex => "runtime-resident-source-index",
-            Self::Owner | Self::SparseOwner | Self::OwnerMissing | Self::GenerationMissing => {
-                "runtime-resident-merkle-owner"
-            }
-            Self::Projection
-            | Self::ProjectionMissing
-            | Self::ProjectionScopeOmitted
-            | Self::Other => "runtime-resident-exact-projection",
-        }
-    }
 }
 
 /// Completion state committed by the resident-read telemetry side lane.

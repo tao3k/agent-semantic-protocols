@@ -1,5 +1,5 @@
-#[test]
-fn db_engine_rejects_uncommitted_state_core_path_without_creating_project_shell() {
+#[tokio::test]
+async fn db_engine_rejects_uncommitted_state_core_path_without_creating_project_shell() {
     let state_home = temp_root("db-engine-uncommitted-state-home");
     let projects_by_id = state_home.join("projects/by-id");
     let client_dir = projects_by_id
@@ -17,8 +17,8 @@ fn db_engine_rejects_uncommitted_state_core_path_without_creating_project_shell(
     );
 }
 
-#[test]
-fn db_engine_write_session_imports_manifest_without_exposing_retired_db_handle() {
+#[tokio::test]
+async fn db_engine_write_session_imports_manifest_without_exposing_retired_db_handle() {
     let project_root = temp_root("db-engine-write-session-project");
     let state_home = temp_root("db-engine-write-session-state-home");
     init_git_repository(&project_root);
@@ -255,8 +255,8 @@ fn concurrent_cache_status_manifest(
     .expect("concurrent cache status manifest fixture")
 }
 
-#[test]
-fn agent_session_claim_keeps_first_resident_child_for_root_and_name() {
+#[tokio::test]
+async fn agent_session_registration_keeps_each_child_instance_for_one_route() {
     let state = std::env::temp_dir().join(format!(
         "asp-agent-session-claim-{}-{}",
         std::process::id(),
@@ -274,7 +274,7 @@ fn agent_session_claim_keeps_first_resident_child_for_root_and_name() {
     let first_child_id = "claim-child-first";
 
     let first = registry
-        .claim_resident_session(
+        .register_session(
             agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
                 project_id: project_id.into(),
                 root_session_id: root_session_id.into(),
@@ -297,9 +297,10 @@ fn agent_session_claim_keeps_first_resident_child_for_root_and_name() {
                 now: 1,
             },
         )
+        .await
         .expect("claim first resident child");
     let duplicate = registry
-        .claim_resident_session(
+        .register_session(
             agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
                 project_id: project_id.into(),
                 root_session_id: root_session_id.into(),
@@ -322,24 +323,24 @@ fn agent_session_claim_keeps_first_resident_child_for_root_and_name() {
                 now: 2,
             },
         )
+        .await
         .expect("read existing resident child");
 
     assert_eq!(first.session_id(), first_child_id);
-    assert_eq!(duplicate.session_id(), first_child_id);
-    assert_eq!(
+    assert_eq!(duplicate.session_id(), "claim-child-duplicate");
+    assert!(
         registry
             .session_by_name(project_id, root_session_id, "asp-explore")
-            .expect("lookup resident child")
-            .expect("resident child row")
-            .session_id(),
-        first_child_id
+            .await
+            .expect_err("route-only lookup must reject multiple child instances")
+            .contains("agent-session-route-ambiguous")
     );
     drop(registry);
     std::fs::remove_dir_all(state).expect("remove temporary state root");
 }
 
-#[test]
-fn agent_session_claim_replaces_archived_resident_child_for_root_and_name() {
+#[tokio::test]
+async fn agent_session_registration_retains_archived_child_and_adds_new_instance() {
     let state = std::env::temp_dir().join(format!(
         "asp-agent-session-archived-claim-{}-{}",
         std::process::id(),
@@ -357,7 +358,7 @@ fn agent_session_claim_replaces_archived_resident_child_for_root_and_name() {
     let first_child_id = "archived-claim-first";
 
     registry
-        .claim_resident_session(
+        .register_session(
             agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
                 project_id: project_id.into(),
                 root_session_id: root_session_id.into(),
@@ -380,15 +381,16 @@ fn agent_session_claim_replaces_archived_resident_child_for_root_and_name() {
                 now: 1,
             },
         )
+        .await
         .expect("claim first resident child");
     assert!(
         registry
             .archive_session(project_id, first_child_id, 2)
-            .expect("archive first resident child")
+.await.expect("archive first resident child")
     );
 
     let replacement = registry
-        .claim_resident_session(
+        .register_session(
             agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
                 project_id: project_id.into(),
                 root_session_id: root_session_id.into(),
@@ -411,13 +413,15 @@ fn agent_session_claim_replaces_archived_resident_child_for_root_and_name() {
                 now: 3,
             },
         )
+        .await
         .expect("claim replacement resident child");
 
     assert_eq!(replacement.session_id(), "archived-claim-replacement");
     assert_eq!(
         registry
-            .session_by_name(project_id, root_session_id, "asp-explore")
-            .expect("lookup replacement resident child")
+            .session_by_id(project_id, "archived-claim-replacement")
+            .await
+            .expect("lookup new resident child")
             .expect("replacement resident child row")
             .session_id(),
         "archived-claim-replacement"

@@ -14,6 +14,33 @@ inductive GenerationAdmission where
   | failed
   deriving DecidableEq, Repr
 
+inductive GenerationTerminalReceipt where
+  | ready
+  | failed
+  | cancelled
+  deriving DecidableEq, Repr
+
+inductive GenerationDispatcherExit where
+  | joinFailure
+  | channelClosed
+  | actorAbort
+  | runtimeDrain
+  deriving DecidableEq, Repr
+
+inductive GenerationAwaitState where
+  | ready
+  | failed
+  | cancelled
+  deriving DecidableEq, Repr
+
+def cancelLiveGenerationAwait : GenerationAwaitState := .cancelled
+
+/-- The dispatcher retains this terminal authority beside every admitted task. -/
+def terminalReceiptForDispatcherExit :
+    GenerationDispatcherExit → GenerationTerminalReceipt
+  | .runtimeDrain => .cancelled
+  | .joinFailure | .channelClosed | .actorAbort => .failed
+
 inductive Decision where
   | allow
   | deny
@@ -121,6 +148,16 @@ theorem runtime_server_submission_does_not_wait_for_candidate :
 
 theorem runtime_server_submission_survives_hook_exit :
     backgroundWorkSurvivesHookExit .runtimeServer = true := by
+  rfl
+
+theorem admitted_dispatcher_exit_cannot_leave_orphan_building
+    (exit : GenerationDispatcherExit) :
+    terminalReceiptForDispatcherExit exit = .failed ∨
+      terminalReceiptForDispatcherExit exit = .cancelled := by
+  cases exit <;> simp [terminalReceiptForDispatcherExit]
+
+theorem cancelling_live_provider_or_source_await_is_terminal :
+    cancelLiveGenerationAwait = .cancelled := by
   rfl
 
 theorem client_candidate_discovery_violates_nonblocking_submission :

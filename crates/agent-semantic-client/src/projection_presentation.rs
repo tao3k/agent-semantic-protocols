@@ -21,13 +21,15 @@ pub fn render_exact_projection_response(
         return serde_json::to_string(frame)
             .map_err(|error| format!("encode exact projection response: {error}"));
     }
-    let ClientFrame::Response {
-        result: Some(result),
-        error: None,
-        ..
-    } = frame
-    else {
+    let ClientFrame::Response { result, error, .. } = frame else {
         return Err("exact projection did not return a successful typed response".to_owned());
+    };
+    if let Some(error) = error {
+        return Err(serde_json::to_string(error)
+            .map_err(|encode_error| format!("encode exact projection failure: {encode_error}"))?);
+    }
+    let Some(result) = result else {
+        return Err("exact projection response has neither payload nor typed failure".to_owned());
     };
     render_projection_result(result)
 }

@@ -2,7 +2,13 @@ use super::endpoint_identity::runtime_server_endpoint_path;
 use super::model::RuntimeServerEndpoint;
 use agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity;
 use serde_json::Value;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use tokio::io::AsyncWriteExt;
+
+unsafe extern "C" {
+    fn getuid() -> u32;
+}
 
 pub async fn read_endpoint(path: &Path) -> Result<RuntimeServerEndpoint, String> {
     let endpoint = read_supervisor_endpoint(path).await?;
@@ -36,6 +42,7 @@ pub fn validate_runtime_server_generation(
 }
 
 pub async fn read_supervisor_endpoint(path: &Path) -> Result<RuntimeServerEndpoint, String> {
+    canonicalize_endpoint_file_security(path).await?;
     let bytes = tokio::fs::read(path).await.map_err(|error| {
         format!(
             "Runtime Server endpoint is unavailable at {}: {error}",
@@ -54,11 +61,67 @@ pub async fn read_supervisor_endpoint(path: &Path) -> Result<RuntimeServerEndpoi
     Ok(endpoint)
 }
 
+async fn canonicalize_endpoint_file_security(path: &Path) -> Result<(), String> {
+    let before = tokio::fs::symlink_metadata(path).await.map_err(|error| {
+        format!(
+            "failed to inspect Runtime Server endpoint {}: {error}",
+            path.display()
+        )
+    })?;
+    let current_uid = unsafe { getuid() };
+    if !before.file_type().is_file()
+        || before.file_type().is_symlink()
+        || before.uid() != current_uid
+        || before.mode() & 0o022 != 0
+    {
+        return Err(format!(
+            "Runtime Server endpoint is not a non-writable, non-symlink current-UID file: {}",
+            path.display()
+        ));
+    }
+    if before.mode() & 0o777 == 0o600 {
+        return Ok(());
+    }
+
+    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+        .await
+        .map_err(|error| {
+            format!(
+                "failed to canonicalize Runtime Server endpoint permissions {}: {error}",
+                path.display()
+            )
+        })?;
+    let after = tokio::fs::symlink_metadata(path).await.map_err(|error| {
+        format!(
+            "failed to verify Runtime Server endpoint permissions {}: {error}",
+            path.display()
+        )
+    })?;
+    if !after.file_type().is_file()
+        || after.file_type().is_symlink()
+        || after.uid() != current_uid
+        || after.dev() != before.dev()
+        || after.ino() != before.ino()
+        || after.mode() & 0o777 != 0o600
+    {
+        return Err(format!(
+            "Runtime Server endpoint permission canonicalization lost file identity: {}",
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
 fn materialize_endpoint_v1_identity(value: &mut Value) -> Result<bool, String> {
     let object = value.as_object_mut().ok_or_else(|| {
         "reasonKind=runtime-server-endpoint-identity-incomplete endpoint v1 is not an object"
             .to_owned()
     })?;
+    let runtime_identity_migrated =
+        canonicalize_endpoint_v1_runtime_binary_identity(object, "runtimeBinaryIdentity")?;
+    let observed_identity_migrated =
+        canonicalize_endpoint_v1_runtime_binary_identity(object, "observedRuntimeBinaryIdentity")?;
+    let identity_migrated = runtime_identity_migrated || observed_identity_migrated;
     let missing = [
         "binaryContentDigest",
         "runtimeGenerationDigest",
@@ -67,7 +130,7 @@ fn materialize_endpoint_v1_identity(value: &mut Value) -> Result<bool, String> {
     .iter()
     .any(|field| !object.contains_key(*field));
     if !missing {
-        return Ok(false);
+        return Ok(identity_migrated);
     }
 
     let required_string = |field: &str| -> Result<String, String> {
@@ -96,7 +159,7 @@ fn materialize_endpoint_v1_identity(value: &mut Value) -> Result<bool, String> {
             "reasonKind=runtime-server-endpoint-identity-incomplete invalid runtimeBinaryIdentity: {error}"
         )
     })?;
-    let binary_content_digest = runtime_identity.value().to_owned();
+    let binary_content_digest = runtime_identity.content_digest().to_string();
     if binary_content_digest.is_empty() {
         return Err(
             "reasonKind=runtime-server-endpoint-identity-incomplete empty canonical binary identity"
@@ -152,6 +215,162 @@ fn materialize_endpoint_v1_identity(value: &mut Value) -> Result<bool, String> {
     Ok(true)
 }
 
+fn canonicalize_endpoint_v1_nested_content_identity(value: &mut Value) -> Result<bool, String> {
+    match value {
+        Value::Array(values) => {
+            let mut migrated = false;
+            for value in values {
+                migrated |= canonicalize_endpoint_v1_nested_content_identity(value)?;
+            }
+            Ok(migrated)
+        }
+        Value::Object(object) => {
+            if !object.contains_key("digest") {
+                let algorithm = object.get("algorithm").and_then(Value::as_str);
+                let legacy_value = object.get("value").and_then(Value::as_str);
+                if let (Some("blake3-256"), Some(legacy_value)) = (algorithm, legacy_value) {
+                    let digest = serde_json::from_value::<
+                        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+                    >(Value::String(legacy_value.to_owned()))
+                    .map_err(|error| {
+                        format!(
+                            "state=runtime-server-endpoint-identity-incomplete reasonKind=runtime-binary-identity-digest-invalid schemaVersion=1 error={error}"
+                        )
+                    })?;
+                    object.clear();
+                    object.insert(
+                        "digest".to_owned(),
+                        serde_json::to_value(digest).map_err(|error| {
+                            format!(
+                                "state=runtime-server-endpoint-identity-incomplete reasonKind=runtime-binary-identity-digest-encode-failed schemaVersion=1 error={error}"
+                            )
+                        })?,
+                    );
+                    return Ok(true);
+                }
+            }
+
+            let mut migrated = false;
+            for value in object.values_mut() {
+                migrated |= canonicalize_endpoint_v1_nested_content_identity(value)?;
+            }
+            Ok(migrated)
+        }
+        _ => Ok(false),
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn endpoint_v1_nested_content_identity_is_rewritten_before_typed_deserialize() {
+    let raw_digest = "a".repeat(64);
+    let mut identity = serde_json::json!({
+        "kind": "content",
+        "identity": {
+            "value": raw_digest,
+            "algorithm": "blake3-256"
+        }
+    });
+
+    assert!(canonicalize_endpoint_v1_nested_content_identity(&mut identity).unwrap());
+    assert_eq!(
+        identity.pointer("/identity/digest").and_then(Value::as_str),
+        Some(format!("blake3-256:{}", "a".repeat(64)).as_str())
+    );
+    assert!(identity.pointer("/identity/value").is_none());
+    assert!(identity.pointer("/identity/algorithm").is_none());
+}
+
+#[cfg(test)]
+#[test]
+fn malformed_endpoint_v1_nested_content_identity_fails_atomically() {
+    let mut identity = serde_json::json!({
+        "kind": "content",
+        "identity": {
+            "value": "not-a-blake3-digest",
+            "algorithm": "blake3-256"
+        }
+    });
+    let original = identity.clone();
+
+    assert!(canonicalize_endpoint_v1_nested_content_identity(&mut identity).is_err());
+    assert_eq!(identity, original);
+}
+
+fn canonicalize_endpoint_v1_runtime_binary_identity(
+    object: &mut serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<bool, String> {
+    if let Some(identity) = object.get_mut(field)
+        && canonicalize_endpoint_v1_nested_content_identity(identity)?
+    {
+        return Ok(true);
+    }
+    let identity_value = object.get(field).ok_or_else(|| {
+        format!("reasonKind=runtime-server-endpoint-identity-incomplete missing {field}")
+    })?;
+    let identity_object = identity_value.as_object().ok_or_else(|| {
+        "reasonKind=runtime-server-endpoint-identity-incomplete runtimeBinaryIdentity is not an object"
+            .to_owned()
+    })?;
+    if identity_object.contains_key("digest") {
+        return Ok(false);
+    }
+    if identity_object.get("kind").and_then(Value::as_str) != Some("content") {
+        return Err(
+            "reasonKind=runtime-server-endpoint-identity-incomplete runtimeBinaryIdentity kind is not content"
+                .to_owned(),
+        );
+    }
+    let previous_identity = identity_object
+        .get("identity")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            "reasonKind=runtime-server-endpoint-identity-incomplete missing authoritative runtimeBinaryIdentity identity"
+                .to_owned()
+        })?;
+    if let Some(digest) = previous_identity.get("digest").and_then(Value::as_str) {
+        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(digest)
+            .map_err(|error| {
+                format!(
+                    "reasonKind=runtime-server-endpoint-identity-incomplete owner=endpoint-v1-migration field=runtimeBinaryIdentity.identity.digest {error}"
+                )
+            })?;
+        return Ok(false);
+    }
+    if previous_identity.get("algorithm").and_then(Value::as_str) != Some("blake3-256") {
+        return Err(
+            "reasonKind=runtime-server-endpoint-identity-incomplete runtimeBinaryIdentity algorithm is not blake3-256"
+                .to_owned(),
+        );
+    }
+    let digest = previous_identity
+        .get("value")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            "reasonKind=runtime-server-endpoint-identity-incomplete missing authoritative runtimeBinaryIdentity value"
+                .to_owned()
+        })?;
+    let digest = agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
+        digest,
+    )
+    .map_err(|error| {
+        format!(
+            "reasonKind=runtime-server-endpoint-identity-incomplete owner=endpoint-v1-migration field=runtimeBinaryIdentity.identity.value {error}"
+        )
+    })?;
+    let identity = RuntimeBinaryIdentity::from_content_digest(digest);
+    object.insert(
+        field.to_owned(),
+        serde_json::to_value(identity).map_err(|error| {
+            format!(
+                "reasonKind=runtime-server-endpoint-identity-incomplete failed to materialize canonical runtimeBinaryIdentity: {error}"
+            )
+        })?,
+    );
+    Ok(true)
+}
+
 fn canonical_endpoint_digest(label: &str, fields: &[&str]) -> String {
     let mut hasher = blake3::Hasher::new();
     hasher.update(label.as_bytes());
@@ -177,7 +396,11 @@ async fn rewrite_complete_endpoint_v1(
         std::process::id(),
         blake3::hash(&bytes).to_hex()
     ));
-    tokio::fs::write(&temporary, &bytes)
+    let mut file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&temporary)
         .await
         .map_err(|error| {
             format!(
@@ -185,12 +408,39 @@ async fn rewrite_complete_endpoint_v1(
                 temporary.display()
             )
         })?;
+    file.write_all(&bytes).await.map_err(|error| {
+        format!(
+            "failed to write migrated Runtime Server endpoint {}: {error}",
+            temporary.display()
+        )
+    })?;
+    file.sync_all().await.map_err(|error| {
+        format!(
+            "failed to sync migrated Runtime Server endpoint {}: {error}",
+            temporary.display()
+        )
+    })?;
+    drop(file);
     tokio::fs::rename(&temporary, path).await.map_err(|error| {
         format!(
             "failed to atomically publish migrated Runtime Server endpoint {}: {error}",
             path.display()
         )
     })?;
+    if let Some(parent) = path.parent() {
+        let directory = tokio::fs::File::open(parent).await.map_err(|error| {
+            format!(
+                "failed to open migrated Runtime Server endpoint directory {}: {error}",
+                parent.display()
+            )
+        })?;
+        directory.sync_all().await.map_err(|error| {
+            format!(
+                "failed to sync migrated Runtime Server endpoint directory {}: {error}",
+                parent.display()
+            )
+        })?;
+    }
     Ok(())
 }
 
@@ -223,4 +473,24 @@ pub async fn cleanup_endpoint(
         let _ = tokio::fs::remove_file(status_memory_path).await;
     }
     Ok(())
+}
+
+#[cfg(test)]
+#[test]
+fn endpoint_v1_canonical_content_identity_is_validated_without_rewrite() {
+    let digest = format!("blake3-256:{}", "a".repeat(64));
+    let mut endpoint = serde_json::json!({
+        "runtimeBinaryIdentity": {
+            "kind": "content",
+            "identity": { "digest": digest }
+        }
+    });
+    let original = endpoint.clone();
+    let object = endpoint.as_object_mut().expect("endpoint object");
+
+    assert!(
+        !canonicalize_endpoint_v1_runtime_binary_identity(object, "runtimeBinaryIdentity")
+            .expect("validate canonical content identity")
+    );
+    assert_eq!(endpoint, original);
 }

@@ -5,10 +5,10 @@ use agent_semantic_shell_parser::{
 
 #[test]
 fn leading_environment_assignment_is_parser_owned_and_stage_bounded() {
-    let expected = vec!["ASP_NO_AGENT=1".to_owned()];
+    let expected = vec!["BUILD_MODE=ci".to_owned()];
     for command in [
-        "ASP_NO_AGENT=1 cargo test",
-        "TRACE=1 ASP_NO_AGENT=1 cargo test",
+        "BUILD_MODE=ci cargo test",
+        "TRACE=1 BUILD_MODE=ci cargo test",
     ] {
         let stages = parse_bash_command_candidates(command).expect("valid Bash command");
         assert!(command_stages_match_leading_environment_assignment(
@@ -16,10 +16,10 @@ fn leading_environment_assignment_is_parser_owned_and_stage_bounded() {
         ));
     }
     for command in [
-        "NOT_ASP_NO_AGENT=1 cargo test",
-        "env ASP_NO_AGENT=1 cargo test",
-        "printf warmup && ASP_NO_AGENT=1 cargo test",
-        "bash -lc 'ASP_NO_AGENT=1 cargo test'",
+        "NOT_BUILD_MODE=ci cargo test",
+        "env BUILD_MODE=ci cargo test",
+        "printf warmup && BUILD_MODE=ci cargo test",
+        "bash -lc 'BUILD_MODE=ci cargo test'",
     ] {
         let stages = parse_bash_command_candidates(command).expect("valid Bash command");
         assert!(

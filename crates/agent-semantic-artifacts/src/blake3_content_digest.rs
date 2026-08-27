@@ -15,7 +15,19 @@ pub struct Blake3ContentDigest {
 }
 
 impl Blake3ContentDigest {
+    #[track_caller]
     pub fn parse(value: &str) -> Result<Self, String> {
+        let caller = std::panic::Location::caller();
+        Self::parse_inner(value).map_err(|error| {
+            format!(
+                "owner=Blake3ContentDigest field=contentDigest producer={}:{} {error}",
+                caller.file(),
+                caller.line()
+            )
+        })
+    }
+
+    fn parse_inner(value: &str) -> Result<Self, String> {
         let raw = value
             .strip_prefix(PREFIX)
             .ok_or_else(|| format!("BLAKE3 content digest must start with `{PREFIX}`"))?;
@@ -66,6 +78,14 @@ impl FromStr for Blake3ContentDigest {
     }
 }
 
+impl Blake3ContentDigest {
+    /// Reconstructs the strong digest identity from the lowercase hexadecimal
+    /// component used by the immutable artifact directory layout.
+    pub fn from_artifact_path_component(component: &str) -> Result<Self, String> {
+        Self::parse(&format!("blake3-256:{component}"))
+    }
+}
+
 impl Serialize for Blake3ContentDigest {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -80,8 +100,9 @@ impl<'de> Deserialize<'de> for Blake3ContentDigest {
     where
         D: Deserializer<'de>,
     {
-        let value = String::deserialize(deserializer)?;
-        Self::parse(&value).map_err(serde::de::Error::custom)
+        let value = serde_json::Value::deserialize(deserializer)?;
+        crate::schema_v1_digest::canonicalize_schema_v1_blake3_value(value)
+            .map_err(serde::de::Error::custom)
     }
 }
 

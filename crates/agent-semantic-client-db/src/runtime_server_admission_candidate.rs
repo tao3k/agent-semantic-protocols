@@ -301,6 +301,7 @@ pub type WorkspaceGenerationCandidateBuilder = Arc<
             PathBuf,
             Arc<std::collections::BTreeSet<PathBuf>>,
             Option<WorkspaceGenerationProviderTarget>,
+            crate::runtime_generation_cancellation::GenerationCancellation,
         ) -> WorkspaceGenerationCandidateBuildFuture
         + Send
         + Sync
@@ -315,5 +316,13 @@ pub type WorkspaceOwnerProjectionBuildFuture = Pin<
     >,
 >;
 pub type WorkspaceOwnerProjectionBuilder = Arc<
-    dyn Fn(String, PathBuf, String) -> WorkspaceOwnerProjectionBuildFuture + Send + Sync + 'static,
+    dyn Fn(
+            String,
+            PathBuf,
+            String,
+            crate::runtime_generation_cancellation::GenerationCancellation,
+        ) -> WorkspaceOwnerProjectionBuildFuture
+        + Send
+        + Sync
+        + 'static,
 >;

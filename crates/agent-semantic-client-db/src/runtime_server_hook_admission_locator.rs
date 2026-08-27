@@ -37,7 +37,10 @@ impl RuntimeHookAdmissionEndpointBinding {
             owner_epoch: endpoint.owner_epoch,
             transport_contract_digest: endpoint.transport_contract_digest.clone(),
             runtime_artifact_path: endpoint.runtime_artifact_path.clone(),
-            runtime_artifact_digest: endpoint.runtime_binary_identity.value().to_owned(),
+            runtime_artifact_digest: endpoint
+                .runtime_binary_identity
+                .content_digest()
+                .to_string(),
             binding_token: endpoint.binding_token.clone(),
             data_plane_socket_path: endpoint.data_plane_socket_path.clone(),
             workspace_store_path: endpoint.workspace_store_path.clone(),

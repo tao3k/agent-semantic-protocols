@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 /// Turso file name used for DB-owned agent session registry state.
-pub const AGENT_SESSION_REGISTRY_DB_NAME: &str = "session-registry.turso";
+pub const AGENT_SESSION_REGISTRY_DB_NAME: &str = "session-registry.current.turso";
 pub const AGENT_SESSION_STATUS_ACTIVE: &str = "active";
 pub const AGENT_SESSION_STATUS_IDLE: &str = "idle";
 pub const AGENT_SESSION_STATUS_ARCHIVED: &str = "archived";
@@ -193,7 +193,7 @@ pub struct AgentSessionRecord {
     /// Concrete Codex session id registered for this agent.
     #[serde(rename = "sessionId")]
     pub session_id: AgentSessionId,
-    /// Monotonic physical child generation within the stable resident slot.
+    /// Monotonic lifecycle generation of this concrete child execution instance.
     #[serde(rename = "physicalGeneration")]
     pub physical_generation: i64,
     /// Configured typed-agent role captured from native SubagentStart evidence.
@@ -585,6 +585,8 @@ pub struct AgentSessionToolEventRequest {
 pub struct AgentSessionDispatchIdentityInput<'a> {
     /// Root Codex session id that owns the logical dispatch.
     pub root_session_id: &'a str,
+    /// Concrete child ThreadId that owns the execution instance.
+    pub child_session_id: &'a str,
     /// Stable resident registry lane name.
     pub name: &'a str,
     /// Fresh verified canonical host target.
@@ -670,6 +672,8 @@ pub struct AgentSessionDispatchClaimRequest<'a> {
     pub project_id: &'a str,
     /// Root Codex session id for the resident topology.
     pub root_session_id: &'a str,
+    /// Concrete Codex child ThreadId that must receive this dispatch.
+    pub child_session_id: &'a str,
     /// Stable resident registry lane name.
     pub name: &'a str,
     /// Logical dispatch identity.

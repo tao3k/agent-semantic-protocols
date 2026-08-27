@@ -34,6 +34,7 @@ enum ProviderProjectionExecutor<'a> {
     Resident(&'a ProviderRuntimeActorClient),
     RuntimeService(
         &'a agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
+        agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation,
     ),
 }
 
@@ -62,6 +63,7 @@ pub(super) async fn project_generation_with_resident_runtime(
 
 pub(super) async fn project_generation_with_runtime_service(
     runtime: &agent_semantic_client_db::runtime_search_service::RuntimeSearchServiceHandle,
+    cancellation: agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation,
     project_root: &Path,
     workspace_identity: &str,
     registry: &RuntimeProviderProjection,
@@ -70,7 +72,7 @@ pub(super) async fn project_generation_with_runtime_service(
     auxiliary_owners: &ProviderProjectionAuxiliaryOwners,
 ) -> Result<Vec<ClientDbSourceIndexScopeFile>, String> {
     project_generation_with_executor(
-        ProviderProjectionExecutor::RuntimeService(runtime),
+        ProviderProjectionExecutor::RuntimeService(runtime, cancellation),
         project_root,
         workspace_identity,
         registry,
@@ -249,7 +251,7 @@ async fn project_provider(
                 )
                 .map_err(|error| error.to_string())?
             }
-            ProviderProjectionExecutor::RuntimeService(runtime) => {
+            ProviderProjectionExecutor::RuntimeService(runtime, cancellation) => {
                 runtime
                     .provider_runtime(
                         project_root.to_path_buf(),
@@ -260,16 +262,18 @@ async fn project_provider(
                     .provider_runtime_await_ready(
                         project_root.to_path_buf(),
                         provider.language_id.as_str().to_owned(),
+                        cancellation.clone(),
                     )
                     .await?;
                 let encoded = request.encode().map_err(|error| error.to_string())?;
                 let response = runtime
-                    .provider_operation(
-                        project_root.to_path_buf(),
-                        provider.language_id.as_str().to_owned(),
-                        operation.operation.clone(),
-                        encoded,
-                    )
+        .provider_operation(
+            project_root.to_path_buf(),
+            provider.language_id.as_str().to_owned(),
+    operation.operation.clone(),
+    encoded,
+    cancellation.clone(),
+)
                     .await
                     .map_err(|error| {
                         format!(

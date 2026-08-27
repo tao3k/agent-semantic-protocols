@@ -59,6 +59,15 @@ pub struct RuntimeIdentityMonitorHandle {
     task: JoinHandle<()>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ResidentActivationIdentity {
+    pub(crate) activation_generation: u64,
+    pub(crate) artifact_digest:
+        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+    pub(crate) owner_epoch: u64,
+}
+
 impl RuntimeIdentityMonitorHandle {
     pub async fn next_event(&mut self) -> Option<RuntimeIdentityChanged> {
         self.events.recv().await
@@ -73,10 +82,15 @@ impl RuntimeIdentityMonitorHandle {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RuntimeIdentityMonitorReceipt<'a> {
+    schema_id: &'static str,
     schema_version: &'static str,
     phase: &'a str,
-    running_identity: &'a str,
-    observed_identity: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    running_identity: Option<&'a ResidentActivationIdentity>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    observed_identity: Option<&'a ResidentActivationIdentity>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    observation_error: Option<&'a str>,
     owner_epoch: u64,
     process_id: u32,
     updated_at_millis: u128,
@@ -85,33 +99,64 @@ struct RuntimeIdentityMonitorReceipt<'a> {
 
 pub fn spawn_runtime_identity_monitor(
     state_home: PathBuf,
-    artifact_kind: String,
     owner_epoch: u64,
+    activation_generation: u64,
+    artifact_digest: agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
+    artifact_mode: &str,
 ) -> RuntimeIdentityMonitorHandle {
     spawn_runtime_identity_monitor_with_intervals(
         state_home,
-        artifact_kind,
         owner_epoch,
-        Duration::from_secs(5),
+        Some(ResidentActivationIdentity {
+            activation_generation,
+            artifact_digest,
+            owner_epoch,
+        }),
+        runtime_identity_poll_interval(artifact_mode),
         Duration::from_secs(30),
     )
 }
 
+pub(crate) fn runtime_identity_poll_interval(artifact_mode: &str) -> Duration {
+    if artifact_mode == "dev" {
+        Duration::from_millis(50)
+    } else {
+        Duration::from_secs(5)
+    }
+}
+
+pub(crate) fn applied_identity_precedes_running_owner(
+    running: &ResidentActivationIdentity,
+    applied: &ResidentActivationIdentity,
+) -> bool {
+    applied.activation_generation < running.activation_generation
+}
+
 pub(crate) fn spawn_runtime_identity_monitor_with_intervals(
     state_home: PathBuf,
-    artifact_kind: String,
     owner_epoch: u64,
+    running_identity: Option<ResidentActivationIdentity>,
     poll_interval: Duration,
     heartbeat_interval: Duration,
 ) -> RuntimeIdentityMonitorHandle {
     let (event_tx, event_rx) = mpsc::channel(1);
     let (cancel_tx, mut cancel_rx) = watch::channel(false);
     let task = tokio::spawn(async move {
-        let _ = write_monitor_receipt(&state_home, owner_epoch, "starting", "", "", false).await;
+        let _ = write_monitor_receipt(
+            &state_home,
+            owner_epoch,
+            "starting",
+            None,
+            None,
+            None,
+            false,
+        )
+        .await;
         let mut tick = tokio::time::interval(poll_interval);
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        let mut last_identity: Option<String> = None;
+        let mut last_identity = running_identity;
         let mut last_heartbeat = tokio::time::Instant::now();
+        let mut last_applied_failure = None;
         loop {
             tokio::select! {
                 changed = cancel_rx.changed() => {
@@ -120,42 +165,87 @@ pub(crate) fn spawn_runtime_identity_monitor_with_intervals(
                     }
                 }
                 _ = tick.tick() => {
-                    let Ok(receipt) = crate::runtime_artifact_identity::read_runtime_artifact_identity(
-                        &state_home,
-                        &artifact_kind,
-                    ).await else {
-                        continue;
+                    let applied = match agent_semantic_artifacts::runtime_artifact_publication::
+                        read_applied_runtime_artifact_activation_event(&state_home).await {
+                        Ok(Some(applied)) => {
+                            last_applied_failure = None;
+                            applied
+                        }
+                        Ok(None) => {
+                            let failure = "applied-activation-absent".to_owned();
+                            if last_applied_failure.as_ref() != Some(&failure) {
+                                let _ = write_monitor_receipt(
+                                    &state_home,
+                                    owner_epoch,
+                                    "applied-authority-unavailable",
+                                    last_identity.as_ref(),
+                                    None,
+                                    Some(&failure),
+                                    false,
+                                ).await;
+                                last_applied_failure = Some(failure);
+                            }
+                            continue;
+                        }
+                        Err(error) => {
+                            let failure = format!("applied-activation-invalid:{error}");
+                            if last_applied_failure.as_ref() != Some(&failure) {
+                                let _ = write_monitor_receipt(
+                                    &state_home,
+                                    owner_epoch,
+                                    "applied-authority-unavailable",
+                                    last_identity.as_ref(),
+                                    None,
+                                    Some(&failure),
+                                    false,
+                                ).await;
+                                last_applied_failure = Some(failure);
+                            }
+                            continue;
+                        }
                     };
-                    let identity = format!(
-                        "{}:{}:{}",
-                        receipt.identity_kind(),
-                        receipt.identity_value(),
-                        receipt.identity_algorithm(),
-                    );
-                    match last_identity.as_deref() {
+                    let identity = ResidentActivationIdentity {
+                        activation_generation: applied.activation_generation,
+                        artifact_digest: applied.artifact_digest,
+                        owner_epoch,
+                    };
+                    let identity_label = runtime_identity_label(&identity);
+                    match last_identity.as_ref() {
                         None => {
                             let _ = write_monitor_receipt(
                                 &state_home,
                                 owner_epoch,
                                 "watching",
-                                &identity,
-                                &identity,
+                                Some(&identity),
+                                Some(&identity),
+                                None,
                                 true,
                             ).await;
                             last_heartbeat = tokio::time::Instant::now();
                             last_identity = Some(identity);
                         }
-                        Some(previous) if previous != identity => {
+                        Some(previous)
+                            if applied_identity_precedes_running_owner(previous, &identity) =>
+                        {
+                            // Publication commits pending -> applied atomically, but a
+                            // newly launched candidate can observe the previous applied
+                            // generation during that transaction.  An older generation
+                            // is convergence lag, never successor authority.
+                            continue;
+                        }
+                        Some(previous) if previous != &identity => {
+                            let previous_label = runtime_identity_label(previous);
                             let event = RuntimeIdentityChanged {
-                                previous_identity: previous.to_owned(),
-                                observed_identity: identity.clone(),
+                                previous_identity: previous_label.clone(),
+                                observed_identity: identity_label.clone(),
                             };
                             let _ = write_monitor_receipt(
                                 &state_home,
                                 owner_epoch,
                                 "observed",
-                                previous,
-                                &identity,
+                                Some(previous),
+                                Some(&identity),
+                                None,
                                 false,
                             ).await;
                             let _ = event_tx.send(event).await;
@@ -166,8 +256,9 @@ pub(crate) fn spawn_runtime_identity_monitor_with_intervals(
                                 &state_home,
                                 owner_epoch,
                                 "watching",
-                                previous,
-                                previous,
+                                Some(previous),
+                                Some(previous),
+                                None,
                                 true,
                             ).await;
                             last_heartbeat = tokio::time::Instant::now();
@@ -185,12 +276,20 @@ pub(crate) fn spawn_runtime_identity_monitor_with_intervals(
     }
 }
 
+fn runtime_identity_label(identity: &ResidentActivationIdentity) -> String {
+    format!(
+        "generation:{} digest:{} ownerEpoch:{}",
+        identity.activation_generation, identity.artifact_digest, identity.owner_epoch
+    )
+}
+
 async fn write_monitor_receipt(
     state_home: &Path,
     owner_epoch: u64,
     phase: &str,
-    running_identity: &str,
-    observed_identity: &str,
+    running_identity: Option<&ResidentActivationIdentity>,
+    observed_identity: Option<&ResidentActivationIdentity>,
+    observation_error: Option<&str>,
     heartbeat: bool,
 ) -> Result<(), String> {
     let path = state_home.join("runtime/server/monitor-state.json");
@@ -202,10 +301,12 @@ async fn write_monitor_receipt(
         .map_err(|error| error.to_string())?;
     let staged = path.with_extension(format!("stage-{owner_epoch}"));
     let receipt = RuntimeIdentityMonitorReceipt {
+        schema_id: "agent.semantic-protocols.runtime-resident-identity-monitor-receipt",
         schema_version: "1",
         phase,
         running_identity,
         observed_identity,
+        observation_error,
         owner_epoch,
         process_id: crate::runtime_process_lifecycle::current_process_id(),
         updated_at_millis: SystemTime::now()

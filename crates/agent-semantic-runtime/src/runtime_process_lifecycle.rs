@@ -161,6 +161,12 @@ impl RuntimeProcessLaunchHandle {
             .await
             .map_err(|error| format!("wait for Runtime process {}: {error}", self.process_id))
     }
+
+    pub fn try_wait(&mut self) -> Result<Option<std::process::ExitStatus>, String> {
+        self.child
+            .try_wait()
+            .map_err(|error| format!("inspect Runtime process {}: {error}", self.process_id))
+    }
 }
 
 pub async fn launch_monitored(

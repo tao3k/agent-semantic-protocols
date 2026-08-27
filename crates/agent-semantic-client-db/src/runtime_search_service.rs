@@ -25,6 +25,7 @@ pub enum RuntimeSearchServiceRequest {
     ProviderRuntimeAwaitReady {
         project_root: PathBuf,
         language_id: String,
+        cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
         response: oneshot::Sender<
             Result<agent_semantic_provider_transport::AspClientServerLifecycleReceipt, String>,
         >,
@@ -41,6 +42,7 @@ pub enum RuntimeSearchServiceRequest {
         language_id: String,
         operation: String,
         payload: Vec<u8>,
+        cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
         response: oneshot::Sender<Result<Vec<u8>, String>>,
     },
     ProviderOwner {
@@ -125,12 +127,14 @@ impl RuntimeSearchServiceHandle {
         &self,
         project_root: PathBuf,
         language_id: String,
+        cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
     ) -> Result<agent_semantic_provider_transport::AspClientServerLifecycleReceipt, String> {
         let (response, receipt) = oneshot::channel();
         self.sender
             .send(RuntimeSearchServiceRequest::ProviderRuntimeAwaitReady {
                 project_root,
                 language_id,
+                cancellation,
                 response,
             })
             .await
@@ -175,6 +179,7 @@ impl RuntimeSearchServiceHandle {
         language_id: String,
         operation: String,
         payload: Vec<u8>,
+        cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
     ) -> Result<Vec<u8>, String> {
         let (response, receipt) = oneshot::channel();
         self.sender
@@ -183,6 +188,7 @@ impl RuntimeSearchServiceHandle {
                 language_id,
                 operation,
                 payload,
+                cancellation,
                 response,
             })
             .await

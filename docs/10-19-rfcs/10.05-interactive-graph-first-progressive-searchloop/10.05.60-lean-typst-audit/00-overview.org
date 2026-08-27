@@ -1,5 +1,7 @@
-#+title: Lean, Typst, and AXLE audit
-#+property: rfc_layer lean-typst-audit
+#+TITLE: Lean, Typst, and AXLE audit
+#+PROPERTY: rfc_layer lean-typst-audit
+
+Parent architecture: [[file:../../10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
 
 * Ownership
 

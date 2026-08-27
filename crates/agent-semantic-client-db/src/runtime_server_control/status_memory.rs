@@ -539,6 +539,61 @@ pub fn resolve_runtime_server_agent_session_status(
     })
 }
 
+pub(super) fn validate_resident_transaction(
+    endpoint: &RuntimeServerEndpoint,
+    transaction: crate::runtime_server_owner_receipt::RuntimeServerResidentTransactionReceipt,
+) -> Result<crate::runtime_server_owner_receipt::RuntimeServerResidentTransactionReceipt, String> {
+    let launcher_path = std::path::Path::new(&transaction.launcher_artifact_path);
+    let valid_drain = matches!(
+        transaction.previous_drain_state.as_str(),
+        "clean" | "not-running" | "not-required"
+    );
+    if transaction.schema_version != "1"
+        || transaction.state != "ready"
+        || transaction.activation_generation == 0
+        || transaction.activation_generation != transaction.applied_activation_generation
+        || transaction.launcher_artifact_digest != transaction.applied_artifact_digest
+        || transaction.endpoint_binary_content_digest != transaction.applied_artifact_digest
+        || transaction.endpoint_owner_epoch != endpoint.owner_epoch
+        || transaction.endpoint_binary_content_digest.to_string() != endpoint.binary_content_digest
+        || transaction.endpoint_runtime_generation_digest != endpoint.runtime_generation_digest
+        || transaction.control_endpoint != endpoint.socket_path
+        || transaction.data_endpoint != endpoint.data_plane_socket_path
+        || transaction.provider_endpoint != endpoint.provider_plane_socket_path
+        || !launcher_path.is_absolute()
+        || transaction.launcher_artifact_path != endpoint.runtime_artifact_path
+        || transaction.spawn_argv.is_empty()
+        || !valid_drain
+    {
+        return Err(format!(
+            "runtime-server-resident-transaction-not-current: activationGeneration={} appliedActivationGeneration={} endpointOwnerEpoch={} observedOwnerEpoch={} launcherPath={} endpointArtifactPath={} drainState={}",
+            transaction.activation_generation,
+            transaction.applied_activation_generation,
+            endpoint.owner_epoch,
+            transaction.endpoint_owner_epoch,
+            transaction.launcher_artifact_path,
+            endpoint.runtime_artifact_path,
+            transaction.previous_drain_state
+        ));
+    }
+    Ok(transaction)
+}
+
+pub(super) async fn attach_resident_transaction(
+    state_home: &std::path::Path,
+    endpoint: &RuntimeServerEndpoint,
+    mut receipt: RuntimeServerControlReceipt,
+) -> Result<RuntimeServerControlReceipt, String> {
+    if receipt.state != RuntimeServerState::Healthy {
+        return Ok(receipt);
+    }
+    let transaction =
+        crate::runtime_server_lifecycle::observe_resident_transaction(state_home).await?;
+    let transaction = validate_resident_transaction(endpoint, transaction)?;
+    receipt.resident_transaction = Some(transaction);
+    Ok(receipt)
+}
+
 pub(crate) async fn read_runtime_server_status(
     endpoint: &RuntimeServerEndpoint,
     request_id: String,

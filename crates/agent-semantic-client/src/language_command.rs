@@ -1,0 +1,138 @@
+//! Application boundary for typed language-facade commands.
+
+use std::future::Future;
+use std::path::PathBuf;
+use std::pin::Pin;
+
+use crate::AspClient;
+use crate::projection_presentation::{ProjectionPresentation, render_exact_projection_response};
+use agent_semantic_client_core::LanguageId;
+use agent_semantic_client_protocol::{
+    AspClientExactQueryRequest, AspClientOwnerSearchRequest, AspClientSearchRequest, ClientFrame,
+    ClientOutcome,
+};
+
+/// Typed language operation admitted by the shared client protocol.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum LanguageCommandOperation {
+    Search(AspClientSearchRequest),
+    ExactQuery(AspClientExactQueryRequest),
+    OwnerSearch(AspClientOwnerSearchRequest),
+}
+
+impl LanguageCommandOperation {
+    fn into_route_and_params(self) -> Result<(&'static str, serde_json::Value), String> {
+        match self {
+            Self::Search(request) => encode_operation("search", request),
+            Self::ExactQuery(request) => encode_operation("query", request),
+            Self::OwnerSearch(request) => encode_operation("search.owner", request),
+        }
+    }
+}
+
+fn encode_operation(
+    route: &'static str,
+    request: impl serde::Serialize,
+) -> Result<(&'static str, serde_json::Value), String> {
+    serde_json::to_value(request)
+        .map(|params| (route, params))
+        .map_err(|error| format!("encode typed {route} request: {error}"))
+}
+
+/// A language command already parsed by the thin protocol CLI.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LanguageCommandRequest {
+    pub language_id: LanguageId,
+    pub operation: LanguageCommandOperation,
+    pub project_root: PathBuf,
+    pub machine_readable: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LanguageCommandResponse {
+    pub route: &'static str,
+    pub frame: ClientFrame,
+}
+
+impl LanguageCommandResponse {
+    pub fn require_ready_payload(self) -> Result<serde_json::Value, String> {
+        match self.frame {
+            ClientFrame::Response {
+                outcome: ClientOutcome::Ready,
+                result: Some(payload),
+                error: None,
+                ..
+            } => Ok(payload),
+            ClientFrame::Response { outcome, error, .. } => Err(format!(
+                "typed language command did not return Ready: route={} outcome={outcome:?} error={error:?}",
+                self.route
+            )),
+            frame => Err(format!(
+                "typed language command returned a non-response frame: route={} frame={frame:?}",
+                self.route
+            )),
+        }
+    }
+}
+
+pub type LanguageCommandDispatchFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<LanguageCommandResponse, String>> + Send + 'a>>;
+
+pub trait LanguageCommandClient: Send + Sync {
+    fn dispatch(&self, request: LanguageCommandRequest) -> LanguageCommandDispatchFuture<'_>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RuntimeLanguageCommandClient;
+
+impl LanguageCommandClient for RuntimeLanguageCommandClient {
+    fn dispatch(&self, request: LanguageCommandRequest) -> LanguageCommandDispatchFuture<'_> {
+        Box::pin(async move {
+            let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
+            let client = AspClient::new(state_home, &request.project_root);
+            let (route, params) = request.operation.into_route_and_params()?;
+            let frame = client
+                .dispatch(request.language_id.as_str(), route, params)
+                .await?;
+            Ok(LanguageCommandResponse { route, frame })
+        })
+    }
+}
+
+pub type LanguageCommandFuture<'a> = Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'a>>;
+
+/// Sole application boundary used by the protocol language facade.
+pub trait LanguageCommandApplication: Send + Sync {
+    fn execute(&self, request: LanguageCommandRequest) -> LanguageCommandFuture<'_>;
+}
+
+/// Production application backed by the shared ASP Client protocol.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RuntimeLanguageCommandApplication;
+
+impl LanguageCommandApplication for RuntimeLanguageCommandApplication {
+    fn execute(&self, request: LanguageCommandRequest) -> LanguageCommandFuture<'_> {
+        Box::pin(async move {
+            let machine_readable = request.machine_readable;
+            let response = RuntimeLanguageCommandClient.dispatch(request).await?;
+            let rendered = if response.route == "query" {
+                let presentation = if machine_readable {
+                    ProjectionPresentation::MachineJson
+                } else {
+                    ProjectionPresentation::Text
+                };
+                render_exact_projection_response(&response.frame, presentation)?
+            } else {
+                serde_json::to_string(&response.frame)
+                    .map_err(|error| format!("encode route response: {error}"))?
+            };
+            println!("{rendered}");
+            Ok(())
+        })
+    }
+}
+
+/// Execute one typed language command through the production application.
+pub async fn execute_language_command(request: LanguageCommandRequest) -> Result<(), String> {
+    RuntimeLanguageCommandApplication.execute(request).await
+}

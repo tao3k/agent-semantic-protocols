@@ -1,6 +1,9 @@
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
+#[path = "../agent-semantic-schema-manager/src/build_support/provider_registry.rs"]
+mod provider_registry;
+
 fn main() {
     let manifest_dir = PathBuf::from(
         std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is defined"),
@@ -48,7 +51,7 @@ fn main() {
         )
     });
 
-    let provider_register = asp_provider_registry_build::resolve_provider_register(&source_root)
+    let provider_register = provider_registry::resolve_provider_register(&source_root)
         .expect("resolve canonical provider identity register");
     for path in &provider_register.input_paths {
         println!("cargo:rerun-if-changed={}", path.display());

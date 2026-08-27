@@ -34,27 +34,23 @@
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },
-    "result": { "type": "object" },
+    "result": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["state", "resolvedSelector", "bytes"],
+      "properties": {
+        "state": { "enum": ["projection", "provider-projection"] },
+        "resolvedSelector": { "type": "string", "minLength": 1 },
+        "bytes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+        }
+      }
+    },
     "residentReadElapsedMicros": { "type": "integer", "minimum": 0 },
     "serviceElapsedMicros": { "type": "integer", "minimum": 0 },
     "elapsedMicros": { "type": "integer", "minimum": 0 },
-    "workCounters": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "databaseReadCount",
-        "filesystemReadCount",
-        "providerProcessCount",
-        "schedulerTaskCount",
-        "socketOperationCount"
-      ],
-      "properties": {
-        "databaseReadCount": { "type": "integer", "minimum": 0 },
-        "filesystemReadCount": { "type": "integer", "minimum": 0 },
-        "providerProcessCount": { "type": "integer", "minimum": 0 },
-        "schedulerTaskCount": { "type": "integer", "minimum": 0 },
-        "socketOperationCount": { "type": "integer", "minimum": 0 }
-      }
-    }
+    "workCounters": { "$ref": "asp-client-work-counters.schema.json" }
   }
 }

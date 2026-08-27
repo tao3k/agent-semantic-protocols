@@ -21,6 +21,33 @@ fn refresh_fixture_matcher(
     stdout
 }
 
+fn run_codex_pre_tool_binding_probe(
+    binding_args: &[&str],
+    payload: &serde_json::Value,
+) -> std::process::Output {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args(["hook", "pre-tool", "--client", "codex"])
+        .args(binding_args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn Codex PreTool binding probe");
+    serde_json::to_writer(child.stdin.as_mut().expect("binding probe stdin"), payload)
+        .expect("write binding probe payload");
+    child
+        .stdin
+        .as_mut()
+        .expect("binding probe stdin")
+        .flush()
+        .expect("flush binding probe payload");
+    drop(child.stdin.take());
+    child.wait_with_output().expect("wait for binding probe")
+}
+
 #[test]
 fn generic_runtime_hook_policy_plane_is_absent() {
     let hook = include_str!("../../src/command/hook.rs");
@@ -28,17 +55,35 @@ fn generic_runtime_hook_policy_plane_is_absent() {
     let runtime = include_str!("../../src/server/runtime_server.rs");
     let daemon = include_str!("../../src/server/runtime_server_daemon.rs");
     let ipc = include_str!("../../../agent-semantic-client-db/src/workspace_db_ipc/protocol.rs");
-    let ipc_server =
-        include_str!("../../../agent-semantic-client-db/src/workspace_db_ipc_server.rs");
 
     assert!(hook.contains("evaluate_hook_event_locally"));
     assert!(bootstrap.contains("codex_tool_event_requires_policy_evaluation"));
     assert!(bootstrap.contains("bootstrap-no-agent-bypass"));
-    for source in [hook, bootstrap, runtime, daemon, ipc, ipc_server] {
+    for source in [hook, bootstrap, runtime, daemon, ipc] {
         assert!(!source.contains("EvaluateHook"));
         assert!(!source.contains("HookEvaluationBuilder"));
         assert!(!source.contains("runtime_server_hook_evaluation_client"));
         assert!(!source.contains("ResidentHookSnapshotAuthority"));
+    }
+}
+
+#[test]
+fn process_recovery_has_one_outer_owner_and_no_platform_compatibility_variable() {
+    let main = include_str!("../../src/main.rs");
+    let bootstrap = include_str!("../../src/hook_bootstrap.rs");
+    let runtime = include_str!("../../src/command/hook_runtime.rs");
+    let config = agent_semantic_config::default_hook_client_config_template();
+
+    assert!(bootstrap.contains("const NO_AGENT_ENV: &str = \"ASP_NO_AGENT\""));
+    assert!(main.contains("process_entry_no_agent_bypass"));
+    assert!(
+        main.find("process_entry_no_agent_bypass").unwrap()
+            < main.find("RuntimeServerRuntimeBuilder").unwrap()
+    );
+    assert!(!runtime.contains("ASP_NO_AGENT"));
+    assert!(!config.contains("ASP_NO_AGENT"));
+    for source in [main, bootstrap, runtime, config.as_str()] {
+        assert!(!source.contains("ASP_NO_AGENT_PLATFORM"));
     }
 }
 
@@ -56,13 +101,14 @@ fn hook_event_plane_has_zero_runtime_server_dependencies() {
         include_str!("../../src/command/hook.rs"),
         include_str!("../../src/hook_bootstrap.rs"),
         include_str!("../../src/command/hook_runtime.rs"),
-        include_str!("../../src/command/hook_runtime_config_recovery.rs"),
+        include_str!("../../../agent-semantic-hook/src/runtime_config.rs"),
     ] {
         for forbidden in [
             "RuntimeServerClientExecutor",
             "runtime_server_workspace_session",
             "ensure_runtime_generation",
             "submit_runtime_generation_mutation",
+            "reconcile_pending_runtime_activation_for_client_bootstrap",
             "server start",
         ] {
             assert!(
@@ -100,7 +146,7 @@ fn hook_event_plane_has_zero_runtime_server_dependencies() {
         );
     }
 
-    let snapshot = include_str!("../../src/command/hook_runtime_config_recovery.rs");
+    let snapshot = include_str!("../../../agent-semantic-hook/src/runtime_config.rs");
     assert!(snapshot.contains("MmapOptions"));
     assert!(snapshot.contains("durable_snapshot_config"));
     assert!(snapshot.contains("from_durable_snapshot_config"));
@@ -116,33 +162,29 @@ fn hook_event_plane_has_zero_runtime_server_dependencies() {
 }
 
 #[test]
-fn codex_wildcard_is_transport_coverage_not_runtime_routing() {
-    let rendered = agent_semantic_hook::codex_global_hook_block_with_binary(Some(
-        std::path::Path::new("/state/runtime/bin/asp"),
-    ));
-    let hooks: toml::Value = toml::from_str(&rendered).expect("parse global inline Codex hooks");
-    for event in ["PreToolUse", "PermissionRequest"] {
-        assert_eq!(hooks["hooks"][event][0]["matcher"].as_str(), Some("*"));
-    }
+fn codex_pre_tool_transport_preserves_one_native_host_match_per_entry() {
     let plugin: serde_json::Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../asp-codex-plugin/hooks/hooks.json"
     )))
     .expect("parse fixed Codex plugin Hook transport");
-    for event in ["PreToolUse", "PermissionRequest"] {
-        assert_eq!(plugin["hooks"][event][0]["matcher"], "*");
-        assert_eq!(
-            plugin["hooks"][event][0]["hooks"][0]["command"],
-            format!(
-                "\"$PLUGIN_ROOT/bin/asp-hook\" {} --client codex",
-                if event == "PreToolUse" {
-                    "pre-tool"
-                } else {
-                    "permission-request"
-                }
-            )
+    let entries = plugin["hooks"]["PreToolUse"]
+        .as_array()
+        .expect("typed PreToolUse entries");
+    assert_eq!(entries.len(), 8);
+    assert!(entries.iter().all(|entry| entry["matcher"] != "*"));
+    for entry in entries {
+        let command = entry["hooks"][0]["command"]
+            .as_str()
+            .expect("typed Hook command");
+        assert!(
+            command.contains("--host-match ") || command.contains("--host-match-prefix "),
+            "{command}"
         );
+        assert!(!command.contains("--host-action "), "{command}");
+        assert!(!command.contains("--host-matcher"), "{command}");
     }
+    assert_eq!(plugin["hooks"]["PermissionRequest"][0]["matcher"], "*");
 
     let bootstrap = include_str!("../../src/hook_bootstrap.rs");
     assert!(bootstrap.contains("bootstrap-local-action-passthrough"));
@@ -150,18 +192,20 @@ fn codex_wildcard_is_transport_coverage_not_runtime_routing() {
     assert!(!bootstrap.contains("evaluate_hook_event_via_runtime"));
 }
 
-#[test]
-fn explicit_no_agent_environment_bypasses_host_hook_before_payload_evaluation() {
-    use std::process::{Command, Stdio};
-
+#[tokio::test]
+async fn explicit_no_agent_environment_bypasses_host_hook_before_payload_evaluation() {
     let binary = env!("CARGO_BIN_EXE_asp");
-    let warm = Command::new(binary)
-        .arg("--version")
-        .env_clear()
+    let warm = std::process::Command::new(binary)
+        .args(["hook", "pre-tool", "--client", "codex"])
+        .env("ASP_NO_AGENT", "1")
+        .env("ASP_HOOK_BOOTSTRAP_TRACE", "1")
         .output()
-        .expect("warm Hook binary image");
-    assert!(warm.status.success());
-
+        .expect("warm process-entry recovery binary");
+    assert!(
+        warm.status.success(),
+        "binary={binary} stderr={}",
+        String::from_utf8_lossy(&warm.stderr)
+    );
     for event in [
         "pre-tool",
         "permission-request",
@@ -173,60 +217,39 @@ fn explicit_no_agent_environment_bypasses_host_hook_before_payload_evaluation() 
         "subagent-start",
         "subagent-stop",
     ] {
-        let mut child = Command::new(binary)
-            .args(["hook", event, "--client", "codex"])
-            .env_clear()
-            .env("ASP_NO_AGENT", "1")
-            .env("ASP_HOOK_BOOTSTRAP_TRACE", "1")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("spawn no-agent Hook bypass");
-        let mut held_open_stdin = Some(child.stdin.take().expect("piped Hook stdin"));
-        let started = std::time::Instant::now();
-        let status = loop {
-            if let Some(status) = child.try_wait().expect("poll no-agent Hook bypass") {
-                break status;
-            }
-            if started.elapsed() >= std::time::Duration::from_millis(750) {
-                child.kill().expect("kill blocked no-agent Hook bypass");
-                drop(held_open_stdin.take());
-                let output = child
-                    .wait_with_output()
-                    .expect("collect blocked no-agent Hook bypass output");
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                panic!(
-                    "ASP_NO_AGENT Hook bypass waited for stdin or another synchronous dependency: event={event} stdout={stdout} stderr={stderr}"
-                );
-            }
-            std::thread::sleep(std::time::Duration::from_millis(1));
-        };
-        drop(held_open_stdin.take());
-        let output = child
-            .wait_with_output()
-            .expect("collect no-agent Hook bypass output");
-        let stdout = String::from_utf8(output.stdout).expect("Hook bypass stdout UTF-8");
-        let stderr = String::from_utf8(output.stderr).expect("Hook bypass stderr UTF-8");
+        let mut spec =
+            agent_semantic_hook_testkit::HookProcessSpec::new(binary, env!("CARGO_MANIFEST_DIR"));
+        spec.args = vec![
+            "hook".to_owned(),
+            event.to_owned(),
+            "--client".to_owned(),
+            "codex".to_owned(),
+        ];
+        spec.env = vec![("ASP_HOOK_BOOTSTRAP_TRACE".to_owned(), "1".to_owned())];
+        spec.timeout = std::time::Duration::from_secs(2);
+        let receipt = agent_semantic_hook_testkit::run_process_entry_no_agent_recovery_probe(&spec)
+            .await
+            .unwrap_or_else(|error| panic!("event={event}: {error}"));
 
+        assert_eq!(receipt.decision, serde_json::json!({}), "event={event}");
         assert!(
-            status.success(),
-            "event={event} stdout={stdout} stderr={stderr}"
-        );
-        assert_eq!(stdout.trim(), "{}", "event={event}");
-        assert!(
-            stderr.contains("route=process-entry-no-agent-bypass"),
-            "event={event} stderr={stderr}"
-        );
-        assert!(
-            !stderr.contains("local-policy-evaluator"),
-            "event={event} stderr={stderr}"
+            receipt
+                .stderr
+                .contains("route=process-entry-no-agent-bypass"),
+            "event={event} stderr={}",
+            receipt.stderr
         );
         assert!(
-            !stderr.contains("runtime-server"),
-            "event={event} stderr={stderr}"
+            !receipt.stderr.contains("local-policy-evaluator"),
+            "event={event} stderr={}",
+            receipt.stderr
         );
+        assert!(
+            !receipt.stderr.contains("runtime-server"),
+            "event={event} stderr={}",
+            receipt.stderr
+        );
+        assert!(receipt.elapsed < spec.timeout, "event={event}");
     }
 }
 
@@ -253,48 +276,99 @@ fn legacy_rust_choice_plane_owners_are_absent() {
 }
 
 #[test]
-fn unrelated_action_binary_path_does_not_require_runtime_server() {
+fn unrelated_host_actions_are_excluded_by_the_physical_plugin_matcher_set() {
+    let plugin: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../asp-codex-plugin/hooks/hooks.json"
+    )))
+    .expect("parse fixed Codex plugin Hook transport");
+    let matchers = plugin["hooks"]["PreToolUse"]
+        .as_array()
+        .expect("typed PreToolUse entries")
+        .iter()
+        .map(|entry| entry["matcher"].as_str().expect("matcher"))
+        .collect::<Vec<_>>();
+    assert!(!matchers.contains(&"*"));
+    assert!(!matchers.contains(&"update_plan"));
+}
+
+#[test]
+fn missing_or_mismatched_host_match_signal_is_a_json_fail_closed_terminal() {
+    let read_payload = serde_json::json!({
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Read",
+        "tool_input": {"file_path": "README.md"}
+    });
+    let cases = [
+        (
+            Vec::<&str>::new(),
+            "plugin Host matcher requires exactly one --host-match or --host-match-prefix",
+        ),
+        (
+            vec!["--host-match", "Bash"],
+            "plugin Host matcher binding mismatch",
+        ),
+    ];
+    for (binding_args, expected_message) in cases {
+        let output = run_codex_pre_tool_binding_probe(&binding_args, &read_payload);
+        let stdout = String::from_utf8(output.stdout).expect("binding stdout UTF-8");
+        let stderr = String::from_utf8(output.stderr).expect("binding stderr UTF-8");
+        assert!(output.status.success(), "stdout={stdout} stderr={stderr}");
+        let response: serde_json::Value = serde_json::from_str(stdout.trim())
+            .unwrap_or_else(|error| panic!("one JSON terminal required: {error}; {stdout}"));
+        assert_eq!(
+            response["hookSpecificOutput"]["permissionDecision"], "deny",
+            "{response}"
+        );
+        assert!(
+            response["hookSpecificOutput"]["additionalContext"]
+                .as_str()
+                .is_some_and(|context| {
+                    context.contains("host-action-authority-unavailable")
+                        && context.contains(expected_message)
+                }),
+            "{response}"
+        );
+        assert!(!stderr.contains("panicked"), "stderr={stderr}");
+    }
+}
+
+#[test]
+fn post_tool_observation_emits_one_json_document_without_runtime_receipt() {
     use std::io::Write;
     use std::process::{Command, Stdio};
 
-    let binary = env!("CARGO_BIN_EXE_asp");
-    let mut child = Command::new(binary)
-        .args(["hook", "pre-tool", "--client", "codex"])
+    let state = tempfile::tempdir().expect("temporary malformed Runtime observation");
+    let owner = state.path().join("runtime/server/owner-spawn.v1.json");
+    std::fs::create_dir_all(owner.parent().unwrap()).expect("owner receipt parent");
+    std::fs::write(&owner, b"{\"schemaId\":").expect("malformed owner receipt");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args(["hook", "post-tool", "--client", "codex"])
         .env_clear()
+        .env("HOME", state.path())
+        .env("ASP_STATE_HOME", state.path())
         .env("ASP_HOOK_BOOTSTRAP_TRACE", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("spawn Hook binary");
-    let mut stdin = child.stdin.take().expect("Hook stdin");
-    stdin
+        .expect("spawn post-tool Hook binary");
+    child
+        .stdin
+        .as_mut()
+        .expect("post-tool stdin")
         .write_all(br#"{"tool_name":"update_plan","tool_input":{"plan":[]}}"#)
-        .expect("write Hook payload");
-    drop(stdin);
-    let output = child.wait_with_output().expect("wait for Hook binary");
-    let stdout = String::from_utf8(output.stdout).expect("Hook stdout is UTF-8");
-    let stderr = String::from_utf8(output.stderr).expect("Hook stderr is UTF-8");
-
-    assert!(output.status.success(), "stderr: {stderr}");
-    assert_eq!(stdout.trim(), "{}");
-    assert!(
-        stderr.contains("route=bootstrap-local-action-passthrough"),
-        "stderr: {stderr}"
-    );
-    assert!(!stderr.contains("runtime-server"), "stderr: {stderr}");
-    let execution_micros = stderr
-        .lines()
-        .find_map(|line| {
-            line.strip_prefix("[asp-hook] route=bootstrap-local-action-emitted elapsedMicros=")
-        })
-        .expect("Hook execution latency trace")
-        .parse::<u128>()
-        .expect("Hook execution latency is an integer");
-    assert!(
-        execution_micros < 100_000,
-        "unrelated Hook execution exceeded 100ms after process entry: binary={binary} executionMicros={execution_micros} stderr={stderr}"
-    );
+        .expect("write post-tool payload");
+    drop(child.stdin.take());
+    let output = child.wait_with_output().expect("wait for post-tool Hook");
+    let stdout = String::from_utf8(output.stdout).expect("post-tool stdout UTF-8");
+    let stderr = String::from_utf8(output.stderr).expect("post-tool stderr UTF-8");
+    assert!(output.status.success(), "stdout={stdout} stderr={stderr}");
+    let response: serde_json::Value = serde_json::from_str(stdout.trim())
+        .unwrap_or_else(|error| panic!("post-tool must emit one JSON document: {error}; {stdout}"));
+    assert_eq!(response, serde_json::json!({}));
+    assert!(!stdout.contains("runtime-server-client-bootstrap-receipt"));
+    assert!(!stderr.contains("runtime-server"), "stderr={stderr}");
 }
 
 #[test]
@@ -355,7 +429,14 @@ fn structured_rust_read_binary_path_is_local_bounded_and_runtime_free() {
     let binary = env!("CARGO_BIN_EXE_asp");
     let mut child = Command::new(binary)
         .current_dir(workspace)
-        .args(["hook", "pre-tool", "--client", "codex"])
+        .args([
+            "hook",
+            "pre-tool",
+            "--client",
+            "codex",
+            "--host-match",
+            "Read",
+        ])
         .env_clear()
         .env("HOME", &root)
         .env("ASP_STATE_HOME", &state_home)
@@ -388,7 +469,8 @@ fn structured_rust_read_binary_path_is_local_bounded_and_runtime_free() {
     let stderr = String::from_utf8(output.stderr).expect("Hook stderr is UTF-8");
 
     assert!(output.status.success(), "stdout={stdout} stderr={stderr}");
-    let response: serde_json::Value = serde_json::from_str(&stdout).expect("parse Hook response");
+    let response: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|error| panic!("parse Hook response: {error}; stdout={stdout}"));
     assert_eq!(
         response["hookSpecificOutput"]["permissionDecision"], "deny",
         "stdout={stdout} stderr={stderr}"
@@ -396,7 +478,14 @@ fn structured_rust_read_binary_path_is_local_bounded_and_runtime_free() {
     let context = response["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .expect("typed Hook decision context");
-    assert!(context.contains("direct-source-read"), "{context}");
+    assert!(
+        context.contains("registered-source-route-required"),
+        "{context}"
+    );
+    assert!(
+        context.contains("\"operationIntent\":\"direct-read\""),
+        "{context}"
+    );
     assert!(context.contains("mmap-hit"), "{context}");
     assert!(
         context.contains("asp rust search owner crates/agent-semantic-hook/src/protocol.rs items --workspace . --view seeds"),
@@ -421,7 +510,14 @@ fn structured_rust_read_binary_path_is_local_bounded_and_runtime_free() {
 
     let mut warm = Command::new(binary)
         .current_dir(workspace)
-        .args(["hook", "pre-tool", "--client", "codex"])
+        .args([
+            "hook",
+            "pre-tool",
+            "--client",
+            "codex",
+            "--host-match",
+            "Read",
+        ])
         .env_clear()
         .env("HOME", &root)
         .env("ASP_STATE_HOME", &state_home)
@@ -509,7 +605,14 @@ fn structured_rust_read_binary_path_is_local_bounded_and_runtime_free() {
     refresh_fixture_matcher(workspace, &root, &state_home);
     let mut recovery = Command::new(binary)
         .current_dir(workspace)
-        .args(["hook", "pre-tool", "--client", "codex"])
+        .args([
+            "hook",
+            "pre-tool",
+            "--client",
+            "codex",
+            "--host-match",
+            "Read",
+        ])
         .env_clear()
         .env("HOME", &root)
         .env("ASP_STATE_HOME", &state_home)
@@ -545,11 +648,11 @@ fn structured_rust_read_binary_path_is_local_bounded_and_runtime_free() {
 }
 
 #[test]
-fn runtime_control_endpoint_is_published_before_optional_telemetry_starts() {
+fn ready_runtime_endpoint_is_published_before_optional_telemetry_starts() {
     let daemon = include_str!("../../src/server/runtime_server_daemon.rs");
     let endpoint = daemon
-        .find("RuntimeServer::bind_and_publish_with_artifact_catalog")
-        .expect("Runtime Server endpoint publication");
+        .find("publish_endpoint_after_required_planes")
+        .expect("ready Runtime Server endpoint publication");
     let telemetry = daemon
         .find("RuntimeServerOpenTelemetry::start")
         .expect("optional Runtime Server OpenTelemetry startup");
@@ -612,7 +715,14 @@ fn control_plane_refresh_repairs_managed_config_before_hook_evaluation() {
     });
     let mut child = Command::new(env!("CARGO_BIN_EXE_asp"))
         .current_dir(workspace)
-        .args(["hook", "pre-tool", "--client", "codex"])
+        .args([
+            "hook",
+            "pre-tool",
+            "--client",
+            "codex",
+            "--host-match",
+            "Read",
+        ])
         .env_clear()
         .env("HOME", &root)
         .env("ASP_STATE_HOME", &state_home)
@@ -640,8 +750,8 @@ fn control_plane_refresh_repairs_managed_config_before_hook_evaluation() {
         !stdout.contains("hook-local-policy-unavailable"),
         "published matcher must not emit a recovery failure: {stdout}"
     );
-    let response: serde_json::Value =
-        serde_json::from_str(&stdout).expect("parse Hook decision response");
+    let response: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|error| panic!("parse Hook decision response: {error}; stdout={stdout}"));
     let context = response["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .expect("typed Hook decision context");

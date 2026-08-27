@@ -197,7 +197,7 @@ fn warm_fingerprint_gate_stays_millisecond_scale() {
 #[test]
 fn hook_refresh_has_no_sync_recursion_edge() {
     let hook_runtime = include_str!("../../src/command/hook_runtime.rs");
-    let hook_recovery = include_str!("../../src/command/hook_runtime_config_recovery.rs");
+    let hook_recovery = include_str!("../../../agent-semantic-hook/src/runtime_config.rs");
 
     for forbidden in [
         "super::sync::",

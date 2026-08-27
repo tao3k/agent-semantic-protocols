@@ -29,6 +29,26 @@ fn receipt() -> ProviderRuntimeContractReceipt {
     .expect("runtime contract receipt")
 }
 
+#[test]
+fn actor_terminal_guard_preserves_the_first_typed_failure() {
+    let (state_writer, state) = watch::channel(ProviderRuntimeActorState::Starting);
+    publish_actor_failure(
+        &state_writer,
+        "state=provider-runtime-terminal reasonKind=first-failure phase=test".to_owned(),
+    );
+    publish_actor_failure(
+        &state_writer,
+        "state=provider-runtime-terminal reasonKind=second-failure phase=test".to_owned(),
+    );
+
+    assert_eq!(
+        state.borrow().clone(),
+        ProviderRuntimeActorState::Failed(
+            "state=provider-runtime-terminal reasonKind=first-failure phase=test".to_owned()
+        )
+    );
+}
+
 #[tokio::test]
 async fn starting_runtime_fails_requests_immediately_and_shutdown_cancels_handshake() {
     let (_release, blocked) = tokio::sync::oneshot::channel::<()>();
@@ -150,4 +170,155 @@ async fn failed_handshake_is_terminal_and_never_runs_handler() {
     );
     assert_eq!(calls.load(Ordering::Acquire), 0);
     authority.shutdown().await.expect("join failed actor");
+}
+
+#[tokio::test]
+async fn actor_panic_is_published_as_typed_failed_terminal() {
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let handshake_entered = Arc::clone(&entered);
+    let authority = spawn_in_process_provider_runtime_actor(
+        8,
+        move || async move {
+            handshake_entered.notify_one();
+            panic!("deterministic actor panic");
+            #[allow(unreachable_code)]
+            Ok(receipt())
+        },
+        |_operation, payload| async move { Ok(payload) },
+    );
+    let mut client = authority.client();
+    entered.notified().await;
+    let error = client
+        .wait_ready()
+        .await
+        .expect_err("actor panic must fail readiness");
+    assert!(
+        error.contains("reasonKind=provider-runtime-actor-task-panicked"),
+        "unexpected terminal: {error}"
+    );
+    authority.join().await.expect("join actor supervisor");
+}
+
+#[tokio::test]
+async fn actor_abort_is_published_as_typed_failed_terminal() {
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let handshake_entered = Arc::clone(&entered);
+    let authority = spawn_in_process_provider_runtime_actor(
+        8,
+        move || async move {
+            handshake_entered.notify_one();
+            std::future::pending::<Result<ProviderRuntimeContractReceipt, String>>().await
+        },
+        |_operation, payload| async move { Ok(payload) },
+    );
+    let mut client = authority.client();
+    entered.notified().await;
+    authority.abort_actor();
+    let error = client
+        .wait_ready()
+        .await
+        .expect_err("actor abort must fail readiness");
+    assert!(
+        error.contains("reasonKind=provider-runtime-actor-task-aborted"),
+        "unexpected terminal: {error}"
+    );
+    authority.join().await.expect("join actor supervisor");
+}
+
+struct PendingPeer {
+    handshake_entered: Arc<tokio::sync::Notify>,
+    terminated: Arc<tokio::sync::Notify>,
+    stopped: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl ProviderRuntimePeer for PendingPeer {
+    fn handshake(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<ProviderRuntimeContractReceipt, String>> + Send + '_>>
+    {
+        Box::pin(async {
+            self.handshake_entered.notify_one();
+            std::future::pending().await
+        })
+    }
+
+    fn request(
+        &self,
+        _operation: String,
+        _payload: Bytes,
+    ) -> Pin<Box<dyn Future<Output = Result<Bytes, String>> + Send + '_>> {
+        Box::pin(std::future::pending())
+    }
+
+    fn shutdown(&self) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
+        Box::pin(async {
+            self.stopped.store(true, Ordering::Release);
+            Ok(())
+        })
+    }
+
+    fn wait_terminated(&self) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
+        Box::pin(async {
+            self.terminated.notified().await;
+            Ok(())
+        })
+    }
+}
+
+#[tokio::test]
+async fn pending_peer_handshake_lifecycle_cancellation_is_terminal_without_deadline() {
+    let handshake_entered = Arc::new(tokio::sync::Notify::new());
+    let stopped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let authority = spawn_provider_runtime_peer_actor(
+        8,
+        PendingPeer {
+            handshake_entered: Arc::clone(&handshake_entered),
+            terminated: Arc::new(tokio::sync::Notify::new()),
+            stopped: Arc::clone(&stopped),
+        },
+    );
+    let mut client = authority.client();
+    handshake_entered.notified().await;
+    let shutdown = tokio::spawn(authority.shutdown());
+    assert_eq!(
+        client
+            .wait_ready()
+            .await
+            .expect_err("startup cancellation must fail readiness"),
+        "state=provider-runtime-terminal reasonKind=provider-runtime-startup-cancelled"
+    );
+    shutdown
+        .await
+        .expect("shutdown task")
+        .expect("shutdown authority");
+    assert!(stopped.load(Ordering::Acquire));
+}
+
+#[tokio::test]
+async fn pending_peer_handshake_peer_eof_is_terminal_without_deadline() {
+    let handshake_entered = Arc::new(tokio::sync::Notify::new());
+    let terminated = Arc::new(tokio::sync::Notify::new());
+    let stopped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let authority = spawn_provider_runtime_peer_actor(
+        8,
+        PendingPeer {
+            handshake_entered: Arc::clone(&handshake_entered),
+            terminated: Arc::clone(&terminated),
+            stopped: Arc::clone(&stopped),
+        },
+    );
+    let mut client = authority.client();
+    handshake_entered.notified().await;
+    terminated.notify_one();
+    let error = client
+        .wait_ready()
+        .await
+        .expect_err("provider without bootstrap must fail closed");
+
+    assert_eq!(
+        error,
+        "state=provider-runtime-terminal reasonKind=provider-runtime-peer-eof"
+    );
+    authority.shutdown().await.expect("join failed actor");
+    assert!(stopped.load(Ordering::Acquire));
 }

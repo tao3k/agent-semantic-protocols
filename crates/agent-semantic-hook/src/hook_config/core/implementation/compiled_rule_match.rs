@@ -41,6 +41,13 @@ impl RuleMatch {
         !self.path_any.is_empty()
             || !self.path_glob_any.is_empty()
             || !self.profile_extension_any.is_empty()
+            || self.needs_profile_subjects()
+    }
+
+    pub(super) fn needs_profile_subjects(&self) -> bool {
+        !self.profile_any.is_empty()
+            && self.agent_action.needs_profile_subjects()
+            && !self.needs_command_tokens()
     }
     pub(super) fn needs_source_paths(&self) -> bool {
         self.agent_action.needs_subjects()

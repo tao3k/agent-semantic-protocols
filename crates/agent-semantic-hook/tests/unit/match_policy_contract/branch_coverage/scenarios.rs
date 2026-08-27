@@ -14,6 +14,90 @@ struct Scenario {
     forbidden_rule: Option<&'static str>,
 }
 
+#[test]
+fn registered_asp_search_intent_is_stable_across_native_wrapped_and_nested_surfaces() {
+    let command = "asp rust search pipe 'HookDecision' --workspace . --view seeds";
+    run_scenarios(
+        "registered ASP search surfaces",
+        &[
+            Scenario {
+                name: "native exec command",
+                payload: shell_surface("exec_command", "cmd", command),
+                expected_rule: Some("registered-asp-reasoning-search"),
+                forbidden_rule: None,
+            },
+            Scenario {
+                name: "wrapped Bash command",
+                payload: shell_surface(
+                    "Bash",
+                    "command",
+                    "env ASP_VIEW=seeds asp rust search pipe 'HookDecision' --workspace . --view seeds",
+                ),
+                expected_rule: Some("registered-asp-reasoning-search"),
+                forbidden_rule: None,
+            },
+            Scenario {
+                name: "testing lane wrapped command",
+                payload: shell_surface(
+                    "Bash",
+                    "command",
+                    "rtk --ultra-compact err asp rust search pipe 'HookDecision' --workspace . --view seeds",
+                ),
+                expected_rule: Some("registered-asp-reasoning-search"),
+                forbidden_rule: None,
+            },
+            Scenario {
+                name: "nested functions exec command",
+                payload: serde_json::json!({
+                    "tool_name": "functions.exec",
+                    "tool_input": {
+                        "code": "const r = await tools.exec_command({cmd: \"asp rust search pipe 'HookDecision' --workspace . --view seeds\"});"
+                    }
+                }),
+                expected_rule: Some("registered-asp-reasoning-search"),
+                forbidden_rule: None,
+            },
+        ],
+    );
+}
+
+#[test]
+fn registered_asp_query_projects_structured_projection_across_codex_surfaces() {
+    let command = "asp rust query --selector rust://crates/example.rs#item/function/example --workspace . --projection source";
+    run_scenarios(
+        "registered ASP structured projection surfaces",
+        &[
+            Scenario {
+                name: "native exact query",
+                payload: shell_surface("exec_command", "cmd", command),
+                expected_rule: Some("registered-asp-structured-projection"),
+                forbidden_rule: None,
+            },
+            Scenario {
+                name: "wrapped exact query",
+                payload: shell_surface(
+                    "Bash",
+                    "command",
+                    "rtk --ultra-compact err asp rust query --selector rust://crates/example.rs#item/function/example --workspace . --projection source",
+                ),
+                expected_rule: Some("registered-asp-structured-projection"),
+                forbidden_rule: None,
+            },
+            Scenario {
+                name: "nested exact query",
+                payload: serde_json::json!({
+                    "tool_name": "functions.exec",
+                    "tool_input": {
+                        "code": "const r = await tools.exec_command({cmd: \"asp rust query --selector rust://crates/example.rs#item/function/example --workspace . --projection source\"});"
+                    }
+                }),
+                expected_rule: Some("registered-asp-structured-projection"),
+                forbidden_rule: None,
+            },
+        ],
+    );
+}
+
 fn run_scenarios(_test_name: &str, scenarios: &[Scenario]) {
     let root = temp_project_root();
     fs::create_dir_all(root.join("src")).expect("create scenario source root");
@@ -70,27 +154,27 @@ fn run_scenarios(_test_name: &str, scenarios: &[Scenario]) {
 }
 
 #[test]
-fn codex_payload_surfaces_are_equivalent() {
+fn only_canonical_host_matchers_activate_native_policy_rules() {
     const TEST_NAME: &str =
         "match_policy_contract::branch_coverage::scenarios::codex_payload_surfaces_are_equivalent";
-    let command = "sed -n '1,8p' src/app.ts";
+    let command = "unknown-consumer < src/app.ts";
     let scenarios = [
         Scenario {
             name: "exec_command cmd",
             payload: shell_surface("exec_command", "cmd", command),
-            expected_rule: Some("route-read-to-asp-languages"),
+            expected_rule: None,
             forbidden_rule: None,
         },
         Scenario {
             name: "functions.exec_command cmd",
             payload: shell_surface("functions.exec_command", "cmd", command),
-            expected_rule: Some("route-read-to-asp-languages"),
+            expected_rule: None,
             forbidden_rule: None,
         },
         Scenario {
             name: "Bash command",
             payload: shell_surface("Bash", "command", command),
-            expected_rule: Some("route-read-to-asp-languages"),
+            expected_rule: Some("route-unresolved-source-access-to-asp-languages"),
             forbidden_rule: None,
         },
         Scenario {
@@ -98,10 +182,10 @@ fn codex_payload_surfaces_are_equivalent() {
             payload: json!({
                 "tool_name": "functions.exec",
                 "tool_input": {
-                    "code": "await tools.exec_command({cmd: \"sed -n '1,8p' src/app.ts\"})"
+            "code": "await tools.exec_command({cmd: \"unknown-consumer < src/app.ts\"})"
                 },
             }),
-            expected_rule: Some("route-read-to-asp-languages"),
+            expected_rule: None,
             forbidden_rule: None,
         },
         Scenario {
@@ -109,10 +193,10 @@ fn codex_payload_surfaces_are_equivalent() {
             payload: json!({
                 "tool_name": "functions.exec",
                 "tool_input": {
-                    "code": "await tools.exec_command({command: \"sed -n '1,8p' src/app.ts\"});"
+            "code": "await tools.exec_command({command: \"unknown-consumer < src/app.ts\"});"
                 },
             }),
-            expected_rule: Some("route-read-to-asp-languages"),
+            expected_rule: None,
             forbidden_rule: None,
         },
         Scenario {
@@ -120,10 +204,10 @@ fn codex_payload_surfaces_are_equivalent() {
             payload: json!({
                 "tool_name": "functions.exec",
                 "tool_input": {
-                    "code": "await tools.exec_command({cmd: 'sed -n 1,8p src/app.ts'});"
+            "code": "await tools.exec_command({cmd: 'unknown-consumer < src/app.ts'});"
                 },
             }),
-            expected_rule: Some("route-read-to-asp-languages"),
+            expected_rule: None,
             forbidden_rule: None,
         },
         Scenario {
@@ -131,19 +215,19 @@ fn codex_payload_surfaces_are_equivalent() {
             payload: json!({
                 "tool_name": "functions.exec",
                 "tool_input": {
-                    "code": "const r = await tools.exec_command({cmd: \"sed -n '1,8p' src/app.ts\", workdir: \"/workspace\", yield_time_ms: 10000}); text(JSON.stringify(r));"
+            "code": "const r = await tools.exec_command({cmd: \"unknown-consumer < src/app.ts\", workdir: \"/workspace\", yield_time_ms: 10000}); text(JSON.stringify(r));"
                 },
             }),
-            expected_rule: Some("route-read-to-asp-languages"),
+            expected_rule: None,
             forbidden_rule: None,
         },
         Scenario {
             name: "functions.exec freeform codex envelope",
             payload: json!({
-                "tool_name": "functions.exec",
-                "tool_input": "const r = await tools.exec_command({cmd: \"sed -n '1,8p' src/app.ts\", workdir: \"/workspace\", yield_time_ms: 10000}); text(r);",
-            }),
-            expected_rule: Some("route-read-to-asp-languages"),
+                    "tool_name": "functions.exec",
+            "tool_input": "const r = await tools.exec_command({cmd: \"unknown-consumer < src/app.ts\", workdir: \"/workspace\", yield_time_ms: 10000}); text(r);",
+                }),
+            expected_rule: None,
             forbidden_rule: None,
         },
         Scenario {
@@ -151,10 +235,10 @@ fn codex_payload_surfaces_are_equivalent() {
             payload: json!({
                 "tool_name": "functions.exec",
                 "tool_input": {
-                    "code": "await tools.exec_command({cmd: \"true\"}); await tools.exec_command({cmd: \"cat src/app.ts\"});"
+            "code": "await tools.exec_command({cmd: \"true\"}); await tools.exec_command({cmd: \"unknown-consumer < src/app.ts\"});"
                 },
             }),
-            expected_rule: Some("route-read-to-asp-languages"),
+            expected_rule: None,
             forbidden_rule: None,
         },
         Scenario {
@@ -208,7 +292,7 @@ fn codex_payload_surfaces_are_equivalent() {
                 "tool_name": "Grep",
                 "tool_input": {"pattern": "value", "path": "src/app.ts"},
             }),
-            expected_rule: Some("deny-raw-registered-source-search-action"),
+            expected_rule: None,
             forbidden_rule: None,
         },
         Scenario {
@@ -269,24 +353,19 @@ fn priority_overlaps_have_explicit_winners() {
             "deny-agent-search-json",
         ),
         (
-            "Grep action over raw shell search",
-            json!({"tool_name":"Grep","tool_input":{"pattern":"value","path":"src/app.ts"}}),
-            "deny-raw-registered-source-search-action",
+            "action-first parser read over python profile",
+            shell("unknown-consumer < src/app.py"),
+            "route-unresolved-source-access-to-asp-languages",
         ),
         (
-            "action-first read over python inline source access",
-            shell("python -c 'from pathlib import Path; print(Path(\"src/app.ts\").read_text())'"),
-            "route-read-to-asp-languages",
+            "parser read over typescript profile",
+            shell("unknown-consumer < src/app.ts"),
+            "route-unresolved-source-access-to-asp-languages",
         ),
         (
-            "javascript inline source access",
-            shell("node -e 'require(\"fs\").readFileSync(\"src/app.ts\", \"utf8\")'"),
-            "route-read-to-asp-languages",
-        ),
-        (
-            "semantic source read over raw action",
-            shell("sed -n '1,8p' src/app.ts"),
-            "route-read-to-asp-languages",
+            "parser read over rust profile",
+            shell("unknown-consumer < src/lib.rs"),
+            "route-unresolved-source-access-to-asp-languages",
         ),
         (
             "repository history intent dominates embedded source read",

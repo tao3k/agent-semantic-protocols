@@ -266,12 +266,6 @@ fn install_language_command() -> Command {
         )
         .arg(Arg::new("target").long("target").value_name("TARGET"))
         .arg(
-            Arg::new("record-installed-receipt")
-                .long("record-installed-receipt")
-                .value_name("BINARY")
-                .hide(true),
-        )
-        .arg(
             Arg::new("project")
                 .long("project")
                 .value_name("PATH")

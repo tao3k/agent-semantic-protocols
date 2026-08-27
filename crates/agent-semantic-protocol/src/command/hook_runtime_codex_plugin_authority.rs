@@ -58,12 +58,12 @@ pub(in crate::command) fn validate_codex_plugin_source_payload() -> Result<Strin
     }
     if !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.starts_with("#!/bin/sh\n")
         || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("runtime/bin/asp")
-        || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("runtime/profiles/asp/active")
-        || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("runtime/profiles/asp/healthy")
-        || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("exec \"$candidate\" hook")
+        || ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("runtime/profiles/asp/active")
+        || ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("runtime/profiles/asp/healthy")
+        || !ASP_CODEX_PLUGIN_HOOK_LAUNCHER.contains("exec \"$runtime_bin\" hook")
     {
         return Err(
-            "ASP Codex plugin Hook launcher must exec the active/healthy Runtime artifact slots"
+            "ASP Codex plugin Hook launcher must exec only the canonical Runtime binary alias"
                 .to_string(),
         );
     }

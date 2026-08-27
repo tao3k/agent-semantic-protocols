@@ -6,9 +6,15 @@ use super::{
     verify_active_asp_artifact_receipt,
 };
 use crate::{registered_language_ids, registered_provider_id};
+use agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest;
 use agent_semantic_content_identity::active_artifact_merkle::{
     ActiveArtifactKind, ActiveAspArtifactReceipt,
 };
+
+fn fixture_binary_digest(path: &std::path::Path) -> String {
+    let bytes = std::fs::read(path).expect("read binary fixture");
+    Blake3ContentDigest::from_bytes(&bytes).as_str().to_owned()
+}
 
 fn fixture_root(label: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()
@@ -88,8 +94,7 @@ fn stale_receipt_without_activation_does_not_block_global_binary_install() {
         .expect("create receipt parent");
     std::fs::write(&binary, b"asp-current").expect("write binary");
     std::fs::write(&receipt, b"{\"stale\":true}").expect("write stale receipt");
-    let binary_digest =
-        agent_semantic_content_identity::file_content_digest_v1(&binary).expect("binary digest");
+    let binary_digest = fixture_binary_digest(&binary);
 
     assert_eq!(
         rebind_active_asp_binary_receipt_if_present(&binary, &binary_digest, &activation)
@@ -110,16 +115,14 @@ fn materialized_receipt_is_reconciled_after_activation_changes() {
         .expect("create activation parent");
     std::fs::write(&binary, b"asp-v1").expect("write binary");
     std::fs::write(&activation, b"{\"generation\":1}").expect("write activation");
-    let binary_digest =
-        agent_semantic_content_identity::file_content_digest_v1(&binary).expect("binary digest");
+    let binary_digest = fixture_binary_digest(&binary);
     materialize_active_asp_artifact_receipt(&binary, &binary_digest, &activation)
         .expect("materialize receipt");
 
     std::fs::write(&activation, b"{\"generation\":2,\"rankers\":[]}").expect("update activation");
 
     std::fs::write(&binary, b"asp-v2-with-a-new-size").expect("update binary");
-    let changed_binary_digest =
-        agent_semantic_content_identity::file_content_digest_v1(&binary).expect("binary digest");
+    let changed_binary_digest = fixture_binary_digest(&binary);
     assert_eq!(
         rebind_active_asp_binary_receipt_if_present(&binary, &changed_binary_digest, &activation,)
             .expect("rebind changed ASP binary"),
@@ -148,8 +151,7 @@ fn asp_binary_rebind_drops_provider_leaves_outside_its_authority() {
         br#"{"providers":[{"languageId":"rust","providerId":"rs-harness"}]}"#,
     )
     .expect("write activation");
-    let binary_digest =
-        agent_semantic_content_identity::file_content_digest_v1(&binary).expect("binary digest");
+    let binary_digest = fixture_binary_digest(&binary);
     materialize_active_asp_artifact_receipt(&binary, &binary_digest, &activation)
         .expect("materialize provider receipt");
 
@@ -209,15 +211,13 @@ fn asp_binary_rebind_does_not_inherit_registered_provider_identities() {
     )
     .expect("write activation");
 
-    let binary_digest =
-        agent_semantic_content_identity::file_content_digest_v1(&binary).expect("binary digest");
+    let binary_digest = fixture_binary_digest(&binary);
     let materialized =
         materialize_active_asp_artifact_receipt(&binary, &binary_digest, &activation)
             .expect("materialize registered provider receipt");
 
     std::fs::write(&binary, b"asp-v2").expect("update binary");
-    let changed_binary_digest =
-        agent_semantic_content_identity::file_content_digest_v1(&binary).expect("binary digest");
+    let changed_binary_digest = fixture_binary_digest(&binary);
     assert_eq!(
         rebind_active_asp_binary_receipt_if_present(&binary, &changed_binary_digest, &activation,)
             .expect("rebind ASP while registered providers are missing"),

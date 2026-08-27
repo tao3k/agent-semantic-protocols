@@ -1,6 +1,8 @@
 #+TITLE: ASP Client Server Authority
 #+STATUS: accepted
 
+Parent architecture: [[file:10.05-interactive-graph-first-progressive-searchloop.org][RFC 10.05 SearchLoop]].
+
 * Problem
 
 Language runtimes with material warm-up cost, including Julia, cannot be modeled
@@ -233,19 +235,32 @@ server generations and content-addressed facts.
 
 * Schema bundle authority
 
-The Rust Schema Manager is the only authority that publishes schema bundles to
-language packages and downstream client SDKs.  A declarative language profile
-names root schemas and provider-owned schemas.  The Manager resolves the full
-reference closure, validates the closed catalog, atomically materializes files,
-and publishes a digest-bound =language-schema-bundle-receipt=.  Installation and
-client generation consume that receipt rather than copying files directly.
+The Rust Schema Manager and Runtime Server are the only authorities that
+resolve, verify, cache, materialize, and publish schema bundles.  The public
+surface is the transport-neutral =asp.schema.bundle= method carried as a typed
+=ClientFrame= on the existing Runtime gRPC service.  A request selects one
+registered profile by its exact =languageId= and =rootSetIds= and may carry
+=knownBundleDigest=.  The registry has no =profileId= and the route does not
+invent one.  Its profile receipt is exactly ={languageId, rootSetIds,
+bundleDigest}=.  Every separate entry binds =familyId=, =schemaId=,
+=schemaVersion=, =name=, and =digest=; each returned document repeats the entry
+identity and digest.  The Version 1 response is =ready= with canonical receipt,
+sorted entries, digest, and schema documents; =unchanged= with the same
+canonical receipt and entries; or a typed =failed= terminal.
 
-The Manager may remove only a stale file named by its previous receipt.  It
-never deletes or overwrites a provider-owned schema.  Python schema tooling is
-read-only analysis over the same catalog and receipts; it has no sync or
-materialization authority.  Adding a language or a downstream SDK requires one
-profile declaration and conformance fixtures, not a new copier or ASP Server
-language branch.
+A declarative language profile names root schemas and provider-owned schemas.
+SchemaManager resolves the full reference closure and validates the closed
+catalog.  Its =materialize=, =verify=, and =publish-client= commands remain thin
+offline build adapters over that same authority.  They may package a generated
+wheel or SDK artifact, but they do not create a second transport or a
+language-local schema protocol.
+
+The Manager may remove only a stale file named by its previous receipt and
+never deletes or overwrites a provider-owned schema.  Language clients do not
+read receipt files, enumerate root sets, or verify content digests.  Rust,
+Python, Gerbil Scheme, and every future client consume the shared route/API;
+adding a language requires one profile declaration and conformance fixtures,
+not a language-specific parser, copier, verifier, or ASP Server branch.
 
 * HTTP transport
 

@@ -27,7 +27,9 @@ async fn fixture_endpoint(
     let endpoint = prepare_runtime_server_endpoint_in(
         runtime_dir.path(),
         std::path::Path::new("/runtime/asp"),
-        "runtime-digest",
+        &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+            b"runtime-digest",
+        ),
         catalog.mode_label(),
         &catalog.digest(),
         epoch,
@@ -90,7 +92,9 @@ async fn rejects_symlinked_runtime_base_before_permission_changes() {
     let error = prepare_runtime_server_endpoint_in(
         &runtime_base,
         std::path::Path::new("/tmp/asp-test-artifact"),
-        "artifact-digest",
+        &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+            b"artifact-digest",
+        ),
         "test",
         "catalog-digest",
         1,
@@ -119,10 +123,9 @@ async fn control_request_nonce_is_single_use_for_the_owner_epoch() {
     call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Status,
-        agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
-            value: "blake3-256:transport-replay-probe".to_owned(),
-            algorithm: "blake3-256".to_owned(),
-        },
+        agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::from_bytes(
+            b"transport-replay-probe",
+        ),
         "single-use-control-nonce".to_owned(),
     )
     .await
@@ -130,10 +133,9 @@ async fn control_request_nonce_is_single_use_for_the_owner_epoch() {
     let replay = call_runtime_server(
         &endpoint,
         RuntimeServerOperation::Status,
-        agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::Content {
-            value: "blake3-256:transport-replay-probe".to_owned(),
-            algorithm: "blake3-256".to_owned(),
-        },
+        agent_semantic_artifacts::runtime_artifact_catalog::RuntimeBinaryIdentity::from_bytes(
+            b"transport-replay-probe",
+        ),
         "single-use-control-nonce".to_owned(),
     )
     .await

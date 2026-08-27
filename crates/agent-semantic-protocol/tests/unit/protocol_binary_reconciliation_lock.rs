@@ -43,7 +43,7 @@ async fn cli_install_binary_composition_acquires_once_and_consumes_operation_lea
 
 #[cfg(unix)]
 #[tokio::test]
-async fn runtime_artifact_transaction_atomically_updates_every_managed_path_alias() {
+async fn runtime_artifact_transaction_publishes_candidate_without_switching_serving_aliases() {
     use std::os::unix::fs::symlink;
 
     let root = std::env::temp_dir().join(format!(
@@ -91,7 +91,6 @@ async fn runtime_artifact_transaction_atomically_updates_every_managed_path_alia
             .expect("discover managed aliases");
     assert_eq!(managed, vec![first_alias.clone(), second_alias.clone()]);
 
-    let started = std::time::Instant::now();
     super::ensure_protocol_binary_installed(&super::ProtocolBinaryInstallPlan {
         binary_identity: super::RuntimeBinaryIdentityV1::asp_bootstrap(),
         current_exe: source,
@@ -102,19 +101,39 @@ async fn runtime_artifact_transaction_atomically_updates_every_managed_path_alia
     })
     .await
     .expect("reconcile managed aliases");
+    let immutable_artifact =
+        std::fs::read_link(&first_alias).expect("first immutable artifact target");
     assert!(
-        started.elapsed() < std::time::Duration::from_millis(50),
-        "managed alias reconciliation must complete in milliseconds: elapsed={:?}",
-        started.elapsed()
+        immutable_artifact.is_absolute(),
+        "managed aliases must resolve directly to an immutable artifact"
+    );
+    assert!(
+        immutable_artifact.starts_with(&artifact_root),
+        "managed aliases must target the immutable digest artifact: {}",
+        immutable_artifact.display()
     );
     assert_eq!(
-        std::fs::read_link(first_alias).expect("first alias target"),
-        primary_target
+        std::fs::read_link(&second_alias).expect("second immutable artifact target"),
+        immutable_artifact
     );
-    assert_eq!(
-        std::fs::read_link(second_alias).expect("second alias target"),
-        primary_target
+    let state_home = artifact_root
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("Runtime artifact root belongs to State Home");
+    let activation = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(state_home)
+        .await
+        .expect("read Runtime artifact activation")
+        .expect("pending Runtime artifact activation");
+    assert!(
+        activation.artifact_path.starts_with(&artifact_root),
+        "pending activation candidate must be content-addressed: {}",
+        activation.artifact_path.display()
     );
+    assert_ne!(
+        activation.artifact_path, immutable_artifact,
+        "pending publication must not switch serving aliases before actor commit"
+    );
+    assert!(activation.activation_generation > 0);
     assert_eq!(
         std::fs::read(unrelated).expect("read unrelated binary"),
         b"unrelated"

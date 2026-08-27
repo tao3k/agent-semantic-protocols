@@ -134,7 +134,7 @@ async fn mutation_builder_projects_only_changed_owner_and_publishes_one_epoch() 
     let owner_builder: crate::runtime_server_admission::WorkspaceOwnerProjectionBuilder =
         std::sync::Arc::new({
             let projection_count = std::sync::Arc::clone(&projection_count);
-            move |_workspace_identity, project_root, owner_path| {
+            move |_workspace_identity, project_root, owner_path, _cancellation| {
                 let projection_count = std::sync::Arc::clone(&projection_count);
                 Box::pin(async move {
                     projection_count.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
@@ -160,6 +160,7 @@ async fn mutation_builder_projects_only_changed_owner_and_publishes_one_epoch() 
         &std::collections::BTreeSet::from([project_root.join("src/lib.rs")]),
         "publish-one-owner-mutation".to_owned(),
         candidate(),
+        crate::runtime_generation_cancellation::GenerationCancellation::new(),
     )
     .await
     .expect("publish changed owner without full generation collection");

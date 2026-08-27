@@ -26,7 +26,7 @@ pub struct RuntimeArtifactIdentityReceipt {
     source_generation_algorithm: String,
     artifact_digest: String,
     identity_kind: String,
-    identity_value: String,
+    identity_value: agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
     identity_algorithm: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     source_executable_identity: Option<RuntimeExecutableIdentity>,
@@ -97,10 +97,22 @@ impl RuntimeArtifactIdentityReceipt {
         &self.identity_kind
     }
     pub fn identity_value(&self) -> &str {
-        &self.identity_value
+        self.identity_value.as_str()
     }
     pub fn identity_algorithm(&self) -> &str {
         &self.identity_algorithm
+    }
+
+    pub fn identity(&self) -> Result<RuntimeBinaryIdentity, String> {
+        if self.identity_kind != "content" || self.identity_algorithm != "blake3-256" {
+            return Err(format!(
+                "owner=RuntimeArtifactIdentityReceipt field=identity reasonKind=runtime-artifact-identity-incomplete kind={} algorithm={}",
+                self.identity_kind, self.identity_algorithm
+            ));
+        }
+        Ok(RuntimeBinaryIdentity::Content {
+            digest: self.identity_value.clone(),
+        })
     }
 }
 
@@ -118,9 +130,43 @@ pub fn admit_runtime_invoker(
         return Err("state=invoker-artifact-not-active reasonKind=invoker-artifact-not-active repair=asp install binary".to_owned());
     };
     let active = std::fs::canonicalize(active_path).map_err(|error| format!("state=invoker-artifact-not-active reasonKind=active-artifact-unavailable path={} error={error}", active_path.display()))?;
+    let source = std::fs::canonicalize(receipt.source_path()).map_err(|error| format!("state=invoker-artifact-not-active reasonKind=source-artifact-unavailable path={} error={error}", receipt.source_path().display()))?;
+    if receipt.artifact_mode() == "dev" {
+        let generation_matches = receipt.source_generation_matches(&source)?;
+        if active != source || !generation_matches {
+            return Err(format!(
+                "state=invoker-artifact-not-active reasonKind=developer-direct-link-drift sourceExecutable={} activeExecutable={} directLinkMatches={} sourceGenerationMatches={} repair=asp install binary",
+                source.display(),
+                active.display(),
+                active == source,
+                generation_matches,
+            ));
+        }
+        let current = std::fs::canonicalize(current_exe).map_err(|error| format!("state=invoker-artifact-not-active reasonKind=invoker-path-unavailable error={error} repair=asp install binary"))?;
+        let metadata = std::fs::metadata(&current).map_err(|error| format!("state=invoker-artifact-not-active reasonKind=invoker-metadata-unavailable error={error} repair=asp install binary"))?;
+        let matches = |identity: &RuntimeExecutableIdentity| {
+            current == identity.path
+                && metadata.len() == identity.size
+                && executable_metadata_matches(&metadata, identity)
+        };
+        if !matches(source_identity) && !matches(active_identity) {
+            return Err(format!(
+                "state=invoker-artifact-not-active reasonKind=invoker-artifact-not-active currentExecutable={} sourceExecutable={} activeExecutable={} repair=asp install binary",
+                current.display(),
+                source_identity.path.display(),
+                active_identity.path.display(),
+            ));
+        }
+        return Ok(());
+    }
     let active_digest = agent_semantic_content_identity::blake3_digest_from_canonical_artifact_path(&active)
         .ok_or_else(|| "state=invoker-artifact-not-active reasonKind=active-artifact-not-digest-addressed repair=asp install binary".to_owned())?;
-    if active_digest != receipt.artifact_digest || active_digest != active_identity.content_digest {
+    let active_digest = agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_artifact_path_component(
+        &active_digest,
+    )?;
+    if active_digest.as_str() != receipt.artifact_digest
+        || active_digest.as_str() != active_identity.content_digest
+    {
         return Err(format!(
             "state=invoker-artifact-not-active reasonKind=active-artifact-digest-drift expected={} actual={} repair=asp install binary",
             receipt.artifact_digest, active_digest
@@ -206,22 +252,27 @@ pub async fn publish_runtime_artifact_identity(
         source_path: publication.source_path.clone(),
         source_generation: publication.source_generation.clone(),
         source_generation_algorithm: publication.source_generation_algorithm.clone(),
-        artifact_digest: publication
-            .artifact_digest
-            .content_digest()
-            .as_str()
-            .to_owned(),
+        artifact_digest: publication.artifact_digest.to_string(),
         identity_kind: identity_kind.to_owned(),
-        identity_value,
+        identity_value: {
+            let _source_identity_value = identity_value;
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_content_digest(
+                publication.artifact_digest.content_digest().clone(),
+            )
+        },
         identity_algorithm: identity_algorithm.to_owned(),
         source_executable_identity: executable_identity(
             &publication.source_path,
-            publication.artifact_digest.content_digest().as_str(),
+            &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_content_digest(
+                publication.artifact_digest.content_digest().clone(),
+            ),
         )
         .ok(),
         active_executable_identity: executable_identity(
             &publication.path,
-            publication.artifact_digest.content_digest().as_str(),
+            &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_content_digest(
+                publication.artifact_digest.content_digest().clone(),
+            ),
         )
         .ok(),
     };
@@ -267,7 +318,7 @@ pub async fn publish_runtime_artifact_identity(
 
 fn executable_identity(
     path: &Path,
-    content_digest: &str,
+    content_digest: &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
 ) -> Result<RuntimeExecutableIdentity, String> {
     let canonical = std::fs::canonicalize(path).map_err(|error| {
         format!(
@@ -293,7 +344,7 @@ fn executable_identity(
             mtime_ns: metadata.mtime_nsec() as u32,
             ctime_sec: metadata.ctime(),
             ctime_ns: metadata.ctime_nsec() as u32,
-            content_digest: content_digest.to_owned(),
+            content_digest: content_digest.to_string(),
         });
     }
     #[cfg(not(unix))]
@@ -362,12 +413,11 @@ pub async fn read_runtime_artifact_identity(
                 value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
             })
         || receipt.identity_algorithm != "blake3-256"
-        || receipt.identity_value != receipt.artifact_digest
-        || receipt.artifact_digest.len() != 64
-        || !receipt
-            .artifact_digest
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit())
+        || receipt.identity_value.as_str() != receipt.artifact_digest
+        || agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse(
+            &receipt.artifact_digest,
+        )
+        .is_err()
     {
         return Err(format!(
             "Runtime artifact identity content contract mismatch: path={} mode={} identityKind={} identityAlgorithm={}",
@@ -469,7 +519,10 @@ mod tests {
         tokio::fs::create_dir_all(path.parent().expect("identity parent"))
             .await
             .expect("create identity parent");
-        let digest = "a".repeat(64);
+        let digest =
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+                b"fixture-digest",
+            );
         tokio::fs::write(
             &path,
             serde_json::to_vec(&serde_json::json!({
@@ -497,15 +550,67 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
+    fn developer_invoker_requires_the_stable_entry_to_resolve_directly_to_source() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let source = root.path().join("checkout/target/debug/asp");
+        std::fs::create_dir_all(source.parent().expect("source parent")).expect("mkdir");
+        std::fs::write(&source, b"developer-runtime").expect("source");
+        let stable = root.path().join("runtime/bin/asp");
+        std::fs::create_dir_all(stable.parent().expect("stable parent")).expect("mkdir");
+        std::os::unix::fs::symlink(&source, &stable).expect("direct Developer link");
+        let digest =
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+                b"developer-runtime",
+            );
+        let identity = executable_identity(&source, &digest).expect("source identity");
+        let receipt = RuntimeArtifactIdentityReceipt {
+            schema_id: SCHEMA_ID.to_owned(),
+            schema_version: SCHEMA_VERSION.to_owned(),
+            artifact_kind: "asp".to_owned(),
+            artifact_mode: "dev".to_owned(),
+            stable_path: stable.clone(),
+            source_path: source.canonicalize().expect("canonical source"),
+            source_generation: runtime_artifact_source_generation(&source).expect("generation"),
+            source_generation_algorithm: "filesystem-generation-v1".to_owned(),
+            artifact_digest: digest.to_string(),
+            identity_kind: "content".to_owned(),
+            identity_value: digest,
+            identity_algorithm: "blake3-256".to_owned(),
+            source_executable_identity: Some(identity.clone()),
+            active_executable_identity: Some(identity),
+        };
+        let admission = admit_runtime_invoker(&source, &receipt, &stable);
+        assert!(
+            admission.is_ok(),
+            "Developer admission failed: {admission:?}"
+        );
+
+        std::fs::remove_file(&stable).expect("remove direct link");
+        let copied = root.path().join("runtime/artifacts/copied-asp");
+        std::fs::create_dir_all(copied.parent().expect("copy parent")).expect("mkdir");
+        std::fs::copy(&source, &copied).expect("copy artifact");
+        std::os::unix::fs::symlink(&copied, &stable).expect("artifact-backed link");
+        assert!(
+            admit_runtime_invoker(&source, &receipt, &stable)
+                .expect_err("Developer mode must reject artifact copies")
+                .contains("developer-direct-link-drift")
+        );
+    }
+
+    #[test]
     fn invoker_admission_accepts_source_and_active_and_rejects_rebuild() {
         let root = tempfile::tempdir().expect("tempdir");
         let source = root.path().join("source-asp");
         std::fs::write(&source, b"runtime").expect("source");
-        let digest = blake3::hash(b"runtime").to_hex().to_string();
+        let digest =
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+                b"runtime",
+            );
         let active = root
             .path()
             .join("runtime/artifacts/blake3-256")
-            .join(&digest)
+            .join(blake3::hash(b"runtime").to_hex().as_str())
             .join("asp");
         std::fs::create_dir_all(active.parent().expect("active parent")).expect("mkdir");
         std::fs::copy(&source, &active).expect("active");
@@ -513,12 +618,12 @@ mod tests {
             schema_id: SCHEMA_ID.to_owned(),
             schema_version: SCHEMA_VERSION.to_owned(),
             artifact_kind: "asp".to_owned(),
-            artifact_mode: "dev".to_owned(),
+            artifact_mode: "release".to_owned(),
             stable_path: root.path().join("runtime/bin/asp"),
             source_path: source.canonicalize().expect("canonical source"),
             source_generation: runtime_artifact_source_generation(&source).expect("generation"),
             source_generation_algorithm: "filesystem-generation-v1".to_owned(),
-            artifact_digest: digest.clone(),
+            artifact_digest: digest.to_string(),
             identity_kind: "content".to_owned(),
             identity_value: digest.clone(),
             identity_algorithm: "blake3-256".to_owned(),
@@ -529,7 +634,12 @@ mod tests {
                 executable_identity(&active, &digest).expect("active identity"),
             ),
         };
-        assert!(admit_runtime_invoker(&source, &receipt, &active).is_ok());
+        let admission = admit_runtime_invoker(&source, &receipt, &active);
+        assert!(
+            admission.is_ok(),
+            "unexpected admission failure: {admission:?}; active={active:?}; canonical_active={:?}",
+            std::fs::canonicalize(&active)
+        );
         assert!(admit_runtime_invoker(&active, &receipt, &active).is_ok());
         std::fs::write(&source, b"rebuilt").expect("rebuild");
         assert!(admit_runtime_invoker(&source, &receipt, &active).is_err());
@@ -540,11 +650,14 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let source = root.path().join("source-asp");
         std::fs::write(&source, b"runtime").expect("source");
-        let digest = blake3::hash(b"runtime").to_hex().to_string();
+        let digest =
+            agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+                b"runtime",
+            );
         let active = root
             .path()
             .join("runtime/artifacts/blake3-256")
-            .join(&digest)
+            .join(blake3::hash(b"runtime").to_hex().as_str())
             .join("asp");
         std::fs::create_dir_all(active.parent().expect("active parent")).expect("mkdir");
         std::fs::copy(&source, &active).expect("active");
@@ -552,12 +665,12 @@ mod tests {
             schema_id: SCHEMA_ID.to_owned(),
             schema_version: SCHEMA_VERSION.to_owned(),
             artifact_kind: "asp".to_owned(),
-            artifact_mode: "dev".to_owned(),
+            artifact_mode: "release".to_owned(),
             stable_path: root.path().join("runtime/bin/asp"),
             source_path: source.clone(),
             source_generation: runtime_artifact_source_generation(&source).expect("generation"),
             source_generation_algorithm: "filesystem-generation-v1".to_owned(),
-            artifact_digest: digest.clone(),
+            artifact_digest: digest.to_string(),
             identity_kind: "content".to_owned(),
             identity_value: digest.clone(),
             identity_algorithm: "blake3-256".to_owned(),
@@ -604,7 +717,10 @@ mod tests {
             source_generation_algorithm: "unknown-v1".to_owned(),
             artifact_digest: "a".repeat(64),
             identity_kind: "content".to_owned(),
-            identity_value: "a".repeat(64),
+            identity_value:
+                agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+                    b"fixture-digest",
+                ),
             identity_algorithm: "blake3-256".to_owned(),
             source_executable_identity: None,
             active_executable_identity: None,
@@ -621,7 +737,7 @@ pub async fn publish_resident_runtime_artifact_identity(
     state_home: &Path,
     stable_path: &Path,
     source_path: &Path,
-    artifact_digest: &str,
+    artifact_digest: &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
     artifact_mode: &str,
 ) -> Result<RuntimeArtifactIdentityReceipt, String> {
     let artifact_kind = stable_path
@@ -656,9 +772,9 @@ pub async fn publish_resident_runtime_artifact_identity(
         source_path: source_path.clone(),
         source_generation,
         source_generation_algorithm: "filesystem-generation-v1".to_owned(),
-        artifact_digest: artifact_digest.to_owned(),
+        artifact_digest: artifact_digest.to_string(),
         identity_kind: "content".to_owned(),
-        identity_value: artifact_digest.to_owned(),
+        identity_value: artifact_digest.clone(),
         identity_algorithm: "blake3-256".to_owned(),
         source_executable_identity: executable_identity(&source_path, artifact_digest).ok(),
         active_executable_identity: executable_identity(stable_path, artifact_digest).ok(),

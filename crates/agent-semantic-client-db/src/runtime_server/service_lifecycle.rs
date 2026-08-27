@@ -123,8 +123,6 @@ impl RuntimeServer {
         >,
     ) -> Result<Self, String> {
         let listener = bind_runtime_server_listener(Path::new(&endpoint.socket_path))?;
-        let data_listener =
-            bind_runtime_server_listener(Path::new(&endpoint.data_plane_socket_path))?;
         let provider_register_state_path =
             crate::runtime_server_control::provider_register_state_path(Path::new(
                 &endpoint.provider_plane_socket_path,
@@ -151,7 +149,6 @@ impl RuntimeServer {
             workspace_registry,
             endpoint,
             listener,
-            data_listener,
             provider_register: Arc::new(
                 crate::runtime_provider_register::RuntimeProviderRegister::from_seed_with_store(
                     agent_semantic_provider_protocol::builtin_provider_registrations()?,
@@ -171,18 +168,10 @@ impl RuntimeServer {
             status_memory,
             events: None,
             generation_admission: None,
-            graph_turbo_evaluation_builder: None,
             runtime_search_service: None,
             graph_turbo_resident_status: None,
             agent_session_registry_owner: None,
-            session_control_plane_runtime_registry: Arc::new(
-                crate::SessionControlPlaneRuntimeRegistry::default(),
-            ),
             agent_session_status: None,
-            codex_multi_agent_control_plane_owner: Arc::new(
-                crate::codex_multi_agent_control_plane_owner::CodexMultiAgentControlPlaneOwner::new(
-                ),
-            ),
             telemetry_sender: None,
         })
     }
@@ -191,38 +180,20 @@ impl RuntimeServer {
         self.shutdown_handle.clone()
     }
 
-    pub async fn bind_and_publish_with_catalog(
-        endpoint: RuntimeServerEndpoint,
-        registry: Arc<WorkspaceDbRegistry>,
+    /// Publish the resident endpoint only after every required transport plane
+    /// has been bound by its owning package.
+    pub async fn publish_endpoint_after_required_planes(
+        &self,
         endpoint_path: &std::path::Path,
-        artifact_catalog: Arc<
-            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog,
-        >,
-    ) -> Result<Self, String> {
-        let server = Self::bind_with_catalog(endpoint, registry, artifact_catalog).await?;
-        if let Err(error) = publish_runtime_server_endpoint(endpoint_path, &server.endpoint).await {
-            server.cleanup_bound_artifacts().await;
+    ) -> Result<(), String> {
+        if let Err(error) = self.endpoint.validate_service_reachability().await {
+            self.cleanup_bound_artifacts().await;
             return Err(error);
         }
-        Ok(server)
-    }
-
-    pub async fn bind_and_publish_with_artifact_catalog(
-        endpoint: RuntimeServerEndpoint,
-        registry: Arc<WorkspaceDbRegistry>,
-        endpoint_path: &std::path::Path,
-        workspace_store: crate::runtime_server_workspace::RuntimeServerWorkspaceStore,
-        artifact_catalog: Arc<
-            agent_semantic_artifacts::runtime_artifact_catalog::RuntimeArtifactCatalog,
-        >,
-    ) -> Result<Self, String> {
-        let server =
-            Self::bind_with_artifact_catalog(endpoint, registry, workspace_store, artifact_catalog)
-                .await?;
-        if let Err(error) = publish_runtime_server_endpoint(endpoint_path, &server.endpoint).await {
-            server.cleanup_bound_artifacts().await;
+        if let Err(error) = publish_runtime_server_endpoint(endpoint_path, &self.endpoint).await {
+            self.cleanup_bound_artifacts().await;
             return Err(error);
         }
-        Ok(server)
+        Ok(())
     }
 }

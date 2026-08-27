@@ -29,9 +29,10 @@ fn action(host: HostInvocationKind, capability: AgentActionKind) -> AgentAction 
             payload: serde_json::Value::Null,
             invocation_source: None,
         },
+        filesystem_permissions: Vec::new(),
         capabilities: vec![SemanticCapability {
             action: capability,
-            evidence: SemanticCapabilityEvidence::HostInvocation,
+            evidence: SemanticCapabilityEvidence::HostMatcher,
         }],
         subjects: Vec::new(),
     }
@@ -82,36 +83,42 @@ fn semantic_policy(
 #[test]
 fn host_native_read_is_an_exact_semantic_capability() {
     let matcher = AgentActionMatch::new(AgentActionMatchConfig {
-        action_any: vec![HookClientActionKind::Read],
+        native_matcher_any: vec!["Read".to_owned()],
         ..AgentActionMatchConfig::default()
     });
     let action = ToolAction::normalized_direct_policy_action("src/lib.rs".to_owned());
 
-    assert!(matcher.matches(&runtime(), &action, None));
+    assert!(matcher.matches(&runtime(), "codex", &action, None));
     let receipt = matcher
-        .derive_agent_action_for_rule(&runtime(), &action, None, None)
+        .derive_agent_action_for_rule(&runtime(), "codex", &action, None, None)
         .expect("AgentAction receipt")
         .receipt_value();
     assert_eq!(receipt["hostInvocation"]["action"], "read");
     assert_eq!(receipt["semanticCapabilities"][0]["action"], "read");
     assert_eq!(
         receipt["semanticCapabilities"][0]["evidence"],
-        "host-invocation"
+        "host-matcher"
     );
     assert!(
         receipt["semanticCapabilities"][0]
             .get("authority")
             .is_none()
     );
+    assert_eq!(receipt["filesystemPermissions"][0]["permission"], "read");
+    assert_eq!(
+        receipt["filesystemPermissions"][0]["source"],
+        "host-matcher"
+    );
+    assert_eq!(receipt["filesystemPermissions"][0]["subject"], "src/lib.rs");
 }
 
 #[test]
 fn host_native_edit_is_not_derived_from_shell_syntax() {
     let matcher = AgentActionMatch::new(AgentActionMatchConfig {
-        action_any: vec![HookClientActionKind::Edit],
+        native_matcher_any: vec!["Edit".to_owned()],
         ..AgentActionMatchConfig::default()
     });
-    let actions = crate::tool_action::collect_tool_actions(
+    let mut actions = crate::tool_action::collect_tool_actions(
         "Edit",
         &serde_json::json!({
             "file_path": "src/lib.rs",
@@ -119,10 +126,11 @@ fn host_native_edit_is_not_derived_from_shell_syntax() {
             "new_string": "new"
         }),
     );
+    actions[0].host_action = HostInvocationKind::Edit;
     let action = actions.first().expect("native Edit action");
-    assert!(matcher.matches(&runtime(), action, None));
+    assert!(matcher.matches(&runtime(), "codex", action, None));
     let receipt = matcher
-        .derive_agent_action_for_rule(&runtime(), action, None, None)
+        .derive_agent_action_for_rule(&runtime(), "codex", action, None, None)
         .expect("AgentAction")
         .receipt_value();
     assert_eq!(receipt["hostInvocation"]["action"], "edit");
@@ -132,14 +140,23 @@ fn host_native_edit_is_not_derived_from_shell_syntax() {
     );
     assert_eq!(
         receipt["semanticCapabilities"][0]["evidence"],
-        "host-invocation"
+        "host-matcher"
     );
+    assert_eq!(receipt["filesystemPermissions"][0]["permission"], "write");
+    assert_eq!(
+        receipt["filesystemPermissions"][0]["source"],
+        "host-matcher"
+    );
+    assert_eq!(receipt["filesystemPermissions"][0]["subject"], "src/lib.rs");
 }
 
 #[test]
-fn registered_shell_source_operand_does_not_invent_read_capability() {
+fn filesystem_read_permission_projects_read_action_for_any_executable() {
     let read_matcher = AgentActionMatch::new(AgentActionMatchConfig {
-        action_any: vec![HookClientActionKind::Read],
+        policy_all: vec![semantic_policy(
+            "read-permission",
+            vec![HookClientActionKind::Read],
+        )],
         ..AgentActionMatchConfig::default()
     });
     let execute_matcher = AgentActionMatch::new(AgentActionMatchConfig {
@@ -147,25 +164,33 @@ fn registered_shell_source_operand_does_not_invent_read_capability() {
         ..AgentActionMatchConfig::default()
     });
     let action = ToolAction::normalized_shell_command_action(
-        "future-source-consumer src/lib.rs".to_owned(),
+        "future-source-consumer < src/lib.rs".to_owned(),
         "Bash".to_owned(),
     );
     let paths = ["src/lib.rs".to_owned()];
 
-    assert!(!read_matcher.matches(&rust_runtime(), &action, Some(&paths)));
-    assert!(execute_matcher.matches(&rust_runtime(), &action, Some(&paths)));
+    assert!(read_matcher.matches(&rust_runtime(), "codex", &action, Some(paths.as_slice())));
+    assert!(execute_matcher.matches(&rust_runtime(), "codex", &action, Some(paths.as_slice())));
     let receipt = execute_matcher
-        .derive_agent_action_for_rule(&rust_runtime(), &action, Some(&paths), None)
+        .derive_agent_action_for_rule(
+            &rust_runtime(),
+            "codex",
+            &action,
+            Some(paths.as_slice()),
+            None,
+        )
         .expect("AgentAction receipt")
         .receipt_value();
     assert_eq!(receipt["hostInvocation"]["action"], "execute");
     assert!(
         receipt["semanticCapabilities"]
             .as_array()
-            .is_some_and(|capabilities| capabilities
-                .iter()
-                .all(|capability| capability["action"] != "read"))
+            .is_some_and(|capabilities| capabilities.iter().any(|capability| {
+                capability["action"] == "read" && capability["evidence"] == "shell-redirection"
+            }))
     );
+    assert_eq!(receipt["filesystemPermissions"][0]["permission"], "read");
+    assert_eq!(receipt["filesystemPermissions"][0]["subject"], "src/lib.rs");
 }
 
 #[test]
@@ -180,7 +205,7 @@ fn host_execute_and_semantic_read_are_independent_predicate_axes() {
         ..AgentActionMatchConfig::default()
     });
     let opaque = ToolAction::normalized_shell_command_action(
-        "opaque src/lib.rs".to_owned(),
+        "opaque token-without-source".to_owned(),
         "Bash".to_owned(),
     );
     let redirected = ToolAction::normalized_shell_command_action(
@@ -188,8 +213,8 @@ fn host_execute_and_semantic_read_are_independent_predicate_axes() {
         "Bash".to_owned(),
     );
 
-    assert!(!matcher.matches(&runtime(), &opaque, None));
-    assert!(matcher.matches(&runtime(), &redirected, None));
+    assert!(!matcher.matches(&runtime(), "codex", &opaque, None));
+    assert!(matcher.matches(&runtime(), "codex", &redirected, None));
 }
 
 #[test]
@@ -207,10 +232,103 @@ fn shell_redirection_ast_projects_read_and_edit_capabilities() {
         let action =
             ToolAction::normalized_shell_command_action(command.to_owned(), "Bash".to_owned());
         assert!(
-            matcher.matches(&runtime(), &action, None),
+            matcher.matches(&runtime(), "codex", &action, None),
             "{command} => {expected:?}"
         );
     }
+}
+
+#[test]
+fn unresolved_source_access_projection_is_independent_of_the_executable_name() {
+    let matcher = AgentActionMatch::new(AgentActionMatchConfig {
+        native_matcher_any: vec!["Bash".to_owned()],
+        ..AgentActionMatchConfig::default()
+    });
+    let action = ToolAction::normalized_shell_command_action(
+        "future-source-consumer --mode opaque src/lib.rs".to_owned(),
+        "Bash".to_owned(),
+    );
+
+    assert!(matcher.matches(&rust_runtime(), "codex", &action, None));
+    let receipt = matcher
+        .derive_agent_action_for_rule(&rust_runtime(), "codex", &action, None, None)
+        .expect("filesystem permission action receipt")
+        .receipt_value();
+    assert_eq!(receipt["hostInvocation"]["action"], "execute");
+    assert!(
+        receipt["semanticCapabilities"]
+            .as_array()
+            .is_some_and(|capabilities| capabilities.iter().any(|capability| {
+                capability["action"] == "unknown"
+                    && capability["evidence"] == "registered-source-operand"
+            }))
+    );
+    assert!(
+        receipt["filesystemPermissions"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+    );
+}
+
+#[test]
+fn explicit_write_permission_prevents_a_source_operand_from_being_guessed_as_read() {
+    let read_matcher = AgentActionMatch::new(AgentActionMatchConfig {
+        policy_all: vec![semantic_policy(
+            "read-permission",
+            vec![HookClientActionKind::Read],
+        )],
+        ..AgentActionMatchConfig::default()
+    });
+    let edit_matcher = AgentActionMatch::new(AgentActionMatchConfig {
+        policy_all: vec![semantic_policy(
+            "write-permission",
+            vec![HookClientActionKind::Edit],
+        )],
+        ..AgentActionMatchConfig::default()
+    });
+    let action = ToolAction::normalized_shell_command_action(
+        "future-source-producer > src/generated.rs".to_owned(),
+        "Bash".to_owned(),
+    );
+
+    assert!(!read_matcher.matches(&rust_runtime(), "codex", &action, None));
+    assert!(edit_matcher.matches(&rust_runtime(), "codex", &action, None));
+    let receipt = edit_matcher
+        .derive_agent_action_for_rule(&rust_runtime(), "codex", &action, None, None)
+        .expect("subject-bound write permission receipt")
+        .receipt_value();
+    assert!(
+        receipt["filesystemPermissions"]
+            .as_array()
+            .is_some_and(|permissions| permissions.iter().any(|permission| {
+                permission["permission"] == "write"
+                    && permission["source"] == "shell-redirection"
+                    && permission["subject"] == "src/generated.rs"
+            }))
+    );
+}
+
+#[test]
+fn read_write_permission_preserves_both_facts_for_the_same_subject() {
+    let action = ToolAction::normalized_shell_command_action(
+        "future-source-transformer <> src/state.rs".to_owned(),
+        "Bash".to_owned(),
+    );
+    let matcher = AgentActionMatch::new(AgentActionMatchConfig::default());
+    let receipt = matcher
+        .derive_agent_action_for_rule(&rust_runtime(), "codex", &action, None, None)
+        .expect("read-write permission receipt")
+        .receipt_value();
+    let permissions = receipt["filesystemPermissions"]
+        .as_array()
+        .expect("filesystem permission facts");
+
+    assert!(permissions.iter().any(|permission| {
+        permission["permission"] == "read" && permission["subject"] == "src/state.rs"
+    }));
+    assert!(permissions.iter().any(|permission| {
+        permission["permission"] == "write" && permission["subject"] == "src/state.rs"
+    }));
 }
 
 #[test]
@@ -224,7 +342,7 @@ fn heredoc_is_not_projected_as_filesystem_read() {
     });
     let action =
         ToolAction::normalized_shell_command_action("opaque <<EOF".to_owned(), "Bash".to_owned());
-    assert!(!matcher.matches(&runtime(), &action, None));
+    assert!(!matcher.matches(&runtime(), "codex", &action, None));
 }
 
 #[test]
@@ -242,8 +360,12 @@ fn subject_axis_remains_orthogonal_to_capability_axis() {
 #[test]
 fn rule_actions_and_host_invocations_are_independent_conjunctive_axes() {
     let matcher = AgentActionMatch::new(AgentActionMatchConfig {
-        action_any: vec![HookClientActionKind::Read],
+        native_matcher_any: vec!["test-tool".to_owned()],
         host_invocation_any: vec![HookClientHostInvocationKind::Mcp],
+        policy_all: vec![semantic_policy(
+            "read-capability",
+            vec![HookClientActionKind::Read],
+        )],
         ..AgentActionMatchConfig::default()
     });
 

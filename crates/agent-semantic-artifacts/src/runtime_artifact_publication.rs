@@ -9,20 +9,33 @@ use crate::blake3_content_digest::Blake3ContentDigest;
 
 use crate::runtime_artifact_catalog::{
     RuntimeArtifactSlotAuthority, discard_prepared_runtime_artifact,
-    prepare_runtime_artifact_candidate, publish_resident_runtime_alias,
-    runtime_artifact_candidate_digest,
+    publish_resident_runtime_alias, runtime_artifact_candidate_digest,
 };
 use crate::runtime_artifact_quiescence::prepare_runtime_artifact_quiescence_lease;
 use crate::runtime_artifact_retention::RuntimeArtifactMutationGuard;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RuntimeArtifactCandidateIdentityReceipt {
+    pub artifact_digest: Blake3ContentDigest,
+    pub artifact_path: PathBuf,
+    pub stable_path: PathBuf,
+    pub artifact_mode: String,
+    pub publication_nonce: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RuntimeArtifactActivationEvent {
     pub artifact_digest: Blake3ContentDigest,
     pub artifact_path: PathBuf,
+    pub candidate_slot_path: PathBuf,
     pub previous_artifact_digest: Option<Blake3ContentDigest>,
     pub artifact_mode: String,
     pub published_at_unix_millis: u128,
+    pub publication_nonce: String,
+    pub activation_generation: u64,
+    pub candidate_identity: RuntimeArtifactCandidateIdentityReceipt,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -39,8 +52,69 @@ pub struct RuntimeArtifactPublicationReceipt {
     pub lease_consumer_process_id: u32,
 }
 
+pub async fn current_runtime_artifact_activation_generation(
+    state_home: &Path,
+) -> Result<u64, String> {
+    let pending_generation = read_runtime_artifact_activation_event(state_home)
+        .await?
+        .map(|event| event.activation_generation)
+        .unwrap_or(0);
+    let applied_path = state_home.join("runtime/activation/applied.json");
+    let applied_generation = match tokio::fs::read(&applied_path).await {
+        Ok(bytes) => {
+            let value = serde_json::from_slice::<serde_json::Value>(&bytes).map_err(|error| {
+                format!(
+                    "failed to decode Runtime artifact activation commit receipt {}: {error}",
+                    applied_path.display()
+                )
+            })?;
+            match value.get("activationGeneration") {
+                None => 0,
+                Some(generation) => generation.as_u64().ok_or_else(|| {
+                    format!(
+                        "Runtime artifact activation commit receipt {} has a non-u64 activationGeneration",
+                        applied_path.display()
+                    )
+                })?,
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
+        Err(error) => {
+            return Err(format!(
+                "failed to read Runtime artifact activation commit receipt {}: {error}",
+                applied_path.display()
+            ));
+        }
+    };
+    Ok(pending_generation.max(applied_generation))
+}
+
+async fn next_runtime_artifact_activation_generation(state_home: &Path) -> Result<u64, String> {
+    current_runtime_artifact_activation_generation(state_home)
+        .await?
+        .checked_add(1)
+        .ok_or_else(|| "Runtime artifact activation generation overflow".to_owned())
+}
+
 pub fn runtime_artifact_activation_event_path(state_home: &Path) -> PathBuf {
-    state_home.join("runtime/resident/active/activation.json")
+    state_home.join("runtime/activation/pending.json")
+}
+
+fn publish_pending_runtime_artifact_activation(
+    path: &Path,
+    bytes: &[u8],
+    publication_nonce: &str,
+) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Runtime artifact activation path has no parent".to_owned())?;
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("create Runtime artifact activation directory: {error}"))?;
+    let staged = parent.join(format!(".pending-{publication_nonce}.json.tmp"));
+    std::fs::write(&staged, bytes)
+        .map_err(|error| format!("stage Runtime artifact activation event: {error}"))?;
+    std::fs::rename(&staged, path)
+        .map_err(|error| format!("publish Runtime artifact activation event: {error}"))
 }
 
 pub fn runtime_artifact_activation_socket_path(state_home: &Path) -> PathBuf {
@@ -58,15 +132,14 @@ pub async fn read_runtime_artifact_activation_event(
     let path = runtime_artifact_activation_event_path(state_home);
     match tokio::fs::read(&path).await {
         Ok(bytes) => {
-            let event: RuntimeArtifactActivationEvent = serde_json::from_slice(&bytes)
-                .map_err(|error| format!("decode Runtime artifact activation event: {error}"))?;
-            let applied = state_home.join("runtime/activation/applied.json");
-            if let Ok(applied_bytes) = tokio::fs::read(applied).await {
-                let applied_event: RuntimeArtifactActivationEvent =
-                    serde_json::from_slice(&applied_bytes).map_err(|error| {
-                        format!("decode applied Runtime artifact activation event: {error}")
-                    })?;
-                if applied_event.artifact_digest == event.artifact_digest {
+            let event = decode_runtime_artifact_activation_event(
+                &bytes,
+                "Runtime artifact activation event",
+            )?;
+            if let Some(applied_event) =
+                read_applied_runtime_artifact_activation_event(state_home).await?
+            {
+                if runtime_artifact_activation_is_applied(&event, &applied_event) {
                     return Ok(None);
                 }
             }
@@ -77,6 +150,123 @@ pub async fn read_runtime_artifact_activation_event(
             "read Runtime artifact activation event {}: {error}",
             path.display()
         )),
+    }
+}
+
+fn runtime_artifact_activation_is_applied(
+    pending: &RuntimeArtifactActivationEvent,
+    applied: &RuntimeArtifactActivationEvent,
+) -> bool {
+    pending.activation_generation == applied.activation_generation
+        && pending.artifact_digest == applied.artifact_digest
+}
+
+pub async fn read_applied_runtime_artifact_activation_event(
+    state_home: &Path,
+) -> Result<Option<RuntimeArtifactActivationEvent>, String> {
+    let path = state_home.join("runtime/activation/applied.json");
+    match tokio::fs::read(&path).await {
+        Ok(bytes) => decode_runtime_artifact_activation_event(
+            &bytes,
+            "applied Runtime artifact activation event",
+        )
+        .map(Some),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!(
+            "read applied Runtime artifact activation event {}: {error}",
+            path.display()
+        )),
+    }
+}
+
+fn decode_runtime_artifact_activation_event(
+    bytes: &[u8],
+    context: &str,
+) -> Result<RuntimeArtifactActivationEvent, String> {
+    serde_json::from_slice(bytes).map_err(|error| format!("decode {context}: {error}"))
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeArtifactActivationCommitReceipt {
+    pub artifact_digest: Blake3ContentDigest,
+    pub previous_serving_digest: Option<Blake3ContentDigest>,
+    pub activation_generation: u64,
+    pub state: String,
+}
+
+pub async fn commit_runtime_artifact_activation(
+    state_home: &Path,
+    event: &RuntimeArtifactActivationEvent,
+    serving_digest: Option<&Blake3ContentDigest>,
+) -> Result<RuntimeArtifactActivationCommitReceipt, String> {
+    if event.artifact_digest != event.candidate_identity.artifact_digest
+        || event.artifact_path != event.candidate_identity.artifact_path
+        || event.publication_nonce != event.candidate_identity.publication_nonce
+    {
+        return Err(
+            "state=runtime-artifact-activation-failed reasonKind=candidate-identity-binding-mismatch"
+                .to_owned(),
+        );
+    }
+    if event.previous_artifact_digest.as_ref() != serving_digest {
+        return Err(format!(
+            "state=runtime-artifact-activation-failed reasonKind=serving-artifact-identity-mismatch expected={:?} observed={:?}",
+            event.previous_artifact_digest, serving_digest
+        ));
+    }
+
+    let artifact_root = state_home.join("runtime/artifacts");
+    let resident_root = state_home.join("runtime/resident");
+    let artifact_kind = event
+        .candidate_identity
+        .stable_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Runtime activation target has no artifact kind".to_owned())?;
+    let slots = RuntimeArtifactSlotAuthority::for_artifact(&resident_root, artifact_kind);
+    let guard = RuntimeArtifactMutationGuard::try_acquire(&artifact_root)?;
+    slots
+        .commit_ready(&event.candidate_slot_path.join(artifact_kind))
+        .await?;
+    publish_resident_runtime_alias(&event.candidate_identity.stable_path, &resident_root).await?;
+    publish_applied_runtime_artifact_activation(state_home, event)?;
+    drop(guard);
+
+    slots.prune_unreachable_publications().await?;
+    Ok(RuntimeArtifactActivationCommitReceipt {
+        artifact_digest: event.artifact_digest.clone(),
+        previous_serving_digest: serving_digest.cloned(),
+        activation_generation: event.activation_generation,
+        state: "applied".to_owned(),
+    })
+}
+
+fn publish_applied_runtime_artifact_activation(
+    state_home: &Path,
+    event: &RuntimeArtifactActivationEvent,
+) -> Result<(), String> {
+    let applied = state_home.join("runtime/activation/applied.json");
+    let applied_parent = applied.parent().ok_or_else(|| {
+        format!(
+            "Runtime activation acknowledgement has no parent: {}",
+            applied.display()
+        )
+    })?;
+    std::fs::create_dir_all(applied_parent)
+        .map_err(|error| format!("create Runtime activation acknowledgement directory: {error}"))?;
+    let bytes = serde_json::to_vec_pretty(event)
+        .map_err(|error| format!("encode applied Runtime artifact activation event: {error}"))?;
+    let staged = applied_parent.join(format!(".applied-{}.json.tmp", event.publication_nonce));
+    std::fs::write(&staged, bytes)
+        .map_err(|error| format!("stage Runtime activation acknowledgement: {error}"))?;
+    std::fs::rename(&staged, &applied)
+        .map_err(|error| format!("publish Runtime activation acknowledgement: {error}"))?;
+    let pending = runtime_artifact_activation_event_path(state_home);
+    match std::fs::remove_file(pending) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("retire Runtime activation pending event: {error}")),
     }
 }
 
@@ -125,11 +315,24 @@ pub async fn publish_runtime_artifact(
     let resident_root = state_home.join("runtime/resident");
     let digest = runtime_artifact_candidate_digest(source).await?;
     let token = digest.content_digest().as_str().to_owned();
-    let candidate_dir = resident_root.join("candidates").join(&token);
-    let slots = RuntimeArtifactSlotAuthority::new(&resident_root);
+    let binary_name = target
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Runtime artifact target has no binary name".to_owned())?;
+    let candidate_dir = resident_root
+        .join("candidates")
+        .join(binary_name)
+        .join(&token);
+    let slots = RuntimeArtifactSlotAuthority::for_artifact(&resident_root, binary_name);
 
     // Immutable materialization is deliberately outside the artifact mutation lock.
-    let prepared = prepare_runtime_artifact_candidate(state_home, &candidate_dir, source).await?;
+    let prepared = crate::runtime_artifact_catalog::prepare_runtime_artifact_candidate_for_kind(
+        state_home,
+        &candidate_dir,
+        source,
+        binary_name,
+    )
+    .await?;
     if let Err(error) = slots
         .stage_candidate_artifact(&candidate_dir, &prepared.path)
         .await
@@ -137,18 +340,34 @@ pub async fn publish_runtime_artifact(
         discard_prepared_runtime_artifact(&prepared).await?;
         return Err(error);
     }
-    publish_resident_runtime_alias(target, &resident_root).await?;
-
     let activation_event_path = runtime_artifact_activation_event_path(state_home);
+    let publication_nonce = format!(
+        "activation-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| format!("Runtime artifact publication clock failed: {error}"))?
+            .as_nanos()
+    );
     let event = RuntimeArtifactActivationEvent {
         artifact_digest: prepared.content_digest.clone(),
         artifact_path: prepared.path.clone(),
+        candidate_slot_path: candidate_dir.clone(),
         previous_artifact_digest: previous_artifact_digest.cloned(),
         artifact_mode: artifact_mode.to_owned(),
         published_at_unix_millis: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|error| format!("Runtime artifact publication clock failed: {error}"))?
             .as_millis(),
+        publication_nonce: publication_nonce.clone(),
+        activation_generation: next_runtime_artifact_activation_generation(state_home).await?,
+        candidate_identity: RuntimeArtifactCandidateIdentityReceipt {
+            artifact_digest: prepared.content_digest.clone(),
+            artifact_path: prepared.path.clone(),
+            stable_path: target.to_path_buf(),
+            artifact_mode: artifact_mode.to_owned(),
+            publication_nonce,
+        },
     };
     let event_bytes = serde_json::to_vec_pretty(&event)
         .map_err(|error| format!("encode Runtime artifact activation event: {error}"))?;
@@ -157,10 +376,6 @@ pub async fn publish_runtime_artifact(
         .await
         .map_err(|error| format!("stage Runtime artifact activation event: {error}"))?;
 
-    let binary_name = target
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| "Runtime artifact target has no binary name".to_owned())?;
     let quiescence_operation = format!("publish:{binary_name}");
     let quiescence = match prepare_runtime_artifact_quiescence_lease(
         state_home,
@@ -176,7 +391,7 @@ pub async fn publish_runtime_artifact(
         }
     };
 
-    // The lock protects only the two-slot swap and its durable activation receipt.
+    // Pending publication is durable but does not mutate the serving two-slot authority.
     let lock_started = std::time::Instant::now();
     let guard = RuntimeArtifactMutationGuard::try_acquire(&artifact_root)?;
     let consumed_lease = match quiescence.consume_under_artifact_guard() {
@@ -187,7 +402,11 @@ pub async fn publish_runtime_artifact(
             return Err(error);
         }
     };
-    let commit = slots.commit_ready(&candidate_dir).await;
+    let commit = publish_pending_runtime_artifact_activation(
+        &activation_event_path,
+        &event_bytes,
+        &event.publication_nonce,
+    );
     drop(guard);
     let lock_elapsed_micros = lock_started.elapsed().as_micros();
 
@@ -272,6 +491,102 @@ mod tests {
         let guard = RuntimeArtifactMutationGuard::try_acquire(&artifact_root)
             .expect("artifact lock must be released when publication returns");
         drop(guard);
+    }
+
+    #[tokio::test]
+    async fn applied_receipt_retires_only_the_matching_pending_generation() {
+        let temporary = tempfile::tempdir().expect("activation transaction fixture");
+        let state_home = temporary.path().join("state");
+        let source = temporary.path().join("asp");
+        let target = temporary.path().join("bin/asp");
+        std::fs::write(&source, b"#!/bin/sh\nexit 99\n").expect("write fixture executable");
+        let mut permissions = std::fs::metadata(&source)
+            .expect("fixture executable metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&source, permissions).expect("mark fixture executable");
+
+        publish_runtime_artifact(&state_home, &source, &target, "dev", None)
+            .await
+            .expect("publish pending activation");
+        let pending = read_runtime_artifact_activation_event(&state_home)
+            .await
+            .expect("read pending activation")
+            .expect("pending activation generation");
+        assert!(
+            read_applied_runtime_artifact_activation_event(&state_home)
+                .await
+                .expect("read absent applied activation")
+                .is_none()
+        );
+
+        let committed = commit_runtime_artifact_activation(&state_home, &pending, None)
+            .await
+            .expect("commit matching activation generation");
+        assert_eq!(committed.state, "applied");
+        assert_eq!(committed.artifact_digest, pending.artifact_digest);
+        assert_eq!(
+            committed.activation_generation,
+            pending.activation_generation
+        );
+        let applied = read_applied_runtime_artifact_activation_event(&state_home)
+            .await
+            .expect("read applied activation")
+            .expect("applied activation generation");
+        assert_eq!(applied.artifact_digest, pending.artifact_digest);
+        assert_eq!(applied.activation_generation, pending.activation_generation);
+        assert!(
+            read_runtime_artifact_activation_event(&state_home)
+                .await
+                .expect("read retired pending activation")
+                .is_none()
+        );
+
+        publish_runtime_artifact(
+            &state_home,
+            &source,
+            &target,
+            "dev",
+            Some(&pending.artifact_digest),
+        )
+        .await
+        .expect("republish the same content as a newer activation generation");
+        let republished = read_runtime_artifact_activation_event(&state_home)
+            .await
+            .expect("read republished activation")
+            .expect("a stale applied generation must not hide a newer pending generation");
+        assert_eq!(republished.artifact_digest, pending.artifact_digest);
+        assert!(republished.activation_generation > pending.activation_generation);
+        commit_runtime_artifact_activation(
+            &state_home,
+            &republished,
+            Some(&pending.artifact_digest),
+        )
+        .await
+        .expect("commit the newer matching activation generation");
+        assert!(
+            read_runtime_artifact_activation_event(&state_home)
+                .await
+                .expect("read second retired pending activation")
+                .is_none()
+        );
+
+        std::fs::write(&source, b"#!/bin/sh\nexit 98\n").expect("write distinct fixture content");
+        publish_runtime_artifact(
+            &state_home,
+            &source,
+            &target,
+            "dev",
+            Some(&republished.artifact_digest),
+        )
+        .await
+        .expect("publish distinct content as the next activation generation");
+        let distinct = read_runtime_artifact_activation_event(&state_home)
+            .await
+            .expect("read distinct pending activation")
+            .expect("an applied digest must not hide distinct pending content");
+        assert_ne!(distinct.artifact_digest, republished.artifact_digest);
+        assert!(distinct.activation_generation > republished.activation_generation);
     }
 
     #[tokio::test]

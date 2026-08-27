@@ -446,7 +446,8 @@ async fn typed_ipc_admission_publishes_initial_locator_and_reaches_ready() {
         .unwrap();
     assert!(matches!(
         published.state,
-        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Building
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Queued
+            | agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Building
             | agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
     ));
     let ready = admission

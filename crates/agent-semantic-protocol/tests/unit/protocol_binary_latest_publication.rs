@@ -1,7 +1,7 @@
 use super::{
     ProtocolBinaryInstallPlan, SEMANTIC_AGENT_PROTOCOL_BIN, ensure_protocol_binary_installed,
-    install_protocol_binary_target, next_protocol_binary_publish_sequence,
-    protocol_binary_artifact_path_digest,
+    install_protocol_binary_alias, install_protocol_binary_target,
+    next_protocol_binary_publish_sequence, protocol_binary_artifact_path_digest,
 };
 use std::{
     env, fs,
@@ -33,6 +33,7 @@ async fn published_runtime_identity_lookup_never_reads_artifact_bytes() {
     )
     .await
     .expect("publish digest-addressed ASP artifact");
+    commit_pending_runtime_activation(&root).await;
 
     let mut samples = Vec::with_capacity(10_000);
     for _ in 0..10_000 {
@@ -40,7 +41,13 @@ async fn published_runtime_identity_lookup_never_reads_artifact_bytes() {
         let digest = protocol_binary_artifact_path_digest(&target)
             .expect("read published artifact path identity without binary hashing");
         samples.push(started.elapsed());
-        assert_eq!(digest, installed.artifact_digest);
+        assert_eq!(
+            digest,
+            installed
+                .artifact_digest
+                .strip_prefix("blake3-256:")
+                .expect("canonical installed digest")
+        );
     }
     samples.sort_unstable();
     let p99 = samples[(samples.len() * 99) / 100];
@@ -60,6 +67,21 @@ fn fixture_source(root: &Path, name: &str, bytes: &[u8]) -> PathBuf {
     let source = root.join(name);
     fs::write(&source, bytes).expect("write protocol binary fixture");
     source
+}
+
+async fn commit_pending_runtime_activation(state_home: &Path) {
+    let event =
+        agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(
+            state_home,
+        )
+        .await
+        .expect("read pending Runtime activation")
+        .expect("pending Runtime activation event");
+    agent_semantic_artifacts::runtime_artifact_publication::commit_runtime_artifact_activation(
+        state_home, &event, None,
+    )
+    .await
+    .expect("commit pending Runtime activation");
 }
 
 use super::RuntimeBinaryIdentityV1;
@@ -84,6 +106,9 @@ async fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
     let installed = ensure_protocol_binary_installed(&plan)
         .await
         .expect("install Lattice protocol binary");
+    commit_pending_runtime_activation(&root).await;
+    install_protocol_binary_alias(&alias, &stable_entry, &artifact_root)
+        .expect("publish PATH alias after resident activation");
     assert_eq!(installed.path, stable_entry);
     assert!(
         fs::symlink_metadata(&stable_entry)
@@ -104,7 +129,11 @@ async fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
     assert!(
         artifact_root
             .join("blake3-256")
-            .join(&asp_digest)
+            .join(
+                asp_digest
+                    .strip_prefix("blake3-256:")
+                    .expect("canonical ASP digest"),
+            )
             .join(SEMANTIC_AGENT_PROTOCOL_BIN)
             .is_file()
     );
@@ -121,6 +150,7 @@ async fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
     )
     .await
     .expect("install immutable harness binary");
+    commit_pending_runtime_activation(&root).await;
     assert_eq!(harness_install.path, harness_stable);
     assert_eq!(
         fs::read(&harness_stable).expect("read harness stable entry"),
@@ -137,6 +167,7 @@ async fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
     )
     .await
     .expect("switch asp latest independently");
+    commit_pending_runtime_activation(&root).await;
     assert_ne!(second_asp_install.artifact_digest, asp_digest);
     assert_eq!(
         fs::read(&stable_entry).expect("read switched ASP profile"),
@@ -204,7 +235,11 @@ async fn registered_scheme_and_python_dangling_entries_are_atomically_republishe
         let installed = install_protocol_binary_target(&source, &target, &artifact_root, &identity)
             .await
             .unwrap_or_else(|error| panic!("publish `{language_id}` / `{provider_id}`: {error}"));
-        assert_eq!(installed.status, "updated", "{provider_id}");
+        assert_eq!(
+            installed.status, "published-activation-pending",
+            "{provider_id}"
+        );
+        commit_pending_runtime_activation(&root).await;
         assert_eq!(installed.path, target, "{provider_id}");
         assert!(
             fs::symlink_metadata(&target)
@@ -221,7 +256,12 @@ async fn registered_scheme_and_python_dangling_entries_are_atomically_republishe
         assert!(
             artifact_root
                 .join("blake3-256")
-                .join(&installed.artifact_digest)
+                .join(
+                    installed
+                        .artifact_digest
+                        .strip_prefix("blake3-256:")
+                        .expect("canonical installed digest"),
+                )
                 .join(binary)
                 .is_file()
         );
@@ -241,6 +281,7 @@ async fn loop_or_escape_fails_before_lattice_profile_switch() {
     install_protocol_binary_target(&first, &stable_entry, &artifact_root, &identity)
         .await
         .expect("install first Lattice protocol binary");
+    commit_pending_runtime_activation(&root).await;
 
     fs::remove_file(&stable_entry).expect("remove stable entry");
     let escaped = fixture_source(&root, "escaped-asp", b"escaped");
@@ -292,6 +333,7 @@ async fn lattice_reconciliation_retains_only_reachable_digest_generations() {
         install_protocol_binary_target(&source, &asp_target, &artifact_root, &asp_identity)
             .await
             .expect("publish ASP generation");
+        commit_pending_runtime_activation(&root).await;
         let source = fixture_source(
             &root,
             &format!("source-harness-{version}"),
@@ -300,6 +342,7 @@ async fn lattice_reconciliation_retains_only_reachable_digest_generations() {
         install_protocol_binary_target(&source, &harness_target, &artifact_root, &harness_identity)
             .await
             .expect("publish harness generation");
+        commit_pending_runtime_activation(&root).await;
     }
 
     let receipt =
@@ -308,11 +351,11 @@ async fn lattice_reconciliation_retains_only_reachable_digest_generations() {
         )
         .await
         .expect("prune artifact history");
-    assert_eq!(receipt.scanned_generation_count, 4);
+    assert_eq!(receipt.scanned_generation_count, 8);
     assert_eq!(receipt.retained_generation_count, 4);
-    assert_eq!(receipt.removed_generation_count, 0);
+    assert_eq!(receipt.removed_generation_count, 4);
     assert_eq!(receipt.ignored_entry_count, 0);
-    assert_eq!(receipt.reclaimed_bytes, 0);
+    assert!(receipt.reclaimed_bytes > 0);
     assert_eq!(receipt.protected_digests.len(), 4);
     assert!(fs::canonicalize(&asp_target).is_ok());
     assert!(fs::canonicalize(&harness_target).is_ok());
@@ -323,7 +366,7 @@ async fn lattice_reconciliation_retains_only_reachable_digest_generations() {
 }
 
 #[tokio::test]
-async fn developer_publication_survives_checkout_target_cleanup() {
+async fn developer_publication_uses_the_immutable_activation_transaction() {
     let root = fixture_root("developer-direct-authority");
     let state_home = root.join("state");
     let runtime_root = state_home.join("runtime");
@@ -341,7 +384,7 @@ async fn developer_publication_survives_checkout_target_cleanup() {
     .expect("write developer authority config");
     fs::write(&source, b"developer-asp-v1").expect("write first developer binary");
 
-    install_protocol_binary_target(
+    let first = install_protocol_binary_target(
         &source,
         &target,
         &artifact_root,
@@ -349,26 +392,40 @@ async fn developer_publication_survives_checkout_target_cleanup() {
     )
     .await
     .expect("publish first developer binary");
+    assert_eq!(first.status, "published-activation-pending");
+    let first_event = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(&state_home)
+        .await
+        .expect("read first Developer activation")
+        .expect("first Developer pending generation");
     assert_eq!(
-        fs::canonicalize(&target).expect("canonical developer target"),
-        artifact_root
-            .join("blake3-256")
-            .join(protocol_binary_artifact_path_digest(&target).expect("active digest"))
-            .join("asp")
-            .canonicalize()
-            .expect("canonical lattice artifact")
+        first_event.artifact_digest.to_string(),
+        first.artifact_digest
     );
-    assert!(artifact_root.join("blake3-256").exists());
+    assert!(first_event.artifact_path.starts_with(&artifact_root));
+    assert_eq!(
+        fs::read(&first_event.artifact_path).unwrap(),
+        b"developer-asp-v1"
+    );
+    assert!(
+        !fs::symlink_metadata(&first_event.artifact_path)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert_ne!(
+        fs::canonicalize(&target).ok(),
+        fs::canonicalize(&source).ok()
+    );
     fs::remove_dir_all(&checkout).expect("clean checkout target");
     assert_eq!(
-        fs::read(&target).expect("read retained active binary"),
+        fs::read(&first_event.artifact_path).expect("read immutable Developer candidate"),
         b"developer-asp-v1"
     );
     fs::create_dir_all(source.parent().expect("developer build directory"))
         .expect("recreate developer build directory");
 
     fs::write(&source, b"developer-asp-v2").expect("write second developer binary");
-    install_protocol_binary_target(
+    let second = install_protocol_binary_target(
         &source,
         &target,
         &artifact_root,
@@ -376,16 +433,97 @@ async fn developer_publication_survives_checkout_target_cleanup() {
     )
     .await
     .expect("publish second developer binary");
+    assert_eq!(second.status, "published-activation-pending");
+    let second_event = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(&state_home)
+        .await
+        .expect("read second Developer activation")
+        .expect("second Developer pending generation");
+    assert!(second_event.activation_generation > first_event.activation_generation);
+    assert_ne!(second_event.artifact_digest, first_event.artifact_digest);
     assert_eq!(
-        fs::read(&target).expect("read active developer binary"),
+        fs::read(&second_event.artifact_path).unwrap(),
         b"developer-asp-v2"
     );
-    assert_eq!(
-        fs::read(runtime_root.join("profiles/asp/healthy")).unwrap(),
-        b"developer-asp-v1"
+    assert_ne!(
+        fs::canonicalize(&target).ok(),
+        fs::canonicalize(&source).ok()
     );
 
+    let repeated = install_protocol_binary_target(
+        &source,
+        &target,
+        &artifact_root,
+        &RuntimeBinaryIdentityV1::asp_bootstrap(),
+    )
+    .await
+    .expect("republish unchanged Developer binary");
+    assert_eq!(repeated.status, "published-activation-pending");
+    let repeated_event = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(&state_home)
+        .await
+        .expect("read repeated Developer activation")
+        .expect("repeated Developer pending generation");
+    assert_eq!(repeated_event.artifact_digest, second_event.artifact_digest);
+    assert!(repeated_event.activation_generation > second_event.activation_generation);
+
     fs::remove_dir_all(root).expect("remove developer publication fixture");
+}
+
+#[tokio::test]
+async fn release_publication_uses_the_same_immutable_activation_transaction() {
+    let root = fixture_root("release-immutable-authority");
+    let state_home = root.join("state");
+    let runtime_root = state_home.join("runtime");
+    let artifact_root = runtime_root.join("artifacts");
+    let target = runtime_root.join("bin/asp");
+    let source = root.join("release/asp");
+    fs::create_dir_all(source.parent().expect("release source parent"))
+        .expect("create release source parent");
+    fs::write(&source, b"release-asp-v1").expect("write release binary");
+
+    let first = install_protocol_binary_target(
+        &source,
+        &target,
+        &artifact_root,
+        &RuntimeBinaryIdentityV1::asp_bootstrap(),
+    )
+    .await
+    .expect("publish first Release activation");
+    assert_eq!(first.status, "published-activation-pending");
+    let first_event = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(&state_home)
+        .await
+        .expect("read first Release activation")
+        .expect("first Release pending generation");
+    assert_eq!(
+        first_event.artifact_digest.to_string(),
+        first.artifact_digest
+    );
+    assert!(first_event.artifact_path.starts_with(&artifact_root));
+    assert_eq!(
+        fs::read(&first_event.artifact_path).unwrap(),
+        b"release-asp-v1"
+    );
+    assert_ne!(
+        fs::canonicalize(&target).ok(),
+        fs::canonicalize(&source).ok()
+    );
+
+    let repeated = install_protocol_binary_target(
+        &source,
+        &target,
+        &artifact_root,
+        &RuntimeBinaryIdentityV1::asp_bootstrap(),
+    )
+    .await
+    .expect("republish unchanged Release binary");
+    assert_eq!(repeated.status, "published-activation-pending");
+    let repeated_event = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(&state_home)
+        .await
+        .expect("read repeated Release activation")
+        .expect("repeated Release pending generation");
+    assert_eq!(repeated_event.artifact_digest, first_event.artifact_digest);
+    assert!(repeated_event.activation_generation > first_event.activation_generation);
+
+    fs::remove_dir_all(root).expect("remove release publication fixture");
 }
 
 #[tokio::test]
@@ -406,6 +544,7 @@ async fn explicit_candidate_source_bytes_replace_existing_canonical_binary() {
     )
     .await
     .expect("publish old canonical binary");
+    commit_pending_runtime_activation(&root).await;
 
     let plan = ProtocolBinaryInstallPlan {
         current_exe: old_source,
@@ -419,6 +558,7 @@ async fn explicit_candidate_source_bytes_replace_existing_canonical_binary() {
     let installed = ensure_protocol_binary_installed(&plan)
         .await
         .expect("publish explicit candidate source");
+    commit_pending_runtime_activation(&root).await;
     assert_ne!(installed.artifact_digest, old.artifact_digest);
     assert_eq!(
         fs::read(&target).expect("read canonical target"),

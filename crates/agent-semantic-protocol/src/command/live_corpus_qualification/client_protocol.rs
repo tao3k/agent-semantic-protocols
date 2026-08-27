@@ -1,217 +1,280 @@
-//! Typed ASP Client lifecycle qualification over the Runtime-published HTTP endpoint.
+//! Live Corpus qualification through the ordinary typed ASP Client application API.
 
-use std::time::Instant;
+use std::path::Path;
 
-use agent_semantic_client_protocol::{ClientFrame, ClientOutcome, ClientWorkspaceIdentity};
-use agent_semantic_client_server::AspClientProtocolHttpClient;
+use agent_semantic_client::{
+    LanguageCommandClient, LanguageCommandOperation, LanguageCommandRequest,
+};
+use agent_semantic_client_protocol::{
+    AspClientExactQueryFailure, AspClientExactQueryRequest, AspClientExactQueryResponse,
+    AspClientSearchRequest, ClientFrame, ClientOutcome,
+};
+use agent_semantic_search_projection::RuntimeProviderSearchReceipt;
 
 use super::contract::QualificationCase;
 
-fn first_selector(value: &serde_json::Value) -> Option<&str> {
-    if let Some(selector) = value.get("selector").and_then(serde_json::Value::as_str) {
-        return Some(selector);
-    }
-    match value {
-        serde_json::Value::Array(values) => values.iter().find_map(first_selector),
-        serde_json::Value::Object(values) => values.values().find_map(first_selector),
-        _ => None,
+#[derive(Debug, serde::Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PublicRouteFailure {
+    reason_kind: String,
+    message: String,
+    #[serde(default)]
+    details: Option<serde_json::Value>,
+}
+
+#[derive(Debug, PartialEq)]
+pub(super) enum PublicRouteTerminal {
+    Queued(AspClientExactQueryFailure),
+    Building(AspClientExactQueryFailure),
+    Ready(serde_json::Value),
+    Failed(PublicRouteFailure),
+    Cancelled,
+}
+
+impl PublicRouteTerminal {
+    fn require_ready(self, route: &str) -> Result<serde_json::Value, String> {
+        match self {
+            Self::Ready(payload) => Ok(payload),
+            Self::Queued(failure) => Err(format!(
+                "Live Corpus public route remained Queued: route={route} reasonKind={} phase={}",
+                failure.reason_kind, failure.phase
+            )),
+            Self::Building(failure) => Err(format!(
+                "Live Corpus public route remained Building: route={route} reasonKind={} phase={}",
+                failure.reason_kind, failure.phase
+            )),
+            Self::Failed(failure) => Err(format!(
+                "Live Corpus public route failed: route={route} reasonKind={} message={}",
+                failure.reason_kind, failure.message
+            )),
+            Self::Cancelled => Err(format!(
+                "Live Corpus public route was cancelled: route={route}"
+            )),
+        }
     }
 }
 
-fn ready_result(frame: &ClientFrame, phase: &str) -> Result<serde_json::Value, String> {
+pub(super) fn typed_terminal(frame: ClientFrame) -> Result<PublicRouteTerminal, String> {
     match frame {
         ClientFrame::Response {
             outcome: ClientOutcome::Ready,
-            result: Some(result),
+            result: Some(payload),
             error: None,
             ..
-        } => Ok(result.clone()),
-        ClientFrame::Response { outcome, error, .. } => Err(format!(
-            "public ASP Client {phase} returned outcome={outcome:?} error={error:?}"
-        )),
-        _ => Err(format!(
-            "public ASP Client {phase} returned a non-response frame"
+        } => Ok(PublicRouteTerminal::Ready(payload)),
+        ClientFrame::Response {
+            outcome: ClientOutcome::Cancelled,
+            ..
+        } => Ok(PublicRouteTerminal::Cancelled),
+        ClientFrame::Response {
+            outcome: ClientOutcome::Error | ClientOutcome::StaleGeneration,
+            error: Some(error),
+            ..
+        } => {
+            let failure = serde_json::from_value::<PublicRouteFailure>(error)
+                .map_err(|error| format!("decode Live Corpus typed route failure: {error}"))?;
+            if let Some(details) = failure.details.as_ref()
+                && let Ok(generation_failure) =
+                    serde_json::from_value::<AspClientExactQueryFailure>(details.clone())
+            {
+                return Ok(match generation_failure.reason_kind.as_str() {
+                    "runtime-generation-queued" => PublicRouteTerminal::Queued(generation_failure),
+                    "runtime-generation-building" => {
+                        PublicRouteTerminal::Building(generation_failure)
+                    }
+                    _ => PublicRouteTerminal::Failed(failure),
+                });
+            }
+            Ok(PublicRouteTerminal::Failed(failure))
+        }
+        other => Err(format!(
+            "Live Corpus public route returned an invalid terminal frame: {other:?}"
         )),
     }
 }
 
-pub(super) async fn qualify_client_protocol_case(
-    endpoint: &str,
-    workspace_identity: &str,
-    project_root: &std::path::Path,
+async fn dispatch_ready<C: LanguageCommandClient>(
+    client: &C,
+    project_root: &Path,
+    language_id: &str,
+    route: &str,
+    operation: LanguageCommandOperation,
+) -> Result<serde_json::Value, String> {
+    let response = client
+        .dispatch(LanguageCommandRequest {
+            language_id: agent_semantic_client::LanguageId::new(language_id),
+            operation,
+            project_root: project_root.to_path_buf(),
+            machine_readable: true,
+        })
+        .await?;
+    typed_terminal(response.frame)?.require_ready(route)
+}
+
+#[derive(Debug)]
+pub(super) struct PublicQualificationEvidence {
+    pub(super) search: RuntimeProviderSearchReceipt,
+    pub(super) source: AspClientExactQueryResponse,
+    pub(super) callable_skeleton: AspClientExactQueryResponse,
+    pub(super) zero_match: RuntimeProviderSearchReceipt,
+}
+
+pub(super) async fn qualify_public_client_case<C: LanguageCommandClient>(
+    client: &C,
+    project_root: &Path,
     case: &QualificationCase,
-) -> Result<(), String> {
-    let workspace_identity = ClientWorkspaceIdentity::new(workspace_identity)?;
-    let mut client = AspClientProtocolHttpClient::connect(
-        endpoint,
-        workspace_identity,
-        project_root.display().to_string(),
+) -> Result<PublicQualificationEvidence, String> {
+    let search = search_receipt(
+        client,
+        project_root,
+        case.language_id.as_str(),
+        &case.search.method,
+        &case.search.terms,
     )
     .await?;
-
-    let search_started = Instant::now();
-    eprintln!(
-        "[live-corpus-phase] state=started phase=public-search case={}",
-        case.case_id
-    );
-    let search_frame = client
-        .dispatch(
-            &format!("{}.search", case.language_id),
-            serde_json::json!({
-                "schemaId": "agent.semantic-protocols.asp-client-search-request",
-                "schemaVersion": "1",
-                "operation": case.search.method,
-                "view": case.search.view,
-                "query": case.search.terms.join(" "),
-                "terms": case.search.terms,
-            }),
-        )
-        .await?;
-    let search_result = ready_result(&search_frame, "search")?;
-    let selector = first_selector(&search_result)
-        .ok_or_else(|| {
-            format!(
-                "public ASP Client search returned no selector: case={}",
-                case.case_id
-            )
-        })?
-        .to_owned();
-    eprintln!(
-        "[live-corpus-phase] state=completed phase=public-search case={} elapsedMicros={}",
-        case.case_id,
-        search_started.elapsed().as_micros()
-    );
-
-    for projection in ["source", "callable-skeleton"] {
-        let query_started = Instant::now();
-        eprintln!(
-            "[live-corpus-phase] state=started phase=public-query case={} projection={projection}",
-            case.case_id
-        );
-        let query_frame = client
-            .dispatch(
-                &format!("{}.query", case.language_id),
-                serde_json::json!({
-                    "schemaId": "agent.semantic-protocols.asp-client-exact-query-request",
-                    "schemaVersion": "1",
-                    "selector": selector,
-                    "projection": projection,
-                }),
-            )
-            .await?;
-        let _ = ready_result(&query_frame, projection)?;
-        eprintln!(
-            "[live-corpus-phase] state=completed phase=public-query case={} projection={} elapsedMicros={}",
-            case.case_id,
-            projection,
-            query_started.elapsed().as_micros()
-        );
-    }
-
-    let catalog = client.initialize().await?;
-    let method = catalog
-        .methods
-        .iter()
-        .find(|method| {
-            method.cancellable
-                && method.method == agent_semantic_client_protocol::CANCELLATION_PROBE_METHOD
-        })
-        .ok_or_else(|| "client catalog has no cancellable lifecycle probe".to_owned())?;
-    let request_id = client.next_request_id()?;
-    let started = Instant::now();
-    let request_future = async {
-        eprintln!(
-            "[live-corpus-phase] state=started phase=client-request case={} requestId={}",
-            case.case_id,
-            request_id.as_str()
-        );
-        let result = client
-            .request_with_id(
-                request_id.clone(),
-                method.method.as_str(),
-                serde_json::json!({}),
-            )
-            .await;
-        let (outcome, reason_kind, message) = match &result {
-            Ok(ClientFrame::Response { outcome, error, .. }) => (
-                format!("{outcome:?}"),
-                error
-                    .as_ref()
-                    .and_then(|error| error.get("reasonKind"))
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or("none"),
-                error
-                    .as_ref()
-                    .and_then(|error| error.get("message"))
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or("none")
-                    .replace(char::is_whitespace, "-"),
-            ),
-            Ok(_) => ("non-response".to_owned(), "none", "none".to_owned()),
-            Err(error) => (
-                "transport-error".to_owned(),
-                "transport-error",
-                error.replace(char::is_whitespace, "-"),
-            ),
-        };
-        eprintln!(
-            "[live-corpus-phase] state={} phase=client-request case={} requestId={} outcome={} reasonKind={} message={} elapsedMicros={}",
-            if result.is_ok() {
-                "completed"
-            } else {
-                "failed"
-            },
-            case.case_id,
-            request_id.as_str(),
-            outcome,
-            reason_kind,
-            message,
-            started.elapsed().as_micros()
-        );
-        result
-    };
-    let cancel_future = async {
-        eprintln!(
-            "[live-corpus-phase] state=started phase=client-cancel case={} requestId={}",
-            case.case_id,
-            request_id.as_str()
-        );
-        let result = client.cancel(request_id.clone()).await;
-        eprintln!(
-            "[live-corpus-phase] state={} phase=client-cancel case={} requestId={} elapsedMicros={}",
-            if result.is_ok() {
-                "completed"
-            } else {
-                "failed"
-            },
-            case.case_id,
-            request_id.as_str(),
-            started.elapsed().as_micros()
-        );
-        result
-    };
-    let (request_result, cancel_result) = tokio::join!(request_future, cancel_future);
-    let cancel_frame = cancel_result?;
-    let request_frame = request_result?;
-    if !matches!(
-        cancel_frame,
-        ClientFrame::Response {
-            outcome: ClientOutcome::Cancelled,
-            ..
-        }
-    ) || !matches!(
-        request_frame,
-        ClientFrame::Response {
-            outcome: ClientOutcome::Cancelled,
-            ..
-        }
-    ) {
+    if search.candidate_count < case.search.minimum_candidates {
         return Err(format!(
-            "client cancellation did not produce typed Cancelled outcomes: case={} elapsedMicros={}",
-            case.case_id,
-            started.elapsed().as_micros()
+            "Live Corpus public search returned too few candidates: case={} candidates={} minimum={}",
+            case.case_id, search.candidate_count, case.search.minimum_candidates
         ));
     }
-    let _ = client.shutdown().await?;
-    Ok(())
+    if search.resident_read_elapsed_micros > case.search.maximum_resident_micros {
+        return Err(format!(
+            "Live Corpus public search exceeded resident budget: case={} elapsedMicros={} maximumMicros={}",
+            case.case_id, search.resident_read_elapsed_micros, case.search.maximum_resident_micros
+        ));
+    }
+    let selector = search.selectors.first().ok_or_else(|| {
+        format!(
+            "Live Corpus public search returned no parser-owned selector: case={}",
+            case.case_id
+        )
+    })?;
+    let source = public_query(
+        client,
+        project_root,
+        case.language_id.as_str(),
+        selector,
+        "source",
+    )
+    .await?;
+    let callable_skeleton = public_query(
+        client,
+        project_root,
+        case.language_id.as_str(),
+        selector,
+        "callable-skeleton",
+    )
+    .await?;
+    for (projection, response) in [
+        ("source", &source),
+        ("callable-skeleton", &callable_skeleton),
+    ] {
+        if response.resident_read_elapsed_micros > case.query.maximum_resident_micros {
+            return Err(format!(
+                "Live Corpus public query exceeded resident budget: case={} projection={projection} elapsedMicros={} maximumMicros={}",
+                case.case_id,
+                response.resident_read_elapsed_micros,
+                case.query.maximum_resident_micros
+            ));
+        }
+    }
+    let observed_terminal_events = std::collections::BTreeSet::from([
+        "runtime_resident_search_terminal",
+        "runtime_exact_projection_terminal",
+    ]);
+    if let Some(missing) = case
+        .required_telemetry_events
+        .iter()
+        .find(|event| !observed_terminal_events.contains(event.as_str()))
+    {
+        return Err(format!(
+            "Live Corpus public route did not observe required typed terminal event: case={} event={missing}",
+            case.case_id
+        ));
+    }
+    let zero_match = search_receipt(
+        client,
+        project_root,
+        case.language_id.as_str(),
+        "lexical",
+        &case.zero_match_terms,
+    )
+    .await?;
+    if zero_match.candidate_count != 0 {
+        return Err(format!(
+            "Live Corpus public zero-match search returned candidates: case={} candidates={}",
+            case.case_id, zero_match.candidate_count
+        ));
+    }
+    Ok(PublicQualificationEvidence {
+        search,
+        source,
+        callable_skeleton,
+        zero_match,
+    })
+}
+
+async fn search_receipt<C: LanguageCommandClient>(
+    client: &C,
+    project_root: &Path,
+    language_id: &str,
+    operation: &str,
+    terms: &[String],
+) -> Result<RuntimeProviderSearchReceipt, String> {
+    let payload = dispatch_ready(
+        client,
+        project_root,
+        language_id,
+        "search",
+        LanguageCommandOperation::Search(AspClientSearchRequest {
+            schema_id: "agent.semantic-protocols.asp-client-search-request".to_owned(),
+            schema_version: "1".to_owned(),
+            operation: operation.to_owned(),
+            query: terms.join(" "),
+        }),
+    )
+    .await?;
+    let receipt = serde_json::from_value::<RuntimeProviderSearchReceipt>(payload)
+        .map_err(|error| format!("decode Live Corpus public search payload: {error}"))?;
+    receipt.validate()?;
+    if receipt.language_id != language_id {
+        return Err(format!(
+            "Live Corpus public search language drift: expected={language_id} actual={}",
+            receipt.language_id
+        ));
+    }
+    Ok(receipt)
+}
+
+async fn public_query<C: LanguageCommandClient>(
+    client: &C,
+    project_root: &Path,
+    language_id: &str,
+    selector: &str,
+    projection: &str,
+) -> Result<AspClientExactQueryResponse, String> {
+    let payload = dispatch_ready(
+        client,
+        project_root,
+        language_id,
+        "query",
+        LanguageCommandOperation::ExactQuery(AspClientExactQueryRequest {
+            schema_id: "agent.semantic-protocols.asp-client-exact-query-request".to_owned(),
+            schema_version: "1".to_owned(),
+            selector: selector.to_owned(),
+            projection: projection.to_owned(),
+        }),
+    )
+    .await?;
+    let response = serde_json::from_value::<AspClientExactQueryResponse>(payload)
+        .map_err(|error| format!("decode Live Corpus public {projection} payload: {error}"))?;
+    response.validate()?;
+    if response.language_id != language_id {
+        return Err(format!(
+            "Live Corpus public query language drift: expected={language_id} actual={}",
+            response.language_id
+        ));
+    }
+    Ok(response)
 }

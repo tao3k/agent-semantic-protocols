@@ -12,9 +12,6 @@ use super::archive::{
     install_archive_binary, path_segment, release_asset_url, sha256_file,
 };
 use super::binary as install_provider_binary;
-use super::development::{
-    capture_development_artifact_provenance, development_artifact_is_authorized,
-};
 use super::release::ProviderReleaseSpec;
 use super::target::resolve_provider_binary_install_target;
 use super::workspace as install_provider_workspace;
@@ -59,38 +56,24 @@ pub(super) enum InstallScope {
 struct InstallArgs {
     scope: InstallScope,
     target: Option<String>,
-    record_installed_receipt: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ProviderArtifactAuthority<'a> {
     DevelopBuild { root: &'a Path },
-    Develop { root: &'a Path, artifact: &'a Path },
     LockedRelease,
 }
 
 fn provider_artifact_authority<'a>(
     mode: &'a agent_semantic_config::runtime_dev::RuntimeArtifactMode,
-    recorded_artifact: Option<&'a Path>,
 ) -> Result<ProviderArtifactAuthority<'a>, String> {
-    match (mode, recorded_artifact) {
-        (
-            agent_semantic_config::runtime_dev::RuntimeArtifactMode::Dev { root, .. },
-            Some(artifact),
-        ) => Ok(ProviderArtifactAuthority::Develop {
-            root: root.as_path(),
-            artifact,
-        }),
-        (agent_semantic_config::runtime_dev::RuntimeArtifactMode::Dev { root, .. }, None) => {
+    match mode {
+        agent_semantic_config::runtime_dev::RuntimeArtifactMode::Dev { root, .. } => {
             Ok(ProviderArtifactAuthority::DevelopBuild {
                 root: root.as_path(),
             })
         }
-        (agent_semantic_config::runtime_dev::RuntimeArtifactMode::Release, Some(_)) => Err(
-            "--record-installed-receipt requires `[dev] enabled = true`; release mode admits only locked releases"
-                .to_owned(),
-        ),
-        (agent_semantic_config::runtime_dev::RuntimeArtifactMode::Release, None) => {
+        agent_semantic_config::runtime_dev::RuntimeArtifactMode::Release => {
             Ok(ProviderArtifactAuthority::LockedRelease)
         }
     }
@@ -141,10 +124,7 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
         .await?;
     let provider_id = install_registration.provider_id.as_str();
     let registered_binary = install_registration.binary.as_str();
-    match provider_artifact_authority(
-        artifact_catalog.mode(),
-        install_args.record_installed_receipt.as_deref(),
-    )? {
+    match provider_artifact_authority(artifact_catalog.mode())? {
         ProviderArtifactAuthority::DevelopBuild { root } => {
             let registration = &install_registration;
             let built = install_provider_workspace::build_registered_provider_workspace(
@@ -163,20 +143,6 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
                 root,
                 &registration,
                 built,
-            )
-            .await;
-        }
-        ProviderArtifactAuthority::Develop { root, artifact } => {
-            return record_development_provider_install(
-                language_id,
-                provider_id,
-                registered_binary,
-                &target,
-                &invocation_root,
-                project_root,
-                &install_args.scope,
-                artifact,
-                root,
             )
             .await;
         }
@@ -356,195 +322,6 @@ async fn run_install_provider(args: &[String]) -> Result<(), String> {
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn record_development_provider_install(
-    language_id: &str,
-    provider_id: &str,
-    registered_binary: &str,
-    target: &str,
-    invocation_root: &Path,
-    project_root: Option<&Path>,
-    install_scope: &InstallScope,
-    source_path: &Path,
-    configured_dev_root: &Path,
-) -> Result<(), String> {
-    let dev_root = configured_dev_root.canonicalize().map_err(|error| {
-        format!(
-            "failed to canonicalize configured [dev].root {}: {error}",
-            configured_dev_root.display()
-        )
-    })?;
-    let registration =
-        super::provider_install_registry::provider_install_registration(language_id)?;
-    if registration.provider_id != provider_id || registration.binary.as_str() != registered_binary
-    {
-        return Err(format!(
-            "ProviderRegistry development identity drift: language={language_id} provider={} binary={} expectedProvider={provider_id} expectedBinary={registered_binary}",
-            registration.provider_id, registration.binary
-        ));
-    }
-    let provider_source_root = dev_root
-        .join(&registration.source_root)
-        .canonicalize()
-        .map_err(|error| {
-            format!(
-                "failed to canonicalize registered provider sourceRoot {}: {error}",
-                registration.source_root
-            )
-        })?;
-    let source_path = if source_path.is_absolute() {
-        source_path.to_path_buf()
-    } else {
-        invocation_root.join(source_path)
-    }
-    .canonicalize()
-    .map_err(|error| format!("failed to canonicalize development artifact: {error}"))?;
-    let state_home = agent_semantic_runtime::resolve_state_home()?
-        .canonicalize()
-        .map_err(|error| format!("failed to canonicalize ASP State Home: {error}"))?;
-    if !development_artifact_is_authorized(
-        &provider_source_root,
-        &state_home,
-        registered_binary,
-        registration.artifact_domain,
-        &source_path,
-    ) {
-        return Err(format!(
-            "developer artifact is outside its registered provider artifact domain: artifact={} devRoot={} providerSourceRoot={} artifactDomain={:?} stagingRoot={}",
-            source_path.display(),
-            dev_root.display(),
-            provider_source_root.display(),
-            registration.artifact_domain,
-            state_home
-                .join("runtime/provider-artifacts")
-                .join(registered_binary)
-                .join("develop")
-                .display()
-        ));
-    }
-    let provider_binary = binary_file_name(registered_binary, target);
-    if source_path.file_name().and_then(|name| name.to_str()) != Some(provider_binary.as_str()) {
-        return Err(format!(
-            "development provider binary mismatch for language {language_id}: expected {provider_binary}, got {}",
-            source_path.display()
-        ));
-    }
-    let install_target = resolve_provider_binary_install_target(language_id, &provider_binary)?;
-    let runtime_binary_identity =
-        super::protocol_binary::RuntimeBinaryIdentityV1::from_registered_provider(
-            &provider_binary,
-        )?;
-    let runtime_state = project_runtime_state(project_root.unwrap_or(invocation_root))?;
-    let stable_entry = project_root.map_or_else(
-        || install_target.path.clone(),
-        |_| runtime_state.runtime_bin_dir.join(&provider_binary),
-    );
-    let artifact_root = runtime_state.protocol_home.join("runtime/artifacts");
-    let published = super::protocol_binary::install_protocol_binary_target(
-        &source_path,
-        &stable_entry,
-        &artifact_root,
-        &runtime_binary_identity,
-    )
-    .await?;
-    let installed_path = published.path;
-    let package_path = installed_path.parent().ok_or_else(|| {
-        format!(
-            "installed provider binary has no parent directory: {}",
-            installed_path.display()
-        )
-    })?;
-    let installed_entrypoint_digest =
-        agent_semantic_content_identity::file_content_digest_v1(&installed_path)?;
-    let installed_entrypoint_metadata_digest =
-        agent_semantic_content_identity::file_artifact_metadata_digest_v1(&installed_path)?;
-    let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
-        &[installed_path.to_string_lossy().to_string()],
-        &installed_entrypoint_digest,
-    )?;
-    let provenance = capture_development_artifact_provenance(&dev_root, &registration, target)?;
-    let installed_sha256 = sha256_file(&installed_path)?;
-    let (scope, lock_path) = match install_scope {
-        InstallScope::Global => (
-            "global",
-            canonical_global_provider_state_root()?
-                .join("receipts")
-                .join(format!("{language_id}.lock.toml")),
-        ),
-        InstallScope::Project { root } => (
-            "project",
-            ensure_project_provider_lock_dir(root)?.join(format!("{language_id}.lock.toml")),
-        ),
-    };
-    write_provider_lock(
-        &lock_path,
-        &ProviderInstallLock {
-            schema_id: "asp.provider-install-lock.v1",
-            scope,
-            language_id,
-            provider_id,
-            source_kind: "develop-workspace",
-            checkout_root: Some(&dev_root),
-            provider_source_root: Some(&provider_source_root),
-            repo: None,
-            rev: None,
-            target,
-            binary: registered_binary,
-            installed_path: &installed_path,
-            package_path,
-            sha256: &installed_sha256,
-            source: dev_root.display().to_string(),
-            source_snapshot_root: Some(&provenance.source_snapshot_root),
-            source_snapshot_algorithm: Some("blake3-merkle-v1"),
-            source_leaf_count: Some(provenance.source_leaf_count),
-            provider_digest: Some(&provenance.provider_digest),
-            build_recipe_digest: Some(&provenance.build_recipe_digest),
-            artifact_digest: Some(&installed_entrypoint_digest),
-            artifact_leaf_count: Some(1),
-            artifact_entrypoint: Some(&installed_path),
-            artifact_entrypoint_sha256: Some(&installed_sha256),
-            installed_entrypoint_digest: Some(&installed_entrypoint_digest),
-            installed_entrypoint_metadata_digest: &installed_entrypoint_metadata_digest,
-            execution_command_digest: &execution_command_digest,
-            launcher_digest: None,
-        },
-    )?;
-    let installed_provider_artifacts = if matches!(install_scope, InstallScope::Global) {
-        Some(
-            super::installed_provider_artifacts::publish_current_installed_provider_artifacts(
-                &state_home,
-            )?,
-        )
-    } else {
-        None
-    };
-    println!(
-        "[asp-install] provider={} language={} scope={} installMode=develop-workspace sourceKind=develop-workspace devRoot={} target={} binary={} sha256={} installedPath={} lock={} switch=atomic installedProviderArtifacts={} installedProviderArtifactsWrite={} installedProviderArtifactsChangedLeaves={} installedProviderArtifactsElapsedMicros={}",
-        provider_id,
-        language_id,
-        scope,
-        dev_root.display(),
-        target,
-        registered_binary,
-        installed_sha256,
-        installed_path.display(),
-        lock_path.display(),
-        installed_provider_artifacts
-            .as_ref()
-            .map(|publication| publication.generation())
-            .unwrap_or("not-applicable"),
-        installed_provider_artifacts
-            .as_ref()
-            .is_some_and(|publication| publication.artifact_write()),
-        installed_provider_artifacts
-            .as_ref()
-            .map_or(0, |publication| publication.changed_leaf_count()),
-        installed_provider_artifacts
-            .as_ref()
-            .map_or(0, |publication| publication.elapsed_micros()),
-    );
-    Ok(())
-}
-
 #[derive(clap::Parser)]
 #[command(
     name = "asp install language",
@@ -562,9 +339,6 @@ struct InstallCliArgs {
 
     #[arg(long, value_name = "TARGET")]
     target: Option<String>,
-
-    #[arg(long, value_name = "PATH")]
-    record_installed_receipt: Option<PathBuf>,
 }
 
 fn parse_install_args(args: &[String]) -> Result<InstallArgs, String> {
@@ -592,7 +366,6 @@ fn parse_install_args(args: &[String]) -> Result<InstallArgs, String> {
     Ok(InstallArgs {
         scope,
         target: cli.target,
-        record_installed_receipt: cli.record_installed_receipt,
     })
 }
 
@@ -835,10 +608,7 @@ pub(super) fn write_provider_lock(
         contents.push_str(&format!("buildRecipeDigest = \"{}\"\n", toml_escape(value)));
     }
     if let Some(value) = lock.artifact_digest {
-        contents.push_str(&format!(
-            "binarySourceGeneration = \"{}\"\n",
-            toml_escape(value)
-        ));
+        contents.push_str(&format!("artifactDigest = \"{}\"\n", toml_escape(value)));
     }
     if let Some(value) = lock.artifact_leaf_count {
         contents.push_str(&format!("artifactLeafCount = {value}\n"));

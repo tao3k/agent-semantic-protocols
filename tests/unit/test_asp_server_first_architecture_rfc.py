@@ -14,12 +14,8 @@ def test_server_first_rfc_is_the_only_10_05_architecture_root() -> None:
     text = RFC.read_text(encoding="utf-8")
     required = [
         "ASP Server-First Agent Search Architecture",
-        "The CLI is a first-class typed client of ASP Server",
-        "Runtime IPC",
-        "resident asp-client-server",
-        "provider-native parser/compiler facts",
-        "SCM",
-        "grammarless typed plan",
+        "public gRPC ClientFrame",
+        "thin typed CLI adapter",
         "Git history is the only historical",
     ]
     assert [term for term in required if term not in text] == []

@@ -34,8 +34,24 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
         &runtime_state.activation_path,
     )?;
     agent_config_sync::synchronize_embedded_agent_state_config(&runtime_state.protocol_home)?;
+    let state_resolution = agent_semantic_runtime::state_core::resolve_state_home_projection()?;
+    if state_resolution.state_home != runtime_state.protocol_home {
+        return Err(format!(
+            "reasonKind=runtime-state-home-authority-drift resolved={} install={}",
+            state_resolution.state_home.display(),
+            runtime_state.protocol_home.display()
+        ));
+    }
+    let pending_activation_path = agent_semantic_artifacts::runtime_artifact_publication::runtime_artifact_activation_event_path(
+        &runtime_state.protocol_home,
+    );
+    let applied_activation_path = runtime_state
+        .protocol_home
+        .join("runtime/activation/applied.json");
+    let runtime_endpoint_path =
+        agent_semantic_client_db::runtime_server_endpoint_path(&runtime_state.protocol_home)?;
     println!(
-        "[asp-install-binary] binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic hookConfigPublication={} hookConfigCoupling=binary-content agentConfigPublication=current agentConfigCoupling=binary-content runtimeServerLifecycle=resident-owner reasonKind=none providerReconciliation=not-on-binary-install installedProviderArtifacts=not-on-binary-install developerIdentityReceipt={} installSource={}",
+        "[asp-install-binary] binaryPath={} binaryInstall={} binaryContentDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic hookConfigPublication={} hookConfigCoupling=binary-content agentConfigPublication=current agentConfigCoupling=binary-content runtimeServerLifecycle=resident-owner reasonKind=none providerReconciliation=not-on-binary-install installedProviderArtifacts=not-on-binary-install developerIdentityReceipt={} installSource={} installScope=global projectRoot={} executablePath={} stateHome={} stateHomeSource={:?} aspStateHomePresent={} homePresent={} pendingActivationPath={} appliedActivationPath={} runtimeEndpointPath={}",
         installed.path.display(),
         installed.status,
         installed.artifact_digest,
@@ -43,6 +59,15 @@ pub(crate) async fn run_install_binary(args: &[String]) -> Result<(), String> {
         hook_config_publication,
         active_artifact_receipt.as_str(),
         plan.install_source_kind(),
+        project_root.display(),
+        plan.current_exe().display(),
+        state_resolution.state_home.display(),
+        state_resolution.source,
+        state_resolution.asp_state_home_present,
+        state_resolution.home_present,
+        pending_activation_path.display(),
+        applied_activation_path.display(),
+        runtime_endpoint_path.display(),
     );
     Ok(())
 }
