@@ -550,9 +550,9 @@ Parser-owned discovery identified the likely Rust owners:
 - =crates/agent-semantic-client-db/src/agent_session_registry/dispatch.rs=
 - =crates/agent-semantic-client-db/src/agent_session_registry/lifecycle.rs=
 - =crates/agent-semantic-client-db/src/agent_session_registry/interactive_loop.rs=
-- =crates/agent-semantic-protocol/src/command/agent_session_registry_dispatch.rs=
-- =crates/agent-semantic-protocol/src/command/hook_runtime_agent_session_dispatch.rs=
-- =crates/agent-semantic-protocol/src/command/dispatch_agent_session_policy.rs=
+- =crates/agent-semantic-client/src/command/agent_session_registry_dispatch.rs=
+- =crates/agent-semantic-client/src/command/hook_runtime_agent_session_dispatch.rs=
+- =crates/agent-semantic-client/src/command/dispatch_agent_session_policy.rs=
 
 However, owner-item projection returned zero matches for
 =dispatch|claim|receipt|idempotency|outbox|recovery|revision|conflict=.  The

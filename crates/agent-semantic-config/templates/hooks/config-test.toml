@@ -21,7 +21,7 @@ maxMatcherMicros = 1000
 [[rules]]
 id = "allow-owner-scoped-mutation"
 ruleComposition = [
-  { pointer = "/matcher", equals = "apply_patch|Write|Edit|NotebookEdit" },
+  { pointer = "/matcher", equals = "^apply_patch$" },
   { pointer = "/platform", equals = "codex" },
   { pointer = "/intent", equals = "owner-scoped-mutation" },
   { pointer = "/match/pathGlobAny", contains = "**" },
@@ -38,7 +38,6 @@ wrapperExemption = "native Edit is a typed Host action and has no shell wrapper 
 [[rules]]
 id = "registered-asp-reasoning-search"
 ruleComposition = [
-  { pointer = "/hostInvocations", contains = "execute" },
   { pointer = "/matcherPolicies", contains = "wrapped_command" },
   { pointer = "/match/argvPatternAny", contains = ["asp", "<registered-language>", "search"] },
   { pointer = "/dispatch/agent", equals = "asp_explorer" },
@@ -61,7 +60,6 @@ negativeCommands = [
 id = "registered-asp-structured-projection"
 ruleComposition = [
   { pointer = "/matcherPolicies", contains = "wrapped_command" },
-  { pointer = "/hostInvocations", contains = "execute" },
   { pointer = "/match/argvPatternAny", contains = ["asp", "<registered-language>", "query"] },
   { pointer = "/dispatch/agent", equals = "asp_explorer" },
 ]
@@ -223,35 +221,8 @@ negativeCommands = ["asp healthcheck --json", "asp paths --json"]
 [[rules]]
 id = "route-read-to-asp-languages"
 ruleComposition = [
-  { pointer = "/matcher", equals = "Read" },
-  { pointer = "/profilesList", contains = "org" },
-  { pointer = "/profilesList", contains = "markdown" },
-]
-positiveTools = [
-  { name = "Read", input = { file_path = "crates/agent-semantic-hook/src/lib.rs" } },
-  { name = "Read", input = { file_path = "languages/python-lang-project-harness/src/python_lang_parser/_native_numeric_loops.py" } },
-  { name = "Read", input = { file_path = "languages/typescript-lang-project-harness/src/reasoning-tree/owner-dependency.ts" } },
-  { name = "Read", input = { file_path = "languages/JuliaLangProjectHarness.jl/src/runner.jl" } },
-  { name = "Read", input = { file_path = "languages/gerbil-scheme-language-project-harness/src/building/observability.ss" } },
-  { name = "Read", input = { file_path = "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org" } },
-  { name = "Read", input = { file_path = "README.md" } },
-]
-negativeTools = [
-  { name = "Read", input = { file_path = "Cargo.lock" } },
-  { name = "Read", input = { file_path = "schemas/provider-register.json" } },
-]
-negativeCommands = [
-  "just --list | arbitrary-filter hook",
-  "arbitrary-consumer Cargo.lock",
-]
-wrapperExemption = "host read is a typed action, not a shell command"
-
-[[rules]]
-id = "route-unresolved-source-access-to-asp-languages"
-ruleComposition = [
   { pointer = "/matcher", equals = "Bash" },
-  { pointer = "/hostInvocations", contains = "execute" },
-  { pointer = "/match/capabilityPolicyAll", contains = "filesystem-read" },
+  { pointer = "/actions", contains = "read" },
   { pointer = "/profilesList", contains = "rust" },
   { pointer = "/profilesList", contains = "org" },
   { pointer = "/dispatch/agent", equals = "asp_explorer" },
@@ -267,21 +238,21 @@ negativeCommands = [
 ]
 
 [[rules]]
-id = "route-structured-document-read"
+id = "route-shell-structured-document-read"
 ruleComposition = [
-  { pointer = "/matcher", equals = "Read|Bash" },
-  { pointer = "/match/capabilityPolicyAll", contains = "filesystem-read" },
+  { pointer = "/matcher", equals = "Bash" },
+  { pointer = "/actions", contains = "read" },
   { pointer = "/match/pathGlobAny", contains = "*.json" },
   { pointer = "/dispatch/agent", equals = "asp_explorer" },
 ]
-positiveTools = [
-  { name = "Read", input = { file_path = "schemas/semantic-hook-match-scenario.v1.schema.json" } },
-  { name = "Read", input = { file_path = "crates/agent-semantic-config/templates/hooks/config.toml" } },
+positiveCommands = [
+  "arbitrary-consumer < schemas/semantic-hook-match-scenario.v1.schema.json",
+  "arbitrary-consumer < crates/agent-semantic-config/templates/hooks/config.toml",
 ]
-negativeTools = [
-  { name = "Read", input = { file_path = "Cargo.lock" } },
+negativeCommands = [
+  "future-source-producer > generated.json",
+  "arbitrary-consumer Cargo.lock",
 ]
-wrapperExemption = "host read is a typed action, not a shell command"
 
 [[rules]]
 id = "allow-bounded-json-projection"

@@ -120,7 +120,7 @@ fn shell_path_operand_mutation_is_not_a_structured_document_read() {
     let decision = classify(&runtime("."), "git add -u -- policy.toml");
     assert_ne!(
         decision["fields"]["configRuleId"],
-        "route-structured-document-read"
+        "route-shell-structured-document-read"
     );
     assert!(
         !capabilities(&decision)
@@ -179,7 +179,7 @@ fn raw_structured_shell_read_is_denied_by_action_and_path_rule() {
     assert_eq!(decision["decision"], "deny", "decision={decision:#}");
     assert_eq!(
         decision["fields"]["configRuleId"],
-        "route-structured-document-read"
+        "route-shell-structured-document-read"
     );
     assert_eq!(decision["reasonKind"], "structured-source-read");
     assert!(capabilities(&decision).iter().any(|capability| {
@@ -250,17 +250,14 @@ fn agent_search_json_denial_is_owned_by_the_declared_rule() {
 }
 
 #[test]
-fn read_action_plus_language_profile_does_not_depend_on_executable_names() {
+fn bash_source_access_plus_language_profile_does_not_depend_on_executable_names() {
     for command in [
         "just --list | rg hook",
         "rg hook",
         "rg HookDecision Cargo.lock",
     ] {
         let decision = classify(&runtime("."), command);
-        assert_ne!(
-            decision["fields"]["configRuleId"], "route-read-to-asp-languages",
-            "command={command}"
-        );
+        assert_ne!(decision["decision"], "deny", "command={command}");
     }
 
     let registered_source_read = classify(
@@ -373,11 +370,9 @@ fn registered_read_only_native_edit_is_physically_denied_with_agent_message() {
     for agent_name in ["asp_explorer", "asp_testing"] {
         let payload = registered_read_only_action(
             agent_name,
-            "Edit",
+            "apply_patch",
             json!({
-                "file_path": "src/lib.rs",
-                "old_string": "old",
-                "new_string": "new"
+                "command": "*** Begin Patch\n*** Update File: src/lib.rs\n@@\n-old\n+new\n*** End Patch"
             }),
         );
         let decision = classify_codex_plugin_scenario(
@@ -385,10 +380,10 @@ fn registered_read_only_native_edit_is_physically_denied_with_agent_message() {
             &ClientHookConfig::default(),
             "pre-tool",
             &payload,
-            Some("Edit"),
+            Some("apply_patch"),
             None,
         )
-        .expect("classify registered native Edit scenario");
+        .expect("classify registered canonical apply_patch scenario");
 
         assert_eq!(decision["decision"], "deny", "agent={agent_name}");
         assert_eq!(
@@ -566,7 +561,7 @@ fn registered_source_root_without_read_behavior_does_not_trigger_source_search()
     );
     assert_ne!(
         decision["fields"]["configRuleId"],
-        "route-read-to-asp-languages"
+        "route-unresolved-source-access-to-asp-languages"
     );
     assert!(
         capabilities(&decision)

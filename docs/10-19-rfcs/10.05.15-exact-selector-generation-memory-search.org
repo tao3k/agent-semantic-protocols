@@ -153,7 +153,7 @@ together pin the bytes.
   admission, lookup, and performance receipts.
 - every registered language harness owns population of canonical selectors,
   normalized parser facts, and exact projection ranges for its language.
-- =agent-semantic-protocol= resolves the active fixture and delegates exact
+- =agent-semantic-client= resolves the active fixture and delegates exact
   lookup to Search.  It MUST NOT reconstruct a workspace Merkle tree, open
   Turso, scan source, or spawn a provider for an exact query.
 - =asp-rust-project-harness-policy= (FixTool) gates the Rust harness producer

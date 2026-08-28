@@ -81,20 +81,27 @@ fn semantic_policy(
 }
 
 #[test]
-fn host_native_read_is_an_exact_semantic_capability() {
+fn canonical_apply_patch_regex_and_official_aliases_share_codex_semantics() {
     let matcher = AgentActionMatch::new(AgentActionMatchConfig {
-        native_matcher_any: vec!["Read".to_owned()],
+        native_matcher_any: vec!["^apply_patch$".to_owned()],
         ..AgentActionMatchConfig::default()
     });
-    let action = ToolAction::normalized_direct_policy_action("src/lib.rs".to_owned());
+    let mut actions = crate::tool_action::collect_tool_actions(
+        "apply_patch",
+        &serde_json::json!({
+            "command": "*** Begin Patch\n*** Update File: src/lib.rs\n@@\n-old\n+new\n*** End Patch"
+        }),
+    );
+    actions[0].host_action = HostInvocationKind::Edit;
+    let action = actions.first().expect("canonical apply_patch action");
 
     assert!(matcher.matches(&runtime(), "codex", &action, None));
     let receipt = matcher
         .derive_agent_action_for_rule(&runtime(), "codex", &action, None, None)
         .expect("AgentAction receipt")
         .receipt_value();
-    assert_eq!(receipt["hostInvocation"]["action"], "read");
-    assert_eq!(receipt["semanticCapabilities"][0]["action"], "read");
+    assert_eq!(receipt["hostInvocation"]["action"], "edit");
+    assert_eq!(receipt["semanticCapabilities"][0]["action"], "edit");
     assert_eq!(
         receipt["semanticCapabilities"][0]["evidence"],
         "host-matcher"
@@ -104,22 +111,28 @@ fn host_native_read_is_an_exact_semantic_capability() {
             .get("authority")
             .is_none()
     );
-    assert_eq!(receipt["filesystemPermissions"][0]["permission"], "read");
+    assert_eq!(receipt["filesystemPermissions"][0]["permission"], "write");
     assert_eq!(
         receipt["filesystemPermissions"][0]["source"],
         "host-matcher"
     );
     assert_eq!(receipt["filesystemPermissions"][0]["subject"], "src/lib.rs");
+
+    let aliases = AgentActionMatch::new(AgentActionMatchConfig {
+        native_matcher_any: vec!["Edit|Write".to_owned()],
+        ..AgentActionMatchConfig::default()
+    });
+    assert!(aliases.matches(&runtime(), "codex", action, None));
 }
 
 #[test]
-fn host_native_edit_is_not_derived_from_shell_syntax() {
+fn canonical_apply_patch_edit_is_not_derived_from_shell_syntax() {
     let matcher = AgentActionMatch::new(AgentActionMatchConfig {
-        native_matcher_any: vec!["Edit".to_owned()],
+        native_matcher_any: vec!["^apply_patch$".to_owned()],
         ..AgentActionMatchConfig::default()
     });
     let mut actions = crate::tool_action::collect_tool_actions(
-        "Edit",
+        "apply_patch",
         &serde_json::json!({
             "file_path": "src/lib.rs",
             "old_string": "old",
@@ -127,7 +140,7 @@ fn host_native_edit_is_not_derived_from_shell_syntax() {
         }),
     );
     actions[0].host_action = HostInvocationKind::Edit;
-    let action = actions.first().expect("native Edit action");
+    let action = actions.first().expect("canonical apply_patch action");
     assert!(matcher.matches(&runtime(), "codex", action, None));
     let receipt = matcher
         .derive_agent_action_for_rule(&runtime(), "codex", action, None, None)

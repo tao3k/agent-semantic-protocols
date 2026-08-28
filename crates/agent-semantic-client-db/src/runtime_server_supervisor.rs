@@ -249,7 +249,7 @@ impl RuntimeServerSupervisor {
         request: SupervisorRequest,
         explicit: bool,
     ) -> Result<SupervisorOutcome, String> {
-        self.ensure_runtime_server_with_monitor(request, explicit, false)
+        self.ensure_runtime_server_with_monitor(request, explicit, false, false)
             .await
             .map(|supervision| supervision.outcome)
     }
@@ -259,7 +259,18 @@ impl RuntimeServerSupervisor {
         request: SupervisorRequest,
         explicit: bool,
     ) -> Result<RuntimeServerSupervision, String> {
-        self.ensure_runtime_server_with_monitor(request, explicit, true)
+        self.ensure_runtime_server_with_monitor(request, explicit, true, false)
+            .await
+    }
+
+    /// Drain the current verified owner and publish the requested owner inside
+    /// the same supervisor transaction, even when both owners use the same
+    /// immutable applied artifact.
+    pub async fn restart_runtime_server_monitored(
+        &self,
+        request: SupervisorRequest,
+    ) -> Result<RuntimeServerSupervision, String> {
+        self.ensure_runtime_server_with_monitor(request, true, true, true)
             .await
     }
 
@@ -268,6 +279,7 @@ impl RuntimeServerSupervisor {
         mut request: SupervisorRequest,
         explicit: bool,
         monitor_process: bool,
+        force_handoff: bool,
     ) -> Result<RuntimeServerSupervision, String> {
         if explicit {
             crate::runtime_server_lifecycle::clear_operator_stopped(&request.state_home).await?;
@@ -294,14 +306,15 @@ impl RuntimeServerSupervisor {
         .await
         {
             Ok(Some(endpoint)) => {
-                request.previous_owner_epoch = Some(endpoint.owner_epoch);
-                let desired_identity =
-                    agent_semantic_runtime::runtime_artifact_identity::read_runtime_artifact_identity(
-                        &request.state_home,
-                        "asp",
-                    )
-                    .await?
-                    .identity()?;
+                // The activation event bound into this supervisor request is
+                // the launcher authority.  Re-reading the legacy mutable
+                // artifact-identity file here creates a second authority and
+                // makes dead-owner recovery impossible when that optional
+                // projection is absent or stale.
+                let desired_identity = agent_semantic_artifacts::runtime_artifact_catalog::
+                    RuntimeBinaryIdentity::Content {
+                        digest: request.artifact_digest.clone(),
+                    };
                 let status = crate::runtime_server_control::call_runtime_server_for_state_home(
                     &request.state_home,
                     &endpoint,
@@ -311,10 +324,12 @@ impl RuntimeServerSupervisor {
                 )
                 .await;
                 let endpoint_reachable = endpoint.validate_service_reachability().await.is_ok();
-                if status.as_ref().is_ok_and(|receipt| {
-                    receipt.state == crate::runtime_server_control::RuntimeServerState::Healthy
-                        && endpoint.runtime_binary_identity == desired_identity
-                }) && endpoint_reachable
+                if !force_handoff
+                    && status.as_ref().is_ok_and(|receipt| {
+                        receipt.state == crate::runtime_server_control::RuntimeServerState::Healthy
+                            && endpoint.runtime_binary_identity == desired_identity
+                    })
+                    && endpoint_reachable
                 {
                     return Ok(RuntimeServerSupervision {
                         outcome: SupervisorOutcome::AlreadyResident,
@@ -337,6 +352,7 @@ impl RuntimeServerSupervisor {
                         .await?
                         == crate::runtime_server_lifecycle_coordinator::OwnerClassification::Live,
                 };
+                request.previous_owner_epoch = owner_was_live.then_some(endpoint.owner_epoch);
                 let exit = if owner_was_live {
                     Some(
                         crate::runtime_server_lifecycle::await_owner_exit(

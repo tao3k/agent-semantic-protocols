@@ -4,14 +4,14 @@ use super::workspace_mutation_paths;
 fn apply_patch_projects_sorted_deduplicated_workspace_paths() {
     // The Hook mutation projection is parser-owned and independent of policy matching.
     let input = serde_json::json!({
-        "patch": "*** Begin Patch\n*** Update File: crates/agent-semantic-protocol/src/command/provider_dispatch.rs\n*** Update File: crates/agent-semantic-protocol/src/command/hook_runtime.rs\n*** Update File: crates/agent-semantic-protocol/src/command/provider_dispatch.rs\n*** End Patch"
+        "patch": "*** Begin Patch\n*** Update File: crates/agent-semantic-client/src/command/provider_dispatch.rs\n*** Update File: crates/agent-semantic-client/src/command/hook_runtime.rs\n*** Update File: crates/agent-semantic-client/src/command/provider_dispatch.rs\n*** End Patch"
     });
 
     assert_eq!(
         workspace_mutation_paths("apply_patch", &input),
         vec![
-            "crates/agent-semantic-protocol/src/command/hook_runtime.rs".to_owned(),
-            "crates/agent-semantic-protocol/src/command/provider_dispatch.rs".to_owned(),
+            "crates/agent-semantic-client/src/command/hook_runtime.rs".to_owned(),
+            "crates/agent-semantic-client/src/command/provider_dispatch.rs".to_owned(),
         ]
     );
 }

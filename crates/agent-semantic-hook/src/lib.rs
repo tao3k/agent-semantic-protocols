@@ -1,6 +1,11 @@
+#![cfg(feature = "compiler")]
 #![deny(dead_code)]
 
 //! Root semantic agent hook runtime for provider manifests and project activations.
+
+pub mod aot_compiler;
+pub mod candidate_validation;
+pub mod aot_evaluator;
 
 mod active_artifact_receipt;
 pub use active_artifact_receipt::{
@@ -25,6 +30,9 @@ mod publication_identity;
 pub use publication_identity::{is_generation_bound_hook_deny, is_typed_hook_deny};
 pub mod runtime_config;
 pub use command::semantic_shell_tokens;
+pub use runtime_config::{
+    CompiledHookMatcherGeneration, compile_hook_matcher_generation, validate_compiled_hook_matcher,
+};
 pub use tool_action::{codex_tool_event_requires_policy_evaluation, direct_source_read_paths};
 pub use tool_action_host_binding::bind_plugin_host_matcher;
 mod event_replay;
@@ -57,9 +65,18 @@ mod provider_install_artifact;
 pub use provider_install_artifact::installed_provider_artifact_digest;
 mod provider_manifest;
 mod provider_registry;
+mod reader_probe;
 pub use provider_registry::ProviderDevelopmentRegistration;
 pub use provider_registry::registered_language_ids;
 pub use provider_registry::{materialize_provider_routes, semantic_registry_digest};
+pub use reader_probe::{
+    ReaderProbeAccess, ReaderProbeObservation, bind_reader_probe_observation,
+    classify_open_access_mode, diagnose_reader_probe,
+};
+#[cfg(target_os = "macos")]
+pub use reader_probe::{
+    materialize_reader_probe_fixture, reader_probe_fixture_bytes, reader_probe_interposer_bytes,
+};
 mod execute_rule_facts;
 mod source_selector;
 mod tool_action;

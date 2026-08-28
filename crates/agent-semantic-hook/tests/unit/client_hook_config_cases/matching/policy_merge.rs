@@ -246,8 +246,8 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
         .expect("registered ASP reasoning-search rule");
     assert!(source_rule.matcher.is_none());
     assert_eq!(
-        source_rule.host_invocations,
-        [agent_semantic_config::HookClientHostInvocationKind::Execute]
+        source_rule.matcher_policies,
+        [agent_semantic_config::HookClientMatcherPolicy::WrappedCommand]
     );
     assert_eq!(
         source_rule.match_config.argv_pattern_any,

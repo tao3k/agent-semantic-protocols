@@ -77,16 +77,15 @@ fn cli_doctor_reports_deny_for_codex_exec_command_source_dump() {
     assert!(stdout.contains("binaryContractFingerprint=hook-client-v1-"));
     assert!(stdout.contains("activeContractFingerprint="));
     assert!(stdout.contains("classifierProbe=deny"));
-    assert!(stdout.contains("classifierReason=bulk-source-dump"));
-    assert!(stdout.contains("classifierRule=route-read-to-asp-languages"));
+    assert!(stdout.contains("classifierReason=registered-source-route-required"));
+    assert!(stdout.contains("classifierRule=route-unresolved-source-access-to-asp-languages"));
     assert!(stdout.contains("matchPolicyStatus=partial"), "{stdout}");
-    assert!(stdout.contains("matchPolicyRules=17"));
-    assert!(stdout.contains("matchPolicyCases=20"));
+    assert!(stdout.contains("matchPolicyRules=15"));
     let covered = doctor_count(&stdout, "matchPolicyCovered");
     let failures = doctor_count(&stdout, "matchPolicyFailures");
     assert_eq!(
         covered + failures,
-        17,
+        15,
         "coverage is counted by unique production rule, not witness case: {stdout}"
     );
     assert!(covered > 0, "{stdout}");

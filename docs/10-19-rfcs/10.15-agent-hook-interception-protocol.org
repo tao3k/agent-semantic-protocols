@@ -12,7 +12,7 @@ semantic language CLI registry.  The root protocol owns the normalized hook
 decision shape, activation algorithm, and classification algorithm; language
 harnesses own provider manifests and semantic commands.
 
-Status note: the single =agent-semantic-protocol= binary and configurable
+Status note: the single =agent-semantic-client= binary and configurable
 client-hook lane is implemented and closed by the gates in [[*RFC Closure Gates]].
 The downstream provider-convergence plan remains tracked separately below.
 
@@ -202,7 +202,7 @@ tool-name regex in =config.toml=; the config should dispatch broadly and let
 =agent-semantic-hook= classify the normalized payload against project activation
 and provider manifests.
 
-The installed Codex hook command should also invoke =agent-semantic-protocol=
+The installed Codex hook command should also invoke =agent-semantic-client=
 through =PATH=.  Copying a per-repository binary into
 =.codex/agent-semantic-hook/bin= makes the runtime stale and easy to bypass:
 the activation file and config block are repository-owned, but the classifier
@@ -1324,7 +1324,7 @@ when the following implementation gates pass:
 
 1. =agent-semantic-hook= is no longer an install-facing binary target.  Cargo
    metadata must show only =lib=, =test=, and =custom-build= targets for that
-   crate, while =agent-semantic-protocol= owns the only hook-facing bin target.
+   crate, while =agent-semantic-client= owns the only hook-facing bin target.
 2. Generated Codex config uses
    =exec asp hook <event> --client codex= for every
    installed event: =session-start=, =user-prompt=, =pre-tool=,
@@ -1346,11 +1346,11 @@ when the following implementation gates pass:
    process invocation without any watcher, daemon, or server loop.
 8. Validation gates pass:
    - =cargo test -p agent-semantic-hook=
-   - =cargo test -p agent-semantic-protocol=
+   - =cargo test -p agent-semantic-client=
    - schema tests for =agent-semantic-hook-decision= and
      =agent-semantic-hook-client-config=
    - =rs-harness check --changed crates/agent-semantic-hook=
-   - =rs-harness check --changed crates/agent-semantic-protocol=
+   - =rs-harness check --changed crates/agent-semantic-client=
 9. Direct-read payload field-family coverage is tested through the classifier
     and through the real =asp hook pre-tool= runtime for at least these Codex
     shapes: =path=, =file=, =absolutePath=, nested =resource.path=,
@@ -1387,7 +1387,7 @@ when the following implementation gates pass:
    - keep the shared decision schema, provider manifest schema, and activation
      schema;
    - ship the Rust =agent-semantic-hook= library runtime behind the
-     =agent-semantic-protocol= binary as the only classifier;
+     =agent-semantic-client= binary as the only classifier;
    - keep sandtable drills for hook payload fixtures and shell-tokenizer
      conformance.
 

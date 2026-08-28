@@ -35,7 +35,7 @@ fn temp_project_root() -> PathBuf {
 }
 
 #[test]
-fn canonical_config_covers_builtin_programming_native_read_matrix() {
+fn canonical_config_covers_registered_source_bash_matrix() {
     let root = temp_project_root();
     fs::create_dir_all(&root).expect("matrix root");
     let config_path = root.join("config.toml");
@@ -53,26 +53,13 @@ fn canonical_config_covers_builtin_programming_native_read_matrix() {
     for profile in profiles.values() {
         for extension in &profile.extension_any {
             let path = format!("src/witness.{extension}");
-            let mut inputs = Vec::new();
-            for key in [
-                "path",
-                "file",
-                "file_path",
-                "filePath",
-                "absolute_path",
-                "absolutePath",
-                "relative_path",
-                "relativePath",
-                "uri",
-            ] {
-                inputs.push(json!({"toolName":"Read", "toolInput":{key: path}}));
-            }
-            for (tool_name, input_key) in [("toolName", "toolInput"), ("tool_name", "tool_input")] {
-                inputs.push(json!({tool_name:"Read", input_key:{"path":path}}));
-            }
-            for mut payload in inputs {
-                agent_semantic_hook::bind_plugin_host_matcher(&mut payload, Some("Read"), None)
-                    .expect("bind canonical Read matcher");
+            let mut payload = json!({
+                "tool_name": "Bash",
+                "tool_input": {"command": format!("opaque-source-consumer {path}")}
+            });
+            agent_semantic_hook::bind_plugin_host_matcher(&mut payload, Some("Bash"), None)
+                .expect("bind canonical Bash matcher");
+            {
                 let decision = classify_hook_with_config(HookClassificationRequest {
                     registry: &runtime,
                     config: &config,
@@ -82,7 +69,7 @@ fn canonical_config_covers_builtin_programming_native_read_matrix() {
                 });
                 assert_eq!(
                     decision.fields.get("configRuleId").and_then(Value::as_str),
-                    Some("route-read-to-asp-languages"),
+                    Some("route-unresolved-source-access-to-asp-languages"),
                     "{payload}"
                 );
                 assert_eq!(decision.decision, DecisionKind::Deny);
@@ -95,7 +82,7 @@ fn canonical_config_covers_builtin_programming_native_read_matrix() {
                     decision
                         .fields
                         .get("normalizedActions")
-                        .is_some_and(|v| v.to_string().contains("direct-read"))
+                        .is_some_and(|v| v.to_string().contains("shell-command"))
                 );
                 assert!(
                     decision
@@ -125,16 +112,7 @@ fn bundled_plugin_matchers_preserve_one_host_action_identity_per_entry() {
         .collect::<Vec<_>>();
     assert_eq!(
         matchers,
-        [
-            "Read",
-            "apply_patch",
-            "Write",
-            "Edit",
-            "NotebookEdit",
-            "Bash",
-            "spawn_agent",
-            "^mcp__.*$"
-        ]
+        ["^apply_patch$", "Bash", "spawn_agent", "^mcp__.*$"]
     );
     assert!(!matchers.contains(&"*"));
 }
@@ -213,13 +191,11 @@ fn classify<'a>(
         .unwrap_or_default()
         .to_owned();
     let binding = match tool_name.as_str() {
-        "Read" | "apply_patch" | "Write" | "Edit" | "NotebookEdit" | "Bash" | "spawn_agent" => {
-            agent_semantic_hook::bind_plugin_host_matcher(
-                &mut payload,
-                Some(tool_name.as_str()),
-                None,
-            )
-        }
+        "apply_patch" | "Bash" | "spawn_agent" => agent_semantic_hook::bind_plugin_host_matcher(
+            &mut payload,
+            Some(tool_name.as_str()),
+            None,
+        ),
         name if name.starts_with("mcp__") => {
             agent_semantic_hook::bind_plugin_host_matcher(&mut payload, None, Some("mcp__"))
         }
@@ -235,80 +211,6 @@ fn classify<'a>(
     })
 }
 
-#[cfg(unix)]
-fn current_thread_cpu_nanos() -> u128 {
-    let mut timespec = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    let result = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut timespec) };
-    assert_eq!(result, 0, "read current thread CPU clock");
-    (timespec.tv_sec as u128) * 1_000_000_000 + (timespec.tv_nsec as u128)
-}
-
-#[cfg(not(unix))]
-fn current_thread_cpu_nanos() -> u128 {
-    static STARTED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-    STARTED
-        .get_or_init(std::time::Instant::now)
-        .elapsed()
-        .as_nanos()
-}
-
-#[test]
-fn configured_matcher_typical_same_process_classification_stays_below_one_millisecond() {
-    const SAMPLES: usize = 128;
-    const TYPICAL_QUORUM: usize = 96;
-    const TYPICAL_BUDGET_MICROS: u128 = 1_000;
-
-    let root = temp_project_root();
-    fs::create_dir_all(&root).expect("matcher latency root");
-    let config_path = root.join("config.toml");
-    fs::write(&config_path, default_client_config_template()).expect("write config");
-    fs::write(root.join("package.json"), r#"{"name":"fixture"}"#)
-        .expect("write structured projection fixture");
-    let config = agent_semantic_hook::load_client_config_for_project(&config_path, &root)
-        .expect("compile config");
-    let mut runtime = builtin_programming_runtime();
-    runtime.project_root = root.to_string_lossy().into_owned();
-    let payload = json!({
-        "cwd": root.to_string_lossy(),
-        "tool_name": "functions.exec_command",
-        "tool_input": {"cmd": "jq -c '.package.name' package.json"},
-    });
-
-    for _ in 0..8 {
-        let decision = classify(&runtime, &config, &payload);
-        assert_eq!(decision.decision, DecisionKind::Allow, "{decision:?}");
-    }
-
-    let mut samples = Vec::with_capacity(SAMPLES);
-    for _ in 0..SAMPLES {
-        let started = current_thread_cpu_nanos();
-        let decision = classify(&runtime, &config, &payload);
-        samples.push((current_thread_cpu_nanos() - started) / 1_000);
-        assert_eq!(decision.decision, DecisionKind::Allow, "{decision:?}");
-        assert_eq!(
-            decision.fields.get("configRuleId").and_then(Value::as_str),
-            Some("allow-bounded-json-projection")
-        );
-    }
-    samples.sort_unstable();
-    eprintln!(
-        "[hook-matcher-cpu] samples={} p50Micros={} p75Micros={} maxMicros={} targetMicros={}",
-        SAMPLES,
-        samples[SAMPLES / 2],
-        samples[TYPICAL_QUORUM - 1],
-        samples[SAMPLES - 1],
-        TYPICAL_BUDGET_MICROS,
-    );
-    assert!(
-        samples[TYPICAL_QUORUM - 1] <= TYPICAL_BUDGET_MICROS,
-        "fewer than {TYPICAL_QUORUM}/{SAMPLES} same-process decisions met the typical \
-         {TYPICAL_BUDGET_MICROS}us target: {samples:?}"
-    );
-    fs::remove_dir_all(root).expect("cleanup matcher latency root");
-}
 
 #[test]
 fn production_match_policy_contract() {

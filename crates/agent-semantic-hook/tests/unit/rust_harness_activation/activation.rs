@@ -99,7 +99,7 @@ fn rust_harness_activation_routes_source_glob_search_to_lexical_frontier() {
             .fields
             .get("configRuleId")
             .and_then(|value| value.as_str()),
-        Some("route-read-to-asp-languages")
+        Some("route-unresolved-source-access-to-asp-languages")
     );
     assert!(decision.message.contains("asp session"));
     assert!(!decision.message.contains("ASP Explore"));

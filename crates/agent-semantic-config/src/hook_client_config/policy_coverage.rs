@@ -15,7 +15,6 @@ pub enum HookPolicyCoveragePolarity {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HookPolicyCoverageSurface {
-    Direct,
     Shell,
 }
 
@@ -23,7 +22,6 @@ pub enum HookPolicyCoverageSurface {
 pub struct HookPolicyCoverageSettings {
     pub max_wrapper_depth: usize,
     pub include_negative_extension_mutation: bool,
-    pub direct_envelope_count: usize,
     pub shell_envelope_count: usize,
 }
 
@@ -48,23 +46,9 @@ pub fn derive_hook_policy_coverage_cases(
     config: &HookClientConfigFile,
     settings: HookPolicyCoverageSettings,
 ) -> Result<Vec<HookPolicyCoverageCase>, String> {
-    if settings.direct_envelope_count == 0 || settings.shell_envelope_count == 0 {
+    if settings.shell_envelope_count == 0 {
         return Err("Hook policy coverage requires non-empty Host envelope projections".to_owned());
     }
-    let direct_rule = config
-        .rules
-        .iter()
-        .find(|rule| {
-            rule.enabled
-                && rule
-                    .matcher
-                    .as_deref()
-                    .is_some_and(|matcher| matcher.split('|').any(|native| native == "Read"))
-                && !rule.profiles_list.is_empty()
-        })
-        .ok_or_else(|| {
-            "Hook config has no enabled declarative Read rule with profilesList".to_owned()
-        })?;
     let shell_rules = config
         .rules
         .iter()
@@ -91,26 +75,6 @@ pub fn derive_hook_policy_coverage_cases(
                 profile.language_id.replace(['/', '\\'], "-"),
                 extension
             );
-            for envelope_slot in 0..settings.direct_envelope_count {
-                push_case_pair(
-                    &mut cases,
-                    settings,
-                    HookPolicyCoverageCase {
-                        polarity: HookPolicyCoveragePolarity::Black,
-                        surface: HookPolicyCoverageSurface::Direct,
-                        language_id: profile.language_id.clone(),
-                        provider_id: profile.provider_id.clone(),
-                        source_extension: extension.clone(),
-                        path: path.clone(),
-                        expected_rule_id: Some(direct_rule.id.clone()),
-                        expected_reason_kind: "registered-source-route-required",
-                        command_prefix: None,
-                        envelope_slot,
-                        wrapper_depth: 0,
-                    },
-                    &registered_extensions,
-                );
-            }
             for (command_index, prefix) in std::iter::once(&opaque_shell_stage).enumerate() {
                 let winning_rule = shell_rules
                     .iter()
@@ -129,7 +93,7 @@ pub fn derive_hook_policy_coverage_cases(
                         source_extension: extension.clone(),
                         path: path.clone(),
                         expected_rule_id: Some(winning_rule.id.clone()),
-                        expected_reason_kind: "bulk-source-dump",
+                        expected_reason_kind: "registered-source-route-required",
                         command_prefix: Some(prefix.clone()),
                         envelope_slot: (extension_index + command_index)
                             % settings.shell_envelope_count,
@@ -151,11 +115,10 @@ fn is_shell_registered_read_rule(rule: &HookClientRuleConfig) -> bool {
     let match_config = &rule.match_config;
     rule.enabled
         && matches!(rule.decision, HookClientConfigDecision::Deny)
-        && rule.matcher.as_deref().is_some_and(|matcher| {
-            matcher
-                .split('|')
-                .any(|native| native == "Read" || native == "Bash")
-        })
+        && rule
+            .matcher
+            .as_deref()
+            .is_some_and(|matcher| matcher.split('|').any(|native| native == "Bash"))
         && !rule.profiles_list.is_empty()
         && (match_config.subject_kind_any.is_empty()
             || match_config

@@ -426,7 +426,7 @@ lean tests/fixtures/agent_session_recovery/agent_session_recovery.lean
 Unit gate:
 
 #+begin_src sh
-uv run --project packages/python --package agent-semantic-protocols-tools \
+uv run --project packages/python --package agent-semantic-clients-tools \
   pytest -o addopts='' tests/unit/semantic_proof_artifact_schema/test_session_recovery_lean_proof.py
 #+end_src
 

@@ -64,6 +64,7 @@ const fn filesystem_permission_kind_label(kind: FilesystemPermissionKind) -> &'s
 const fn filesystem_permission_source_label(source: FilesystemPermissionSource) -> &'static str {
     match source {
         FilesystemPermissionSource::HostMatcher => "host-matcher",
+        FilesystemPermissionSource::ReaderProbe => "reader-probe",
         FilesystemPermissionSource::ShellRedirection => "shell-redirection",
     }
 }
@@ -93,6 +94,7 @@ const fn host_invocation_kind_label(kind: HostInvocationKind) -> &'static str {
 const fn semantic_capability_evidence_label(evidence: SemanticCapabilityEvidence) -> &'static str {
     match evidence {
         SemanticCapabilityEvidence::HostMatcher => "host-matcher",
+        SemanticCapabilityEvidence::ReaderProbe => "reader-probe",
         SemanticCapabilityEvidence::RegisteredSourceOperand => "registered-source-operand",
         SemanticCapabilityEvidence::ShellRedirection => "shell-redirection",
     }

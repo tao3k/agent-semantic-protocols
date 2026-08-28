@@ -240,7 +240,7 @@ fn one_workspace_identity_cannot_bind_two_canonical_roots() {
     let nested = AgentSessionNamespaceProjection::new(
         "project-1",
         "workspace-1",
-        "/repo/crates/agent-semantic-protocol",
+        "/repo/crates/agent-semantic-client",
         session_identity,
         "root/session-current/@asp_explorer",
         "@asp_explorer",

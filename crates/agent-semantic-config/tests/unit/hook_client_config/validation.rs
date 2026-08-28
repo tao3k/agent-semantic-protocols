@@ -315,7 +315,7 @@ sourceRootAny = ["{source_root}"]
 }
 
 #[test]
-fn canonical_source_routing_uses_action_profiles_without_the_legacy_search_set() {
+fn canonical_source_routing_uses_bash_capability_profiles_without_legacy_search() {
     let config = default_hook_client_config_file().expect("canonical Hook config");
     assert!(
         config
@@ -326,9 +326,13 @@ fn canonical_source_routing_uses_action_profiles_without_the_legacy_search_set()
     let route = config
         .rules
         .iter()
-        .find(|rule| rule.id == "route-read-to-asp-languages")
+        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
         .expect("registered source routing rule");
-    assert_eq!(route.matcher.as_deref(), Some("Read"));
+    assert_eq!(route.matcher.as_deref(), Some("Bash"));
+    assert_eq!(
+        route.match_config.capability_policy_all,
+        ["registered-source-access"]
+    );
     assert!(route.match_config.argv_prefix_any.is_empty());
     assert_eq!(
         route.profiles_list,
@@ -394,35 +398,11 @@ commandAny = ["cargo"]
 }
 
 #[test]
-fn rule_matcher_rejects_duplicate_native_aliases() {
-    let root = temp_root("duplicate-platform-action-matcher");
-    let config_path = root.join("config.toml");
-    write_canonical_config_overlay(
-        &config_path,
-        r#"
-[[rules]]
-id = "duplicate-native-alias"
-platform = "codex"
-matcher = "Read|Read"
-decision = "deny"
-"#,
-    );
-
-    let error = load_hook_client_config_file(&config_path)
-        .expect_err("duplicate native alias must fail closed");
-    assert!(
-        error.contains("matcher contains duplicate native alias \"Read\""),
-        "{error}"
-    );
-
-    let _ = fs::remove_dir_all(root);
-}
-
-#[test]
-fn rule_matcher_aliases_reject_empty_or_padded_branches() {
+fn rule_matcher_accepts_codex_regex_grammar_and_rejects_invalid_regex() {
     for (name, matcher) in [
-        ("empty-action-alias", "Read||NotebookRead"),
-        ("padded-action-alias", "Read| NotebookRead"),
+        ("canonical-apply-patch", "^apply_patch$"),
+        ("official-edit-aliases", "Edit|Write"),
+        ("dynamic-mcp", "^mcp__.*$"),
     ] {
         let root = temp_root(name);
         let config_path = root.join("config.toml");
@@ -439,15 +419,24 @@ matcher = "{matcher}"
             ),
         );
 
-        let error = load_hook_client_config_file(&config_path)
-            .expect_err("invalid native Action alias expression");
-        assert!(
-            error.contains(
-                "must contain non-empty `|`-separated native aliases without surrounding whitespace"
-            ),
-            "{error}"
-        );
+        load_hook_client_config_file(&config_path).expect("official Codex matcher expression");
 
         let _ = fs::remove_dir_all(root);
     }
+
+    let root = temp_root("invalid-codex-matcher-regex");
+    let config_path = root.join("config.toml");
+    write_canonical_config_overlay(
+        &config_path,
+        r#"
+[[rules]]
+id = "invalid-codex-matcher-regex"
+platform = "codex"
+matcher = "["
+decision = "deny"
+"#,
+    );
+    let error = load_hook_client_config_file(&config_path).expect_err("invalid regex must fail");
+    assert!(error.contains("invalid Codex Host matcher"), "{error}");
+    let _ = fs::remove_dir_all(root);
 }

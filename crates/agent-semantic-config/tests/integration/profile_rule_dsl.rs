@@ -4,31 +4,28 @@ use agent_semantic_config::{
 };
 
 #[test]
-fn host_invocations_are_public_rule_dsl_not_legacy_match_fields() {
+fn native_matcher_is_the_only_public_rule_host_axis() {
     let rule = toml::from_str::<HookClientRuleConfig>(
         r#"
 id = "mcp-read"
 decision = "deny"
-matcher = "Read"
-hostInvocations = ["mcp"]
+matcher = "^mcp__.*$"
 "#,
     )
-    .expect("parse host invocation rule DSL");
-    assert_eq!(rule.matcher.as_deref(), Some("Read"));
-    assert_eq!(rule.host_invocations, [HookClientHostInvocationKind::Mcp]);
+    .expect("parse native matcher rule DSL");
+    assert_eq!(rule.matcher.as_deref(), Some("^mcp__.*$"));
 
-    let legacy_nested_match = toml::from_str::<HookClientRuleConfig>(
+    let duplicate_host_axis = toml::from_str::<HookClientRuleConfig>(
         r#"
-id = "legacy-mcp-read"
+id = "duplicate-mcp-read"
 decision = "deny"
-
-[match]
-hostInvocationAny = ["mcp"]
+matcher = "^mcp__.*$"
+hostInvocations = ["mcp"]
 "#,
     );
     assert!(
-        legacy_nested_match.is_err(),
-        "hostInvocationAny is internal IR, not public rule DSL"
+        duplicate_host_axis.is_err(),
+        "hostInvocations must not duplicate the native matcher"
     );
 }
 
@@ -69,12 +66,7 @@ fn hook_config_schema_exposes_only_the_public_rule_axes() {
     let rule_properties = schema["$defs"]["rule"]["properties"]
         .as_object()
         .expect("rule properties");
-    for public_axis in [
-        "matcher",
-        "hostInvocations",
-        "profilesList",
-        "matcherPolicies",
-    ] {
+    for public_axis in ["matcher", "profilesList", "matcherPolicies"] {
         assert!(
             rule_properties.contains_key(public_axis),
             "missing public rule axis {public_axis}"
@@ -96,15 +88,15 @@ fn hook_config_schema_exposes_only_the_public_rule_axes() {
 }
 
 #[test]
-fn language_route_is_public_dsl_and_materializes_only_in_internal_ir() {
+fn language_route_materializes_bash_unknown_source_access_in_internal_ir() {
     let mut config = agent_semantic_config::default_hook_client_config_file()
         .expect("parse canonical hook config");
     let public_rule = config
         .rules
         .iter_mut()
-        .find(|rule| rule.id == "route-read-to-asp-languages")
+        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
         .expect("language route rule");
-    assert_eq!(public_rule.matcher.as_deref(), Some("Read"));
+    assert_eq!(public_rule.matcher.as_deref(), Some("Bash"));
     assert_eq!(
         public_rule.profiles_list,
         [
@@ -117,31 +109,25 @@ fn language_route_is_public_dsl_and_materializes_only_in_internal_ir() {
             "markdown"
         ]
     );
-    public_rule
-        .host_invocations
-        .push(HookClientHostInvocationKind::Read);
-
     config
         .materialize_profile_rule_ir()
         .expect("compile profile rule IR");
     let compiled_rule = config
         .rules
         .iter()
-        .find(|rule| rule.id == "route-read-to-asp-languages")
+        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
         .expect("compiled language route rule");
     assert!(
         compiled_rule
             .match_config
             .native_matcher_any
-            .contains(&"Read".to_owned())
+            .contains(&"Bash".to_owned())
     );
-    assert!(
-        compiled_rule
-            .match_config
-            .host_invocation_any
-            .contains(&HookClientHostInvocationKind::Read)
+    assert!(compiled_rule.match_config.host_invocation_any.is_empty());
+    assert_eq!(
+        compiled_rule.match_config.capability_policy_all,
+        ["registered-source-access"]
     );
-    assert!(compiled_rule.match_config.capability_policy_all.is_empty());
     assert!(
         compiled_rule
             .match_config
@@ -158,7 +144,7 @@ fn unknown_profile_reference_fails_closed() {
     config
         .rules
         .iter_mut()
-        .find(|rule| rule.id == "route-read-to-asp-languages")
+        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
         .expect("language route rule")
         .profiles_list
         .push("missing-language".to_owned());

@@ -91,7 +91,7 @@ Rust is the integration substrate because it owns the shared invariants:
 
 The language harness performs the language-specific work. Rust performs the system work.
 * CLI facade and schema-to-Rust boundary
-The current CLI command layer is too heavy. A quick structure audit of =crates/agent-semantic-protocol/src/command= shows about 31k lines under the command directory, with large modules such as =hook_runtime.rs=, =query_owner.rs=, =search_pipe_graph_turbo.rs=, =search_pipe_owner_query.rs=, =provider.rs=, =ast_patch.rs=, =search_pipe_view.rs=, and =search_pipe_source.rs=. That shape is a warning sign: a command package has become a convenient implementation sink.
+The current CLI command layer is too heavy. A quick structure audit of =crates/agent-semantic-client/src/command= shows about 31k lines under the command directory, with large modules such as =hook_runtime.rs=, =query_owner.rs=, =search_pipe_graph_turbo.rs=, =search_pipe_owner_query.rs=, =provider.rs=, =ast_patch.rs=, =search_pipe_view.rs=, and =search_pipe_source.rs=. That shape is a warning sign: a command package has become a convenient implementation sink.
 
 The CLI package should be a very thin interface. Its allowed responsibilities are:
 - define the command grammar and parse argv;
@@ -143,7 +143,7 @@ Most languages should fit the common contract: declarations, imports, scopes, de
 
 This implies a concrete crate split:
 | Crate | New or existing | Owns |
-| =agent-semantic-protocol= | existing | binary entrypoint, argv grammar, exit codes, stdout/stderr plumbing |
+| =agent-semantic-client= | existing | binary entrypoint, argv grammar, exit codes, stdout/stderr plumbing |
 | =agent-semantic-contracts= | new | schema-to-Rust packets, ids, locators, validation |
 | =agent-semantic-language-registry= | new or folded into config/core | language id registry, provider capabilities, extension/marker routing |
 | =agent-semantic-search-core= | new | query planning, candidate generation, lexical/entity matching, route plans |
@@ -188,7 +188,7 @@ clap argv
 #+end_src
 
 This is also the right fix for language coverage. The cost of adding a language should be provider facts plus capability declaration, not another command subtree. The shared JSON schema to Rust mapping should cover the common path; provider extensions should be exceptional, typed, and invisible to the CLI unless a specific command explicitly asks for that provider-owned view.
-Reflection correction: the right conclusion is narrower than "make the CLI empty." Some command logic is a real product surface: argv grammar, help text, compatibility aliases, output view flags, stdin/stdout behavior, exit-code mapping, and user-facing error wording. Those should stay in =agent-semantic-protocol=. The failure mode is when command modules become the place where ASP implements semantic facts, provider contracts, graph ranking, schema interpretation, or language-specific search rules.
+Reflection correction: the right conclusion is narrower than "make the CLI empty." Some command logic is a real product surface: argv grammar, help text, compatibility aliases, output view flags, stdin/stdout behavior, exit-code mapping, and user-facing error wording. Those should stay in =agent-semantic-client=. The failure mode is when command modules become the place where ASP implements semantic facts, provider contracts, graph ranking, schema interpretation, or language-specific search rules.
 
 The refined boundary is:
 #+begin_src text
@@ -265,7 +265,7 @@ The recommended path is B with compatibility receipts. Extract one command famil
 
 This implies a concrete crate split:
 | Crate | New or existing | Owns |
-| =agent-semantic-protocol= | existing | binary entrypoint, argv grammar, exit codes, stdout/stderr plumbing |
+| =agent-semantic-client= | existing | binary entrypoint, argv grammar, exit codes, stdout/stderr plumbing |
 | =agent-semantic-contracts= | new | schema ids, domain ids, packet envelopes, typed locators, validation |
 | =agent-semantic-language-registry= | new or folded into config/core | language id registry, provider capabilities, marker and extension routing |
 | =agent-semantic-search-core= | new | query planning, candidate evidence, lexical/entity matching, route plans |
@@ -274,7 +274,7 @@ This implies a concrete crate split:
 | =agent-semantic-provider-transport= | existing | process/session transport only, not provider semantics |
 | =agent-semantic-hook= | existing | hook trust/runtime policy and hook packet contracts |
 
-The key dependency rule is that =agent-semantic-protocol= can call these crates, but they cannot call back into command modules. If a library API needs a helper from =src/command=, the helper is in the wrong package.
+The key dependency rule is that =agent-semantic-client= can call these crates, but they cannot call back into command modules. If a library API needs a helper from =src/command=, the helper is in the wrong package.
 
 Thinness gates should be enforced during review:
 - no new command module may introduce per-language semantic match tables;
@@ -389,7 +389,7 @@ Primary implementation references for this section:
 * Problem
 The current direction is correct: language harnesses should stay light and should not each implement agent-facing compact graph rendering. Rust should own the shared render path so every provider benefits from the same prompt contract, line grammar, locator policy, and progressive disclosure behavior.
 
-The current Rust package layout does not yet enforce that boundary. The workspace has separate crates such as =agent-semantic-client=, =agent-semantic-client-core=, =agent-semantic-client-db=, =agent-semantic-runtime=, =agent-semantic-provider-transport=, =agent-semantic-tree-sitter=, =agent-semantic-hook=, and =agent-semantic-protocol=. That is nominally modular, but search, graph routing, action frontier, render decisions, CLI presentation, and some schema assumptions still concentrate inside the protocol/CLI surface.
+The current Rust package layout does not yet enforce that boundary. The workspace has separate crates such as =agent-semantic-client=, =agent-semantic-client-core=, =agent-semantic-client-db=, =agent-semantic-runtime=, =agent-semantic-provider-transport=, =agent-semantic-tree-sitter=, =agent-semantic-hook=, and =agent-semantic-client=. That is nominally modular, but search, graph routing, action frontier, render decisions, CLI presentation, and some schema assumptions still concentrate inside the protocol/CLI surface.
 
 This creates the same long-term failure mode as putting render code into each language harness:
 - CLI modules become the easiest place to add every new responsibility.
@@ -422,7 +422,7 @@ The target design is a small set of crates with one reason to change each:
 | =agent-semantic-db-engine= | DB Engine traits, generations, overlays, Turso backend adapters, receipt storage, search read-models | Prompt render policy, language parser facts, CLI argument parsing |
 | =agent-semantic-provider-transport= | Provider process protocol, capability discovery, provider packet transport | Search ranking, render, DB schema |
 | =agent-semantic-client-core= | Stable client API that composes contracts, DB engine, transport, search, and render | Concrete CLI commands, hook policy |
-| =agent-semantic-protocol= | Thin =asp= CLI adapter, argv parsing, command dispatch, stdout/stderr policy | Contract definitions, graph algorithms, DB storage internals, render grammar ownership |
+| =agent-semantic-client= | Thin =asp= CLI adapter, argv parsing, command dispatch, stdout/stderr policy | Contract definitions, graph algorithms, DB storage internals, render grammar ownership |
 
 The exact crate names can change during implementation, but the dependency direction cannot:
 #+begin_src text
@@ -441,7 +441,7 @@ contracts
   -> client-core
 #+end_src
 
-No crate below =agent-semantic-protocol= should depend on the CLI crate. The CLI should be replaceable by tests, Python/Julia analysis, or a future MCP adapter without losing render/schema behavior.
+No crate below =agent-semantic-client= should depend on the CLI crate. The CLI should be replaceable by tests, Python/Julia analysis, or a future MCP adapter without losing render/schema behavior.
 * Compact graph schema split
 The existing =semantic-compact-graph-render.v1.schema.json= should become the render template contract, not the only graph schema. The schema family should be split by responsibility:
 
@@ -489,7 +489,7 @@ DB Engine v1 should persist the full contract surface without leaking it into pr
 The DB layer stores =L2=. The render layer chooses =L0/L1=. Python and Julia read =L2= for analysis and algorithm research; agents read =L0/L1= for the next decision.
 * Migration plan
 ** Phase 0: inventory and freeze new responsibilities
-- Mark =agent-semantic-protocol= search/render modules as extraction candidates.
+- Mark =agent-semantic-client= search/render modules as extraction candidates.
 - For new compact graph behavior, require a schema/RFC note before adding CLI-local structs.
 - Add fixture snapshots that describe current =search= render behavior as the compatibility baseline.
 ** Phase 1: contract crate
@@ -509,7 +509,7 @@ The DB layer stores =L2=. The render layer chooses =L0/L1=. Python and Julia rea
 - Keep =agent-semantic-client-db= as a compatibility backend or migrate it into the engine crate deliberately.
 - Add Turso-backed experiments only after the contract and receipt model are stable.
 ** Phase 5: CLI thinning
-- =agent-semantic-protocol= should parse argv, call client-core, and print renderer output.
+- =agent-semantic-client= should parse argv, call client-core, and print renderer output.
 - New CLI features must not add schema, DB, graph, or provider responsibilities directly to the CLI crate.
 * Test gates
 - Schema gate: every packet/render fixture validates against the declared schema id and version.
@@ -517,7 +517,7 @@ The DB layer stores =L2=. The render layer chooses =L0/L1=. Python and Julia rea
 - Materializer gate: every prompt-visible frontier maps to a typed action before any command string is created.
 - DB gate: every render receipt persists schema id, packet id, source generation, overlay namespace, and expansion handle ids.
 - Provider gate: language harnesses can emit facts without depending on render crates.
-- Dependency gate: =agent-semantic-protocol= may depend on client/render/search crates; lower-level crates must not depend on the CLI crate.
+- Dependency gate: =agent-semantic-client= may depend on client/render/search crates; lower-level crates must not depend on the CLI crate.
 * Success criteria
 The migration is successful when:
 - adding a new compact graph field starts in =schemas/= and =agent-semantic-contracts=, not inside a CLI command module;
@@ -527,7 +527,7 @@ The migration is successful when:
 - Python and Julia can analyze the same =L2= receipt that the CLI compressed into =L0/L1=;
 - the CLI crate shrinks toward orchestration and stops being the default home for search, graph, render, DB, and provider concerns.
 * Design recommendation
-Use the DB Engine migration to enforce the boundary change. If ASP migrates to Turso while leaving render/search/schema logic concentrated in =agent-semantic-protocol=, the storage layer may improve but the architecture will still accumulate responsibilities in the wrong place.
+Use the DB Engine migration to enforce the boundary change. If ASP migrates to Turso while leaving render/search/schema logic concentrated in =agent-semantic-client=, the storage layer may improve but the architecture will still accumulate responsibilities in the wrong place.
 
 The higher-standard architecture is schema-first and crate-owned:
 #+begin_src text
@@ -613,7 +613,7 @@ The harness should not own global FTS, graph ranking, prompt rendering, project 
 
 ** Rust execution fabric
 
-Rust should add a shared execution layer below =crates/agent-semantic-protocol/src/command=. The command package should become a thin adapter: parse CLI args, call a typed service, print compact output, and write receipts. Heavy behavior should move into focused crates.
+Rust should add a shared execution layer below =crates/agent-semantic-client/src/command=. The command package should become a thin adapter: parse CLI args, call a typed service, print compact output, and write receipts. Heavy behavior should move into focused crates.
 
 Proposed crate boundaries:
 
@@ -723,7 +723,7 @@ Tree-sitter-only systems can be broad, but they cannot cheaply import every lang
 
 The refactor is not successful until these are measurable:
 
-- =crates/agent-semantic-protocol/src/command/*= contains no provider lifecycle, graph ranking, render policy, or DB generation ownership beyond thin adapters.
+- =crates/agent-semantic-client/src/command/*= contains no provider lifecycle, graph ranking, render policy, or DB generation ownership beyond thin adapters.
 - Warm search path does not spawn a language process when a valid worker exists.
 - Dirty overlay search does not write every edit into the durable Turso generation.
 - Python graph rank can be skipped when receipt/context anchors are sufficient and freshness gates pass.

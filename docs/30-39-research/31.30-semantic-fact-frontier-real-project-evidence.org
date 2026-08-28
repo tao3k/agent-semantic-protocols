@@ -149,7 +149,7 @@ PY
 
 rm -f /tmp/rfc014-asp-search-frontier-receipt.json \
   /tmp/rfc014-asp-search-frontier.stdout
-direnv exec . cargo run -q -p agent-semantic-protocol --bin asp -- \
+direnv exec . cargo run -q -p agent-semantic-client --bin asp -- \
   python search lexical \
   'semantic-fact-frontier-receipt relationChannels PPR' \
   owner tests --view seeds \
@@ -177,7 +177,7 @@ uv run --project packages/python/asp_graph_turbo --frozen pytest -q \
 
 rm -f /tmp/rfc014-asp-search-frontier-followed-receipt.json \
   /tmp/rfc014-asp-search-frontier-followed.stdout
-direnv exec . cargo run -q -p agent-semantic-protocol --bin asp -- \
+direnv exec . cargo run -q -p agent-semantic-client --bin asp -- \
   python search lexical \
   'semantic-fact-frontier-receipt relationChannels PPR' \
   owner tests --view seeds \

@@ -32,7 +32,7 @@ The current repository state exposes four implementation facts:
 
 1. The crate graph owns the ASP brand.  =cargo metadata= reports
    =agent-semantic-client*= crates and an =asp= binary from
-   =agent-semantic-protocol=.
+   =agent-semantic-client=.
 2. A workspace run of =asp guide= works, but =asp rust ...= can fail when the
    provider activation file is missing.  A missing activation must not lock a
    Codex session.
@@ -63,7 +63,7 @@ frontier work depends on it.
 
 Code owners:
 
-- =crates/agent-semantic-protocol=
+- =crates/agent-semantic-client=
 - =crates/agent-semantic-client=
 - =crates/agent-semantic-client-core=
 - =crates/agent-semantic-client-local-cli=
@@ -83,10 +83,10 @@ Tasks:
 Acceptance:
 
 #+begin_src shell
-direnv exec . cargo run -q -p agent-semantic-protocol -- guide
-direnv exec . cargo run -q -p agent-semantic-protocol -- doctor
-direnv exec . cargo run -q -p agent-semantic-protocol -- providers
-direnv exec . cargo run -q -p agent-semantic-protocol -- cache status
+direnv exec . cargo run -q -p agent-semantic-client -- guide
+direnv exec . cargo run -q -p agent-semantic-client -- doctor
+direnv exec . cargo run -q -p agent-semantic-client -- providers
+direnv exec . cargo run -q -p agent-semantic-client -- cache status
 #+end_src
 
 After install:
@@ -313,7 +313,7 @@ intent fields, or emit raw source/code snippets.
 
 | Layer | Gate |
 |-------+------|
-| ASP facade | =cargo test -p agent-semantic-protocol= plus fresh no-activation doctor tests |
+| ASP facade | =cargo test -p agent-semantic-client= plus fresh no-activation doctor tests |
 | hook guide | black-box deny replay tests |
 | shared schema | root schema validation for read/search packets |
 | Rust provider | =direnv exec . cargo test -q --features cli,search= in =languages/rust-lang-project-harness= |
@@ -356,7 +356,7 @@ The first Slice 0 change is implemented in the ASP client/facade path:
 - =doctor= reports =status=degraded activation=missing= when no activation is
   available, while =providers= and =cache status= return compact zero-provider
   diagnostics;
-- focused provider-command tests and the full =agent-semantic-protocol= test
+- focused provider-command tests and the full =agent-semantic-client= test
   package pass.
 
 Fresh-directory smoke shape:

@@ -335,15 +335,15 @@ argvPrefixAny = [[]]
 }
 
 #[test]
-fn action_plus_profile_read_projects_explore_choice_plane_guidance() {
+fn bash_unknown_source_access_projects_explore_choice_plane_guidance() {
     let config = ClientHookConfig::default();
     let registry = registry();
     let mut payload = json!({
-        "tool_name": "Read",
-        "tool_input": {"file_path": "src/app.ts"}
+        "tool_name": "Bash",
+        "tool_input": {"command": "opaque-source-consumer src/app.ts"}
     });
-    agent_semantic_hook::bind_plugin_host_matcher(&mut payload, Some("Read"), None)
-        .expect("bind native Read matcher");
+    agent_semantic_hook::bind_plugin_host_matcher(&mut payload, Some("Bash"), None)
+        .expect("bind canonical Bash matcher");
     let decision = classify_hook_with_config(HookClassificationRequest {
         registry: &registry,
         config: &config,
@@ -358,7 +358,7 @@ fn action_plus_profile_read_projects_explore_choice_plane_guidance() {
             .fields
             .get("configRuleId")
             .and_then(serde_json::Value::as_str),
-        Some("route-read-to-asp-languages")
+        Some("route-unresolved-source-access-to-asp-languages")
     );
     assert_eq!(
         decision
@@ -398,20 +398,26 @@ fn action_plus_profile_read_projects_explore_choice_plane_guidance() {
             "Hook must not materialize Runtime lifecycle state through {forbidden}"
         );
     }
-    assert_eq!(decision.subject.command, None);
+    assert_eq!(
+        decision.subject.command.as_deref(),
+        Some("opaque-source-consumer src/app.ts")
+    );
     let decision_json = serde_json::to_value(&decision).expect("serialize hook decision");
     assert!(
         decision_json.get("interactiveCommand").is_none(),
         "Hook decisions must not serialize a Rust-owned ChoicePlane command"
     );
     assert_eq!(
-        decision_json["fields"]["normalizedActions"],
-        json!([{
-            "toolName": "Read",
-            "toolSurface": "direct-read",
-            "operationIntent": "direct-read",
-            "paths": ["src/app.ts"]
-        }])
+        decision_json["fields"]["agentAction"]["hostInvocation"]["action"],
+        "execute"
+    );
+    assert!(
+        decision_json["fields"]["agentAction"]["semanticCapabilities"]
+            .as_array()
+            .is_some_and(|capabilities| capabilities.iter().any(|capability| {
+                capability["action"] == "unknown"
+                    && capability["evidence"] == "registered-source-operand"
+            }))
     );
     let decision_schema: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../../schemas/semantic-agent-hook-decision.v1.schema.json"
@@ -467,10 +473,12 @@ fn action_plus_profile_read_projects_explore_choice_plane_guidance() {
 fn claude_platform_uses_configured_native_agent_symbol() {
     let config = ClientHookConfig::default();
     let runtime = registry();
-    let payload = json!({
-        "tool_name": "Read",
-        "tool_input": {"file_path": "src/app.ts"}
+    let mut payload = json!({
+        "tool_name": "Bash",
+        "tool_input": {"command": "opaque-source-consumer src/app.ts"}
     });
+    agent_semantic_hook::bind_plugin_host_matcher(&mut payload, Some("Bash"), None)
+        .expect("bind canonical Bash matcher");
     let decision = classify_hook_with_config(HookClassificationRequest {
         registry: &runtime,
         config: &config,
@@ -492,22 +500,27 @@ fn configurable_hook_default_rule_classification_stays_fast() {
     let registry = registry();
     let payloads = [
         json!({
-            "tool_name": "Read",
-            "tool_input": {"file_path": "src/cli/agent-hooks.ts"}
+            "tool_name": "Bash",
+            "tool_input": {"command": "opaque-source-consumer src/cli/agent-hooks.ts"}
         }),
         json!({
-            "tool_name": "Read",
-            "tool_input": {"file_path": "src/cli/agent-hooks.ts"}
+            "tool_name": "Bash",
+            "tool_input": {"command": "opaque-source-consumer src/cli/agent-hooks.ts"}
         }),
         json!({
-            "tool_name": "Read",
-            "tool_input": {"file_path": "README.md"}
+            "tool_name": "Bash",
+            "tool_input": {"command": "opaque-source-consumer README.md"}
         }),
         json!({
             "tool_name": "Bash",
             "tool_input": {"command": "asp rust search --workspace . --treesitter-query '(identifier) @id'"}
         }),
-    ];
+    ]
+    .map(|mut payload| {
+        agent_semantic_hook::bind_plugin_host_matcher(&mut payload, Some("Bash"), None)
+            .expect("bind canonical Bash matcher");
+        payload
+    });
     // Keep the total decision count high while using short samples so unrelated
     // parallel tests cannot dominate every measurement with scheduler stalls.
     // The shipped performance contract is exercised by the release black-box

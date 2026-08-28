@@ -19,41 +19,13 @@ fn unrelated_typed_action_with_path_does_not_become_a_read_action() {
 }
 
 #[test]
-fn typed_read_action_with_path_remains_policy_bearing() {
-    let payload = json!({
-        "tool_name": "Read",
-        "tool_input": { "file_path": "src/lib.rs" }
-    });
-
-    assert_eq!(
-        codex_tool_event_requires_policy_evaluation(&payload),
-        Some(true)
-    );
-}
-
-#[test]
-fn typed_read_actions_for_registered_document_extensions_remain_policy_bearing() {
-    for path in ["ASP_ORG_SKILL.org", "RTK.md"] {
-        let payload = json!({
-            "tool_name": "Read",
-            "tool_input": { "file_path": path }
-        });
-
-        assert_eq!(
-            codex_tool_event_requires_policy_evaluation(&payload),
-            Some(true),
-            "registered document Read must reach the internal language-extension matcher: {path}"
-        );
-    }
-}
-
-#[test]
 fn plugin_host_action_binding_is_exact_and_materialized_in_action_ir() {
     let mut payload = json!({
-        "tool_name": "Read",
-        "tool_input": { "file_path": "src/lib.rs" }
+        "tool_name": "apply_patch",
+        "tool_input": { "command": "*** Begin Patch\n*** End Patch" }
     });
-    bind_plugin_host_matcher(&mut payload, Some("Read"), None).expect("bind exact Read matcher");
+    bind_plugin_host_matcher(&mut payload, Some("apply_patch"), None)
+        .expect("bind canonical apply_patch matcher");
     let runtime = HookRuntime {
         project_root: ".".to_owned(),
         rankers: Vec::new(),
@@ -63,7 +35,7 @@ fn plugin_host_action_binding_is_exact_and_materialized_in_action_ir() {
     let decision = classify_hook(&runtime, "codex", "pre-tool", &payload);
     assert_eq!(
         decision.fields["agentAction"]["hostInvocation"]["action"],
-        "read"
+        "edit"
     );
 }
 
@@ -75,7 +47,7 @@ fn plugin_host_matcher_binding_rejects_mismatch_and_unknown_matcher() {
     });
     let mut mismatch = payload.clone();
     assert!(
-        bind_plugin_host_matcher(&mut mismatch, Some("Read"), None)
+        bind_plugin_host_matcher(&mut mismatch, Some("apply_patch"), None)
             .unwrap_err()
             .contains("binding mismatch")
     );

@@ -6,7 +6,7 @@ use agent_semantic_config::{
 };
 use serde_json::Value;
 
-use crate::tool_action::{direct_read_host_envelopes, shell_host_envelopes};
+use crate::tool_action::shell_host_envelopes;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HookPolicyWitnessPolarity {
@@ -48,7 +48,6 @@ pub fn combinatorial_policy_witnesses(
     config: &HookClientConfigFile,
     strategy: HookPolicyCombinatorialStrategy,
 ) -> Result<Vec<HookPolicyWitness>, String> {
-    let direct_envelopes = direct_read_host_envelopes("__ASP_COVERAGE_PATH__");
     let shell_envelopes = shell_host_envelopes("__ASP_COVERAGE_COMMAND__");
     let reference_config =
         crate::ClientHookConfig::compile_policy_coverage_reference(config.clone())?;
@@ -64,26 +63,12 @@ pub fn combinatorial_policy_witnesses(
         HookPolicyCoverageSettings {
             max_wrapper_depth: strategy.max_wrapper_depth,
             include_negative_extension_mutation: strategy.include_negative_extension_mutation,
-            direct_envelope_count: direct_envelopes.len(),
             shell_envelope_count: shell_envelopes.len(),
         },
     )?
     .into_iter()
     .map(|case| {
         let (tool_name, tool_input, envelope_axis, command_axis) = match case.surface {
-            HookPolicyCoverageSurface::Direct => {
-                let envelopes = direct_read_host_envelopes(&case.path);
-                let (tool_name, tool_input) =
-                    envelopes.get(case.envelope_slot).cloned().ok_or_else(|| {
-                        "config coverage selected an invalid direct envelope".to_owned()
-                    })?;
-                (
-                    tool_name,
-                    tool_input,
-                    format!("direct:{}", case.envelope_slot),
-                    None,
-                )
-            }
             HookPolicyCoverageSurface::Shell => {
                 let prefix = case.command_prefix.as_deref().ok_or_else(|| {
                     "config shell coverage case omitted command prefix".to_owned()

@@ -14,7 +14,9 @@ serde_json.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+agent-semantic-artifacts = { path = "../agent-semantic-artifacts" }
 agent-semantic-config = { path = "../agent-semantic-config" }
+fs2.workspace = true
 jsonschema.workspace = true
 tempfile.workspace = true
 toml.workspace = true

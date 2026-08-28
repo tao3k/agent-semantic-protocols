@@ -171,13 +171,18 @@ subjectKindAny = ["registered-language-source", "registered-language-source-patt
 id = "filesystem-read"
 semanticCapabilityAny = ["read"]
 
+[[capabilityPolicies]]
+id = "registered-source-access"
+semanticCapabilityAny = ["read", "unknown"]
+subjectKindAny = ["registered-language-source", "registered-language-source-pattern"]
+
 # Native Host Edit actions with an explicit workspace path receive a stable
 # mutation intent. Agent registration profiles remain the authority that may
 # admit or deny that intent; this rule does not duplicate agent names.
 [[rules]]
 id = "allow-owner-scoped-mutation"
 priority = 150000
-matcher = "apply_patch|Write|Edit|NotebookEdit"
+matcher = "^apply_patch$"
 intent = "owner-scoped-mutation"
 decision = "allow"
 terminal = true
@@ -197,7 +202,6 @@ pathGlobAny = ["**"]
 id = "registered-asp-reasoning-search"
 matcherPolicies = ["wrapped_command"]
 priority = 100000
-hostInvocations = ["execute"]
 intent = "reasoning-search"
 decision = "deny"
 reasonKind = "subagent-receipt-required"
@@ -219,7 +223,6 @@ lazyProvider = "matched-language"
 id = "registered-asp-structured-projection"
 matcherPolicies = ["wrapped_command"]
 priority = 100000
-hostInvocations = ["execute"]
 intent = "structured-projection"
 decision = "deny"
 reasonKind = "subagent-receipt-required"
@@ -404,30 +407,13 @@ commandContainsAny = ["--json"]
 [[rules]]
 id = "route-read-to-asp-languages"
 priority = 40000
-matcher = "Read"
-profilesList = ["rust", "typescript", "python", "julia", "gerbil-scheme", "org", "markdown"]
-decision = "deny"
-reasonKind = "registered-source-route-required"
-message = "Registered {{languageId}} source reads are denied. Use the parser-owned ASP route below instead of raw Read."
-
-[rules.dispatch]
-transport = "host-agent"
-agent = "asp_explorer"
-receiptKind = "asp-explore-search-v1"
-lazyProvider = "matched-language"
-
-[[rules]]
-id = "route-unresolved-source-access-to-asp-languages"
-priority = 39990
 matcher = "Bash"
-hostInvocations = ["execute"]
+actions = ["read"]
 profilesList = ["rust", "typescript", "python", "julia", "gerbil-scheme", "org", "markdown"]
 decision = "deny"
 reasonKind = "registered-source-route-required"
-message = "A registered {{languageId}} source operand was supplied to an Execute action whose filesystem effect is unresolved. Use the parser-owned ASP route below instead of executing an unproven source access."
+message = "Confirmed {{languageId}} source reads are denied. Use the parser-owned ASP route below instead of raw Read."
 
-[rules.match]
-capabilityPolicyAll = ["filesystem-read"]
 
 [rules.dispatch]
 transport = "host-agent"
@@ -436,15 +422,15 @@ receiptKind = "asp-explore-search-v1"
 lazyProvider = "matched-language"
 
 [[rules]]
-id = "route-structured-document-read"
+id = "route-shell-structured-document-read"
+actions = ["read"]
 priority = 40010
-matcher = "Read|Bash"
+matcher = "Bash"
 decision = "deny"
 reasonKind = "structured-source-read"
-message = "Raw structured-document reads are denied only in the current Agent. Delegate the JSON/TOML read to the registered ASP Explorer, then use the configured bounded projector there: jq for JSON and yq for TOML."
+message = "A Shell input redirection reads a structured document. Delegate the JSON/TOML read to the registered ASP Explorer, then use the configured bounded projector there: jq for JSON and yq for TOML."
 
 [rules.match]
-capabilityPolicyAll = ["filesystem-read"]
 pathGlobAny = ["*.json", "**/*.json", "*.toml", "**/*.toml"]
 
 [rules.dispatch]

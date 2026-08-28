@@ -6,12 +6,46 @@ use agent_semantic_config::{
 
 #[derive(Debug)]
 pub(super) struct AgentActionMatch {
-    native_matcher_any: Vec<String>,
+    native_matcher_any: Vec<CodexHostMatcher>,
     host_invocation_any: Vec<HookClientHostInvocationKind>,
     subject_kind_any: Vec<HookClientActionSubjectKind>,
     policy_all: Vec<ActionPredicate>,
     policy_any: Vec<ActionPredicate>,
     policy_none: Vec<ActionPredicate>,
+}
+
+#[derive(Debug)]
+enum CodexHostMatcher {
+    All,
+    Exact(Vec<String>),
+    Regex(regex::Regex),
+    Invalid,
+}
+
+impl CodexHostMatcher {
+    fn compile(expression: String) -> Self {
+        if expression.is_empty() || expression == "*" {
+            return Self::All;
+        }
+        if expression
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '|'))
+        {
+            return Self::Exact(expression.split('|').map(str::to_owned).collect());
+        }
+        regex::Regex::new(&expression)
+            .map(Self::Regex)
+            .unwrap_or(Self::Invalid)
+    }
+
+    fn matches(&self, candidate: &str) -> bool {
+        match self {
+            Self::All => true,
+            Self::Exact(exact) => exact.iter().any(|value| value == candidate),
+            Self::Regex(regex) => regex.is_match(candidate),
+            Self::Invalid => false,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -46,7 +80,10 @@ impl AgentActionMatch {
             policy_none,
         } = config;
         Self {
-            native_matcher_any,
+            native_matcher_any: native_matcher_any
+                .into_iter()
+                .map(CodexHostMatcher::compile)
+                .collect(),
             host_invocation_any,
             subject_kind_any,
             policy_all: policy_all.into_iter().map(ActionPredicate::from).collect(),
@@ -65,15 +102,18 @@ impl AgentActionMatch {
     pub(super) fn needs_profile_subjects(&self) -> bool {
         self.native_matcher_any
             .iter()
-            .any(|matcher| matcher == "Read")
+            .any(|matcher| matcher.matches("Read"))
             || self
                 .policy_all
                 .iter()
                 .chain(self.policy_any.iter())
                 .any(|predicate| {
-                    predicate
-                        .semantic_capability_any
-                        .contains(&HookClientActionKind::Read)
+                    predicate.semantic_capability_any.iter().any(|capability| {
+                        matches!(
+                            capability,
+                            HookClientActionKind::Read | HookClientActionKind::Unknown
+                        )
+                    }) || !predicate.subject_kind_any.is_empty()
                 })
     }
 
@@ -219,10 +259,15 @@ impl AgentActionMatch {
 
     fn matches_native_matcher(&self, action: &crate::tool_action::AgentAction) -> bool {
         self.native_matcher_any.is_empty()
-            || self
-                .native_matcher_any
-                .iter()
-                .any(|matcher| matcher == &action.host.tool_name)
+            || self.native_matcher_any.iter().any(|matcher| {
+                std::iter::once(action.host.tool_name.as_str())
+                    .chain(
+                        host_matcher_aliases(action.host.tool_name.as_str())
+                            .iter()
+                            .copied(),
+                    )
+                    .any(|candidate| matcher.matches(candidate))
+            })
     }
 
     fn matches_host_invocations(&self, action: &crate::tool_action::AgentAction) -> bool {
@@ -230,6 +275,14 @@ impl AgentActionMatch {
             || self.host_invocation_any.iter().copied().any(|configured| {
                 crate::action_ir::host_invocation_kind_matches(action.host.action, configured)
             })
+    }
+}
+
+fn host_matcher_aliases(tool_name: &str) -> &'static [&'static str] {
+    match tool_name {
+        "apply_patch" => &["Edit", "Write"],
+        "spawn_agent" => &["Agent"],
+        _ => &[],
     }
 }
 

@@ -152,7 +152,7 @@ The P0 ontology contract is schema-first:
   ontology-shaped Rust =field=/=type=/=collection= graph facts from =syn=
   parser facts while preserving the existing provider metadata fields used by
   compact rendering.
-- =crates/agent-semantic-protocol/tests/unit/provider_command/facade/pipe/provider_ontology.rs=
+- =crates/agent-semantic-client/tests/unit/provider_command/facade/pipe/provider_ontology.rs=
   validates that ASP keeps provider-emitted ontology fields when it builds a
   =semantic-graph-turbo-request.v1= packet.
 

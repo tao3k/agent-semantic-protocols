@@ -36,6 +36,7 @@ pub use hook_client_config::{
     load_hook_client_config_declared_contract_fingerprint, load_hook_client_config_file,
     load_hook_client_config_overlay_file, merge_asp_project_hook_config,
     mutate_path_outside_registered_extensions, render_hook_client_message_template,
+    validate_codex_host_matcher_expression,
 };
 pub use hook_client_config::{
     HookClientStructuredFilterGrammar, HookClientStructuredProjectionMatchConfig,

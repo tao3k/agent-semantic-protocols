@@ -7,7 +7,7 @@
 
 * One-sentence summary
 
-=agent-semantic-protocol= should expose an AST-backed patch verification
+=agent-semantic-client= should expose an AST-backed patch verification
 protocol for small structural edits.  Language providers own native AST
 adapters, while the shared binary owns schema validation, receipts, hook
 integration, and Codex-safe verification.
@@ -158,7 +158,7 @@ cargo test --features cli,search \
 The implementation root should be a new Rust crate:
 
 #+begin_example
-crates/agent-semantic-protocol
+crates/agent-semantic-client
 ├── command/hook.rs
 ├── command/ast_patch.rs
 ├── command/compact_verify.rs
@@ -180,13 +180,13 @@ This keeps the current Codex adapter stable while letting the public binary grow
 into the broader semantic protocol surface.
 
 The new crate must self-apply the Rust language-project policy.  Do not copy
-Rust policy logic into =agent-semantic-protocol=.  Depend on the existing
+Rust policy logic into =agent-semantic-client=.  Depend on the existing
 =rust-lang-project-harness= policy/check surface the same way this repository
 already treats language providers as policy owners.  The acceptance gate for
 this crate is therefore:
 
 #+begin_src shell
-rs-harness check --changed crates/agent-semantic-protocol
+rs-harness check --changed crates/agent-semantic-client
 #+end_src
 
 If the crate touches hook integration, also run the existing
@@ -615,7 +615,7 @@ patch dry-run and trusted AST patch apply.
 
 1. =asp install plugin --codex .= delegates to the
    existing =agent-semantic-hook= implementation.
-2. =rs-harness check --changed crates/agent-semantic-protocol= passes after the
+2. =rs-harness check --changed crates/agent-semantic-client= passes after the
    new crate is introduced.
 3. TypeScript dry-run can append one statement inside
    =renderSemanticSearchSeedPacket= from a compact query target without reading
@@ -635,7 +635,7 @@ patch dry-run and trusted AST patch apply.
 * Rollout order
 
 1. Add this RFC and the 31.13 research note.
-2. Introduce =crates/agent-semantic-protocol= as the shared binary crate.
+2. Introduce =crates/agent-semantic-client= as the shared binary crate.
 3. Add =agent-semantic-hook= as a dependency and expose hook subcommands through
    =asp hook ...= without changing hook behavior.
 4. Wire the crate into Rust language-project policy checks instead of copying

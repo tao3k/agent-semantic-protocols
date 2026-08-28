@@ -97,7 +97,7 @@ temporary overlay-local entity ids. Accepted overlays compact into a new stable
 generation; rejected overlays remain session-scoped audit evidence.
 
 * Command and crate ownership
-=crates/agent-semantic-protocol/src/command/*= must stay a thin public facade:
+=crates/agent-semantic-client/src/command/*= must stay a thin public facade:
 parse CLI arguments, dispatch to package-owned services, and render typed
 reports. It must not construct DB paths, open the DB, rank search candidates, or
 hard-code language-specific database behavior.
@@ -155,6 +155,6 @@ Verified gates for this checkpoint:
 - =cargo test -p agent-semantic-client-db --locked=
 - =cargo test -p agent-semantic-client --locked cache_cli -- --nocapture=
 - =cargo test -p agent-semantic-client --locked cli_args -- --nocapture=
-- =cargo test -p agent-semantic-protocol --locked provider_command::receipt -- --nocapture=
+- =cargo test -p agent-semantic-client --locked provider_command::receipt -- --nocapture=
 - =git diff --check && git diff --cached --check=
 - no new dead-code suppression diff.

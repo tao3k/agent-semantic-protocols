@@ -6,6 +6,8 @@ mod profiles;
 mod routing;
 mod validation;
 
+pub use validation::validate_codex_host_matcher_expression;
+
 pub use routing::HookClientStructuredFormat;
 pub use routing::{HookClientStructuredFilterGrammar, HookClientStructuredProjectionMatchConfig};
 

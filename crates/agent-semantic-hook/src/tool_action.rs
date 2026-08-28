@@ -81,6 +81,7 @@ pub(crate) struct ToolAction {
     /// True only for the original shell envelope's first executable stage.
     pub(crate) leading_shell_stage: bool,
     pub(crate) paths: Vec<String>,
+    pub(crate) has_declared_filesystem_access: bool,
 }
 
 impl ToolAction {
@@ -96,6 +97,8 @@ impl ToolAction {
             command_tokens: None,
             leading_shell_stage: true,
             paths: vec![path],
+            // Synthetic policy action; no parser-owned shell projection here.
+            has_declared_filesystem_access: false,
         }
     }
 
@@ -112,6 +115,8 @@ impl ToolAction {
             command_tokens: Some(command_tokens),
             leading_shell_stage: true,
             paths: vec![path],
+            // Synthetic policy action; no parser-owned shell projection here.
+            has_declared_filesystem_access: false,
         }
     }
 
@@ -133,6 +138,8 @@ impl ToolAction {
             command_tokens: Some(command_tokens),
             leading_shell_stage: true,
             paths: Vec::new(),
+            // Synthetic envelope action; split_shell_command owns parsed facts.
+            has_declared_filesystem_access: false,
         }
     }
 
@@ -398,15 +405,9 @@ pub fn direct_source_read_paths(tool_name: &str, tool_input: &Value) -> Option<V
         .map(|action| action.paths)
 }
 
-/// Parser-owned Host-envelope projections used by the black-box policy
-/// generator. Keeping these beside normalization prevents tests from copying a
-/// second, inevitably drifting list of Host tool spellings and input fields.
-pub(crate) fn direct_read_host_envelopes(path: &str) -> Vec<(String, Value)> {
-    paths::direct_read_host_envelopes(path)
-}
-
-/// Parser-owned command-envelope projections paired with
-/// `direct_read_host_envelopes` for generated wrapped-command coverage.
+/// Parser-owned command-envelope projections used by generated wrapped-command
+/// coverage. Host Read spellings are deliberately absent: Codex exposes shell
+/// execution as `Bash`, and the parser owns its source-access projection.
 pub(crate) fn shell_host_envelopes(command: &str) -> Vec<(String, Value)> {
     let encoded = serde_json::to_string(command).expect("command JSON encoding");
     vec![
@@ -637,6 +638,7 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
             command_tokens,
             leading_shell_stage: true,
             paths,
+            has_declared_filesystem_access: false,
         })
     }
 
@@ -706,6 +708,13 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
         }
     }
     let operation = OperationIntent::from_action(surface, command.as_deref(), &paths);
+    let has_declared_filesystem_access = command
+        .as_deref()
+        .and_then(|text| agent_semantic_shell_parser::parse_bash_command_candidates(text).ok())
+        .into_iter()
+        .flatten()
+        .flat_map(|stage| agent_semantic_shell_parser::command_stage_behavior_facts(&stage))
+        .any(|fact| fact.subject.is_some());
     let envelope_action = ToolAction {
         tool_name: tool_name.to_string(),
         host_payload: tool_input.clone(),
@@ -717,6 +726,7 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
         command_tokens,
         leading_shell_stage: true,
         paths,
+        has_declared_filesystem_access,
     };
     let mut actions = Vec::new();
     if scans_nested_actions {

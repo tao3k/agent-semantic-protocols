@@ -419,7 +419,7 @@ harness:
 
 #+begin_src sh
 AXLE_TIMEOUT_SECONDS=60 \
-uv run --project packages/python --package agent-semantic-protocols-tools \
+uv run --project packages/python --package agent-semantic-clients-tools \
   python -m tools.lean_axle_proof_obligation_demo --timeout-seconds 30
 #+end_src
 

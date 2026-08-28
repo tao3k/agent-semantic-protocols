@@ -176,7 +176,7 @@ Config tests:
 Validation commands should stay crate-scoped first:
 
 ```sh
-direnv exec . rtk --ultra-compact cargo test -p agent-semantic-protocol
+direnv exec . rtk --ultra-compact cargo test -p agent-semantic-client
 direnv exec . rtk --ultra-compact cargo test -p agent-semantic-hook
 ```
 

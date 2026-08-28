@@ -143,7 +143,7 @@ fn default_template_round_trips_through_config_parser() {
             .argv_prefix_any
             .contains(&vec!["git".to_owned(), "grep".to_owned()])
     );
-    assert_eq!(config.rules.len(), 16);
+    assert_eq!(config.rules.len(), 15);
     assert_eq!(
         config
             .rules
@@ -161,9 +161,8 @@ fn default_template_round_trips_through_config_parser() {
             "live-corpus-qualification-dispatch",
             "gerbil-build-role-dispatch",
             "deny-agent-search-json",
-            "route-read-to-asp-languages",
             "route-unresolved-source-access-to-asp-languages",
-            "route-structured-document-read",
+            "route-shell-structured-document-read",
             "allow-bounded-json-projection",
             "allow-bounded-toml-projection",
             "deny-unbounded-structured-projection",
@@ -358,7 +357,7 @@ entrySkillPath = "/tmp/asp-state/org/templates/ASP_ORG_SKILL.org"
 }
 
 #[test]
-fn template_uses_capability_policies_without_argv_compatibility() {
+fn template_routes_unresolved_bash_source_access_through_capability_policies() {
     let root = temp_root("hook-client-template-workspace-files");
     let config_path = root.join("hooks").join("config.toml");
     fs::create_dir_all(config_path.parent().expect("config parent")).expect("config dir");
@@ -368,15 +367,15 @@ fn template_uses_capability_policies_without_argv_compatibility() {
     let read_route = config
         .rules
         .iter()
-        .find(|rule| rule.id == "route-read-to-asp-languages")
-        .expect("Read route");
-    assert_eq!(read_route.matcher.as_deref(), Some("Read"));
+        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
+        .expect("unresolved Bash source-access route");
+    assert_eq!(read_route.matcher.as_deref(), Some("Bash"));
     assert!(!read_route.profiles_list.is_empty());
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
-fn template_declares_native_aliases_on_the_rules_that_consume_them() {
+fn template_declares_the_canonical_apply_patch_matcher() {
     let root = temp_root("hook-client-template-native-matchers");
     let config_path = root.join("hooks").join("config.toml");
     fs::create_dir_all(config_path.parent().expect("config parent")).expect("config dir");
@@ -388,10 +387,7 @@ fn template_declares_native_aliases_on_the_rules_that_consume_them() {
         .iter()
         .find(|rule| rule.id == "allow-owner-scoped-mutation")
         .expect("native Edit rule");
-    assert_eq!(
-        edit_rule.matcher.as_deref(),
-        Some("apply_patch|Write|Edit|NotebookEdit")
-    );
+    assert_eq!(edit_rule.matcher.as_deref(), Some("^apply_patch$"));
 
     let _ = fs::remove_dir_all(root);
 }

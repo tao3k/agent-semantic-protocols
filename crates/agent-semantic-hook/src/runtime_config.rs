@@ -3,16 +3,13 @@
 use crate::{ClientHookConfig, DecisionKind, DurableHookConfigArtifact, HookDecision};
 use memmap2::MmapOptions;
 use sha2::{Digest, Sha256};
-use std::fs::{self, File, OpenOptions};
-use std::io::Write;
+use std::fs::{self, File};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
-const ACTIVE_MATCHER_ARTIFACT: &str = "active-matcher.v1.bin";
+const ACTIVE_MATCHER_ARTIFACT: &str = "matcher.bin";
 const ACTIVE_MATCHER_MAGIC: &[u8; 8] = b"ASPHK1PC";
 const ACTIVE_MATCHER_HEADER_LEN: usize = 8 + 8 + 16 + 8 + 16 + 64;
 const ACTIVE_MATCHER_SECTION_ENTRY_LEN: usize = 1 + 8 + 8 + 8 + 32;
-static ACTIVE_MATCHER_TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[cfg(test)]
 #[path = "../tests/unit/runtime_config.rs"]
@@ -37,46 +34,29 @@ struct MatcherSection {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct SourceStamp {
     byte_len: u64,
-    modified_nanos: u128,
+    content_digest_prefix: u128,
 }
 
 fn source_stamp(path: &Path) -> Result<SourceStamp, String> {
-    match fs::metadata(path) {
-        Ok(metadata) => Ok(SourceStamp {
-            byte_len: metadata.len(),
-            modified_nanos: metadata
-                .modified()
-                .ok()
-                .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
-                .map_or(0, |duration| duration.as_nanos()),
+    match fs::read(path) {
+        Ok(bytes) => Ok(SourceStamp {
+            byte_len: u64::try_from(bytes.len())
+                .map_err(|_| format!("Hook matcher source is too large: {}", path.display()))?,
+            content_digest_prefix: u128::from_le_bytes(
+                blake3::hash(&bytes).as_bytes()[..16]
+                    .try_into()
+                    .expect("BLAKE3 prefix is sixteen bytes"),
+            ),
         }),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(SourceStamp {
             byte_len: 0,
-            modified_nanos: 0,
+            content_digest_prefix: 0,
         }),
         Err(error) => Err(format!(
             "stat Hook matcher source {}: {error}",
             path.display()
         )),
     }
-}
-
-fn matcher_cache_dir(project_root: &Path) -> Result<PathBuf, String> {
-    // Hook is an independent, one-shot execution plane. Its read-only policy
-    // cache must not pay Runtime/checkout identity discovery on every Host
-    // action. The canonical workspace path is sufficient cache identity; the
-    // generation content still binds the complete config and agent owners.
-    let normalized_project_root = crate::normalize_workspace_path(project_root);
-    let workspace_key = format!(
-        "{:x}",
-        Sha256::digest(normalized_project_root.as_os_str().as_encoded_bytes())
-    );
-    Ok(hook_state_home()?
-        .join("hooks")
-        .join("cache")
-        .join("workspaces")
-        .join(&workspace_key[..16])
-        .join("compiled-matchers"))
 }
 
 pub fn hook_state_home() -> Result<PathBuf, String> {
@@ -93,8 +73,35 @@ pub fn hook_state_home() -> Result<PathBuf, String> {
     Ok(PathBuf::from(home).join(".agent-semantic-protocols"))
 }
 
-fn active_matcher_path(project_root: &Path) -> Result<PathBuf, String> {
-    Ok(matcher_cache_dir(project_root)?.join(ACTIVE_MATCHER_ARTIFACT))
+fn active_generation_root() -> Result<PathBuf, String> {
+    let root = match std::env::var_os("ASP_HOOK_GENERATION_ROOT") {
+        Some(root) if !root.is_empty() => PathBuf::from(root),
+        Some(_) => return Err("ASP_HOOK_GENERATION_ROOT is set but empty".to_owned()),
+        None => fs::canonicalize(hook_state_home()?.join("hooks/current"))
+            .map_err(|error| format!("resolve HookGeneration current: {error}"))?,
+    };
+    Ok(root)
+}
+
+fn active_generation_digest() -> Result<String, String> {
+    let root = active_generation_root()?;
+    let digest = root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "HookGeneration root has no digest component".to_owned())?;
+    if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(format!(
+            "HookGeneration root digest is invalid: {}",
+            root.display()
+        ));
+    }
+    Ok(format!("blake3-256:{digest}"))
+}
+
+fn active_matcher_path(_project_root: &Path) -> Result<PathBuf, String> {
+    Ok(active_generation_root()?
+        .join("compiled")
+        .join(ACTIVE_MATCHER_ARTIFACT))
 }
 
 fn matcher_section_key(value: &str) -> [u8; 8] {
@@ -236,9 +243,9 @@ fn load_active_matcher(
     }
     let mut offset = 8;
     let published_config_byte_len = take_u64(&mapped, &mut offset)?;
-    let published_config_modified_nanos = take_u128(&mapped, &mut offset)?;
+    let published_config_digest_prefix = take_u128(&mapped, &mut offset)?;
     let published_agents_byte_len = take_u64(&mapped, &mut offset)?;
-    let published_agents_modified_nanos = take_u128(&mapped, &mut offset)?;
+    let published_agents_digest_prefix = take_u128(&mapped, &mut offset)?;
     let generation = mapped
         .get(offset..offset + 64)
         .ok_or_else(|| "Hook active matcher generation is truncated".to_owned())?;
@@ -258,9 +265,9 @@ fn load_active_matcher(
     // action race mutable source state and duplicate the publisher authority.
     let _publication_receipt = (
         published_config_byte_len,
-        published_config_modified_nanos,
+        published_config_digest_prefix,
         published_agents_byte_len,
-        published_agents_modified_nanos,
+        published_agents_digest_prefix,
     );
     let bundle = &mapped[offset..];
     let mut shell_read_allow: Option<HookDecision> = None;
@@ -378,12 +385,12 @@ fn encode_matcher_bundle(sections: &[MatcherSection]) -> Result<Vec<u8>, String>
     Ok(bundle)
 }
 
-fn publish_active_matcher(
+fn compile_active_matcher(
     config_path: &Path,
     project_root: &Path,
     generation: &str,
     compiled: &ClientHookConfig,
-) -> Result<(), String> {
+) -> Result<Vec<u8>, String> {
     if generation.len() != 64 || !generation.as_bytes().iter().all(u8::is_ascii_hexdigit) {
         return Err("Hook matcher generation must be a 64-byte hexadecimal digest".to_owned());
     }
@@ -419,72 +426,15 @@ fn publish_active_matcher(
         bytes: shards.shell_command,
     });
     let bundle = encode_matcher_bundle(&sections)?;
-    publish_active_artifact(
-        &active_matcher_path(project_root)?,
-        generation,
-        &config,
-        &agents,
-        &bundle,
-    )
-}
-
-fn publish_active_artifact(
-    path: &Path,
-    generation: &str,
-    config: &SourceStamp,
-    agents: &SourceStamp,
-    artifact: &[u8],
-) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| format!("Hook active matcher has no parent: {}", path.display()))?;
-    fs::create_dir_all(parent).map_err(|error| {
-        format!(
-            "create Hook active matcher directory {}: {error}",
-            parent.display()
-        )
-    })?;
-    let mut bytes = Vec::with_capacity(ACTIVE_MATCHER_HEADER_LEN + artifact.len());
+    let mut bytes = Vec::with_capacity(ACTIVE_MATCHER_HEADER_LEN + bundle.len());
     bytes.extend_from_slice(ACTIVE_MATCHER_MAGIC);
     bytes.extend_from_slice(&config.byte_len.to_le_bytes());
-    bytes.extend_from_slice(&config.modified_nanos.to_le_bytes());
+    bytes.extend_from_slice(&config.content_digest_prefix.to_le_bytes());
     bytes.extend_from_slice(&agents.byte_len.to_le_bytes());
-    bytes.extend_from_slice(&agents.modified_nanos.to_le_bytes());
+    bytes.extend_from_slice(&agents.content_digest_prefix.to_le_bytes());
     bytes.extend_from_slice(generation.as_bytes());
-    bytes.extend_from_slice(artifact);
-    let temp = parent.join(format!(
-        ".{}.{}.{}.tmp",
-        path.file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or(ACTIVE_MATCHER_ARTIFACT),
-        std::process::id(),
-        ACTIVE_MATCHER_TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed),
-    ));
-    let mut publish = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temp)
-        .map_err(|error| format!("create Hook active matcher {}: {error}", temp.display()))?;
-    publish
-        .write_all(&bytes)
-        .and_then(|()| publish.sync_all())
-        .map_err(|error| format!("sync Hook active matcher {}: {error}", temp.display()))?;
-    fs::rename(&temp, &path).map_err(|error| {
-        let _ = fs::remove_file(&temp);
-        format!(
-            "publish Hook active matcher {} -> {}: {error}",
-            temp.display(),
-            path.display()
-        )
-    })?;
-    File::open(parent)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|error| {
-            format!(
-                "sync Hook active matcher directory {}: {error}",
-                parent.display()
-            )
-        })
+    bytes.extend_from_slice(&bundle);
+    Ok(bytes)
 }
 
 pub struct LoadedHookConfig {
@@ -494,7 +444,7 @@ pub struct LoadedHookConfig {
 }
 
 fn recovery_instruction() -> &'static str {
-    "automatic Hook matcher publication could not recover; repair invalid source config or atomically publish a validated candidate with `<candidate-asp> install binary` through the Host bootstrap channel; Runtime configuration owns the stable install slot"
+    "repair invalid source config or atomically publish a validated HookGeneration with `<candidate-asp> install binary`; PreTool never compiles or publishes policy"
 }
 
 fn append_file_identity(hasher: &mut Sha256, path: &Path) -> Result<(), String> {
@@ -532,7 +482,6 @@ fn compiled_generation_key_with_artifact_fingerprint(
     let mut hasher = Sha256::new();
     hasher.update(b"asp-hook-compiled-mmap-generation-v2\0");
     hasher.update(b"hook-matcher-compiler-v2-action-rule-dominance\0");
-    hasher.update(project_root.as_os_str().as_encoded_bytes());
     hasher.update(agent_semantic_config::hook_client_contract_fingerprint().as_bytes());
     hasher.update(artifact_fingerprint.as_bytes());
     append_file_identity(&mut hasher, config_path)?;
@@ -541,13 +490,13 @@ fn compiled_generation_key_with_artifact_fingerprint(
 }
 
 pub fn load_fresh_hook_config(
-    config_path: &Path,
+    _config_path: &Path,
     project_root: &Path,
     direct_read_extension: Option<&str>,
     direct_read_path: Option<&str>,
     shell_read_keys: &[crate::ShellReadSourceKey],
     shell_command_keys: &[crate::ShellCommandKey],
-) -> Result<(LoadedHookConfig, &'static str), String> {
+) -> Result<(LoadedHookConfig, String), String> {
     let load_requested = || {
         load_active_matcher(
             project_root,
@@ -562,58 +511,44 @@ pub fn load_fresh_hook_config(
     let load_complete = || load_active_matcher(project_root, None, None, &[]);
 
     match load_requested() {
-        Ok(Some(loaded)) => return Ok((loaded, "mmap-hit")),
-        Ok(None) if has_specialized_request => {
-            if let Ok(Some(loaded)) = load_complete() {
-                return Ok((loaded, "mmap-hit"));
-            }
-        }
-        Ok(None) | Err(_) => {}
-    }
-
-    publish_hook_matcher_generation(config_path, project_root).map_err(|error| {
-        format!(
-            "Hook matcher Binary v1 automatic publication failed for {}: {error}",
-            project_root.display()
-        )
-    })?;
-
-    match load_requested() {
-        Ok(Some(loaded)) => return Ok((loaded, "self-recovered")),
+        Ok(Some(loaded)) => return Ok((loaded, active_generation_digest()?)),
         Ok(None) if has_specialized_request => match load_complete() {
-            Ok(Some(loaded)) => return Ok((loaded, "self-recovered")),
-            Ok(None) => {}
-            Err(error) => {
-                return Err(format!(
-                    "Hook matcher Binary v1 reload failed after automatic publication for {}: {error}",
-                    project_root.display()
-                ));
-            }
+            Ok(Some(loaded)) => Ok((loaded, active_generation_digest()?)),
+            Ok(None) => Err(format!(
+                "HookGeneration current omitted its compiled matcher for {}; {}",
+                project_root.display(),
+                recovery_instruction()
+            )),
+            Err(error) => Err(format!(
+                "HookGeneration current is unavailable for {}: {error}; {}",
+                project_root.display(),
+                recovery_instruction()
+            )),
         },
-        Ok(None) => {}
-        Err(error) => {
-            return Err(format!(
-                "Hook matcher Binary v1 reload failed after automatic publication for {}: {error}",
-                project_root.display()
-            ));
-        }
+        Ok(None) => Err(format!(
+            "HookGeneration current omitted its compiled matcher for {}; {}",
+            project_root.display(),
+            recovery_instruction()
+        )),
+        Err(error) => Err(format!(
+            "HookGeneration current is unavailable for {}: {error}; {}",
+            project_root.display(),
+            recovery_instruction()
+        )),
     }
-    Err(format!(
-        "Hook matcher Binary v1 remained unavailable after automatic publication for {}; config={}",
-        project_root.display(),
-        config_path.display(),
-    ))
 }
 
-/// Compile and atomically publish one workspace's immutable Hook matcher.
-///
-/// This is a bounded control-plane operation used by canonical installation and
-/// by one in-process recovery attempt when the immutable matcher is absent or
-/// corrupt. It does not invoke the Hook CLI or recursively re-enter PreToolUse.
-pub fn publish_hook_matcher_generation(
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompiledHookMatcherGeneration {
+    pub compiler_generation: String,
+    pub bytes: Vec<u8>,
+}
+
+/// Compile one immutable matcher candidate without mutating active Hook state.
+pub fn compile_hook_matcher_generation(
     config_path: &Path,
     project_root: &Path,
-) -> Result<String, String> {
+) -> Result<CompiledHookMatcherGeneration, String> {
     let generation = compiled_generation_key(config_path, project_root)?;
     let config = crate::load_client_config_for_matcher_publication(config_path, project_root)
         .map_err(|error| {
@@ -638,6 +573,34 @@ pub fn publish_hook_matcher_generation(
             recovery_instruction()
         )
     })?;
-    publish_active_matcher(config_path, project_root, &generation, &config)?;
-    Ok(generation)
+    let bytes = compile_active_matcher(config_path, project_root, &generation, &config)?;
+    validate_compiled_hook_matcher(&bytes)?;
+    Ok(CompiledHookMatcherGeneration {
+        compiler_generation: generation,
+        bytes,
+    })
+}
+
+/// Validate the complete matcher projection before Artifacts may commit a
+/// HookGeneration current pointer.
+pub fn validate_compiled_hook_matcher(bytes: &[u8]) -> Result<(), String> {
+    if bytes.len() < ACTIVE_MATCHER_HEADER_LEN
+        || bytes.get(..8) != Some(ACTIVE_MATCHER_MAGIC.as_slice())
+    {
+        return Err("Hook matcher Binary v1 candidate header is invalid".to_owned());
+    }
+    let generation = bytes
+        .get(ACTIVE_MATCHER_HEADER_LEN - 64..ACTIVE_MATCHER_HEADER_LEN)
+        .ok_or_else(|| "Hook matcher Binary v1 candidate generation is truncated".to_owned())?;
+    if !generation.iter().all(u8::is_ascii_hexdigit) {
+        return Err("Hook matcher Binary v1 candidate generation is invalid".to_owned());
+    }
+    let bundle = &bytes[ACTIVE_MATCHER_HEADER_LEN..];
+    let complete = select_matcher_section(bundle, MatcherSectionKind::Complete, [0; 8])?
+        .ok_or_else(|| "Hook matcher Binary v1 candidate omitted complete projection".to_owned())?;
+    let artifact = DurableHookConfigArtifact::from_binary_bytes(complete)
+        .map_err(|error| format!("decode Hook matcher Binary v1 candidate: {error}"))?;
+    ClientHookConfig::from_durable_snapshot_config(artifact)
+        .map(|_| ())
+        .map_err(|error| format!("hydrate Hook matcher Binary v1 candidate: {error}"))
 }

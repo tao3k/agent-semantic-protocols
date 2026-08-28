@@ -16,9 +16,18 @@ presentation belongs to =agent-semantic-client=.  Explicit machine mode alone
 renders the complete typed JSON frame.
 
 HTTP/gRPC admission and the server-owned query lifecycle belong to
-=agent-semantic-runtime-server=.  The =agent-semantic-protocol= binary may
-compose arguments into an ASP Client request but may not implement search,
-query, rendering, provider admission, or Runtime lifecycle behavior.
+=agent-semantic-runtime-server=.  The public =asp= binary belongs to the
+=agent-semantic-client= package.  It may parse arguments, select a V1 client request,
+connect to the resident Server, and render the typed terminal returned through
+=agent-semantic-client=.  It may not implement search, query, provider
+admission, generation selection, Runtime lifecycle, or artifact mutation.
+
+There is no executable =agent-semantic-protocol= package.  Shared wire
+contracts belong to =agent-semantic-client-protocol=; the public executable and
+its command adapter belong to =agent-semantic-client=, whose package-local
+command modules are not a wire-protocol authority.  Legacy build, install,
+test, and documentation routes naming =agent-semantic-protocol --bin asp= are
+removed rather than retained as aliases.
 
 =agent-semantic-client-server= is only the stateless frame transport boundary.
 It MUST NOT retain a client-session map, catalog authority, or generation state.

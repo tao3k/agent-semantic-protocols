@@ -8,8 +8,7 @@ const HOST_MATCHER_SIGNAL_FIELD: &str = "_aspHostMatcher";
 
 fn host_invocation_from_matcher(matcher: &str) -> Option<HostInvocationKind> {
     match matcher {
-        "Read" => Some(HostInvocationKind::Read),
-        "apply_patch" | "Write" | "Edit" | "NotebookEdit" => Some(HostInvocationKind::Edit),
+        "apply_patch" => Some(HostInvocationKind::Edit),
         "Bash" => Some(HostInvocationKind::Execute),
         "spawn_agent" => Some(HostInvocationKind::SpawnAgent),
         "prefix:mcp__" => Some(HostInvocationKind::Mcp),

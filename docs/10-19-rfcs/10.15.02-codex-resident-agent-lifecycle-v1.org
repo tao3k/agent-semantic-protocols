@@ -937,9 +937,9 @@ route-probe failure (=unroutable=).
   [[file:../../languages/orgize/tests/integration/export_cli_org.rs][the orgize document-query regression]].
 - Canonical owner-key normalization and empty covering-test frontiers are
   covered by
-  [[file:../../crates/agent-semantic-protocol/tests/unit/provider_command/facade/pipe/reasoning.rs][the ASP-owned reasoning frontier regression]].
+  [[file:../../crates/agent-semantic-client/tests/unit/provider_command/facade/pipe/reasoning.rs][the ASP-owned reasoning frontier regression]].
 - Cross-process exactly-once terminal receipt recovery is covered by
-  [[file:../../crates/agent-semantic-protocol/tests/unit/client_hook_claude_smoke/codex_session.rs][the Codex lifecycle dispatch regression]].
+  [[file:../../crates/agent-semantic-client/tests/unit/client_hook_claude_smoke/codex_session.rs][the Codex lifecycle dispatch regression]].
 
 * Lifecycle engine correction
 This section is normative for lifecycle v1 stabilization and supersedes any older

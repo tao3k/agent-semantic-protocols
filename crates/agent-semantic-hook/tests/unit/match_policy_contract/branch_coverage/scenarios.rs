@@ -242,49 +242,34 @@ fn only_canonical_host_matchers_activate_native_policy_rules() {
             forbidden_rule: None,
         },
         Scenario {
-            name: "structured Read",
-            payload: json!({
-                "tool_name": "Read",
-                "tool_input": {"file_path": "src/app.ts"},
-            }),
-            expected_rule: Some("route-read-to-asp-languages"),
+            name: "TypeScript unresolved Bash source access",
+            payload: shell("opaque-source-consumer src/app.ts"),
+            expected_rule: Some("route-unresolved-source-access-to-asp-languages"),
             forbidden_rule: None,
         },
         Scenario {
-            name: "Python profile Read",
-            payload: json!({
-                "tool_name": "Read",
-                "tool_input": {"file_path": "src/app.py"},
-            }),
-            expected_rule: Some("route-read-to-asp-languages"),
+            name: "Python unresolved Bash source access",
+            payload: shell("opaque-source-consumer src/app.py"),
+            expected_rule: Some("route-unresolved-source-access-to-asp-languages"),
             forbidden_rule: None,
         },
         Scenario {
-            name: "Julia profile Read",
-            payload: json!({
-                "tool_name": "Read",
-                "tool_input": {"file_path": "src/app.jl"},
-            }),
-            expected_rule: Some("route-read-to-asp-languages"),
+            name: "Julia unresolved Bash source access",
+            payload: shell("opaque-source-consumer src/app.jl"),
+            expected_rule: Some("route-unresolved-source-access-to-asp-languages"),
             forbidden_rule: None,
         },
         Scenario {
-            name: "Gerbil Scheme profile Read",
-            payload: json!({
-                "tool_name": "Read",
-                "tool_input": {"file_path": "src/app.ss"},
-            }),
-            expected_rule: Some("route-read-to-asp-languages"),
+            name: "Gerbil Scheme unresolved Bash source access",
+            payload: shell("opaque-source-consumer src/app.ss"),
+            expected_rule: Some("route-unresolved-source-access-to-asp-languages"),
             forbidden_rule: None,
         },
         Scenario {
-            name: "JSON Read stays on structured projector route",
-            payload: json!({
-                "tool_name": "Read",
-                "tool_input": {"file_path": "package.json"},
-            }),
-            expected_rule: Some("route-structured-document-read"),
-            forbidden_rule: Some("route-read-to-asp-languages"),
+            name: "JSON input redirection stays on structured projector route",
+            payload: shell("opaque-source-consumer < package.json"),
+            expected_rule: Some("route-shell-structured-document-read"),
+            forbidden_rule: Some("route-unresolved-source-access-to-asp-languages"),
         },
         Scenario {
             name: "structured Grep",
@@ -338,7 +323,7 @@ fn functions_exec_code_parser_rejects_near_misses() {
             "tool_input": {"code": code},
         }),
         expected_rule: None,
-        forbidden_rule: Some("route-read-to-asp-languages"),
+        forbidden_rule: Some("route-unresolved-source-access-to-asp-languages"),
     });
     run_scenarios(TEST_NAME, &scenarios);
 }

@@ -196,5 +196,5 @@ The M0 DB/cache closure keeps State Core as the source of path truth:
 The matching validation gates are:
 - =cargo test -p agent-semantic-client --locked cli_args -- --nocapture=
 - =cargo test -p agent-semantic-client --locked cache_cli -- --nocapture=
-- =cargo test -p agent-semantic-protocol --locked provider_command::receipt -- --nocapture=
+- =cargo test -p agent-semantic-client --locked provider_command::receipt -- --nocapture=
 - =cargo test -p agent-semantic-client-db --locked=

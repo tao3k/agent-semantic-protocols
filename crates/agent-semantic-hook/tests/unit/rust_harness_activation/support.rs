@@ -36,7 +36,7 @@ pub(super) fn asp_binary_path() -> PathBuf {
         return path;
     }
     panic!(
-        "agent-semantic-hook CLI tests require a fresh asp binary; run `cargo build -p agent-semantic-protocol --bin asp` or set ASP_TEST_ASP_BIN"
+        "agent-semantic-hook CLI tests require a fresh asp binary; run `cargo build -p agent-semantic-client --bin asp` or set ASP_TEST_ASP_BIN"
     );
 }
 

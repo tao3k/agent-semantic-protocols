@@ -729,7 +729,7 @@ The JSON side is the machine packet:
     {
       "kind": "scenario",
       "reason": "cold functional route has not been validated for this edit group",
-      "nextCommand": "cargo test -p agent-semantic-protocol --test unit_test scenario_performance_gate::scenario_benchmark"
+      "nextCommand": "cargo test -p agent-semantic-client --test unit_test scenario_performance_gate::scenario_benchmark"
     }
   ],
   "avoid": [
@@ -777,7 +777,7 @@ The JSON side is the machine packet:
   "validate": [
     {
       "kind": "scenario",
-      "command": "cargo test -p agent-semantic-protocol --test unit_test scenario_performance_gate::scenario_benchmark"
+      "command": "cargo test -p agent-semantic-client --test unit_test scenario_performance_gate::scenario_benchmark"
     }
   ],
   "evidence": ["ev.dynamic-overlay.owner", "ev.dynamic-overlay.scenario"],

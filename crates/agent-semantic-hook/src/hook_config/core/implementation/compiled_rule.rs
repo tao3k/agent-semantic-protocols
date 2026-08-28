@@ -602,12 +602,18 @@ impl CompiledHookRule {
                 && referenced_semantic_capabilities.iter().all(|capability| {
                     *capability == agent_semantic_config::HookClientActionKind::Read
                 });
-            let semantic_capabilities_are_typed_unknown = !referenced_semantic_capabilities
+            let semantic_capabilities_are_typed_source_access = !referenced_semantic_capabilities
                 .is_empty()
                 && referenced_semantic_capabilities.iter().all(|capability| {
-                    *capability == agent_semantic_config::HookClientActionKind::Unknown
-                });
-            let unresolved_source_access_contract = semantic_capabilities_are_typed_unknown
+                    matches!(
+                        capability,
+                        agent_semantic_config::HookClientActionKind::Read
+                            | agent_semantic_config::HookClientActionKind::Unknown
+                    )
+                })
+                && referenced_semantic_capabilities
+                    .contains(&agent_semantic_config::HookClientActionKind::Unknown);
+            let unresolved_source_access_contract = semantic_capabilities_are_typed_source_access
                 || (config
                     .match_config
                     .native_matcher_any

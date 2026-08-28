@@ -1,40 +1,91 @@
-use crate::run_cli_args;
-use std::path::PathBuf;
+use super::render_cli_error;
 
-const DOCTOR_USAGE: &str = "usage: asp doctor\nrooted health: asp tools doctor [PROJECT_ROOT]";
-
-#[tokio::test]
-async fn doctor_rejects_workspace_before_running_diagnostics() {
-    let cwd = PathBuf::from("/tmp/asp-doctor-invocation");
-    let error = run_cli_args(
-        None,
-        vec![
-            "doctor".to_string(),
-            "--workspace".to_string(),
-            "/tmp/project".to_string(),
+#[test]
+fn ipc_permission_denial_preserves_argv_and_transfers_authority() {
+    let rendered = render_cli_error(
+        &[
+            "rust".to_owned(),
+            "search".to_owned(),
+            "owner with spaces".to_owned(),
         ],
-        cwd,
-    )
-    .await
-    .expect_err("doctor must not reinterpret a project root");
-
-    assert_eq!(error, DOCTOR_USAGE);
+        "failed to connect Runtime Server data endpoint reasonKind=host-local-ipc-permission-denied errorKind=permission-denied".to_owned(),
+    );
+    let receipt: serde_json::Value = serde_json::from_str(&rendered).expect("typed receipt");
+    let schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../schemas/host-native-execution-required.v1.schema.json"
+    ))
+    .expect("host-native execution schema");
+    jsonschema::validator_for(&schema)
+        .expect("compile host-native execution schema")
+        .validate(&receipt)
+        .expect("receipt satisfies host-native execution schema");
+    assert_eq!(
+        receipt["schemaId"],
+        "agent.semantic-protocols.host-native-execution-required"
+    );
+    assert_eq!(receipt["schemaVersion"], "1");
+    assert_eq!(receipt["state"], "deferred");
+    assert_eq!(receipt["executionAuthority"], "host-native");
+    assert_eq!(receipt["retryPolicy"], "do-not-retry-in-current-sandbox");
+    assert_eq!(
+        receipt["argv"],
+        serde_json::json!(["asp", "rust", "search", "owner with spaces"])
+    );
 }
 
-#[tokio::test]
-async fn doctor_rejects_global_receipt_flags() {
-    let cwd = PathBuf::from("/tmp/asp-doctor-invocation");
-    for args in [
-        vec!["doctor".to_string(), "--receipt-json".to_string()],
-        vec![
-            "doctor".to_string(),
-            "--frontier-receipt-out".to_string(),
-            "/tmp/receipt.json".to_string(),
-        ],
-    ] {
-        let error = run_cli_args(None, args, cwd.clone())
-            .await
-            .expect_err("doctor must reject unsupported receipt flags");
-        assert_eq!(error, DOCTOR_USAGE);
-    }
+#[test]
+fn unrelated_cli_errors_are_not_rewritten() {
+    let error = "invalid selector".to_owned();
+    assert_eq!(render_cli_error(&["rust".to_owned()], error.clone()), error);
+}
+
+#[test]
+fn missing_generation_has_one_runtime_owned_non_recursive_action() {
+    let rendered = render_cli_error(
+        &["rust".to_owned(), "search".to_owned(), "owner.rs".to_owned()],
+        "state=source-unavailable reasonKind=active-workspace-generation-required: active workspace generation lease is required".to_owned(),
+    );
+    let receipt: serde_json::Value = serde_json::from_str(&rendered).expect("typed receipt");
+    let schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../schemas/workspace-generation-required.schema.json"
+    ))
+    .expect("workspace generation schema");
+    jsonschema::validator_for(&schema)
+        .expect("compile workspace generation schema")
+        .validate(&receipt)
+        .expect("receipt satisfies workspace generation schema");
+    assert_eq!(receipt["state"], "in-progress");
+    assert_eq!(receipt["admissionTrigger"], "query-demand");
+    assert_eq!(receipt["buildOwner"], "runtime-server");
+    assert_eq!(receipt["requestLifetimeIndependent"], true);
+    assert_eq!(receipt["retryPolicy"], "retry-after-runtime-progress");
+    assert!(receipt.get("choicePlaneCommand").is_none());
+    assert_eq!(
+        receipt["argv"],
+        serde_json::json!(["asp", "rust", "search", "owner.rs"])
+    );
+    assert!(
+        !receipt["nextAction"]
+            .as_str()
+            .expect("next action")
+            .contains("@asp_")
+    );
+    assert!(
+        !receipt["nextAction"]
+            .as_str()
+            .unwrap()
+            .contains("cache import")
+    );
+    assert!(
+        !receipt["nextAction"]
+            .as_str()
+            .unwrap()
+            .contains("source-index refresh")
+    );
+    assert!(
+        !receipt["nextAction"]
+            .as_str()
+            .unwrap()
+            .contains("choice-plane")
+    );
 }

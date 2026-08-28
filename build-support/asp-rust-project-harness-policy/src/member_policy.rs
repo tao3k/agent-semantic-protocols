@@ -53,12 +53,6 @@ impl AspRustProjectHarnessMemberPolicy {
     }
 }
 
-const PROTOCOL_SEVERITY_OVERRIDES: &[AspRustProjectHarnessSeverityPolicy] =
-    &[AspRustProjectHarnessSeverityPolicy {
-        rule_code: "RUST-AGENT-PROJECT-005",
-        severity: rust_lang_project_harness::RustDiagnosticSeverity::Info,
-    }];
-
 const PROVIDER_TRANSPORT_LATENCY_OWNERS: &[AspRustProjectHarnessOwnerPolicy] = &[
     AspRustProjectHarnessOwnerPolicy {
         path: "src/capture.rs",
@@ -196,16 +190,6 @@ const ASP_WORKSPACE_MEMBER_POLICIES: &[AspRustProjectHarnessMemberPolicy] = &[
         cargo_check_advice_allow_explanation: "scope=agent-semantic-hook cargo-check advice; owner=agent-semantic-hook build gate; finding_category=advisory policy findings; why_safe_now=semantic-agent-hook keeps advisory findings visible while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
         verification_label: None,
         rule_severity_overrides: &[],
-        criterion_performance_verification: false,
-        latency_sensitive_performance_owners: &[],
-        availability_stability_owners: &[],
-    },
-    AspRustProjectHarnessMemberPolicy {
-        package_name: "agent-semantic-protocol",
-        crate_root: "crates/agent-semantic-protocol",
-        cargo_check_advice_allow_explanation: "scope=agent-semantic-protocol cargo-check advice; owner=agent-semantic-protocol build gate; finding_category=advisory policy findings; why_safe_now=agent-semantic-protocol keeps advisory findings visible while warning and error findings still fail the build; cleanup_trigger=clear the crate advisory backlog and remove this allowance",
-        verification_label: None,
-        rule_severity_overrides: PROTOCOL_SEVERITY_OVERRIDES,
         criterion_performance_verification: false,
         latency_sensitive_performance_owners: &[],
         availability_stability_owners: &[],

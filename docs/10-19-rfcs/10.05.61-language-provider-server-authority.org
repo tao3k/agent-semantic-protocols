@@ -118,9 +118,9 @@ client composition.  =agent-semantic-provider-transport= owns provider process
 transport and resident provider actors.  A future
 =agent-semantic-runtime-server= package owns daemon assembly, Runtime HTTP
 dispatcher, resident search service, and identity handoff; it MUST NOT depend
-on =agent-semantic-protocol=.
+on =agent-semantic-client=.
 
-The =agent-semantic-protocol= package is only CLI composition, parser, command
+The =agent-semantic-client= package is only CLI composition, parser, command
 facade, and renderer ownership.  It MUST NOT own the Runtime daemon, HTTP
 session, durable workspace database, provider transport, or a second Runtime
 HTTP client facade.  Until the runtime-server package extraction is complete,

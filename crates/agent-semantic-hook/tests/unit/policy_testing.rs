@@ -61,13 +61,14 @@ fn compiled_policy_axes_generate_balanced_complex_black_and_white_witnesses() {
             .len()
             >= 1
     );
-    assert!(
+    assert_eq!(
         witnesses
             .iter()
             .map(|witness| witness.envelope_axis.as_str())
             .collect::<BTreeSet<_>>()
-            .len()
-            >= 8
+            .len(),
+        4,
+        "coverage must exercise every canonical Bash/unified-exec envelope"
     );
     for white in witnesses
         .iter()

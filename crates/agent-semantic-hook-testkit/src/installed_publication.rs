@@ -108,11 +108,14 @@ mod tests {
 
     use super::{InstalledHookExpectation, verify_installed_hook_receipt};
 
+    const GENERATION: &str =
+        "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
     const EXPECTED: InstalledHookExpectation<'static> = InstalledHookExpectation {
         event: "pre-tool",
         decision: "deny",
-        config_rule_id: Some("route-read-to-asp-languages"),
-        matcher_generation: "mmap-hit",
+        config_rule_id: Some("route-unresolved-source-access-to-asp-languages"),
+        matcher_generation: GENERATION,
         policy_snapshot_digest: "blake3-256:policy",
         runtime_artifact_fingerprint: "blake3-256:artifact",
     };
@@ -124,8 +127,8 @@ mod tests {
             "event": "pre-tool",
             "decision": "deny",
             "fields": {
-                "configRuleId": "route-read-to-asp-languages",
-                "hookMatcherGeneration": "mmap-hit",
+                "configRuleId": "route-unresolved-source-access-to-asp-languages",
+                "hookMatcherGeneration": GENERATION,
                 "hookPolicySnapshotDigest": "blake3-256:policy",
                 "hookRuntimeArtifactFingerprint": "blake3-256:artifact"
             }

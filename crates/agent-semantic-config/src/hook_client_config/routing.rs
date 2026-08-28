@@ -28,7 +28,7 @@ pub struct HookClientRuleConfig {
     #[serde(default)]
     pub matcher: Option<String>,
     #[serde(default)]
-    pub host_invocations: Vec<HookClientHostInvocationKind>,
+    pub actions: Vec<HookClientActionKind>,
     #[serde(default)]
     pub profiles_list: Vec<String>,
     #[serde(default)]

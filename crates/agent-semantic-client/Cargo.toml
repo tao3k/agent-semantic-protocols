@@ -5,6 +5,9 @@ edition.workspace = true
 description = "Thin agent semantic client over native semantic language providers."
 license = "MIT"
 
+[lib]
+doctest = false
+
 [dependencies]
 blake3.workspace = true
 agent-semantic-content-identity.workspace = true
@@ -17,31 +20,56 @@ agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-client-db = { path = "../agent-semantic-client-db" }
 agent-semantic-provider-protocol = { path = "../agent-semantic-provider-protocol" }
 agent-semantic-client-server = { path = "../agent-semantic-client-server" }
+agent-semantic-runtime-server = { path = "../agent-semantic-runtime-server" }
 agent-semantic-client-protocol = { path = "../agent-semantic-client-protocol" }
+agent-semantic-context-product = { path = "../agent-semantic-context-product" }
+agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
+agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-hook = { path = "../agent-semantic-hook" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
 agent-semantic-search = { path = "../agent-semantic-search" }
+agent-semantic-schema-manager = { path = "../agent-semantic-schema-manager" }
+agent-semantic-loop = { path = "../agent-semantic-loop" }
+agent-semantic-tree-sitter = { path = "../agent-semantic-tree-sitter" }
+aho-corasick.workspace = true
+orgize = { workspace = true }
+proc-macro2 = { workspace = true, features = ["span-locations"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+jsonschema.workspace = true
 toml = { workspace = true }
 clap = { version = "4.6.1", features = ["derive"] }
 tokio.workspace = true
+tokio-stream.workspace = true
+syn = { workspace = true, features = ["full"] }
+fs2.workspace = true
+libc.workspace = true
+globset.workspace = true
+base64 = "0.22"
+ascent = "0.8"
+tracing = "0.1.44"
 
+[[bin]]
+name = "asp"
+path = "src/main.rs"
 
 [dev-dependencies]
 jsonschema = { workspace = true }
 criterion = { workspace = true }
 asp-rust-project-harness-policy.workspace = true
 gix.workspace = true
+gix-config.workspace = true
+insta.workspace = true
+agent-semantic-hook-testkit = { path = "../agent-semantic-hook-testkit" }
+rs-harness = { path = "../../languages/rust-lang-project-harness/rs-harness" }
+rust-lang-project-harness.workspace = true
+referencing = "0.48.1"
+tempfile.workspace = true
 
 [[test]]
 name = "source_index_generation"
 path = "tests/integration/source_index_generation.rs"
-
-[[test]]
-name = "projection_presentation"
-path = "tests/unit_test.rs"
 
 [[bench]]
 name = "client_microbench"
@@ -53,3 +81,4 @@ harness = false
 
 [build-dependencies]
 asp-rust-project-harness-policy.workspace = true
+agent-semantic-config = { path = "../agent-semantic-config" }

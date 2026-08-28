@@ -15,7 +15,7 @@ ASP agent-facing search and query commands must stay in runtime-scale latency:
 The new focused performance gate is:
 
 #+begin_src sh
-direnv exec . cargo test -p agent-semantic-protocol \
+direnv exec . cargo test -p agent-semantic-client \
   language_facade_regular_commands_finish_inside_performance_gate -- --nocapture
 #+end_src
 
@@ -28,7 +28,7 @@ Observed during development:
 - Julia =search prime= and owner-style =query= currently bypass fake provider and
   use ASP-owned native discovery. On a tiny fixture these paths were observed at
   roughly 6-14 seconds, so Julia needs a separate native-path optimization lane.
-- Full =cargo test -p agent-semantic-protocol= is not a reliable performance gate:
+- Full =cargo test -p agent-semantic-client= is not a reliable performance gate:
   many tests run concurrently, and existing 250ms hook performance smoke tests
   can fail from unrelated suite load.
 
@@ -110,8 +110,8 @@ Performance tests should be deterministic and scoped:
 
 Implemented in:
 
-- =crates/agent-semantic-protocol/tests/unit/provider_command/facade/performance.rs=
-- mounted from =crates/agent-semantic-protocol/tests/unit/provider_command/facade/mod.rs=
+- =crates/agent-semantic-client/tests/unit/provider_command/facade/performance.rs=
+- mounted from =crates/agent-semantic-client/tests/unit/provider_command/facade/mod.rs=
 
 The gate currently covers Rust, TypeScript, and Python fake-provider facade
 dispatch. Julia is intentionally excluded until its native ASP-owned path is

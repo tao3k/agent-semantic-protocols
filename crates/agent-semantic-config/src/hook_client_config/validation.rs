@@ -16,6 +16,7 @@ use super::{
 
 pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), String> {
     validate_protocol(config)?;
+    validate_codex_host_matchers(config)?;
     validate_optional_non_empty(
         "contractFingerprint",
         config.contract_fingerprint.as_deref(),
@@ -37,6 +38,32 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
         &config.command_sets,
         &config.capability_policies,
     )
+}
+
+fn validate_codex_host_matchers(config: &HookClientConfigFile) -> Result<(), String> {
+    for rule in &config.rules {
+        let Some(matcher) = rule.matcher.as_deref() else {
+            continue;
+        };
+        validate_codex_host_matcher_expression(matcher)
+            .map_err(|error| format!("rule `{}` {error}", rule.id))?;
+    }
+    Ok(())
+}
+
+pub fn validate_codex_host_matcher_expression(matcher: &str) -> Result<(), String> {
+    if matcher.is_empty() || matcher == "*" {
+        return Ok(());
+    }
+    if matcher
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '|'))
+    {
+        return Ok(());
+    }
+    regex::Regex::new(matcher)
+        .map(|_| ())
+        .map_err(|error| format!("uses invalid Codex Host matcher `{matcher}`: {error}"))
 }
 
 fn validate_agent_calling(config: &HookClientAgentCallingConfig) -> Result<(), String> {
@@ -91,27 +118,6 @@ fn validate_rule_profile_references(
     profiles: &BTreeMap<String, super::document::HookClientProfileConfig>,
 ) -> Result<(), String> {
     for rule in rules {
-        if rule.matcher.as_deref().is_some_and(|matcher| {
-            matcher
-                .split('|')
-                .any(|native| native.is_empty() || native.trim() != native)
-        }) {
-            return Err(format!(
-                "rule {} matcher must contain non-empty `|`-separated native aliases without surrounding whitespace",
-                rule.id
-            ));
-        }
-        if let Some(matcher) = &rule.matcher {
-            let mut aliases = HashSet::new();
-            for native in matcher.split('|') {
-                if !aliases.insert(native) {
-                    return Err(format!(
-                        "rule {} matcher contains duplicate native alias {native:?}",
-                        rule.id
-                    ));
-                }
-            }
-        }
         let mut profile_ids = HashSet::new();
         let mut extension_targets = BTreeMap::<String, (&str, &str)>::new();
         for profile_id in &rule.profiles_list {

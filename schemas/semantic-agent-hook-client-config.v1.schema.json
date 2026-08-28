@@ -431,13 +431,6 @@
           "type": ["string", "null"],
           "pattern": "^[^|\\s]+(?:\\|[^|\\s]+)*$"
         },
-        "hostInvocations": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "$ref": "#/$defs/hostInvocationKind"
-          }
-        },
         "profilesList": {
           "type": "array",
           "uniqueItems": true,

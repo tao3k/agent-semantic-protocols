@@ -8,5 +8,3 @@ pub(super) use super::common::{
 mod materialization;
 #[path = "matching/policy_merge.rs"]
 mod policy_merge;
-#[path = "matching/reasoning_dispatch.rs"]
-mod reasoning_dispatch;

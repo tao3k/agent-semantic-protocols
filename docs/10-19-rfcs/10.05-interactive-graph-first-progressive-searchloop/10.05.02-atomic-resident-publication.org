@@ -65,7 +65,7 @@ provider spawning, generation restore, polling, or a compatibility route.
 - =agent-semantic-runtime-server=: activation consumption, Ready validation,
   serving-generation admission isolation, Tokio lifecycle, and drain.
 - =agent-semantic-client=: expected generation handshake and typed rendering.
-- =agent-semantic-protocol=: thin CLI composition and typed receipt rendering only.
+- =agent-semantic-client=: thin CLI composition and typed receipt rendering only.
 - =agent-semantic-artifacts=: immutable content-addressed storage, the sole
   =active=/=healthy= two-slot publication transaction, Release Activity,
   provenance, and retention.

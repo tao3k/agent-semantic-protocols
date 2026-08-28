@@ -85,8 +85,8 @@ fn durable_hydration_rematerializes_declarative_actions_and_profiles() {
         .config
         .rules
         .iter_mut()
-        .find(|rule| rule.id == "route-read-to-asp-languages")
-        .expect("declarative source-read rule");
+        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
+        .expect("declarative unresolved source-access rule");
     declared.match_config.native_matcher_any.clear();
     declared.match_config.profile_any.clear();
     declared.match_config.profile_extension_any.clear();
@@ -96,15 +96,18 @@ fn durable_hydration_rematerializes_declarative_actions_and_profiles() {
     let rule = hydrated
         .rules
         .iter()
-        .find(|rule| rule.id == "route-read-to-asp-languages")
-        .expect("hydrated source-read rule");
+        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
+        .expect("hydrated unresolved source-access rule");
     let runtime = HookRuntime {
         policy_providers: hydrated.provider_projections.clone(),
         project_root: ".".to_owned(),
         rankers: Vec::new(),
         providers: Vec::new(),
     };
-    let action = ToolAction::normalized_direct_policy_action("docs/plan.org".to_owned());
+    let action = ToolAction::normalized_shell_policy_action(
+        "opaque-source-consumer docs/plan.org".to_owned(),
+        "docs/plan.org".to_owned(),
+    );
 
     assert!(rule.matches_before_paths(&runtime, "codex", "pre-tool", &action, None));
     assert!(rule.matches_after_paths(&runtime, &action.paths));
@@ -129,25 +132,6 @@ fn binary_durable_hook_artifact_round_trips_without_json_or_base64() {
     let bytes = durable
         .to_binary_bytes()
         .expect("encode binary durable Hook matcher artifact");
-    let shards = live
-        .durable_direct_read_decision_shards()
-        .expect("compile policy-derived direct-read shards");
-    assert!(!shards.is_empty());
-    let largest_shard = shards
-        .iter()
-        .map(|(_, _, shard)| shard.len())
-        .max()
-        .expect("direct-read shard size");
-    eprintln!("binaryHookLargestDirectReadShardBytes={largest_shard}");
-    assert!(
-        largest_shard < bytes.len(),
-        "direct-read shard must be smaller than the complete matcher"
-    );
-    for (_, placeholder, shard) in &shards {
-        let mut decision = crate::HookDecision::from_compact_binary(shard)
-            .expect("decode compact direct-read decision shard");
-        assert!(decision.replace_template_marker(placeholder, "generated/replaced.rs"));
-    }
     eprintln!("binaryHookArtifactBytes={}", bytes.len());
     let decode_started = std::time::Instant::now();
     let artifact = super::DurableHookConfigArtifact::from_binary_bytes(&bytes)

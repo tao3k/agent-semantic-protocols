@@ -7,10 +7,10 @@ use crate::tool_action::{OperationIntent, ToolAction};
 
 /// Projects host and parser facts into the Action IR before any rule is evaluated.
 ///
-/// Rules consume this envelope; they never manufacture semantic actions. A registered
-/// source operand carried by an executable requires source-read permission regardless
-/// of the executable name. Profile and extension matching remain independent subject
-/// axes for the Rule DSL.
+/// Rules consume this envelope; they never manufacture semantic actions. A bare
+/// registered-source operand remains Unknown until a Host fact, shell redirection,
+/// or trusted Reader probe establishes its filesystem permission. Profile and
+/// extension matching remain independent subject axes for the Rule DSL.
 pub(crate) fn project_agent_action(
     registry: &HookRuntime,
     action: &ToolAction,
@@ -52,10 +52,21 @@ pub(crate) fn project_agent_action(
 
     let subjects = crate::source_selector::derive_agent_action_subjects(registry, &subject_paths);
     if agent_action.host.action == HostInvocationKind::Execute {
+        let probed_reader_subject =
+            crate::reader_probe::observed_reader_subject(&action.host_payload);
         for subject in subjects
             .iter()
             .filter(|subject| subject.kind == AgentActionSubjectKind::RegisteredLanguageSource)
         {
+            if probed_reader_subject == Some(subject.value.as_str()) {
+                agent_action.add_filesystem_permission(
+                    crate::action_ir::FilesystemPermissionFact::new(
+                        crate::action_ir::FilesystemPermissionKind::Read,
+                        crate::action_ir::FilesystemPermissionSource::ReaderProbe,
+                        Some(subject.value.clone()),
+                    ),
+                );
+            }
             let subject_has_explicit_permission = agent_action
                 .filesystem_permissions
                 .iter()

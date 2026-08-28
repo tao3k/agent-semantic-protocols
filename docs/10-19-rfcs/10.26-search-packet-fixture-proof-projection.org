@@ -228,7 +228,7 @@ gate.
 The proof gate is already source-kind aware:
 
 #+begin_src sh
-uv run --project packages/python --package agent-semantic-protocols-tools \
+uv run --project packages/python --package agent-semantic-clients-tools \
   python -m tools.lean_axle_proof_obligation_demo \
   --search-packet .data/provider-captures/rs-harness-search-prime.json \
   --packet-source-kind provider-output
@@ -372,7 +372,7 @@ Acceptance criteria for closing this defect:
 - The packet can be passed to:
 
 #+begin_src sh
-uv run --project packages/python --package agent-semantic-protocols-tools \
+uv run --project packages/python --package agent-semantic-clients-tools \
   python -m tools.lean_axle_proof_obligation_demo \
   --search-packet .data/provider-captures/<packet>.json \
   --packet-source-kind provider-output

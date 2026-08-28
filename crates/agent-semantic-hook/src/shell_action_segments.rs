@@ -20,6 +20,10 @@ pub(super) fn split_shell_command(
     if stages.len() <= 1 {
         return None;
     }
+    let has_declared_filesystem_access = stages
+        .iter()
+        .flat_map(agent_semantic_shell_parser::command_stage_behavior_facts)
+        .any(|fact| fact.subject.is_some());
     Some(
         stages
             .into_iter()
@@ -44,6 +48,7 @@ pub(super) fn split_shell_command(
                     command_tokens: Some(command_tokens),
                     leading_shell_stage: index == 0,
                     paths,
+                    has_declared_filesystem_access,
                 }
             })
             .collect(),

@@ -180,3 +180,61 @@ async fn endpoint_without_owner_receipt_is_stale_and_republished() {
         agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome::SpawnAccepted
     );
 }
+
+#[tokio::test]
+async fn cached_healthy_endpoint_with_dead_owner_is_republished() {
+    let state_home = tempfile::tempdir().expect("create isolated State Home");
+    let executable = std::env::current_exe().expect("resolve fixture executable");
+    let artifact_digest =
+        agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::from_bytes(
+            &std::fs::read(&executable).expect("read fixture executable"),
+        );
+    let mut endpoint = prepare_runtime_server_endpoint_in(
+        state_home.path(),
+        &executable,
+        &artifact_digest,
+        "dev",
+        &format!("blake3-256:{}", "1".repeat(64)),
+        1,
+        "cached-healthy-dead-owner",
+    )
+    .await
+    .expect("prepare cached healthy endpoint");
+    let dead_process_id = u32::MAX;
+    endpoint.owner_process_id = dead_process_id;
+    let endpoint_path =
+        agent_semantic_client_db::runtime_server_endpoint_path(state_home.path()).unwrap();
+    tokio::fs::create_dir_all(endpoint_path.parent().unwrap())
+        .await
+        .unwrap();
+    tokio::fs::write(&endpoint_path, serde_json::to_vec(&endpoint).unwrap())
+        .await
+        .unwrap();
+    agent_semantic_client_db::runtime_server_lifecycle::write_owner_receipt(
+        state_home.path(),
+        &agent_semantic_client_db::RuntimeServerSpawnReceipt {
+            schema_id: "agent.semantic-protocols.runtime-server-owner-spawn.v1".into(),
+            schema_version: "1".into(),
+            process_id: dead_process_id,
+            nonce: "cached-healthy-dead-owner".into(),
+            state_home: state_home.path().display().to_string(),
+            activation_generation: 1,
+            launcher_artifact_path: executable.display().to_string(),
+            launcher_artifact_digest: artifact_digest,
+            spawn_argv: vec![executable.display().to_string()],
+            previous_serving_digest: None,
+            previous_owner_epoch: None,
+        },
+    )
+    .await
+    .expect("publish dead owner receipt");
+
+    let outcome = agent_semantic_client_db::runtime_server_supervisor::RuntimeServerSupervisor
+        .ensure_runtime_server(supervisor_request(state_home.path(), executable), false)
+        .await
+        .expect("dead cached owner must be recoverable");
+    assert_eq!(
+        outcome,
+        agent_semantic_client_db::runtime_server_supervisor::SupervisorOutcome::SpawnAccepted
+    );
+}

@@ -2743,7 +2743,7 @@ let providers drift while producing superficially similar prompt text.
 The prompt-facing graph renderer is shared protocol logic.  Native language
 providers own parser facts and schema-valid packets; they do not own separate
 long-term compact graph render algorithms.  The renderer lives in
-=agent-semantic-protocol= so Rust, TypeScript, Python, Julia cache paths, local
+=agent-semantic-client= so Rust, TypeScript, Python, Julia cache paths, local
 ASP cache hits, and Cloud Flight results project through the same alias,
 edge, rank, frontier, profile, omit, and avoid rules.
 
@@ -3912,7 +3912,7 @@ Completed:
   guidance into a real provider-spawn suppression path without changing
   provider =search prime= semantics.
 - [X] Real CLI validation proves the runtime suppression boundary.  Running
-  =cargo run -p agent-semantic-protocol -- rust search --receipt-json prime --workspace . --view seeds=
+  =cargo run -p agent-semantic-client -- rust search --receipt-json prime --workspace . --view seeds=
   first refreshed stale prime state through =route=local-native= with
   =providerProcessesSpawned=1=.  Running the equivalent
   =--view=seeds= form immediately after changed the exact request fingerprint
@@ -3960,7 +3960,7 @@ Completed:
   report over the resolved State Core =artifactsDir= is the current path; the
   legacy project-local artifact slice measured here found
   =collapsibleOwnerSearches=51= across 27 groups; top candidates are Rust
-  =crates/agent-semantic-protocol/src/command/provider.rs= with 7 calls / 6
+  =crates/agent-semantic-client/src/command/provider.rs= with 7 calls / 6
   repeats, =crates/agent-semantic-hook/src/classifier.rs= with 6 calls / 5
   repeats, and =crates/agent-semantic-client/src/cache_cli/probe.rs= with 5
   calls / 4 repeats.  The text report emits
@@ -3974,7 +3974,7 @@ Completed:
   symbol locators plus existing covering tests and owner graph synthesis.
 - [X] Real CLI validation against the refreshed active =.bin/rs-harness= proves
   the repeated-owner target has a prompt-facing runtime path.  Running
-  =rust search --receipt-json owner crates/agent-semantic-protocol/src/command/provider.rs .=
+  =rust search --receipt-json owner crates/agent-semantic-client/src/command/provider.rs .=
   used =route=local-native= and emitted 2743-byte stdout with =|hot
   run_language_command= plus 11 more owner-local symbols.  Running
   =rust search --receipt-json owner crates/agent-semantic-client-db/src/db.rs .=

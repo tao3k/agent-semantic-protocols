@@ -23,10 +23,12 @@ pub fn is_generation_bound_hook_deny(value: &Value) -> bool {
             .pointer("/fields/hookRuntimeArtifactFingerprint")
             .and_then(Value::as_str)
             .is_some_and(|fingerprint| !fingerprint.is_empty())
-        && matches!(
-            value
-                .pointer("/fields/hookMatcherGeneration")
-                .and_then(Value::as_str),
-            Some("mmap-hit" | "self-recovered")
-        )
+        && value
+            .pointer("/fields/hookMatcherGeneration")
+            .and_then(Value::as_str)
+            .is_some_and(|generation| {
+                generation.strip_prefix("blake3-256:").is_some_and(|hex| {
+                    hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit())
+                })
+            })
 }

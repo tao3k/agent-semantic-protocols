@@ -25,7 +25,7 @@ fn real_hook_config_drives_every_match_command_scenario() {
 
 #[test]
 fn wrapped_cargo_test_arguments_match_only_the_testing_lane() {
-    let command = "timeout 30s direnv exec . cargo test -p agent-semantic-protocol \
+    let command = "timeout 30s direnv exec . cargo test -p agent-semantic-client \
         --test unit_test codex_hook_auto_syncs_stale_managed_matcher_contract -- --nocapture";
     let cases = match_config::rule_prefixes();
     let mut testing_lane_prefixes = 0usize;

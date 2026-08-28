@@ -73,7 +73,7 @@ Machine output: compact JSON artifacts and local SQL rows outside the prompt; Ar
 
 4a. /agent semantic client brand belongs to client/backend, not the hook runtime./
    =asp= and =agent-semantic-client-*= name the product-facing local/cloud client
-   layer.  =agent-semantic-protocol= remains the shared protocol facade and
+   layer.  =agent-semantic-client= remains the shared protocol facade and
    renderer owner; =agent-semantic-hook= remains the platform hook runtime and
    classifier.  New client/cache/receipt schemas use the =agent-semantic-client-*=
    prefix so client-backend contracts do not drift into a second client
@@ -97,7 +97,7 @@ Machine output: compact JSON artifacts and local SQL rows outside the prompt; Ar
 
 8. /Compact graph rendering is shared protocol logic./  Native providers emit
    schema-valid search/query packets and parser-owned facts.  The compact graph
-   projection is implemented by =agent-semantic-protocol= and invoked by
+   projection is implemented by =agent-semantic-client= and invoked by
    =agent-semantic-client= during response normalization.  Language providers under
    =languages/= integrate through the =asp graph render=
    shell-out boundary and must not depend on the renderer crate.  The target hot
@@ -454,7 +454,7 @@ Protocol admission requires all of the following:
 |-----------+------|
 | =asp-typescript=, =rs-harness=, =py-harness= | native parser facts, provider commands, schema-valid search/query/check packets and provider-native receipts |
 | =asp-julia-harness= | JuliaSyntax-native facts, facade-aligned provider commands, index exports for cache refresh, source-provider fallback via =julia-project-harness.jl= |
-| =agent-semantic-protocol= | shared schemas/receipts, compact graph render algorithm, graph render validation, provider shell-out =graph render= CLI |
+| =agent-semantic-client= | shared schemas/receipts, compact graph render algorithm, graph render validation, provider shell-out =graph render= CLI |
 | =agent-semantic-hook= | agent platform event classification and provider route guidance |
 | =agent-semantic-client= | cross-language routing, execution-route choice, cache, renderer invocation, artifacts |
 | =tao3k/agent-semantic-protocols-server= | private optional high-performance index, Cloud Flight routes, org/team cache |
@@ -618,7 +618,7 @@ must carry native-provider provenance.  The client core normalizes the response
 into:
 
 - compact graph stdout for the agent through the shared
-  =agent-semantic-protocol= renderer;
+  =agent-semantic-client= renderer;
 - schema-valid artifacts for tests, receipts, and cache;
 - command receipts that explain which execution route was used and why.
 
@@ -628,7 +628,7 @@ Compact graph rendering is a response-normalization step, not a provider-owned
 semantic step.  Native providers and cloud/cache backends return
 =semantic-search-packet=, =semantic-query-packet=, or validated index rows with
 native-provider provenance.  The client then invokes the shared graph renderer
-owned by =agent-semantic-protocol=:
+owned by =agent-semantic-client=:
 
 #+begin_example
 provider packet or cache rows
@@ -647,7 +647,7 @@ asp graph render --packet - --view seeds
 
 All providers under =languages/= use that shell-out boundary when they need the
 shared prompt-facing renderer.  They must not add a compile-time dependency on
-=agent-semantic-protocol= for graph rendering, including
+=agent-semantic-client= for graph rendering, including
 =languages/rust-lang-project-harness=.  In local-cache and cloud-cache hit
 paths, =agent-semantic-client= may call the Rust graph-render library directly over
 validated packet artifacts or cache rows.  That makes provider process startup
@@ -679,7 +679,7 @@ facade layers should converge on a Tokio-backed transport for every external
 provider process:
 
 This transport is an independent workspace crate, not an implementation detail
-inside =agent-semantic-protocol=.  The crate boundary is
+inside =agent-semantic-client=.  The crate boundary is
 =agent-semantic-provider-transport=: it owns Tokio process spawning, concurrent
 stdio capture, stdin modes, limits, status propagation, and transport receipts.
 It must not depend on provider registries, cache rows, hook activation, graph
@@ -774,7 +774,7 @@ Current transport migration audit:
 | Boundary | Required owner | Status | Evidence gate |
 |----------+----------------+--------+---------------|
 | local native provider miss execution | =agent-semantic-client-local-cli= -> =agent-semantic-provider-transport= | migrated | =cargo test -p agent-semantic-client-local-cli= |
-| protocol facade provider execution | =agent-semantic-protocol::provider_process= -> =agent-semantic-provider-transport= | migrated | =cargo test -p agent-semantic-protocol provider_process= |
+| protocol facade provider execution | =agent-semantic-protocol::provider_process= -> =agent-semantic-provider-transport= | migrated | =cargo test -p agent-semantic-client provider_process= |
 | graph render stdin packet replay | =agent-semantic-client= -> =asp graph render --packet -= over =StdinMode::bytes= | migrated | =cargo test -p agent-semantic-client= |
 | search-pipe / ingest wrappers | facade wrapper -> shared transport and byte-text helpers | migrated for hot path | search-pipe unit tests plus real =search ingest= smoke |
 | history/audit helper execution | helper wrapper -> shared transport | migrated for provider subprocesses | history/audit unit tests |
@@ -794,7 +794,7 @@ cargo bench -p agent-semantic-provider-transport --bench transport_hot_path
 cargo test -p agent-semantic-provider-transport
 cargo test -p agent-semantic-client-local-cli
 cargo test -p agent-semantic-client
-cargo test -p agent-semantic-protocol document_provider
+cargo test -p agent-semantic-client document_provider
 #+end_src
 
 P4 checkpoint sample from the local workspace:
@@ -802,8 +802,8 @@ P4 checkpoint sample from the local workspace:
 | Probe | Command shape | Result |
 |-------+---------------+--------|
 | byte transport bench | =cargo bench -p agent-semantic-provider-transport --bench transport_hot_path= | =transport_hot_path time: [135.25 ns 138.95 ns 143.60 ns]= |
-| exact direct read | =direnv exec . sh -c '/usr/bin/time -p .bin/asp rust query --from-hook direct-source-read --selector crates/agent-semantic-protocol/src/command/document_provider.rs:1-80 --projection source . >/tmp/asp-direct-read-smoke.out'= | =real 0.00=, stdout =1857= bytes |
-| Rust search wrapper | =direnv exec . sh -c '/usr/bin/time -p .bin/asp rust search lexical DocumentWalkConfig --view seeds crates/agent-semantic-protocol >/tmp/asp-rust-lexical-smoke.out'= | =real 0.01=, stdout =776= bytes |
+| exact direct read | =direnv exec . sh -c '/usr/bin/time -p .bin/asp rust query --from-hook direct-source-read --selector crates/agent-semantic-client/src/command/document_provider.rs:1-80 --projection source . >/tmp/asp-direct-read-smoke.out'= | =real 0.00=, stdout =1857= bytes |
+| Rust search wrapper | =direnv exec . sh -c '/usr/bin/time -p .bin/asp rust search lexical DocumentWalkConfig --view seeds crates/agent-semantic-client >/tmp/asp-rust-lexical-smoke.out'= | =real 0.01=, stdout =776= bytes |
 | configured document walk | =asp md query --term cached-secret-token --view metadata .= in a temp project with =[discovery] includeHiddenDirNames=[".cache"]= | =real 0.03=, stdout =135= bytes |
 
 Provider command latency regressions should be investigated at the transport
@@ -1565,7 +1565,7 @@ local-cache path:
   shell-out adapter plus tests for command shape, stdin packet forwarding, and
   missing-binary failure.
 - =languages/rust-lang-project-harness= does not depend on the
-  =agent-semantic-protocol= crate for graph rendering; it uses the same process
+  =agent-semantic-client= crate for graph rendering; it uses the same process
   boundary as TypeScript and Python.
 - =asp <rust|typescript|python> <search|query|check|agent
   guide|ast-patch|evidence> ...= remains the transparent provider-command
@@ -1705,7 +1705,7 @@ The RFC is implemented when:
 * Open decisions
 
 1. Whether the installed short command is always =asp= or an alias to
-   =agent-semantic-protocol= during the first implementation, without folding
+   =agent-semantic-client= during the first implementation, without folding
    client/cache/Flight/server behavior into that shared command facade crate.
 2. Which Turso table/index family ships after rendered packet artifact replay:
    owner/symbol rows, handle rows, or native syntax fact rows.

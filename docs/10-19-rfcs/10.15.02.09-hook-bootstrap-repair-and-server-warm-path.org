@@ -202,7 +202,7 @@ reference, or no longer corresponds to the named clause.
 
 | Contract owner | Rust owner |
 |-
-| configuration-independent entry | =crates/agent-semantic-protocol/src/hook_bootstrap.rs= |
+| configuration-independent entry | =crates/agent-semantic-client/src/hook_bootstrap.rs= |
 | bounded Tokio child ownership | =crates/agent-semantic-runtime/src/hook_process_runtime.rs= |
 | exact stdin replay | =hook_runtime_stdin::with_hook_stdin_override= |
 | digest-addressed active/healthy publication | =runtime_artifact_catalog::publish_runtime_artifact= |

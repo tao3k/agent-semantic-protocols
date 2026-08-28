@@ -216,25 +216,15 @@ pub struct AspProjectHookConfig {
 pub fn materialize_profile_rule_ir(config: &mut HookClientConfigFile) -> Result<(), String> {
     for rule in &mut config.rules {
         if let Some(matcher) = &rule.matcher {
-            for native in matcher.split('|') {
-                if !rule
-                    .match_config
-                    .native_matcher_any
-                    .iter()
-                    .any(|existing| existing == native)
-                {
-                    rule.match_config.native_matcher_any.push(native.to_owned());
-                }
-            }
-        }
-
-        for host_invocation in &rule.host_invocations {
             if !rule
                 .match_config
-                .host_invocation_any
-                .contains(host_invocation)
+                .native_matcher_any
+                .iter()
+                .any(|existing| existing == matcher)
             {
-                rule.match_config.host_invocation_any.push(*host_invocation);
+                rule.match_config
+                    .native_matcher_any
+                    .push(matcher.to_owned());
             }
         }
 

@@ -1,11 +1,27 @@
 #![deny(dead_code)]
 
-//! Agent-facing `asp` client command surface.
+//! Public `asp` client, CLI, and Runtime Server lifecycle surface.
+
+extern crate self as agent_semantic_client;
 
 mod cache_cli;
 pub use cache_cli::{project_registry_clean_clap_command, project_registry_gc_clap_command};
 pub mod cli;
 mod cli_args;
+mod client_cli;
+mod command;
+pub mod session_control_plane;
+pub use command::search_router_graph_state;
+mod agent_session_choice_state;
+mod hook_break_glass;
+mod multi_agent_session;
+pub(crate) mod server;
+pub use agent_semantic_context_product as context_product_state;
+
+pub mod agent_session_lifecycle_projection;
+pub mod codex_multi_agent_v2_control_plane;
+pub mod exact_projection;
+pub mod graph;
 mod language_command;
 pub mod provider_runtime_storage;
 mod runtime_language_client;
@@ -14,6 +30,7 @@ mod runtime_language_client;
 mod runtime_language_client_tests;
 mod search_history;
 pub mod source_index;
+mod state_cli;
 mod syntax_query_preflight;
 #[cfg(test)]
 #[path = "../tests/unit/support.rs"]
@@ -27,6 +44,16 @@ pub use language_command::{
 };
 pub use runtime_language_client::AspClient;
 
+pub mod cli_failure;
+#[doc(hidden)]
+pub mod hook_bootstrap;
+pub use command::protocol_binary::{
+    publish_runtime_server_artifact, published_runtime_server_artifact_digest,
+};
+#[doc(hidden)]
+pub use state_cli::run_binary_from_env;
+pub(crate) mod codex;
+
 pub use agent_semantic_client_core::LanguageId;
 pub use agent_semantic_client_server::{
     ProviderProjectResolution, ProviderProjectResolutionCandidates,
@@ -38,6 +65,9 @@ pub use agent_semantic_runtime::{
     language_owner_path_exists, run_language_owner_items_dispatch_plan,
 };
 pub use cli::{run_cli_args, run_cli_from_env};
+pub use client_cli::{
+    run_cli_args as run_client_cli_args, run_cli_from_env as run_client_cli_from_env,
+};
 pub use source_index::{
     SourceIndexCandidate, SourceIndexLookupResult, SourceIndexLookupState,
     SourceIndexRefreshReport, SourceIndexSourceKind,
@@ -48,8 +78,8 @@ pub use syntax_query_preflight::validate_syntax_query_request as validate_client
 #[path = "../tests/unit/cli_args.rs"]
 mod cli_args_tests;
 #[cfg(test)]
-#[path = "../tests/unit/cli.rs"]
-mod cli_tests;
+#[path = "../tests/unit/client_cli.rs"]
+mod client_cli_tests;
 pub mod projection_presentation;
 #[cfg(test)]
 #[path = "../tests/unit/provider_runtime_storage.rs"]

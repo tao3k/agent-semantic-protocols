@@ -8,6 +8,11 @@ structure MatcherState where
 generation mixtures are unrepresentable. -/
 structure MatcherBundle (Projection : Type) where
   generation : Nat
+  evaluatorBinaryDigest : Nat
+  configDigest : Nat
+  compiledMatcherDigest : Nat
+  registryDigest : Nat
+  receiptDigest : Nat
   complete : Projection
   directRead : Projection
   shellRead : Projection
@@ -20,11 +25,62 @@ theorem atomic_switch_exposes_one_complete_generation
     (current next : MatcherBundle Projection) :
     let visible := atomicSwitch current next
     visible.generation = next.generation ∧
+      visible.evaluatorBinaryDigest = next.evaluatorBinaryDigest ∧
+      visible.configDigest = next.configDigest ∧
+      visible.compiledMatcherDigest = next.compiledMatcherDigest ∧
+      visible.registryDigest = next.registryDigest ∧
+      visible.receiptDigest = next.receiptDigest ∧
       visible.complete = next.complete ∧
       visible.directRead = next.directRead ∧
       visible.shellRead = next.shellRead ∧
       visible.commandProfile = next.commandProfile := by
   simp [atomicSwitch]
+
+/-- Mutable Config source is candidate input, never serving state. -/
+def editConfigSource (active : MatcherBundle Projection) (_newSourceDigest : Nat) :
+    MatcherBundle Projection := active
+
+theorem config_source_edit_preserves_active_generation
+    (active : MatcherBundle Projection) (newSourceDigest : Nat) :
+    (editConfigSource active newSourceDigest).generation = active.generation := by
+  rfl
+
+inductive CandidateStage where
+  | parse
+  | compile
+  | validate
+  | publication
+  deriving DecidableEq
+
+def candidateTransition
+    (current candidate : MatcherBundle Projection) (stageSucceeded : Bool) :
+    MatcherBundle Projection :=
+  if stageSucceeded then atomicSwitch current candidate else current
+
+theorem candidate_stage_failure_preserves_previous
+    (current candidate : MatcherBundle Projection) (stage : CandidateStage) :
+    let _ := stage
+    candidateTransition current candidate false = current := by
+  simp [candidateTransition]
+
+inductive RuntimeActivationState where
+  | stopped
+  | pending
+  | failed
+  | ready
+  deriving DecidableEq
+
+def commitHookGeneration
+    (current candidate : MatcherBundle Projection)
+    (_runtime : RuntimeActivationState) : MatcherBundle Projection :=
+  atomicSwitch current candidate
+
+theorem hook_commit_is_runtime_independent
+    (current candidate : MatcherBundle Projection)
+    (left right : RuntimeActivationState) :
+    commitHookGeneration current candidate left =
+      commitHookGeneration current candidate right := by
+  rfl
 
 /-- Hook evaluation is total over both ready and unavailable states. -/
 inductive EvaluationResult where
@@ -89,11 +145,10 @@ inductive RecoveryNode where
   | recovered
   deriving DecidableEq
 
-/-- A recovery override is detected before the Policy Kernel.  Both supported
-origins have identical semantics; the origin is evidence, not policy. -/
+/-- Both inherited process boundaries terminate before the Policy Kernel. -/
 inductive RecoveryOverrideOrigin where
-  | hookProcessEnvironment
-  | shellCommandAssignment
+  | pluginLauncherEnvironment
+  | evaluatorProcessEnvironment
   deriving DecidableEq
 
 structure RecoveryModel where
@@ -141,15 +196,32 @@ the legacy recovery cycle cannot be formed. -/
 theorem process_environment_override_makes_deadlock_unreachable :
     ¬ formsLegacyRecoveryCycle
       { legacyDeadlockModel with
-          overrideOrigin := some .hookProcessEnvironment } := by
+          overrideOrigin := some .evaluatorProcessEnvironment } := by
   simp [formsLegacyRecoveryCycle, recoveryEdge]
 
-/-- A shell-command assignment has the same pre-kernel precedence. -/
-theorem shell_assignment_override_makes_deadlock_unreachable :
+/-- The fixed Plugin launcher is the earlier inherited-process escape layer. -/
+theorem launcher_environment_override_makes_deadlock_unreachable :
     ¬ formsLegacyRecoveryCycle
       { legacyDeadlockModel with
-          overrideOrigin := some .shellCommandAssignment } := by
+          overrideOrigin := some .pluginLauncherEnvironment } := by
   simp [formsLegacyRecoveryCycle, recoveryEdge]
+
+/-- Only inherited process inputs exist before Hook policy evaluation. Tool
+payload is observed after the two recovery boundaries and is never authority. -/
+inductive RecoveryInput where
+  | pluginLauncherEnvironment
+  | evaluatorProcessEnvironment
+  | toolPayload
+  deriving DecidableEq
+
+def hasRecoveryAuthority : RecoveryInput → Bool
+  | .pluginLauncherEnvironment => true
+  | .evaluatorProcessEnvironment => true
+  | .toolPayload => false
+
+theorem tool_payload_cannot_be_recovery_authority :
+    hasRecoveryAuthority .toolPayload = false := by
+  rfl
 
 /-- Recovery precedence is scoped to a parsed Hook event.  The override cannot
 capture ordinary ASP CLI commands before their own parser runs. -/

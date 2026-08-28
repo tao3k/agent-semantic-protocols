@@ -9,6 +9,7 @@ pub(crate) enum FilesystemPermissionKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum FilesystemPermissionSource {
     HostMatcher,
+    ReaderProbe,
     ShellRedirection,
 }
 
@@ -36,6 +37,7 @@ impl FilesystemPermissionFact {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SemanticCapabilityEvidence {
     HostMatcher,
+    ReaderProbe,
     RegisteredSourceOperand,
     ShellRedirection,
 }
@@ -54,6 +56,7 @@ impl SemanticCapability {
         };
         let evidence = match fact.source {
             FilesystemPermissionSource::HostMatcher => SemanticCapabilityEvidence::HostMatcher,
+            FilesystemPermissionSource::ReaderProbe => SemanticCapabilityEvidence::ReaderProbe,
             FilesystemPermissionSource::ShellRedirection => {
                 SemanticCapabilityEvidence::ShellRedirection
             }

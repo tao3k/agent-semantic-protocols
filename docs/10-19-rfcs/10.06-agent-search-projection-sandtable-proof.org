@@ -220,7 +220,7 @@ minimality checks.
 The simulated reducer selected an owner-local test action:
 
 #+begin_src shell
-asp rust search owner crates/agent-semantic-protocol/src/command/workspace_tree_sitter_query.rs tests --query 'exact selector term' --workspace . --view seeds
+asp rust search owner crates/agent-semantic-client/src/command/workspace_tree_sitter_query.rs tests --query 'exact selector term' --workspace . --view seeds
 #+end_src
 
 The provider returned exit =2= and recommended the =items= surface instead.
@@ -238,7 +238,7 @@ After grammar repair, owner-local item search returned =parse= and
 =has_exact_selector= but no test identities.  A refined search emitted:
 
 #+begin_src text
-rust://crates/agent-semantic-protocol/src/command/workspace_tree_sitter_query.rs#item/function/has_exact_selector
+rust://crates/agent-semantic-client/src/command/workspace_tree_sitter_query.rs#item/function/has_exact_selector
 #+end_src
 
 Its =recommendedNext= was an exact =asp rust query --selector ...= action.
@@ -321,7 +321,7 @@ evidence while the lane is blocked.
 The planted advisory memory named:
 
 #+begin_src text
-crates/agent-semantic-protocol/src/command/search_pipe_dependency_facts.rs
+crates/agent-semantic-client/src/command/search_pipe_dependency_facts.rs
 #+end_src
 
 ** Observed trace

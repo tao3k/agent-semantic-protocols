@@ -21,19 +21,19 @@ typed target/lane, and scoped command that advances the state.
 
 * Architecture
 
-=ASP_NO_AGENT=1= has exactly one Host-Hook projection. An inherited process
-environment value is an entry-plane recovery override whose precedence is
-absolute:
+=ASP_NO_AGENT=1= has two inherited-process projections and no payload
+projection.  Both have absolute precedence:
 
 #+begin_example
-detect process-environment ASP_NO_AGENT=1
-  -> terminal allow receipt
-  -> stop
+Plugin launcher: detect inherited ASP_NO_AGENT=1 -> {} -> stop
+Hook evaluator process entry: detect inherited ASP_NO_AGENT=1 -> {} -> stop
 #+end_example
 
-The terminal branch MUST execute before workspace discovery, configuration or
-provider projection, mmap/file locks, Runtime or ASP Server access, lifecycle
-observation, and telemetry. The inherited value must be exactly =1=. An
+The launcher branch MUST execute before State Home/current/binary resolution
+or stdin.  The evaluator branch MUST execute before runtime construction,
+workspace discovery, configuration or provider projection, mmap/file locks,
+Runtime or ASP Server access, lifecycle observation, stdin, and telemetry. The
+inherited value must be exactly =1=. An
 assignment inside the protected command is too late: the Host has already
 launched the enforcing Hook process, so it is ordinary command data and cannot
 grant recovery authority. Neither matcher configuration nor classifier
@@ -48,16 +48,64 @@ concurrent pressure sample MUST satisfy wall =elapsedMicros <= 500=. Thus a resu
 such as 823us is still admitted by the fail-closed boundary but is a performance
 regression because it lacks sufficient scheduling and filesystem headroom.
 
-Hook invocation is one-shot but not low-concurrency. Concurrent Host actions
-MUST map the same immutable active generation and evaluate independently. The
-read path MUST NOT serialize behind a writer, queue for Runtime capacity, or
-publish a new generation. Update/refresh owns binary snapshot compilation and
-atomic active-artifact replacement; readers either observe the prior complete
-generation or the next complete generation.
+For an ordinary =asp= CLI invocation, inherited =ASP_NO_AGENT=1= selects the
+=agent-semantic-client= single-thread server-first IPC lane.  That lane creates no Tokio
+worker pool and registers no Ctrl-C signal listener; it retains only the I/O
+driver required to reach or recover the resident ASP Server.  When the owner is
+dead or missing, the lane consumes the event-bound immutable candidate from the
+durable pending-or-applied V1 activation and performs exactly one typed
+supervisor recovery before continuing the original client request.  It is not
+a local parser/provider fallback, does not read a legacy mutable artifact
+identity projection, and cannot override operator-stop or endpoint/candidate
+identity denial.  Such denial remains a V1 typed CLI failure.
 
-Each active matcher shard is one atomically replaced file, not an active-JSON
-to generation-file lookup chain. Its fixed header carries the config and agent
-owner stamps plus the generation digest; its body carries the compiled matcher.
+Hook invocation is one-shot but not low-concurrency. Concurrent Host actions
+MUST resolve the =hooks/current= pointer once, map the same immutable active
+generation, and evaluate independently. A =HookGeneration= is the indivisible
+product of evaluator binary digest, Config schema-version-1 digest, compiled
+matcher/policy digest, Agent registry digest, and its typed receipt. Directory,
+path-key, and logical namespace names are stable and MUST NOT carry version
+suffixes; schema identity and =schemaVersion= own evolution. The read path MUST
+NOT serialize behind a writer, queue for Runtime capacity, compile source, or
+publish a new generation. The Developer installer alone compiles and validates
+a candidate and atomically replaces =hooks/current=; readers observe either the
+prior complete generation or the next complete generation.
+
+Editing mutable Config or registry source MUST NOT affect the active
+generation. Parse, compile, validation, immutable materialization, or current
+publication failure MUST leave the prior current pointer unchanged. Immutable
+materialization may use Tokio blocking tasks; the current-pointer transaction
+is a bounded synchronous =fs2= lock, atomic symlink rename, and directory
+=fsync= with no =await= inside the lock.
+
+Hook publication and Runtime activation are distinct transactions. Hook commit
+MUST NOT wait for, inspect, or depend on Runtime activation. Runtime states
+=stopped=, =pending=, =failed=, and =ready= cannot change Hook policy
+availability. The fixed Plugin launcher resolves only =hooks/current= and MUST
+NOT read =runtime/bin/asp=, Runtime current/healthy slots, endpoint state, or
+activation generation.
+
+Runtime binary publication has a separate dual-authority invariant.  Inside
+the sole =artifact-mutation.lock= transaction, Artifacts MUST allocate the next
+generation from current pending/applied V1 receipts, publish the event-bound
+immutable candidate, and atomically switch only =runtime/bin/asp= to that
+candidate.  Resident =active=, =healthy=, and all serving aliases remain the
+previous applied generation until the actor publishes ready/applied commit.
+Protocol/client packages MUST NOT perform a second launcher transaction.
+
+The retired single-switch design deadlocks when applied generation 21 owns a
+dead resident owner while generation 28 contains the only stale-endpoint and
+no-owner recovery implementation: the old client cannot reach the code needed
+to replace its own owner.  Dual authority breaks that cycle because the next
+ordinary client executes generation 28 while serving stays 21. Candidate,
+event, malformed-state, or launcher failure preserves both previous client and
+serving authorities. Actor commit must compare the current pending generation
+under the same mutation guard; an older actor can neither retire nor overwrite
+a newer pending event.
+
+Each generation contains one immutable matcher artifact. Its fixed header
+carries deterministic config and agent content identities plus the compiler
+generation digest; its body carries the compiled matcher.
 The complete matcher and policy-derived direct-read decision-template shards
 share the same generation and owner stamps. A direct-read shard is rendered by
 the complete composed policy compiler and contains the winning typed decision
@@ -78,7 +126,8 @@ Only a different or unproven identity may receive the dispatch deny.
 
 * Formal obligations
 
-=ASPProof.HookRecoveryDeadlockFreedom= must prove:
+=ASPProof.HookRecoveryDeadlockFreedom= and
+=ASPProof.RuntimeClientServingPublication= must prove:
 
 - the legacy recursive dispatcher admits a target-self-dispatch counterexample;
 - the recovery override dominates every policy and identity state;
@@ -91,6 +140,17 @@ Only a different or unproven identity may receive the dispatch deny.
 - lock-free reader latency and policy outcomes are invariant under reader count;
 - atomic publication exposes only the prior or next complete generation, never
   a torn matcher state.
+- mutable Config source edits preserve the active generation;
+- every candidate-stage failure preserves the previous generation;
+- Hook commit is invariant under Runtime activation state;
+- Plugin-launcher and evaluator-process inherited overrides each break the
+  legacy recovery cycle, while shell command assignment has no recovery
+  authority.
+- the old applied-client/single-switch design has a concrete dead-owner plus
+  newer-pending bootstrap deadlock;
+- dual client/serving publication is atomic and monotone, reaches recovery
+  without the old owner, converges after current actor commit, and preserves a
+  newer pending generation under stale concurrent commit;
 - 823us of Hook CPU is a concrete counterexample that satisfies the 1ms hard boundary but
   violates the 500us operating target, and 24/32 is the minimum typical quorum.
 - a decision with 240us of Hook CPU and 6000us of external scheduler delay
@@ -99,9 +159,21 @@ Only a different or unproven identity may receive the dispatch deny.
 
 * Executable refinement gates
 
-Rust tests MUST cover process-environment bypass with missing state/config,
+Rust tests MUST cover both process-environment bypass layers with missing
+generation/state/config,
 direct and arbitrarily wrapped command assignments, a similarly named variable
-that cannot bypass policy, target-Agent dispatch idempotence, non-target deny
-guidance, and absence of Runtime Server artifacts.  The final acceptance matrix
-must run through the installed plugin Hook in a normal Codex task after the
-user enables it.
+that cannot bypass policy, mutable source edits without publication, ten
+consecutive Developer generations, parse/compile/validate/publication failure
+retaining previous, 32 concurrent launcher calls observing only =N= or =N+1=,
+all four independent Runtime states, target-Agent dispatch idempotence,
+non-target deny guidance, and absence of Runtime Server dependencies. The final
+acceptance matrix must run through the installed plugin Hook in a normal Codex
+task after the user enables it.
+
+Artifacts tests additionally MUST cover production-shaped previous/pending
+authority, candidate and launcher failure, malformed V1 receipts, publication
+versus actor-commit ordering, and stale generation rejection. =agent-semantic-client=
+tests MUST prove the ordinary =ASP_NO_AGENT= lane avoids worker-pool and signal
+registration, recovers one dead applied owner before dispatching the original
+request, and preserves typed operator-stop denial while still using resident
+Server IPC.

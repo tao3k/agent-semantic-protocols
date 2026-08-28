@@ -1055,7 +1055,7 @@ uv run --project packages/python pytest \
   tests/unit/semantic_sandtable/test_failure_frontier_scenario_schema.py \
   tests/unit/semantic_sandtable/test_json_expectations.py -q
 direnv exec . just check-graph-turbo-focused
-direnv exec . cargo test -p agent-semantic-protocol pipe_frontier -- --nocapture
+direnv exec . cargo test -p agent-semantic-client pipe_frontier -- --nocapture
 uv run --project packages/python pytest \
   tests/unit/semantic_sandtable/test_failure_frontier_trace_scenario.py \
   tests/unit/semantic_sandtable/test_failure_frontier_scenario_schema.py -q
@@ -1125,7 +1125,7 @@ selectors such as =src/cli.jl:1:17= are emitted with
 selectors continue to use =--code .=.
 
 The 2026-06-07 validation boundary is explicit.  Rust provider tests pass
-through =direnv exec . cargo test -p agent-semantic-protocol=, and real
+through =direnv exec . cargo test -p agent-semantic-client=, and real
 =.bin/asp= pipe smokes verify both Julia provider-local and Rust
 workspace-relative selector commands.  Python graph-turbo focused tests must be
 run through the package-owned environment:

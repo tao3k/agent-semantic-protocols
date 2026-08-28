@@ -184,6 +184,18 @@ impl RuntimeServerRuntimeBuilder {
         Self { builder }
     }
 
+    /// Minimal server-first CLI runtime for an explicitly authorized
+    /// `ASP_NO_AGENT=1` recovery invocation.
+    ///
+    /// This lane retains only the I/O driver needed to reach the resident ASP
+    /// Server. It creates no worker pool; the binary also omits signal-driver
+    /// registration so Host sandboxes still have one bounded IPC route.
+    pub fn new_no_agent_client() -> Self {
+        let mut builder = tokio::runtime::Builder::new_current_thread();
+        builder.thread_name("asp-no-agent-client");
+        Self { builder }
+    }
+
     pub fn new_daemon() -> Self {
         // Tokio's runtime must reflect the host's effective CPU allocation
         // (including cgroup / processor-set limits), not a repository-fixed

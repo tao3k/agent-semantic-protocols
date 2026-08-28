@@ -37,7 +37,7 @@ _agent-tools-run-asp bin_dir +args:
       fi; \
       SEMANTIC_AGENT_BIN_DIR="${bin_dir}" "${protocol_bin}" {{args}}; \
     else \
-      SEMANTIC_AGENT_BIN_DIR="${bin_dir}" cargo run -q -p agent-semantic-protocol --bin asp -- {{args}}; \
+      SEMANTIC_AGENT_BIN_DIR="${bin_dir}" cargo run -q -p agent-semantic-client --bin asp -- {{args}}; \
     fi
 
 # Develop mode: install this checkout's tools and Codex hooks.
@@ -76,9 +76,9 @@ _agent-hooks-doctor-codex bin_dir="":
 
 # Replay the root classifier directly without launching Codex.
 agent-hooks-smoke-hook:
-    @activation="$(cargo run -q -p agent-semantic-protocol --bin asp -- hook paths . | awk -F= '$1=="activation"{print substr($0, 12)}')"; \
+    @activation="$(cargo run -q -p agent-semantic-client --bin asp -- hook paths . | awk -F= '$1=="activation"{print substr($0, 12)}')"; \
       printf '%s' '{"tool_name":"functions.exec_command","tool_input":{"cmd":"sed -n '\''1,8p'\'' languages/typescript-lang-project-harness/tests/unit/cli.test.ts"}}' \
-      | cargo run -q -p agent-semantic-protocol --bin asp -- hook pre-tool --client codex --activation "$activation" --config .codex/agent-semantic-protocol/hooks/config.toml --emit decision \
+      | cargo run -q -p agent-semantic-client --bin asp -- hook pre-tool --client codex --activation "$activation" --config .codex/agent-semantic-protocol/hooks/config.toml --emit decision \
       | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["decision"]=="deny", d; assert d["reasonKind"] in {"bulk-source-dump","direct-source-read"}, d; print("[agent-hooks-smoke-hook] blocked", d["reasonKind"])'
 
 # Launch Codex CLI and verify the real PreToolUse runtime blocks a TS source dump.
@@ -130,7 +130,7 @@ agent-tools-install-asp bin_dir="":
 
 # Build the ASP release binary without coupling it to provider runtime artifacts.
 build-asp-release:
-    cargo build --release --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp
+    cargo build --release --manifest-path Cargo.toml --package agent-semantic-client --bin asp
 
 agent-tools-install-protocol bin_dir="":
     @requested_bin_dir="{{bin_dir}}"; \
@@ -140,7 +140,7 @@ agent-tools-install-protocol bin_dir="":
       fi; \
       cargo_target_dir="${CARGO_TARGET_DIR:-target}"; \
       asp_artifact="${cargo_target_dir}/release/asp"; \
-      cargo build --release --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp || exit $?; \
+      cargo build --release --manifest-path Cargo.toml --package agent-semantic-client --bin asp || exit $?; \
       "${asp_artifact}" --version --require-release >/dev/null; \
       destination="$("${asp_artifact}" paths --get runtimeBinDir)/asp"; \
       "${asp_artifact}" install binary; \
@@ -156,7 +156,7 @@ agent-tools-install-protocol-debug bin_dir="":
       fi; \
       cargo_target_dir="${CARGO_TARGET_DIR:-target}"; \
       asp_artifact="${cargo_target_dir}/debug/asp"; \
-      cargo build --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp || exit $?; \
+      cargo build --manifest-path Cargo.toml --package agent-semantic-client --bin asp || exit $?; \
       destination="$("${asp_artifact}" paths --get runtimeBinDir)/asp"; \
       "${asp_artifact}" install binary; \
       test -x "${destination}"
@@ -361,7 +361,7 @@ check-live-corpus-search-query-all:
 provider-gate: check-rust-warnings check-schema-profiles check-rfc-docs check-schema-manager check-tree-sitter-query-contracts check-language-workspace-search-contracts check-graph-turbo-focused provider-gate-root provider-gate-rust provider-gate-typescript provider-gate-python provider-gate-julia
 
 check-rust-warnings:
-    env RUSTFLAGS="-D warnings" cargo check -q -p agent-semantic-protocol
+    env RUSTFLAGS="-D warnings" cargo check -q -p agent-semantic-client
     env RUSTFLAGS="-D warnings" cargo check -q --manifest-path {{rust_harness_project}}/Cargo.toml --features cli,search
 
 check-schema-profiles:
@@ -657,7 +657,7 @@ provider-gate-semantic-facts:
         print(f"[semantic-facts] pipe {language} ok")
 
 perf-calibrate-julia-cache:
-	cargo build -q -p agent-semantic-protocol --bin asp
+	cargo build -q -p agent-semantic-client --bin asp
 	@tmp="$(mktemp -d)"; \
 	  asp_bin="$PWD/target/debug/asp"; \
 	  "${asp_bin}" cache invalidate --root {{julia_harness_project}} >/dev/null; \

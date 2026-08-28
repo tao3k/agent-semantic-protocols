@@ -1,0 +1,114 @@
+//! Hook command routing owned by the `asp` binary.
+
+use super::hook_runtime::{read_hook_input_bounded, run_hook_runtime_args};
+
+const HOOK_EVENTS: &[&str] = &[
+    "pre-tool",
+    "permission-request",
+    "post-tool",
+    "stop",
+    "notification",
+    "user-prompt",
+    "session-start",
+    "subagent-start",
+    "subagent-stop",
+];
+
+pub(crate) async fn run_hook_command(args: &[String]) -> Result<(), String> {
+    if matches!(args.first().map(String::as_str), Some("break-glass")) {
+        return super::hook_break_glass::run_hook_break_glass(&args[1..]);
+    }
+    if is_help_request(args) || is_lifecycle_help_request(args) {
+        println!("{}", usage());
+        return Ok(());
+    }
+    let forwarded = forwarded_hook_args(args)?;
+    if matches!(
+        args.first().map(String::as_str),
+        Some("accept-host" | "doctor" | "enablement" | "paths" | "refresh")
+    ) {
+        return run_hook_runtime_args(forwarded).await;
+    }
+
+    let input = read_hook_input_bounded()
+        .map_err(|error| format!("failed to read hook payload from stdin: {error}"))?;
+    evaluate_hook_event_locally(&forwarded, input).await
+}
+
+/// Hook configuration and recovery controls are local control-plane work.
+/// Their execution must remain reachable when Runtime activation or provider
+/// data planes are unavailable.
+pub(crate) fn is_runtime_independent_control_command(args: &[String]) -> bool {
+    matches!(
+        args.first().map(String::as_str),
+        Some("accept-host" | "break-glass" | "doctor" | "enablement" | "paths" | "refresh")
+    )
+}
+
+pub(crate) async fn evaluate_hook_event_locally(
+    arguments: &[String],
+    input: String,
+) -> Result<(), String> {
+    super::hook_runtime::run_hook_from_bootstrap(arguments, input).await
+}
+
+pub(super) fn is_help_request(args: &[String]) -> bool {
+    args.len() == 1 && matches!(args[0].as_str(), "help" | "--help" | "-h")
+}
+
+pub(super) fn is_lifecycle_help_request(args: &[String]) -> bool {
+    matches!(
+        args.first().map(String::as_str),
+        Some("accept-host" | "doctor" | "enablement" | "paths")
+    ) && is_help_request(&args[1..])
+}
+
+fn forwarded_hook_lifecycle_args(command: &str, args: &[String]) -> Result<Vec<String>, String> {
+    match command {
+        "accept-host" | "doctor" | "enablement" | "paths" | "refresh" => {
+            let mut forwarded = vec![command.to_string()];
+            forwarded.extend(args.iter().cloned());
+            Ok(forwarded)
+        }
+        _ => Err(usage()),
+    }
+}
+
+pub(super) fn forwarded_hook_args(args: &[String]) -> Result<Vec<String>, String> {
+    let Some(command) = args.first().map(String::as_str) else {
+        return Err(usage());
+    };
+
+    match command {
+        "help" | "--help" | "-h" => Err(usage()),
+        lifecycle @ ("accept-host" | "doctor" | "enablement" | "paths" | "refresh") => {
+            forwarded_hook_lifecycle_args(lifecycle, &args[1..])
+        }
+        "event" => {
+            let Some(event) = args.get(1) else {
+                return Err("usage: asp hook event <event> ...".to_string());
+            };
+            forwarded_event_args(event, &args[2..])
+        }
+        event if HOOK_EVENTS.contains(&event) => forwarded_event_args(event, &args[1..]),
+        flag if flag.starts_with('-') => {
+            let mut forwarded = vec!["hook".to_string()];
+            forwarded.extend(args.iter().cloned());
+            Ok(forwarded)
+        }
+        _ => Err(usage()),
+    }
+}
+
+fn forwarded_event_args(event: &str, rest: &[String]) -> Result<Vec<String>, String> {
+    if !HOOK_EVENTS.contains(&event) {
+        return Err(format!("unsupported hook event: {event}"));
+    }
+    let mut forwarded = vec!["hook".to_string(), "--event".to_string(), event.to_string()];
+    forwarded.extend(rest.iter().cloned());
+    Ok(forwarded)
+}
+
+fn usage() -> String {
+    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp hook accept-host --host-rollout PATH --host-probe-path PATH --host-sentinel TOKEN\n       asp hook doctor --client <codex|claude> [--host-rollout PATH --host-probe-path PATH --host-sentinel TOKEN] ...\n       asp hook enablement [PROJECT_ROOT] [--json]\n       asp hook paths [PROJECT_ROOT]\n       asp hook break-glass mint --defect-kind <KIND> --command <COMMAND> [PROJECT_ROOT]\n       asp hook --client <codex|claude> --event <event> ...\n       asp hook <pre-tool|post-tool|stop|event> ...\n       asp install plugin --codex".to_string()
+}

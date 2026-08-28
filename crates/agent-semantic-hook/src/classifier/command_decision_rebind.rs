@@ -17,6 +17,7 @@ pub struct ShellCommandKey {
     pub command_tokens: Vec<String>,
     pub paths: Vec<String>,
     pub tool_name: String,
+    pub has_declared_filesystem_access: bool,
 }
 
 /// All declarative matcher keys derived from one canonical Host normalization.
@@ -42,6 +43,11 @@ fn shell_command_keys_from_actions(
                 command_tokens: action.command_tokens()?.into_owned(),
                 paths: action.paths.clone(),
                 tool_name: action.tool_name.clone(),
+                // `paths` is projected by the single canonical shell parse
+                // while normalizing the ToolAction. Do not derive the full
+                // AgentAction here: that would parse the shell AST again on
+                // the Host's latency-sensitive decision path.
+                has_declared_filesystem_access: action.has_declared_filesystem_access,
             })
         })
         .collect()

@@ -6,16 +6,19 @@ fn default_config() -> HookClientConfigFile {
 }
 
 #[test]
-fn source_read_rule_is_owned_only_by_action_and_language_profiles() {
+fn source_access_rule_is_owned_by_bash_capability_and_language_profiles() {
     let config = default_config();
     let rule = config
         .rules
         .iter()
-        .find(|rule| rule.id == "route-read-to-asp-languages")
-        .expect("Read plus language profiles route should exist");
-    let dispatch = rule.dispatch.as_ref().expect("Read route dispatch");
+        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
+        .expect("Bash source access plus language profiles route should exist");
+    let dispatch = rule
+        .dispatch
+        .as_ref()
+        .expect("source access route dispatch");
     assert_eq!(dispatch.agent.as_str(), "asp_explorer");
-    assert_eq!(rule.matcher.as_deref(), Some("Read"));
+    assert_eq!(rule.matcher.as_deref(), Some("Bash"));
     assert!(!rule.profiles_list.is_empty());
     assert_eq!(
         config.agent_calling.symbol("codex", "asp_explorer"),
@@ -40,17 +43,21 @@ fn default_template_uses_rule_local_matcher_policies() {
         wrapped_rule.matcher_policies,
         [HookClientMatcherPolicy::WrappedCommand]
     );
-    let native_read_rule = config
+    let source_access_rule = config
         .rules
         .iter()
-        .find(|rule| rule.id == "route-read-to-asp-languages")
-        .expect("native Read route rule");
-    assert!(native_read_rule.matcher_policies.is_empty());
+        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
+        .expect("Bash source-access route rule");
+    assert!(source_access_rule.matcher_policies.is_empty());
 
-    assert_eq!(native_read_rule.matcher.as_deref(), Some("Read"));
-    assert!(native_read_rule.profiles_list.contains(&"rust".to_owned()));
+    assert_eq!(source_access_rule.matcher.as_deref(), Some("Bash"));
     assert!(
-        native_read_rule
+        source_access_rule
+            .profiles_list
+            .contains(&"rust".to_owned())
+    );
+    assert!(
+        source_access_rule
             .profiles_list
             .contains(&"typescript".to_owned())
     );
@@ -160,7 +167,7 @@ fn typed_action_rule_shape_probe() {
     let rule = config
         .rules
         .iter()
-        .find(|rule| rule.id == "route-read-to-asp-languages")
+        .find(|rule| rule.id == "route-unresolved-source-access-to-asp-languages")
         .expect("typed action rule should exist");
     eprintln!("{rule:#?}");
 }
