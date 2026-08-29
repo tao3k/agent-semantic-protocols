@@ -26,6 +26,7 @@ from .route_verification_common import (
     argv,
     command_id,
     command_refs,
+    is_semantic_command_binary,
     index,
 )
 from .utils import dict_value, string_list
@@ -507,7 +508,7 @@ def _has_direct_source_read(command_argv: list[str]) -> bool:
 def _asp_index(command_argv: list[str]) -> int | None:
     for item_index, value in enumerate(command_argv):
         binary = Path(value).name
-        if binary == "asp" or binary.endswith("-harness"):
+        if is_semantic_command_binary(binary):
             return item_index
     return None
 

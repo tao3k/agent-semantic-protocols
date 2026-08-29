@@ -55,6 +55,13 @@ pub enum RuntimeSearchServiceRequest {
         payload: Value,
         response: oneshot::Sender<Result<Value, String>>,
     },
+    GraphsTimeline {
+        project_root: PathBuf,
+        request_id: String,
+        payload: Value,
+        cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
+        response: oneshot::Sender<Result<Value, String>>,
+    },
     ProviderOwner {
         workspace_identity: String,
         project_root: PathBuf,
@@ -244,6 +251,36 @@ impl RuntimeSearchServiceHandle {
             receipt,
             "graphs-evaluate",
             "Runtime search service dropped the graph evaluation response",
+        )
+        .await
+    }
+
+    /// Submit a history/timeline packet through the same ASP Server-owned
+    /// `asp-python-graphs` process as graph evaluation.
+    pub async fn graphs_timeline(
+        &self,
+        project_root: PathBuf,
+        request_id: String,
+        payload: Value,
+        cancellation: crate::runtime_generation_cancellation::GenerationCancellation,
+    ) -> Result<Value, String> {
+        let (response, receipt) = oneshot::channel();
+        self.sender
+            .send(RuntimeSearchServiceRequest::GraphsTimeline {
+                project_root,
+                request_id,
+                payload,
+                cancellation,
+                response,
+            })
+            .await
+            .map_err(|_| {
+                "Runtime search service is not accepting graph timeline requests".to_owned()
+            })?;
+        self.await_receipt(
+            receipt,
+            "graphs-timeline",
+            "Runtime search service dropped the graph timeline response",
         )
         .await
     }

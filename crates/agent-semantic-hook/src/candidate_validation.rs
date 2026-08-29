@@ -30,7 +30,11 @@ fn valid_reader_validation_receipt(context: &str, generation_digest: &str) -> bo
             string("terminal"),
             boolean("probeProcessLaunched"),
         ),
-        (Some("dyld-open"), Some("open-entry-observed"), Some(true))
+        (
+            Some("permission-differential"),
+            Some("read-permission-observed"),
+            Some(true),
+        )
             | (
                 Some("hook-generation-reader-catalog"),
                 Some("reader-behavior-catalog-hit"),
@@ -44,7 +48,7 @@ fn valid_reader_validation_receipt(context: &str, generation_digest: &str) -> bo
     );
     string("permissionDecision") == Some("deny")
         && string("access") == Some("read")
-        && string("accessMode") == Some("O_RDONLY")
+        && string("accessMode") == Some("read-permission")
         && boolean("cleanupVerified") == Some(true)
         && string("generationDigest") == Some(generation_digest)
         && trusted_reader_evidence

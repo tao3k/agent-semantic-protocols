@@ -12,9 +12,9 @@ use crate::test_support::{StateHomeGuard, TestDir, environment_lock, workspace};
 #[tokio::test(flavor = "current_thread")]
 async fn exact_rust_inventory_is_isolated_from_julia_and_gerbil_scopes() {
     let fixture = ProviderTreeSitterWriteFixture::new("scope-isolation").await;
-    let rust = fixture.scope("rust", "rust-harness", '1');
-    let julia = fixture.scope("julia", "julia-harness", '2');
-    let gerbil = fixture.scope("gerbil-scheme", "gerbil-harness", '3');
+    let rust = fixture.scope("rust", "asp-rust", '1');
+    let julia = fixture.scope("julia", "asp-julia", '2');
+    let gerbil = fixture.scope("gerbil-scheme", "asp-gerbil-scheme", '3');
 
     fixture
         .write_inventory(&julia, ProviderOwnerInventoryState::Known, &["src/a.jl"])
@@ -38,9 +38,9 @@ async fn exact_rust_inventory_is_isolated_from_julia_and_gerbil_scopes() {
 #[tokio::test(flavor = "current_thread")]
 async fn second_inventory_write_deletes_only_stale_rust_owner() {
     let fixture = ProviderTreeSitterWriteFixture::new("stale-owner").await;
-    let rust = fixture.scope("rust", "rust-harness", '1');
-    let julia = fixture.scope("julia", "julia-harness", '2');
-    let gerbil = fixture.scope("gerbil-scheme", "gerbil-harness", '3');
+    let rust = fixture.scope("rust", "asp-rust", '1');
+    let julia = fixture.scope("julia", "asp-julia", '2');
+    let gerbil = fixture.scope("gerbil-scheme", "asp-gerbil-scheme", '3');
 
     fixture
         .write_inventory(&julia, ProviderOwnerInventoryState::Known, &["src/a.jl"])
@@ -77,7 +77,7 @@ async fn second_inventory_write_deletes_only_stale_rust_owner() {
 #[tokio::test(flavor = "current_thread")]
 async fn one_owner_capture_set_is_atomically_replaced() {
     let fixture = ProviderTreeSitterWriteFixture::new("capture-replace").await;
-    let scope = fixture.scope("rust", "rust-harness", '1');
+    let scope = fixture.scope("rust", "asp-rust", '1');
     let inventory = fixture
         .write_inventory(&scope, ProviderOwnerInventoryState::Exact, &["src/lib.rs"])
         .await;
@@ -128,7 +128,7 @@ async fn one_owner_capture_set_is_atomically_replaced() {
 #[tokio::test(flavor = "current_thread")]
 async fn query_and_content_digest_keys_do_not_cross_results() {
     let fixture = ProviderTreeSitterWriteFixture::new("cache-keys").await;
-    let scope = fixture.scope("rust", "rust-harness", '1');
+    let scope = fixture.scope("rust", "asp-rust", '1');
     let inventory = fixture
         .write_inventory(&scope, ProviderOwnerInventoryState::Exact, &["src/lib.rs"])
         .await;
@@ -185,7 +185,7 @@ async fn invalid_completeness_signature_span_and_cache_key_fail_before_db_open()
         ("cache-key", InvalidWrite::CacheKey),
     ] {
         let fixture = ProviderTreeSitterWriteFixture::new(label).await;
-        let scope = fixture.scope("rust", "rust-harness", '1');
+        let scope = fixture.scope("rust", "asp-rust", '1');
         let query = fixture.query(scope, 'a', &["declaration.name"]);
         let mut result = fixture.result(
             &query,

@@ -40,7 +40,7 @@ def test_project_resolution_request_accepts_repository_candidate_snapshot() -> N
         "schemaId": "agent.semantic-protocols.provider-project-resolution-request",
         "schemaVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "workspaceRoot": "/workspace",
         "repositoryCandidates": git_candidates(),
     }
@@ -54,7 +54,7 @@ def test_project_resolution_failure_is_typed_and_actionable() -> None:
         "schemaId": "agent.semantic-protocols.provider-project-resolution-response",
         "schemaVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "state": "failed",
         "failure": {
             "reasonKind": "project-entry-missing",
@@ -72,7 +72,7 @@ def test_project_resolution_failure_rejects_missing_next_action() -> None:
         "schemaId": "agent.semantic-protocols.provider-project-resolution-response",
         "schemaVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "state": "failed",
         "failure": {
             "reasonKind": "project-entry-missing",

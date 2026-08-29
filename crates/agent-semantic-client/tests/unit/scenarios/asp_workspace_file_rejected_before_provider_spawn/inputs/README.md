@@ -7,4 +7,4 @@ passes the same file path as `--workspace`:
 asp gerbil-scheme search owner build-std.ss items --query 'builded|pended|optimization|make|clan|building' --workspace build-std.ss --view seeds
 ```
 
-The fixture includes a fake `gslph` marker provider. The provider must not run.
+The fixture includes a fake `asp-gerbil-scheme` marker provider. The provider must not run.

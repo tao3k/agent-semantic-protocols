@@ -16,7 +16,7 @@ fn selector(selector_id: &str) -> ClientDbSourceIndexSelector {
     };
     ClientDbSourceIndexSelector {
         owner_path: "src/lib.rs".into(),
-        provider_id: ProviderId::from("rs-harness"),
+        provider_id: ProviderId::from("asp-rust"),
         selector_id: ClientDbSourceIndexSelectorId::from(selector_id),
         symbol: Some(ClientDbSourceIndexSelectorSymbol::from("target")),
         kind: Some(ClientDbSourceIndexSelectorKind::from(item_kind)),
@@ -49,7 +49,7 @@ fn selector_generation_hash(selectors: Vec<ClientDbSourceIndexSelector>) -> Stri
         relations: Vec::new(),
         path: PathBuf::from("src/lib.rs"),
         language_id: "rust".into(),
-        provider_id: "rust-lang-project-harness".into(),
+        provider_id: "asp-rust".into(),
         projection_coverage:
             agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::Complete,
         selector_receipts: selectors,

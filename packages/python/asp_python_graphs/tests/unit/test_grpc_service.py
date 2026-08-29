@@ -72,3 +72,28 @@ def test_concurrent_health_requests_share_one_service_session() -> None:
     assert len(receipts) == 9
     assert {str(receipt["serviceEpoch"]) for receipt in receipts} == {"epoch-a"}
     assert all(receipt["messageKind"] == "receipt" for receipt in receipts)
+
+
+def test_evaluate_admission_reports_deterministic_capacity_saturation() -> None:
+    async def requests() -> AsyncIterator[dict[str, object]]:
+        for index in range(33):
+            yield {
+                **health(f"evaluate-{index}"),
+                "sequence": index + 1,
+                "messageKind": "evaluate",
+                "workspaceIdentity": "workspace-a",
+                "generationDigest": f"blake3-256:{'a' * 64}",
+                "generationToken": 1,
+                "payload": {"terms": ["runtime"], "rankPayload": {}},
+            }
+
+    async def collect() -> list[dict[str, object]]:
+        handler = AspPythonGraphsGrpcHandler(max_in_flight=32)
+        return [receipt async for receipt in handler.session(requests(), object())]  # type: ignore[arg-type]
+
+    receipts = asyncio.run(collect())
+    assert len(receipts) == 33
+    assert sum(
+        receipt.get("payload", {}).get("reasonKind") == "capacity-exhausted"  # type: ignore[union-attr]
+        for receipt in receipts
+    ) == 1

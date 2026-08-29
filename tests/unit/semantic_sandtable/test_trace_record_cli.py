@@ -68,7 +68,7 @@ def test_cli_records_failure_frontier_next_from_stdout(tmp_path: Path) -> None:
                 "--trace-language-id",
                 "rust",
                 "--trace-provider-id",
-                "rs-harness",
+                "asp-rust",
                 "--record-command",
                 sys.executable,
                 "-c",
@@ -129,6 +129,6 @@ def _list_sessions(trace_root: Path) -> str:
 
 
 def _recorded_event(trace_root: Path) -> dict[str, object]:
-    paths = sorted((trace_root / "rust" / "rs-harness" / "commands").glob("*.jsonl"))
+    paths = sorted((trace_root / "rust" / "asp-rust" / "commands").glob("*.jsonl"))
     assert len(paths) == 1
     return json.loads(paths[0].read_text(encoding="utf-8"))

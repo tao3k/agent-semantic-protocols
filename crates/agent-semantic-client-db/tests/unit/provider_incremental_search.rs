@@ -133,7 +133,7 @@ impl ProviderIncrementalFixture {
         let temp = TestDir::new(label);
         let state_home = StateHomeGuard::install(&temp.path().join("state"));
         let (project_root, _resolved, mut scope) = workspace(temp.path(), label);
-        scope.provider_id = "rust-harness".to_owned();
+        scope.provider_id = "asp-rust".to_owned();
         let session = WorkspaceDbRegistry::default()
             .acquire(&project_root, &scope)
             .await

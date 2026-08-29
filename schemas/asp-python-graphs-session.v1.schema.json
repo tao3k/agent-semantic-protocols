@@ -21,12 +21,14 @@
     "sessionId": {"type": "string", "minLength": 1},
     "serviceEpoch": {"type": "string", "minLength": 1},
     "requestId": {"type": "string", "minLength": 1},
+    "clientRequestId": {"type": "string", "minLength": 1},
     "sequence": {"type": "integer", "minimum": 1},
     "messageKind": {
       "enum": [
         "hello",
         "open-generation",
         "evaluate",
+        "timeline",
         "release-generation",
         "cancel",
         "health",
@@ -36,6 +38,7 @@
     },
     "workspaceIdentity": {"type": "string", "minLength": 1},
     "generationDigest": {"$ref": "#/$defs/blake3Digest"},
+    "generationToken": {"type": "integer", "minimum": 1},
     "runtimeArtifactDigest": {"$ref": "#/$defs/blake3Digest"},
     "executionArtifactDigest": {"$ref": "#/$defs/blake3Digest"},
     "deadlineUnixMillis": {"type": "integer", "minimum": 0},
@@ -53,7 +56,7 @@
         }
       },
       "then": {
-        "required": ["workspaceIdentity", "generationDigest"]
+        "required": ["workspaceIdentity", "generationDigest", "generationToken"]
       }
     },
     {

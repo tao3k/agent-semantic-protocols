@@ -50,7 +50,7 @@ pub(in super::super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenari
     )
     .expect("write source");
     fs::create_dir_all(&bin_dir).expect("create bin dir");
-    let provider_path = bin_dir.join("rs-harness");
+    let provider_path = bin_dir.join("asp-rust");
     super::shared::write_owner_items_provider_fixture(super::shared::OwnerItemsProviderFixture {
         binary_path: &provider_path,
         count_path: &count_path,
@@ -58,7 +58,7 @@ pub(in super::super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenari
         owner_path: "crate/src/lib.rs",
         query: "dynamic_owner_item_index",
         item_symbol: "dynamic_owner_item_index",
-        algorithm: "rust-harness-owner-items",
+        algorithm: "asp-rust-owner-items",
         source_byte_end: "pub async fn dynamic_owner_item_index() {}\n".len(),
     });
     install_state_home_provider(&root, "rust", &provider_path);
@@ -836,11 +836,11 @@ pub(in super::super) fn asp_python_owner_items_cache_hot_path_stays_inside_scena
     )
     .expect("write source");
     fs::create_dir_all(&bin_dir).expect("create bin dir");
-    let provider_path = bin_dir.join("py-harness");
+    let provider_path = bin_dir.join("asp-python");
     fs::write(
         &provider_path,
         format!(
-            "#!/bin/sh\ncount=0\nif [ -f '{count}' ]; then count=$(cat '{count}'); fi\ncount=$((count + 1))\nprintf '%s' \"$count\" > '{count}'\nprintf '[search-owner] q=src/model.py pkg=. selector=items alg=py-harness-owner-items\\n'\nprintf 'O=owner:path(src/model.py)!owner;I=item:symbol(dynamic_owner_item_index)@src/model.py:1:1!syntax\\n'\n",
+            "#!/bin/sh\ncount=0\nif [ -f '{count}' ]; then count=$(cat '{count}'); fi\ncount=$((count + 1))\nprintf '%s' \"$count\" > '{count}'\nprintf '[search-owner] q=src/model.py pkg=. selector=items alg=asp-python-owner-items\\n'\nprintf 'O=owner:path(src/model.py)!owner;I=item:symbol(dynamic_owner_item_index)@src/model.py:1:1!syntax\\n'\n",
             count = count_path.display()
         ),
     )
@@ -892,7 +892,7 @@ pub(in super::super) fn asp_python_owner_items_cache_hot_path_stays_inside_scena
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("alg=py-harness-owner-items"), "{stdout}");
+    assert!(stdout.contains("alg=asp-python-owner-items"), "{stdout}");
     assert!(
         stdout.contains("item:symbol(dynamic_owner_item_index)"),
         "{stdout}"

@@ -162,7 +162,7 @@ pub(crate) fn asp_runtime_owner_items_receipt_cold_functional_path_stays_inside_
         "--view".to_string(),
         "seeds".to_string(),
     ];
-    let invocation = vec!["rs-harness".to_string(), "query".to_string()];
+    let invocation = vec!["asp-rust".to_string(), "query".to_string()];
     let request = agent_semantic_runtime::LanguageOwnerItemsCacheRequest {
         language_id: "rust",
         args: &args,

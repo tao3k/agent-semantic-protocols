@@ -917,7 +917,7 @@ The stable envelope is language-neutral:
 - `protocolVersion`: `1`
 - `languageId`: source language id, such as `typescript`, `rust`, `julia`, or
   `python`
-- `providerId`: provider id, such as `asp-typescript`, `rs-harness`, or
+- `providerId`: provider id, such as `asp-typescript`, `asp-rust`, or
   `jl-harness`
 - `binary`: executable entrypoint advertised by the provider
 - `namespace`: dot-qualified provider namespace, such as
@@ -1014,7 +1014,7 @@ Providers should not render seed or synthesis as a second independent prompt
 protocol.
 
 `semantic-graph-turbo-request.v1.schema.json` is the schema-owned algorithm
-input packet for the `asp-graph-turbo` Python workspace package. It carries
+input packet for the `asp-python-graphs` Python service project. It carries
 the requested reasoning profile, algorithm id, seed node ids, ranking budget,
 optional per-kind budgets, optional window-merge controls, and typed graph
 facts under `graph.nodes[]` and `graph.edges[]`. Fast-search request nodes may
@@ -1048,7 +1048,7 @@ request/response pair can represent real matrix-backed ranking, path, cache,
 trace, and sandtable metric evidence instead of a renderer-local graph format.
 `semantic-graph-turbo-sandtable-summary.v1.schema.json` can also carry
 report-derived `context` metrics and `benchmarkReport` provenance when
-`asp-graph-turbo sandtable-summary` consumes a calibration-ready benchmark
+the ASP Server `asp.graphs.sandtable-summary` method consumes a calibration-ready benchmark
 report scenario.
 Python MVP 12 requires relation-owned default edge weights and profile-owned
 typed transition masks before PageRank/path ranking. The result packet exposes
@@ -1123,12 +1123,12 @@ common package-local copies with this repository's source schemas when the
 package is checked out as a submodule, and compares the TypeScript-local
 capability vocabulary with the protocol repository template when that template
 is available.
-The Python harness follows the same ownership split: `py-harness agent doctor
+The Python harness follows the same ownership split: `asp-python agent doctor
 --json` advertises the common registry and search packet schemas plus the
 Python-local `schemas/python-semantic-capabilities.v1.schema.json`, while this
 repository only keeps the template vocabulary.
 The Rust harness exposes the same registry contract through
-`rs-harness agent doctor --json`.
+`asp-rust agent doctor --json`.
 
 Schema evolution is versioned by file name and `schemaVersion`.
 Optional fields, enum members, and method descriptors can be additive v1
@@ -1187,25 +1187,25 @@ surfaces that expose a dependency package. Direct import-type text is confirmed;
 owner-level external import plus unbound type text is marked possible until the
 provider exposes named import binding attribution.
 
-The Rust slice emits the same envelope from `rs-harness search ... --json`,
+The Rust slice emits the same envelope from `asp-rust search ... --json`,
 including Cargo, owner, dependency, symbol, callsite, import, cfg, pattern,
 docs, api, public-external-types, tests, and ingest views.
 
 The current Python slice emits conforming packets from:
 
 ```shell
-py-harness search prime --json .
-py-harness search owner src/python_lang_project_harness/_cli.py --json .
-py-harness search dependency pytest --json .
-py-harness search deps pytest::fixture --json .
-py-harness search api PythonHarnessReport --json .
-py-harness search public-external-types pytest --json .
-py-harness search symbol PythonHarnessReport --json .
-py-harness search callsite PythonHarnessReport --json .
-py-harness search import python_lang_project_harness --json .
-py-harness search tests src/python_lang_project_harness/_cli.py --json .
-py-harness search lexical PythonHarnessReport --json .
-rg -n "PythonHarnessReport" src tests | py-harness search ingest --json .
+asp-python search prime --json .
+asp-python search owner src/python_lang_project_harness/_cli.py --json .
+asp-python search dependency pytest --json .
+asp-python search deps pytest::fixture --json .
+asp-python search api PythonHarnessReport --json .
+asp-python search public-external-types pytest --json .
+asp-python search symbol PythonHarnessReport --json .
+asp-python search callsite PythonHarnessReport --json .
+asp-python search import python_lang_project_harness --json .
+asp-python search tests src/python_lang_project_harness/_cli.py --json .
+asp-python search lexical PythonHarnessReport --json .
+rg -n "PythonHarnessReport" src tests | asp-python search ingest --json .
 ```
 
 `runtime-selector-overlay-receipt.v1.schema.json` records a selector-only

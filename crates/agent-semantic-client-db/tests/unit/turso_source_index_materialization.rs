@@ -98,14 +98,14 @@ fn generation_fixture(
         owners: vec![ClientDbSourceIndexOwner {
             owner_path: ClientDbSourceIndexPath::new(owner_path),
             language_id: Some(LanguageId::from("rust")),
-            provider_id: Some(ProviderId::from("rs-harness")),
+            provider_id: Some(ProviderId::from("asp-rust")),
             source_kind: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
             line_count: Some(1),
             query_keys: vec![ClientDbSourceIndexQueryKey::from("materialized")],
         }],
         selectors: vec![ClientDbSourceIndexSelector {
             owner_path: ClientDbSourceIndexPath::new(owner_path),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             selector_id: selector.into(),
             symbol: Some("materialized".into()),
             kind: Some("function".into()),
@@ -120,7 +120,7 @@ fn generation_fixture(
             projection_record: crate::projection_fixture::projection_record(
                 crate::projection_fixture::ProjectionFixtureInput {
                     language_id: "rust",
-                    provider_id: "rs-harness",
+                    provider_id: "asp-rust",
                     owner_path,
                     structural_selector: selector,
                     item_kind: "function",
@@ -163,7 +163,7 @@ fn admitted_project_resolution(
         "state": "resolved",
         "completeness": "exact",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "parserId": "rust.cargo-toml",
         "candidateGenerationDigest": "blake3-256:candidates",
         "projectEntry": "Cargo.toml",
@@ -171,7 +171,7 @@ fn admitted_project_resolution(
             "schemaId": "agent.semantic-protocols.language-package-graph",
             "schemaVersion": "1",
             "languageId": "rust",
-            "providerId": "rs-harness",
+            "providerId": "asp-rust",
             "projectEntry": "Cargo.toml",
             "parserId": "rust.cargo-toml",
             "manifests": [],

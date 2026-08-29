@@ -45,7 +45,7 @@
         "artifactCatalogDigest": { "type": "string", "minLength": 1 },
         "transportContractDigest": { "type": "string", "minLength": 1 },
         "workspaceEntryCount": { "type": "integer", "minimum": 0 },
-        "graphTurboResident": { "type": ["object", "null"] },
+        "aspPythonGraphs": { "type": ["object", "null"] },
         "reason": { "type": ["string", "null"] }
       }
     }

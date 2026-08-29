@@ -28,7 +28,7 @@ def valid_tree_sitter_packet(*, partial: bool = False) -> dict:
         "schemaVersion": "1",
         "operation": "treesitter-query",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "providerWorkspaceRoot": ".",
         "providerWorkspaceIdentityDigest": WORKSPACE_DIGEST,
         "generationBefore": None if partial else generation(),

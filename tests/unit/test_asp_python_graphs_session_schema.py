@@ -61,7 +61,7 @@ def test_generation_scoped_operation_rejects_missing_generation(kind: str) -> No
 
 def test_old_graph_turbo_schema_identity_is_rejected() -> None:
     packet = envelope("health")
-    packet["schemaId"] = "agent.semantic-protocols.graph-turbo-resident-server"
+    packet["schemaId"] = "agent.semantic-protocols.invalid-legacy-service"
     with pytest.raises(ValidationError):
         VALIDATOR.validate(packet)
 

@@ -59,7 +59,7 @@ def write_failure_frontier_dev_log_root(
     baseline_session: str = "baseline",
     candidate_session: str = "candidate",
 ) -> None:
-    command_dir = trace_root / "semantic_protocol" / "rust" / "rs-harness" / "commands"
+    command_dir = trace_root / "semantic_protocol" / "rust" / "asp-rust" / "commands"
     command_dir.mkdir(parents=True)
     command_lines = [
         *[
@@ -110,5 +110,5 @@ def _session_event(session_id: str, event: dict[str, object]) -> dict[str, objec
     event = dict(event)
     event["sessionId"] = session_id
     event["languageId"] = "rust"
-    event["providerId"] = "rs-harness"
+    event["providerId"] = "asp-rust"
     return event

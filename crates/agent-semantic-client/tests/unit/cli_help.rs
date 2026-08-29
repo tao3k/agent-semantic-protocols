@@ -8,7 +8,7 @@ fn install_language_rejects_removed_record_installed_receipt_bridge() {
             "language",
             "rust",
             "--record-installed-receipt",
-            "/tmp/rs-harness",
+            "/tmp/asp-rust",
         ])
         .expect_err("removed receipt bridge must not remain accepted");
     assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);

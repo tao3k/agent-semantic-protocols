@@ -452,16 +452,16 @@ fn trailing_project_root(args: &[String]) -> Option<String> {
 fn default_provider_for_language(language_id: &str) -> (Option<String>, Option<String>) {
     match language_id {
         "rust" => (
-            Some("rs-harness".to_string()),
-            Some("rs-harness".to_string()),
+            Some("asp-rust".to_string()),
+            Some("asp-rust".to_string()),
         ),
         "typescript" => (
             Some("asp-typescript".to_string()),
             Some("asp-typescript".to_string()),
         ),
         "python" => (
-            Some("py-harness".to_string()),
-            Some("py-harness".to_string()),
+            Some("asp-python".to_string()),
+            Some("asp-python".to_string()),
         ),
         _ => (None, None),
     }

@@ -34,7 +34,7 @@ class ReceiptCountValidationTests(unittest.TestCase):
                             {
                                 "id": "prime",
                                 "kind": "search",
-                                "argv": ["rs-harness", "search", "prime", "."],
+                                "argv": ["asp-rust", "search", "prime", "."],
                                 "metrics": {
                                     "elapsedMs": 2,
                                     "stdoutBytes": 20,

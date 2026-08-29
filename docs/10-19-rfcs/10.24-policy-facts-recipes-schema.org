@@ -907,11 +907,11 @@ Julia should not make runtime route decisions. It should replay large session se
 * Language ecosystem audit
 The current harness split implies this rollout order:
 | Language/provider | Current useful base | Policy fact opportunity |
-| Rust / =rs-harness= | native source index, owner/search/read/check, semantic facts, criterion catalog | Tokio, ownership/API boundaries, error/resource recipes, test coupling, DB Engine migration facts |
+| Rust / =asp-rust= | native source index, owner/search/read/check, semantic facts, criterion catalog | Tokio, ownership/API boundaries, error/resource recipes, test coupling, DB Engine migration facts |
 | TypeScript / =asp-typescript= | native search/read/check, semantic facts, Effect extension precedent | Effect/resource/schema/error-channel facts, discriminated union and exhaustiveness recipes |
-| Python / =py-harness= | policy check command, semantic facts, graph algorithm runtime | framework/profile facts, data-flow and test-selection recipes, production graph-route implementation |
-| Julia / =julia-lang-project-harness= | parser/project evidence and analysis artifacts | type-stability, mutation contract, function barrier, SciML/Moshi research facts; offline ranking research |
-| Gerbil Scheme / =gerbil-scheme-harness= | runtime source, compiler evidence, proof, compare, pattern search | macro boundary facts, syntax-parameter recipes, proof-backed policy facts |
+| Python / =asp-python= | policy check command, semantic facts, graph algorithm runtime | framework/profile facts, data-flow and test-selection recipes, production graph-route implementation |
+| Julia / =asp-julia= | parser/project evidence and analysis artifacts | type-stability, mutation contract, function barrier, SciML/Moshi research facts; offline ranking research |
+| Gerbil Scheme / =asp-gerbil-scheme= | runtime source, compiler evidence, proof, compare, pattern search | macro boundary facts, syntax-parameter recipes, proof-backed policy facts |
 | Org/Markdown / =orgize= | document search/query, contract-friendly selectors | writing-policy facts, RFC/contract evidence, recipe documentation anchors |
 This is not a mandate that every harness implement every fact. The shared schema lets each harness emit the strongest facts it can prove while Rust/Python/Julia consume a common shape.
 * Agent-facing render

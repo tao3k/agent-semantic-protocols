@@ -37,9 +37,9 @@ class RealTriggerCodexWrappedGuideTests(unittest.TestCase):
                                         "'languageIds': ['rust'],"
                                         "'routes': [{"
                                         "'kind': 'ingest',"
-                                        "'argv': ['rs-harness', 'search', 'ingest', 'items', 'tests', '--view', 'seeds', '.']"
+                                        "'argv': ['asp-rust', 'search', 'ingest', 'items', 'tests', '--view', 'seeds', '.']"
                                         "}],"
-                                        "'message': 'Use rs-harness search ingest.'"
+                                        "'message': 'Use asp-rust search ingest.'"
                                         "}; "
                                         "print(json.dumps({"
                                         "'hookSpecificOutput': {"
@@ -54,7 +54,7 @@ class RealTriggerCodexWrappedGuideTests(unittest.TestCase):
                                         "languageId": "rust",
                                         "routeKind": "ingest",
                                         "commandContains": [
-                                            "rs-harness",
+                                            "asp-rust",
                                             "search",
                                             "ingest",
                                         ],

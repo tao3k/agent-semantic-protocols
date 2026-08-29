@@ -21,8 +21,8 @@ from ._language_evidence_packet import language_evidence_graph_turbo_request
     [
         (
             "python",
-            "py-harness",
-            "agent.semantic-protocols.languages.python.py-harness",
+            "asp-python",
+            "agent.semantic-protocols.languages.python.asp-python",
             "src/service.py",
         ),
         (
@@ -33,14 +33,14 @@ from ._language_evidence_packet import language_evidence_graph_turbo_request
         ),
         (
             "julia",
-            "julia-lang-project-harness",
-            "agent.semantic-protocols.languages.julia.julia-lang-project-harness",
+            "asp-julia",
+            "agent.semantic-protocols.languages.julia.asp-julia",
             "src/Service.jl",
         ),
         (
             "gerbil-scheme",
-            "gerbil-scheme-harness",
-            "agent.semantic-protocols.languages.gerbil-scheme.gerbil-scheme-harness",
+            "asp-gerbil-scheme",
+            "agent.semantic-protocols.languages.gerbil-scheme.asp-gerbil-scheme",
             "src/service.ss",
         ),
     ],

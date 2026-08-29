@@ -25,7 +25,7 @@ def _valid_catalog() -> dict:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "projectRoot": ".",
         "toolCatalog": [
             {

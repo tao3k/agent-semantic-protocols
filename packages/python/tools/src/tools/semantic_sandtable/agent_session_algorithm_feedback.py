@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from asp_graph_turbo.calibration import profile_calibration_from_feedback
+from asp_python_graphs.calibration import profile_calibration_from_feedback
 
 from .utils import dict_value, list_value, require_str
 

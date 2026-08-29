@@ -6,7 +6,7 @@ typescript_harness_project := "languages/typescript-lang-project-harness"
 python_harness_project := "languages/python-lang-project-harness"
 julia_harness_project := "languages/JuliaLangProjectHarness.jl"
 julia_harness := "julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl"
-julia_compiled_harness := "languages/JuliaLangProjectHarness.jl/build/juliac-asp-local/asp-julia-harness"
+julia_compiled_harness := "languages/JuliaLangProjectHarness.jl/build/juliac-asp-local/asp-julia"
 gerbil_harness_project := "languages/gerbil-scheme-language-project-harness"
 asp_state_home := env_var_or_default("ASP_STATE_HOME", home_directory() / ".agent-semantic-protocols")
 asp_runtime_bin := asp_state_home / "runtime" / "bin"
@@ -107,9 +107,8 @@ agent-tools-install-global bin_dir="":
     @bin_dir="{{bin_dir}}"; \
     if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-{{asp_runtime_bin}}}"; fi; \
       just agent-tools-install-protocol "${bin_dir}"; \
-      rm -f "${bin_dir}/asp-python-graphs" "${bin_dir}/graph-turbo"; \
       just agent-tools-install-languages; \
-      echo "[agent-tools-install-global] installed asp with built-in graph-turbo ranker and all language provider harnesses into ${bin_dir}"
+      echo "[agent-tools-install-global] installed asp and all language provider harnesses; asp-python-graphs remains an ASP Server-owned runtime service"
 
 # Develop mode: build and install the shared asp binary with the embedded Orgize provider.
 agent-tools-install-orgize bin_dir="":
@@ -279,16 +278,16 @@ agent-tools-install-gx bin_dir="":
 agent-hooks-doctor-providers: agent-hooks-doctor-rs agent-hooks-doctor-ts agent-hooks-doctor-py agent-hooks-doctor-julia
 
 agent-hooks-doctor-rs:
-    rs-harness agent doctor {{repo}}
+    asp-rust agent doctor {{repo}}
 
 agent-hooks-doctor-ts:
     asp-typescript agent doctor {{repo}}
 
 agent-hooks-doctor-py:
-    py-harness agent doctor {{repo}}
+    asp-python agent doctor {{repo}}
 
 agent-hooks-doctor-julia:
-    asp-julia-harness agent doctor --json {{julia_harness_project}} >/dev/null
+    asp-julia agent doctor --json {{julia_harness_project}} >/dev/null
 
 check-sandtables:
     uv run --project packages/python python -m tools sandtable
@@ -301,14 +300,14 @@ benchmark-large-library-search-runtime-baseline:
 
 check-graph-turbo-focused:
     uv run --project packages/python/asp_python_graphs --frozen pytest \
-      tests/unit/test_asp_python_graphs_request.py \
-      tests/unit/test_asp_python_graphs_feedback.py \
-      tests/unit/test_asp_python_graphs_calibration.py \
-      tests/unit/test_asp_python_graphs_projection_fields.py \
-      tests/unit/test_asp_python_graphs_ranking_collection_fields.py \
-      tests/unit/test_asp_python_graphs_read_loop.py \
-      tests/unit/test_asp_python_graphs_timeline.py \
-      tests/unit/test_asp_python_graphs_timeline_text.py \
+      tests/unit/test_asp_graph_turbo_request.py \
+      tests/unit/test_asp_graph_turbo_feedback.py \
+      tests/unit/test_asp_graph_turbo_calibration.py \
+      tests/unit/test_asp_graph_turbo_projection_fields.py \
+      tests/unit/test_asp_graph_turbo_ranking_collection_fields.py \
+      tests/unit/test_asp_graph_turbo_read_loop.py \
+      tests/unit/test_asp_graph_turbo_timeline.py \
+      tests/unit/test_asp_graph_turbo_timeline_text.py \
       tests/unit/semantic_sandtable/test_agent_observation_pipe.py \
       tests/unit/semantic_sandtable/test_agent_observation_read_loop.py \
       tests/unit/semantic_sandtable/test_expectations.py
@@ -501,9 +500,9 @@ provider-gate-typescript:
       {{typescript_harness_project}}/dist/tests/unit/semantic_search_schema.test.js
 
 provider-gate-python:
-    uv run --project {{python_harness_project}} --frozen py-harness search policy PY-PROJ-R001 owner tests --workspace {{python_harness_project}} --view seeds
-    uv run --project {{python_harness_project}} --frozen py-harness search policy PY-AGENT-R008 owner tests --workspace {{python_harness_project}} --view seeds
-    uv run --project {{python_harness_project}} --frozen py-harness search owner src/python_lang_project_harness/_semantic_language.py items --query semantic_language_registry_document --workspace {{python_harness_project}} --view seeds
+    uv run --project {{python_harness_project}} --frozen asp-python search policy PY-PROJ-R001 owner tests --workspace {{python_harness_project}} --view seeds
+    uv run --project {{python_harness_project}} --frozen asp-python search policy PY-AGENT-R008 owner tests --workspace {{python_harness_project}} --view seeds
+    uv run --project {{python_harness_project}} --frozen asp-python search owner src/python_lang_project_harness/_semantic_language.py items --query semantic_language_registry_document --workspace {{python_harness_project}} --view seeds
     uv run --project {{python_harness_project}} --frozen python -m pytest \
       {{python_harness_project}}/tests/unit/harness/test_semantic_cli_query_set.py \
       {{python_harness_project}}/tests/unit/harness/test_semantic_cli_owner_items.py \
@@ -561,9 +560,9 @@ provider-gate-semantic-facts:
 
     required_bins = [
         root / ".bin" / "asp",
-        root / ".bin" / "rs-harness",
+        root / ".bin" / "asp-rust",
         root / ".bin" / "asp-typescript",
-        root / ".bin" / "py-harness",
+        root / ".bin" / "asp-python",
         root / "{{julia_compiled_harness}}",
     ]
     missing = [str(path) for path in required_bins if not os.access(path, os.X_OK)]
@@ -586,7 +585,7 @@ provider-gate-semantic-facts:
     direct_cases = [
         (
             "rust",
-            [str(root / ".bin" / "rs-harness"), "search", "semantic-facts", "Vec collection fields", "--json", "{{rust_harness_project}}"],
+            [str(root / ".bin" / "asp-rust"), "search", "semantic-facts", "Vec collection fields", "--json", "{{rust_harness_project}}"],
             "src/cli/dev_command_log/command.rs:9:1:pipes: Vec<String>\n",
         ),
         (
@@ -596,7 +595,7 @@ provider-gate-semantic-facts:
         ),
         (
             "python",
-            [str(root / ".bin" / "py-harness"), "search", "semantic-facts", "list collection fields", "--json", "{{python_harness_project}}"],
+            [str(root / ".bin" / "asp-python"), "search", "semantic-facts", "list collection fields", "--json", "{{python_harness_project}}"],
             "src/python_lang_parser/_ast_collector.py:42:1:_scope_stack: list[str]\n",
         ),
         (
@@ -666,7 +665,7 @@ perf-calibrate-julia-cache:
 	  uv run --project packages/python --frozen python -m tools cache validate julia-performance "${tmp}"
 
 check-python-policy:
-    uv run --project {{python_harness_project}} --frozen py-harness check --full {{repo}}
+    uv run --project {{python_harness_project}} --frozen asp-python check --full {{repo}}
 
 report-python-policy:
-    uv run --project {{python_harness_project}} --frozen py-harness check --full {{repo}} || true
+    uv run --project {{python_harness_project}} --frozen asp-python check --full {{repo}} || true

@@ -15,10 +15,19 @@ const EVENTS: &[&str] = &[
     "subagent-stop",
 ];
 
+fn hook_command() -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_asp-hook"));
+    // The project test runner may itself use the inherited process-level
+    // escape to reach Cargo. Ordinary Host-contract fixtures must start from
+    // a normal environment; the dedicated escape fixture opts back in.
+    command.env_remove("ASP_NO_AGENT");
+    command
+}
+
 #[test]
 fn inherited_no_agent_returns_valid_json_for_every_host_event() {
     for event in EVENTS {
-        let output = Command::new(env!("CARGO_BIN_EXE_asp-hook"))
+        let output = hook_command()
             .arg(event)
             .args(["--client", "codex"])
             .env("ASP_NO_AGENT", "1")
@@ -38,7 +47,7 @@ fn inherited_no_agent_returns_valid_json_for_every_host_event() {
 
 #[test]
 fn binary_identity_is_owned_by_the_hook_package() {
-    let output = Command::new(env!("CARGO_BIN_EXE_asp-hook"))
+    let output = hook_command()
         .arg("--version")
         .output()
         .expect("run Hook binary version");
@@ -48,7 +57,7 @@ fn binary_identity_is_owned_by_the_hook_package() {
 
 #[test]
 fn malformed_host_payload_returns_valid_fail_closed_json_instead_of_code_101() {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_asp-hook"))
+    let mut child = hook_command()
         .args([
             "pre-tool",
             "--client",
@@ -108,10 +117,11 @@ fn process_bound_no_agent_forms_bypass_the_installed_policy_engine() {
     for command in [
         "ASP_NO_AGENT=1 arbitrary-command --unknown-option fixture.rs",
         "/usr/bin/env ASP_NO_AGENT=1 arbitrary-command --unknown-option fixture.rs",
+        "export ASP_NO_AGENT=1; arbitrary-command --unknown-option fixture.rs",
         "export ASP_NO_AGENT=1; exec arbitrary-command --unknown-option fixture.rs",
     ] {
         let started = Instant::now();
-        let mut child = Command::new(env!("CARGO_BIN_EXE_asp-hook"))
+        let mut child = hook_command()
             .args([
                 "pre-tool",
                 "--client",
@@ -165,9 +175,10 @@ fn command_local_no_agent_escape_precedes_missing_generation() {
     for command in [
         "ASP_NO_AGENT=1 arbitrary-command fixture.rs",
         "/usr/bin/env ASP_NO_AGENT=1 arbitrary-command fixture.rs",
+        "export ASP_NO_AGENT=1; arbitrary-command fixture.rs",
         "export ASP_NO_AGENT=1; exec arbitrary-command fixture.rs",
     ] {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_asp-hook"))
+        let mut child = hook_command()
             .args([
                 "pre-tool",
                 "--client",
@@ -201,7 +212,7 @@ fn command_local_no_agent_escape_precedes_missing_generation() {
         );
     }
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_asp-hook"))
+    let mut child = hook_command()
         .args([
             "pre-tool",
             "--client",
@@ -219,7 +230,7 @@ fn command_local_no_agent_escape_precedes_missing_generation() {
         child.stdin.as_mut().expect("Hook stdin"),
         &serde_json::json!({
             "tool_name": "Bash",
-            "tool_input": {"command": "export ASP_NO_AGENT=1; arbitrary-command fixture.rs"}
+            "tool_input": {"command": "printf 'ASP_NO_AGENT=1'; arbitrary-command fixture.rs"}
         }),
     )
     .expect("write negative Host payload");

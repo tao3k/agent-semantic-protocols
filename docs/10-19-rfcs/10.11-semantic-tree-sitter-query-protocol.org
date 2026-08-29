@@ -1003,7 +1003,7 @@ CLI startup when validated captures and native fact refs are fresh.
 ** Phase 4: Python provider
 
 1. Add Python =tree-sitter/tree-sitter-python/queries/*.scm= catalogs.
-2. Implement =py-harness= native projection through =ast=, =tokenize=, and
+2. Implement =asp-python= native projection through =ast=, =tokenize=, and
    =symtable=.
 3. Preserve indentation-sensitive ownership through native fields and avoid
    claiming edit safety from syntax captures alone.
@@ -1013,7 +1013,7 @@ CLI startup when validated captures and native fact refs are fresh.
 ** Phase 5: Julia provider
 
 1. Align Julia on the =asp julia= facade backed by compiled
-   =asp-julia-harness= and cacheable runtime profiles.
+   =asp-julia= and cacheable runtime profiles.
 2. Add Julia =tree-sitter/tree-sitter-julia/queries/*.scm= compatible catalogs
    where the grammar profile has stable names.
 3. Export JuliaSyntax-owned captures and native fact refs for cache import.
@@ -1263,7 +1263,7 @@ Required claims:
 
 #+begin_example
 languageId=rust
-providerId=rs-harness
+providerId=asp-rust
 executionBackends=native-parser
 adapterModes=native-projection
 sourceAuthorities=native-parser-adapter,native-parser
@@ -1330,7 +1330,7 @@ Required claims:
 
 #+begin_example
 languageId=python
-providerId=py-harness
+providerId=asp-python
 executionBackends=native-parser
 adapterModes=native-projection
 sourceAuthorities=native-parser-adapter,native-parser
@@ -1359,7 +1359,7 @@ Required claims:
 
 #+begin_example
 languageId=julia
-providerId=julia-lang-project-harness
+providerId=asp-julia
 executionBackends=native-parser,cached-replay
 adapterModes=native-projection,cached-replay
 sourceAuthorities=native-parser-adapter,cached-provider-export
@@ -1424,7 +1424,7 @@ keeps RFC, registry, provider tests, guide output, and real evidence aligned.
 Current native-projection v1 lane records:
 
 #+begin_example
-[syntax-lane] language=rust provider=rs-harness lane=R
+[syntax-lane] language=rust provider=asp-rust lane=R
 adapterModes=native-projection
 executionBackends=native-parser
 queryInputForms=selector,code-shaped,catalog-id,s-expression
@@ -1444,7 +1444,7 @@ evidence=docs/30-39-research/31.20-rfc011-typescript-syntax-real-evidence.org
 review=docs/30-39-research/31.21-rfc011-native-projection-benchmark-review.org
 status=native-projection-v1-reviewed
 
-[syntax-lane] language=python provider=py-harness lane=P
+[syntax-lane] language=python provider=asp-python lane=P
 adapterModes=native-projection
 executionBackends=native-parser
 queryInputForms=selector,code-shaped,catalog-id

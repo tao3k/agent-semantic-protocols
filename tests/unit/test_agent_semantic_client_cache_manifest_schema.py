@@ -58,7 +58,7 @@ class SemanticAgentClientCacheManifestSchemaTests(unittest.TestCase):
                 {
                     "generationId": "rust-main-1",
                     "languageId": "rust",
-                    "providerId": "rs-harness",
+                    "providerId": "asp-rust",
                     "providerVersion": "0.1.0",
                     "exportMethod": "search/prime",
                     "projectRoot": "/repo",
@@ -97,7 +97,7 @@ class SemanticAgentClientCacheManifestSchemaTests(unittest.TestCase):
                 {
                     "generationId": "rust-main-1",
                     "languageId": "rust",
-                    "providerId": "rs-harness",
+                    "providerId": "asp-rust",
                     "projectRoot": "/repo",
                     "schemaIds": [
                         "agent.semantic-protocols.semantic-search-packet"
@@ -123,7 +123,7 @@ class SemanticAgentClientCacheManifestSchemaTests(unittest.TestCase):
                 {
                     "generationId": "rust-main-1",
                     "languageId": "rust",
-                    "providerId": "rs-harness",
+                    "providerId": "asp-rust",
                     "projectRoot": "/repo",
                     "schemaIds": [
                         "agent.semantic-protocols.client-prompt-output"

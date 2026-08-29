@@ -23,6 +23,7 @@ struct OwnedCompiledDecisionRule {
     id: String,
     priority: i64,
     matchers: Vec<String>,
+    wrapped_command: bool,
     actions: Vec<String>,
     registered_extensions: Vec<String>,
     decision: String,
@@ -187,14 +188,14 @@ fn compile_rules(
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
-    if rule
+    let wrapped_command = rule
         .get("matcherPolicies")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
         .filter_map(Value::as_str)
-        .any(|policy| policy == "wrapped_command")
-    {
+        .any(|policy| policy == "wrapped_command");
+    if wrapped_command {
         matchers.push("Bash".to_owned());
     }
     matchers.sort();
@@ -259,6 +260,7 @@ fn compile_rules(
             id,
             priority,
             matchers,
+            wrapped_command,
             actions,
             registered_extensions,
             decision,
@@ -290,6 +292,7 @@ fn compile_rules(
             id: id.clone(),
             priority,
             matchers: matchers.clone(),
+            wrapped_command,
             actions: actions.clone(),
             registered_extensions: profile.extensions.clone(),
             decision: decision.clone(),

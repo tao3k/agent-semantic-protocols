@@ -112,10 +112,10 @@ class StepRunnerProtocolCommandTests(unittest.TestCase):
 
     def test_direct_language_harness_commands_are_not_python_rewritten(self) -> None:
         commands = [
-            ["rs-harness", "search", "prime", "--workspace", "."],
+            ["asp-rust", "search", "prime", "--workspace", "."],
             ["asp-typescript", "search", "prime", "--workspace", "."],
-            ["asp-julia-harness", "search", "prime", "--workspace", "."],
-            ["py-harness", "search", "prime", "--workspace", "."],
+            ["asp-julia", "search", "prime", "--workspace", "."],
+            ["asp-python", "search", "prime", "--workspace", "."],
         ]
 
         for command in commands:

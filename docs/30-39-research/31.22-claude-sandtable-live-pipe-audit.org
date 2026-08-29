@@ -222,7 +222,7 @@ fix is selector-first pipe projection: when graph-turbo has an exact selector,
 =recommendedNext=, =nextCommand=, =frontierActions=, and =pipeCommands= should
 make that selector read the first executable branch action.
 
-After applying selector-first projection in both =asp-graph-turbo= and ASP
+After applying selector-first projection in both =asp-python-graphs= and ASP
 =pipePlan=, the single-prompt Tokio live run passed within the existing budget:
 
 #+begin_example
@@ -491,7 +491,7 @@ The agent followed three projected branches once each, then continued with
 extra owner/lexical searches because the branch quality was weak.  The top branches
 were lexical =Vec= matches in =tokio/src/fs/*= rather than parser-semantic
 collection-field owners.  This is the current root cause: =repeat=false= fixed
-branch replay, but the branch top 3 must be owned by =asp-graph-turbo= sparse
+branch replay, but the branch top 3 must be owned by =asp-python-graphs= sparse
 ranking, node weighting, and path policy.  Rust =search pipe= should project
 the graph-turbo result; it should not invent a durable private branch-ranking
 algorithm.
@@ -735,7 +735,7 @@ The optimization landed in three layers:
 - RFC contract: =owner-query= now allows =field=, =type=, and =collection=
   nodes plus =has_type= and =collection_of= relations.
 - Provider fact path: ASP core only forwards bounded candidates to the active
-  provider.  Rust field/type/collection facts are produced by =rs-harness search
+  provider.  Rust field/type/collection facts are produced by =asp-rust search
   semantic-facts= through the Rust harness parser path, not by ASP-owned Rust
   syntax heuristics.
 - Python graph-turbo: typed nodes are weighted and projected into top-three
@@ -794,7 +794,7 @@ expansion after the selector evidence is read or a fallback when no exact
 selector exists.
 
 A follow-up live run after fixing local sibling-bin resolution for
-=.bin/asp-graph-turbo= confirmed the same behavior through the real installed
+=.bin/asp-python-graphs= confirmed the same behavior through the real installed
 facade.  The run executed six ASP commands: one document metadata query, one
 =search prime=, one =search pipe=, and three exact =query --selector ... --code=
 reads for =tokio/src/io/blocking.rs:15:35=, =tokio/src/runtime/dump.rs:15:35=,
@@ -926,7 +926,7 @@ memory-backed control:
   Tokio scenario now requires =requireReadLoopMemory=true= and
   =maxReadLoopMemorySuppressibleReads=0=, so a single exact selector read is
   remembered while duplicate or adjacent reads still fail the gate.
-- P0 proactive suppression: =asp-graph-turbo= accepts
+- P0 proactive suppression: =asp-python-graphs= accepts
   =readMemory.seenSelectors= in the request packet.  Ranked/frontier nodes with
   those exact selectors are suppressed before rendering, and the result exposes
   =algorithmMetrics.readMemorySuppressedCount= plus =avoid=seen-selector=.
@@ -989,10 +989,10 @@ costUsd=0.280277
 The executed flow was the intended three-step path: prime, pipe, and the
 primary selector query for =tokio/src/io/blocking.rs:15:35=.
 
-The receipt-driven feedback loop is now executable.  =asp-graph-turbo
+The receipt-driven feedback loop is now executable.  =asp-python-graphs
 feedback= converts the live sandtable JSON into a
 =semantic-graph-turbo-feedback.v1= packet containing schema-owned =receipt=
-nodes.  =asp-graph-turbo rank --feedback <packet>= merges those receipt facts
+nodes.  =asp-python-graphs rank --feedback <packet>= merges those receipt facts
 into the typed graph before ranking, so feedback still flows through the same
 sparse graph engine and shows up in result metrics and explanations.
 
@@ -1091,7 +1091,7 @@ without debug rows.
 * Cross-language provider fact alignment
 
 Rust was the first provider to expose parser-owned data-shape facts into
-=asp-graph-turbo= through =search semantic-facts <query> --json=.  The ASP core
+=asp-python-graphs= through =search semantic-facts <query> --json=.  The ASP core
 gate is now language-neutral: when a query asks for field/type/collection shape
 and candidates exist, ASP invokes the active provider's =semantic-facts= method
 and appends returned =nodes=/=edges= to the graph-turbo request.  Providers that
@@ -1113,7 +1113,7 @@ Julia now implements the same ABI through the Julia harness parser path.  It
 maps existing JuliaSyntax-derived =JuliaTypeSyntax.field_facts= into =field=,
 =type=, and =collection= graph nodes, with =Vector= / =Array= as =array=,
 =Dict= as =map=, =Set= as =set=, =Tuple= as =tuple=, and =NamedTuple= as
-=record=.  After rebuilding the compiled =asp-julia-harness= target used by
+=record=.  After rebuilding the compiled =asp-julia= target used by
 the local =.bin= facade, the real command =asp julia search pipe 'Vector
 collection fields' --view seeds languages/JuliaLangProjectHarness.jl= surfaced
 parser-owned field nodes before lexical item matches, including
@@ -1130,7 +1130,7 @@ through =direnv exec . cargo test -p agent-semantic-client=, and real
 workspace-relative selector commands.  Python graph-turbo focused tests must be
 run through the package-owned environment:
 =direnv exec . just check-graph-turbo-focused= or
-=uv run --project packages/python/asp_graph_turbo --frozen pytest ...=.  The
+=uv run --project packages/python/asp_python_graphs --frozen pytest ...=.  The
 graph-turbo package owns =numpy= and =scipy=; long-term gates should not rely
 on hand-written =--with numpy --with scipy= invocations.
 
@@ -1514,9 +1514,9 @@ The implementation changes are precision-preserving:
 
 - Rust search-pipe candidate collection now applies a per-query-token candidate
   cap, so common terms cannot starve later terms.
-- =asp-graph-turbo= query-token balancing repairs ranked output when an
+- =asp-python-graphs= query-token balancing repairs ranked output when an
   uncovered user query token has a valid candidate.
-- =asp-graph-turbo= semantic fact coverage repairs compact output when parser
+- =asp-python-graphs= semantic fact coverage repairs compact output when parser
   facts exist but a =type= node would otherwise be trimmed from the top frontier.
   The repair prefers a =type= node connected to an already selected field by
   =has_type=, so the rendered frontier keeps both the node and the provenance

@@ -20,14 +20,14 @@ provider, not through a raw patch dump.
 The provider query was already sufficient for the target class:
 
 #+begin_src shell
-py-harness query src/python_lang_project_harness/_python_compact.py --term CompactPythonProjectionNode --code languages/python-lang-project-harness
+asp-python query src/python_lang_project_harness/_python_compact.py --term CompactPythonProjectionNode --code languages/python-lang-project-harness
 #+end_src
 
 It returned compact code for the class and its method body.  The owner search
 also produced a useful seed packet:
 
 #+begin_src shell
-py-harness search owner src/python_lang_project_harness/_python_compact.py items --view seeds languages/python-lang-project-harness
+asp-python search owner src/python_lang_project_harness/_python_compact.py items --view seeds languages/python-lang-project-harness
 #+end_src
 
 The risky follow-up was the agent reasoning that a full no-index diff was needed
@@ -45,7 +45,7 @@ is equivalent to a raw source dump, even though it is spelled as a Git command.
 ** Untracked files are not second-class semantic files
 
 Git index state does not change language ownership.  A new =.py= file under a
-declared Python source root is still parser-visible to =py-harness= and should
+declared Python source root is still parser-visible to =asp-python= and should
 be queryable by owner, term, and compact code.
 
 ** Diff metadata and diff content need separate classifications
@@ -64,7 +64,7 @@ During this investigation, a narrow =sed -n '1,24p' ...scope_targets.rs= read
 was correctly blocked.  The preferred provider route is now:
 
 #+begin_src shell
-rs-harness query --from-hook direct-source-read --selector <path[:line-range]> --code .
+asp-rust query --from-hook direct-source-read --selector <path[:line-range]> --code .
 #+end_src
 
 This should return a compact bounded window, not owner/items metadata.  That is
@@ -86,7 +86,7 @@ Metadata-only diff commands remain allowed:
 - =git diff --name-status=
 
 The classifier test now verifies that Python source diff output routes to
-=py-harness= with =reasonKind=bulk-source-dump=.
+=asp-python= with =reasonKind=bulk-source-dump=.
 
 * Next Improvements
 
@@ -115,7 +115,7 @@ bounded selector:
 
 #+begin_example
 rtk read crates/semantic-agent-hook/src/lib.rs:10-20
-=> rs-harness query --from-hook direct-source-read --selector crates/semantic-agent-hook/src/lib.rs:10-20 --code .
+=> asp-rust query --from-hook direct-source-read --selector crates/semantic-agent-hook/src/lib.rs:10-20 --code .
 #+end_example
 
 This prevents the hook from turning a precise local read into a whole-owner

@@ -79,6 +79,7 @@ fn process_bound_no_agent_assignment_is_a_terminal_allow() {
     for command in [
         "ASP_NO_AGENT=1 arbitrary-command src/a.rs",
         "/usr/bin/env ASP_NO_AGENT=1 arbitrary-command src/a.rs",
+        "export ASP_NO_AGENT=1; arbitrary-command src/a.rs",
         "export ASP_NO_AGENT=1; exec arbitrary-command src/a.rs",
     ] {
         let payload = serde_json::json!({

@@ -47,12 +47,12 @@ class SemanticAgentHookClientConfigSchemaTests(unittest.TestCase):
                     },
                     "routes": [
                         {
-                            "providerId": "rs-harness",
+                            "providerId": "asp-rust",
                             "languageId": "rust",
-                            "binary": "rs-harness",
+                            "binary": "asp-rust",
                             "kind": "ingest",
                             "argv": [
-                                "rs-harness",
+                                "asp-rust",
                                 "search",
                                 "ingest",
                                 "items",
@@ -201,7 +201,7 @@ class SemanticAgentHookClientConfigSchemaTests(unittest.TestCase):
                         "decision": "block",
                         "routes": [
                             {
-                                "providerId": "rs-harness",
+                                "providerId": "asp-rust",
                                 "kind": "query",
                                 "argv": [],
                             }
@@ -221,10 +221,10 @@ class SemanticAgentHookClientConfigSchemaTests(unittest.TestCase):
                         "decision": "block",
                         "routes": [
                             {
-                                "providerId": "rs-harness",
-                                "binary": "../rs-harness",
+                                "providerId": "asp-rust",
+                                "binary": "../asp-rust",
                                 "kind": "query",
-                                "argv": ["rs-harness"],
+                                "argv": ["asp-rust"],
                             }
                         ],
                     }

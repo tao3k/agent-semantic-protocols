@@ -187,10 +187,9 @@ mod tests {
         std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755))
             .expect("artifact permissions");
 
-        let startup_publication =
-            publish_runtime_artifact(&state_home, &source, &target, "dev", None)
-                .await
-                .expect("publication succeeds without Runtime actor");
+        let startup_publication = publish_runtime_artifact(&state_home, &source, &target, "dev")
+            .await
+            .expect("publication succeeds without Runtime actor");
         let actor =
             mount_runtime_daemon_artifact_activation(state_home.clone(), |_event| async { Ok(()) })
                 .await
@@ -211,15 +210,9 @@ mod tests {
         tokio::fs::write(&source, b"#!/bin/sh\nexit 78\n")
             .await
             .expect("update artifact");
-        let online_publication = publish_runtime_artifact(
-            &state_home,
-            &source,
-            &target,
-            "dev",
-            Some(&startup_publication.artifact_digest),
-        )
-        .await
-        .expect("online publication");
+        let online_publication = publish_runtime_artifact(&state_home, &source, &target, "dev")
+            .await
+            .expect("online publication");
         receipts.changed().await.expect("online activation receipt");
         let online_terminal = receipts.borrow().clone().expect("typed online receipt");
         assert_eq!(online_terminal.state, "ready");
@@ -279,7 +272,7 @@ mod tests {
         std::os::unix::fs::symlink(&old_healthy, profiles.join("healthy"))
             .expect("seed healthy slot");
         let first_publication =
-            publish_runtime_artifact(&state_home, &developer_link, &stable_target, "dev", None)
+            publish_runtime_artifact(&state_home, &developer_link, &stable_target, "dev")
                 .await
                 .expect("materialize first immutable event-bound candidate");
         let first_event =
@@ -307,15 +300,10 @@ mod tests {
             .await
             .expect("read healthy before failed newer claim");
 
-        let publication = publish_runtime_artifact(
-            &state_home,
-            &developer_link,
-            &stable_target,
-            "dev",
-            Some(&first_event.artifact_digest),
-        )
-        .await
-        .expect("materialize newer same-digest event-bound candidate");
+        let publication =
+            publish_runtime_artifact(&state_home, &developer_link, &stable_target, "dev")
+                .await
+                .expect("materialize newer same-digest event-bound candidate");
         let expected_digest = publication.artifact_digest.clone();
         let actor = mount_runtime_daemon_artifact_activation(state_home.clone(), move |event| {
             let expected_digest = expected_digest.clone();

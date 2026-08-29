@@ -10,7 +10,7 @@ fn scope(package_name: &str) -> ProjectResolutionReceipt {
         "state": "resolved",
         "completeness": "exact",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "parserId": "rust.cargo-toml",
         "candidateGenerationDigest": "blake3-256:candidates",
         "projectEntry": "Cargo.toml",
@@ -18,7 +18,7 @@ fn scope(package_name: &str) -> ProjectResolutionReceipt {
             "schemaId": LANGUAGE_PACKAGE_GRAPH_SCHEMA_ID,
             "schemaVersion": "1",
             "languageId": "rust",
-            "providerId": "rs-harness",
+            "providerId": "asp-rust",
             "projectEntry": "Cargo.toml",
             "parserId": "rust.cargo-toml",
             "manifests": [{"path": "Cargo.toml", "kind": "cargo-manifest", "digest": "blake3-256:manifest"}],
@@ -72,7 +72,7 @@ fn scope(package_name: &str) -> ProjectResolutionReceipt {
 fn project_resolution_is_provider_semantics_without_workspace_identity() {
     let scope = scope("fixture");
     scope
-        .validate("rust", "rs-harness", "blake3-256:candidates")
+        .validate("rust", "asp-rust", "blake3-256:candidates")
         .expect("valid provider ProjectResolution");
     let encoded = serde_json::to_value(&scope).expect("encode ProjectResolution");
     for forbidden in [

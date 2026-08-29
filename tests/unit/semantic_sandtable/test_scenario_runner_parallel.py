@@ -202,8 +202,8 @@ class ScenarioRunnerParallelTests(unittest.TestCase):
                 command,
                 0,
                 stdout=(
-                    "workspaceBin=/repo/.bin/py-harness "
-                    "installedPath=/tmp/sandtable-home/.local/bin/py-harness\n"
+                    "workspaceBin=/repo/.bin/asp-python "
+                    "installedPath=/tmp/sandtable-home/.local/bin/asp-python\n"
                 ),
                 stderr="",
             )
@@ -242,8 +242,8 @@ class ScenarioRunnerParallelTests(unittest.TestCase):
             [record["language"] for record in preflight_records],
         )
         self.assertEqual("$ASP_REPO_ROOT", preflight_records[0]["command"][-1])
-        self.assertIn("$ASP_REPO_ROOT/.bin/py-harness", preflight_records[0]["stdout"])
-        self.assertIn("$HOME/.local/bin/py-harness", preflight_records[0]["stdout"])
+        self.assertIn("$ASP_REPO_ROOT/.bin/asp-python", preflight_records[0]["stdout"])
+        self.assertIn("$HOME/.local/bin/asp-python", preflight_records[0]["stdout"])
         self.assertNotIn("/repo", str(preflight_records))
         self.assertNotIn("/tmp/sandtable-home", str(preflight_records))
 
@@ -267,7 +267,7 @@ class ScenarioRunnerParallelTests(unittest.TestCase):
                 command,
                 1,
                 stdout="",
-                stderr="stale rpath in /repo/.bin/asp-julia-harness",
+                stderr="stale rpath in /repo/.bin/asp-julia",
             )
 
         with patch("subprocess.run", side_effect=fake_run):
@@ -283,7 +283,7 @@ class ScenarioRunnerParallelTests(unittest.TestCase):
         self.assertEqual(
             [
                 "providerPreflight installFromWorkspace failed for julia: "
-                "stale rpath in $ASP_REPO_ROOT/.bin/asp-julia-harness"
+                "stale rpath in $ASP_REPO_ROOT/.bin/asp-julia"
             ],
             result.errors,
         )

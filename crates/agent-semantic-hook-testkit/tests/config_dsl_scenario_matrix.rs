@@ -418,14 +418,51 @@ fn canonical_dsl_positive_negative_and_wrapper_witnesses_select_only_the_declare
                 .flatten()
                 .map(|command| command.as_str().expect("positive command"))
             {
-                let decision = classify_command(&runtime, &config, command);
-                assert_declared_winner(&decision, production_rule, command);
+                let command = if expected_rule == "route-read-to-asp-languages" {
+                    command.replace("/Users/example/project", &runtime.project_root)
+                } else {
+                    command.to_owned()
+                };
+                if expected_rule == "route-read-to-asp-languages" {
+                    let source_config = agent_semantic_config::default_hook_client_config_file()
+                        .expect("load canonical Hook Config V1");
+                    let generation =
+                        agent_semantic_hook::aot_compiler::compile_aot_hook_generation(
+                            &source_config,
+                            "blake3-256:testkit-config-dsl-reader-candidate",
+                        )
+                        .expect("compile canonical Reader HookGeneration");
+                    let payload = json!({
+                        "tool_name": "Bash",
+                        "tool_input": {"command": command}
+                    });
+                    let request = agent_semantic_hook::aot_evaluator::reader_probe_request(
+                        &String::from_utf8(generation).expect("UTF-8 HookGeneration"),
+                        &payload.to_string(),
+                        "Bash",
+                    )
+                    .expect("project Reader request")
+                    .expect("registered source Reader request");
+                    assert!(request.wrapped_command);
+                    assert_eq!(
+                        request.subject,
+                        "crates/agent-semantic-client/src/client_cli.rs"
+                    );
+                    assert_ne!(
+                        rule_id(&classify_command(&runtime, &config, &command)),
+                        Some(expected_rule),
+                        "unobserved Reader candidate must not deny: {command}"
+                    );
+                    continue;
+                }
+                let decision = classify_command(&runtime, &config, &command);
+                assert_declared_winner(&decision, production_rule, &command);
                 assert_eq!(decision.pointer("/subject/command"), Some(&json!(command)));
                 assert!(decision.get("interactiveCommand").is_none());
                 if witness.get("wrapperExemption").is_none() {
                     for wrapper in wrappers {
                         let wrapped =
-                            render_wrapper(wrapper.as_str().expect("wrapper template"), command);
+                            render_wrapper(wrapper.as_str().expect("wrapper template"), &command);
                         let decision = classify_command(&runtime, &config, &wrapped);
                         assert_declared_winner(&decision, production_rule, &wrapped);
                     }

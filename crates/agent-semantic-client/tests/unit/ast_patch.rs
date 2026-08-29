@@ -79,8 +79,8 @@ fn template_command_builds_provider_native_split_owner_items_packet() {
     .expect("template packet");
 
     assert_eq!(packet["languageId"], "rust");
-    assert_eq!(packet["providerId"], "rs-harness");
-    assert_eq!(packet["binary"], "rs-harness");
+    assert_eq!(packet["providerId"], "asp-rust");
+    assert_eq!(packet["binary"], "asp-rust");
     assert_eq!(packet["target"]["ownerPath"], "src/lib.rs");
     assert_eq!(packet["target"]["itemName"], "render");
     assert_eq!(packet["target"]["itemKind"], "fn");

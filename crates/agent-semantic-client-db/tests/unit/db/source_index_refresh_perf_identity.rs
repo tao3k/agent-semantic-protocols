@@ -16,7 +16,7 @@ fn source_index_hash_reuse_ignores_scope_dir_mtime() {
         relations: Vec::new(),
         path: source_path.clone(),
         language_id: LanguageId::from("rust"),
-        provider_id: ProviderId::from("rs-harness"),
+        provider_id: ProviderId::from("asp-rust"),
         projection_coverage:
             agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
         selector_receipts: Vec::new(),
@@ -90,7 +90,7 @@ fn source_index_dirty_git_path_forces_content_hash_despite_metadata_collision() 
         relations: Vec::new(),
         path: source_path.clone(),
         language_id: LanguageId::from("rust"),
-        provider_id: ProviderId::from("rs-harness"),
+        provider_id: ProviderId::from("asp-rust"),
         projection_coverage:
             agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
         selector_receipts: Vec::new(),
@@ -167,7 +167,7 @@ fn source_index_refresh_publishes_distinct_immutable_generation_identities() {
         crate::projection_fixture::projection_record(
             crate::projection_fixture::ProjectionFixtureInput {
                 language_id: "rust",
-                provider_id: "rs-harness",
+                provider_id: "asp-rust",
                 owner_path: "src/source_index_perf.rs",
                 structural_selector: "rust://src/source_index_perf.rs#item/function/source_index_perf_fixture",
                 item_kind: "function",

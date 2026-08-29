@@ -13,9 +13,9 @@ REQUIRED_INTENTS = {
     "implementation-principle",
 }
 _PROVIDER_BINARY_BY_LANGUAGE = {
-    "julia": "asp-julia-harness",
-    "python": "py-harness",
-    "rust": "rs-harness",
+    "julia": "asp-julia",
+    "python": "asp-python",
+    "rust": "asp-rust",
     "typescript": "asp-typescript",
 }
 

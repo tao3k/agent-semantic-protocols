@@ -57,7 +57,7 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
             relations: Vec::new(),
             relative_path: "src/source_index_active_turso.rs".to_string(),
             language_id: LanguageId::from("rust"),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             text: "pub fn source_index_active_turso_fixture() {}\n".to_string(),
             selectors: vec![rust_selector_fixture(
                 "src/source_index_active_turso.rs",
@@ -109,7 +109,7 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
             relations: Vec::new(),
             relative_path: "src/source_index_active_turso.rs".to_string(),
             language_id: LanguageId::from("rust"),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             text: "pub fn source_index_active_turso_fixture() {}\n".to_string(),
             selectors: vec![rust_selector_fixture(
                 "src/source_index_active_turso.rs",
@@ -151,7 +151,7 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
         lookup.candidates.iter().any(|candidate| candidate.path
             == "src/source_index_active_turso.rs"
             && candidate.language_id.as_ref().map(|id| id.as_str()) == Some("rust")
-            && candidate.provider_id.as_ref().map(|id| id.as_str()) == Some("rs-harness")
+            && candidate.provider_id.as_ref().map(|id| id.as_str()) == Some("asp-rust")
             && candidate.source_kind.as_str() == "turso-source-index"),
         "lookup={lookup:?}"
     );
@@ -186,7 +186,7 @@ async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_cand
             relations: Vec::new(),
             relative_path: "src/source_index_payload_proof.rs".to_string(),
             language_id: LanguageId::from("rust"),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             text: "pub fn source_index_payload_proof_fixture() {}\n".to_string(),
             selectors: vec![rust_selector_fixture(
                 "src/source_index_payload_proof.rs",
@@ -290,14 +290,14 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
                 relations: Vec::new(),
                 path: source_path,
                 language_id: LanguageId::from("rust"),
-                provider_id: ProviderId::from("rs-harness"),
+                provider_id: ProviderId::from("asp-rust"),
                 projection_coverage:
                     agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::Complete,
                 selector_receipts: vec![ClientDbSourceIndexSelector {
                     owner_path: ClientDbSourceIndexPath::from(
                         "src/source_index_scope_payload_proof.rs",
                     ),
-                    provider_id: ProviderId::from("rs-harness"),
+                    provider_id: ProviderId::from("asp-rust"),
                     selector_id: selector.into(),
                     symbol: Some("source_index_scope_payload_proof_fixture".into()),
                     kind: Some("function".into()),
@@ -309,7 +309,7 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
                     projection_record: crate::projection_fixture::projection_record(
                         crate::projection_fixture::ProjectionFixtureInput {
                             language_id: "rust",
-                            provider_id: "rs-harness",
+                            provider_id: "asp-rust",
                             owner_path: "src/source_index_scope_payload_proof.rs",
                             structural_selector: selector,
                             item_kind: "function",
@@ -419,7 +419,7 @@ async fn db_engine_source_index_lookup_deduplicates_same_owner_across_generation
                     relations: Vec::new(),
                     relative_path: "src/source_index_dedup.rs".to_string(),
                     language_id: rust_language_id.clone(),
-                    provider_id: ProviderId::from("rs-harness"),
+                    provider_id: ProviderId::from("asp-rust"),
                     text: text.to_string(),
                     selectors: Vec::new(),
                 }],
@@ -505,7 +505,7 @@ async fn db_engine_source_index_import_does_not_populate_turso_fts_search_docume
             relations: Vec::new(),
             relative_path: "src/source_index_fts.rs".to_string(),
             language_id: rust_language_id.clone(),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             text: "pub fn source_index_fts_fixture() { let camel_case_identifier = true; }\n"
                 .to_string(),
             selectors: vec![rust_selector_fixture(
@@ -588,7 +588,7 @@ async fn db_engine_source_index_concurrent_inspect_and_lookup_survives_turso_fil
             relations: Vec::new(),
             relative_path: "src/source_index_concurrent.rs".to_string(),
             language_id: rust_language_id.clone(),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             text: "pub fn source_index_concurrent_fixture() {}\n".to_string(),
             selectors: Vec::new(),
         }],
@@ -683,7 +683,7 @@ async fn db_engine_source_index_lookup_succeeds_without_client_dir_write_permiss
             relations: Vec::new(),
             relative_path: "src/source_index_read_only.rs".to_string(),
             language_id: rust_language_id.clone(),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             text: "pub fn source_index_read_only_fixture() {}\n".to_string(),
             selectors: Vec::new(),
         }],
@@ -774,7 +774,7 @@ async fn db_engine_source_index_refresh_lookup_pressure_never_exposes_busy_or_lo
             relations: Vec::new(),
             relative_path: "src/source_index_pressure.rs".to_string(),
             language_id: rust_language_id.clone(),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             text: "pub fn source_index_pressure_fixture() { let initial = true; }\n".to_string(),
             selectors: Vec::new(),
         }],
@@ -833,7 +833,7 @@ async fn db_engine_source_index_refresh_lookup_pressure_never_exposes_busy_or_lo
                     relations: Vec::new(),
                     relative_path: "src/source_index_pressure.rs".to_string(),
                     language_id: writer_language_id.clone(),
-                    provider_id: ProviderId::from("rs-harness"),
+                    provider_id: ProviderId::from("asp-rust"),
                     text,
                     selectors: Vec::new(),
                 }],
@@ -957,7 +957,7 @@ pub(crate) fn rust_selector_fixture(
 ) -> ClientDbSourceIndexSelector {
     ClientDbSourceIndexSelector {
         owner_path: owner_path.into(),
-        provider_id: ProviderId::from("rs-harness"),
+        provider_id: ProviderId::from("asp-rust"),
         selector_id: selector.into(),
         symbol: Some(symbol.into()),
         kind: Some("function".into()),
@@ -967,7 +967,7 @@ pub(crate) fn rust_selector_fixture(
         projection_record: crate::projection_fixture::projection_record(
             crate::projection_fixture::ProjectionFixtureInput {
                 language_id: "rust",
-                provider_id: "rs-harness",
+                provider_id: "asp-rust",
                 owner_path,
                 structural_selector: selector,
                 item_kind: "function",

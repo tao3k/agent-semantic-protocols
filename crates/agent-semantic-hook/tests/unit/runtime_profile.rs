@@ -44,7 +44,7 @@ fn runtime_project_root_for_generated_activation_uses_activation_storage_root() 
 #[test]
 fn resolved_provider_binary_materializes_authoritative_command() {
     let root = temp_root("resolved-provider");
-    let resolved = write_executable_provider(&root, "rs-harness");
+    let resolved = write_executable_provider(&root, "asp-rust");
     let prefix = vec![resolved.display().to_string()];
     let resolution = crate::executable::resolve_executable_with_status(&prefix[0]);
 

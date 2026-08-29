@@ -239,7 +239,7 @@
   "providerMappings": [
     {
       "languageId": "python",
-      "providerId": "py-harness",
+      "providerId": "asp-python",
       "status": "ready",
       "criterionIds": [
         "control-flow.decision-stack",
@@ -262,7 +262,7 @@
     },
     {
       "languageId": "rust",
-      "providerId": "rs-harness",
+      "providerId": "asp-rust",
       "status": "ready",
       "criterionIds": [
         "control-flow.decision-stack",
@@ -308,7 +308,7 @@
     },
     {
       "languageId": "julia",
-      "providerId": "julia-lang-project-harness",
+      "providerId": "asp-julia",
       "status": "planned",
       "criterionIds": [
         "control-flow.decision-stack",

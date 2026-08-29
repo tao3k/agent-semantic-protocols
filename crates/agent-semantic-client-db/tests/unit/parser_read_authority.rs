@@ -18,7 +18,7 @@ fn context() -> ParserReadContext {
         workspace_id: "workspace-a".to_owned(),
         canonical_workspace_root: "/workspace/a".to_owned(),
         language_id: "rust".to_owned(),
-        provider_id: "rs-harness".to_owned(),
+        provider_id: "asp-rust".to_owned(),
         provider_manifest_digest: format!("sha256:{}", "a".repeat(64)),
     }
 }
@@ -144,7 +144,7 @@ fn generation_required_does_not_forge_generation_digests() {
     let wire = serde_json::to_value(authority).expect("parser authority wire shape");
     assert_eq!(wire["schemaVersion"], "1");
     assert_eq!(wire["workspaceId"], "workspace-a");
-    assert_eq!(wire["providerId"], "rs-harness");
+    assert_eq!(wire["providerId"], "asp-rust");
     assert_eq!(wire["runtimeEndpointState"], "unavailable");
     assert_eq!(wire["elapsedMicros"], 0);
     assert_eq!(wire["route"], "none");

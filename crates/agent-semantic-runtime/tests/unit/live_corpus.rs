@@ -11,7 +11,7 @@ fn artifact_identity<'a>(revision: &'a str) -> LiveCorpusArtifactIdentity<'a> {
     LiveCorpusArtifactIdentity {
         lock_digest: "0000000000000000000000000000000000000000000000000000000000000000",
         resource_id: "rust.tokio",
-        provider_id: "rs-harness",
+        provider_id: "asp-rust",
         language_id: "rust",
         builder_id: "asp-live-corpus",
         revision,

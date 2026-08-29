@@ -1,5 +1,5 @@
 .codex/harness-state
-.codex/rs-harness/
+.codex/asp-rust/
 .bin/
 .cache
 .data/

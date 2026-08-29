@@ -96,7 +96,7 @@ async fn db_engine_source_index_refresh_rebuilds_noncanonical_snapshot_schema() 
             relations: Vec::new(),
             relative_path: "src/canonical_schema.rs".to_string(),
             language_id: LanguageId::from("rust"),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             text: "fn canonical_schema() {}\n".to_string(),
             selectors: Vec::new(),
         }],

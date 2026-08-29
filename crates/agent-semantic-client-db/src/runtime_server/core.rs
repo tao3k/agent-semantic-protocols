@@ -9,7 +9,7 @@ use tokio::task::JoinSet;
 use crate::runtime_server_agent_session_status::AgentSessionStatusHandle;
 use crate::runtime_server_control::RuntimeServerEndpoint;
 use crate::runtime_server_control::status_memory::RuntimeServerStatusMemoryWriter;
-pub use crate::runtime_server_graph_turbo_status::GraphTurboResidentStatusHandle;
+pub use crate::runtime_server_asp_python_graphs_status::AspPythonGraphsStatusHandle;
 
 use crate::WorkspaceDbRegistry;
 
@@ -57,7 +57,7 @@ pub struct RuntimeServer {
     pub(super) events: Option<crate::runtime_server_observability::RuntimeServerEventPublisher>,
     pub(super) generation_admission:
         Option<Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>>,
-    pub(super) graph_turbo_resident_status: Option<GraphTurboResidentStatusHandle>,
+    pub(super) asp_python_graphs_status: Option<AspPythonGraphsStatusHandle>,
     pub(crate) agent_session_registry_owner: Option<Arc<crate::AgentSessionRegistry>>,
     pub(crate) agent_session_status: Option<AgentSessionStatusHandle>,
     pub(super) telemetry_sender: Option<crate::runtime_telemetry_bus::RuntimeTelemetryBusSender>,
@@ -154,12 +154,12 @@ impl RuntimeServer {
         self
     }
 
-    pub fn with_graph_turbo_resident_status(
+    pub fn with_asp_python_graphs_status(
         mut self,
-        status: GraphTurboResidentStatusHandle,
+        status: AspPythonGraphsStatusHandle,
     ) -> Self {
-        self.status_memory.set_graph_turbo_resident(status.shared());
-        self.graph_turbo_resident_status = Some(status);
+        self.status_memory.set_asp_python_graphs(status.shared());
+        self.asp_python_graphs_status = Some(status);
         self
     }
 
@@ -623,7 +623,7 @@ let session = await_stage(
             mut status_memory,
             events,
             generation_admission,
-            graph_turbo_resident_status,
+            asp_python_graphs_status,
             agent_session_registry_owner,
             agent_session_status,
             telemetry_sender: _,
@@ -659,9 +659,9 @@ let session = await_stage(
         let mut retirement_sweep = tokio::time::interval(std::time::Duration::from_secs(60));
         retirement_sweep.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         retirement_sweep.tick().await;
-        let mut graph_turbo_status_changes = graph_turbo_resident_status
+        let mut asp_python_graphs_status_changes = asp_python_graphs_status
             .as_ref()
-            .map(GraphTurboResidentStatusHandle::subscribe);
+            .map(AspPythonGraphsStatusHandle::subscribe);
         let mut agent_session_status_changes = agent_session_status
             .as_ref()
             .map(AgentSessionStatusHandle::subscribe);
@@ -687,7 +687,7 @@ let session = await_stage(
                     let connection_registry = Arc::clone(&registry);
                     let connection_generation_admission = generation_admission.clone();
                     let connection_lifecycle = lifecycle.clone();
-                    let connection_graph_turbo_status = graph_turbo_resident_status.clone();
+                    let connection_asp_python_graphs_status = asp_python_graphs_status.clone();
                     let connection_drain = drain_receiver.clone();
                     let connection_replay_guard = Arc::clone(&control_replay_guard);
                     connections.spawn(async move {
@@ -697,7 +697,7 @@ let session = await_stage(
                             connection_registry,
                             connection_generation_admission,
                             connection_lifecycle,
-                            connection_graph_turbo_status,
+                            connection_asp_python_graphs_status,
                             connection_drain,
                             connection_replay_guard,
                         )
@@ -771,14 +771,14 @@ let session = await_stage(
                     }
                 }
                 changed = async {
-                    match graph_turbo_status_changes.as_mut() {
+                    match asp_python_graphs_status_changes.as_mut() {
                         Some(changes) => Some(changes.changed().await),
                         None => std::future::pending().await,
                     }
-                }, if graph_turbo_status_changes.is_some() => {
+                }, if asp_python_graphs_status_changes.is_some() => {
                     changed
-                        .expect("Graph Turbo status branch requires a receiver")
-                        .map_err(|_| "Graph Turbo resident status owner closed".to_owned())?;
+                        .expect("asp-python-graphs status branch requires a receiver")
+                        .map_err(|_| "asp-python-graphs status owner closed".to_owned())?;
                     let entry_counts = registry.workspace_entry_counts();
                     let slot_count = entry_counts.slot_count;
                     let loaded_entry_count = entry_counts.loaded_entry_count;

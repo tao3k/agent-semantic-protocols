@@ -108,7 +108,7 @@ PATCH
     assert_eq!(deny_decision["decision"], "deny");
     assert_eq!(deny_decision["reasonKind"], "semantic-ast-patch-required");
     assert_eq!(deny_decision["subject"]["paths"], json!(["src/lib.rs"]));
-    assert_eq!(deny_decision["routes"][0]["providerId"], "rs-harness");
+    assert_eq!(deny_decision["routes"][0]["providerId"], "asp-rust");
     assert_eq!(deny_decision["routes"][0]["argv"][0], "asp");
     assert_eq!(deny_decision["routes"][0]["argv"][1], "rust");
     assert_eq!(deny_decision["routes"][0]["argv"][4], "src/lib.rs");
@@ -331,11 +331,11 @@ message = "custom route"
 [rules.match]
 tool = "Bash"
 [[rules.routes]]
-providerId = "rs-harness"
+providerId = "asp-rust"
 languageId = "rust"
-binary = "rs-harness"
+binary = "asp-rust"
 kind = "query"
-argv = ["rs-harness", "query", "--from-hook", "custom", "."]
+argv = ["asp-rust", "query", "--from-hook", "custom", "."]
 stdinMode = "none"
 "#,
     );
@@ -351,7 +351,7 @@ stdinMode = "none"
     assert_eq!(decision["routes"][0]["kind"], "query");
     assert_eq!(
         decision["routes"][0]["argv"],
-        json!(["rs-harness", "query", "--from-hook", "custom", "."])
+        json!(["asp-rust", "query", "--from-hook", "custom", "."])
     );
     assert_eq!(decision["routes"][0]["stdinMode"], "none");
     std::fs::remove_dir_all(root).expect("cleanup temp project root");

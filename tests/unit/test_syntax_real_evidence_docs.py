@@ -34,7 +34,7 @@ def test_rust_syntax_real_evidence_records_bounded_claims() -> None:
     text = _RUST_EVIDENCE.read_text(encoding="utf-8")
 
     required_terms = [
-        "[syntax-real-evidence] language=rust provider=rs-harness project=agent-semantic-protocols",
+        "[syntax-real-evidence] language=rust provider=asp-rust project=agent-semantic-protocols",
         "metrics=commandCount=5,providerProcessCount=5,packetBytes=3914,coldElapsedMs=303,warmElapsedMs=93",
         "cacheClaim=warm-provider",
         "does not claim cache hit replay",

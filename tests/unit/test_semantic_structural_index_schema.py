@@ -20,7 +20,7 @@ def structural_index_packet() -> dict[str, Any]:
         "protocolVersion": "1",
         "generationId": "rust-main-1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "providerVersion": "0.1.0",
         "exportMethod": "index/structural",
         "projectRoot": "/tmp/example",

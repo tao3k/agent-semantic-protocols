@@ -56,7 +56,7 @@ alone.
 
 | Claim | Current evidence | Verdict |
 |-------+------------------+---------|
-| Graph Turbo directly depends on SciPy | =packages/python/asp_graph_turbo/pyproject.toml= declares =scipy>=1.14= and no NetworkX or Scrapy dependency | Confirmed |
+| Graph Turbo directly depends on SciPy | =packages/python/asp_python_graphs/pyproject.toml= declares =scipy>=1.14= and no NetworkX or Scrapy dependency | Confirmed |
 | =rank_frontier= is a relevance/frontier pipeline | =ranking.py::rank_frontier= resolves a profile and seeds, collects scores, ranks nodes, applies a read-loop second pass, and builds =GraphResult= | Confirmed |
 | Relation matrices already exist | =backend.py::GraphBackend= carries =relation_matrices=, counts, and weight mass | Confirmed |
 | PPR currently consumes the aggregate transition | =pagerank.py= multiplies =backend.transition.T @ rank= | Confirmed |
@@ -561,7 +561,7 @@ Official capability references:
 A possible Python package decomposition is:
 
 #+begin_src text
-asp_graph_turbo/
+asp_python_graphs/
   graph/
   candidate/
   planner/

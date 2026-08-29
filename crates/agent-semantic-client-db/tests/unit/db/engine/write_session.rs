@@ -43,7 +43,7 @@ async fn db_engine_write_session_imports_manifest_without_exposing_retired_db_ha
             {
                 "generationId": "rust-main-1",
                 "languageId": "rust",
-                "providerId": "rs-harness",
+                "providerId": "asp-rust",
                 "providerVersion": "0.1.0",
                 "exportMethod": "search/prime",
                 "projectRoot": project_root.display().to_string(),
@@ -82,7 +82,7 @@ async fn db_engine_write_session_imports_manifest_without_exposing_retired_db_ha
     let hit = read_session
         .lookup_generation_request(
             &LanguageId::from("rust"),
-            &ProviderId::from("rs-harness"),
+            &ProviderId::from("asp-rust"),
             &project_root,
             &CacheExportMethod::from("search/prime"),
             Some("fnv64:write-session".to_string()),
@@ -109,7 +109,7 @@ async fn db_engine_write_session_imports_manifest_without_exposing_retired_db_ha
     let miss = read_session
         .lookup_generation_request(
             &LanguageId::from("rust"),
-            &ProviderId::from("rs-harness"),
+            &ProviderId::from("asp-rust"),
             &project_root,
             &CacheExportMethod::from("search/prime"),
             Some("fnv64:write-session".to_string()),
@@ -164,7 +164,7 @@ async fn db_engine_cache_status_survives_concurrent_read_write_smoke() {
                     let _ = read_session
                         .lookup_generation_request(
                             &LanguageId::from("rust"),
-                            &ProviderId::from("rs-harness"),
+                            &ProviderId::from("asp-rust"),
                             project_root.as_path(),
                             &CacheExportMethod::from("search/prime"),
                             None,
@@ -207,7 +207,7 @@ async fn db_engine_cache_status_survives_concurrent_read_write_smoke() {
     let hit = read_session
         .lookup_generation_request(
             &LanguageId::from("rust"),
-            &ProviderId::from("rs-harness"),
+            &ProviderId::from("asp-rust"),
             project_root.as_path(),
             &CacheExportMethod::from("search/prime"),
             Some("fnv64:cache-status-7".to_string()),
@@ -233,7 +233,7 @@ fn concurrent_cache_status_manifest(
             {
                 "generationId": format!("rust-cache-status-{generation_index}"),
                 "languageId": "rust",
-                "providerId": "rs-harness",
+                "providerId": "asp-rust",
                 "providerVersion": "0.1.0",
                 "exportMethod": "search/prime",
                 "projectRoot": project_root.display().to_string(),

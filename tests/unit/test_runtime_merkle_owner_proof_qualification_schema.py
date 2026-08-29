@@ -25,7 +25,7 @@ def receipt(
         "caseId": "ready-owner-proof",
         "resourceId": None,
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "workspaceIdentity": "workspace-proof",
         "generationDigest": digest if qualified else None,
         "rootDigest": digest if qualified else None,

@@ -284,13 +284,13 @@ avoid=raw-read
 * Implementation slice: Rust search guide
 
 As of 2026-06-03, the Rust provider owns the first executable slice of this
-RFC through =rs-harness search guide .=.  The guide is intentionally compact
+RFC through =asp-rust search guide .=.  The guide is intentionally compact
 line protocol, not JSON and not prose.  It advertises typed reasoning profiles,
 selector aliases, returned fact families, compatible graph handles, and
 frontier actions:
 
 #+begin_src text
-[search-guide] language=rust provider=rs-harness protocol=search-guide.v1
+[search-guide] language=rust provider=asp-rust protocol=search-guide.v1
 |rule intent=agent selectors=typed json=validator-only
 |rule natural-language-intent=deny fields=goal,intent,prompt
 |flow guide->prime->reasoning-profile->owner|deps|tests
@@ -299,7 +299,7 @@ frontier actions:
 |entry owner-tests selectors=O:owner returns=covering-tests,test-entrypoints,fixtures frontier=O.tests,T.owner cmd=asp rust search reasoning owner-tests --owner <O> --workspace . --view seeds
 |entry finding-frontier selectors=F:finding,O:owner? returns=affected-owners,tests,verification-actions frontier=F.owner,F.tests,O.policy cmd=asp rust search reasoning finding-frontier --query <F> --workspace . --view seeds
 |entry read-frontier selectors=R:range returns=symbols,windows,tests,next-actions frontier=R.symbols,R.tests,R.code cmd=asp rust query --from-hook direct-source-read --selector <R> .
-|cmd read-frontier=rs-harness query --from-hook direct-source-read --selector <path:start:end> .
+|cmd read-frontier=asp-rust query --from-hook direct-source-read --selector <path:start:end> .
 |avoid raw-read,manual-window-scan,full-json,natural-language-intent
 #+end_src
 
@@ -308,7 +308,7 @@ parallelism.  Those runtimes may use the guide to fan out independent axes, but
 the provider contract remains a deterministic typed catalog.
 
 During this slice the root hook also denied raw source diff dumps and returned
-provider routes such as =rs-harness query --from-hook direct-source-read
+provider routes such as =asp-rust query --from-hook direct-source-read
 --selector <path> --code .=.  That is the expected safety shape for this RFC:
 the agent may inspect exact provider-selected windows, but broad source dumps
 stay outside the prompt-facing graph reasoning flow.
@@ -509,7 +509,7 @@ space:
 7. Defer relation-frontier and causal-path commands until provider relation
    facts and schema fields exist.
 
-Julia participates in this RFC through the compiled =asp-julia-harness= and the
+Julia participates in this RFC through the compiled =asp-julia= and the
 same cacheable graph/reasoning packet contracts.  Julia-specific evidence must
 come from JuliaSyntax-owned facts surfaced through =asp julia ...=, not from a
 workspace-managed exception.

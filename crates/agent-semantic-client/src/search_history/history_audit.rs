@@ -1,24 +1,17 @@
 //! Search command history audit via the graph-turbo artifact timeline.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use agent_semantic_client_core::ProjectContext;
 use agent_semantic_client_db::{ClientDbArtifactEvent, ClientDbEngine};
-use agent_semantic_provider_transport::{
-    OutputMode, ProviderProcessLimits, ProviderProcessOutput, ProviderProcessSpec,
-    ProviderProcessSupervisor, StdinMode,
-};
 use bytes::Bytes;
 
 use super::artifact_events::{artifact_file_count, scan_artifact_events_for_db};
 
 pub(crate) async fn run_search_history(project_root: &Path, args: &[String]) -> Result<(), String> {
     let (audit_root, forwarded_args) = parse_history_audit_args(project_root, args)?;
-    let supervisor = ProviderProcessSupervisor::default();
-    let result = print_history_audit(&supervisor, &audit_root, forwarded_args).await;
-    supervisor.shutdown().await;
-    result
+    print_history_audit(&audit_root, forwarded_args).await
 }
 
 fn parse_history_audit_args<'a>(
@@ -40,64 +33,33 @@ fn parse_history_audit_args<'a>(
     }
 }
 
-async fn print_history_audit(
-    supervisor: &ProviderProcessSupervisor,
-    audit_root: &Path,
-    forwarded_args: &[String],
-) -> Result<(), String> {
+async fn print_history_audit(audit_root: &Path, forwarded_args: &[String]) -> Result<(), String> {
     let project_context = ProjectContext::resolve(audit_root)?;
     let artifact_dir = project_context.state_layout().artifacts_dir().to_path_buf();
-    let events_packet = artifact_events_packet(&project_context, &artifact_dir)?;
-    let output =
-        run_graph_turbo_timeline(supervisor, &artifact_dir, forwarded_args, events_packet).await?;
-    if !output.status.success() {
-        return Err(format!(
-            "graph-turbo timeline failed status={} stderr={}",
-            output.status,
-            output.stderr_lossy().trim()
-        ));
-    }
-    print!("{}", output.stdout_lossy());
-    if !output.stderr.is_empty() {
-        eprint!("{}", output.stderr_lossy());
-    }
+    let events_packet =
+        artifact_events_packet(&project_context, &artifact_dir)?.ok_or_else(|| {
+            "graph timeline requires a complete schema-owned artifact-event packet".to_owned()
+        })?;
+    let event_packet: serde_json::Value = serde_json::from_slice(&events_packet)
+        .map_err(|error| format!("decode graph-turbo events packet: {error}"))?;
+    let client = crate::runtime_language_client::AspClient::new(
+        agent_semantic_runtime::resolve_state_home()?,
+        audit_root.to_path_buf(),
+    );
+    let report = client
+        .graphs_timeline(serde_json::json!({
+            "schemaId": agent_semantic_client_protocol::GRAPH_TIMELINE_REQUEST_SCHEMA_ID,
+            "schemaVersion": agent_semantic_client_protocol::SCHEMA_VERSION,
+            "eventPacket": event_packet,
+            "arguments": forwarded_args,
+        }))
+        .await?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&report)
+            .map_err(|error| format!("encode graph timeline report: {error}"))?
+    );
     Ok(())
-}
-
-async fn run_graph_turbo_timeline(
-    supervisor: &ProviderProcessSupervisor,
-    artifact_dir: &Path,
-    forwarded_args: &[String],
-    events_packet: Option<Bytes>,
-) -> Result<ProviderProcessOutput, String> {
-    let cwd = std::env::current_dir()
-        .map_err(|error| format!("failed to resolve current directory: {error}"))?;
-    let mut args = vec!["timeline".to_string(), artifact_dir.display().to_string()];
-    let stdin = if let Some(packet) = events_packet {
-        args.extend(["--events-json".to_string(), "-".to_string()]);
-        StdinMode::bytes(packet)
-    } else {
-        StdinMode::Closed
-    };
-    args.extend(forwarded_args.iter().cloned());
-    supervisor.run(ProviderProcessSpec {
-        program: "asp-graph-turbo".to_string(),
-        args,
-        cwd,
-        env: BTreeMap::new(),
-        remove_env: Default::default(),
-        remove_env_prefixes: Default::default(),
-        stdin,
-        stdout: OutputMode::Capture,
-        stderr: OutputMode::Capture,
-        limits: ProviderProcessLimits::default(),
-    })
-    .await
-    .map_err(|error| {
-        format!(
-            "failed to run asp-graph-turbo timeline: {error}; run just agent-tools-install-asp-graph-turbo <bin-dir>"
-        )
-    })
 }
 
 fn artifact_events_packet(

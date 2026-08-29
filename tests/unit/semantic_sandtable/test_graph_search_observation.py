@@ -73,13 +73,13 @@ def test_provider_runtime_failure_is_recorded_without_host_paths() -> None:
                 "steps": [
                     {
                         "command": [
-                            "/workspace/private/.local/bin/asp-julia-harness",
+                            "/workspace/private/.local/bin/asp-julia",
                             "query",
                             "--selector",
                             "analyzers/AspGraphsSearch.jl",
                         ],
                         "exitCode": 127,
-                        "stderr": "Library not loaded: @rpath/libjulia.1.12.dylib referenced from /workspace/private/.local/bin/asp-julia-harness",
+                        "stderr": "Library not loaded: @rpath/libjulia.1.12.dylib referenced from /workspace/private/.local/bin/asp-julia",
                     }
                 ],
             }
@@ -92,7 +92,7 @@ def test_provider_runtime_failure_is_recorded_without_host_paths() -> None:
     assert observation["providerHealth"][0]["failureKind"] == "dynamic-library-rpath"
     assert observation["providerHealth"][0]["binaryRef"] == {
         "kind": "home-local-bin",
-        "value": "asp-julia-harness",
+        "value": "asp-julia",
     }
     assert "/workspace/private" not in json.dumps(observation)
     assert_no_absolute_paths(observation)

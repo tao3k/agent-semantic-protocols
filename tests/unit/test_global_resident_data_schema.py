@@ -52,7 +52,7 @@ def test_programming_language_and_document_surfaces_are_distinct() -> None:
             {
                 "kind": "programming-language",
                 "languageId": "rust",
-                "providerId": "rs-harness",
+                "providerId": "asp-rust",
             }
         )
     )

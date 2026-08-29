@@ -57,16 +57,16 @@ def write_microburst_repeat_artifacts(root: Path) -> None:
 def _mixed_provider_commands() -> list[dict[str, object]]:
     return [
         {
-            "argv": ["py-harness", "search", "owner", "src/" + "types.py"],
+            "argv": ["asp-python", "search", "owner", "src/" + "types.py"],
             "languageId": "python",
         },
         {
-            "argv": ["rs-harness", "search", "owner", "src/" + "lib.rs"],
+            "argv": ["asp-rust", "search", "owner", "src/" + "lib.rs"],
             "languageId": "rust",
         },
         {
             "argv": [
-                "rs-harness",
+                "asp-rust",
                 "query",
                 "--from-hook",
                 "direct-source-read",
@@ -78,7 +78,7 @@ def _mixed_provider_commands() -> list[dict[str, object]]:
         },
         {
             "argv": [
-                "rs-harness",
+                "asp-rust",
                 "query",
                 "--selector",
                 "src/" + "lib.rs",
@@ -89,7 +89,7 @@ def _mixed_provider_commands() -> list[dict[str, object]]:
         },
         {
             "argv": [
-                "rs-harness",
+                "asp-rust",
                 "query",
                 "--from-hook",
                 "direct-source-read",
@@ -102,7 +102,7 @@ def _mixed_provider_commands() -> list[dict[str, object]]:
         },
         {
             "argv": [
-                "rs-harness",
+                "asp-rust",
                 "query",
                 "--from-hook",
                 "direct-source-read",
@@ -115,7 +115,7 @@ def _mixed_provider_commands() -> list[dict[str, object]]:
         },
         {
             "argv": [
-                "rs-harness",
+                "asp-rust",
                 "query",
                 "--from-hook",
                 "direct-source-read",
@@ -128,7 +128,7 @@ def _mixed_provider_commands() -> list[dict[str, object]]:
         },
         {
             "argv": [
-                "rs-harness",
+                "asp-rust",
                 "query",
                 "--from-hook",
                 "direct-source-read",
@@ -141,7 +141,7 @@ def _mixed_provider_commands() -> list[dict[str, object]]:
         },
         {
             "argv": [
-                "rs-harness",
+                "asp-rust",
                 "search",
                 "--view",
                 "seeds",

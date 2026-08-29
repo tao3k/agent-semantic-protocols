@@ -175,8 +175,8 @@ The Rust, Python, TypeScript, and Julia workspace providers now expose
 compatible compact command shapes for policy and hook-routed search:
 
 #+begin_src shell
-rs-harness search policy RUST-PROJ-R001 owner tests --view seeds languages/rust-lang-project-harness
-py-harness search policy PY-AGENT-R008 owner tests --view seeds languages/python-lang-project-harness
+asp-rust search policy RUST-PROJ-R001 owner tests --view seeds languages/rust-lang-project-harness
+asp-python search policy PY-AGENT-R008 owner tests --view seeds languages/python-lang-project-harness
 asp-typescript search policy TS-AGENT-R001 owner tests --view seeds languages/typescript-lang-project-harness
 julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search policy JULIA-PROJ-R001 owner tests --view seeds languages/JuliaLangProjectHarness.jl
 julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl search owner src/cli.jl --view seeds languages/JuliaLangProjectHarness.jl
@@ -188,7 +188,7 @@ The Julia command is intentionally written in full.  Do not shorten this to a
 bare =julia-project-harness= binary in docs, tests, or profile descriptors.
 
 The important runtime finding was not a missing Python implementation.  A stale
-=py-harness= on =PATH= can still be discovered by =semantic-agent-protocol install hook=
+=asp-python= on =PATH= can still be discovered by =semantic-agent-protocol install hook=
 if the installer only checks executability.  The root cause is therefore
 provider discovery based on binary presence instead of provider capability.
 

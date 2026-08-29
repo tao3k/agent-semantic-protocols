@@ -230,7 +230,7 @@ The proof gate is already source-kind aware:
 #+begin_src sh
 uv run --project packages/python --package agent-semantic-clients-tools \
   python -m tools.lean_axle_proof_obligation_demo \
-  --search-packet .data/provider-captures/rs-harness-search-prime.json \
+  --search-packet .data/provider-captures/asp-rust-search-prime.json \
   --packet-source-kind provider-output
 #+end_src
 
@@ -246,7 +246,7 @@ preconditions:
 - =asp-explore= is registered and routable for the root session.
 - the registered child session has =thread_source=subagent=, role
   =asp_explorer=, and the configured ASP explorer agent path.
-- Rust provider install resolves to an executable =rs-harness=.
+- Rust provider install resolves to an executable =asp-rust=.
 - the capture command returns a JSON packet whose =schemaId= is
   =agent.semantic-protocols.semantic-search-packet=.
 
@@ -259,7 +259,7 @@ as sandbox drift.
 The current observed failure mode is not in the proof gate:
 
 #+begin_src text
-failed to spawn provider process /Users/guangtao/.local/bin/rs-harness:
+failed to spawn provider process /Users/guangtao/.local/bin/asp-rust:
 No such file or directory (os error 2)
 #+end_src
 
@@ -269,7 +269,7 @@ selection, or hook recovery, not to Lean/AXLE verification.
 
 Observed capture constraints:
 
-- direct =rs-harness search ... --json= is denied by the hook as
+- direct =asp-rust search ... --json= is denied by the hook as
   =agent-search-json= and routed back to ASP search.
 - =asp rust search pipe --help= exposes =--workspace= and =--view= but no
   =--json= output flag.
@@ -281,7 +281,7 @@ Observed capture constraints:
 
 Therefore the next engineering fix is a first-class provider capture command or
 a repaired ASP search JSON route. The proof gate should not bypass the hook by
-shelling directly to =rs-harness --json= unless the hook contract explicitly
+shelling directly to =asp-rust --json= unless the hook contract explicitly
 allows that route.
 
 * Open Defect: Provider Output Capture Launch Blocker
@@ -297,15 +297,15 @@ recovery, not to the Rust provider binary itself.
 Confirmed facts:
 
 - =asp-explore= is registered, active, and routable.
-- =/Users/guangtao/.local/bin/rs-harness= exists after
+- =/Users/guangtao/.local/bin/asp-rust= exists after
   =asp install language rust --from-workspace=.
-- the same =rs-harness= binary can run =--help= directly from both the main
+- the same =asp-rust= binary can run =--help= directly from both the main
   session and the =asp-explore= child session.
 - =asp rust agent doctor --json --workspace .= can emit the Rust language
   registry and confirms =semantic-search-packet= output descriptors.
 - =asp rust search pipe --help= exposes =--workspace= and =--view= but no
   =--json= capture flag.
-- direct =rs-harness search ... --json= remains hook-denied as
+- direct =asp-rust search ... --json= remains hook-denied as
   =agent-search-json= and is routed back to ASP search.
 
 Failing route:
@@ -317,7 +317,7 @@ asp rust search prime --workspace <repo> --view seeds
 Observed failure:
 
 #+begin_src text
-failed to spawn provider process /Users/guangtao/.local/bin/rs-harness:
+failed to spawn provider process /Users/guangtao/.local/bin/asp-rust:
 No such file or directory (os error 2)
 #+end_src
 
@@ -365,7 +365,7 @@ Acceptance criteria for closing this defect:
 
 - ASP exposes a hook-approved JSON capture route for semantic-search-packet
   provider output, or =asp rust search ... --json= works through ASP without
-  direct =rs-harness= bypass.
+  direct =asp-rust= bypass.
 - The route writes a real provider-output packet whose =schemaId= is
   =agent.semantic-protocols.semantic-search-packet=.
 - That packet validates against =semantic-search-packet.v1=.
@@ -401,8 +401,8 @@ asp rust search workspace --workspace <repo> --view seeds
 Observed bad launch:
 
 #+begin_src text
-cwd=<repo>/seeds argv=rs-harness search workspace --view
-cwd=<repo>/workspace argv=rs-harness search
+cwd=<repo>/seeds argv=asp-rust search workspace --view
+cwd=<repo>/workspace argv=asp-rust search
 #+end_src
 
 Root cause:

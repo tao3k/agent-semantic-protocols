@@ -83,6 +83,14 @@ def test_live_corpus_search_query_plan_covers_the_complete_locked_matrix() -> No
         "asp-typescript",
     }
 
+    by_language = {language: [] for language in plan["requiredLanguages"]}
+    for entry in plan["cases"]:
+        by_language[entry["languageId"]].append(entry)
+    assert all(by_language.values())
+    for entries in by_language.values():
+        assert all(entry["search"]["minimumCandidates"] >= 1 for entry in entries)
+        assert all(entry["zeroMatchTerms"] for entry in entries)
+
 
 def test_every_locked_corpus_has_fixed_search_query_and_telemetry_budgets() -> None:
     plan = load_json(PLAN_PATH)

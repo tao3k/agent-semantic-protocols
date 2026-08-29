@@ -1,4 +1,3 @@
-import ASPProof.GraphTurboResidentIpcAuthority
 import ASPProof.SearchRouteCanonicalPayloadDigestReplay
 
 namespace ASPProof.SemanticProjectionRuntimeWrapping
@@ -45,15 +44,5 @@ theorem payload_digest_mismatch_rejected
     ¬ admitted authority payload expectedDigest := by
   intro accepted
   exact mismatch accepted
-
-theorem root_digest_does_not_replace_generation_binding
-    (request : GraphTurboResidentIpcAuthority.ResidentRequest)
-    (receipt : GraphTurboResidentIpcAuthority.ResidentReceipt)
-    (root : GraphTurboResidentIpcAuthority.RootDigest)
-    (different : root.value ≠ request.generationDigest.value)
-    (substituted : receipt.generationDigest.value = root.value) :
-    ¬ GraphTurboResidentIpcAuthority.refines request receipt := by
-  exact GraphTurboResidentIpcAuthority.root_digest_cannot_refine_generation_identity
-    request receipt root different substituted
 
 end ASPProof.SemanticProjectionRuntimeWrapping

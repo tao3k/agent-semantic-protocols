@@ -103,7 +103,6 @@ dependencies = [
  "orgize",
  "proc-macro2",
  "referencing",
- "rs-harness",
  "rust-lang-project-harness 0.1.2",
  "serde",
  "serde_json",
@@ -391,6 +390,7 @@ dependencies = [
  "agent-semantic-runtime",
  "agent-semantic-schema-manager",
  "agent-semantic-search",
+ "agent-semantic-search-projection",
  "blake3",
  "hyper-util",
  "prost",
@@ -455,6 +455,7 @@ dependencies = [
  "agent-semantic-content-identity",
  "asp-rust-project-harness-policy",
  "jsonschema",
+ "referencing",
  "serde",
  "serde_json",
 ]
@@ -4968,15 +4969,6 @@ dependencies = [
  "hashbrown 0.14.5",
  "rustc-hash 1.1.0",
  "text-size",
-]
-
-[[package]]
-name = "rs-harness"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.118",
 ]
 
 [[package]]

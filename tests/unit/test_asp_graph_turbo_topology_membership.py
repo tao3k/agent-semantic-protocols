@@ -49,9 +49,9 @@ def test_topology_membership_prefers_owner_in_workspace_cluster() -> None:
                     "id": "owner:drift",
                     "kind": "owner",
                     "role": "path",
-                    "value": "tests/unit/test_asp_python_graphs_ranking_collection.py",
-                    "path": "tests/unit/test_asp_python_graphs_ranking_collection.py",
-                    "ownerPath": "tests/unit/test_asp_python_graphs_ranking_collection.py",
+                    "value": "tests/unit/test_asp_graph_turbo_ranking_collection.py",
+                    "path": "tests/unit/test_asp_graph_turbo_ranking_collection.py",
+                    "ownerPath": "tests/unit/test_asp_graph_turbo_ranking_collection.py",
                 },
             ],
             "edges": [

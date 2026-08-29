@@ -421,6 +421,7 @@ async fn resident_transaction_requires_the_matching_previous_owner_drain() {
     let temporary = tempdir().expect("resident transaction fixture");
     let state_home = temporary.path().join("state");
     let source = temporary.path().join("asp");
+    let previous_source = temporary.path().join("previous-asp");
     let target = state_home.join("runtime/bin/asp");
     let source_bytes = b"#!/bin/sh\nexit 0\n";
     let previous_serving_digest =
@@ -428,15 +429,40 @@ async fn resident_transaction_requires_the_matching_previous_owner_drain() {
             b"previous owner",
         );
     std::fs::write(&source, source_bytes).expect("write fixture executable");
+    std::fs::write(&previous_source, b"previous owner").expect("write previous executable");
     std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755))
         .expect("mark fixture executable");
+    std::fs::set_permissions(&previous_source, std::fs::Permissions::from_mode(0o755))
+        .expect("mark previous executable");
+
+    agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact(
+        &state_home,
+        &previous_source,
+        &target,
+        "dev",
+    )
+    .await
+    .expect("publish previous serving artifact");
+    let previous_activation = agent_semantic_artifacts::runtime_artifact_publication::read_runtime_artifact_activation_event(
+        &state_home,
+    )
+    .await
+    .expect("read previous activation")
+    .expect("previous activation");
+    assert_eq!(previous_activation.artifact_digest, previous_serving_digest);
+    agent_semantic_artifacts::runtime_artifact_publication::commit_runtime_artifact_activation(
+        &state_home,
+        &previous_activation,
+        None,
+    )
+    .await
+    .expect("commit previous serving artifact");
 
     agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact(
         &state_home,
         &source,
         &target,
         "dev",
-        Some(&previous_serving_digest),
     )
     .await
     .expect("publish activation candidate");

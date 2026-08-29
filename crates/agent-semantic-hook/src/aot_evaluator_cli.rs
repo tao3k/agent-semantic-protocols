@@ -250,12 +250,14 @@ fn evaluate_payload_at_generation(
             Some(state_home) => reader_probe::diagnose_reader_probe_with_state_home(
                 request.command_tokens,
                 request.subject,
+                request.wrapped_command,
                 request.reader_behavior_patterns,
                 std::path::Path::new(&state_home),
             ),
             None => reader_probe::diagnose_reader_probe(
                 request.command_tokens,
                 request.subject,
+                request.wrapped_command,
                 request.reader_behavior_patterns,
             ),
         };

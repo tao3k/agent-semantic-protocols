@@ -104,7 +104,7 @@ Current local evidence:
 - command-layer search candidate collection is partially thin:
   command code delegates candidate collection to =agent-semantic-search= and
   keeps CLI/render projection.
-- Python =asp_graph_turbo.rank_frontier= already owns production graph ranking
+- Python =asp_python_graphs.rank_frontier= already owns production graph ranking
   behaviors such as kind budgets, read-memory suppression, query-token
   coverage, and receipt construction.
 - Julia analyzers already consume artifact/search flow data, but the artifact

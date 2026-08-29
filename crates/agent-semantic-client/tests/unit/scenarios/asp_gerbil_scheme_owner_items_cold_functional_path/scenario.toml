@@ -6,7 +6,7 @@ reference_repositories = ["tao3k/agent-semantic-protocols"]
 reference_patterns = [
   "asp gerbil-scheme projection import --owner src/model.ss --workspace .",
   "parserProcessCount=1",
-  "alg=gerbil-harness-owner-items",
+  "alg=asp-gerbil-scheme-owner-items",
   "item:symbol(dynamic-owner-item-index)",
 ]
 inputs = "inputs"

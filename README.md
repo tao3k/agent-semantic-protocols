@@ -75,10 +75,10 @@ just agent-hooks-install
 just agent-hooks-doctor
 ```
 
-This installs the core ASP runtime surface: `asp`, `asp-graph-turbo`,
-`rs-harness`, `asp-typescript`, and `py-harness`. `asp-graph-turbo` is the only
-supported graph turbo executable and a required local ranking dependency for
-the graph-turbo search/history path, not an optional debugging tool.
+This installs the core ASP runtime surface: `asp`, the `asp-python-graphs`
+service project, `asp-rust`, `asp-typescript`, and `asp-python`. Graph-Turbo
+is an algorithm profile served by `asp-python-graphs`, not a standalone
+executable or alias.
 
 Install or refresh the Codex plugin globally through the unified install
 command:
@@ -136,7 +136,7 @@ launcher into `.cache/agent-semantic-protocol/runtime/bin/`, and records a
 Each language provider owns its own GitHub release workflow under
 `languages/<provider>/.github/workflows/release.yml`. Release assets must be
 named `<binary>-<target>.tar.gz` with a matching `.sha256`, for example
-`rs-harness-aarch64-apple-darwin.tar.gz`. The currently published target set is
+`asp-rust-aarch64-apple-darwin.tar.gz`. The currently published target set is
 `x86_64-unknown-linux-gnu` and `aarch64-apple-darwin`; the Rust provider also
 publishes `x86_64-pc-windows-msvc`. `x86_64-apple-darwin` is not supported.
 
@@ -155,23 +155,23 @@ Install individual agent tools when only one boundary changed:
 ```sh
 just agent-tools-install-protocol "$HOME/.local/bin"
 just agent-tools-install-asp "$HOME/.local/bin"
-just agent-tools-install-asp-graph-turbo "$HOME/.local/bin"
 just agent-tools-install-hook "$HOME/.local/bin"
 just agent-tools-install-rust "$HOME/.local/bin"
 just agent-tools-install-typescript "$HOME/.local/bin"
 just agent-tools-install-python "$HOME/.local/bin"
 ```
 
-Run `asp-graph-turbo` through the native ASP wrapper when an agent step needs the
-ranking engine without depending on Python workspace internals:
+Use the ASP Server graph methods when an agent step needs the Graph-Turbo ranking
+engine. The `asp-python-graphs` service is managed by the ASP Server and is not
+invoked as a second executable:
 
 ```sh
-asp wrap asp-graph-turbo -- help
-asp tools wrap asp-graph-turbo -- help
+asp rust search owner crates/agent-semantic-client/src/runtime_language_client.rs \
+  items --query graphs_timeline --workspace . --view seeds
 ```
 
 Graph-turbo request packets use the ranking engine through schema-owned JSON:
-`semantic-graph-turbo-request.v1` enters `asp-graph-turbo`, and
+`semantic-graph-turbo-request.v1` enters the `asp-python-graphs` service through
 `semantic-graph-turbo-result.v1` or its JSON projection leaves that boundary.
 The retired compact graph renderer is a prompt/debug projection only; it is not a
 trusted graph, frontier, rank, or action protocol.
@@ -189,13 +189,12 @@ dependency nodes and `owner -> dependency` import edges for query-deps routing,
 so graph-turbo can rank direct code and package follow-ups. Warm graph-turbo
 backend cache entries are stored under `$PRJ_CACHE_HOME` when set, otherwise
 under the git toplevel `.cache`, with the graph fingerprint guarding against
-stale source facts. Inspect or reset that ranking cache with
-`asp-graph-turbo cache status`, `asp-graph-turbo cache prune`, and
-`asp-graph-turbo cache invalidate`. Use
-`--view graph-turbo-request` only when validating or debugging the JSON packet
-that will be sent to `asp-graph-turbo`.
+stale source facts. Inspect or reset that ranking cache with the ASP Server-owned
+graph cache methods. Use `--view graph-turbo-request` only when validating or
+debugging the JSON packet that will be sent to `asp-python-graphs` through the
+ASP Server.
 
-`asp-graph-turbo` is the lightweight internal ranker for this path. Its default
+`asp-python-graphs` provides the lightweight Graph-Turbo ranker for this path. Its default
 ranking dependency is SciPy sparse graph scoring, not PyTorch, PyG, or a GNN
 runtime. Future PyG/HeteroData work belongs behind optional lab or offline
 rerank surfaces; it must not become an install requirement, hook dependency, or
@@ -248,8 +247,8 @@ asp install hook --client claude .
 asp hook doctor --client claude .
 ```
 
-`just install` installs `asp`, `asp-graph-turbo`, `rs-harness`, `asp-typescript`,
-`py-harness`, and `asp-julia-harness` into
+`just install` installs `asp`, `asp-python-graphs`, `asp-rust`, `asp-typescript`,
+`asp-python`, and `asp-julia` into
 `${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}` by default, then refreshes the
 Codex hook config. Pass a directory argument, such as
 `just install /tmp/asp-bin`, to override the install root.
@@ -260,8 +259,8 @@ cache.
 `asp install hook --client claude` writes the direct Claude hook
 configuration. Both install surfaces refresh cache activation, versioned hook
 policy config, and provider manifests for this repository. They do not build or
-install `asp-graph-turbo`, `rs-harness`, `asp-typescript`, `py-harness`, or
-`asp-julia-harness`; use `just install` for the full local setup or the
+install `asp-python-graphs`, `asp-rust`, `asp-typescript`, `asp-python`, or
+`asp-julia`; use `just install` for the full local setup or the
 `just agent-tools-install-*` commands for one binary family.
 
 Agent clients invoke the runtime hook entrypoint as `asp hook --client

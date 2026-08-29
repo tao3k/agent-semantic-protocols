@@ -15,6 +15,7 @@ from .receipts import (
 from .direct_read_shape import direct_source_read_shape
 from .route_verification import evaluate_route_verification
 from .trace_receipt_events import TraceCommandFilter, trace_commands_from_path
+from .route_verification_common import is_semantic_command_binary
 from .utils import dict_value, optional_int
 
 
@@ -166,7 +167,7 @@ def _is_semantic_command(command: dict[str, Any]) -> bool:
     if not argv:
         return False
     binary = Path(argv[0]).name
-    return binary == "asp" or binary.endswith("-harness")
+    return is_semantic_command_binary(binary)
 
 
 def _argv(command: dict[str, Any]) -> list[str]:

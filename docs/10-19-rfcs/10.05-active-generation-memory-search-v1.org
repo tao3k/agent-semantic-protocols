@@ -113,16 +113,22 @@ repeated publication epochs, shutdown, and orphan-task absence under Tokio time.
 
 * Typed Ranker Artifact
 
-The Runtime Server MUST launch the activated standalone =asp-graph-turbo= artifact directly as its v1 IPC peer. The immutable runtime catalog binds that artifact locator and content digest before daemon publication. A Python interpreter locator, =python -m= launch, query-time materialization, healthcheck-time installation, =uv= environment, or checkout execution is a contract violation, not a recovery path.
+The Runtime Server MUST activate the =asp-python-graphs= service artifact and
+route graph-turbo calls through the ASP Server gRPC boundary. The immutable
+runtime catalog binds the service artifact locator and content digest before
+daemon publication. A standalone graph algorithm executable, Python
+interpreter shortcut, =python -m= launch, query-time materialization,
+healthcheck-time installation, =uv= environment, or checkout execution is a
+contract violation, not a recovery path.
 
 Graph ranking is an installed runtime capability, not a source-checkout
 fallback.  Activation MUST bind each ranker by ranker ID, capability ID,
 entrypoint, content digest, artifact-metadata digest, and protocol version.
 
-The =graph-turbo= capability is provided by the standalone
-=asp-graph-turbo= artifact.  Installed search MUST execute only the activated
-artifact.  It MUST NOT invoke =uv=, a Python module, a package-manager
-environment, or a repository checkout.
+The =graph-turbo= capability is an algorithm profile provided by the activated
+=asp-python-graphs= service. Installed search MUST call the ASP Server method
+and MUST NOT spawn an executable, invoke =uv=, use a Python module shortcut, a
+package-manager environment, or a repository checkout.
 
 If the artifact or its receipt is missing, stale, or digest-mismatched, search
 fails closed with =ranker-unavailable=.  It does not downgrade to a wrapper,

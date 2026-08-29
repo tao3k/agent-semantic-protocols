@@ -236,7 +236,7 @@ fn admitted_rust_project_resolution() -> agent_semantic_runtime::AdmittedProject
         state: "resolved".to_owned(),
         completeness: "exact".to_owned(),
         language_id: "rust".to_owned(),
-        provider_id: "rs-harness".to_owned(),
+        provider_id: "asp-rust".to_owned(),
         parser_id: "cargo-project-resolution-v1".to_owned(),
         candidate_generation_digest: "candidate-generation".to_owned(),
         project_entry: "Cargo.toml".to_owned(),
@@ -244,7 +244,7 @@ fn admitted_rust_project_resolution() -> agent_semantic_runtime::AdmittedProject
             schema_id: "agent.semantic-protocols.language-package-graph".to_owned(),
             schema_version: "1".to_owned(),
             language_id: "rust".to_owned(),
-            provider_id: "rs-harness".to_owned(),
+            provider_id: "asp-rust".to_owned(),
             project_entry: "Cargo.toml".to_owned(),
             parser_id: "cargo-project-resolution-v1".to_owned(),
             manifests: vec![agent_semantic_runtime::ProjectFile {

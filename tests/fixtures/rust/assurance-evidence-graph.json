@@ -6,8 +6,8 @@
   "graphId": "rust.fixture.assurance",
   "producer": {
     "languageId": "rust",
-    "providerId": "rs-harness",
-    "namespace": "agent.semantic-protocols.languages.rust.rs-harness"
+    "providerId": "asp-rust",
+    "namespace": "agent.semantic-protocols.languages.rust.asp-rust"
   },
   "project": {
     "root": "."

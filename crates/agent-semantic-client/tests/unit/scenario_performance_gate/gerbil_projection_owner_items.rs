@@ -37,7 +37,7 @@ fn asp_gerbil_scheme_projection_owner_items_lifecycle_stays_inside_scenario_gate
     .expect("write package anchor");
     fs::write(&owner, "(def (dynamic-owner-item-index) #t)\n").expect("write source");
     write_counting_projection_provider(&bin_dir, &provider_count);
-    install_state_home_provider(&root, "gerbil-scheme", &bin_dir.join("gslph"));
+    install_state_home_provider(&root, "gerbil-scheme", &bin_dir.join("asp-gerbil-scheme"));
     write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
     let process_warmup = asp_command(&root)
@@ -83,7 +83,7 @@ fn asp_gerbil_scheme_projection_owner_items_lifecycle_stays_inside_scenario_gate
     );
     let cold_stdout = String::from_utf8(cold.stdout).expect("cold stdout");
     assert!(
-        cold_stdout.contains("alg=gerbil-harness-owner-items"),
+        cold_stdout.contains("alg=asp-gerbil-scheme-owner-items"),
         "{cold_stdout}"
     );
     assert!(
@@ -106,7 +106,7 @@ fn asp_gerbil_scheme_projection_owner_items_lifecycle_stays_inside_scenario_gate
     );
     let warm_stdout = String::from_utf8(warm.stdout).expect("warm stdout");
     assert!(
-        warm_stdout.contains("alg=gerbil-harness-owner-items"),
+        warm_stdout.contains("alg=asp-gerbil-scheme-owner-items"),
         "{warm_stdout}"
     );
     assert!(
@@ -157,11 +157,11 @@ fn run_owner_search(root: &Path, bin_dir: &Path) -> std::process::Output {
 
 fn write_counting_projection_provider(bin_dir: &Path, provider_count: &Path) {
     fs::create_dir_all(bin_dir).expect("create provider bin dir");
-    let provider_path = bin_dir.join("gslph");
+    let provider_path = bin_dir.join("asp-gerbil-scheme");
     fs::write(
         &provider_path,
         format!(
-            "#!/bin/sh\ncount=0\nif [ -f '{count}' ]; then count=$(cat '{count}'); fi\ncount=$((count + 1))\nprintf '%s' \"$count\" > '{count}'\nif [ \"$1\" = projection ]; then\ncat <<'ASP_PROJECTION'\n{projection}\nASP_PROJECTION\nelse\nprintf '[search-owner] lang=gerbil-scheme q={owner} pkg=. selector=items alg=gerbil-harness-owner-items\\n'\nprintf 'O=owner:path({owner})!owner;I=item:symbol(dynamic-owner-item-index)@gerbil-scheme://{owner}#item/function/dynamic-owner-item-index!syntax\\n'\nfi\n",
+            "#!/bin/sh\ncount=0\nif [ -f '{count}' ]; then count=$(cat '{count}'); fi\ncount=$((count + 1))\nprintf '%s' \"$count\" > '{count}'\nif [ \"$1\" = projection ]; then\ncat <<'ASP_PROJECTION'\n{projection}\nASP_PROJECTION\nelse\nprintf '[search-owner] lang=gerbil-scheme q={owner} pkg=. selector=items alg=asp-gerbil-scheme-owner-items\\n'\nprintf 'O=owner:path({owner})!owner;I=item:symbol(dynamic-owner-item-index)@gerbil-scheme://{owner}#item/function/dynamic-owner-item-index!syntax\\n'\nfi\n",
             count = provider_count.display(),
             projection = projection_json(),
             owner = OWNER_PATH,

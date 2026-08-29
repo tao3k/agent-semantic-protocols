@@ -137,9 +137,9 @@ async fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
             .join(SEMANTIC_AGENT_PROTOCOL_BIN)
             .is_file()
     );
-    let harness_name = "rs-harness";
+    let harness_name = "asp-rust";
     let harness_stable = runtime.join("bin").join(harness_name);
-    let harness_source = fixture_source(&root, "source-rs-harness", b"rust-harness-v1");
+    let harness_source = fixture_source(&root, "source-asp-rust", b"asp-rust-v1");
     let harness_identity = RuntimeBinaryIdentityV1::from_registered_provider(harness_name)
         .expect("registered harness binary identity");
     let harness_install = install_protocol_binary_target(
@@ -154,7 +154,7 @@ async fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
     assert_eq!(harness_install.path, harness_stable);
     assert_eq!(
         fs::read(&harness_stable).expect("read harness stable entry"),
-        b"rust-harness-v1"
+        b"asp-rust-v1"
     );
     assert_eq!(installed.artifact_digest, asp_digest);
 
@@ -175,7 +175,7 @@ async fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
     );
     assert_eq!(
         fs::read(&harness_stable).expect("harness profile remains isolated"),
-        b"rust-harness-v1"
+        b"asp-rust-v1"
     );
     assert!(artifact_root.join("blake3-256").exists());
 
@@ -184,14 +184,14 @@ async fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
 
 #[tokio::test]
 async fn runtime_publication_rejects_target_name_inference_and_path_shaped_identities() {
-    assert!(RuntimeBinaryIdentityV1::from_registered_provider("../rs-harness").is_err());
-    assert!(RuntimeBinaryIdentityV1::from_registered_provider("bin/rs-harness").is_err());
+    assert!(RuntimeBinaryIdentityV1::from_registered_provider("../asp-rust").is_err());
+    assert!(RuntimeBinaryIdentityV1::from_registered_provider("bin/asp-rust").is_err());
 
     let root = fixture_root("declared-binary-mismatch");
     let artifact_root = root.join("runtime/artifacts");
-    let source = fixture_source(&root, "source-rs-harness", b"rust-harness-v1");
-    let wrong_target = root.join("runtime/bin/not-rs-harness");
-    let identity = RuntimeBinaryIdentityV1::from_registered_provider("rs-harness")
+    let source = fixture_source(&root, "source-asp-rust", b"asp-rust-v1");
+    let wrong_target = root.join("runtime/bin/not-asp-rust");
+    let identity = RuntimeBinaryIdentityV1::from_registered_provider("asp-rust")
         .expect("registered harness binary identity");
 
     let error = install_protocol_binary_target(&source, &wrong_target, &artifact_root, &identity)
@@ -318,7 +318,7 @@ async fn lattice_reconciliation_retains_only_reachable_digest_generations() {
     let runtime = root.join("runtime");
     let artifact_root = runtime.join("artifacts");
     let asp_target = runtime.join("bin").join(SEMANTIC_AGENT_PROTOCOL_BIN);
-    let harness_name = "rs-harness";
+    let harness_name = "asp-rust";
     let harness_target = runtime.join("bin").join(harness_name);
     let asp_identity = RuntimeBinaryIdentityV1::asp_bootstrap();
     let harness_identity =

@@ -5,13 +5,29 @@ fn search_packet_remains_an_identity_free_rank_intent_until_runtime_admission() 
     let packet = serde_json::json!({
         "schemaId": "agent.semantic-protocols.semantic-graph-turbo-request",
         "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.semantic-language",
+        "protocolVersion": "1",
+        "packetKind": "graph-turbo-request",
         "surface": "search-pipe",
         "sourceSnapshot": {
-            "rootDigest": "blake3-256:snapshot"
+            "schemaId": "asp.source-snapshot.v1",
+            "algorithm": "blake3-merkle-v1",
+            "rootDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sourceKind": "derived-overlay",
+            "leafCount": 1,
+            "providerDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         },
         "workspaceGeneration": {
-            "rootDigest": "blake3-256:generation"
+            "rootDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "rootDepth": 0,
+            "leafCount": 1,
+            "ownerCount": 1
         },
+        "queryTerms": ["parser"],
+        "profile": "owner-query",
+        "algorithm": "typed-ppr-diverse",
+        "seedIds": [],
+        "budget": 1,
         "graph": {"nodes": [], "edges": []}
     });
     let encoded = serde_json::to_vec(&packet).expect("encode fixture");

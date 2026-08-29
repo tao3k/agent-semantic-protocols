@@ -63,7 +63,7 @@ software-criterion findings are advisory compact evidence and are not blocking.
 
 #+begin_example
 uv run --project languages/python-lang-project-harness --frozen \
-  py-harness check --full .
+  asp-python check --full .
 # pass; advisory output only
 
 cd languages/python-lang-project-harness

@@ -33,16 +33,14 @@ def test_language_registration_accepts_provider_command_prefix() -> None:
     )
     language = registry["languages"][0]
     language["languageId"] = "julia"
-    language["providerId"] = "julia-project-harness"
-    language["binary"] = "julia-project-harness"
+    language["providerId"] = "asp-julia"
+    language["binary"] = "asp-julia"
     language["providerCommandPrefix"] = [
         "julia",
         "--project=languages/JuliaLangProjectHarness.jl",
         "languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl",
     ]
-    language["namespace"] = (
-        "agent.semantic-protocols.languages.julia.julia-project-harness"
-    )
+    language["namespace"] = "agent.semantic-protocols.languages.julia.asp-julia"
 
     assert language_registry_errors(registry) == []
 

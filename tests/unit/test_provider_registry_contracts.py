@@ -18,7 +18,7 @@ def test_language_registry_validator_resolves_query_pack_schema_locally() -> Non
         "command": "agent",
         "supportsJson": False,
         "supportsCompact": True,
-        "invocation": {"argv": ["rs-harness", "agent", "guide"]},
+        "invocation": {"argv": ["asp-rust", "agent", "guide"]},
     }
     registry = {
         "registryId": "agent.semantic-protocols.semantic-language-registry",
@@ -28,14 +28,14 @@ def test_language_registry_validator_resolves_query_pack_schema_locally() -> Non
         "languages": [
             {
                 "languageId": "rust",
-                "providerId": "rs-harness",
-                "binary": "rs-harness",
+                "providerId": "asp-rust",
+                "binary": "asp-rust",
                 "namespace": "agent.semantic-protocols.rust",
                 "methods": [descriptor["method"]],
                 "methodDescriptors": [descriptor],
                 "schemas": [],
                 "queryPackDescriptor": {
-                    "descriptorId": "rs-harness.query-pack",
+                    "descriptorId": "asp-rust.query-pack",
                     "descriptorVersion": "1",
                     "languageId": "rust",
                     "recipes": [

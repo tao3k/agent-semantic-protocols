@@ -122,7 +122,7 @@ pub fn command_stages_match_wrapped_prefix(
 ///
 /// - `NAME=VALUE command ...`
 /// - `/usr/bin/env NAME=VALUE command ...`
-/// - `export NAME=VALUE; exec command ...`
+/// - `export NAME=VALUE; command ...`
 ///
 /// This is a parser fact, not a substring check. An assignment in an unrelated
 /// stage, a nested shell string, or a non-`exec` continuation does not match.
@@ -167,13 +167,10 @@ pub fn command_stages_match_process_environment_assignment<S: AsRef<str>>(
         return true;
     }
 
-    if command_stages.len() != 2
+    if command_stages.len() < 2
         || first_stage
             .executable()
             .is_none_or(|word| command_token_basename(word) != "export")
-        || command_stages[1]
-            .executable()
-            .is_none_or(|word| command_token_basename(word) != "exec")
     {
         return false;
     }

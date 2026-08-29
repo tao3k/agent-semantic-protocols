@@ -11,7 +11,7 @@ use agent_semantic_client_db::ClientDbEngine;
 use serde_json::json;
 
 const LANGUAGE_ID: &str = "rust";
-const PROVIDER_ID: &str = "rs-harness";
+const PROVIDER_ID: &str = "asp-rust";
 const EXPORT_METHOD: &str = "search/prime";
 
 #[test]

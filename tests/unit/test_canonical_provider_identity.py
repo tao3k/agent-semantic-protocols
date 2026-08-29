@@ -42,23 +42,6 @@ def provider_identity_mapping(schema_name: str) -> set[tuple[str, str]]:
     }
 
 
-def registered_provider_descriptors(
-    register_path: Path = ROOT / "schemas/provider-register.json",
-    reference_root: Path = ROOT,
-) -> list[dict[str, object]]:
-    register = json.loads(register_path.read_text())
-    descriptors = []
-    for entry in register["providers"]:
-        registration_path = reference_root / entry["descriptor"]["$ref"]
-        registration = json.loads(registration_path.read_text())
-        provider_path = registration_path.parent / registration["providerDescriptor"]["$ref"]
-        provider = json.loads(provider_path.read_text())
-        assert provider["languageId"] == entry["languageId"]
-        assert provider["providerId"] == entry["providerId"]
-        descriptors.append(provider)
-    return descriptors
-
-
 def test_provider_register_conforms_to_asp_schema() -> None:
     schema = load("schemas/provider-register.schema.json")
     Draft202012Validator.check_schema(schema)
@@ -116,17 +99,18 @@ def test_live_corpus_lock_and_plan_derive_provider_id_from_language() -> None:
     assert locked["md.mdn-content"] == "asp-md"
 
 
-def test_implementation_names_are_not_public_provider_ids() -> None:
-    legacy = {
-        "rs-harness",
-        "py-harness",
-        "gerbil-scheme-harness",
-        "julia-lang-project-harness",
-        "orgize",
-        "asp+rust",
+def test_canonical_provider_ids_are_used_by_the_public_corpus() -> None:
+    canonical = {
+        "asp-rust",
+        "asp-python",
+        "asp-typescript",
+        "asp-julia",
+        "asp-gerbil-scheme",
+        "asp-org",
+        "asp-md",
     }
     lock = load("benchmarks/large-library-runtime-corpora.json")
-    assert legacy.isdisjoint(entry["providerId"] for entry in lock["corpora"])
+    assert all(entry["providerId"] in canonical for entry in lock["corpora"])
 
 
 def test_asp_client_server_bootstrap_uses_canonical_provider_identity() -> None:

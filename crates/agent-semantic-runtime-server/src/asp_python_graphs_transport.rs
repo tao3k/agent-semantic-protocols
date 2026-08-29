@@ -2,15 +2,99 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+use std::pin::Pin;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
+use std::task::{Context, Poll};
 
 use serde_json::Value;
 use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio_stream::Stream;
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_stream::StreamExt;
 
 pub mod generated {
     tonic::include_proto!("asp.python.graphs");
+}
+
+struct ControlPriorityStream {
+    control: ReceiverStream<Value>,
+    data: ReceiverStream<Value>,
+    sequence: u64,
+    encoder: fn(&Value) -> Result<Vec<u8>, String>,
+    terminal: tokio::sync::watch::Sender<Option<WireTerminalReason>>,
+    stopped: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum WireTerminalReason {
+    SequenceOverflow,
+    EncodeFailed(String),
+}
+
+impl std::fmt::Display for WireTerminalReason {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SequenceOverflow => formatter
+                .write_str("state=failed reasonKind=asp-python-graphs-wire-sequence-overflow"),
+            Self::EncodeFailed(error) => write!(
+                formatter,
+                "state=failed reasonKind=asp-python-graphs-wire-encode-failed error={error}"
+            ),
+        }
+    }
+}
+
+fn encode_graphs_request(request: &Value) -> Result<Vec<u8>, String> {
+    serde_json::to_vec(request)
+        .map_err(|error| format!("encode asp-python-graphs request: {error}"))
+}
+
+impl ControlPriorityStream {
+    fn encode_next(&mut self, mut request: Value) -> Option<GraphsEnvelope> {
+        let Some(sequence) = self.sequence.checked_add(1) else {
+            self.stop(WireTerminalReason::SequenceOverflow);
+            return None;
+        };
+        self.sequence = sequence;
+        request["sequence"] = Value::from(self.sequence);
+        match (self.encoder)(&request) {
+            Ok(json) => Some(GraphsEnvelope { json }),
+            Err(error) => {
+                self.stop(WireTerminalReason::EncodeFailed(error));
+                None
+            }
+        }
+    }
+
+    fn stop(&mut self, reason: WireTerminalReason) {
+        if !self.stopped {
+            self.stopped = true;
+            self.terminal.send_replace(Some(reason));
+        }
+    }
+}
+
+impl Stream for ControlPriorityStream {
+    type Item = GraphsEnvelope;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        if self.stopped {
+            return Poll::Ready(None);
+        }
+        let control_closed = match Pin::new(&mut self.control).poll_next(cx) {
+            Poll::Ready(Some(item)) => return Poll::Ready(self.encode_next(item)),
+            Poll::Ready(None) => true,
+            Poll::Pending => false,
+        };
+        match Pin::new(&mut self.data).poll_next(cx) {
+            Poll::Ready(Some(item)) => Poll::Ready(self.encode_next(item)),
+            Poll::Ready(None) if control_closed => Poll::Ready(None),
+            Poll::Ready(None) => Poll::Pending,
+            Poll::Pending => Poll::Pending,
+        }
+    }
 }
 
 use generated::{GraphsEnvelope, asp_python_graphs_client::AspPythonGraphsClient};
@@ -22,6 +106,23 @@ pub const ASP_PYTHON_GRAPHS_SESSION_SCHEMA_ID: &str =
 pub const ASP_PYTHON_GRAPHS_SESSION_SCHEMA_VERSION: &str = "1";
 
 type PendingReceipt = oneshot::Sender<Result<Value, String>>;
+
+async fn terminalize_pending(
+    terminal: &Mutex<Option<String>>,
+    pending: &Mutex<HashMap<String, PendingReceipt>>,
+    message: String,
+) {
+    let mut terminal = terminal.lock().await;
+    if terminal.is_some() {
+        return;
+    }
+    *terminal = Some(message.clone());
+    drop(terminal);
+    let pending = std::mem::take(&mut *pending.lock().await);
+    for (_, sender) in pending {
+        let _ = sender.send(Err(message.clone()));
+    }
+}
 
 struct ResponseReader(tokio::task::JoinHandle<()>);
 
@@ -35,12 +136,11 @@ impl Drop for ResponseReader {
 /// response reader, and request-id correlation registry.
 #[derive(Clone)]
 pub struct AspPythonGraphsTransport {
-    outbound: mpsc::Sender<GraphsEnvelope>,
-    control: mpsc::Sender<GraphsEnvelope>,
+    outbound: mpsc::Sender<Value>,
+    control: mpsc::Sender<Value>,
     pending: Arc<Mutex<HashMap<String, PendingReceipt>>>,
     cancelled: Arc<Mutex<HashSet<String>>>,
     late_cancellations: Arc<AtomicU64>,
-    sequence: Arc<AtomicU64>,
     terminal: Arc<Mutex<Option<String>>>,
     _response_reader: Arc<ResponseReader>,
 }
@@ -61,10 +161,16 @@ impl AspPythonGraphsTransport {
         let mut client = AspPythonGraphsClient::new(channel);
         let (outbound, receiver) = mpsc::channel(capacity);
         let (control, control_receiver) = mpsc::channel(8);
+        let (wire_terminal, mut wire_terminal_rx) = tokio::sync::watch::channel(None);
         let mut inbound = client
-            .session(tonic::Request::new(
-                ReceiverStream::new(control_receiver).merge(ReceiverStream::new(receiver)),
-            ))
+            .session(tonic::Request::new(ControlPriorityStream {
+                control: ReceiverStream::new(control_receiver),
+                data: ReceiverStream::new(receiver),
+                sequence: 0,
+                encoder: encode_graphs_request,
+                terminal: wire_terminal,
+                stopped: false,
+            }))
             .await
             .map_err(|error| error.to_string())?
             .into_inner();
@@ -73,17 +179,31 @@ impl AspPythonGraphsTransport {
         let terminal = Arc::new(Mutex::new(None));
         let cancelled = Arc::new(Mutex::new(HashSet::new()));
         let late_cancellations = Arc::new(AtomicU64::new(0));
-        let sequence = Arc::new(AtomicU64::new(0));
         let response_pending = Arc::clone(&pending);
         let response_cancelled = Arc::clone(&cancelled);
         let response_late_cancellations = Arc::clone(&late_cancellations);
         let response_terminal = Arc::clone(&terminal);
         let response_reader = tokio::spawn(async move {
+            let mut wire_terminal_open = true;
             loop {
-                let receipt = match inbound.message().await {
-                    Ok(Some(envelope)) => decode_receipt(&envelope.json),
-                    Ok(None) => Err("asp-python-graphs gRPC stream closed".to_owned()),
-                    Err(error) => Err(error.to_string()),
+                let receipt = tokio::select! {
+                    changed = wire_terminal_rx.changed(), if wire_terminal_open => {
+                        match changed {
+                            Ok(()) => match wire_terminal_rx.borrow_and_update().clone() {
+                                Some(reason) => Err(reason.to_string()),
+                                None => continue,
+                            },
+                            Err(_) => {
+                                wire_terminal_open = false;
+                                continue;
+                            }
+                        }
+                    }
+                    message = inbound.message() => match message {
+                        Ok(Some(envelope)) => decode_receipt(&envelope.json),
+                        Ok(None) => Err("asp-python-graphs gRPC stream closed".to_owned()),
+                        Err(error) => Err(error.to_string()),
+                    }
                 };
                 let request_id = receipt
                     .as_ref()
@@ -102,11 +222,7 @@ impl AspPythonGraphsTransport {
                 let message = receipt
                     .err()
                     .unwrap_or_else(|| "asp-python-graphs receipt has no requestId".to_owned());
-                *response_terminal.lock().await = Some(message.clone());
-                let pending = std::mem::take(&mut *response_pending.lock().await);
-                for (_, sender) in pending {
-                    let _ = sender.send(Err(message.clone()));
-                }
+                terminalize_pending(&response_terminal, &response_pending, message).await;
                 break;
             }
         });
@@ -116,7 +232,6 @@ impl AspPythonGraphsTransport {
             pending,
             cancelled,
             late_cancellations,
-            sequence,
             terminal,
             _response_reader: Arc::new(ResponseReader(response_reader)),
         })
@@ -131,13 +246,16 @@ impl AspPythonGraphsTransport {
         request: Value,
         cancellation: agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation,
     ) -> Result<Value, String> {
-        self.call_with_cancellation(request, Some(cancellation)).await
+        self.call_with_cancellation(request, Some(cancellation))
+            .await
     }
 
     async fn call_with_cancellation(
         &self,
         request: Value,
-        cancellation: Option<agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation>,
+        cancellation: Option<
+            agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation,
+        >,
     ) -> Result<Value, String> {
         if let Some(message) = self.terminal.lock().await.clone() {
             return Err(format!("asp-python-graphs terminal: {message}"));
@@ -148,11 +266,6 @@ impl AspPythonGraphsTransport {
             .filter(|request_id| !request_id.is_empty())
             .ok_or_else(|| "asp-python-graphs request requires requestId".to_owned())?
             .to_owned();
-        let sequence = self.sequence.fetch_add(1, Ordering::AcqRel) + 1;
-        let mut request = request;
-        request["sequence"] = Value::from(sequence);
-        let json = serde_json::to_vec(&request)
-            .map_err(|error| format!("encode asp-python-graphs request: {error}"))?;
         let (sender, receiver) = oneshot::channel();
         if self
             .pending
@@ -165,7 +278,7 @@ impl AspPythonGraphsTransport {
                 "asp-python-graphs requestId is already pending: {request_id}"
             ));
         }
-        if self.outbound.send(GraphsEnvelope { json }).await.is_err() {
+        if self.outbound.send(request).await.is_err() {
             self.pending.lock().await.remove(&request_id);
             return Err("asp-python-graphs request queue is closed".to_owned());
         }
@@ -186,26 +299,23 @@ impl AspPythonGraphsTransport {
                     }
                     cancelled.insert(request_id.clone());
                     drop(cancelled);
-                    let sequence = self.sequence.fetch_add(1, Ordering::AcqRel) + 1;
-                    let cancel_json = serde_json::to_vec(&serde_json::json!({
+                    let cancel_request = serde_json::json!({
                             "schemaId": ASP_PYTHON_GRAPHS_SESSION_SCHEMA_ID,
                             "schemaVersion": ASP_PYTHON_GRAPHS_SESSION_SCHEMA_VERSION,
                             "sessionId": "transport",
-                            "serviceEpoch": "transport",
+                            "serviceEpoch": "runtime-server",
                             "requestId": format!("cancel-{request_id}"),
-                            "sequence": sequence,
                             "messageKind": "cancel",
                             "cancellationId": request_id,
                             "payloadSchemaId": ASP_PYTHON_GRAPHS_SESSION_SCHEMA_ID,
                             "payload": {},
-                        }))
-                        .map_err(|error| format!("encode asp-python-graphs cancellation: {error}"))?;
-                    if self.control.send(GraphsEnvelope { json: cancel_json }).await.is_err() {
+                        });
+                    if self.control.send(cancel_request).await.is_err() {
                         return Err("asp-python-graphs cancellation control queue is closed".to_owned());
                     }
                     Err("asp-python-graphs request cancelled".to_owned())
                 }
-            }
+            },
         }
     }
 
@@ -222,14 +332,20 @@ pub struct GraphGenerationIdentity {
 }
 
 impl GraphGenerationIdentity {
-    pub fn new(workspace_identity: impl Into<String>, generation_digest: impl Into<String>) -> Result<Self, String> {
+    pub fn new(
+        workspace_identity: impl Into<String>,
+        generation_digest: impl Into<String>,
+    ) -> Result<Self, String> {
         let identity = Self {
             workspace_identity: workspace_identity.into(),
             generation_digest: generation_digest.into(),
             publication_token: 0,
         };
         if identity.workspace_identity.is_empty() || identity.generation_digest.is_empty() {
-            return Err("asp-python-graphs generation identity requires workspace and generation".to_owned());
+            return Err(
+                "asp-python-graphs generation identity requires workspace and generation"
+                    .to_owned(),
+            );
         }
         Ok(identity)
     }
@@ -251,7 +367,9 @@ pub struct GenerationAdmission {
 }
 
 impl GenerationAdmission {
-    pub fn is_new(self) -> bool { self.new }
+    pub fn is_new(self) -> bool {
+        self.new
+    }
 }
 
 #[derive(Default)]
@@ -272,7 +390,9 @@ impl GraphGenerationLedger {
     }
 
     pub fn release(&mut self, identity: &GraphGenerationIdentity) -> bool {
-        let Some(entry) = self.refs.get_mut(identity) else { return false };
+        let Some(entry) = self.refs.get_mut(identity) else {
+            return false;
+        };
         *entry -= 1;
         if *entry == 0 {
             self.refs.remove(identity);
@@ -327,7 +447,7 @@ pub struct AspPythonGraphsServer {
     socket_path: Arc<PathBuf>,
     capacity: usize,
     artifact: Option<Arc<crate::asp_python_graphs_artifact::VerifiedAspPythonGraphsArtifact>>,
-    request_sequence: Arc<AtomicU64>,
+    request_id_sequence: Arc<AtomicU64>,
     state: Arc<Mutex<LifecycleState>>,
 }
 
@@ -349,7 +469,7 @@ impl AspPythonGraphsServer {
             socket_path: Arc::new(socket_path.into()),
             capacity,
             artifact: None,
-            request_sequence: Arc::new(AtomicU64::new(0)),
+            request_id_sequence: Arc::new(AtomicU64::new(0)),
             state: Arc::new(Mutex::new(LifecycleState {
                 transport: None,
                 child_shutdown: None,
@@ -389,9 +509,9 @@ impl AspPythonGraphsServer {
         // This is a diagnostic snapshot. Async callers should use `state_async`.
         match self.state.try_lock() {
             Ok(state) if state.draining => AspPythonGraphsLifecycleState::Draining,
-            Ok(state) if state.terminal.is_some() => AspPythonGraphsLifecycleState::Failed(
-                state.terminal.clone().unwrap_or_default(),
-            ),
+            Ok(state) if state.terminal.is_some() => {
+                AspPythonGraphsLifecycleState::Failed(state.terminal.clone().unwrap_or_default())
+            }
             Ok(state) if state.transport.is_some() => AspPythonGraphsLifecycleState::Ready,
             Ok(_) => AspPythonGraphsLifecycleState::Starting,
             Err(_) => AspPythonGraphsLifecycleState::Starting,
@@ -488,7 +608,6 @@ impl AspPythonGraphsServer {
                 "sessionId": "runtime-server",
                 "serviceEpoch": "runtime-server",
                 "requestId": request_id,
-                "sequence": self.request_sequence.load(Ordering::Acquire),
                 "messageKind": "hello",
                 "runtimeArtifactDigest": runtime_digest,
                 "executionArtifactDigest": execution_digest,
@@ -545,6 +664,60 @@ impl AspPythonGraphsServer {
         Ok(())
     }
 
+    /// Evaluate a server-owned, non-generation graph operation.  History and
+    /// timeline analysis uses this path so it shares the one
+    /// `asp-python-graphs` process, bounded transport, cancellation registry,
+    /// and terminal authority with generation-bound evaluation.
+    pub async fn timeline(
+        &self,
+        request_id: String,
+        payload: Value,
+        cancellation: agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation,
+    ) -> Result<Value, String> {
+        self.ensure_started().await?;
+        let transport = self
+            .state
+            .lock()
+            .await
+            .transport
+            .clone()
+            .ok_or_else(|| "asp-python-graphs transport is absent".to_owned())?;
+        let internal_request_id = self.next_id("request");
+        let mut request = self.service_envelope_with_request_id(
+            "runtime-server",
+            "timeline",
+            internal_request_id.clone(),
+            payload,
+        );
+        request["clientRequestId"] = Value::String(request_id);
+        let transport_result = transport.call_cancellable(request, cancellation).await;
+        let transport_error = transport_result.as_ref().err().cloned();
+        let result = transport_result.and_then(|receipt| {
+            if receipt.get("requestId").and_then(Value::as_str)
+                != Some(internal_request_id.as_str())
+            {
+                return Err("asp-python-graphs timeline receipt requestId mismatch".to_owned());
+            }
+            if receipt_state(&receipt) != Some("completed") {
+                return Err(format!("asp-python-graphs timeline rejected: {receipt}"));
+            }
+            receipt
+                .get("payload")
+                .and_then(Value::as_object)
+                .and_then(|payload| payload.get("result"))
+                .cloned()
+                .ok_or_else(|| {
+                    "asp-python-graphs timeline receipt lacks payload.result".to_owned()
+                })
+        });
+        if let Some(error) = transport_error {
+            if !error.contains("cancelled") {
+                self.mark_terminal(error).await;
+            }
+        }
+        result
+    }
+
     pub async fn open_generation_with_token(
         &self,
         mut identity: GraphGenerationIdentity,
@@ -553,9 +726,7 @@ impl AspPythonGraphsServer {
         cancellation: agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation,
     ) -> Result<GraphGenerationLease, String> {
         if publication_token == 0 {
-            return Err(
-                "state=stale-generation reasonKind=missing-publication-token".to_owned(),
-            );
+            return Err("state=stale-generation reasonKind=missing-publication-token".to_owned());
         }
         identity.publication_token = publication_token;
         self.ensure_started().await?;
@@ -583,13 +754,16 @@ impl AspPythonGraphsServer {
             } else {
                 let session_id = self.next_id("session");
                 let notify = Arc::new(tokio::sync::Notify::new());
-                state.generations.insert(identity.clone(), GenerationSlot {
-                    session_id: session_id.clone(),
-                    refs: 1,
-                    graph_payload,
-                    retiring: false,
-                    status: GenerationSlotStatus::Opening(Arc::clone(&notify)),
-                });
+                state.generations.insert(
+                    identity.clone(),
+                    GenerationSlot {
+                        session_id: session_id.clone(),
+                        refs: 1,
+                        graph_payload,
+                        retiring: false,
+                        status: GenerationSlotStatus::Opening(Arc::clone(&notify)),
+                    },
+                );
                 (Some(notify), true, session_id)
             }
         };
@@ -602,7 +776,10 @@ impl AspPythonGraphsServer {
         loop {
             let (terminal, notified) = {
                 let state = self.state.lock().await;
-                let terminal = state.generations.get(&identity).map(|slot| match &slot.status {
+                let terminal = state
+                    .generations
+                    .get(&identity)
+                    .map(|slot| match &slot.status {
                         GenerationSlotStatus::Opening(_) => None,
                         GenerationSlotStatus::Ready => Some(Ok(())),
                         GenerationSlotStatus::Failed(error) => Some(Err(error.clone())),
@@ -610,12 +787,14 @@ impl AspPythonGraphsServer {
                 (terminal, notify.notified())
             };
             match terminal.flatten() {
-                Some(Ok(())) => return Ok(GraphGenerationLease {
-                    server: self.clone(),
-                    identity,
-                    session_id,
-                    released: false,
-                }),
+                Some(Ok(())) => {
+                    return Ok(GraphGenerationLease {
+                        server: self.clone(),
+                        identity,
+                        session_id,
+                        released: false,
+                    });
+                }
                 Some(Err(error)) => {
                     let _ = self.release_generation(&identity, &session_id).await;
                     return Err(error);
@@ -634,22 +813,30 @@ impl AspPythonGraphsServer {
     async fn finish_open(&self, identity: GraphGenerationIdentity) {
         let session_id = {
             let state = self.state.lock().await;
-            state.generations.get(&identity).map(|slot| slot.session_id.clone())
+            state
+                .generations
+                .get(&identity)
+                .map(|slot| slot.session_id.clone())
         };
         let Some(session_id) = session_id else { return };
         let graph_payload = {
             let state = self.state.lock().await;
-            state.generations.get(&identity).map(|slot| slot.graph_payload.clone())
+            state
+                .generations
+                .get(&identity)
+                .map(|slot| slot.graph_payload.clone())
         };
-        let Some(graph_payload) = graph_payload else { return };
-        let request = self.envelope(
-            &session_id,
-            "open-generation",
-            &identity,
-            graph_payload,
-        );
+        let Some(graph_payload) = graph_payload else {
+            return;
+        };
+        let request = self.envelope(&session_id, "open-generation", &identity, graph_payload);
         let (result, process_terminal) = async {
-            let transport = self.state.lock().await.transport.clone()
+            let transport = self
+                .state
+                .lock()
+                .await
+                .transport
+                .clone()
                 .ok_or_else(|| "asp-python-graphs transport is absent".to_owned());
             let transport = match transport {
                 Ok(transport) => transport,
@@ -659,14 +846,19 @@ impl AspPythonGraphsServer {
                 Err(error) => (Err(error), true),
                 Ok(response) if receipt_state(&response) == Some("ready") => (Ok(()), false),
                 Ok(response) => (
-                    Err(format!("asp-python-graphs generation open rejected: {response}")),
+                    Err(format!(
+                        "asp-python-graphs generation open rejected: {response}"
+                    )),
                     false,
                 ),
             }
-        }.await;
+        }
+        .await;
         let (notify, retired) = {
             let mut state = self.state.lock().await;
-            let Some(slot) = state.generations.get_mut(&identity) else { return };
+            let Some(slot) = state.generations.get_mut(&identity) else {
+                return;
+            };
             let notify = match &slot.status {
                 GenerationSlotStatus::Opening(notify) => Arc::clone(notify),
                 _ => return,
@@ -685,9 +877,7 @@ impl AspPythonGraphsServer {
             let highest_token = state
                 .generations
                 .iter()
-                .filter(|(existing, _)| {
-                    existing.workspace_identity == identity.workspace_identity
-                })
+                .filter(|(existing, _)| existing.workspace_identity == identity.workspace_identity)
                 .map(|(existing, _)| existing.publication_token)
                 .max()
                 .unwrap_or(identity.publication_token);
@@ -697,8 +887,8 @@ impl AspPythonGraphsServer {
                         && existing != &identity
                         && existing.publication_token == identity.publication_token
                 });
-            let stale = succeeded
-                && (identity.publication_token < highest_token || equal_token_conflict);
+            let stale =
+                succeeded && (identity.publication_token < highest_token || equal_token_conflict);
             if stale {
                 if let Some(slot) = state.generations.get_mut(&identity) {
                     slot.retiring = true;
@@ -738,14 +928,14 @@ impl AspPythonGraphsServer {
         state.transport = None;
     }
 
-    fn envelope(&self, session_id: &str, kind: &str, identity: &GraphGenerationIdentity, payload: Value) -> Value {
-        self.envelope_with_request_id(
-            session_id,
-            kind,
-            identity,
-            self.next_id("request"),
-            payload,
-        )
+    fn envelope(
+        &self,
+        session_id: &str,
+        kind: &str,
+        identity: &GraphGenerationIdentity,
+        payload: Value,
+    ) -> Value {
+        self.envelope_with_request_id(session_id, kind, identity, self.next_id("request"), payload)
     }
 
     fn envelope_with_request_id(
@@ -762,7 +952,6 @@ impl AspPythonGraphsServer {
             "sessionId": session_id,
             "serviceEpoch": "runtime-server",
             "requestId": request_id,
-            "sequence": self.request_sequence.load(Ordering::Acquire),
             "messageKind": kind,
             "workspaceIdentity": identity.workspace_identity,
             "generationDigest": identity.generation_digest,
@@ -772,15 +961,40 @@ impl AspPythonGraphsServer {
         })
     }
 
+    fn service_envelope_with_request_id(
+        &self,
+        session_id: &str,
+        kind: &str,
+        request_id: String,
+        payload: Value,
+    ) -> Value {
+        serde_json::json!({
+            "schemaId": ASP_PYTHON_GRAPHS_SESSION_SCHEMA_ID,
+            "schemaVersion": ASP_PYTHON_GRAPHS_SESSION_SCHEMA_VERSION,
+            "sessionId": session_id,
+            "serviceEpoch": "runtime-server",
+            "requestId": request_id,
+            "messageKind": kind,
+            "payloadSchemaId": payload.get("schemaId").and_then(Value::as_str).unwrap_or(ASP_PYTHON_GRAPHS_SESSION_SCHEMA_ID),
+            "payload": payload,
+        })
+    }
+
     fn next_id(&self, prefix: &str) -> String {
-        let sequence = self.request_sequence.fetch_add(1, Ordering::AcqRel) + 1;
+        let sequence = self.request_id_sequence.fetch_add(1, Ordering::AcqRel) + 1;
         format!("{prefix}-{sequence}")
     }
 
-    async fn release_generation(&self, identity: &GraphGenerationIdentity, session_id: &str) -> Result<(), String> {
+    async fn release_generation(
+        &self,
+        identity: &GraphGenerationIdentity,
+        session_id: &str,
+    ) -> Result<(), String> {
         let should_release = {
             let mut state = self.state.lock().await;
-            let Some(slot) = state.generations.get_mut(identity) else { return Ok(()) };
+            let Some(slot) = state.generations.get_mut(identity) else {
+                return Ok(());
+            };
             if slot.refs > 1 {
                 slot.refs -= 1;
                 false
@@ -795,16 +1009,25 @@ impl AspPythonGraphsServer {
             }
         };
         if should_release {
-            let transport = self.state.lock().await.transport.clone()
+            let transport = self
+                .state
+                .lock()
+                .await
+                .transport
+                .clone()
                 .ok_or_else(|| "asp-python-graphs transport is absent".to_owned())?;
-            let receipt = transport.call(self.envelope(
-                session_id,
-                "release-generation",
-                identity,
-                serde_json::json!({}),
-            )).await?;
+            let receipt = transport
+                .call(self.envelope(
+                    session_id,
+                    "release-generation",
+                    identity,
+                    serde_json::json!({}),
+                ))
+                .await?;
             if receipt_state(&receipt) != Some("completed") {
-                return Err(format!("asp-python-graphs generation release rejected: {receipt}"));
+                return Err(format!(
+                    "asp-python-graphs generation release rejected: {receipt}"
+                ));
             }
         }
         Ok(())
@@ -831,12 +1054,14 @@ impl AspPythonGraphsServer {
         };
         if let Some(identity) = identity {
             if let Some(transport) = self.state.lock().await.transport.clone() {
-                let _ = transport.call(self.envelope(
-                    session_id,
-                    "release-generation",
-                    &identity,
-                    serde_json::json!({}),
-                )).await;
+                let _ = transport
+                    .call(self.envelope(
+                        session_id,
+                        "release-generation",
+                        &identity,
+                        serde_json::json!({}),
+                    ))
+                    .await;
             }
         }
     }
@@ -928,7 +1153,9 @@ impl AspPythonGraphsServer {
 }
 
 impl GraphGenerationLease {
-    pub fn identity(&self) -> &GraphGenerationIdentity { &self.identity }
+    pub fn identity(&self) -> &GraphGenerationIdentity {
+        &self.identity
+    }
 
     pub async fn evaluate(
         &self,
@@ -948,7 +1175,13 @@ impl GraphGenerationLease {
         if self.released {
             return Err("asp-python-graphs generation lease is released".to_owned());
         }
-        let transport = self.server.state.lock().await.transport.clone()
+        let transport = self
+            .server
+            .state
+            .lock()
+            .await
+            .transport
+            .clone()
             .ok_or_else(|| "asp-python-graphs transport is absent".to_owned())?;
         let internal_request_id = self.server.next_id("request");
         let mut request = self.server.envelope_with_request_id(
@@ -962,7 +1195,9 @@ impl GraphGenerationLease {
         let transport_result = transport.call_cancellable(request, cancellation).await;
         let transport_error = transport_result.as_ref().err().cloned();
         let result = transport_result.and_then(|receipt| {
-            if receipt.get("requestId").and_then(Value::as_str) != Some(internal_request_id.as_str()) {
+            if receipt.get("requestId").and_then(Value::as_str)
+                != Some(internal_request_id.as_str())
+            {
                 return Err("asp-python-graphs receipt requestId mismatch".to_owned());
             }
             if receipt_state(&receipt) != Some("completed") {
@@ -973,7 +1208,9 @@ impl GraphGenerationLease {
                 .and_then(Value::as_object)
                 .and_then(|payload| payload.get("result"))
                 .cloned()
-                .ok_or_else(|| "asp-python-graphs evaluation receipt lacks payload.result".to_owned())
+                .ok_or_else(|| {
+                    "asp-python-graphs evaluation receipt lacks payload.result".to_owned()
+                })
         });
         if let Some(error) = transport_error {
             if !error.contains("cancelled") {
@@ -984,9 +1221,13 @@ impl GraphGenerationLease {
     }
 
     pub async fn release(mut self) -> Result<(), String> {
-        if self.released { return Ok(()); }
+        if self.released {
+            return Ok(());
+        }
         self.released = true;
-        self.server.release_generation(&self.identity, &self.session_id).await
+        self.server
+            .release_generation(&self.identity, &self.session_id)
+            .await
     }
 }
 
@@ -1047,7 +1288,19 @@ async fn connect_unix_channel(socket_path: PathBuf) -> Result<tonic::transport::
 
 #[cfg(test)]
 mod tests {
-    use super::{GraphGenerationIdentity, GraphGenerationLedger, decode_receipt};
+    use serde_json::json;
+    use tokio_stream::StreamExt;
+    use tokio_stream::wrappers::ReceiverStream;
+
+    use super::{
+        AspPythonGraphsServer, ControlPriorityStream, GraphGenerationIdentity,
+        GraphGenerationLedger, WireTerminalReason, decode_receipt, encode_graphs_request,
+        terminalize_pending,
+    };
+
+    fn fail_encode(_: &serde_json::Value) -> Result<Vec<u8>, String> {
+        Err("injected-encode-failure".to_owned())
+    }
 
     #[test]
     fn receipt_requires_json_object() {
@@ -1066,5 +1319,180 @@ mod tests {
         assert!(!ledger.release(&identity));
         assert!(ledger.release(&identity));
         assert_eq!(ledger.refs(&identity), None);
+    }
+
+    #[test]
+    fn server_envelopes_leave_wire_sequence_to_transport() {
+        let server = AspPythonGraphsServer::new("/tmp/asp-python-graphs.sock", 1).unwrap();
+        let identity =
+            GraphGenerationIdentity::new_with_token("workspace", "generation", 7).unwrap();
+
+        let first = server.envelope("session", "evaluate", &identity, json!({}));
+        let second = server.envelope("session", "evaluate", &identity, json!({}));
+
+        assert!(first.get("sequence").is_none());
+        assert!(second.get("sequence").is_none());
+        assert_eq!(first["requestId"], "request-1");
+        assert_eq!(second["requestId"], "request-2");
+    }
+
+    #[tokio::test]
+    async fn transport_writer_stamps_sequence_in_actual_priority_wire_order() {
+        let (data_tx, data_rx) = tokio::sync::mpsc::channel(32);
+        let (control_tx, control_rx) = tokio::sync::mpsc::channel(8);
+        data_tx.send(json!({"requestId": "data-1"})).await.unwrap();
+        control_tx
+            .send(json!({"requestId": "cancel-data-1"}))
+            .await
+            .unwrap();
+        let (terminal, _terminal_rx) = tokio::sync::watch::channel(None);
+        let mut stream = ControlPriorityStream {
+            control: ReceiverStream::new(control_rx),
+            data: ReceiverStream::new(data_rx),
+            sequence: 0,
+            encoder: encode_graphs_request,
+            terminal,
+            stopped: false,
+        };
+
+        let first: serde_json::Value =
+            serde_json::from_slice(&stream.next().await.unwrap().json).unwrap();
+        let second: serde_json::Value =
+            serde_json::from_slice(&stream.next().await.unwrap().json).unwrap();
+
+        assert_eq!(first["requestId"], "cancel-data-1");
+        assert_eq!(first["sequence"], 1);
+        assert_eq!(second["requestId"], "data-1");
+        assert_eq!(second["sequence"], 2);
+    }
+
+    #[tokio::test]
+    async fn transport_writer_serializes_thirty_two_concurrent_producers() {
+        const CALLERS: usize = 32;
+        let (data_tx, data_rx) = tokio::sync::mpsc::channel(CALLERS);
+        let (_control_tx, control_rx) = tokio::sync::mpsc::channel(1);
+        let sends = (0..CALLERS).map(|caller| {
+            let data_tx = data_tx.clone();
+            tokio::spawn(async move {
+                data_tx
+                    .send(json!({"requestId": format!("request-{caller}")}))
+                    .await
+                    .unwrap();
+            })
+        });
+        for send in sends {
+            send.await.unwrap();
+        }
+        let (terminal, _terminal_rx) = tokio::sync::watch::channel(None);
+        let mut stream = ControlPriorityStream {
+            control: ReceiverStream::new(control_rx),
+            data: ReceiverStream::new(data_rx),
+            sequence: 0,
+            encoder: encode_graphs_request,
+            terminal,
+            stopped: false,
+        };
+
+        for expected in 1..=CALLERS as u64 {
+            let request: serde_json::Value =
+                serde_json::from_slice(&stream.next().await.unwrap().json).unwrap();
+            assert_eq!(request["sequence"], expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn transport_writer_terminalizes_sequence_overflow_once() {
+        let (data_tx, data_rx) = tokio::sync::mpsc::channel(1);
+        let (_control_tx, control_rx) = tokio::sync::mpsc::channel(1);
+        data_tx
+            .send(json!({"requestId": "overflow"}))
+            .await
+            .unwrap();
+        let (terminal, terminal_rx) = tokio::sync::watch::channel(None);
+        let mut stream = ControlPriorityStream {
+            control: ReceiverStream::new(control_rx),
+            data: ReceiverStream::new(data_rx),
+            sequence: u64::MAX,
+            encoder: encode_graphs_request,
+            terminal,
+            stopped: false,
+        };
+
+        assert!(stream.next().await.is_none());
+        assert!(stream.next().await.is_none());
+        assert_eq!(
+            terminal_rx.borrow().clone(),
+            Some(WireTerminalReason::SequenceOverflow)
+        );
+    }
+
+    #[tokio::test]
+    async fn transport_writer_terminalizes_encode_failure_once() {
+        let (data_tx, data_rx) = tokio::sync::mpsc::channel(1);
+        let (_control_tx, control_rx) = tokio::sync::mpsc::channel(1);
+        data_tx.send(json!({"requestId": "encode"})).await.unwrap();
+        let (terminal, terminal_rx) = tokio::sync::watch::channel(None);
+        let mut stream = ControlPriorityStream {
+            control: ReceiverStream::new(control_rx),
+            data: ReceiverStream::new(data_rx),
+            sequence: 0,
+            encoder: fail_encode,
+            terminal,
+            stopped: false,
+        };
+
+        assert!(stream.next().await.is_none());
+        assert!(stream.next().await.is_none());
+        assert_eq!(
+            terminal_rx.borrow().clone(),
+            Some(WireTerminalReason::EncodeFailed(
+                "injected-encode-failure".to_owned()
+            ))
+        );
+    }
+
+    #[tokio::test]
+    async fn transport_writer_closes_cleanly_only_after_both_senders_close() {
+        let (data_tx, data_rx) = tokio::sync::mpsc::channel(1);
+        let (control_tx, control_rx) = tokio::sync::mpsc::channel(1);
+        let (terminal, terminal_rx) = tokio::sync::watch::channel(None);
+        let mut stream = ControlPriorityStream {
+            control: ReceiverStream::new(control_rx),
+            data: ReceiverStream::new(data_rx),
+            sequence: 0,
+            encoder: encode_graphs_request,
+            terminal,
+            stopped: false,
+        };
+        drop(data_tx);
+        control_tx
+            .send(json!({"requestId": "control-after-data-close"}))
+            .await
+            .unwrap();
+
+        assert!(stream.next().await.is_some());
+        drop(control_tx);
+        assert!(stream.next().await.is_none());
+        assert!(terminal_rx.borrow().is_none());
+    }
+
+    #[tokio::test]
+    async fn typed_wire_terminal_drains_pending_exactly_once() {
+        let terminal = tokio::sync::Mutex::new(None);
+        let (first_tx, first_rx) = tokio::sync::oneshot::channel();
+        let (second_tx, second_rx) = tokio::sync::oneshot::channel();
+        let pending = tokio::sync::Mutex::new(std::collections::HashMap::from([
+            ("first".to_owned(), first_tx),
+            ("second".to_owned(), second_tx),
+        ]));
+        let message = WireTerminalReason::SequenceOverflow.to_string();
+
+        terminalize_pending(&terminal, &pending, message.clone()).await;
+        terminalize_pending(&terminal, &pending, "second-terminal".to_owned()).await;
+
+        assert_eq!(terminal.lock().await.as_deref(), Some(message.as_str()));
+        assert_eq!(first_rx.await.unwrap().unwrap_err(), message);
+        assert_eq!(second_rx.await.unwrap().unwrap_err(), message);
+        assert!(pending.lock().await.is_empty());
     }
 }

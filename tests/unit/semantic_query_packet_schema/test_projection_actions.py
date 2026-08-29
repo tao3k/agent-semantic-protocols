@@ -74,7 +74,7 @@ def test_projection_node_query_action_rejects_materialized_argv() -> None:
                 "target": "load:branch",
                 "capabilityId": "query",
                 "selector": "load:branch",
-                "argv": ["rs-harness", "search", "owner", "src/lib.rs", "items", "."],
+                "argv": ["asp-rust", "search", "owner", "src/lib.rs", "items", "."],
                 "reason": "expand node through provider query",
             }
         ]

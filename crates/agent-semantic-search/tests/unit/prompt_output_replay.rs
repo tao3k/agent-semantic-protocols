@@ -59,14 +59,14 @@ fn prompt_output_fingerprint_includes_prime_render_abi() {
     let args = vec!["prime".to_string(), "--view=seeds".to_string()];
     let prime = prompt_output_request_fingerprint(PromptOutputFingerprintRequest {
         language_id: "rust",
-        provider_id: "rs-harness",
+        provider_id: "asp-rust",
         normalized_project_root: "/repo",
         export_method: "search/prime",
         forwarded_args: &args,
     });
     let lexical = prompt_output_request_fingerprint(PromptOutputFingerprintRequest {
         language_id: "rust",
-        provider_id: "rs-harness",
+        provider_id: "asp-rust",
         normalized_project_root: "/repo",
         export_method: "search/lexical",
         forwarded_args: &args,

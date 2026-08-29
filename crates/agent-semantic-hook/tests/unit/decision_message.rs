@@ -19,7 +19,7 @@ fn configured_message_binds_language_and_appends_executable_provider_route() {
         subject: DecisionSubject::default(),
         routes: vec![DecisionRoute {
             language_id: agent_semantic_config::LanguageId::new("rust"),
-            provider_id: agent_semantic_config::ProviderId::new("rs-harness"),
+            provider_id: agent_semantic_config::ProviderId::new("asp-rust"),
             binary: "asp".to_owned(),
             kind: DecisionRouteKind::Owner,
             argv: vec![

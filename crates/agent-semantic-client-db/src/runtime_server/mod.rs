@@ -4,6 +4,6 @@ mod generation_builder;
 mod service_lifecycle;
 
 pub use core::{
-    GraphTurboEvaluationBuilder, GraphTurboResidentStatusHandle, RuntimeServer, RuntimeServerEvent,
+    GraphTurboEvaluationBuilder, AspPythonGraphsStatusHandle, RuntimeServer, RuntimeServerEvent,
     RuntimeServerExit, RuntimeServerShutdownHandle,
 };

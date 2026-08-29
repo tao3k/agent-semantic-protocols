@@ -205,7 +205,6 @@ import ASPProof.SearchRouteFourLayerGraphReasoning
 import ASPProof.SearchRouterInteractiveGraphState
 import ASPProof.SearchRouteMaterializedGraphCursor
 import ASPProof.Audit.SearchRouteMaterializedGraphCursor
-import ASPProof.GraphTurboResidentLifecycle
 import ASPProof.SearchProjectionTraceSet
 import ASPProof.SubagentManagerProjectionDispatch
 import ASPProof.SearchRouteBoundedAdaptiveInspectConvergence

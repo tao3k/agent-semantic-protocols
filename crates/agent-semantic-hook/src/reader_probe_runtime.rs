@@ -1,4 +1,4 @@
-//! Bounded syscall-entry probe for otherwise unknown Bash readers.
+//! Bounded permission-differential probe for otherwise unknown Bash readers.
 
 use super::{ReaderProbeAccess, ReaderProbeObservation};
 #[cfg(target_os = "macos")]
@@ -12,9 +12,11 @@ use std::sync::{OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
 // One cold observation owns a single end-to-end deadline covering secure cache
-// preparation, dyld launch, syscall entry, termination, and reap. Cache hits do
+// preparation, candidate launch, permission observation, termination, and reap. Cache hits do
 // not enter this path and retain their sub-millisecond contract.
 const PROBE_COLD_TIMEOUT: Duration = Duration::from_millis(100);
+#[cfg(target_os = "macos")]
+const CACHE_WAIT_PARK: Duration = Duration::from_micros(250);
 #[cfg(target_os = "macos")]
 const DYNAMIC_CACHE_RECORD_MAGIC: &[u8; 8] = b"ASPRDR1\0";
 #[cfg(target_os = "macos")]
@@ -35,22 +37,41 @@ static PROCESS_POSITIVE_CACHE: OnceLock<RwLock<std::collections::VecDeque<blake3
 pub struct ReaderProbeRequest {
     pub command_tokens: Vec<String>,
     pub subject: String,
+    pub wrapped_command: bool,
     pub reader_behavior_patterns: Vec<Vec<String>>,
     pub dynamic_cache_root: Option<PathBuf>,
 }
 
 pub fn observe(request: &ReaderProbeRequest) -> Option<ReaderProbeObservation> {
-    Some(observe_one(
+    Some(observe_one_with_wrapped(
         request.command_tokens.as_slice(),
         request.subject.clone(),
+        request.wrapped_command,
         &request.reader_behavior_patterns,
         request.dynamic_cache_root.as_deref(),
     ))
 }
 
+#[cfg(test)]
 fn observe_one(
     tokens: &[String],
     subject: String,
+    reader_behavior_patterns: &[Vec<String>],
+    dynamic_cache_root_override: Option<&Path>,
+) -> ReaderProbeObservation {
+    observe_one_with_wrapped(
+        tokens,
+        subject,
+        false,
+        reader_behavior_patterns,
+        dynamic_cache_root_override,
+    )
+}
+
+fn observe_one_with_wrapped(
+    tokens: &[String],
+    subject: String,
+    wrapped_command: bool,
     reader_behavior_patterns: &[Vec<String>],
     dynamic_cache_root_override: Option<&Path>,
 ) -> ReaderProbeObservation {
@@ -68,7 +89,7 @@ fn observe_one(
             behavior_key: None,
         };
 
-    if static_reader_behavior_matches(tokens, reader_behavior_patterns) {
+    if static_reader_behavior_matches(tokens, reader_behavior_patterns, wrapped_command) {
         return terminal(
             ReaderProbeAccess::Read,
             "reader-behavior-catalog-hit",
@@ -90,11 +111,11 @@ fn observe_one(
 
     #[cfg(target_os = "macos")]
     {
-        let Some(executable) = tokens.first() else {
+        let Some(_) = tokens.first() else {
             return terminal(
                 ReaderProbeAccess::Unknown,
                 "missing-executable",
-                "dyld-open",
+                "permission-differential",
                 false,
             );
         };
@@ -102,20 +123,22 @@ fn observe_one(
             return terminal(
                 ReaderProbeAccess::Unknown,
                 "probe-timeout",
-                "dyld-open",
+                "permission-differential",
                 false,
             );
         }
-        let Ok((executable, executable_metadata)) = resolve_probe_executable(executable) else {
+        let Ok((envelope_executable, envelope_metadata)) =
+            resolve_probe_executable(tokens.first().expect("checked nonempty tokens"))
+        else {
             return terminal(
                 ReaderProbeAccess::Unknown,
                 "executable-unavailable",
-                "dyld-open",
+                "permission-differential",
                 false,
             );
         };
         let behavior_key =
-            dynamic_behavior_key(&executable, &executable_metadata, tokens, &subject).ok();
+            dynamic_behavior_key(&envelope_executable, &envelope_metadata, tokens, &subject).ok();
         // A verified in-process fact needs neither directory preparation nor
         // disk I/O. Resolve the logical State Home key first and defer secure
         // directory validation until the durable catalog is actually read.
@@ -156,10 +179,31 @@ fn observe_one(
             return observation;
         }
         let cache_root = resolved_cache_root.ok();
-        let cache_lock = behavior_key
+        let cache_authority = behavior_key
             .as_ref()
             .zip(cache_root.as_ref())
-            .and_then(|(key, root)| acquire_cache_shard(root, key));
+            .and_then(|(key, root)| {
+                acquire_cache_shard(root, key, started + PROBE_COLD_TIMEOUT)
+            });
+        if let Some(DynamicCacheShardAcquire::Published) = cache_authority.as_ref()
+            && let Some(key) = behavior_key.as_ref()
+            && let Some(root) = cache_root.as_ref()
+        {
+            publish_process_positive_cache(root, key);
+            let mut observation = terminal(
+                ReaderProbeAccess::Read,
+                "reader-behavior-cache-hit",
+                "state-home-reader-catalog",
+                false,
+            );
+            observation.cache_hit = true;
+            observation.behavior_key = Some(key.to_hex().to_string());
+            return observation;
+        }
+        let cache_lock = match cache_authority {
+            Some(DynamicCacheShardAcquire::Owner(guard)) => Some(guard),
+            _ => None,
+        };
         if let Some(key) = behavior_key.as_ref()
             && let Some(root) = cache_root.as_ref()
             && cache_lock.is_some()
@@ -179,7 +223,7 @@ fn observe_one(
         if behavior_key.is_some() && cache_root.is_some() && cache_lock.is_none() {
             let mut observation = terminal(
                 ReaderProbeAccess::Unknown,
-                "reader-behavior-cache-busy",
+                "reader-behavior-cache-wait-timeout",
                 "state-home-reader-catalog",
                 false,
             );
@@ -190,7 +234,7 @@ fn observe_one(
             return terminal(
                 ReaderProbeAccess::Unknown,
                 "probe-timeout",
-                "dyld-open",
+                "permission-differential",
                 false,
             );
         }
@@ -198,7 +242,7 @@ fn observe_one(
             return terminal(
                 ReaderProbeAccess::Unknown,
                 "probe-root-failed",
-                "dyld-open",
+                "permission-differential",
                 false,
             );
         };
@@ -206,144 +250,141 @@ fn observe_one(
             return terminal(
                 ReaderProbeAccess::Unknown,
                 "probe-timeout",
-                "dyld-open",
+                "permission-differential",
                 false,
             );
         }
-        let Ok(interposer) = materialize_interposer(&probe_root) else {
-            return terminal(
-                ReaderProbeAccess::Unknown,
-                "interposer-failed",
-                "dyld-open",
-                false,
-            );
-        };
-        if started.elapsed() >= PROBE_COLD_TIMEOUT {
-            return terminal(
-                ReaderProbeAccess::Unknown,
-                "probe-timeout",
-                "dyld-open",
-                false,
-            );
-        }
-        let Ok(sentinel) = materialize_profile_sentinel(&probe_root, &subject) else {
+        let Ok(sentinels) = materialize_profile_sentinels(&probe_root, &subject) else {
             return terminal(
                 ReaderProbeAccess::Unknown,
                 "profile-sentinel-failed",
-                "dyld-open",
+                "permission-differential",
                 false,
             );
         };
-        let sentinel_text = sentinel.to_string_lossy().into_owned();
-        let argv = tokens
-            .iter()
-            .skip(1)
-            .map(|token| {
-                if token == &subject {
-                    sentinel_text.clone()
-                } else {
-                    token.clone()
-                }
-            })
+        let readable_sentinel = sentinels.readable.to_string_lossy().into_owned();
+        let denied_sentinel = sentinels.denied.to_string_lossy().into_owned();
+        let invocations = resolve_probe_invocations(tokens, &subject, wrapped_command)
+            .into_iter()
+            .filter(|(executable, _)| !is_script_executable(executable))
             .collect::<Vec<_>>();
-        if !argv.iter().any(|token| token == &sentinel_text) {
-            return terminal(
-                ReaderProbeAccess::Unknown,
-                "subject-not-replaced",
-                "dyld-open",
-                false,
-            );
-        }
-        let Some((read_fd, write_fd)) = create_observation_pipe() else {
-            return terminal(
-                ReaderProbeAccess::Unknown,
-                "pipe-failed",
-                "dyld-open",
-                false,
-            );
-        };
-        if started.elapsed() >= PROBE_COLD_TIMEOUT {
-            unsafe { libc::close(read_fd) };
-            unsafe { libc::close(write_fd) };
-            return terminal(
-                ReaderProbeAccess::Unknown,
-                "probe-timeout",
-                "dyld-open",
-                false,
-            );
-        }
-        let child = spawn_probe(build_probe_command(
-            &probe_root,
-            &executable,
-            &argv,
-            &interposer,
-            &sentinel_text,
-            write_fd,
-        ));
-        let Ok(mut child) = child else {
-            unsafe {
-                libc::close(read_fd);
+        let global_deadline = started + PROBE_COLD_TIMEOUT;
+        let mut last_terminal = "no-native-candidate";
+        for (executable, probe_tokens) in invocations {
+            if Instant::now() >= global_deadline {
+                return terminal(
+                    ReaderProbeAccess::Unknown,
+                    "probe-timeout",
+                    "permission-differential",
+                    true,
+                );
             }
-            return terminal(
-                ReaderProbeAccess::Unknown,
-                "spawn-failed",
-                "dyld-open",
-                false,
+            let readable_argv = replace_subject_operand(
+                &probe_tokens,
+                &subject,
+                readable_sentinel.as_str(),
             );
-        };
-        match wait_for_observation(read_fd, &mut child, started) {
-            ProbeOutcome::Observed(flags) => {
-                let access = super::classify_open_access_mode(flags);
-                let cache_publish_failed = if access == ReaderProbeAccess::Read
-                    && let Some(key) = behavior_key.as_ref()
-                    && let Some(root) = cache_root.as_ref()
-                    && cache_lock.is_some()
-                {
-                    publish_dynamic_cache_record(root, key).is_err()
-                        || !dynamic_cache_hit(root, key)
-                } else {
-                    false
-                };
-                let terminal_kind = if cache_publish_failed {
-                    "open-entry-observed-cache-publish-failed"
-                } else {
-                    if access == ReaderProbeAccess::Read
-                        && let Some(key) = behavior_key.as_ref()
+            let denied_argv =
+                replace_subject_operand(&probe_tokens, &subject, denied_sentinel.as_str());
+            if !readable_argv.iter().any(|token| token == &readable_sentinel)
+                || !denied_argv.iter().any(|token| token == &denied_sentinel)
+            {
+                continue;
+            }
+            let readable = run_permission_candidate(
+                &probe_root,
+                &executable,
+                &readable_argv,
+                global_deadline,
+            );
+            let denied = match readable {
+                ProbeOutcome::Exited(_) => run_permission_candidate(
+                    &probe_root,
+                    &executable,
+                    &denied_argv,
+                    global_deadline,
+                ),
+                ProbeOutcome::TimedOut => {
+                    return terminal(
+                        ReaderProbeAccess::Unknown,
+                        "probe-timeout",
+                        "permission-differential",
+                        true,
+                    );
+                }
+                ProbeOutcome::WaitFailed => {
+                    last_terminal = "readable-wait-failed";
+                    continue;
+                }
+                ProbeOutcome::CleanupFailed => {
+                    return terminal(
+                        ReaderProbeAccess::Unknown,
+                        "cleanup-failed",
+                        "permission-differential",
+                        true,
+                    );
+                }
+            };
+            match (readable, denied) {
+                (ProbeOutcome::Exited(readable), ProbeOutcome::Exited(denied))
+                    if exit_signature(&readable) != exit_signature(&denied) => {
+                    let cache_publish_failed = if let Some(key) = behavior_key.as_ref()
                         && let Some(root) = cache_root.as_ref()
+                        && cache_lock.is_some()
                     {
-                        publish_process_positive_cache(root, key);
-                    }
-                    "open-entry-observed"
-                };
-                let mut observation = terminal(access, terminal_kind, "dyld-open", true);
-                observation.behavior_key = behavior_key.map(|key| key.to_hex().to_string());
-                observation
+                        publish_dynamic_cache_record(root, key).is_err()
+                            || !dynamic_cache_hit(root, key)
+                    } else {
+                        false
+                    };
+                    let terminal_kind = if cache_publish_failed {
+                        "read-permission-observed-cache-publish-failed"
+                    } else {
+                        if let Some(key) = behavior_key.as_ref()
+                            && let Some(root) = cache_root.as_ref()
+                        {
+                            publish_process_positive_cache(root, key);
+                        }
+                        "read-permission-observed"
+                    };
+                    let mut observation = terminal(
+                        ReaderProbeAccess::Read,
+                        terminal_kind,
+                        "permission-differential",
+                        true,
+                    );
+                    observation.behavior_key = behavior_key.map(|key| key.to_hex().to_string());
+                    return observation;
+                }
+                (_, ProbeOutcome::CleanupFailed) => {
+                    return terminal(
+                        ReaderProbeAccess::Unknown,
+                        "cleanup-failed",
+                        "permission-differential",
+                        true,
+                    );
+                }
+                (_, ProbeOutcome::TimedOut) => {
+                    return terminal(
+                        ReaderProbeAccess::Unknown,
+                        "probe-timeout",
+                        "permission-differential",
+                        true,
+                    );
+                }
+                (_, ProbeOutcome::WaitFailed) => last_terminal = "denied-wait-failed",
+                (ProbeOutcome::Exited(_), ProbeOutcome::Exited(_)) => {
+                    last_terminal = "permission-outcomes-equivalent"
+                }
+                _ => last_terminal = "permission-observation-incomplete",
             }
-            ProbeOutcome::Exited(code) => terminal(
-                ReaderProbeAccess::Unknown,
-                &format!("probe-exited-before-open:{}", code.map_or(-1, |code| code)),
-                "dyld-open",
-                true,
-            ),
-            ProbeOutcome::TimedOut => terminal(
-                ReaderProbeAccess::Unknown,
-                "probe-timeout",
-                "dyld-open",
-                true,
-            ),
-            ProbeOutcome::WaitFailed => terminal(
-                ReaderProbeAccess::Unknown,
-                "probe-wait-failed",
-                "dyld-open",
-                true,
-            ),
-            ProbeOutcome::CleanupFailed => terminal(
-                ReaderProbeAccess::Unknown,
-                "cleanup-failed",
-                "dyld-open",
-                true,
-            ),
         }
+        terminal(
+            ReaderProbeAccess::Unknown,
+            &format!("probe-candidates-exhausted:{last_terminal}"),
+            "permission-differential",
+            true,
+        )
     }
 }
 
@@ -352,8 +393,12 @@ fn resolve_probe_executable(executable: &str) -> Result<(PathBuf, std::fs::Metad
     use std::os::unix::fs::PermissionsExt as _;
 
     let path = Path::new(executable);
-    let resolved = if path.components().count() > 1 {
-        std::fs::canonicalize(path).map_err(|error| error.to_string())?
+    let resolved = if path.is_absolute() {
+        path.to_owned()
+    } else if path.components().count() > 1 {
+        std::env::current_dir()
+            .map_err(|error| error.to_string())?
+            .join(path)
     } else {
         which::which(executable).map_err(|error| error.to_string())?
     };
@@ -367,19 +412,66 @@ fn resolve_probe_executable(executable: &str) -> Result<(PathBuf, std::fs::Metad
     Ok((resolved, metadata))
 }
 
-fn static_reader_behavior_matches(tokens: &[String], patterns: &[Vec<String>]) -> bool {
-    let Some(executable) = tokens
-        .first()
-        .and_then(|token| Path::new(token).file_name())
-        .and_then(|name| name.to_str())
-    else {
+#[cfg(target_os = "macos")]
+fn resolve_probe_invocations(
+    tokens: &[String],
+    subject: &str,
+    wrapped_command: bool,
+) -> Vec<(PathBuf, Vec<String>)> {
+    let candidate_count = if wrapped_command {
+        tokens
+            .iter()
+            .position(|token| token == subject)
+            .unwrap_or(tokens.len())
+    } else {
+        tokens.len().min(1)
+    };
+    (0..candidate_count)
+        .filter_map(|index| {
+            let candidate = &tokens[index];
+            (!candidate.starts_with('-') && !candidate.contains('='))
+                .then(|| resolve_probe_executable(candidate).ok())
+                .flatten()
+                .map(|(resolved, _)| (resolved, tokens[index..].to_vec()))
+        })
+        .collect()
+}
+
+#[cfg(target_os = "macos")]
+fn is_script_executable(executable: &Path) -> bool {
+    use std::io::Read as _;
+
+    let Ok(mut file) = std::fs::File::open(executable) else {
         return false;
     };
-    patterns.iter().any(|pattern| {
-        pattern.first().is_some_and(|name| name == executable)
-            && tokens
-                .get(1..pattern.len())
-                .is_some_and(|actual| actual == &pattern[1..])
+    let mut magic = [0_u8; 2];
+    file.read_exact(&mut magic).is_ok() && magic == *b"#!"
+}
+
+fn static_reader_behavior_matches(
+    tokens: &[String],
+    patterns: &[Vec<String>],
+    wrapped_command: bool,
+) -> bool {
+    let candidates = if wrapped_command {
+        0..tokens.len()
+    } else {
+        0..tokens.len().min(1)
+    };
+    candidates.into_iter().any(|index| {
+        let Some(executable) = tokens
+            .get(index)
+            .and_then(|token| Path::new(token).file_name())
+            .and_then(|name| name.to_str())
+        else {
+            return false;
+        };
+        patterns.iter().any(|pattern| {
+            pattern.first().is_some_and(|name| name == executable)
+                && tokens
+                    .get(index + 1..index + pattern.len())
+                    .is_some_and(|actual| actual == &pattern[1..])
+        })
     })
 }
 
@@ -561,18 +653,42 @@ struct DynamicCacheShardGuard {
 }
 
 #[cfg(target_os = "macos")]
-fn acquire_cache_shard(root: &Path, key: &blake3::Hash) -> Option<DynamicCacheShardGuard> {
+enum DynamicCacheShardAcquire {
+    Owner(DynamicCacheShardGuard),
+    Published,
+}
+
+#[cfg(target_os = "macos")]
+fn acquire_cache_shard(
+    root: &Path,
+    key: &blake3::Hash,
+    deadline: Instant,
+) -> Option<DynamicCacheShardAcquire> {
     use std::os::unix::fs::OpenOptionsExt as _;
 
     let shard = key.as_bytes()[0] % DYNAMIC_CACHE_SHARDS;
-    // One invocation owns the cold observation. Contenders return Unknown
-    // immediately and never steal scheduler time from the only process that
-    // can publish the reusable Reader fact.
-    let process_guard = match DYNAMIC_CACHE_PROCESS_SHARDS[usize::from(shard)].try_lock() {
-        Ok(guard) => guard,
-        Err(std::sync::TryLockError::Poisoned(error)) => error.into_inner(),
-        Err(std::sync::TryLockError::WouldBlock) => return None,
+    // One invocation owns the cold observation. Contenders wait only within
+    // the same end-to-end Hook deadline, then consume the committed positive
+    // record instead of launching another candidate process.
+    let process_guard = loop {
+        match DYNAMIC_CACHE_PROCESS_SHARDS[usize::from(shard)].try_lock() {
+            Ok(guard) => break guard,
+            Err(std::sync::TryLockError::Poisoned(error)) => break error.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                if dynamic_cache_hit(root, key) {
+                    return Some(DynamicCacheShardAcquire::Published);
+                }
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return None;
+                }
+                std::thread::park_timeout(std::cmp::min(CACHE_WAIT_PARK, remaining));
+            }
+        }
     };
+    if dynamic_cache_hit(root, key) {
+        return Some(DynamicCacheShardAcquire::Published);
+    }
     let lock_path = root.join("locks").join(format!("{shard:02x}.lock"));
     let file = std::fs::OpenOptions::new()
         .read(true)
@@ -582,12 +698,25 @@ fn acquire_cache_shard(root: &Path, key: &blake3::Hash) -> Option<DynamicCacheSh
         .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
         .open(lock_path)
         .ok()?;
-    match file.try_lock_exclusive() {
-        Ok(()) => Some(DynamicCacheShardGuard {
-            _process: process_guard,
-            _file: file,
-        }),
-        Err(_) => None,
+    loop {
+        match file.try_lock_exclusive() {
+            Ok(()) => {
+                return Some(DynamicCacheShardAcquire::Owner(DynamicCacheShardGuard {
+                    _process: process_guard,
+                    _file: file,
+                }));
+            }
+            Err(_) => {
+                if dynamic_cache_hit(root, key) {
+                    return Some(DynamicCacheShardAcquire::Published);
+                }
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return None;
+                }
+                std::thread::park_timeout(std::cmp::min(CACHE_WAIT_PARK, remaining));
+            }
+        }
     }
 }
 
@@ -655,46 +784,48 @@ fn prune_dynamic_cache(root: &Path) {
 
 #[cfg(target_os = "macos")]
 enum ProbeOutcome {
-    Observed(i32),
-    Exited(Option<i32>),
+    Exited(std::process::ExitStatus),
     TimedOut,
     WaitFailed,
     CleanupFailed,
 }
 
 #[cfg(target_os = "macos")]
-fn build_probe_command(
+fn replace_subject_operand(tokens: &[String], subject: &str, sentinel: &str) -> Vec<String> {
+    tokens
+        .iter()
+        .skip(1)
+        .map(|token| {
+            if token == subject {
+                sentinel.to_owned()
+            } else {
+                token.clone()
+            }
+        })
+        .collect()
+}
+
+#[cfg(target_os = "macos")]
+fn build_permission_probe_command(
     current_dir: &Path,
     executable: &Path,
     argv: &[String],
-    interposer: &Path,
-    sentinel: &str,
-    write_fd: i32,
 ) -> Command {
-    use std::os::fd::FromRawFd;
-
     let mut command = Command::new(executable);
     command
         .current_dir(current_dir)
         .args(argv)
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
-        .env("DYLD_INSERT_LIBRARIES", interposer)
-        .env("ASP_READER_PROBE_TARGET", sentinel)
-        .env("ASP_READER_PROBE_FD", "1")
         .stdin(Stdio::null())
-        .stdout(unsafe { Stdio::from_raw_fd(write_fd) })
+        .stdout(Stdio::null())
         .stderr(Stdio::null());
     command
 }
 
 #[cfg(target_os = "macos")]
 fn spawn_probe(mut command: Command) -> std::io::Result<std::process::Child> {
-    use std::os::unix::process::CommandExt;
-    // Keep `Command` eligible for the platform's `posix_spawn` path. A
-    // `pre_exec` closure forces a fork in a multithreaded Hook process and can
-    // leave the child stalled before `exec`, which turns bounded concurrent
-    // Reader observations into false `probe-timeout` terminals.
+    use std::os::unix::process::CommandExt as _;
     command.process_group(0);
     command.spawn()
 }
@@ -708,86 +839,40 @@ fn materialize_probe_root() -> Result<PathBuf, String> {
 }
 
 #[cfg(target_os = "macos")]
-fn materialize_interposer(root: &Path) -> Result<PathBuf, String> {
-    use std::io::{Read as _, Write as _};
-    use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
-
-    let bytes = super::reader_probe_interposer_bytes();
-    let expected_digest = blake3::hash(bytes);
-    let digest = expected_digest.to_hex();
-    let path = root.join(format!("interposer-{digest}.dylib"));
-    if !path.try_exists().map_err(|error| error.to_string())? {
-        let nonce = MATERIALIZATION_NONCE.fetch_add(1, Ordering::Relaxed);
-        let candidate = root.join(format!(
-            ".interposer-{}-{nonce}-{digest}",
-            std::process::id()
-        ));
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o400)
-            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
-            .open(&candidate)
-            .map_err(|error| error.to_string())?;
-        file.write_all(bytes).map_err(|error| error.to_string())?;
-        file.sync_all().map_err(|error| error.to_string())?;
-        drop(file);
-        std::fs::set_permissions(&candidate, std::fs::Permissions::from_mode(0o400))
-            .map_err(|error| error.to_string())?;
-        match std::fs::hard_link(&candidate, &path) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(error) => {
-                let _ = std::fs::remove_file(&candidate);
-                return Err(error.to_string());
-            }
-        }
-        std::fs::remove_file(&candidate).map_err(|error| error.to_string())?;
-    }
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
-        .open(&path)
-        .map_err(|error| error.to_string())?;
-    let metadata = file.metadata().map_err(|error| error.to_string())?;
-    let mut actual = Vec::new();
-    file.read_to_end(&mut actual)
-        .map_err(|error| error.to_string())?;
-    if !metadata.file_type().is_file()
-        || metadata.uid() != unsafe { libc::geteuid() }
-        || blake3::hash(&actual) != expected_digest
-    {
-        return Err(format!(
-            "Reader probe interposer authority mismatch at {}",
-            path.display()
-        ));
-    }
-    file.set_permissions(std::fs::Permissions::from_mode(0o400))
-        .map_err(|error| error.to_string())?;
-    Ok(path)
+struct ProfileSentinels {
+    readable: PathBuf,
+    denied: PathBuf,
 }
 
 #[cfg(target_os = "macos")]
-fn materialize_profile_sentinel(root: &Path, subject: &str) -> Result<PathBuf, String> {
-    use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
+fn materialize_profile_sentinels(root: &Path, subject: &str) -> Result<ProfileSentinels, String> {
     let extension = Path::new(subject)
         .extension()
         .and_then(|extension| extension.to_str())
         .filter(|extension| !extension.is_empty())
         .unwrap_or("source");
-    let path = root.join(format!("sentinel.{extension}"));
+    let readable = root.join(format!("readable-sentinel.{extension}"));
+    let denied = root.join(format!("denied-sentinel.{extension}"));
+    materialize_profile_sentinel(&readable, 0o400)?;
+    materialize_profile_sentinel(&denied, 0o000)?;
+    Ok(ProfileSentinels { readable, denied })
+}
+
+#[cfg(target_os = "macos")]
+fn materialize_profile_sentinel(path: &Path, mode: u32) -> Result<(), String> {
+    use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
     match std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
-        .mode(0o400)
+        .mode(mode)
         .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
-        .open(&path)
+        .open(path)
     {
         Ok(file) => file.sync_all().map_err(|error| error.to_string())?,
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(error) => return Err(error.to_string()),
     }
-    let metadata = std::fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
+    let metadata = std::fs::symlink_metadata(path).map_err(|error| error.to_string())?;
     if !metadata.file_type().is_file()
         || metadata.file_type().is_symlink()
         || metadata.uid() != unsafe { libc::geteuid() }
@@ -798,120 +883,99 @@ fn materialize_profile_sentinel(root: &Path, subject: &str) -> Result<PathBuf, S
             path.display()
         ));
     }
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o400))
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
         .map_err(|error| error.to_string())?;
-    Ok(path)
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
-fn create_observation_pipe() -> Option<(i32, i32)> {
-    let mut fds = [-1; 2];
-    if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
-        return None;
-    }
-    unsafe {
-        libc::fcntl(fds[0], libc::F_SETFL, libc::O_NONBLOCK);
-    }
-    Some((fds[0], fds[1]))
-}
-
-#[cfg(target_os = "macos")]
-fn wait_for_observation(
-    read_fd: i32,
-    child: &mut std::process::Child,
-    started: Instant,
+fn run_permission_candidate(
+    current_dir: &Path,
+    executable: &Path,
+    argv: &[String],
+    deadline: Instant,
 ) -> ProbeOutcome {
-    let mut bytes = [0_u8; std::mem::size_of::<i32>()];
-    let mut observed = 0_usize;
-    let mut exited = None;
-    let mut timed_out = false;
-    loop {
-        let read = unsafe {
-            libc::read(
-                read_fd,
-                bytes[observed..].as_mut_ptr().cast(),
-                bytes.len() - observed,
-            )
-        };
-        if read > 0 {
-            let Ok(read) = usize::try_from(read) else {
-                unsafe { libc::close(read_fd) };
-                return ProbeOutcome::WaitFailed;
-            };
-            observed += read;
-            if observed == bytes.len() {
-                break;
+    let child = spawn_probe(build_permission_probe_command(current_dir, executable, argv));
+    let Ok(child) = child else {
+        return ProbeOutcome::WaitFailed;
+    };
+    wait_for_process_exit(child, deadline)
+}
+
+#[cfg(target_os = "macos")]
+fn wait_for_process_exit(
+    mut child: std::process::Child,
+    deadline: Instant,
+) -> ProbeOutcome {
+    let child_id = child.id();
+    let (terminal_tx, terminal_rx) = std::sync::mpsc::sync_channel(1);
+    let waiter = std::thread::spawn(move || {
+        let terminal = child.wait();
+        let _ = terminal_tx.send(terminal);
+    });
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    let received = terminal_rx.recv_timeout(remaining);
+    match received {
+        Ok(Ok(status)) => {
+            let joined = waiter.join().is_ok();
+            if joined && cleanup_process_group(child_id) {
+                ProbeOutcome::Exited(status)
+            } else {
+                ProbeOutcome::CleanupFailed
             }
         }
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                exited = Some(status.code());
-                break;
+        Ok(Err(_)) => {
+            let _ = waiter.join();
+            ProbeOutcome::WaitFailed
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            let killed = terminate_process_tree(child_id);
+            let reaped = terminal_rx.recv().is_ok();
+            let joined = waiter.join().is_ok();
+            if killed && reaped && joined && cleanup_process_group(child_id) {
+                ProbeOutcome::TimedOut
+            } else {
+                ProbeOutcome::CleanupFailed
             }
-            Ok(None) => {}
-            Err(_) => {
-                unsafe { libc::close(read_fd) };
-                return ProbeOutcome::WaitFailed;
-            }
         }
-        if started.elapsed() >= PROBE_COLD_TIMEOUT {
-            timed_out = true;
-            break;
-        }
-        let remaining = PROBE_COLD_TIMEOUT.saturating_sub(started.elapsed());
-        if remaining.is_zero() {
-            timed_out = true;
-            break;
-        }
-        let timeout_millis = remaining.as_millis().clamp(1, i32::MAX as u128) as i32;
-        let mut descriptor = libc::pollfd {
-            fd: read_fd,
-            events: libc::POLLIN | libc::POLLHUP | libc::POLLERR,
-            revents: 0,
-        };
-        // SAFETY: descriptor refers to the owned observation pipe and remains valid
-        // until the unified cleanup block closes it below.
-        let poll_result = unsafe { libc::poll(&mut descriptor, 1, timeout_millis) };
-        if poll_result < 0 {
-            let error = std::io::Error::last_os_error();
-            if error.kind() == std::io::ErrorKind::Interrupted {
-                continue;
-            }
-            break;
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            let _ = terminate_process_tree(child_id);
+            let _ = waiter.join();
+            ProbeOutcome::WaitFailed
         }
     }
-    unsafe { libc::close(read_fd) };
-    let mut cleanup_verified = true;
-    if exited.is_none() && child.try_wait().ok().flatten().is_none() {
-        let mut process_group_terminated = false;
-        if let Ok(pid) = i32::try_from(child.id()) {
-            process_group_terminated = unsafe { libc::kill(-pid, libc::SIGKILL) } == 0
-                || std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH);
-        }
-        // `process_group(0)` is the descendant cleanup authority, while the
-        // direct kill is a mandatory fallback if the platform did not publish
-        // the process group before the deadline. Always reap the direct child.
-        if !process_group_terminated {
-            let _ = child.kill();
-        }
-        cleanup_verified &= child.wait().is_ok();
+}
+
+#[cfg(target_os = "macos")]
+fn terminate_process_tree(child_id: u32) -> bool {
+    let Ok(pid) = i32::try_from(child_id) else {
+        return false;
+    };
+    if unsafe { libc::kill(-pid, libc::SIGKILL) } == 0 {
+        return true;
     }
-    if let Ok(pid) = i32::try_from(child.id()) {
-        cleanup_verified &= unsafe { libc::kill(-pid, 0) } != 0
-            && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH);
+    if std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH) {
+        return false;
     }
-    if !cleanup_verified {
-        return ProbeOutcome::CleanupFailed;
+    (unsafe { libc::kill(pid, libc::SIGKILL) }) == 0
+        || std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+}
+
+#[cfg(target_os = "macos")]
+fn cleanup_process_group(child_id: u32) -> bool {
+    let Ok(pid) = i32::try_from(child_id) else {
+        return false;
+    };
+    if unsafe { libc::kill(-pid, 0) } != 0 {
+        return std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH);
     }
-    if observed == bytes.len() {
-        ProbeOutcome::Observed(i32::from_ne_bytes(bytes))
-    } else if let Some(code) = exited {
-        ProbeOutcome::Exited(code)
-    } else if timed_out {
-        ProbeOutcome::TimedOut
-    } else {
-        ProbeOutcome::WaitFailed
-    }
+    (unsafe { libc::kill(-pid, libc::SIGKILL) }) == 0
+}
+
+#[cfg(target_os = "macos")]
+fn exit_signature(status: &std::process::ExitStatus) -> (Option<i32>, Option<i32>) {
+    use std::os::unix::process::ExitStatusExt as _;
+    (status.code(), status.signal())
 }
 
 #[cfg(test)]

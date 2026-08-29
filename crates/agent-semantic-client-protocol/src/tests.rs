@@ -46,6 +46,22 @@ fn northbound_client_requests_are_distinct_from_provider_runtime_requests() {
 }
 
 #[test]
+fn graph_timeline_request_is_structured_and_rejects_unknown_fields() {
+    let request = crate::AspClientGraphsTimelineRequest {
+        schema_id: crate::GRAPH_TIMELINE_REQUEST_SCHEMA_ID.to_owned(),
+        schema_version: crate::SCHEMA_VERSION.to_owned(),
+        event_packet: serde_json::json!({"schemaId": "agent.semantic-protocols.graph-turbo-artifact-events"}),
+        arguments: vec!["--recent-sessions".to_owned()],
+    };
+    request
+        .validate_schema_identity()
+        .expect("timeline identity");
+    let mut encoded = serde_json::to_value(&request).expect("encode timeline request");
+    encoded["graphTurboResident"] = serde_json::json!(true);
+    assert!(serde_json::from_value::<crate::AspClientGraphsTimelineRequest>(encoded).is_err());
+}
+
+#[test]
 fn exact_query_response_carries_falsifiable_resident_performance() {
     let response = crate::AspClientExactQueryResponse {
         schema_id: "agent.semantic-protocols.asp-client-exact-query-response".to_owned(),

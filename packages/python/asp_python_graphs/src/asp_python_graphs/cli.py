@@ -1,4 +1,4 @@
-"""CLI for ASP graph turbo."""
+"""CLI for the Graph-Turbo algorithm used by ``asp-python-graphs``."""
 
 from __future__ import annotations
 
@@ -20,10 +20,6 @@ from .turbo import DEFAULT_PROFILES, rank_frontier, render_compact, result_to_pa
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
-    if args.command == "resident":
-        from .resident_server import main as resident_main
-
-        return resident_main()
     packet = _load_packet(args.packet)
     if args.feedback:
         packet = merge_feedback_into_packet(
@@ -88,10 +84,6 @@ def _write_result(result: GraphResult, output_format: str) -> None:
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser(
-        "resident",
-        help="Serve the v1 Graph Turbo JSON-lines IPC protocol on stdin/stdout.",
-    )
     rank = commands.add_parser("rank", help="Rank one explicit Graph Turbo packet.")
     rank.add_argument(
         "packet",

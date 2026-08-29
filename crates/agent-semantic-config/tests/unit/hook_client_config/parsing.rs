@@ -358,7 +358,7 @@ entrySkillPath = "/tmp/asp-state/org/templates/ASP_ORG_SKILL.org"
 }
 
 #[test]
-fn template_routes_confirmed_bash_read_through_declared_action() {
+fn template_routes_dynamic_wrapped_read_through_declared_action() {
     let root = temp_root("hook-client-template-workspace-files");
     let config_path = root.join("hooks").join("config.toml");
     fs::create_dir_all(config_path.parent().expect("config parent")).expect("config dir");
@@ -370,7 +370,11 @@ fn template_routes_confirmed_bash_read_through_declared_action() {
         .iter()
         .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("confirmed Bash Read route");
-    assert_eq!(read_route.matcher.as_deref(), Some("Bash"));
+    assert!(read_route.matcher.is_none());
+    assert_eq!(
+        read_route.matcher_policies,
+        [agent_semantic_config::HookClientMatcherPolicy::WrappedCommand]
+    );
     assert_eq!(
         read_route.actions,
         [agent_semantic_config::HookClientActionKind::Read]

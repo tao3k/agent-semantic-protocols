@@ -19,7 +19,7 @@ def _resolution(state: str) -> dict[str, object]:
         "schemaId": "agent.semantic-protocols.provider-native-exact-projection",
         "schemaVersion": "1",
         "languageId": "rust",
-        "providerId": "agent.semantic-protocols.providers.rust.rs-harness",
+        "providerId": "agent.semantic-protocols.providers.rust.asp-rust",
         "ownerPath": "src/lib.rs",
         "requestedStructuralSelector": "rust://src/lib.rs#item/function/missing",
         "resolutionState": state,

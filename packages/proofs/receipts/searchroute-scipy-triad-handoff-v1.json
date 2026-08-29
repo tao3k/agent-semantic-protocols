@@ -6,13 +6,13 @@
   "receiptChainCanonicalization": "json-sort-keys-compact-utf8-omit-receipt-chain-id-v1",
   "selectorGate": {
     "languageId": "python",
-    "ownerPath": "packages/python/asp_graph_turbo/src/asp_graph_turbo/path_scipy_searchloop.py",
-    "structuralSelector": "python://src/asp_graph_turbo/path_scipy_searchloop.py#item/function/searchloop_scipy_route"
+    "ownerPath": "packages/python/asp_python_graphs/src/asp_python_graphs/path_scipy_searchloop.py",
+    "structuralSelector": "python://src/asp_python_graphs/path_scipy_searchloop.py#item/function/searchloop_scipy_route"
   },
   "pythonGate": {
-    "projectPath": "packages/python/asp_graph_turbo",
-    "testPath": "packages/python/asp_graph_turbo/tests/unit/test_path_scipy_searchloop.py",
-    "conformanceModule": "asp_graph_turbo.searchloop_scipy_conformance",
+    "projectPath": "packages/python/asp_python_graphs",
+    "testPath": "packages/python/asp_python_graphs/tests/unit/test_path_scipy_searchloop.py",
+    "conformanceModule": "asp_python_graphs.searchloop_scipy_conformance",
     "resultSchemaId": "agent.semantic-protocols.searchloop-scipy-conformance",
     "expectedCases": 3,
     "expectedPassed": 9
@@ -134,7 +134,7 @@
       {
         "artifactId": "code.searchloop-scipy-router",
         "artifactKind": "source-file",
-        "artifactPath": "packages/python/asp_graph_turbo/src/asp_graph_turbo/path_scipy_searchloop.py",
+        "artifactPath": "packages/python/asp_python_graphs/src/asp_python_graphs/path_scipy_searchloop.py",
         "canonicalization": "source-raw-lf-utf8-v1",
         "expectedSha256": "4bedf1bd1f0c6276f65f6a621e74faa813a9aebf63c750de7457fcc50cc0281e"
       },

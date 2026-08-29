@@ -9,7 +9,7 @@ static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 pub(super) fn create_pinned_release_fixture(root: &Path) -> PathBuf {
     let release_dir = root.join("release");
     let payload_dir = release_dir.join("payload");
-    let binary = payload_dir.join("rs-harness");
+    let binary = payload_dir.join("asp-rust");
     std::fs::create_dir_all(&payload_dir).expect("create release payload dir");
     std::fs::write(
         &binary,
@@ -18,20 +18,20 @@ pub(super) fn create_pinned_release_fixture(root: &Path) -> PathBuf {
     .expect("write fake provider binary");
     make_executable(&binary);
 
-    let archive = release_dir.join("rs-harness-x86_64-unknown-linux-gnu.tar.gz");
+    let archive = release_dir.join("asp-rust-x86_64-unknown-linux-gnu.tar.gz");
     let status = Command::new("tar")
         .arg("-czf")
         .arg(&archive)
         .arg("-C")
         .arg(&payload_dir)
-        .arg("rs-harness")
+        .arg("asp-rust")
         .status()
         .expect("create provider archive");
     assert!(status.success(), "tar failed with status {status}");
     let sha256 = sha256_file(&archive);
     std::fs::write(
-        release_dir.join("rs-harness-x86_64-unknown-linux-gnu.tar.gz.sha256"),
-        format!("{sha256}  rs-harness-x86_64-unknown-linux-gnu.tar.gz\n"),
+        release_dir.join("asp-rust-x86_64-unknown-linux-gnu.tar.gz.sha256"),
+        format!("{sha256}  asp-rust-x86_64-unknown-linux-gnu.tar.gz\n"),
     )
     .expect("write provider checksum");
     release_dir
@@ -52,12 +52,12 @@ fn create_gerbil_release_fixture(root: &Path, payload: &[u8]) -> PathBuf {
     let release_dir = root.join("release");
     let payload_dir = release_dir.join("payload");
     let bin_dir = payload_dir.join("bin");
-    let binary = bin_dir.join("gerbil-scheme-harness");
+    let binary = bin_dir.join("asp-gerbil-scheme");
     std::fs::create_dir_all(&bin_dir).expect("create Gerbil release bin dir");
     std::fs::write(&binary, payload).expect("write fake Gerbil provider binary");
     make_executable(&binary);
 
-    let archive = release_dir.join("gerbil-scheme-harness-x86_64-unknown-linux-gnu.tar.gz");
+    let archive = release_dir.join("asp-gerbil-scheme-x86_64-unknown-linux-gnu.tar.gz");
     let status = Command::new("tar")
         .arg("-czf")
         .arg(&archive)
@@ -69,8 +69,8 @@ fn create_gerbil_release_fixture(root: &Path, payload: &[u8]) -> PathBuf {
     assert!(status.success(), "tar failed with status {status}");
     let sha256 = sha256_file(&archive);
     std::fs::write(
-        release_dir.join("gerbil-scheme-harness-x86_64-unknown-linux-gnu.tar.gz.sha256"),
-        format!("{sha256}  gerbil-scheme-harness-x86_64-unknown-linux-gnu.tar.gz\n"),
+        release_dir.join("asp-gerbil-scheme-x86_64-unknown-linux-gnu.tar.gz.sha256"),
+        format!("{sha256}  asp-gerbil-scheme-x86_64-unknown-linux-gnu.tar.gz\n"),
     )
     .expect("write Gerbil provider checksum");
     release_dir
@@ -101,10 +101,10 @@ case "$url" in
 esac
 name="${url##*/}"
 case "$name" in
-  rs-harness-x86_64-unknown-linux-gnu.tar.gz|rs-harness-x86_64-unknown-linux-gnu.tar.gz.sha256)
+  asp-rust-x86_64-unknown-linux-gnu.tar.gz|asp-rust-x86_64-unknown-linux-gnu.tar.gz.sha256)
     cp "$ASP_TEST_RELEASE_DIR/$name" "$out"
     ;;
-  gerbil-scheme-harness-x86_64-unknown-linux-gnu.tar.gz|gerbil-scheme-harness-x86_64-unknown-linux-gnu.tar.gz.sha256)
+  asp-gerbil-scheme-x86_64-unknown-linux-gnu.tar.gz|asp-gerbil-scheme-x86_64-unknown-linux-gnu.tar.gz.sha256)
     cp "$ASP_TEST_RELEASE_DIR/$name" "$out"
     ;;
   *)

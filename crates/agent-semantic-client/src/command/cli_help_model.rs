@@ -3,6 +3,7 @@ use clap::{Arg, ArgAction, Command};
 const ROOT_COMMANDS: &[(&str, &str)] = &[
     ("providers", "Inspect registered language providers"),
     ("tools", "Inspect and run ASP support tools"),
+    ("wrap", "Run a command through the ASP client runtime"),
     ("cache", "Inspect and maintain ASP caches"),
     ("cloud", "Inspect optional cloud state"),
     ("hook", "Run and inspect host hook integration"),
@@ -156,7 +157,10 @@ fn schema_command() -> Command {
         "asp schema",
         "Materialize or verify shared language schema bundles",
         &[
-            ("materialize", "Publish Schema Manager-owned language bundles"),
+            (
+                "materialize",
+                "Publish Schema Manager-owned language bundles",
+            ),
             ("verify", "Verify Schema Manager-owned language bundles"),
         ],
     )

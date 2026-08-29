@@ -503,7 +503,7 @@ The DB layer stores =L2=. The render layer chooses =L0/L1=. Python and Julia rea
 - Language harnesses remain unchanged except for emitting richer validated facts.
 ** Phase 3: search-core extraction
 - Move route graph, action frontier, graph-router data model, and materializable action contracts into =agent-semantic-search-core=.
-- Keep Python =asp_graph_turbo= as an algorithm/runtime lane where appropriate, but make its packet boundary explicit and schema-validated.
+- Keep Python =asp_python_graphs= as an algorithm/runtime lane where appropriate, but make its packet boundary explicit and schema-validated.
 ** Phase 4: DB Engine extraction
 - Replace storage-specific assumptions with =agent-semantic-db-engine= traits and backend adapters.
 - Keep =agent-semantic-client-db= as a compatibility backend or migrate it into the engine crate deliberately.

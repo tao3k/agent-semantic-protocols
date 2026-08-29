@@ -27,7 +27,7 @@ pub(super) fn language_harnesses_have_shared_scenario_benchmark_schema_coverage(
     for schema_path in [
         SHARED_SCENARIO_BENCHMARK_SCHEMA,
         SHARED_AGENT_POLICY_ID_SCHEMA,
-        "schemas/gerbil-scheme-harness-bench.v1.schema.json",
+        "schemas/asp-gerbil-scheme-bench.v1.schema.json",
     ] {
         assert!(
             repo_root.join(schema_path).is_file(),
@@ -160,7 +160,7 @@ pub(super) fn julia_dataframes_sandtable_batch_execution_stays_inside_hard_gates
     let binary = agent_semantic_runtime::project_state_paths(&repo_root)
         .expect("resolve State Home provider paths")
         .runtime_bin_dir
-        .join("asp-julia-harness");
+        .join("asp-julia");
     if !binary.is_file() {
         eprintln!(
             "skip julia DataFrames execution gate: missing {}",
@@ -237,11 +237,11 @@ pub(super) fn python_sandtable_runner_does_not_resolve_language_harness_binaries
         "_rust_harness_entry",
         "_python_harness_entry",
         "_julia_harness_entry",
-        "command[0] == \"rs-harness\"",
+        "command[0] == \"asp-rust\"",
         "command[0] == \"asp-typescript\"",
-        "command[0] == \"asp-julia-harness\"",
+        "command[0] == \"asp-julia\"",
         "command[1] == \"python\"",
-        "\"py-harness\"",
+        "\"asp-python\"",
     ] {
         assert!(
             !runner.contains(forbidden),

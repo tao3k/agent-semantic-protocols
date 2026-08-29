@@ -31,8 +31,8 @@ def test_semantic_review_packet_accepts_reviewer_first_artifact() -> None:
         "packetId": "rust.review.packet",
         "producer": {
             "languageId": "rust",
-            "providerId": "rs-harness",
-            "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+            "providerId": "asp-rust",
+            "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
         },
         "project": {"root": "."},
         "summary": {
@@ -123,8 +123,8 @@ def test_semantic_review_packet_rejects_absolute_invariant_paths() -> None:
         "packetId": "rust.review.packet",
         "producer": {
             "languageId": "rust",
-            "providerId": "rs-harness",
-            "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+            "providerId": "asp-rust",
+            "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
         },
         "project": {"root": "."},
         "summary": {

@@ -61,7 +61,7 @@ def response(projection: dict) -> dict:
         "schemaId": "agent.semantic-protocols.provider-native-owner-search-response",
         "schemaVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "requestedOwnerPath": "src/lib.rs",
         "requestedProjectionMode": "complete-owner",
         "sourceContentDigest": "a" * 64,

@@ -27,7 +27,7 @@ def test_live_corpus_artifact_identity_is_path_independent() -> None:
         "artifactDigest": _DIGEST,
         "lockDigest": "d" * 64,
         "resourceId": "rust.tokio",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "languageId": "rust",
         "builderId": "asp-live-corpus",
         "git": {

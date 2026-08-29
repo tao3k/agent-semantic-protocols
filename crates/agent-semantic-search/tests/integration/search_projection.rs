@@ -9,7 +9,7 @@ fn packet() -> SemanticSearchPacketV1 {
         "schemaId": "agent.semantic-protocols.semantic-search-packet",
         "schemaVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "view": "owner",
         "query": "src/lib.rs",
         "items": [],

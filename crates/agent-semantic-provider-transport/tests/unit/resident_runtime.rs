@@ -13,7 +13,7 @@ fn digest(byte: char) -> String {
 
 fn receipt() -> ProviderRuntimeContractReceipt {
     ProviderRuntimeContractReceipt::new(
-        "rs-harness",
+        "asp-rust",
         "rust",
         digest('a'),
         digest('b'),

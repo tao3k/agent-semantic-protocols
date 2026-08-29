@@ -23,7 +23,7 @@ reference_patterns = [
   "graph_seed_decision",
   "graph_selector_seed_projection",
   "graph_topology_projection",
-  "graph_turbo_resident_protocol",
+  "asp_python_graphs_session",
   "integration_test",
   "lexical_search_frame",
   "mod",

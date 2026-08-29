@@ -351,8 +351,8 @@ def _rust_review_packet() -> dict[str, Any]:
         "packetId": "rust.review.packet",
         "producer": {
             "languageId": "rust",
-            "providerId": "rs-harness",
-            "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+            "providerId": "asp-rust",
+            "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
         },
         "project": {"root": "."},
         "summary": {

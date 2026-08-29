@@ -35,7 +35,7 @@ def test_cli_compares_dev_log_trace_sessions(tmp_path: Path) -> None:
                 "--trace-language-id",
                 "rust",
                 "--trace-provider-id",
-                "rs-harness",
+                "asp-rust",
                 "--scenario-id",
                 "rust.failure-frontier-trace-cli",
                 "--language",

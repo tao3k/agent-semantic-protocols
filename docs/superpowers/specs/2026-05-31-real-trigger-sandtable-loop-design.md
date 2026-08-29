@@ -8,7 +8,7 @@ Status: design-approved
 The sandtable should capture one realistic agent exploration loop before it
 becomes an edit. The first target is a Rust/Tokio scenario: start Codex with a
 large real Rust project and a feature-change intent, let the agent explore with
-`rs-harness search`, then stop before implementation. The artifact we need is
+`asp-rust search`, then stop before implementation. The artifact we need is
 the search flow, not the code edit.
 
 This closes the gap between hand-written replay scenarios and actual agent
@@ -67,7 +67,7 @@ It records only the information needed to judge the search flow:
 - project identity and workdir, for example Tokio from the Cargo registry or a
   configured checkout;
 - the user intent that launched exploration;
-- every accepted `rs-harness search ...` command before editing starts;
+- every accepted `asp-rust search ...` command before editing starts;
 - every denied raw read or broad raw search with its hook guide;
 - subagent search requests and their compact receipts;
 - step metrics: elapsed milliseconds, stdout bytes, stderr bytes, and line
@@ -90,7 +90,7 @@ prime -> focused search -> owner/items -> tests -> ingest -> hook deny guide
 
 The first Rust/Tokio replay should cover:
 
-- `rs-harness search prime --workspace . --view seeds`
+- `asp-rust search prime --workspace . --view seeds`
 - one or more focused text/owner/dependency searches selected from prime;
 - an owner/items follow-up for a large or public owner;
 - a tests follow-up for the selected owner;

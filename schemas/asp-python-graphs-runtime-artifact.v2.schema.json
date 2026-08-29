@@ -1,24 +1,18 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "agent.semantic-protocols.asp-python-graphs-runtime-artifact.v1",
+  "$id": "agent.semantic-protocols.asp-python-graphs-runtime-artifact.v2",
   "title": "ASP Python Graphs immutable runtime artifact descriptor",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schemaId",
-    "schemaVersion",
-    "artifactKind",
-    "protocolId",
-    "protocolVersion",
-    "executionArtifactLocator",
-    "commandArguments",
-    "contentDigest",
-    "executionCommandDigest",
-    "artifactMetadataDigest"
+    "schemaId", "schemaVersion", "artifactKind", "protocolId", "protocolVersion",
+    "executionArtifactLocator", "commandArguments", "contentDigest",
+    "executionCommandDigest", "artifactMetadataDigest", "publicationGeneration",
+    "publicationNonce"
   ],
   "properties": {
     "schemaId": { "const": "agent.semantic-protocols.asp-python-graphs-runtime-artifact" },
-    "schemaVersion": { "const": "1" },
+    "schemaVersion": { "const": "2" },
     "artifactKind": { "const": "standalone-executable" },
     "protocolId": { "const": "asp.python.graphs" },
     "protocolVersion": { "const": "1" },
@@ -30,12 +24,11 @@
     },
     "contentDigest": { "$ref": "#/$defs/digest" },
     "executionCommandDigest": { "$ref": "#/$defs/digest" },
-    "artifactMetadataDigest": { "$ref": "#/$defs/digest" }
+    "artifactMetadataDigest": { "$ref": "#/$defs/digest" },
+    "publicationGeneration": { "type": "integer", "minimum": 1 },
+    "publicationNonce": { "type": "string", "minLength": 1 }
   },
   "$defs": {
-    "digest": {
-      "type": "string",
-      "pattern": "^blake3-256:[0-9a-fA-F]{64}$"
-    }
+    "digest": { "type": "string", "pattern": "^blake3-256:[0-9a-fA-F]{64}$" }
   }
 }

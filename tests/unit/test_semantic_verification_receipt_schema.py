@@ -28,9 +28,9 @@ def test_verification_receipt_schema_accepts_cargo_check_adapter_receipt() -> No
             "receiptId": "rust.cargo-check.src-model",
             "producer": {
                 "languageId": "rust",
-                "providerId": "rs-harness",
+                "providerId": "asp-rust",
                 "adapterId": "rust.cargo-check",
-                "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+                "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
             },
             "project": {
                 "name": "rust-lang-project-harness",

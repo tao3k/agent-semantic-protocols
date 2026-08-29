@@ -91,6 +91,7 @@ fn process_bound_no_agent_assignment_bypasses_all_hook_policy() {
     for command in [
         "ASP_NO_AGENT=1 cargo test -p agent-semantic-hook",
         "/usr/bin/env ASP_NO_AGENT=1 asp rust search pipe owner",
+        "export ASP_NO_AGENT=1; asp rust search pipe owner",
         "export ASP_NO_AGENT=1; exec asp rust query --selector rust://owner",
     ] {
         let decision = classify_hook_scenario(
@@ -115,11 +116,10 @@ fn process_bound_no_agent_assignment_bypasses_all_hook_policy() {
 }
 
 #[test]
-fn text_or_non_exec_assignment_cannot_claim_no_agent_authority() {
+fn text_or_late_assignment_cannot_claim_no_agent_authority() {
     let config = ClientHookConfig::default();
     for command in [
         "printf 'ASP_NO_AGENT=1 cargo test'",
-        "export ASP_NO_AGENT=1; cargo test -p agent-semantic-hook",
         "printf warmup; ASP_NO_AGENT=1 cargo test -p agent-semantic-hook",
     ] {
         let decision = classify_hook_scenario(

@@ -14,6 +14,7 @@
       "provider-language-projection-batch-request.schema.json",
       "provider-language-projection-batch-response.schema.json",
       "provider-workspace-install.schema.json",
+      "asp-python-graphs-session.v1.schema.json",
       "language-schema-bundle-receipt.schema.json"
     ],
     "client-protocol": [
@@ -30,7 +31,8 @@
       "asp-client-owner-search-request.schema.json",
       "asp-client-workspace-source-mutation.schema.json",
       "asp-client-cancellation-probe-request.schema.json",
-      "asp-client-cancellation-probe-response.schema.json"
+      "asp-client-cancellation-probe-response.schema.json",
+      "asp-client-graphs-timeline-request.v1.schema.json"
     ],
     "project-resolution": [
       "provider-project-resolution-request.schema.json",
@@ -274,7 +276,7 @@
       "familyId": "asp.schema-family.semantic-graph-turbo",
       "membershipOverrides": {
         "includeSchemaPaths": [
-          "schemas/graph-turbo-resident-server.v1.schema.json"
+          "schemas/asp-python-graphs-session.v1.schema.json"
         ]
       },
       "definitionSchemaPath": "schemas/semantic-graph-turbo-definitions.v1.schema.json",
@@ -454,6 +456,11 @@
           "active-asp-artifact-"
         ]
       },
+      "membershipOverrides": {
+        "includeSchemaPaths": [
+          "schemas/asp-python-graphs-runtime-artifact.v2.schema.json"
+        ]
+      },
       "definitionSchemaPath": "schemas/semantic-artifact-definitions.v1.schema.json",
       "definitionVisibility": "public"
     },
@@ -597,7 +604,8 @@
       },
       "membershipOverrides": {
         "includeSchemaPaths": [
-          "schemas/asp.activated-ranker.v1.schema.json"
+          "schemas/asp.activated-ranker.v1.schema.json",
+          "schemas/asp-gerbil-scheme-bench.v1.schema.json"
         ]
       }
     },

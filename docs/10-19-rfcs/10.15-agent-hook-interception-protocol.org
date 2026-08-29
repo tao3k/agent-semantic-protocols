@@ -1222,8 +1222,8 @@ client hook config, the rendered flow must explicitly tell agents to use
 The root hook must not maintain a parser/query engine.  Selected source paths
 route back to the owning provider's =search owner <path> items --workspace
 <workspace-root> --view seeds= surface through =asp <language>=, while
-=providerId= records the native provider identity such as =rs-harness=,
-=asp-typescript=, or =py-harness=.  Hook routes must not expose provider
+=providerId= records the native provider identity such as =asp-rust=,
+=asp-typescript=, or =asp-python=.  Hook routes must not expose provider
 implementation binaries as the executable command surface.  =--from-hook
 direct-source-read= is reserved for audited low-priority exact windows after
 parser-owned search/frontier evidence has failed, and must not be advertised as
@@ -1349,8 +1349,8 @@ when the following implementation gates pass:
    - =cargo test -p agent-semantic-client=
    - schema tests for =agent-semantic-hook-decision= and
      =agent-semantic-hook-client-config=
-   - =rs-harness check --changed crates/agent-semantic-hook=
-   - =rs-harness check --changed crates/agent-semantic-client=
+   - =asp-rust check --changed crates/agent-semantic-hook=
+   - =asp-rust check --changed crates/agent-semantic-client=
 9. Direct-read payload field-family coverage is tested through the classifier
     and through the real =asp hook pre-tool= runtime for at least these Codex
     shapes: =path=, =file=, =absolutePath=, nested =resource.path=,

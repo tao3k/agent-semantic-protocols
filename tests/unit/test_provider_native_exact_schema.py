@@ -46,7 +46,7 @@ def _response(projection_mode: str) -> dict[str, object]:
         "schemaId": "agent.semantic-protocols.provider-native-exact-projection",
         "schemaVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "ownerPath": "crates/example/src/dispatch.rs",
         "requestedStructuralSelector": (
             "rust://crates/example/src/dispatch.rs#item/function/run"
@@ -67,7 +67,7 @@ def test_request_requires_explicit_v1_projection() -> None:
         "schemaId": "agent.semantic-protocols.provider-native-exact-request",
         "schemaVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "projectionKind": "source",
         "structuralSelector": (
             "rust://crates/example/src/dispatch.rs#item/function/run"

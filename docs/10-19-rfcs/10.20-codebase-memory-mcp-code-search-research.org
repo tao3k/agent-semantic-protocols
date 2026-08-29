@@ -186,7 +186,7 @@ metadata. Evidence from the current repository:
 - Rust owner search over =crates/agent-semantic-client-db/src/structural_index/packet.rs= returns structural selectors such as =rust://...#item/function/parse_dependency_rows= and marks line ranges only as display/source hints.
 - The same Rust structural packet owner exposes separate parsing paths for
   symbols, dependencies, and owners.
-- Python =asp_graph_turbo= already exposes production graph algorithm owners:
+- Python =asp-python-graphs= already exposes production graph algorithm owners:
   =pagerank.py= contains =graph_turbo_typed_personalized_pagerank=, and
   =diversity.py= contains =rank_nodes=.
 - =rank_nodes= ranks graph candidates with kind budgets, seen selector
@@ -896,7 +896,7 @@ Add semantic candidates as an input to the same search receipt instead of a
 separate workflow.
 
 ** R4: Python graph rank in the warm path
-Use =asp_graph_turbo= for typed personalized PageRank, diversity, query-token
+Use =asp-python-graphs= for typed personalized PageRank, diversity, query-token
 coverage repair, semantic-fact coverage repair, and frontier receipts.
 
 ** R5: Julia benchmark loop
@@ -1082,7 +1082,7 @@ ASP should treat graph as a typed evidence fabric, not one table pair:
 | Test/reachability | providers plus Python | "what validates this edit" evidence |
 | Runtime/action receipts | Rust/client/hook | what the agent already tried and why |
 | Docs/contracts | Org provider | decisions, RFCs, SDD contracts, writing evidence |
-| Ranking/execution | Python =asp_graph_turbo= | PageRank, diversity, frontiers, receipts |
+| Ranking/execution | Python =asp-python-graphs= | PageRank, diversity, frontiers, receipts |
 | Research/evaluation | Julia =AspGraphsSearch.jl= | algorithm studies, notebooks, ablations |
 
 This graph can be stronger because the edges have provenance. A Rust edge from
@@ -1142,15 +1142,15 @@ already separates those axes.
 
 * Python production algorithms
 Python is the right production runtime for graph execution because ASP already
-has =packages/python/asp_graph_turbo= and it can run practical graph algorithms
+has =packages/python/asp_python_graphs= and it can run practical graph algorithms
 over DB rows and receipt artifacts.
 
 Current evidence from ASP search shows real owners such as:
-- =src/asp_graph_turbo/pagerank.py=;
-- =src/asp_graph_turbo/diversity.py=;
-- =src/asp_graph_turbo/frontier_receipt.py=;
-- =src/asp_graph_turbo/algorithm_evidence.py=;
-- =src/asp_graph_turbo/evidence_reliability.py=.
+- =src/asp_python_graphs/pagerank.py=;
+- =src/asp_python_graphs/diversity.py=;
+- =src/asp_python_graphs/frontier_receipt.py=;
+- =src/asp_python_graphs/algorithm_evidence.py=;
+- =src/asp_python_graphs/evidence_reliability.py=.
 
 The Python implementation track should include:
 - typed personalized PageRank over provider/entity/test/doc nodes;

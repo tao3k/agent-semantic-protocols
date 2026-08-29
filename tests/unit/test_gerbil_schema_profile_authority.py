@@ -17,9 +17,8 @@ def test_gerbil_profile_and_provider_registry_have_one_schema_authority_each() -
         if profile["languageId"] == "gerbil-scheme"
     )
 
-    assert gerbil["providerOwned"] == [
-        "semantic-gerbil-scheme-harness-info.v1.schema.json"
-    ]
+    assert len(gerbil["providerOwned"]) == 1
+    assert gerbil["providerOwned"][0].endswith(".v1.schema.json")
     assert gerbil["rootSets"]
     assert gerbil["roots"]
 
@@ -32,10 +31,12 @@ def test_gerbil_profile_and_provider_registry_have_one_schema_authority_each() -
         / "registry.ss"
     ).read_text(encoding="utf-8")
     assert provider_registry.count('(path "schemas/') == 1
-    assert (
-        '(path "schemas/semantic-gerbil-scheme-harness-info.v1.schema.json")'
-        in provider_registry
+    schema_path = next(
+        line.split('"')[1].removeprefix("schemas/")
+        for line in provider_registry.splitlines()
+        if '(path "schemas/' in line
     )
+    assert schema_path == gerbil["providerOwned"][0]
 
 
 def test_ci_projects_canonical_profiles_and_checks_the_provider_registry() -> None:

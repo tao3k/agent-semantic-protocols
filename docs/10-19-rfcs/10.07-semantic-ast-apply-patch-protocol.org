@@ -186,7 +186,7 @@ already treats language providers as policy owners.  The acceptance gate for
 this crate is therefore:
 
 #+begin_src shell
-rs-harness check --changed crates/agent-semantic-client
+asp-rust check --changed crates/agent-semantic-client
 #+end_src
 
 If the crate touches hook integration, also run the existing
@@ -539,7 +539,7 @@ import organization, or semantic cleanups must be separate capabilities.
 ** Julia
 
 Julia AST patch support should use JuliaSyntax-derived facts and the same
-facade/provider contract as search and query.  The compiled =asp-julia-harness=
+facade/provider contract as search and query.  The compiled =asp-julia=
 owns provider identity; =julia-project-harness.jl= is only a source-provider
 development fallback.
 
@@ -615,7 +615,7 @@ patch dry-run and trusted AST patch apply.
 
 1. =asp install plugin --codex .= delegates to the
    existing =agent-semantic-hook= implementation.
-2. =rs-harness check --changed crates/agent-semantic-client= passes after the
+2. =asp-rust check --changed crates/agent-semantic-client= passes after the
    new crate is introduced.
 3. TypeScript dry-run can append one statement inside
    =renderSemanticSearchSeedPacket= from a compact query target without reading

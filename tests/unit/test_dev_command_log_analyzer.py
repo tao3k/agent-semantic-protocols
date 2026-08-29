@@ -14,7 +14,7 @@ from tools.dev_command_log_analyzer import load_command_events, render_summary  
 
 
 def test_dev_command_log_analyzer_sorts_by_session_ordinal(tmp_path: Path) -> None:
-    command_dir = tmp_path / "rust" / "rs-harness" / "commands"
+    command_dir = tmp_path / "rust" / "asp-rust" / "commands"
     command_dir.mkdir(parents=True)
     (command_dir / "2026-06-02T10-20-31Z-000002-b.jsonl").write_text(
         json.dumps(_event(2, "search/lexical", "metadata")) + "\n",
@@ -24,7 +24,7 @@ def test_dev_command_log_analyzer_sorts_by_session_ordinal(tmp_path: Path) -> No
         json.dumps(_event(1, "agent/guide", None)) + "\n",
         encoding="utf-8",
     )
-    fallback_dir = tmp_path / "python" / "py-harness" / "commands"
+    fallback_dir = tmp_path / "python" / "asp-python" / "commands"
     fallback_dir.mkdir(parents=True)
     (fallback_dir / "2026-06-02T10-20-32Z-000001-c.jsonl").write_text(
         json.dumps(_event(1, "search/lexical", "fallback", session_id="project-x", context="project-fallback"))
@@ -77,9 +77,9 @@ def _event(
         "parentEventId": "hook-parent-1",
         "hookRunId": "hook-run-1",
         "languageId": "rust",
-        "providerId": "rs-harness",
-        "binary": "rs-harness",
-        "argv": ["rs-harness"],
+        "providerId": "asp-rust",
+        "binary": "asp-rust",
+        "argv": ["asp-rust"],
         "cwd": "/repo",
         "projectRoot": "/repo",
         "projectRootHash": "0123456789abcdef",

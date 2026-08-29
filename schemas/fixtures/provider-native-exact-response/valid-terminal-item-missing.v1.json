@@ -2,7 +2,7 @@
   "schemaId": "agent.semantic-protocols.provider-native-exact-projection",
   "schemaVersion": "1",
   "languageId": "rust",
-  "providerId": "rs-harness",
+  "providerId": "asp-rust",
   "ownerPath": "src/live.rs",
   "requestedStructuralSelector": "rust://src/live.rs#item/function/definitely_missing",
   "resolutionState": "item-missing",

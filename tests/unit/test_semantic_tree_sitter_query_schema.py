@@ -16,7 +16,7 @@ def semantic_tree_sitter_query_packet() -> dict[str, Any]:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "method": "query",
         "projectRoot": ".",
         "grammarId": "tree-sitter-rust",

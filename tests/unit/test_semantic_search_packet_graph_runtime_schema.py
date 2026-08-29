@@ -100,7 +100,7 @@ class SemanticSearchPacketGraphRuntimeSchemaTests(unittest.TestCase):
     def test_search_packet_accepts_provider_package_extensions(self) -> None:
         packet = semantic_search_graph_runtime_minimal_packet()
         packet["languageId"] = "gerbil-scheme"
-        packet["providerId"] = "gerbil-scheme-harness"
+        packet["providerId"] = "asp-gerbil-scheme"
         packet["projectPackage"] = {
             "path": "gerbil.pkg",
             "name": "clan/poo",
@@ -120,7 +120,7 @@ class SemanticSearchPacketGraphRuntimeSchemaTests(unittest.TestCase):
                     "metaobject-protocol",
                     "protocols",
                 ],
-                "fields": {"provider": "gerbil-scheme-harness"},
+                "fields": {"provider": "asp-gerbil-scheme"},
             }
         ]
 

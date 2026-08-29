@@ -52,7 +52,7 @@ fn assert_success(output: &Output, operation: &str) {
 async fn publish_pending_runtime(state_home: &Path) {
     let source = asp_binary();
     let target = state_home.join("runtime/bin/asp");
-    publish_runtime_artifact(state_home, &source, &target, "dev", None)
+    publish_runtime_artifact(state_home, &source, &target, "dev")
         .await
         .expect("publish immutable Runtime artifact activation");
     assert!(
@@ -348,7 +348,6 @@ async fn activation_child_exit_terminalizes_and_preserves_pending_without_pollin
         &source,
         &state_home.join("runtime/bin/asp"),
         "dev",
-        None,
     )
     .await
     .expect("publish exiting Runtime candidate");

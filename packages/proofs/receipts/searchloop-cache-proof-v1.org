@@ -176,7 +176,7 @@ uv run --project packages/python/tools --frozen \
   pytest packages/python/tools/tests/test_axle_lean_audit.py -q
 
 uv run --project languages/python-lang-project-harness --frozen \
-  py-harness check --full .
+  asp-python check --full .
 
 git diff --check
 #+end_src

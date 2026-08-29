@@ -23,15 +23,15 @@ signals=control-flow.decision-stack:5,control-flow.traversal-knot:4,native-idiom
 samples=runProtocolCli:control-flow.decision-stack,sourceTextHits:control-flow.traversal-knot,ownersForHits:native-idiom.manual-transform-loop
 claim=compact-signal-id-visible
 
-[software-criterion-compact-parity] language=python provider=py-harness project=languages/python-lang-project-harness
-command=uv run py-harness check --full .
+[software-criterion-compact-parity] language=python provider=asp-python project=languages/python-lang-project-harness
+command=uv run asp-python check --full .
 metrics=exitCode=0,packetBytes=499
 signals=control-flow.broad-linear-phase:1
 samples=run_protocol_cli:control-flow.broad-linear-phase
 claim=compact-signal-id-visible
 
-[software-criterion-compact-parity] language=rust provider=rs-harness project=languages/rust-lang-project-harness
-command=target/debug/rs-harness check --full .
+[software-criterion-compact-parity] language=rust provider=asp-rust project=languages/rust-lang-project-harness
+command=target/debug/asp-rust check --full .
 metrics=exitCode=1,packetBytes=5256
 signals=control-flow.traversal-knot:1,native-idiom.manual-transform-loop:3
 samples=project_collection_field_owners:control-flow.traversal-knot,semantic_fact_owners:native-idiom.manual-transform-loop

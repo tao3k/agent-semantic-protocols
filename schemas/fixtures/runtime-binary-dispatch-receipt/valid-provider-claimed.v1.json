@@ -6,7 +6,7 @@
   "childSessionId": "child-session-1",
   "binaryId": "rust-provider",
   "profile": "provider-internal",
-  "providerId": "rs-harness",
+  "providerId": "asp-rust",
   "languageId": "rust",
   "providerGeneration": "generation-1",
   "artifactDigest": "blake3-256:provider-artifact",

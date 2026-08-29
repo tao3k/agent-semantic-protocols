@@ -121,7 +121,7 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
         project_root: project_root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
         schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
-        selector_source: "rs-harness".into(),
+        selector_source: "asp-rust".into(),
         file_hashes: vec![ClientCacheFileHash {
             path: fixture_owner_path.clone(),
             sha256: fixture_sha256,
@@ -132,7 +132,7 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
             relations: Vec::new(),
             relative_path: fixture_owner_path.clone(),
             language_id: rust_language_id.clone(),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             text: String::from_utf8(fixture_source.clone())
                 .expect("fixture source bytes are UTF-8"),
             selectors: Vec::new(),
@@ -556,7 +556,7 @@ fn code_search_merkle_memory_warm_path_is_a_strong_gate() {
         owners: vec![ClientDbSourceIndexOwner {
             owner_path: "src/lib.rs".into(),
             language_id: Some("rust".into()),
-            provider_id: Some("rs-harness".into()),
+            provider_id: Some("asp-rust".into()),
             source_kind: "file".into(),
             line_count: Some(1),
             query_keys: vec!["needle".into()],

@@ -1,4 +1,5 @@
 use agent_semantic_content_identity::{ArtifactJson, hash_normalized_json};
+use referencing::{Retrieve, Uri};
 use serde_json::Value;
 
 use crate::{SearchProjectionError, SemanticSearchPacketV1};
@@ -21,11 +22,66 @@ impl GraphTurboEvaluationRequest {
         })?;
         require_exact_string(object, "schemaId", SEMANTIC_GRAPH_TURBO_REQUEST_SCHEMA_ID)?;
         require_exact_string(object, "schemaVersion", "1")?;
+        let schema: Value = serde_json::from_str(include_str!(
+            "../../../schemas/semantic-graph-turbo-request.v1.schema.json"
+        ))
+        .map_err(|error| {
+            SearchProjectionError::InvalidPacket(format!(
+                "graph-turbo request schema decode failed: {error}"
+            ))
+        })?;
+        let validator = jsonschema::options()
+            .with_retriever(EmbeddedSchemaRetriever)
+            .build(&schema)
+            .map_err(|error| {
+                SearchProjectionError::InvalidPacket(format!(
+                    "graph-turbo request schema compile failed: {error}"
+                ))
+            })?;
+        validator.validate(&value).map_err(|error| {
+            SearchProjectionError::InvalidPacket(format!(
+                "graph-turbo request schema validation failed: {error}"
+            ))
+        })?;
         Ok(Self { value })
     }
 
     pub fn into_value(self) -> Value {
         self.value
+    }
+}
+
+struct EmbeddedSchemaRetriever;
+
+impl Retrieve for EmbeddedSchemaRetriever {
+    fn retrieve(
+        &self,
+        uri: &Uri<String>,
+    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        let schema = if uri
+            .as_str()
+            .ends_with("semantic-graph-turbo-definitions.v1.schema.json")
+        {
+            include_str!("../../../schemas/semantic-graph-turbo-definitions.v1.schema.json")
+        } else if uri
+            .as_str()
+            .ends_with("semantic-source-location.v1.schema.json")
+        {
+            include_str!("../../../schemas/semantic-source-location.v1.schema.json")
+        } else if uri
+            .as_str()
+            .ends_with("source-snapshot-evidence.v1.schema.json")
+        {
+            include_str!("../../../schemas/source-snapshot-evidence.v1.schema.json")
+        } else if uri
+            .as_str()
+            .ends_with("semantic-definitions.v1.schema.json")
+        {
+            include_str!("../../../schemas/semantic-definitions.v1.schema.json")
+        } else {
+            return Err(format!("unsupported graph-turbo schema resource: {uri}").into());
+        };
+        serde_json::from_str(schema).map_err(|error| error.into())
     }
 }
 

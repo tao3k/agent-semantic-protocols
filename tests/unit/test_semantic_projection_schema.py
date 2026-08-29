@@ -59,7 +59,7 @@ def test_projection_authority_digest_is_mandatory(validator, fixture, field):
 
 def test_implementation_named_provider_is_rejected(validator, fixture):
     candidate = copy.deepcopy(fixture)
-    candidate["providerId"] = "rs-harness"
+    candidate["providerId"] = "asp-rust"
     assert list(validator.iter_errors(candidate))
 
 

@@ -22,7 +22,7 @@ fn search_flow_source_index_owner_item_graph_chain_is_executable() {
         candidates: vec![SearchPipeSourceIndexCandidate {
             path: "src/dynamic_search/owner_items/core.rs".to_string(),
             language_id: Some("rust".to_string()),
-            provider_id: Some("rs-harness".to_string()),
+            provider_id: Some("asp-rust".to_string()),
             source_kind: "source".to_string(),
             line_count: Some(240),
             query_keys: vec![

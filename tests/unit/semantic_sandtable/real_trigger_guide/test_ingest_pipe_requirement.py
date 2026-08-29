@@ -38,7 +38,7 @@ class RealTriggerIngestPipeGuideTests(unittest.TestCase):
                                         "'languageIds': ['rust'],"
                                         "'routes': [{"
                                         "'kind': 'owner',"
-                                        "'argv': ['rs-harness', 'search', 'owner', 'src/lib.rs', '.']"
+                                        "'argv': ['asp-rust', 'search', 'owner', 'src/lib.rs', '.']"
                                         "}],"
                                         "'message': 'Use owner search.'"
                                         "}}))"

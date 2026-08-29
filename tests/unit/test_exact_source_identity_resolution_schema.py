@@ -15,7 +15,7 @@ def test_identity_incomplete_is_a_typed_exact_resolution_state() -> None:
         "schemaId": "agent.semantic-protocols.provider-native-exact-projection",
         "schemaVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "requestedStructuralSelector": "rust://src/cli.rs#item/method/parse",
         "resolutionState": "identity-incomplete",
         "reasonKind": "canonical-item-scope-required",

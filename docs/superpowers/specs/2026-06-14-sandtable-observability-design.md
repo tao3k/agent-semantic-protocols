@@ -251,7 +251,7 @@ uv run --project packages/python/tools --frozen python -m tools.semantic_sandtab
   --agent claude-sdk \
   --scenario-id rust.tokio-agent-observability \
   --language rust \
-  --provider rs-harness \
+  --provider asp-rust \
   --project-name tokio \
   --intent "Explain how Tokio wires AsyncRead readiness to runtime IO drivers" \
   --trace-root .cache/agent-semantic-protocol/sandtable-sessions \
@@ -376,7 +376,7 @@ Graph-turbo calibration may consume this packet only through an explicit
 command, for example:
 
 ```sh
-uv run --project packages/python/asp_graph_turbo --frozen graph-turbo calibrate \
+uv run --project packages/python/asp_python_graphs --frozen graph-turbo calibrate \
   --feedback reports/graph-turbo-feedback.json \
   --output reports/graph-turbo-calibration.json
 ```

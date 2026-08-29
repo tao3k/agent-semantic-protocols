@@ -510,7 +510,7 @@ workspace generation.  A mismatch is a stale-continuation failure and MUST be
 rejected before Python executes.  Python may return only candidate evidence;
 it cannot mint proved/asserted authority or advance semantic hop accounting.
 
-The daemon status receipt carries a typed =graphTurboResident= child status:
+The daemon status receipt carries a typed =aspPythonGraphs= child status:
 =state=, =processId=, =runtimeArtifact=, =executionCommandDigest=, and =reason=.
 The status is capability-scoped.  A missing published Python artifact leaves
 the ASP daemon healthy while Graph Turbo is =unavailable=.  Handshake failure,
@@ -519,7 +519,7 @@ the status receipt.  Authority forgery and contradictory runtime ownership
 remain fail-closed protocol errors.
 
 The configured runtime artifact MUST be an already installed Python
-interpreter/environment containing =asp_graph_turbo=.  Daemon request handling
+interpreter/environment containing =asp-python-graphs=.  Daemon request handling
 MUST NOT execute =uv=, =pip=, or another package manager.  The daemon owns one
 JSONL child, serializes transport access to it, and sends a typed shutdown
 before its own diagnostic lane drains.  That child multiplexes graph sessions;
@@ -546,15 +546,14 @@ the resolved artifact digest.  An unset, non-absolute, or unresolvable value is
 reported as capability =unavailable=; it is never replaced by an implicit
 =python= lookup on =PATH=.
 
-An explicit =ASP_GRAPH_TURBO_PYTHON= value is also the publication input for
-the sole resident configuration contract.  After validation, the supervisor
-atomically publishes that locator as
-=runtime/server/graph-turbo-resident-config.v1.json=.  A later reconcile with
-no environment value MUST read this same v1 document and preserve the exact
-configured execution locator.  Unknown schema versions, malformed documents,
-and invalid locators fail closed; they MUST NOT trigger =PATH= discovery or a
-second resident contract.  This durable document owns process-launch
-configuration only.  It cannot establish, replace, or authorize the per-call
+The asp-python-graphs Runtime artifact is the sole publication input for the
+server-owned service contract.  The Runtime Server validates and atomically
+publishes that artifact; later requests consume the exact verified locator
+through the Runtime Server and its bounded gRPC session.  Unknown schema
+versions, malformed documents, and invalid locators fail closed; they MUST NOT
+trigger =PATH= discovery, a standalone graph-turbo executable, or a second
+provider contract.  The durable artifact owns process-launch configuration
+only.  It cannot establish, replace, or authorize the per-call
 GraphSession identity carried by =sessionId=, =nodeId=, =snapshotDigest=,
 =workspaceGenerationRootDigest=, and =routeId=.
 

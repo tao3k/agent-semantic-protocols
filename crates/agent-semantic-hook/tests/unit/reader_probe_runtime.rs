@@ -66,25 +66,37 @@ fn non_macos_backend_fails_closed() {
 }
 
 #[test]
-fn profile_sentinel_is_reused_as_one_stable_inode() {
+fn profile_permission_sentinels_are_reused_as_stable_inodes() {
     #[cfg(target_os = "macos")]
     {
         use std::os::unix::fs::MetadataExt;
 
         let root = super::materialize_probe_root().expect("probe root");
-        let first = super::materialize_profile_sentinel(&root, "src/lib.rs")
-            .expect("first profile sentinel");
-        let first_inode = std::fs::metadata(&first).expect("first metadata").ino();
-        let second = super::materialize_profile_sentinel(&root, "another/path.rs")
-            .expect("second profile sentinel");
-        let second_inode = std::fs::metadata(&second).expect("second metadata").ino();
-        assert_eq!(first, second);
-        assert_eq!(first_inode, second_inode);
+        let first = super::materialize_profile_sentinels(&root, "src/lib.rs")
+            .expect("first profile sentinels");
+        let first_readable_inode = std::fs::metadata(&first.readable)
+            .expect("first readable metadata")
+            .ino();
+        let first_denied_inode = std::fs::metadata(&first.denied)
+            .expect("first denied metadata")
+            .ino();
+        let second = super::materialize_profile_sentinels(&root, "another/path.rs")
+            .expect("second profile sentinels");
+        assert_eq!(first.readable, second.readable);
+        assert_eq!(first.denied, second.denied);
+        assert_eq!(
+            first_readable_inode,
+            std::fs::metadata(second.readable).unwrap().ino()
+        );
+        assert_eq!(
+            first_denied_inode,
+            std::fs::metadata(second.denied).unwrap().ino()
+        );
     }
 }
 
 #[test]
-fn concurrent_first_materialization_is_atomic_and_content_verified() {
+fn concurrent_permission_sentinel_materialization_is_stable() {
     #[cfg(target_os = "macos")]
     {
         let _test_guard = cold_probe_test_guard();
@@ -93,27 +105,33 @@ fn concurrent_first_materialization_is_atomic_and_content_verified() {
             .map(|_| {
                 let root = root.path().to_owned();
                 std::thread::spawn(move || {
-                    let interposer =
-                        super::materialize_interposer(&root).expect("materialize interposer");
-                    let sentinel = super::materialize_profile_sentinel(&root, "src/lib.rs")
-                        .expect("materialize sentinel");
-                    (interposer, sentinel)
+                    super::materialize_profile_sentinels(&root, "src/lib.rs")
+                        .expect("materialize permission sentinels")
                 })
             })
             .collect::<Vec<_>>();
-        let expected_interposer = blake3::hash(crate::reader_probe_interposer_bytes()).to_hex();
         for worker in workers {
-            let (interposer, sentinel) = worker.join().expect("materialization worker");
+            use std::os::unix::fs::PermissionsExt as _;
+
+            let sentinels = worker.join().expect("materialization worker");
             assert_eq!(
-                blake3::hash(&std::fs::read(interposer).expect("read interposer")).to_hex(),
-                expected_interposer
+                std::fs::metadata(&sentinels.readable)
+                    .expect("readable sentinel metadata")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o400
             );
             assert_eq!(
-                std::fs::metadata(sentinel)
-                    .expect("sentinel metadata")
-                    .len(),
-                0
+                std::fs::metadata(&sentinels.denied)
+                    .expect("denied sentinel metadata")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o000
             );
+            assert_eq!(std::fs::metadata(sentinels.readable).unwrap().len(), 0);
+            assert_eq!(std::fs::metadata(sentinels.denied).unwrap().len(), 0);
         }
     }
 }
@@ -179,8 +197,8 @@ fn concurrent_cold_miss_launches_exactly_one_probe() {
     {
         let _test_guard = cold_probe_test_guard();
         let probe_root = super::materialize_probe_root().expect("probe root");
-        super::materialize_interposer(&probe_root).expect("prime interposer");
-        super::materialize_profile_sentinel(&probe_root, "fixture.rs").expect("prime sentinel");
+        super::materialize_profile_sentinels(&probe_root, "fixture.rs")
+            .expect("prime permission sentinels");
         let cache = cache_fixture();
         super::prepare_dynamic_cache_root(cache.path()).expect("prime cache namespace");
         let fixture_path = fixture();
@@ -210,14 +228,9 @@ fn concurrent_cold_miss_launches_exactly_one_probe() {
             "observations={observations:#?}"
         );
         assert!(
-            observations.iter().all(|observation| {
-                observation.access == ReaderProbeAccess::Read
-                    || (observation.access == ReaderProbeAccess::Unknown
-                        && matches!(
-                            observation.terminal.as_str(),
-                            "reader-behavior-cache-busy" | "probe-timeout"
-                        ))
-            }),
+            observations
+                .iter()
+                .all(|observation| observation.access == ReaderProbeAccess::Read),
             "observations={observations:#?}"
         );
         let eventual_read = observe_one(
@@ -264,7 +277,7 @@ fn write_behavior_is_never_published_as_reader_cache() {
             );
             assert!(matches!(
                 observation.access,
-                ReaderProbeAccess::NotRead | ReaderProbeAccess::Unknown
+                ReaderProbeAccess::Unknown
             ));
             assert!(!observation.cache_hit);
         }

@@ -5,13 +5,13 @@ use crate::exact_selector_merkle::{ExactProjectionModeV1, canonical_content_dige
 fn builder_binds_source_parser_facts_and_projection_bytes() {
     use crate::canonical_item_identity::{CanonicalItemIdentity, CanonicalItemSelector};
 
-    let parser_digest = canonical_content_digest(b"parser", &[b"rs-harness"]);
+    let parser_digest = canonical_content_digest(b"parser", &[b"asp-rust"]);
     let query_pack_digest = canonical_content_digest(b"query-pack", &[b"rust"]);
     let structural_selector = "rust://src/lib.rs#item/function/example";
     let language_id =
         crate::exact_selector_projection_packet::ProjectionPacketLanguageIdV1::from("rust");
     let provider_id =
-        crate::exact_selector_projection_packet::ProjectionPacketProviderIdV1::from("rs-harness");
+        crate::exact_selector_projection_packet::ProjectionPacketProviderIdV1::from("asp-rust");
     let owner_path =
         crate::exact_selector_projection_packet::ProjectionPacketOwnerPathV1::from("src/lib.rs");
     let typed_structural_selector =

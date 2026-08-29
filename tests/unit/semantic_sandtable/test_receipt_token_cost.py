@@ -34,7 +34,7 @@ class ReceiptTokenCostValidationTests(unittest.TestCase):
                             {
                                 "id": "prime",
                                 "kind": "search",
-                                "argv": ["rs-harness", "search", "prime", "."],
+                                "argv": ["asp-rust", "search", "prime", "."],
                                 "metrics": {
                                     "elapsedMs": 2,
                                     "stdoutBytes": 20,
@@ -51,7 +51,7 @@ class ReceiptTokenCostValidationTests(unittest.TestCase):
                                 "id": "owner",
                                 "kind": "search",
                                 "argv": [
-                                    "rs-harness",
+                                    "asp-rust",
                                     "search",
                                     "owner",
                                     "src/lib.rs",

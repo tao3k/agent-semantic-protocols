@@ -65,7 +65,7 @@ fn contract_receipt_rejects_duplicate_operations() {
 #[test]
 fn http_server_contract_is_a_first_class_runtime_transport() {
     let receipt = ProviderRuntimeContractReceipt::new(
-        "julia-lang-project-harness",
+        "asp-julia",
         "julia",
         "blake3-256:3333333333333333333333333333333333333333333333333333333333333333",
         "blake3-256:4444444444444444444444444444444444444444444444444444444444444444",

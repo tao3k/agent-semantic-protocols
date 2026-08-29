@@ -44,7 +44,7 @@ def test_native_scenario_rejects_live_corpus_evidence() -> None:
 
 def test_scenario_rejects_legacy_provider_and_transport_namespaces() -> None:
     invalid_provider = copy.deepcopy(NATIVE)
-    invalid_provider["authority"]["providerId"] = "rs-harness"
+    invalid_provider["authority"]["providerId"] = "asp-rust"
     assert list(VALIDATOR.iter_errors(invalid_provider))
 
     invalid_transport = copy.deepcopy(NATIVE)

@@ -1,19 +1,19 @@
-//! Owns the Runtime Server's in-memory Graph Turbo resident status signal.
+//! Owns the Runtime Server's in-memory asp-python-graphs status signal.
 
 use std::sync::{Arc, RwLock};
 
 use tokio::sync::watch;
 
-use crate::runtime_server_control::{GraphTurboResidentState, GraphTurboResidentStatus};
+use crate::runtime_server_control::{AspPythonGraphsState, AspPythonGraphsStatus};
 
 #[derive(Clone)]
-pub struct GraphTurboResidentStatusHandle {
-    value: Arc<RwLock<GraphTurboResidentStatus>>,
+pub struct AspPythonGraphsStatusHandle {
+    value: Arc<RwLock<AspPythonGraphsStatus>>,
     generation: watch::Sender<u64>,
 }
 
-impl GraphTurboResidentStatusHandle {
-    pub fn new(status: GraphTurboResidentStatus) -> Self {
+impl AspPythonGraphsStatusHandle {
+    pub fn new(status: AspPythonGraphsStatus) -> Self {
         let (generation, _) = watch::channel(0);
         Self {
             value: Arc::new(RwLock::new(status)),
@@ -21,34 +21,34 @@ impl GraphTurboResidentStatusHandle {
         }
     }
 
-    pub fn snapshot(&self) -> GraphTurboResidentStatus {
+    pub fn snapshot(&self) -> AspPythonGraphsStatus {
         self.value
             .read()
             .map(|status| status.clone())
-            .unwrap_or_else(|_| GraphTurboResidentStatus {
-                state: GraphTurboResidentState::Failed,
+            .unwrap_or_else(|_| AspPythonGraphsStatus {
+                state: AspPythonGraphsState::Failed,
                 process_id: None,
                 runtime_artifact: None,
                 execution_command_digest: None,
-                reason: Some("Graph Turbo resident status lock poisoned".to_owned()),
+                reason: Some("asp-python-graphs status lock poisoned".to_owned()),
             })
     }
 
-    pub fn update(&self, status: GraphTurboResidentStatus) {
+    pub fn update(&self, status: AspPythonGraphsStatus) {
         if let Ok(mut current) = self.value.write() {
             *current = status;
             self.advance_generation();
         }
     }
 
-    pub fn mutate(&self, update: impl FnOnce(&mut GraphTurboResidentStatus)) {
+    pub fn mutate(&self, update: impl FnOnce(&mut AspPythonGraphsStatus)) {
         if let Ok(mut current) = self.value.write() {
             update(&mut current);
             self.advance_generation();
         }
     }
 
-    pub(crate) fn shared(&self) -> Arc<RwLock<GraphTurboResidentStatus>> {
+    pub(crate) fn shared(&self) -> Arc<RwLock<AspPythonGraphsStatus>> {
         Arc::clone(&self.value)
     }
 

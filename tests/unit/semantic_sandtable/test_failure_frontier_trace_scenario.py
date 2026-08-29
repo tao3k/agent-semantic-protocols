@@ -90,7 +90,7 @@ def _write_session_filter_scenario(path: Path, trace_root: Path) -> None:
                         "baselineTraceSessionId": "baseline",
                         "candidateTraceSessionId": "candidate",
                         "traceLanguageId": "rust",
-                        "traceProviderId": "rs-harness",
+                        "traceProviderId": "asp-rust",
                         "projectName": "agent-semantic-protocols",
                         "projectSource": "fixture",
                         "expectedHotBlocks": HOT_BLOCKS,

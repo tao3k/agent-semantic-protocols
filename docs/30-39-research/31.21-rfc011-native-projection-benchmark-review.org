@@ -22,7 +22,7 @@ support.
 
 | Language | Provider | Project | Commands | Packet bytes | Cold ms | Warm ms | Exact code | Cache claim |
 |----------+----------+---------+----------+--------------+---------+---------+------------+-------------|
-| Rust | =rs-harness= | =agent-semantic-protocols= | 5 | 3914 | 303 | 93 | 1 | =warm-provider= |
+| Rust | =asp-rust= | =agent-semantic-protocols= | 5 | 3914 | 303 | 93 | 1 | =warm-provider= |
 | TypeScript | =asp-typescript= | =typescript-lang-project-harness= | 6 | 13040 | 31 | 50 | 1 | =warm-provider= |
 
 Both records include =search-prime=, =syntax-frontier=, =exact-selector-code=,

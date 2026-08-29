@@ -73,11 +73,11 @@ class SemanticAgentHealthcheckSchemaTests(unittest.TestCase):
             "providers": [
                 {
                     "languageId": "rust",
-                    "providerId": "rs-harness",
-                    "manifestId": "agent.semantic-protocols.providers.rust.rs-harness",
-                    "binary": "rs-harness",
-                    "resolvedBinary": "/tmp/project/.bin/rs-harness",
-                    "argv": ["/tmp/project/.bin/rs-harness"],
+                    "providerId": "asp-rust",
+                    "manifestId": "agent.semantic-protocols.providers.rust.asp-rust",
+                    "binary": "asp-rust",
+                    "resolvedBinary": "/tmp/project/.bin/asp-rust",
+                    "argv": ["/tmp/project/.bin/asp-rust"],
                     "healthStatus": "available",
                 }
             ],

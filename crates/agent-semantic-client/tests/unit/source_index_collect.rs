@@ -93,7 +93,7 @@ fn scope_file(path: std::path::PathBuf) -> agent_semantic_client_db::ClientDbSou
     agent_semantic_client_db::ClientDbSourceIndexScopeFile {
         path,
         language_id: agent_semantic_client_core::LanguageId::new("rust"),
-        provider_id: agent_semantic_client_core::ProviderId::new("rs-harness"),
+        provider_id: agent_semantic_client_core::ProviderId::new("asp-rust"),
         projection_coverage:
             agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
         selector_receipts: Vec::new(),

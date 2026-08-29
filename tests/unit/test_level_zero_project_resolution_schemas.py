@@ -104,7 +104,7 @@ def missing_entry() -> dict[str, object]:
             "projectInstanceId": "project-rust-root@workspace-1",
             "projectEntry": "Cargo.toml",
             "languageId": "rust",
-            "providerId": "rs-harness",
+            "providerId": "asp-rust",
             "parserIdentityDigest": "parser-1",
         },
         "repositoryCandidates": git_candidates(),

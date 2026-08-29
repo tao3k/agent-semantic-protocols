@@ -44,6 +44,26 @@ SCORE_KEYS = (
     "finalAnswerGrounding",
 )
 
+# Provider executables are protocol identities, not inferred from a legacy
+# suffix.  Keep the set explicit so retired standalone commands cannot become
+# semantic commands merely by ending in ``-harness``.
+SEMANTIC_COMMAND_BINARIES = frozenset(
+    {
+        "asp",
+        "asp-rust",
+        "asp-python",
+        "asp-typescript",
+        "asp-julia",
+        "asp-gerbil-scheme",
+        "asp-org",
+        "asp-md",
+    }
+)
+
+
+def is_semantic_command_binary(binary: str) -> bool:
+    return binary in SEMANTIC_COMMAND_BINARIES
+
 
 @dataclass(frozen=True)
 class RouteVerificationResult:

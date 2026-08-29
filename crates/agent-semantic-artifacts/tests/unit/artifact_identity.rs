@@ -92,13 +92,13 @@ fn provider_manifest_drift_changes_node_and_root_hashes() {
         kind: ArtifactKind::new("providerOutput"),
         schema_id: "semantic-provider-output".to_string(),
         schema_version: "1".to_string(),
-        producer_hash: Some(ArtifactHash::blake3(b"rust-harness-manifest-a")),
+        producer_hash: Some(ArtifactHash::blake3(b"asp-rust-manifest-a")),
         payload_hash: Some(ArtifactHash::blake3(b"owner-items-payload")),
         metadata_hash: Some(ArtifactHash::blake3(b"provider-metadata")),
         children: Vec::new(),
     };
     let changed_provider = ArtifactNodeInput {
-        producer_hash: Some(ArtifactHash::blake3(b"rust-harness-manifest-b")),
+        producer_hash: Some(ArtifactHash::blake3(b"asp-rust-manifest-b")),
         ..base.clone()
     };
     let base_node_hash = hash_node(&base);

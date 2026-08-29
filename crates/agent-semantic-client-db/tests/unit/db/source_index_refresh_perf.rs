@@ -149,7 +149,7 @@ async fn source_index_1193_owner_one_percent_refresh_stays_inside_v1_gate() {
         selector.projection_record = crate::projection_fixture::projection_record(
             crate::projection_fixture::ProjectionFixtureInput {
                 language_id: "rust",
-                provider_id: "rs-harness",
+                provider_id: "asp-rust",
                 owner_path: &owner_path,
                 structural_selector: &selector_id,
                 item_kind: "function",
@@ -316,14 +316,14 @@ fn refresh_request(project_root: &Path) -> ClientDbSourceIndexRefreshRequest {
             owners: vec![ClientDbSourceIndexOwner {
                 owner_path: "src/source_index_perf.rs".into(),
                 language_id: Some(LanguageId::from("rust")),
-                provider_id: Some(ProviderId::from("rs-harness")),
+                provider_id: Some(ProviderId::from("asp-rust")),
                 source_kind: "source".to_string().into(),
                 line_count: Some(8),
                 query_keys: vec!["source_index_perf_fixture".to_string().into()],
             }],
             selectors: vec![ClientDbSourceIndexSelector {
                 owner_path: "src/source_index_perf.rs".into(),
-                provider_id: ProviderId::from("rs-harness"),
+                provider_id: ProviderId::from("asp-rust"),
                 selector_id: structural_selector.into(),
                 symbol: Some("source_index_perf_fixture".into()),
                 kind: Some("function".into()),
@@ -335,7 +335,7 @@ fn refresh_request(project_root: &Path) -> ClientDbSourceIndexRefreshRequest {
                 projection_record: crate::projection_fixture::projection_record(
                     crate::projection_fixture::ProjectionFixtureInput {
                         language_id: "rust",
-                        provider_id: "rs-harness",
+                        provider_id: "asp-rust",
                         owner_path: "src/source_index_perf.rs",
                         structural_selector,
                         item_kind: "function",
@@ -400,14 +400,14 @@ fn large_refresh_request(
         owners.push(ClientDbSourceIndexOwner {
             owner_path: owner_path.clone().into(),
             language_id: Some(LanguageId::from("rust")),
-            provider_id: Some(ProviderId::from("rs-harness")),
+            provider_id: Some(ProviderId::from("asp-rust")),
             source_kind: "source".to_string().into(),
             line_count: Some(1),
             query_keys: vec![symbol.clone().into()],
         });
         selectors.push(ClientDbSourceIndexSelector {
             owner_path: owner_path.into(),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             selector_id: selector_id.clone().into(),
             symbol: Some(symbol.clone().into()),
             kind: Some("function".into()),
@@ -417,7 +417,7 @@ fn large_refresh_request(
             projection_record: crate::projection_fixture::projection_record(
                 crate::projection_fixture::ProjectionFixtureInput {
                     language_id: "rust",
-                    provider_id: "rs-harness",
+                    provider_id: "asp-rust",
                     owner_path: &format!("src/generated/owner_{index}.rs"),
                     structural_selector: &selector_id,
                     item_kind: "function",

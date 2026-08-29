@@ -219,9 +219,9 @@ async fn built_asp_install_binary_publishes_hook_generation_independent_of_runti
         );
         assert!(
             context.contains("\"access\":\"read\"")
-                && context.contains("\"accessMode\":\"O_RDONLY\"")
+                && context.contains("\"accessMode\":\"read-permission\"")
                 && (context.contains("\"evidence\":\"reader-behavior-dynamic-cache\"")
-                    || context.contains("\"evidence\":\"reader-probe-open-read-only\"")),
+                    || context.contains("\"evidence\":\"reader-probe-read-permission\"")),
             "Runtime {runtime_state}: {context}"
         );
         assert!(

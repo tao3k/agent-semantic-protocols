@@ -28,7 +28,7 @@ def valid_request() -> dict:
         "projectId": "repo-1",
         "workspaceIdentity": "workspace-1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "selector": "rust://src/lib.rs#item/function/run",
         "projection": "source",
         "budgetMicros": 800000,

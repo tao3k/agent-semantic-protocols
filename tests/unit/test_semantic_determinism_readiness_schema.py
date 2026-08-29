@@ -26,8 +26,8 @@ def test_determinism_readiness_schema_accepts_direct_clock_observation() -> None
             "readinessId": "rust.determinism-readiness.project",
             "producer": {
                 "languageId": "rust",
-                "providerId": "rs-harness",
-                "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+                "providerId": "asp-rust",
+                "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
             },
             "project": {"root": "."},
             "status": "needs-injection",
@@ -73,8 +73,8 @@ def test_determinism_readiness_rejects_absolute_observation_paths() -> None:
                 "readinessId": "rust.determinism-readiness.project",
                 "producer": {
                     "languageId": "rust",
-                    "providerId": "rs-harness",
-                    "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+                    "providerId": "asp-rust",
+                    "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
                 },
                 "project": {"root": "."},
                 "status": "needs-injection",

@@ -29,8 +29,8 @@ def test_semantic_assurance_case_accepts_graph_derived_cases() -> None:
         "caseSetId": "rust.assurance.case",
         "producer": {
             "languageId": "rust",
-            "providerId": "rs-harness",
-            "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+            "providerId": "asp-rust",
+            "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
         },
         "project": {"root": "."},
         "summary": {
@@ -109,8 +109,8 @@ def test_semantic_assurance_case_rejects_absolute_owner_paths() -> None:
         "caseSetId": "rust.assurance.case",
         "producer": {
             "languageId": "rust",
-            "providerId": "rs-harness",
-            "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+            "providerId": "asp-rust",
+            "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
         },
         "project": {"root": "."},
         "summary": {

@@ -43,6 +43,20 @@ pub(super) fn is_digest_addressed_protocol_binary(
 }
 
 pub(crate) fn protocol_binary_artifact_path_digest(path: &Path) -> Option<String> {
+    if let Ok(link) = fs::read_link(path) {
+        let target = if link.is_absolute() {
+            link
+        } else {
+            path.parent()?.join(link)
+        };
+        if fs::symlink_metadata(&target)
+            .ok()
+            .is_some_and(|metadata| metadata.file_type().is_file())
+            && let Some(digest) = protocol_binary_digest_from_canonical_artifact_path(&target)
+        {
+            return Some(digest);
+        }
+    }
     let canonical = fs::canonicalize(path).ok()?;
     protocol_binary_digest_from_canonical_artifact_path(&canonical)
 }

@@ -11,7 +11,7 @@ route_source = "gerbil-deps-index"
 max_provider_process_count = 0
 max_stdout_bytes = 4096
 fallback_reason = "none"
-target_rationale = "Gerbil standard-library deps search is a Rust DB index warm path. The scenario warms the asp binary once, then verifies the active-gxi stdlib query does not spawn gslph, does not scan a workspace, and stays inside a millisecond-scale hot-path budget."
+target_rationale = "Gerbil standard-library deps search is a Rust DB index warm path. The scenario warms the asp binary once, then verifies the active-gxi stdlib query does not spawn asp-gerbil-scheme, does not scan a workspace, and stays inside a millisecond-scale hot-path budget."
 
 [observed_timings]
 gerbil_deps_search_hot_path = "1ms"

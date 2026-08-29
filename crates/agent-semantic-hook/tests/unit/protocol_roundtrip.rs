@@ -23,7 +23,7 @@ fn decision() -> HookDecision {
         },
         routes: vec![DecisionRoute {
             language_id: "rust".into(),
-            provider_id: "rs-harness".into(),
+            provider_id: "asp-rust".into(),
             binary: "asp".to_owned(),
             kind: DecisionRouteKind::Query,
             argv: vec!["asp".to_owned(), "rust".to_owned(), "query".to_owned()],

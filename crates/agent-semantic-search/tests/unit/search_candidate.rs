@@ -104,7 +104,7 @@ fn structural_index_hit_projects_selector_generation_and_stable_route() {
             .to_string(),
         generation: "generation-1".to_string(),
         selector: Some("rust://src/lib.rs#item/fn/parse_config".to_string()),
-        document: "symbol parse_config rust rs-harness serde_json::from_str".to_string(),
+        document: "symbol parse_config rust asp-rust serde_json::from_str".to_string(),
     };
     let candidate = structural_index_hit_to_search_candidate(&hit, &terms);
 

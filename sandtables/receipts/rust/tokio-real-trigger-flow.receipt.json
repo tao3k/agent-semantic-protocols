@@ -16,7 +16,7 @@
     {
       "id": "prime",
       "kind": "search",
-      "argv": ["rs-harness", "search", "prime", "--view", "seeds", "--seeds", "8", "."],
+      "argv": ["asp-rust", "search", "prime", "--view", "seeds", "--seeds", "8", "."],
       "stdinShape": "none",
       "metrics": {
         "elapsedMs": 678,
@@ -36,7 +36,7 @@
     {
       "id": "text-async-read",
       "kind": "search",
-      "argv": ["rs-harness", "search", "text", "AsyncRead", "--view", "seeds", "--seeds", "8", "."],
+      "argv": ["asp-rust", "search", "text", "AsyncRead", "--view", "seeds", "--seeds", "8", "."],
       "stdinShape": "none",
       "metrics": {
         "elapsedMs": 101,
@@ -56,7 +56,7 @@
     {
       "id": "owner-async-items",
       "kind": "search",
-      "argv": ["rs-harness", "search", "owner", "<async-owner>", "items", "--trace", "--view", "seeds", "--seeds", "8", "."],
+      "argv": ["asp-rust", "search", "owner", "<async-owner>", "items", "--trace", "--view", "seeds", "--seeds", "8", "."],
       "stdinShape": "none",
       "metrics": {
         "elapsedMs": 40,
@@ -76,7 +76,7 @@
     {
       "id": "tests-async-owner",
       "kind": "search",
-      "argv": ["rs-harness", "search", "tests", "<async-owner>", "--view", "seeds", "--seeds", "4", "."],
+      "argv": ["asp-rust", "search", "tests", "<async-owner>", "--view", "seeds", "--seeds", "4", "."],
       "stdinShape": "none",
       "metrics": {
         "elapsedMs": 1054,
@@ -95,7 +95,7 @@
     {
       "id": "candidates-to-ingest",
       "kind": "external-ingest",
-      "argv": ["rs-harness", "search", "ingest", "items", "tests", "--view", "seeds", "--seeds", "8", "."],
+      "argv": ["asp-rust", "search", "ingest", "items", "tests", "--view", "seeds", "--seeds", "8", "."],
       "stdinShape": "candidate-pipe",
       "metrics": {
         "elapsedMs": 43,
@@ -132,7 +132,7 @@
           "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
         }
       },
-      "next": ["pipe candidates into rs-harness search ingest"]
+      "next": ["pipe candidates into asp-rust search ingest"]
     },
     {
       "id": "direct-read-deny-guide",
@@ -154,7 +154,7 @@
           "basis": "stdoutBytes/4 rounded up; terminal-output estimate only"
         }
       },
-      "next": ["rs-harness search owner src/lib.rs items"]
+      "next": ["asp-rust search owner src/lib.rs items"]
     }
   ],
   "summary": {

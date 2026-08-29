@@ -17,7 +17,7 @@ fn materialization_proof() -> ExactSelectorMaterializationProofV1 {
     let structural_selector = "rust://src/lib.rs#item/function/run".to_string();
     ExactSelectorMaterializationProofV1 {
         language_id: "rust".to_string(),
-        provider_id: "rs-harness".to_string(),
+        provider_id: "asp-rust".to_string(),
         canonical_item_selector: CanonicalItemSelector::parse(&structural_selector)
             .expect("canonical selector"),
         parser_identity_digest: digest(1),
@@ -118,7 +118,7 @@ fn fixture() -> (Vec<u8>, [u8; DIGEST_LEN]) {
         &ExactSelectorGenerationIdentityV1 {
             workspace_identity_digest: [9_u8; DIGEST_LEN],
             language_id: "rust".to_string(),
-            provider_id: "rs-harness".to_string(),
+            provider_id: "asp-rust".to_string(),
             workspace_root_digest: digest(1),
             parser_identity_digest: digest(2),
             query_pack_digest: digest(3),
@@ -177,7 +177,7 @@ fn incomplete_generation_is_rejected() {
         &ExactSelectorGenerationIdentityV1 {
             workspace_identity_digest: [9_u8; DIGEST_LEN],
             language_id: "rust".to_string(),
-            provider_id: "rs-harness".to_string(),
+            provider_id: "asp-rust".to_string(),
             workspace_root_digest: digest(1),
             parser_identity_digest: digest(2),
             query_pack_digest: digest(3),
@@ -215,7 +215,7 @@ fn partial_selector_materialization_is_rejected() {
         &ExactSelectorGenerationIdentityV1 {
             workspace_identity_digest: [9_u8; DIGEST_LEN],
             language_id: "rust".to_string(),
-            provider_id: "rs-harness".to_string(),
+            provider_id: "asp-rust".to_string(),
             workspace_root_digest: digest(1),
             parser_identity_digest: digest(2),
             query_pack_digest: digest(3),

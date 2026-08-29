@@ -35,7 +35,7 @@ fn active_artifact_receipt_has_exact_selector_fixture_kind() {
 fn identity(selector_count: u32) -> ExactSelectorGenerationIdentityV1 {
     ExactSelectorGenerationIdentityV1 {
         language_id: "rust".to_owned(),
-        provider_id: "rs-harness".to_owned(),
+        provider_id: "asp-rust".to_owned(),
         workspace_identity_digest: [1; 32],
         workspace_root_digest: [2; 32],
         parser_identity_digest: [3; 32],

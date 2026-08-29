@@ -19,7 +19,7 @@ retrieval and graph-on-demand]].  Its logical query unit is defined by
 [[file:00.07-bound-evidence-clause-algebra.org][Bound evidence clause algebra]].
 
 The shared obligation and plan schema MUST be defined before any Python or
-provider-specific implementation.  A future =asp-graph-turbo= Python refactor
+provider-specific implementation.  The =asp-python-graphs= Python service
 implements or accelerates this contract; it does not own the contract.
 
 * Obligation algebra

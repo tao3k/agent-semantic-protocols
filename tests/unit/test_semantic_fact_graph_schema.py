@@ -56,7 +56,7 @@ def test_semantic_fact_graph_schema_accepts_build_test_package_graph() -> None:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "projectRoot": ".",
         "query": "changed cache owner affected tests",
         "nodes": [
@@ -69,7 +69,7 @@ def test_semantic_fact_graph_schema_accepts_build_test_package_graph() -> None:
                 "path": "src/cache.rs",
                 "fields": {
                     "languageId": "rust",
-                    "providerId": "rs-harness",
+                    "providerId": "asp-rust",
                     "semanticFactKind": "owner",
                     "provenance": "parser",
                     "confidence": "exact",
@@ -85,7 +85,7 @@ def test_semantic_fact_graph_schema_accepts_build_test_package_graph() -> None:
                 "path": "Cargo.toml",
                 "fields": {
                     "languageId": "rust",
-                    "providerId": "rs-harness",
+                    "providerId": "asp-rust",
                     "semanticFactKind": "package",
                     "provenance": "build",
                     "confidence": "exact",
@@ -100,7 +100,7 @@ def test_semantic_fact_graph_schema_accepts_build_test_package_graph() -> None:
                 "action": "build",
                 "fields": {
                     "languageId": "rust",
-                    "providerId": "rs-harness",
+                    "providerId": "asp-rust",
                     "semanticFactKind": "build",
                     "provenance": "build",
                     "confidence": "exact",
@@ -116,7 +116,7 @@ def test_semantic_fact_graph_schema_accepts_build_test_package_graph() -> None:
                 "path": "tests/cache.rs",
                 "fields": {
                     "languageId": "rust",
-                    "providerId": "rs-harness",
+                    "providerId": "asp-rust",
                     "semanticFactKind": "test",
                     "provenance": "test",
                     "confidence": "exact",
@@ -131,7 +131,7 @@ def test_semantic_fact_graph_schema_accepts_build_test_package_graph() -> None:
                 "action": "deps",
                 "fields": {
                     "languageId": "rust",
-                    "providerId": "rs-harness",
+                    "providerId": "asp-rust",
                     "semanticFactKind": "dependency",
                     "provenance": "build",
                     "confidence": "exact",

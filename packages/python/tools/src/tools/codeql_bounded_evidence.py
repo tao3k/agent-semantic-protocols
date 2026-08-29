@@ -54,7 +54,7 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         type=Path,
     )
     parser.add_argument("--language-id", default="rust")
-    parser.add_argument("--provider-id", default="rs-harness")
+    parser.add_argument("--provider-id", default="asp-rust")
     parser.add_argument("--project-root", default=".")
     parser.add_argument("--codeql-language", default="rust")
     parser.add_argument(

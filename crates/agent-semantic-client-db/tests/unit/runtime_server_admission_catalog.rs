@@ -245,7 +245,7 @@ async fn mapped_locator_projects_nested_language_project_to_admitted_workspace()
     let root = fixture_root();
     let path = root.join("catalog.json");
     let workspace_root = root.join("checkout");
-    let nested_project = workspace_root.join("packages/python/asp_graph_turbo");
+    let nested_project = workspace_root.join("packages/python/asp_python_graphs");
     let catalog = RuntimeWorkspaceAdmissionCatalog::load(path.clone())
         .await
         .unwrap();

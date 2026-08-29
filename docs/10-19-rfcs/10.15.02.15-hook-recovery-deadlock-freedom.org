@@ -48,11 +48,11 @@ Codex Bash PreTool additionally has one command-local projection in the Rust
 =asp-hook= process boundary. Before resolving HookGeneration, the Shell Parser
 proves that =ASP_NO_AGENT=1= reaches the requested process through
 exactly one of =NAME=VALUE command=, =env NAME=VALUE command=, or
-=export NAME=VALUE; exec command=. Config V1 mirrors this invariant with
+=export NAME=VALUE; command=. Config V1 mirrors this invariant with
 =processEnvironmentAssignmentAny=["ASP_NO_AGENT=1"]= as a highest-priority
 terminal allow over all Hook policy; it MUST NOT add argv, language,
 search/query, profile, or Runtime predicates.  Raw JSON text, quoted text,
-unrelated stages, and =export ...; command= without =exec= do not establish
+unrelated earlier stages and quoted assignment text do not establish
 authority. This command-local path parses the Host payload but terminates
 before HookGeneration, Reader Probe, subagent admission, Runtime, or any other
 policy rule. The process guard and Config witness accepting different

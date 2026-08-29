@@ -275,7 +275,7 @@ fence; it does not yet prove server-side single-use capability claim and
 consumption.
 
 Before republishing that source fix, an installed PreTool replay of
-=TRACE=1 rs-harness query= returned the empty allow response. The represented
+=TRACE=1 asp-rust query= returned the empty allow response. The represented
 provider command was not executed. This is the runtime counterexample proving
 that the assignment-prefix source regression is a release blocker rather than
 an optional hardening test.
@@ -303,7 +303,7 @@ past that owner and stopped at a missing =relations= field in a concurrent
 =ClientDbSourceIndexScopeFile= initializer. No duplicate or unreachable
 =ProviderBinaryDirectExecution= projection warning remained. The installed ASP artifact
 nevertheless advanced and produced live outer-admission receipts: direct
-=rs-harness= and its absolute registered artifact path were denied with
+=asp-rust= and its absolute registered artifact path were denied with
 =provider-binary-direct-execution=, while =asp rust= returned no denial. These
 receipts establish the outer safety fence only. The exactly-once dispatch
 claim/consume gate and explicit test-profile receipt remain pending, and runtime

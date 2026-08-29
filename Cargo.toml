@@ -45,6 +45,7 @@ agent-semantic-schema-manager = { path = "crates/agent-semantic-schema-manager" 
 agent-semantic-runtime = { path = "crates/agent-semantic-runtime" }
 agent-semantic-hook = { path = "crates/agent-semantic-hook" }
 jsonschema = { version = "0.48.1", default-features = false }
+referencing = "0.48.1"
 aho-corasick = "1.1.5"
 base64 = "0.23.1"
 agent-semantic-content-identity = { path = "crates/agent-semantic-content-identity" }

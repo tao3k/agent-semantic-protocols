@@ -106,7 +106,7 @@ fn canonical_materialization_binds_snapshot_import_and_complete_owner_count() {
                 relations: Vec::new(),
                 relative_path: "src/lib.rs".to_owned(),
                 language_id: "rust".into(),
-                provider_id: "rs-harness".into(),
+                provider_id: "asp-rust".into(),
                 text: "source".to_owned(),
                 selectors: vec![crate::db_engine_source_index::rust_selector_fixture(
                     "src/lib.rs",
@@ -632,7 +632,7 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
         owners: vec![agent_semantic_client_db::ClientDbSourceIndexOwner {
             owner_path: "src/lib.rs".into(),
             language_id: Some("rust".into()),
-            provider_id: Some("rs-harness".into()),
+            provider_id: Some("asp-rust".into()),
             source_kind: "file".into(),
             line_count: Some(1),
             query_keys: Vec::new(),

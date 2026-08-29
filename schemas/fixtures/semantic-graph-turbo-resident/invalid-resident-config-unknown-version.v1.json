@@ -1,5 +1,0 @@
-{
-  "schemaId": "agent.semantic-protocols.semantic-graph-turbo-resident-config",
-  "schemaVersion": "999",
-  "pythonExecutionLocator": "/opt/asp/python/bin/python3"
-}

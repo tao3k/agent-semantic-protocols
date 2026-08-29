@@ -2,17 +2,12 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 
 pub(crate) fn compile_reader_probe_artifacts() {
-    println!("cargo:rerun-if-changed=reader-probe/reader_probe_interposer.c");
     println!("cargo:rerun-if-changed=reader-probe/reader_probe_fixture.c");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
         return;
     }
     let manifest_dir = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("manifest dir"));
     let output_dir = PathBuf::from(std::env::var_os("OUT_DIR").expect("out dir"));
-    require_success(
-        run_compiler(interposer_command(&manifest_dir, &output_dir)),
-        "Reader probe interposer",
-    );
     require_success(
         run_compiler(fixture_command(&manifest_dir, &output_dir)),
         "Reader probe fixture",
@@ -27,16 +22,6 @@ fn compiler_command(manifest_dir: &Path, output_dir: &Path) -> Command {
         .env("PATH", "/usr/bin:/bin")
         .env("TMPDIR", output_dir)
         .args(["-Os", "-Wall", "-Werror"]);
-    command
-}
-
-fn interposer_command(manifest_dir: &Path, output_dir: &Path) -> Command {
-    let mut command = compiler_command(manifest_dir, output_dir);
-    command
-        .arg("-dynamiclib")
-        .arg(manifest_dir.join("reader-probe/reader_probe_interposer.c"))
-        .arg("-o")
-        .arg(output_dir.join("asp-reader-probe.dylib"));
     command
 }
 

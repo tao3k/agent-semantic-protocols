@@ -26,7 +26,7 @@ def _python_provider_contract() -> dict[str, Any]:
         "schemaVersion": "1",
         "contractId": "python.provider-contract.v1",
         "languageId": "python",
-        "providerId": "python-lang-project-harness",
+        "providerId": "asp-python",
         "responsibilities": {
             "allowed": [
                 "native-parser-facts",

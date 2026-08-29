@@ -27,7 +27,7 @@ fn cli_install_materializes_activation_under_state_core_not_prj_cache() {
     let root = git_project_root("install-prj-cache-home");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
-    write_state_home_provider_binary(&asp_state_home, "rust", "asp-rust", "rs-harness");
+    write_state_home_provider_binary(&asp_state_home, "rust", "asp-rust", "asp-rust");
     let config_path = root.join(".agents").join("asp.toml");
     std::fs::create_dir_all(config_path.parent().expect("agent config parent"))
         .expect("create agent config parent");
@@ -101,7 +101,7 @@ fn cli_install_refreshes_drifted_managed_client_hook_config() {
     let root = git_project_root("install-preserves-client-config");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
-    write_state_home_provider_binary(&asp_state_home, "rust", "asp-rust", "rs-harness");
+    write_state_home_provider_binary(&asp_state_home, "rust", "asp-rust", "asp-rust");
     let protocol_bin_dir = write_stable_runtime_asp_launcher(&asp_state_home);
     write_fake_codex_cli_in_dir(&protocol_bin_dir);
     let client_config_path = asp_state_home.join("hooks/config.toml");
@@ -214,7 +214,7 @@ fn cli_install_preserves_top_level_flags_without_forging_hook_trust() {
     let root = git_project_root("install-unified-exec-feature");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
-    write_state_home_provider_binary(&asp_state_home, "rust", "asp-rust", "rs-harness");
+    write_state_home_provider_binary(&asp_state_home, "rust", "asp-rust", "asp-rust");
     let protocol_bin_dir = write_stable_runtime_asp_launcher(&asp_state_home);
     write_fake_codex_cli_in_dir(&protocol_bin_dir);
     std::fs::create_dir_all(root.join(".codex")).expect("create .codex");

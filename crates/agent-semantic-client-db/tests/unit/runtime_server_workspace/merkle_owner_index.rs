@@ -92,7 +92,7 @@ fn search_segment_publishes_a_verified_owner_inclusion_proof() {
         "scenario.search-segment.merkle-owner-proof",
         None,
         "rust",
-        "rs-harness",
+        "asp-rust",
         "rust://src/lib.rs#item/function/main",
         0,
         crate::runtime_resident_read::RuntimeResidentReadWorkCounters::default(),

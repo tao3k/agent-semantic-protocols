@@ -149,11 +149,10 @@ pub(super) async fn collect_provider_output(
     // Provider invocations are not resident. Once the leader exits, any
     // remaining descendant belongs to this invocation and must be terminated
     // before inherited output pipes can keep collection alive indefinitely.
-    // Give a just-exited shell leader one scheduler turn to publish any
-    // background child into the inherited process group before probing and
-    // killing it. Without this handoff, concurrent invocations can race the
-    // fork and report a clean group while the descendant survives.
-    tokio::task::yield_now().await;
+    // Process-group membership is inherited across fork, so once the leader
+    // has exited there is no userspace publication step to wait for. Signal
+    // the group directly: probing with signal 0 before SIGKILL creates a
+    // needless TOCTOU window and used to discard the actual SIGKILL result.
     let descendant_cleanup_required = kill_provider_process_group(child.process_group_id);
     if descendant_cleanup_required {
         warn!(
@@ -208,13 +207,24 @@ pub(super) fn kill_provider_process_group(process_group_id: Option<i32>) -> bool
     let Some(process_group_id) = process_group_id else {
         return false;
     };
-    let group_exists = unsafe { libc::kill(-process_group_id, 0) == 0 };
-    if group_exists {
-        unsafe {
-            libc::kill(-process_group_id, libc::SIGKILL);
+    loop {
+        if unsafe { libc::kill(-process_group_id, libc::SIGKILL) } == 0 {
+            return true;
         }
+        let error = std::io::Error::last_os_error();
+        if error.kind() == ErrorKind::Interrupted {
+            continue;
+        }
+        if error.raw_os_error() != Some(libc::ESRCH) {
+            warn!(
+                process_group_id,
+                error = %error,
+                termination_action = "kill-process-group",
+                "failed to terminate provider process group"
+            );
+        }
+        return false;
     }
-    group_exists
 }
 
 #[cfg(not(unix))]

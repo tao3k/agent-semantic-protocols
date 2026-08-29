@@ -28,8 +28,8 @@ def test_semantic_behavior_snapshot_accepts_expect_test_snapshot() -> None:
         "snapshotId": "rust.expect-test.public-api-shape",
         "producer": {
             "languageId": "rust",
-            "providerId": "rs-harness",
-            "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+            "providerId": "asp-rust",
+            "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
         },
         "subject": {
             "kind": "public-api",
@@ -69,8 +69,8 @@ def test_semantic_behavior_snapshot_rejects_absolute_paths() -> None:
         "snapshotId": "bad",
         "producer": {
             "languageId": "rust",
-            "providerId": "rs-harness",
-            "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+            "providerId": "asp-rust",
+            "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
         },
         "subject": {
             "kind": "function",

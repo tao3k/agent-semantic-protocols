@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Mapping
 
@@ -49,13 +50,19 @@ class AspPythonGraphsSession:
         validate_service_envelope(message)
         sequence = message["sequence"]
         assert isinstance(sequence, int)
+        kind = str(message["messageKind"])
+        service_epoch = str(message["serviceEpoch"])
         with self._generation_lock:
             if sequence <= self._last_sequence:
                 raise ServiceProtocolError(
                     "non-monotonic-sequence", "session sequence must increase monotonically"
                 )
+            if kind != "hello" and self.service_epoch != service_epoch:
+                raise ServiceProtocolError(
+                    "service-epoch-drift",
+                    "message serviceEpoch does not match the bound service session",
+                )
             self._last_sequence = sequence
-        kind = str(message["messageKind"])
         request_id = str(message["requestId"])
         if kind == "cancel":
             cancellation_id = str(message["cancellationId"])
@@ -73,34 +80,40 @@ class AspPythonGraphsSession:
                         "cancellation registry is saturated",
                     )
                 self._cancelled_requests.add(cancellation_id)
-            return self._receipt(request_id, "cancelled")
-        if kind == "evaluate":
+            return self._receipt(request_id, "cancelled", sequence=int(message["sequence"]))
+        if kind in {"evaluate", "timeline"}:
             with self._generation_lock:
                 if request_id in self._active_requests:
                     raise ServiceProtocolError(
                         "duplicate-request-id", "requestId is already in flight"
                     )
+                self._admitted_requests.discard(request_id)
                 if request_id in self._cancelled_requests:
                     self._cancelled_requests.discard(request_id)
-                    return self._receipt(request_id, "cancelled")
-                self._admitted_requests.discard(request_id)
+                    return self._receipt(request_id, "cancelled", sequence=int(message["sequence"]))
                 if self.closed or self.runtime_artifact_digest is None:
                     raise ServiceProtocolError(
                         "process-not-open", "hello is required before evaluate"
                     )
-                workspace, generation, token, _ = self._generation_identity(message)
-                graph = self.loaded_generations.get((workspace, generation, token))
-                if graph is None:
-                    raise ServiceProtocolError(
-                        "generation-not-loaded",
-                        "evaluate requires an ASP Server-owned open-generation receipt",
-                    )
+                graph = None
+                if kind == "evaluate":
+                    workspace, generation, token, _ = self._generation_identity(message)
+                    graph = self.loaded_generations.get((workspace, generation, token))
+                    if graph is None:
+                        raise ServiceProtocolError(
+                            "generation-not-loaded",
+                            "evaluate requires an ASP Server-owned open-generation receipt",
+                        )
                 self._active_requests.add(request_id)
             try:
-                result = self._evaluate(message, request_id, graph)
+                result = (
+                    self._evaluate(message, request_id, graph)
+                    if kind == "evaluate"
+                    else self._timeline(message, request_id)
+                )
                 with self._generation_lock:
                     if request_id in self._cancelled_requests:
-                        return self._receipt(request_id, "cancelled")
+                        return self._receipt(request_id, "cancelled", sequence=int(message["sequence"]))
                 return result
             finally:
                 with self._generation_lock:
@@ -109,10 +122,9 @@ class AspPythonGraphsSession:
             if kind == "hello":
                 return self._hello(message, request_id)
             if kind == "health":
-                return self._health(request_id)
+                return self._health(message, request_id)
             if kind == "shutdown":
-                self.closed = True
-                return self._receipt(request_id, "cancelled")
+                return self._shutdown(message, request_id)
             if kind == "open-generation":
                 return self._open_generation(message, request_id)
             if kind == "release-generation":
@@ -121,9 +133,79 @@ class AspPythonGraphsSession:
                 "unsupported-message-kind", f"unsupported messageKind: {kind!r}"
             )
 
+    def _timeline(
+        self, message: Mapping[str, Any], request_id: str
+    ) -> dict[str, object]:
+        from .artifact_event_packet import artifact_events_from_packet
+        from .artifact_timeline import evaluate_artifact_events_timeline
+        from .artifact_timeline_parameters import TimelineParameters
+        from .timeline_cli import _parse_args, _parse_since
+
+        payload = message.get("payload")
+        if not isinstance(payload, Mapping):
+            raise ServiceProtocolError("invalid-payload", "payload must be an object")
+        unknown = sorted(set(payload) - {"eventPacket", "arguments"})
+        if unknown:
+            raise ServiceProtocolError(
+                "unknown-timeline-field",
+                f"timeline payload contains unsupported fields: {unknown}",
+            )
+        packet = payload.get("eventPacket")
+        if not isinstance(packet, Mapping):
+            raise ServiceProtocolError(
+                "invalid-event-packet", "timeline payload.eventPacket must be an object"
+            )
+        arguments = payload.get("arguments", [])
+        if not isinstance(arguments, list) or any(
+            not isinstance(argument, str) for argument in arguments
+        ):
+            raise ServiceProtocolError(
+                "invalid-timeline-arguments", "timeline payload.arguments must be strings"
+            )
+        try:
+            parsed = _parse_args(["--format", "json", *arguments])
+            parameters = TimelineParameters(
+                subagent_start_gap_seconds=parsed.subagent_start_gap_seconds,
+                subagent_soft_max_seconds=parsed.subagent_soft_max_seconds,
+                subagent_hard_max_seconds=parsed.subagent_hard_max_seconds,
+                session_gap_seconds=parsed.session_gap_seconds,
+                examples=parsed.examples,
+                since_timestamp=_parse_since(parsed.since),
+                recent_sessions=parsed.recent_sessions,
+            )
+            events = artifact_events_from_packet(packet)
+            artifact_dir = Path(str(packet.get("artifactDir") or "."))
+            source = packet.get("source")
+            event_source = (
+                source.get("kind")
+                if isinstance(source, Mapping) and isinstance(source.get("kind"), str)
+                else "events-json"
+            )
+            report = evaluate_artifact_events_timeline(
+                events,
+                artifact_dir=artifact_dir,
+                parameters=parameters,
+                event_source=event_source,
+            )
+        except SystemExit as error:
+            raise ServiceProtocolError(
+                "invalid-timeline-arguments", "timeline arguments are invalid"
+            ) from error
+        except (TypeError, ValueError, OSError) as error:
+            raise ServiceProtocolError("invalid-event-packet", str(error)) from error
+        receipt = self._receipt(
+            request_id, "completed", sequence=int(message["sequence"])
+        )
+        receipt["payload"] = {"result": report}
+        return receipt
+
     def _hello(
         self, message: Mapping[str, Any], request_id: str
     ) -> dict[str, object]:
+        if self.closed:
+            raise ServiceProtocolError(
+                "process-closed", "shutdown is terminal for this service session"
+            )
         runtime_artifact_digest = required_digest(message, "runtimeArtifactDigest")
         execution_artifact_digest = required_digest(
             message, "executionArtifactDigest"
@@ -142,8 +224,7 @@ class AspPythonGraphsSession:
             self.runtime_artifact_digest = runtime_artifact_digest
             self.execution_artifact_digest = execution_artifact_digest
             self.service_epoch = service_epoch
-        self.closed = False
-        receipt = self._receipt(request_id, "ready")
+        receipt = self._receipt(request_id, "ready", sequence=int(message["sequence"]))
         receipt["payload"] = {
             "processId": os.getpid(),
             "runtimeArtifactDigest": runtime_artifact_digest,
@@ -152,10 +233,23 @@ class AspPythonGraphsSession:
         }
         return receipt
 
-    def _health(self, request_id: str) -> dict[str, object]:
+    def _shutdown(
+        self, message: Mapping[str, Any], request_id: str
+    ) -> dict[str, object]:
+        self.closed = True
+        self.loaded_generations.clear()
+        self.generation_packets.clear()
+        self._active_requests.clear()
+        self._admitted_requests.clear()
+        self._cancelled_requests.clear()
+        return self._receipt(
+            request_id, "cancelled", sequence=int(message["sequence"])
+        )
+
+    def _health(self, message: Mapping[str, Any], request_id: str) -> dict[str, object]:
         if self.closed or self.runtime_artifact_digest is None:
             raise ServiceProtocolError("process-not-open", "service is not ready")
-        receipt = self._receipt(request_id, "ready")
+        receipt = self._receipt(request_id, "ready", sequence=int(message["sequence"]))
         receipt["payload"] = {
             "processId": os.getpid(),
             "loadedGenerationCount": len(self.loaded_generations),
@@ -189,7 +283,8 @@ class AspPythonGraphsSession:
         if newly_loaded:
             self.loaded_generations[load_key] = TypedGraph.from_packet(graph_packet)
             self.generation_packets[load_key] = packet_digest
-        receipt = self._receipt(request_id, "ready", workspace, generation, token)
+        receipt = self._receipt(request_id, "ready", workspace, generation, token,
+                                sequence=int(message["sequence"]))
         receipt["payload"] = {
             "generationLoads": int(newly_loaded),
             "loadedGenerationCount": len(self.loaded_generations),
@@ -203,7 +298,8 @@ class AspPythonGraphsSession:
         load_key = (workspace, generation, token)
         released = self.loaded_generations.pop(load_key, None) is not None
         self.generation_packets.pop(load_key, None)
-        receipt = self._receipt(request_id, "completed", workspace, generation, token)
+        receipt = self._receipt(request_id, "completed", workspace, generation, token,
+                                sequence=int(message["sequence"]))
         receipt["payload"] = {"released": released}
         return receipt
 
@@ -245,7 +341,8 @@ class AspPythonGraphsSession:
             ),
             query_clauses=string_sequence(rank_payload.get("queryClauses")),
         )
-        receipt = self._receipt(request_id, "completed", workspace, generation, token)
+        receipt = self._receipt(request_id, "completed", workspace, generation, token,
+                                sequence=int(message["sequence"]))
         receipt["payload"] = {
             "generationLoads": 0,
             "result": result_to_packet(result),
@@ -292,6 +389,7 @@ class AspPythonGraphsSession:
         workspace: str | None = None,
         generation: str | None = None,
         generation_token: int | None = None,
+        sequence: int = 1,
     ) -> dict[str, object]:
         return service_receipt(
             request_id=request_id,
@@ -300,4 +398,5 @@ class AspPythonGraphsSession:
             workspace=workspace,
             generation=generation,
             generation_token=generation_token,
+            sequence=sequence,
         )

@@ -93,7 +93,7 @@ commandAny = ["rg", "grep", "fd", "find"]
 pathGlobAny = ["**/*.rs"]
 
 [[rules.routes]]
-providerId = "rs-harness"
+providerId = "asp-rust"
 languageId = "rust"
 binary = "asp"
 kind = "ingest"

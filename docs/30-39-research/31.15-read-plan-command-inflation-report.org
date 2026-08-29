@@ -8,7 +8,7 @@
 
 * Purpose
 
-This report records a real Codex Desktop trigger where =rs-harness= correctly
+This report records a real Codex Desktop trigger where =asp-rust= correctly
 protected broad Rust source reads by returning =read-plan= packets, but the
 agent still spent twenty follow-up commands to collect source context before a
 narrow edit.
@@ -27,7 +27,7 @@ semantic plan instead of manually bisecting source windows.
 * Trigger
 
 The real trace started after a broad Rust source read was denied and rerouted to
-=rs-harness query --from-hook direct-source-read=.  The agent then ran twenty
+=asp-rust query --from-hook direct-source-read=.  The agent then ran twenty
 provider commands:
 
 #+begin_example
@@ -67,7 +67,7 @@ wide read-plan recovery degraded into repeated local-window source transport.
 A wide selector returns a plan, not source text:
 
 #+begin_src shell
-direnv exec . rs-harness query --from-hook direct-source-read \
+direnv exec . asp-rust query --from-hook direct-source-read \
   --selector crates/semantic-agent-hook/src/cli.rs:1:80 \
   --code .
 #+end_src
@@ -81,7 +81,7 @@ direnv exec . rs-harness query --from-hook direct-source-read \
 A small selector still returns bounded source context:
 
 #+begin_src shell
-direnv exec . rs-harness query --from-hook direct-source-read \
+direnv exec . asp-rust query --from-hook direct-source-read \
   --selector crates/semantic-agent-hook/src/cli.rs:1:25 \
   --code .
 #+end_src
@@ -93,7 +93,7 @@ That confirms the wide-selector gate is the intended protection boundary.
 The repeated =cli.rs= probes can collapse into one names-only owner-local query:
 
 #+begin_src shell
-direnv exec . rs-harness query crates/semantic-agent-hook/src/cli.rs \
+direnv exec . asp-rust query crates/semantic-agent-hook/src/cli.rs \
   --term run_install \
   --term install \
   --names-only .
@@ -115,19 +115,19 @@ windows manually.
 The current Rust CLI guide supports top-level =query --from-hook=:
 
 #+begin_src shell
-direnv exec . rs-harness query --help
+direnv exec . asp-rust query --help
 #+end_src
 
 #+begin_example
-rs-harness query --from-hook KIND --selector SELECTOR [--query SYMBOL | --term TERM] [--names-only | --code] [PROJECT_ROOT]
-rs-harness query --term TERM [--term TERM...] [--surface PIPE] [--view seeds] [PROJECT_ROOT]
+asp-rust query --from-hook KIND --selector SELECTOR [--query SYMBOL | --term TERM] [--names-only | --code] [PROJECT_ROOT]
+asp-rust query --term TERM [--term TERM...] [--surface PIPE] [--view seeds] [PROJECT_ROOT]
 #+end_example
 
 But the installed =search= surface does not accept the older wildcard route
 shape:
 
 #+begin_src shell
-direnv exec . rs-harness search query --from-hook direct-source-read \
+direnv exec . asp-rust search query --from-hook direct-source-read \
   --selector '**/*.rs' \
   --term read-plan .
 #+end_src
@@ -140,7 +140,7 @@ There is also a surface-name mismatch.  The singular form used in some guidance
 is rejected:
 
 #+begin_src shell
-direnv exec . rs-harness query --from-hook direct-source-read \
+direnv exec . asp-rust query --from-hook direct-source-read \
   --selector '**/*.rs' \
   --term read-plan \
   --surface owner,tests \
@@ -154,7 +154,7 @@ unknown query surface: owner
 The plural form works:
 
 #+begin_src shell
-direnv exec . rs-harness query --from-hook direct-source-read \
+direnv exec . asp-rust query --from-hook direct-source-read \
   --selector '**/*.rs' \
   --term read-plan \
   --term direct-source-read \
@@ -300,17 +300,17 @@ Likely RFC/schema follow-ups:
 A repeat of this install hook/rename context should have a bounded flow:
 
 #+begin_src shell
-rs-harness query --from-hook direct-source-read \
+asp-rust query --from-hook direct-source-read \
   --selector crates/semantic-agent-hook/src/cli.rs:1:80 \
   --code .
-rs-harness query crates/semantic-agent-hook/src/cli.rs \
+asp-rust query crates/semantic-agent-hook/src/cli.rs \
   --term run_install \
   --term install \
   --names-only .
-rs-harness query crates/semantic-agent-hook/src/cli.rs \
+asp-rust query crates/semantic-agent-hook/src/cli.rs \
   --term run_install \
   --code .
-rs-harness query --from-hook direct-source-read \
+asp-rust query --from-hook direct-source-read \
   --selector '**/*.rs' \
   --term semantic-agent-hook \
   --term codex \

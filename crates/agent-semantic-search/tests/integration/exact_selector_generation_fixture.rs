@@ -23,12 +23,12 @@ fn workspace_identity_with_snapshot(
 ) -> WorkspaceSearchIdentityV1 {
     WorkspaceSearchIdentityV1::admit(WorkspaceSearchIdentityInputV1 {
         language_id: "rust".to_string(),
-        provider_id: "rs-harness".to_string(),
+        provider_id: "asp-rust".to_string(),
         scope_kind: WorkspaceSearchScopeKindV1::Package,
         requested_discovery_root: "/repo/crates/search".into(),
         cargo_workspace_root: "/repo".into(),
         selected_package_root: Some("/repo/crates/search".into()),
-        provider_tool_root: "/providers/rs-harness".into(),
+        provider_tool_root: "/providers/asp-rust".into(),
         envelope_root: "/repo/crates/search".into(),
         root_count: 1,
         owner_count: 1,
@@ -46,7 +46,7 @@ fn exact_memory_search_has_zero_io_receipt() {
         &ExactSelectorGenerationIdentityV1 {
             workspace_identity_digest: *workspace_identity().identity_digest(),
             language_id: "rust".to_string(),
-            provider_id: "rs-harness".to_string(),
+            provider_id: "asp-rust".to_string(),
             workspace_root_digest: digest(1),
             parser_identity_digest: digest(2),
             query_pack_digest: digest(3),
@@ -95,7 +95,7 @@ fn exact_memory_search_publishes_one_content_addressed_artifact_for_parallel_wri
         &ExactSelectorGenerationIdentityV1 {
             workspace_identity_digest: *workspace_identity().identity_digest(),
             language_id: "rust".to_string(),
-            provider_id: "rs-harness".to_string(),
+            provider_id: "asp-rust".to_string(),
             workspace_root_digest: digest(1),
             parser_identity_digest: digest(2),
             query_pack_digest: digest(3),
@@ -169,7 +169,7 @@ fn exact_memory_search_rejects_a_fixture_from_another_workspace_identity() {
         &ExactSelectorGenerationIdentityV1 {
             workspace_identity_digest: *workspace_identity().identity_digest(),
             language_id: "rust".to_string(),
-            provider_id: "rs-harness".to_string(),
+            provider_id: "asp-rust".to_string(),
             workspace_root_digest: digest(1),
             parser_identity_digest: digest(2),
             query_pack_digest: digest(3),

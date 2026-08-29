@@ -1123,6 +1123,15 @@ impl RuntimeArtifactSlotAuthority {
         publish_runtime_artifact_slot(candidate, &self.active_path()).await
     }
 
+    pub(crate) async fn restore_targets(
+        &self,
+        active: Option<&Path>,
+        healthy: Option<&Path>,
+    ) -> Result<(), String> {
+        restore_runtime_artifact_slot(active, &self.active_path()).await?;
+        restore_runtime_artifact_slot(healthy, &self.healthy_path()).await
+    }
+
     pub async fn stage_candidate_artifact(
         &self,
         candidate_dir: &Path,
@@ -1215,6 +1224,20 @@ async fn publish_runtime_artifact_slot(target: &Path, slot: &Path) -> Result<(),
     tokio::task::spawn_blocking(move || publish_runtime_artifact_link(&target, &slot))
         .await
         .map_err(|error| format!("publish Runtime artifact slot task failed: {error}"))?
+}
+
+async fn restore_runtime_artifact_slot(target: Option<&Path>, slot: &Path) -> Result<(), String> {
+    match target {
+        Some(target) => publish_runtime_artifact_slot(target, slot).await,
+        None => match tokio::fs::remove_file(slot).await {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!(
+                "remove Runtime artifact slot {} during rollback: {error}",
+                slot.display()
+            )),
+        },
+    }
 }
 
 async fn read_runtime_artifact_slot(path: &Path) -> Result<Option<PathBuf>, String> {

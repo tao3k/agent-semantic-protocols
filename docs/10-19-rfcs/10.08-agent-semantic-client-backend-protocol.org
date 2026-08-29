@@ -59,8 +59,8 @@ Machine output: compact JSON artifacts and local SQL rows outside the prompt; Ar
    selection.  It is not two separate clients named local and cloud.
 
 3. /Local-first remains the community default./  The local client works with
-   installed provider CLIs such as =asp-typescript=, =rs-harness=, and
-   =py-harness=, but the default agent-facing command surface is the
+   installed provider CLIs such as =asp-typescript=, =asp-rust=, and
+   =asp-python=, but the default agent-facing command surface is the
    =asp <language>= facade for =guide=, =search=, =query=, =check=,
    and bounded provider-native surfaces such as =ast-patch= and
    =evidence=.  It must not require the private server submodule, Arrow Flight,
@@ -122,9 +122,9 @@ Machine output: compact JSON artifacts and local SQL rows outside the prompt; Ar
     directory or file passed to the provider; it must not parse package
     membership, package excludes, project references, virtual environments,
     source/test roots, or language-specific layout.  Cargo context resolution
-    belongs to =rs-harness=, TypeScript project references belong to
-    =asp-typescript=, Python project/env discovery belongs to =py-harness=, and
-    Julia project discovery belongs to =asp-julia-harness=.  =PRJ_CACHE_HOME= is
+    belongs to =asp-rust=, TypeScript project references belong to
+    =asp-typescript=, Python project/env discovery belongs to =asp-python=, and
+    Julia project discovery belongs to =asp-julia=.  =PRJ_CACHE_HOME= is
     only a state-storage location for client cache/runtime artifacts.  If it is
     unset, client cache may live under a git toplevel =.cache=, but neither
     cache location nor git location determines the provider path context.
@@ -290,8 +290,8 @@ agent-semantic-client core
   `-- execution router
        |-- LocalNativeCliBackend
        |    |-- asp-typescript CLI
-       |    |-- rs-harness CLI
-       |    `-- py-harness CLI
+       |    |-- asp-rust CLI
+       |    `-- asp-python CLI
        |
        `-- CloudFlightBackend
            `-- private agent-semantic-server repo or submodule
@@ -452,8 +452,8 @@ Protocol admission requires all of the following:
 
 | Component | Owns |
 |-----------+------|
-| =asp-typescript=, =rs-harness=, =py-harness= | native parser facts, provider commands, schema-valid search/query/check packets and provider-native receipts |
-| =asp-julia-harness= | JuliaSyntax-native facts, facade-aligned provider commands, index exports for cache refresh, source-provider fallback via =julia-project-harness.jl= |
+| =asp-typescript=, =asp-rust=, =asp-python= | native parser facts, provider commands, schema-valid search/query/check packets and provider-native receipts |
+| =asp-julia= | JuliaSyntax-native facts, facade-aligned provider commands, index exports for cache refresh, source-provider fallback via =julia-project-harness.jl= |
 | =agent-semantic-client= | shared schemas/receipts, compact graph render algorithm, graph render validation, provider shell-out =graph render= CLI |
 | =agent-semantic-hook= | agent platform event classification and provider route guidance |
 | =agent-semantic-client= | cross-language routing, execution-route choice, cache, renderer invocation, artifacts |
@@ -1190,7 +1190,7 @@ asp-managed Julia cache query
        Rust client queries cached native fact rows
        Rust client renders compact search output and receipt
   -> on cache miss or stale generation:
-       call asp-julia-harness
+       call asp-julia
        request provider-owned index export
        validate export against shared schema
        write DB Engine cache generation
@@ -1205,7 +1205,7 @@ it through the provider registry.  Do not change
 =semantic-search-packet.v1= in place for this optimization.
 
 This adaptation makes Julia facade-aligned without making Rust the Julia parser.
-The compiled provider command is =asp-julia-harness=; =asp= is the stable agent
+The compiled provider command is =asp-julia=; =asp= is the stable agent
 command, and Julia remains the native fact refresh owner for the cache model.
 
 * Performance calibration
@@ -1342,7 +1342,7 @@ stay stable.
 mode = "local"
 
 [agent-semantic-client.local]
-providers = ["asp-typescript", "rs-harness", "py-harness"]
+providers = ["asp-typescript", "asp-rust", "asp-python"]
 
 [agent-semantic-client.cloud]
 endpoint = "grpc+tls://api.agent-semantic-protocols.dev:443"
@@ -1478,7 +1478,7 @@ Scenarios should measure:
 
 The first local scenarios should replay real provider binaries without a
 server.  They should prove that =asp <language>= and later
-=asp= do not make Codex learn =asp-typescript=, =rs-harness=, or =py-harness= for
+=asp= do not make Codex learn =asp-typescript=, =asp-rust=, or =asp-python= for
 common search/query/check and bounded provider-native flows, while still
 preserving provider-owned parser facts.
 
@@ -1557,7 +1557,7 @@ local-cache path:
 
 - =asp graph render --packet - --view seeds= is available as the shared compact
   graph renderer CLI.
-- =rs-harness=, =asp-typescript=, and =py-harness= build canonical
+- =asp-rust=, =asp-typescript=, and =asp-python= build canonical
   =semantic-search-packet.v1= data and invoke the shared renderer through the
   process boundary.
 - Language providers under =languages/= do not keep provider-local compact
@@ -1648,7 +1648,7 @@ local-cache path:
   respawning the provider even when the packet artifact is unavailable.  Replay
   is exact for the request fingerprint and is disabled for =--code= because
   syntax replay must not persist raw source.
-- Julia is facade-aligned through compiled =asp-julia-harness=.  The agent
+- Julia is facade-aligned through compiled =asp-julia=.  The agent
   semantic client hot path for repeated Julia search is still the Rust-side
   cache/query/render path over validated JuliaSyntax-owned facts, not a
   Rust-owned Julia parser or hidden text heuristic.
@@ -1675,7 +1675,7 @@ processes on the hit.
   client.
 - Do not expose full JSON, AST, or source as the default prompt surface.
 - Do not require a bare =julia-project-harness= command or Rust-owned Julia
-  parser facts; Julia provider identity is =asp-julia-harness= behind
+  parser facts; Julia provider identity is =asp-julia= behind
   =asp julia=.
 - Do not turn the protocol into MCP or a dynamic tool-discovery layer.
 - Do not upload source by default.

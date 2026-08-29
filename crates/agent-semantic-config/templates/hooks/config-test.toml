@@ -28,14 +28,14 @@ ruleComposition = [
 positiveCommands = [
   "ASP_NO_AGENT=1 cargo test -p agent-semantic-hook",
   "/usr/bin/env ASP_NO_AGENT=1 arbitrary-command --unknown-option fixture.rs",
+  "export ASP_NO_AGENT=1; arbitrary-command --unknown-option fixture.rs",
   "export ASP_NO_AGENT=1; exec arbitrary-command --unknown-option fixture.rs",
 ]
 negativeCommands = [
   "printf 'ASP_NO_AGENT=1 cargo test'",
-  "export ASP_NO_AGENT=1; cargo test -p agent-semantic-hook",
   "printf warmup; ASP_NO_AGENT=1 cargo test -p agent-semantic-hook",
 ]
-wrapperExemption = "process environment authority is defined by the three exact transfer topologies"
+wrapperExemption = "process environment authority is defined by direct, env, or exported transfer topology"
 
 [[rules]]
 id = "allow-owner-scoped-mutation"
@@ -239,16 +239,16 @@ negativeCommands = ["asp healthcheck --json", "asp paths --json"]
 
 [[rules]]
 id = "route-read-to-asp-languages"
+wrapperExemption = "the positive command is already the production nested devenv and rtk wrapper envelope"
 ruleComposition = [
-  { pointer = "/matcher", equals = "Bash" },
+  { pointer = "/matcherPolicies", contains = "wrapped_command" },
   { pointer = "/actions", contains = "read" },
   { pointer = "/profilesList", contains = "rust" },
   { pointer = "/profilesList", contains = "org" },
   { pointer = "/dispatch/agent", equals = "asp_explorer" },
 ]
 positiveCommands = [
-  "arbitrary-consumer < crates/agent-semantic-hook/src/lib.rs",
-  "future-tool < languages/typescript-lang-project-harness/src/reasoning-tree/owner-dependency.ts",
+  "/Users/example/project/.devenv/devenv-profile-exec rtk read -n --max-lines 110 crates/agent-semantic-client/src/client_cli.rs",
 ]
 negativeCommands = [
   "future-source-producer > generated.rs",

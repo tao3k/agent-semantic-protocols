@@ -57,7 +57,7 @@ fn provider_candidate_annotations_project_to_graph_nodes_without_path_heuristics
     let annotations = vec![json!({
         "path": "src/generated/lib.rs",
         "attributes": ["generated", "schema-generated"],
-        "source": "rust-harness",
+        "source": "asp-rust",
         "reason": "provider-parser-fact"
     })];
 

@@ -65,18 +65,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install asp-graph-turbo
+      - name: Validate asp-python-graphs service entry
         if: ${{ matrix.os != 'windows-latest' }}
         shell: bash
         run: |
           set -euo pipefail
-          tool_bin="$RUNNER_TEMP/asp-tools/bin"
-          tool_dir="$RUNNER_TEMP/asp-tools/tools"
-          mkdir -p "$tool_bin" "$tool_dir"
-          UV_TOOL_BIN_DIR="$tool_bin" UV_TOOL_DIR="$tool_dir" \
-            uv tool install packages/python/asp_graph_turbo
-          echo "$tool_bin" >> "$GITHUB_PATH"
-          "$tool_bin/asp-graph-turbo" --help
+          uv run --project packages/python/asp_python_graphs --frozen \
+            python -m asp_python_graphs.service_cli --help
 
       - name: Install sccache
         uses: taiki-e/install-action@v2
@@ -126,29 +121,29 @@ jobs:
           mkdir -p .bin
           cargo build --bin asp
           install -m 755 target/debug/asp .bin/asp
-          cargo build --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli --bin rs-harness
-          install -m 755 languages/rust-lang-project-harness/target/debug/rs-harness .bin/rs-harness
+          cargo build --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli --bin asp-rust
+          install -m 755 languages/rust-lang-project-harness/target/debug/asp-rust .bin/asp-rust
           npm --prefix languages/typescript-lang-project-harness ci
           npm --prefix languages/typescript-lang-project-harness run build
-          cat > .bin/py-harness <<EOF
+          cat > .bin/asp-python <<EOF
           #!/usr/bin/env bash
-          exec uv run --project "$repo_root/languages/python-lang-project-harness" --frozen py-harness "\$@"
+          exec uv run --project "$repo_root/languages/python-lang-project-harness" --frozen asp-python "\$@"
           EOF
           cat > .bin/asp-typescript <<EOF
           #!/usr/bin/env bash
           exec node "$repo_root/languages/typescript-lang-project-harness/dist/src/cli/main.js" "\$@"
           EOF
-          cat > .bin/asp-julia-harness <<'EOF'
+          cat > .bin/asp-julia <<'EOF'
           #!/usr/bin/env bash
-          echo "asp-julia-harness is validated outside the Rust unit-test job" >&2
+          echo "asp-julia is validated outside the Rust unit-test job" >&2
           exit 127
           EOF
-          cat > .bin/gslph <<'EOF'
+          cat > .bin/asp-gerbil-scheme <<'EOF'
           #!/usr/bin/env bash
-          echo "gslph is validated by the Gerbil language CI job" >&2
+          echo "asp-gerbil-scheme is validated by the Gerbil language CI job" >&2
           exit 127
           EOF
-          chmod 755 .bin/py-harness .bin/asp-typescript .bin/asp-julia-harness .bin/gslph
+          chmod 755 .bin/asp-python .bin/asp-typescript .bin/asp-julia .bin/asp-gerbil-scheme
           echo "$PWD/.bin" >> "$GITHUB_PATH"
 
       - name: Check formatting
@@ -320,12 +315,12 @@ jobs:
           mkdir -p "$HOME/.local/bin"
           install -m 755 target/debug/asp "$HOME/.local/bin/asp"
           export PATH="$HOME/.local/bin:$PATH"
-          cargo build --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli --bin rs-harness
-          install -m 755 languages/rust-lang-project-harness/target/debug/rs-harness "$HOME/.local/bin/rs-harness"
+          cargo build --manifest-path languages/rust-lang-project-harness/Cargo.toml --features cli --bin asp-rust
+          install -m 755 languages/rust-lang-project-harness/target/debug/asp-rust "$HOME/.local/bin/asp-rust"
           printf '#!/usr/bin/env bash\nexec node "%s/languages/typescript-lang-project-harness/dist/src/cli/main.js" "$@"\n' "$PWD" > "$HOME/.local/bin/asp-typescript"
           chmod 755 "$HOME/.local/bin/asp-typescript"
-          printf '#!/usr/bin/env bash\nexec uv run --project "%s/languages/python-lang-project-harness" --frozen py-harness "$@"\n' "$PWD" > "$HOME/.local/bin/py-harness"
-          chmod 755 "$HOME/.local/bin/py-harness"
+          printf '#!/usr/bin/env bash\nexec uv run --project "%s/languages/python-lang-project-harness" --frozen asp-python "$@"\n' "$PWD" > "$HOME/.local/bin/asp-python"
+          chmod 755 "$HOME/.local/bin/asp-python"
           cp .agents/asp.toml .agents/asp.toml.ci-full-provider
           restore_asp_toml() {
             mv .agents/asp.toml.ci-full-provider .agents/asp.toml

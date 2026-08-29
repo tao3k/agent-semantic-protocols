@@ -31,11 +31,11 @@ class SemanticAgentHookActivationSchemaTests(unittest.TestCase):
             "generatedBy": {"runtime": "asp", "version": "0.1.0"},
             "providers": [
                 {
-                    "manifestId": "agent.semantic-protocols.providers.rust.rs-harness",
+                    "manifestId": "agent.semantic-protocols.providers.rust.asp-rust",
                     "manifestDigest": "sha256:" + "a" * 64,
                     "languageId": "rust",
-                    "providerId": "rs-harness",
-                    "binary": "rs-harness",
+                    "providerId": "asp-rust",
+                    "binary": "asp-rust",
                     "providerCommandPrefix": [],
                     "coverage": {
                         "packageRoots": ["."],

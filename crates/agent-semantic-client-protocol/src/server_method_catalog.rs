@@ -27,6 +27,11 @@ pub const GRAPH_EVALUATE_REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.semantic-graph-turbo-request";
 pub const GRAPH_EVALUATE_RESPONSE_SCHEMA_ID: &str =
     "agent.semantic-protocols.semantic-graph-turbo-result";
+pub const GRAPH_TIMELINE_METHOD: &str = "asp.graphs.timeline";
+pub const GRAPH_TIMELINE_REQUEST_SCHEMA_ID: &str =
+    "agent.semantic-protocols.asp-client-graphs-timeline-request";
+pub const GRAPH_TIMELINE_RESPONSE_SCHEMA_ID: &str =
+    "agent.semantic-protocols.graph-turbo-artifact-timeline";
 
 pub const CANCELLATION_PROBE_METHOD: &str = "asp.lifecycle.cancellation";
 pub const CANCELLATION_PROBE_REQUEST_SCHEMA_ID: &str =
@@ -38,6 +43,7 @@ pub const CANCELLATION_PROBE_RESPONSE_SCHEMA_ID: &str =
 pub enum ServerClientRoute {
     CancellationProbe,
     GraphsEvaluate,
+    GraphsTimeline,
     Search,
     ExactQuery,
     OwnerSearch,
@@ -57,6 +63,7 @@ impl ServerClientRoute {
         match self {
             Self::CancellationProbe => "lifecycle.cancellation",
             Self::GraphsEvaluate => "graphs.evaluate",
+            Self::GraphsTimeline => "graphs.timeline",
             Self::Search => "search",
             Self::ExactQuery => "query",
             Self::OwnerSearch => "search.owner",
@@ -81,7 +88,11 @@ pub fn server_client_methods(
             owner_search_method(&language_id),
         ]);
     }
-    methods.extend([schema_bundle_method(), graphs_evaluate_method()]);
+    methods.extend([
+        schema_bundle_method(),
+        graphs_evaluate_method(),
+        graphs_timeline_method(),
+    ]);
     methods.sort_by(|left, right| left.method.cmp(&right.method));
     Ok(methods)
 }
@@ -170,6 +181,11 @@ pub fn resolve_server_client_method_owner(
             ServerClientRoute::GraphsEvaluate,
         ));
     }
+    if method == GRAPH_TIMELINE_METHOD {
+        return Ok(ResolvedServerClientMethod::Server(
+            ServerClientRoute::GraphsTimeline,
+        ));
+    }
     let mut resolved = None;
     for language_id in language_ids {
         let Some(route) = method
@@ -226,6 +242,22 @@ fn graphs_evaluate_method() -> ClientMethod {
             // payload authority; catalog metadata advertises both branches.
             optional("graph", ClientParameterType::Json),
             optional("graphs", ClientParameterType::Json),
+        ],
+        cancellable: true,
+        streaming: false,
+    }
+}
+
+fn graphs_timeline_method() -> ClientMethod {
+    ClientMethod {
+        method: GRAPH_TIMELINE_METHOD.to_owned(),
+        route_id: GRAPH_TIMELINE_METHOD.to_owned(),
+        request_schema_id: GRAPH_TIMELINE_REQUEST_SCHEMA_ID.to_owned(),
+        response_schema_id: GRAPH_TIMELINE_RESPONSE_SCHEMA_ID.to_owned(),
+        error_schema_ids: vec![ROUTE_FAILURE_SCHEMA_ID.to_owned()],
+        parameters: vec![
+            required("eventPacket", ClientParameterType::Json),
+            required("arguments", ClientParameterType::StringArray),
         ],
         cancellable: true,
         streaming: false,

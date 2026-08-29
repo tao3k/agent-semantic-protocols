@@ -4,10 +4,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 JUSTFILE = REPO_ROOT / "Justfile"
+RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release.yml"
 
 LANGUAGE_RELEASE_WORKFLOWS = {
     "languages/rust-lang-project-harness": {
-        "binary": "rs-harness",
+        "binary": "asp-rust",
         "darwin_os": "macos-14",
         "targets": {
             "x86_64-unknown-linux-gnu",
@@ -24,7 +25,7 @@ LANGUAGE_RELEASE_WORKFLOWS = {
         },
     },
     "languages/python-lang-project-harness": {
-        "binary": "py-harness",
+        "binary": "asp-python",
         "darwin_os": "macos-latest",
         "targets": {
             "x86_64-unknown-linux-gnu",
@@ -32,7 +33,7 @@ LANGUAGE_RELEASE_WORKFLOWS = {
         },
     },
     "languages/JuliaLangProjectHarness.jl": {
-        "binary": "asp-julia-harness",
+        "binary": "asp-julia",
         "darwin_os": "macos-14",
         "targets": {
             "x86_64-unknown-linux-gnu",
@@ -40,7 +41,7 @@ LANGUAGE_RELEASE_WORKFLOWS = {
         },
     },
     "languages/gerbil-scheme-language-project-harness": {
-        "binary": "gslph",
+        "binary": "asp-gerbil-scheme",
         "darwin_os": "ubuntu-latest",
         "targets": {
             "x86_64-unknown-linux-gnu",
@@ -109,10 +110,14 @@ def test_language_release_workflows_are_project_owned_and_publish_assets() -> No
         if language_path == "languages/gerbil-scheme-language-project-harness":
             assert "- name: Build Gerbil" in workflow
             assert "gxpkg deps --install" in workflow
-            assert "- name: Build native binary" in workflow
-            assert "gxpkg env ./build.ss compile --release --optimized" in workflow
-            assert ".bin/gslph search prime --view seeds --workspace ." in workflow
-            assert "package/bin/gslph" in workflow
+            registration = (
+                REPO_ROOT
+                / language_path
+                / "provider"
+                / "asp-provider-registration.json"
+            ).read_text(encoding="utf-8")
+            assert '"providerId": "asp-gerbil-scheme"' in registration
+            assert '"binary": "asp-gerbil-scheme"' in registration
 
 
 def test_asp_rust_ci_checks_out_provider_catalog_submodules() -> None:
@@ -128,6 +133,27 @@ def test_asp_rust_ci_checks_out_provider_catalog_submodules() -> None:
     for checkout_step in (rust_checkout_step, schema_checkout_step):
         assert "languages/JuliaLangProjectHarness.jl" in checkout_step
         assert "languages/gerbil-scheme-language-project-harness" in checkout_step
+
+
+def test_root_release_carries_server_managed_graphs_artifact() -> None:
+    workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Build atomic ASP and asp-python-graphs service bundle" in workflow
+    assert "cargo build --release --manifest-path Cargo.toml --package agent-semantic-client --bin asp" in workflow
+    assert "uv build --project packages/python/asp_python_graphs --wheel" in workflow
+    assert "package/asp-python-graphs.bundle" in workflow
+    assert '"artifactKind": "server-managed-service-environment"' in workflow
+    assert '"project": "asp-python-graphs"' in workflow
+    assert '"algorithm": "graph-turbo"' in workflow
+    assert "python -m venv --copies" in workflow
+    assert "asp-python-graphs-service" in workflow
+    assert "asp_python_graphs.service_cli" in workflow
+    assert "graph_turbo_cli" not in workflow
+    assert "graph artifact publish" in workflow
+    assert "asp-python-graphs-artifact.v2.json" in workflow
+    assert '"publicStandaloneCommand": False' in workflow
+    assert "asp-graph-turbo" not in workflow
+    assert "asp-graph-turbo-resident" not in workflow
 
 
 def test_tree_sitter_contract_gate_uses_packaged_cli() -> None:
@@ -157,8 +183,8 @@ def test_language_evidence_ci_hot_path_stays_core_fast() -> None:
     assert "[providers.gerbil-scheme]" in step
     assert "[providers.julia]" in step
     assert "enabled = false" in step
-    assert "asp-julia-harness" not in step
-    assert ".bin/gerbil-scheme-harness" not in step
+    assert "asp-julia" not in step
+    assert ".bin/asp-gerbil-scheme" not in step
     assert "agent-tools-install-julia" not in step
 
 
@@ -213,7 +239,7 @@ def test_gerbil_owner_items_fast_path_gate_uses_rust_inline_and_millisecond_budg
     assert "{{gerbil_harness_project}}" in gate
 
 
-def test_gerbil_ci_uses_canonical_gslph_binary() -> None:
+def test_gerbil_ci_uses_canonical_asp_gerbil_scheme_binary() -> None:
     workflow_path = (
         REPO_ROOT
         / "languages"
@@ -224,14 +250,14 @@ def test_gerbil_ci_uses_canonical_gslph_binary() -> None:
     )
     workflow = workflow_path.read_text(encoding="utf-8")
 
-    assert "- name: Build canonical gslph binary" in workflow
+    assert "- name: Build canonical asp-gerbil-scheme binary" in workflow
     assert "gxpkg env ./build.ss compile --release --optimized" in workflow
-    assert "test -x .bin/gslph" in workflow
+    assert "test -x .bin/asp-gerbil-scheme" in workflow
     assert "- name: Smoke canonical search subcommands" in workflow
-    assert ".bin/gslph search prime --view seeds --workspace ." in workflow
-    assert ".bin/gslph check --full ." in workflow
-    assert ".bin/gslph bench --json" in workflow
-    assert ".bin/gslph search prime --json ." in workflow
+    assert ".bin/asp-gerbil-scheme search prime --view seeds --workspace ." in workflow
+    assert ".bin/asp-gerbil-scheme check --full ." in workflow
+    assert ".bin/asp-gerbil-scheme bench --json" in workflow
+    assert ".bin/asp-gerbil-scheme search prime --json ." in workflow
 
 
 def test_gerbil_just_build_scans_only_launcher_build_inputs() -> None:
@@ -240,11 +266,11 @@ def test_gerbil_just_build_scans_only_launcher_build_inputs() -> None:
     target = justfile.split('agent-tools-build-gerbil bin_dir="":', 1)[1]
     target = target.split('agent-tools-install-gx bin_dir="":', 1)[0]
 
-    assert 'launcher="${package_dir}/.gerbil/bin/gslph"' in target
+    assert 'launcher="${package_dir}/.gerbil/bin/asp-gerbil-scheme"' in target
     assert "gxpkg env gxi src/build.ss compile" in target
-    assert 'install -m 755 "${launcher}" "${root_bin}/gslph"' in target
-    assert 'install -m 755 "${launcher}" "${bin_dir}/gslph"' in target
-    assert '"${bin_dir}/gslph" --help >/dev/null' in target
+    assert 'install -m 755 "${launcher}" "${root_bin}/asp-gerbil-scheme"' in target
+    assert 'install -m 755 "${launcher}" "${bin_dir}/asp-gerbil-scheme"' in target
+    assert '"${bin_dir}/asp-gerbil-scheme" --help >/dev/null' in target
 
 
 def test_julia_full_provider_gate_uses_fresh_compiled_harness_perf_guard() -> None:

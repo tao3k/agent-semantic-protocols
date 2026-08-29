@@ -35,7 +35,45 @@ def validate_service_envelope(message: Mapping[str, Any]) -> None:
         "payloadSchemaId",
     ):
         required_string(message, field_name)
-    if message.get("messageKind") == "cancel":
+    kind = message.get("messageKind")
+    if kind not in {
+        "hello",
+        "open-generation",
+        "evaluate",
+        "timeline",
+        "release-generation",
+        "cancel",
+        "health",
+        "shutdown",
+    }:
+        raise ServiceProtocolError(
+            "unsupported-message-kind", "messageKind is not a supported request kind"
+        )
+    allowed = {
+        "schemaId",
+        "schemaVersion",
+        "sessionId",
+        "serviceEpoch",
+        "requestId",
+        "clientRequestId",
+        "sequence",
+        "messageKind",
+        "workspaceIdentity",
+        "generationDigest",
+        "generationToken",
+        "runtimeArtifactDigest",
+        "executionArtifactDigest",
+        "deadlineUnixMillis",
+        "cancellationId",
+        "payloadSchemaId",
+        "payload",
+    }
+    unknown = sorted(set(message) - allowed)
+    if unknown:
+        raise ServiceProtocolError(
+            "unknown-envelope-field", f"unsupported envelope fields: {unknown}"
+        )
+    if kind == "cancel":
         required_string(message, "cancellationId")
     sequence = message.get("sequence")
     if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 1:
@@ -52,6 +90,7 @@ def service_receipt(
     workspace: str | None = None,
     generation: str | None = None,
     generation_token: int | None = None,
+    sequence: int = 1,
 ) -> dict[str, object]:
     receipt: dict[str, object] = {
         "schemaId": ASP_PYTHON_GRAPHS_SCHEMA_ID,
@@ -59,7 +98,7 @@ def service_receipt(
         "sessionId": "asp-python-graphs",
         "serviceEpoch": service_epoch or "unbound",
         "requestId": request_id,
-        "sequence": 1,
+        "sequence": sequence,
         "messageKind": "receipt",
         "payloadSchemaId": "agent.semantic-protocols.asp-python-graphs-receipt",
         "payload": {"state": state},
@@ -76,13 +115,16 @@ def unavailable_receipt(
     message: Mapping[str, Any] | None, code: str, detail: str
 ) -> dict[str, object]:
     source = message or {}
+    sequence = source.get("sequence")
+    if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 1:
+        sequence = 1
     return {
         "schemaId": ASP_PYTHON_GRAPHS_SCHEMA_ID,
         "schemaVersion": ASP_PYTHON_GRAPHS_SCHEMA_VERSION,
         "sessionId": str(source.get("sessionId") or "asp-python-graphs"),
         "serviceEpoch": str(source.get("serviceEpoch") or "unbound"),
         "requestId": str(source.get("requestId") or "invalid-request"),
-        "sequence": int(source.get("sequence") or 1),
+        "sequence": sequence,
         "messageKind": "receipt",
         "payloadSchemaId": "agent.semantic-protocols.asp-python-graphs-receipt",
         "payload": {"state": "unavailable", "reasonKind": code, "message": detail},
@@ -98,7 +140,8 @@ def required_string(message: Mapping[str, Any], key: str) -> str:
 
 def required_digest(message: Mapping[str, Any], key: str) -> str:
     value = required_string(message, key)
-    if not value.startswith("blake3-256:") or len(value) != 75:
+    digest = value.removeprefix("blake3-256:")
+    if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
         raise ServiceProtocolError(
             "invalid-digest", f"{key} must be a blake3-256 digest"
         )

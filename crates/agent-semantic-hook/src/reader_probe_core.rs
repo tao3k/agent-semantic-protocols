@@ -9,11 +9,13 @@ mod runtime;
 pub fn diagnose_reader_probe(
     command_tokens: Vec<String>,
     subject: String,
+    wrapped_command: bool,
     reader_behavior_patterns: Vec<Vec<String>>,
 ) -> Option<ReaderProbeObservation> {
     runtime::observe(&runtime::ReaderProbeRequest {
         command_tokens,
         subject,
+        wrapped_command,
         reader_behavior_patterns,
         dynamic_cache_root: None,
     })
@@ -23,12 +25,14 @@ pub fn diagnose_reader_probe(
 pub fn diagnose_reader_probe_with_state_home(
     command_tokens: Vec<String>,
     subject: String,
+    wrapped_command: bool,
     reader_behavior_patterns: Vec<Vec<String>>,
     state_home: &std::path::Path,
 ) -> Option<ReaderProbeObservation> {
     runtime::observe(&runtime::ReaderProbeRequest {
         command_tokens,
         subject,
+        wrapped_command,
         reader_behavior_patterns,
         dynamic_cache_root: Some(
             state_home
@@ -44,32 +48,13 @@ pub(crate) const READER_PROBE_FIELD: &str = "_aspReaderProbe";
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReaderProbeAccess {
     Read,
-    NotRead,
     Unknown,
-}
-
-/// Classify an `open`/`openat` access-mode flag without command-name knowledge.
-///
-/// Only read-only authority is projected as Reader. `O_RDWR` remains NotRead
-/// because Codex has a distinct native Edit route. Linux `O_PATH` is not a
-/// content read even though its access-mode bits are zero like `O_RDONLY`.
-pub const fn classify_open_access_mode(flags: i32) -> ReaderProbeAccess {
-    #[cfg(target_os = "linux")]
-    if flags & libc::O_PATH != 0 {
-        return ReaderProbeAccess::NotRead;
-    }
-    match flags & libc::O_ACCMODE {
-        libc::O_RDONLY => ReaderProbeAccess::Read,
-        libc::O_WRONLY | libc::O_RDWR => ReaderProbeAccess::NotRead,
-        _ => ReaderProbeAccess::Unknown,
-    }
 }
 
 impl ReaderProbeAccess {
     const fn label(self) -> &'static str {
         match self {
             Self::Read => "read",
-            Self::NotRead => "not-read",
             Self::Unknown => "unknown",
         }
     }
@@ -86,12 +71,6 @@ pub struct ReaderProbeObservation {
     pub cleanup_verified: bool,
     pub cache_hit: bool,
     pub behavior_key: Option<String>,
-}
-
-#[cfg(target_os = "macos")]
-#[doc(hidden)]
-pub fn reader_probe_interposer_bytes() -> &'static [u8] {
-    include_bytes!(concat!(env!("OUT_DIR"), "/asp-reader-probe.dylib"))
 }
 
 pub fn bind_reader_probe_observation(
@@ -118,13 +97,12 @@ pub fn bind_reader_probe_observation(
                 "subject": observation.subject,
                 "access": observation.access.label(),
                 "accessMode": match observation.access {
-                    ReaderProbeAccess::Read => "O_RDONLY",
-                    ReaderProbeAccess::NotRead => "not-read-only",
+                    ReaderProbeAccess::Read => "read-permission",
                     ReaderProbeAccess::Unknown => "unknown",
                 },
                 "backend": observation.backend,
-                "syscall": (observation.terminal == "open-entry-observed")
-                    .then_some("open/openat"),
+                "permissionProbe": (observation.backend == "permission-differential")
+                    .then_some("readable-vs-denied"),
                 "terminal": observation.terminal,
                 "elapsedMicros": observation.elapsed_micros,
                 "processLaunched": false,

@@ -808,12 +808,12 @@ async fn source_index_import_assembly_uses_turso_ready_contract_rows() {
         relations: Vec::new(),
         path: lib.clone(),
         language_id: LanguageId::from("rust"),
-        provider_id: ProviderId::from("rs-harness"),
+        provider_id: ProviderId::from("asp-rust"),
         projection_coverage:
             agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::Complete,
         selector_receipts: vec![agent_semantic_client_db::ClientDbSourceIndexSelector {
             owner_path: "src/lib.rs".into(),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             selector_id: selector.into(),
             symbol: Some("turso_source_index_fixture".into()),
             kind: Some("function".into()),
@@ -823,7 +823,7 @@ async fn source_index_import_assembly_uses_turso_ready_contract_rows() {
             projection_record: crate::projection_fixture::projection_record(
                 crate::projection_fixture::ProjectionFixtureInput {
                     language_id: "rust",
-                    provider_id: "rs-harness",
+                    provider_id: "asp-rust",
                     owner_path: "src/lib.rs",
                     structural_selector: selector,
                     item_kind: "function",
@@ -904,7 +904,7 @@ async fn source_index_refresh_request_remains_db_engine_owned() {
             relations: Vec::new(),
             relative_path: "src/lib.rs".to_string(),
             language_id: LanguageId::from("rust"),
-            provider_id: ProviderId::from("rs-harness"),
+            provider_id: ProviderId::from("asp-rust"),
             text: "pub fn source_index_refresh_fixture() {}\n".to_string(),
             selectors: Vec::new(),
         }],

@@ -16,7 +16,7 @@ def corpus() -> Corpus:
     return Corpus(
         resource_id="rust.live",
         scenario_id="rust.live",
-        provider_id="rs-harness",
+        provider_id="asp-rust",
         language="rust",
         repository="example/live",
         remote="https://github.com/example/live.git",
@@ -40,7 +40,7 @@ def publish_receipts(
         "schemaVersion": "1",
         "artifactDigest": "2" * 64,
         "resourceId": "rust.live",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "languageId": "rust",
         "git": {
             "remote": "https://github.com/example/live.git",

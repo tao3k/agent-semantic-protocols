@@ -112,7 +112,7 @@ def _first_binary_ref(tokens: Any) -> dict[str, str] | None:
         if not isinstance(token, str):
             continue
         name = os.path.basename(token)
-        if name.startswith("asp-") or name in {"asp", "py-harness"}:
+        if name.startswith("asp-") or name in {"asp", "asp-python"}:
             if ".local/bin" in token:
                 return {"kind": "home-local-bin", "value": name}
             if "/.bin/" in token or token.startswith(".bin/"):

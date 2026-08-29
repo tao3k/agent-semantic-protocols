@@ -148,7 +148,7 @@ fn asp_binary_rebind_drops_provider_leaves_outside_its_authority() {
     std::fs::write(&binary, b"asp-v1").expect("write binary");
     std::fs::write(
         &activation,
-        br#"{"providers":[{"languageId":"rust","providerId":"rs-harness"}]}"#,
+        br#"{"providers":[{"languageId":"rust","providerId":"asp-rust"}]}"#,
     )
     .expect("write activation");
     let binary_digest = fixture_binary_digest(&binary);

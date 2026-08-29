@@ -426,7 +426,7 @@ commandContainsAny = ["--json"]
 [[rules]]
 id = "route-read-to-asp-languages"
 priority = 40000
-matcher = "Bash"
+matcherPolicies = ["wrapped_command"]
 actions = ["read"]
 profilesList = ["rust", "typescript", "python", "julia", "gerbil-scheme", "org", "markdown"]
 decision = "deny"

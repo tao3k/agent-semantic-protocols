@@ -233,14 +233,14 @@ proves that the assignment reaches the requested child process. -/
 inductive CommandEnvironmentEvidence where
   | directAssignment
   | envUtility
-  | exportExec
+  | exportedCommand
   | unboundText
   deriving DecidableEq
 
 def commandEnvironmentHasRecoveryAuthority : CommandEnvironmentEvidence → Bool
   | .directAssignment => true
   | .envUtility => true
-  | .exportExec => true
+  | .exportedCommand => true
   | .unboundText => false
 
 /-- The command-local guard is evaluated before generation resolution. A valid
@@ -257,16 +257,16 @@ theorem env_utility_assignment_is_recovery_authority :
     commandEnvironmentHasRecoveryAuthority .envUtility = true := by
   rfl
 
-theorem export_exec_assignment_is_recovery_authority :
-    commandEnvironmentHasRecoveryAuthority .exportExec = true := by
+theorem exported_assignment_is_recovery_authority :
+    commandEnvironmentHasRecoveryAuthority .exportedCommand = true := by
   rfl
 
 theorem unbound_payload_text_is_not_recovery_authority :
     commandEnvironmentHasRecoveryAuthority .unboundText = false := by
   rfl
 
-theorem export_exec_escape_survives_missing_generation :
-    commandEscapeBeforeGeneration .exportExec false = true := by
+theorem exported_command_escape_survives_missing_generation :
+    commandEscapeBeforeGeneration .exportedCommand false = true := by
   rfl
 
 theorem unbound_text_cannot_escape_missing_generation :

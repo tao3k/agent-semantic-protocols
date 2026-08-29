@@ -145,6 +145,32 @@ fn graph_command() -> Command {
                 )
                 .arg(Arg::new("seeds").long("seeds").value_name("N")),
         )
+        .subcommand(
+            Command::new("artifact")
+                .about("Manage the ASP Server-owned Python Graphs artifact")
+                .subcommand(
+                    Command::new("publish")
+                        .about("Atomically publish a verified Python Graphs executable descriptor")
+                        .arg(
+                            Arg::new("executable")
+                                .long("executable")
+                                .value_name("PATH")
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::new("argument")
+                                .long("argument")
+                                .value_name("ARG")
+                                .action(clap::ArgAction::Append)
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::new("expected-generation")
+                                .long("expected-generation")
+                                .value_name("N"),
+                        ),
+                ),
+        )
 }
 
 fn facade_command(name: &'static str, bin_name: &'static str) -> Command {
@@ -393,6 +419,15 @@ pub(crate) fn selected_command(args: &[String]) -> Command {
             install_plugin_command()
         }
         [graph, render, ..] if graph == "graph" && render == "render" => graph_render_command(),
+        [graph, artifact, publish, ..]
+            if graph == "graph" && artifact == "artifact" && publish == "publish" =>
+        {
+            graph_command()
+                .find_subcommand("artifact")
+                .and_then(|command| command.find_subcommand("publish"))
+                .cloned()
+                .expect("known graph artifact publish command")
+        }
         [document, leaf, ..] if is_document_facade(document) => DOCUMENT_COMMANDS
             .iter()
             .find_map(|(candidate, _)| (*candidate == leaf).then_some(*candidate))
@@ -423,6 +458,9 @@ fn selected_command_default(args: &[String]) -> Command {
         (Some("session"), _) => session_control_plane_command(),
         (Some("providers"), _) => providers_command(),
         (Some("tools"), _) => tools_command(),
+        (Some("wrap"), _) => Command::new("wrap")
+            .bin_name("asp wrap")
+            .about("Run a command through the ASP client runtime"),
         (Some("cache"), Some("gc")) => agent_semantic_client::project_registry_gc_clap_command(),
         (Some("cache"), Some("clean")) => {
             agent_semantic_client::project_registry_clean_clap_command()

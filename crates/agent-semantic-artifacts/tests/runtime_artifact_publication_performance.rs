@@ -1,6 +1,9 @@
 use std::os::unix::fs::PermissionsExt;
 
 use agent_semantic_artifacts::runtime_artifact_publication::publish_runtime_artifact;
+use agent_semantic_artifacts::runtime_artifact_publication::{
+    commit_runtime_artifact_activation, read_runtime_artifact_activation_event,
+};
 
 const SAMPLE_COUNT: usize = 32;
 const PUBLICATION_P99_MICROS: u128 = 1_000_000;
@@ -33,7 +36,7 @@ async fn publication_latency_distribution_is_subsecond_with_millisecond_lock_sco
         executable_source(&source, sample);
 
         let started = std::time::Instant::now();
-        let receipt = publish_runtime_artifact(&state_home, &source, &target, "dev", None)
+        let receipt = publish_runtime_artifact(&state_home, &source, &target, "dev")
             .await
             .expect("publish cold artifact");
         cold_total.push(started.elapsed().as_micros());
@@ -50,7 +53,7 @@ async fn publication_latency_distribution_is_subsecond_with_millisecond_lock_sco
         executable_source(&source, sample);
 
         let started = std::time::Instant::now();
-        let receipt = publish_runtime_artifact(&state_home, &source, &target, "dev", None)
+        let receipt = publish_runtime_artifact(&state_home, &source, &target, "dev")
             .await
             .expect("publish warm artifact");
         warm_total.push(started.elapsed().as_micros());
@@ -86,5 +89,52 @@ async fn publication_latency_distribution_is_subsecond_with_millisecond_lock_sco
     assert!(
         warm_lock_p99 < LOCK_P99_MICROS,
         "warm artifact mutation-lock p99 must remain below 10ms: p99Micros={warm_lock_p99}"
+    );
+}
+
+#[tokio::test]
+async fn previous_large_artifact_bytes_are_outside_the_publication_guard_scope() {
+    const LARGE_BYTES: usize = 32 * 1024 * 1024;
+    let temporary = tempfile::tempdir().expect("large previous artifact fixture");
+    let state_home = temporary.path().join("state");
+    let large_source = temporary.path().join("asp-large");
+    let next_source = temporary.path().join("asp-next");
+    let target = temporary.path().join("bin/asp");
+    let mut large = vec![b'x'; LARGE_BYTES];
+    large[..10].copy_from_slice(b"#!/bin/sh\n");
+    std::fs::write(&large_source, large).expect("write large previous artifact");
+    let mut permissions = std::fs::metadata(&large_source).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&large_source, permissions).unwrap();
+    executable_source(&next_source, 1);
+
+    publish_runtime_artifact(&state_home, &large_source, &target, "release")
+        .await
+        .expect("publish large previous artifact");
+    let initial = read_runtime_artifact_activation_event(&state_home)
+        .await
+        .unwrap()
+        .unwrap();
+    commit_runtime_artifact_activation(&state_home, &initial, None)
+        .await
+        .expect("commit large previous artifact");
+
+    let receipt = publish_runtime_artifact(&state_home, &next_source, &target, "release")
+        .await
+        .expect("publish after a large active artifact");
+    let phase_trace_json =
+        serde_json::to_string(&receipt.phase_trace).expect("serialize publication phase trace");
+    let phase_trace_path = temporary.path().join("runtime-artifact-phase-trace.json");
+    std::fs::write(&phase_trace_path, phase_trace_json.as_bytes())
+        .expect("write publication phase trace artifact");
+    eprintln!(
+        "runtime-artifact-large-previous bytes={LARGE_BYTES} lockMicros={} phaseTracePath={} phaseTrace={phase_trace_json}",
+        receipt.lock_elapsed_micros,
+        phase_trace_path.display(),
+    );
+    assert!(
+        receipt.lock_elapsed_micros < LOCK_P99_MICROS,
+        "guard scope must not scale with previous artifact bytes: lockMicros={}",
+        receipt.lock_elapsed_micros
     );
 }

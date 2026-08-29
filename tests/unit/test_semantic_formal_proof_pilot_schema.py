@@ -26,8 +26,8 @@ def test_formal_proof_pilot_schema_accepts_dependency_graph_pilot() -> None:
             "proofId": "rust.proof.dependency-graph-acyclicity",
             "producer": {
                 "languageId": "rust",
-                "providerId": "rs-harness",
-                "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+                "providerId": "asp-rust",
+                "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
             },
             "target": {
                 "kind": "dependency-graph-acyclicity",
@@ -38,9 +38,9 @@ def test_formal_proof_pilot_schema_accepts_dependency_graph_pilot() -> None:
             },
             "method": {
                 "kind": "exhaustive-small-model",
-                "tool": "rs-harness",
+                "tool": "asp-rust",
                 "command": [
-                    "rs-harness",
+                    "asp-rust",
                     "proof",
                     "pilot",
                     "dependency-graph-acyclicity",

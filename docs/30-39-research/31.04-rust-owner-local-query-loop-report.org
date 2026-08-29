@@ -8,7 +8,7 @@
 * Purpose
 
 This report records a real Rust workflow where the agent obeyed the project
-skill by using =rs-harness= query/search instead of raw source reads, but still
+skill by using =asp-rust= query/search instead of raw source reads, but still
 fell into many repeated owner-local symbol probes.
 
 The trace matters because graph synthesis has already improved cross-owner
@@ -21,21 +21,21 @@ names.
 The agent first selected the relevant owner:
 
 #+begin_src shell
-direnv exec . rs-harness query crates/semantic-agent-hook/src/command/raw_search.rs --query RawSearchScope crates/semantic-agent-hook
-direnv exec . rs-harness query crates/semantic-agent-hook/src/command/raw_search.rs --query terms_for_raw_search crates/semantic-agent-hook
-direnv exec . rs-harness query crates/semantic-agent-hook/src/command/raw_search.rs --query raw_search_stage crates/semantic-agent-hook
-direnv exec . rs-harness query crates/semantic-agent-hook/src/command/raw_search.rs --query matching_providers crates/semantic-agent-hook
-direnv exec . rs-harness search owner crates/semantic-agent-hook/src/command/raw_search.rs items --view seeds crates/semantic-agent-hook
+direnv exec . asp-rust query crates/semantic-agent-hook/src/command/raw_search.rs --query RawSearchScope crates/semantic-agent-hook
+direnv exec . asp-rust query crates/semantic-agent-hook/src/command/raw_search.rs --query terms_for_raw_search crates/semantic-agent-hook
+direnv exec . asp-rust query crates/semantic-agent-hook/src/command/raw_search.rs --query raw_search_stage crates/semantic-agent-hook
+direnv exec . asp-rust query crates/semantic-agent-hook/src/command/raw_search.rs --query matching_providers crates/semantic-agent-hook
+direnv exec . asp-rust search owner crates/semantic-agent-hook/src/command/raw_search.rs items --view seeds crates/semantic-agent-hook
 #+end_src
 
 It then probed guessed parser helper names:
 
 #+begin_src shell
-direnv exec . rs-harness query src/command/raw_search.rs --query parse_git_grep_scope .
-direnv exec . rs-harness query src/command/raw_search.rs --query parse_ripgrep_scope .
-direnv exec . rs-harness query src/command/raw_search.rs --query parse_fd_scope .
-direnv exec . rs-harness query src/command/raw_search.rs --query parse_find_scope .
-direnv exec . rs-harness query src/command/raw_search.rs --query matching_providers .
+direnv exec . asp-rust query src/command/raw_search.rs --query parse_git_grep_scope .
+direnv exec . asp-rust query src/command/raw_search.rs --query parse_ripgrep_scope .
+direnv exec . asp-rust query src/command/raw_search.rs --query parse_fd_scope .
+direnv exec . asp-rust query src/command/raw_search.rs --query parse_find_scope .
+direnv exec . asp-rust query src/command/raw_search.rs --query matching_providers .
 #+end_src
 
 The important reproduced outputs were:
@@ -129,7 +129,7 @@ question many times.
 Provider query commands should accept repeated terms:
 
 #+begin_src shell
-rs-harness query src/command/raw_search.rs \
+asp-rust query src/command/raw_search.rs \
   --term RawSearchScope \
   --term terms_for_raw_search \
   --term matching_providers \
@@ -197,9 +197,9 @@ A raw_search implementation turn should not need a dozen single-symbol probes.
 The expected bounded flow is:
 
 #+begin_src shell
-rs-harness search owner crates/semantic-agent-hook/src/command/raw_search.rs items --view seeds crates/semantic-agent-hook
-rs-harness query src/command/raw_search.rs --term parse_ripgrep_scope --term parse_ --names-only crates/semantic-agent-hook
-rs-harness query src/command/raw_search.rs --term parse_ripgrep_like_scope --term parse_fd_scope crates/semantic-agent-hook
+asp-rust search owner crates/semantic-agent-hook/src/command/raw_search.rs items --view seeds crates/semantic-agent-hook
+asp-rust query src/command/raw_search.rs --term parse_ripgrep_scope --term parse_ --names-only crates/semantic-agent-hook
+asp-rust query src/command/raw_search.rs --term parse_ripgrep_like_scope --term parse_fd_scope crates/semantic-agent-hook
 #+end_src
 
 The first query packet should explain the miss and name the candidate.  The
@@ -217,8 +217,8 @@ symbol probes toward an owner-local discovery phase.
 - =semantic-query-packet.v1= now allows =outputMode= =code|names|outline=,
   =queryCoverage= entries, bounded =candidateItems=, and matches without
   =code= when the packet is a names/outline discovery response.
-- Rust =rs-harness search owner ... items --query ... --names-only= and
-  =rs-harness query <owner> --term ... --names-only= now keep item discovery
+- Rust =asp-rust search owner ... items --query ... --names-only= and
+  =asp-rust query <owner> --term ... --names-only= now keep item discovery
   inside the selected owner.
 
 ** Real raw_search replay
@@ -294,15 +294,15 @@ querySetScopes=owner
 #+end_src
 
 This matters for the real raw_search loop because the parent agent can discover
-the owner-local query surface from =rs-harness agent doctor --json= before it
+the owner-local query surface from =asp-rust agent doctor --json= before it
 starts guessing source reads or single-symbol commands.
 
-The installed =rs-harness= also confirms the combined-term replacement for the
+The installed =asp-rust= also confirms the combined-term replacement for the
 original repeated probes.  A stale four-term query returns one miss packet with
 parser-owned repair candidates:
 
 #+begin_src shell
-rs-harness query crates/semantic-agent-hook/src/command/raw_search.rs \
+asp-rust query crates/semantic-agent-hook/src/command/raw_search.rs \
   --term parse_git_grep_scope \
   --term parse_ripgrep_scope \
   --term parse_fd_scope \
@@ -318,7 +318,7 @@ Following those candidates collapses four exact symbol reads into one
 names-only owner item index:
 
 #+begin_src shell
-rs-harness query crates/semantic-agent-hook/src/command/raw_search.rs \
+asp-rust query crates/semantic-agent-hook/src/command/raw_search.rs \
   --term parse_ripgrep_like \
   --term parse_fd \
   --term parse_find \
@@ -352,7 +352,7 @@ asp-typescript query src/cli/semantic-language.ts \
   --term semanticLanguageRegistryDocument \
   --names-only .
 
-py-harness query src/python_lang_project_harness/_semantic_language.py \
+asp-python query src/python_lang_project_harness/_semantic_language.py \
   --term semantic_language_registry_document \
   --names-only .
 #+end_src
@@ -384,10 +384,10 @@ DIRENV_SILENCE=1 direnv exec . pytest -q \
 
 DIRENV_SILENCE=1 direnv exec . \
   uv run --project languages/python-lang-project-harness --frozen \
-  py-harness check --full .
+  asp-python check --full .
 # exit 0; non-blocking policy advice may still be printed
 
-DIRENV_SILENCE=1 direnv exec . rs-harness check --changed .
+DIRENV_SILENCE=1 direnv exec . asp-rust check --changed .
 # [ok] rust
 #+end_src
 

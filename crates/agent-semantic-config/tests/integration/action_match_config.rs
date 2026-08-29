@@ -63,7 +63,7 @@ fn reader_behavior_catalog_rejects_duplicate_empty_and_path_executables() {
 }
 
 #[test]
-fn source_access_rule_is_owned_by_bash_capability_and_language_profiles() {
+fn source_access_rule_is_owned_by_wrapped_command_and_language_profiles() {
     let config = default_config();
     let rule = config
         .rules
@@ -75,7 +75,11 @@ fn source_access_rule_is_owned_by_bash_capability_and_language_profiles() {
         .as_ref()
         .expect("source access route dispatch");
     assert_eq!(dispatch.agent.as_str(), "asp_explorer");
-    assert_eq!(rule.matcher.as_deref(), Some("Bash"));
+    assert!(rule.matcher.is_none());
+    assert_eq!(
+        rule.matcher_policies,
+        [HookClientMatcherPolicy::WrappedCommand]
+    );
     assert!(!rule.profiles_list.is_empty());
     assert_eq!(
         config.agent_calling.symbol("codex", "asp_explorer"),
@@ -105,9 +109,11 @@ fn default_template_uses_rule_local_matcher_policies() {
         .iter()
         .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("Bash source-access route rule");
-    assert!(source_access_rule.matcher_policies.is_empty());
-
-    assert_eq!(source_access_rule.matcher.as_deref(), Some("Bash"));
+    assert_eq!(
+        source_access_rule.matcher_policies,
+        [HookClientMatcherPolicy::WrappedCommand]
+    );
+    assert!(source_access_rule.matcher.is_none());
     assert!(
         source_access_rule
             .profiles_list

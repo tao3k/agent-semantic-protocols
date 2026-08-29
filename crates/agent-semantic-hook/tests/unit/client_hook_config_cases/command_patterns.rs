@@ -114,6 +114,7 @@ toolAny = ["Bash", "functions.exec_command"]
         "TRACE=1 CI_MODE=1 cargo test",
         "env CI_MODE=1 cargo test",
         "export CI_MODE=1; exec cargo test",
+        "export CI_MODE=1; cargo test",
     ] {
         let decision = classify_hook_with_config(HookClassificationRequest {
             registry: &runtime,
@@ -139,7 +140,6 @@ toolAny = ["Bash", "functions.exec_command"]
         "NOT_CI_MODE=1 cargo test",
         "printf warmup && CI_MODE=1 cargo test",
         "bash -lc 'CI_MODE=1 cargo test'",
-        "export CI_MODE=1; cargo test",
     ] {
         let decision = classify_hook_with_config(HookClassificationRequest {
             registry: &runtime,

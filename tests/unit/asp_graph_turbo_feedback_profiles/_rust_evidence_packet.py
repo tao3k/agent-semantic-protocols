@@ -19,8 +19,8 @@ def rust_evidence_graph_turbo_request() -> dict[str, object]:
         "budget": 8,
         "producer": {
             "languageId": "rust",
-            "providerId": "rs-harness",
-            "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+            "providerId": "asp-rust",
+            "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
         },
         "project": {"root": ".", "package": None, "fields": {}},
         "summary": {

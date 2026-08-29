@@ -88,7 +88,7 @@ def test_request_rejects_missing_generation_authority() -> None:
 
 @pytest.mark.parametrize(
     "legacy_provider_id",
-    ["rs-harness", "py-harness", "asp-typescript", "orgize", "asp+rust"],
+    ["asp-rust", "asp-python", "asp-typescript", "orgize", "asp+rust"],
 )
 def test_request_rejects_implementation_named_provider_ids(
     legacy_provider_id: str,

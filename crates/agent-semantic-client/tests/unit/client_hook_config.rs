@@ -32,7 +32,7 @@ tool = "Bash"
 commandContainsAny = ["custom-config-deny"]
 
 [[rules.routes]]
-providerId = "rs-harness"
+providerId = "asp-rust"
 languageId = "rust"
 binary = "asp"
 kind = "ingest"
@@ -56,7 +56,7 @@ stdinMode = "pipe-candidates"
         "{decision}"
     );
     assert_eq!(decision["languageIds"], json!([]));
-    assert_eq!(decision["routes"][0]["providerId"], "rs-harness");
+    assert_eq!(decision["routes"][0]["providerId"], "asp-rust");
     assert_eq!(decision["routes"][0]["binary"], "asp");
     assert_eq!(
         decision["routes"][0]["argv"],
@@ -309,7 +309,7 @@ id = "empty-route-argv"
 decision = "deny"
 
 [[rules.routes]]
-providerId = "rs-harness"
+providerId = "asp-rust"
 kind = "query"
 argv = []
 "#,
@@ -323,10 +323,10 @@ id = "bad-route-binary"
 decision = "deny"
 
 [[rules.routes]]
-providerId = "rs-harness"
-binary = "../rs-harness"
+providerId = "asp-rust"
+binary = "../asp-rust"
 kind = "query"
-argv = ["rs-harness"]
+argv = ["asp-rust"]
 "#,
             "invalid rules[].routes[].binary",
         ),
@@ -505,7 +505,7 @@ fn root_owned_rust_activation_json(root: &std::path::Path) -> String {
     )
     .expect("write Rust project anchor");
     let state_home = root.join(".agent-semantic-protocols");
-    let provider = state_home.join("runtime/bin/rs-harness");
+    let provider = state_home.join("runtime/bin/asp-rust");
     std::fs::create_dir_all(provider.parent().expect("provider parent"))
         .expect("create State Home provider bin dir");
     std::fs::write(&provider, "#!/bin/sh\nexit 0\n").expect("write fixture provider");

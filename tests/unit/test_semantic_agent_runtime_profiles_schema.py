@@ -32,14 +32,14 @@ class SemanticAgentRuntimeProfilesSchemaTests(unittest.TestCase):
             "generatedBy": {"runtime": "asp", "version": "0.1.0"},
             "providers": [
                 {
-                    "manifestId": "agent.semantic-protocols.providers.rust.rs-harness",
+                    "manifestId": "agent.semantic-protocols.providers.rust.asp-rust",
                     "manifestDigest": "sha256:" + "a" * 64,
                     "languageId": "rust",
-                    "providerId": "rs-harness",
-                    "binary": "rs-harness",
+                    "providerId": "asp-rust",
+                    "binary": "asp-rust",
                     "providerCommandPrefix": [],
-                    "resolvedBinary": "/nix/store/example/bin/rs-harness",
-                    "argv": ["/nix/store/example/bin/rs-harness"],
+                    "resolvedBinary": "/nix/store/example/bin/asp-rust",
+                    "argv": ["/nix/store/example/bin/asp-rust"],
                     "health": {"status": "available"},
                 }
             ],
@@ -55,7 +55,7 @@ class SemanticAgentRuntimeProfilesSchemaTests(unittest.TestCase):
         provider["argv"] = []
         provider["health"] = {
             "status": "missing",
-            "reason": "`rs-harness` was not found on PATH",
+            "reason": "`asp-rust` was not found on PATH",
         }
 
         self.assertEqual([], self.validation_errors(profiles))

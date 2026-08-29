@@ -16,7 +16,7 @@ def repaired_receipt() -> dict[str, object]:
         "schemaId": "asp.provider-runtime-self-repair-receipt.v1",
         "schemaVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "trigger": "provider-contract-drift",
         "installReceiptDigest": DIGEST,
         "sourceIdentityDigest": DIGEST,
@@ -72,4 +72,3 @@ def test_failure_remains_fail_closed_and_requires_reflection() -> None:
     )
     receipt.pop("repairedArtifactDigest")
     validator().validate(receipt)
-

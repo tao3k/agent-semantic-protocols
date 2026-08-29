@@ -86,7 +86,7 @@ the provider correctly found =codex-rs/apply-patch= and its relevant symbols:
 Small exact ranges returned code, for example:
 
 #+begin_src shell
-rs-harness query --from-hook direct-source-read \
+asp-rust query --from-hook direct-source-read \
   --selector src/lib.rs:275:312 --code .
 #+end_src
 

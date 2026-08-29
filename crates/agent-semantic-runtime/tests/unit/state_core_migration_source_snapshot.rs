@@ -19,7 +19,7 @@ fn migration_preserves_provider_versions_and_rewrites_cas_root() {
 
     let snapshot_dir = legacy.join("v1/snapshot-root");
     for digest in ["digest-a", "digest-b"] {
-        let envelope_path = snapshot_dir.join(format!("rs-harness--{digest}.json"));
+        let envelope_path = snapshot_dir.join(format!("asp-rust--{digest}.json"));
         let envelope: serde_json::Value =
             serde_json::from_slice(&fs::read(&envelope_path).expect("read migrated envelope"))
                 .expect("parse migrated envelope");
@@ -29,7 +29,7 @@ fn migration_preserves_provider_versions_and_rewrites_cas_root() {
             "{envelope_path:?}"
         );
     }
-    assert!(!snapshot_dir.join("rs-harness.json").exists());
+    assert!(!snapshot_dir.join("asp-rust.json").exists());
 
     let _ = fs::remove_dir_all(root);
 }
@@ -109,8 +109,8 @@ fn populated_canonical_workspace_retires_legacy_mutable_state() {
         .paths
         .client_dir
         .join("source-snapshot-envelopes/v1/snapshot-root");
-    assert!(snapshot_dir.join("rs-harness--digest-a.json").is_file());
-    assert!(snapshot_dir.join("rs-harness--digest-b.json").is_file());
+    assert!(snapshot_dir.join("asp-rust--digest-a.json").is_file());
+    assert!(snapshot_dir.join("asp-rust--digest-b.json").is_file());
 
     let retired_workspace_dir = state
         .paths
@@ -335,11 +335,11 @@ fn write_flat_envelope(root: &std::path::Path, provider_digest: &str, cas_root: 
     let snapshot_dir = root.join("v1/snapshot-root");
     fs::create_dir_all(&snapshot_dir).expect("create snapshot envelope fixture");
     fs::write(
-        snapshot_dir.join("rs-harness.json"),
+        snapshot_dir.join("asp-rust.json"),
         serde_json::to_vec_pretty(&json!({
             "schemaId": "asp.exact-source-snapshot-envelope.v1",
             "schemaVersion": "1",
-            "providerId": "rs-harness",
+            "providerId": "asp-rust",
             "sourceSnapshot": {
                 "schemaId": "asp.source-snapshot.v1",
                 "algorithm": "blake3-merkle-v1",

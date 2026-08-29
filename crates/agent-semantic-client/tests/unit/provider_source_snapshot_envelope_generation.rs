@@ -64,7 +64,7 @@ fn provider_source_envelope_excludes_non_source_generation_anchors() {
     let envelope_path = publish_provider_source_snapshot_envelope(
         crate::source_index::ProviderSourceSnapshotEnvelopePublicationV1 {
             snapshot: &snapshot,
-            provider_id: "rs-harness",
+            provider_id: "asp-rust",
             address_provider_digest: &snapshot.source_snapshot.provider_digest,
             source_extensions: &["rs".to_owned()],
             artifact_root: &cache_home,

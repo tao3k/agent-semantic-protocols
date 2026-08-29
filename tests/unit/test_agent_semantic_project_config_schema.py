@@ -57,7 +57,7 @@ class AgentSemanticProjectConfigSchemaTests(unittest.TestCase):
             "schemaVersion": "1",
             "providers": {
                 "rust": {"enabled": False},
-                "python": {"enabled": True, "binary": ".bin/custom-py-harness"},
+                "python": {"enabled": True, "binary": ".bin/custom-asp-python"},
                 "org": {"enabled": False},
                 "md": {"enabled": True},
             },

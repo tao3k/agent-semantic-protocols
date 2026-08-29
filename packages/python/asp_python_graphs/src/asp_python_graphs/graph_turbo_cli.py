@@ -8,6 +8,11 @@ from collections.abc import Callable, Sequence
 
 
 _COMMANDS: dict[str, tuple[str, str, str]] = {
+    "serve": (
+        "asp_python_graphs.service_cli",
+        "main",
+        "Serve the ASP Server-owned private gRPC algorithm interface.",
+    ),
     "rank": (
         "asp_python_graphs.cli",
         "main",

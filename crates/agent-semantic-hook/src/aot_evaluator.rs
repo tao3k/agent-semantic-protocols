@@ -31,6 +31,8 @@ pub struct CompiledDecisionRule<'a> {
     #[serde(borrow)]
     pub matchers: Vec<&'a str>,
     #[serde(default)]
+    pub wrapped_command: bool,
+    #[serde(default)]
     pub actions: Vec<&'a str>,
     #[serde(default, borrow)]
     pub registered_extensions: Vec<&'a str>,
@@ -197,10 +199,12 @@ fn confirmed_read_subject<'a>(
         if probe.schema_id == "agent.semantic-protocols.reader-probe-observation"
             && probe.schema_version == 1
             && probe.access == "read"
-            && probe.access_mode == "O_RDONLY"
+            && probe.access_mode == "read-permission"
             && matches!(
                 probe.terminal,
-                "open-entry-observed" | "reader-behavior-catalog-hit" | "reader-behavior-cache-hit"
+                "read-permission-observed"
+                    | "reader-behavior-catalog-hit"
+                    | "reader-behavior-cache-hit"
             )
             && probe.cleanup_verified
             && registered_source_operand(probe.subject, registered_extensions)
@@ -212,7 +216,7 @@ fn confirmed_read_subject<'a>(
                     "state-home-reader-catalog" | "process-memory-reader-catalog" => {
                         "reader-behavior-dynamic-cache"
                     }
-                    _ => "reader-probe-open-read-only",
+                    _ => "reader-probe-read-permission",
                 },
                 backend: probe.backend,
                 terminal: probe.terminal,
@@ -267,6 +271,7 @@ fn registered_source_operand(subject: &str, registered_extensions: &[&str]) -> b
 pub struct AotReaderProbeRequest {
     pub command_tokens: Vec<String>,
     pub subject: String,
+    pub wrapped_command: bool,
     pub reader_behavior_patterns: Vec<Vec<String>>,
 }
 
@@ -329,6 +334,7 @@ pub fn reader_probe_request(
         return Ok(Some(AotReaderProbeRequest {
             command_tokens: stage.words().to_vec(),
             subject,
+            wrapped_command: rule.wrapped_command,
             reader_behavior_patterns: generation
                 .reader_behavior_patterns
                 .iter()
@@ -422,7 +428,7 @@ pub fn evaluate_pre_tool<'a>(
                 "unknown"
             },
             access_mode: if read_evidence.is_some() {
-                "O_RDONLY"
+                "read-permission"
             } else {
                 "unknown"
             },

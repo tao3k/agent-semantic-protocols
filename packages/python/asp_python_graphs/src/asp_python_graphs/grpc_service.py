@@ -78,7 +78,7 @@ class AspPythonGraphsGrpcHandler(grpc.GenericRpcHandler):
                 # A cancellation may have won the registry race while the
                 # immutable graph job was finishing.  Its terminal is owned
                 # by the control path; never publish the late result.
-                if message.get("messageKind") == "evaluate" and session.is_cancelled(
+                if message.get("messageKind") in {"evaluate", "timeline"} and session.is_cancelled(
                     str(message.get("requestId", ""))
                 ):
                     session.complete_request(str(message.get("requestId", "")))
@@ -100,16 +100,17 @@ class AspPythonGraphsGrpcHandler(grpc.GenericRpcHandler):
             await outbound.put(receipt)
 
         async def read_requests() -> None:
+            nonlocal active_evaluates
             try:
                 async for message in request_iterator:
                     kind = message.get("messageKind")
-                    if kind == "evaluate":
+                    if kind in {"evaluate", "timeline"}:
                         if active_evaluates >= self._max_in_flight:
                             await outbound.put(
                                 unavailable_receipt(
                                     message,
                                     "capacity-exhausted",
-                                    "ASP Python Graphs evaluate capacity is saturated",
+                                    "ASP Python Graphs operation capacity is saturated",
                                 )
                             )
                             continue

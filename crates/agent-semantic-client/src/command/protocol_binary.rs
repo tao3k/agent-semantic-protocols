@@ -473,27 +473,12 @@ async fn install_protocol_binary_target_transaction(
     } else {
         validate_protocol_entry_for_repair(target, artifact_root)?;
     }
-    let previous_identity =
-        agent_semantic_runtime::runtime_artifact_identity::read_runtime_artifact_identity(
-            state_home,
-            &artifact_kind,
-        )
-        .await
-        .ok();
-    let previous_artifact_digest = previous_identity
-        .as_ref()
-        .map(|receipt| receipt.artifact_digest().to_owned());
     let artifact_mode = if developer_source { "dev" } else { "release" };
-    let previous_artifact_digest = previous_artifact_digest
-        .as_deref()
-        .map(agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest::parse)
-        .transpose()?;
     let receipt = agent_semantic_runtime_server::resident_install::install_resident_runtime(
         state_home,
         source,
         target,
         artifact_mode,
-        previous_artifact_digest.as_ref(),
         qualified_source,
     )
     .await?;

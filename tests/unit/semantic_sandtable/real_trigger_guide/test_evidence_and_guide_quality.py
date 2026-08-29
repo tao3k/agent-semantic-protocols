@@ -35,7 +35,7 @@ class RealTriggerEvidenceGuideTests(unittest.TestCase):
                             {
                                 "id": "guide",
                                 "kind": "hook-deny",
-                                "argv": ["rs-harness", "search", "ingest", "."],
+                                "argv": ["asp-rust", "search", "ingest", "."],
                                 "stdinShape": "hook-payload",
                                 "decisionReasonKind": "raw-broad-search",
                                 "routeKind": "ingest",
@@ -115,13 +115,13 @@ class RealTriggerEvidenceGuideTests(unittest.TestCase):
                                         "'subject': {'toolName': 'Bash', 'command': 'external candidate search'},"
                                         "'routes': [{"
                                         "'languageId': 'rust',"
-                                        "'providerId': 'rs-harness',"
-                                        "'binary': 'rs-harness',"
+                                        "'providerId': 'asp-rust',"
+                                        "'binary': 'asp-rust',"
                                         "'kind': 'ingest',"
-                                        "'argv': ['rs-harness', 'search', 'ingest', 'items', 'tests', '.'],"
+                                        "'argv': ['asp-rust', 'search', 'ingest', 'items', 'tests', '.'],"
                                         "'stdinMode': 'pipe-candidates'"
                                         "}],"
-                                        "'message': 'Pipe candidates into rs-harness search ingest.'"
+                                        "'message': 'Pipe candidates into asp-rust search ingest.'"
                                         "}}))"
                                     ),
                                 ],
@@ -136,7 +136,7 @@ class RealTriggerEvidenceGuideTests(unittest.TestCase):
                                         "languageId": "rust",
                                         "routeKind": "ingest",
                                         "commandContains": [
-                                            "rs-harness",
+                                            "asp-rust",
                                             "search",
                                             "ingest",
                                         ],

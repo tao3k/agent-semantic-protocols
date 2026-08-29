@@ -60,6 +60,7 @@ fn publish_fixture_generation(
     let component = agent_semantic_hook::diagnose_reader_probe_with_state_home(
         agent_semantic_hook::semantic_shell_tokens(command),
         subject.to_owned(),
+        false,
         Vec::new(),
         state_home,
     )
@@ -72,7 +73,7 @@ fn publish_fixture_generation(
     assert!(
         matches!(
             component.terminal.as_str(),
-            "open-entry-observed" | "reader-behavior-cache-hit"
+            "read-permission-observed" | "reader-behavior-cache-hit"
         ),
         "component={component:?}"
     );
@@ -99,12 +100,12 @@ fn publish_fixture_generation(
     let context = validation["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .expect("candidate Reader PreTool validation context");
-    assert!(context.contains("\"accessMode\":\"O_RDONLY\""), "{context}");
+    assert!(context.contains("\"accessMode\":\"read-permission\""), "{context}");
     assert!(context.contains("\"cleanupVerified\":true"), "{context}");
     assert!(context.contains("\"access\":\"read\""), "{context}");
     assert!(
         context.contains("\"evidence\":\"reader-behavior-dynamic-cache\"")
-            || context.contains("\"evidence\":\"reader-probe-open-read-only\""),
+            || context.contains("\"evidence\":\"reader-probe-read-permission\""),
         "{context}"
     );
     assert!(
@@ -703,7 +704,7 @@ async fn structured_rust_read_binary_path_is_local_bounded_and_runtime_free() {
         context.contains("registered-source-route-required"),
         "{context}"
     );
-    assert!(context.contains("\"accessMode\":\"O_RDONLY\""), "{context}");
+    assert!(context.contains("\"accessMode\":\"read-permission\""), "{context}");
     assert!(context.contains("\"cleanupVerified\":true"), "{context}");
     assert!(context.contains("\"access\":\"read\""), "{context}");
     assert!(
@@ -865,7 +866,7 @@ async fn config_source_edit_does_not_republish_or_change_active_hook_generation(
         )),
         "{context}"
     );
-    assert!(context.contains("\"accessMode\":\"O_RDONLY\""), "{context}");
+    assert!(context.contains("\"accessMode\":\"read-permission\""), "{context}");
     assert!(context.contains("\"cleanupVerified\":true"), "{context}");
     assert!(context.contains("\"access\":\"read\""), "{context}");
     assert!(

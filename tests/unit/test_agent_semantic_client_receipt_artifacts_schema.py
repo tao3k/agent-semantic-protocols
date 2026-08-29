@@ -59,8 +59,8 @@ def test_merkle_artifact_root_receipt_fields_are_valid() -> None:
         "providerCommands": [
             {
                 "languageId": "rust",
-                "providerId": "rs-harness",
-                "argv": ["rs-harness", "search", "prime", "."],
+                "providerId": "asp-rust",
+                "argv": ["asp-rust", "search", "prime", "."],
                 "exitCode": 0,
                 "stdoutBytes": 300,
                 "stderrBytes": 0,

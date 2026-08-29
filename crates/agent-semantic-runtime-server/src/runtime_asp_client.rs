@@ -9,13 +9,14 @@ use agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRe
 use agent_semantic_client_protocol::{
     AspClientExactQueryFailure, AspClientExactQueryRequest, AspClientExactQueryResponse,
     AspClientOwnerSearchRequest, AspClientRuntimeWorkCounters, AspClientSearchRequest,
-    ClientRequestId, ClientSessionId, ClientWorkspaceIdentity, SCHEMA_BUNDLE_METHOD,
-    SchemaBundleRequest, ServerClientRoute,
+    ClientRequestId, ClientSessionId, ClientWorkspaceIdentity, GRAPH_TIMELINE_METHOD,
+    SCHEMA_BUNDLE_METHOD, SchemaBundleRequest, ServerClientRoute,
 };
 use agent_semantic_client_server::{
     AspClientDispatchError, AspClientDispatchFuture, AspClientDispatchRequest, AspClientDispatcher,
     AspClientFrameService,
 };
+use agent_semantic_search_projection::GraphTurboEvaluationRequest;
 
 enum AspClientOperationError {
     Message(String),
@@ -378,6 +379,43 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                         .map_err(|error| error.to_string())
                         .map_err(AspClientOperationError::Message);
                 }
+                if request.method == GRAPH_TIMELINE_METHOD {
+                    let params: agent_semantic_client_protocol::AspClientGraphsTimelineRequest =
+                        serde_json::from_value(request.params).map_err(|error| {
+                            AspClientOperationError::Message(format!(
+                                "decode graph timeline request: {error}"
+                            ))
+                        })?;
+                    params.validate_schema_identity()?;
+                    let initialized = initialized_workspaces
+                        .lock()
+                        .map_err(|_| "ASP client workspace-root registry poisoned".to_owned())?
+                        .get(&(
+                            request.workspace_identity.as_str().to_owned(),
+                            request.session_id.as_str().to_owned(),
+                        ))
+                        .cloned()
+                        .ok_or_else(|| {
+                            "ASP client request requires an initialized workspace root".to_owned()
+                        })?;
+                    let cancellation =
+                        agent_semantic_client_db::runtime_generation_cancellation::GenerationCancellation::new();
+                    let timeline_payload = serde_json::json!({
+                        "schemaId": params.schema_id,
+                        "schemaVersion": params.schema_version,
+                        "eventPacket": params.event_packet,
+                        "arguments": params.arguments,
+                    });
+                    return runtime_search_service
+                        .graphs_timeline(
+                            initialized.project_root,
+                            request.request_id.as_str().to_owned(),
+                            timeline_payload,
+                            cancellation,
+                        )
+                        .await
+                        .map_err(AspClientOperationError::Message);
+                }
                 let resolved = agent_semantic_client_protocol::resolve_server_client_method_owner(
                     &request.method,
                     installed_provider_targets
@@ -388,6 +426,13 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                     ServerClientRoute::GraphsEvaluate,
                 ) = resolved
                 {
+                    let validated_params = GraphTurboEvaluationRequest::from_value(request.params)
+                        .map_err(|error| {
+                            AspClientOperationError::Message(format!(
+                                "invalid graph evaluation request: {error}"
+                            ))
+                        })?
+                        .into_value();
                     let initialized = initialized_workspaces
                         .lock()
                         .map_err(|_| "ASP client workspace-root registry poisoned".to_owned())?
@@ -420,7 +465,7 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                             generation_digest,
                             generation_token,
                             request.request_id.as_str().to_owned(),
-                            request.params,
+                            validated_params,
                         )
                         .await?;
                     return Ok(receipt);
@@ -758,6 +803,9 @@ impl AspClientDispatcher for RuntimeAspClientDispatcher {
                 };
                 match route {
                     agent_semantic_client_protocol::ServerClientRoute::GraphsEvaluate => {
+                        unreachable!("server-owned graph route is handled before language dispatch")
+                    }
+                    agent_semantic_client_protocol::ServerClientRoute::GraphsTimeline => {
                         unreachable!("server-owned graph route is handled before language dispatch")
                     }
                     agent_semantic_client_protocol::ServerClientRoute::CancellationProbe => {

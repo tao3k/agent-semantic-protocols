@@ -26,7 +26,8 @@ operations are =hello=, =open-generation=, =evaluate=,
 =release-generation=, =cancel=, =health=, and =shutdown=.
 
 Every request and receipt echoes request ID, workspace identity when scoped,
-generation digest when scoped, and service epoch.  Unknown operations,
+generation digest and positive generation token when generation-scoped, and
+service epoch.  Unknown operations,
 root-digest substitution, cross-generation receipts, non-monotone sequence,
 and duplicate terminals fail closed.
 
@@ -70,7 +71,65 @@ The HTTP adapter and gRPC ClientFrame binding produce identical route, schema,
 generation, cancellation, and terminal semantics.  The Python service has no
 HTTP adapter because it is not a language client.
 
+* Artifact publication
+
+The Runtime daemon is a read-only consumer of one
+=asp-python-graphs-runtime-artifact= v2 descriptor.  It MUST NOT discover a
+workspace checkout, synthesize argv, repair a missing descriptor, or publish
+an executable during bootstrap.  The sole writer is the explicit ASP artifact
+publication subcommand.  It verifies the prebuilt =asp-python-graphs= service
+artifact, binds its content digest and complete command digest, then publishes
+the descriptor with one lock-held compare-and-swap transaction.  The artifact
+is a server-managed service process, never a public standalone graph command
+or a second lifecycle/authority.
+
+The release bundle therefore carries the prebuilt =asp-python-graphs= wheel,
+its complete dependency environment, private executable launcher, and a
+machine-readable artifact manifest alongside =asp=.  The manifest covers every
+environment and launcher file, identifies the =graph-turbo= algorithm, and binds
+the private =asp_python_graphs.service_cli= gRPC entry point.  Runtime
+publication consumes that verified bundle through the explicit
+artifact-publication path; the release bundle does not publish a public graph
+executable or add a second service lifecycle.
+
+The exact release environment layout remains an MVP1 architecture decision,
+not a release acceptance claim.  A candidate bundle must prove that its
+absolute executable locator remains valid after extraction on every supported
+platform and that the service starts offline without dependency installation or
+network access.  Until that relocation proof and the Windows private-endpoint
+oracle are accepted, release-bundle smoke output is design evidence only and
+does not replace the Runtime descriptor publication gate.
+
+Every successful publication carries a strictly increasing
+=publicationGeneration= and a non-empty =publicationNonce=.  A writer whose
+expected generation is stale fails before writing.  The descriptor is fsynced
+to a unique temporary file and renamed over the stable pointer; malformed or
+partial JSON is never a successful publication.  Schema version 1 has no
+generation CAS and is removed rather than accepted as a compatibility path.
+
 * Proof and test obligations
+
+* History and timeline ownership
+
+`Graph-Turbo` remains a legal algorithm/profile identity and remains present in
+the graph event and timeline report schemas.  It is not a compatibility alias
+for the service.  The service, executable artifact, transport owner, and
+lifecycle authority are all `asp-python-graphs`.
+
+The public history audit uses the server-owned `asp.graphs.timeline` ClientFrame
+method.  The history command may assemble the schema-owned artifact-event
+packet through the DB Engine, but it submits that packet to the resident ASP
+Server; it must not construct a `ProviderProcessSpec`, spawn a standalone graph
+executable,
+read a standalone graph-turbo receipt/path, or create an independent provider
+lifecycle.  The ASP Server routes the method through its existing bounded
+`asp-python-graphs` gRPC session and owns admission, cancellation, terminal
+receipt, and shutdown.
+
+The negative matrix rejects standalone graph executable selection,
+graph-turbo-private lifecycle/receipt authority, and history paths that bypass
+the ASP Server.  It accepts only the `asp.graphs.timeline` server method and
+the shared event/timeline schemas.
 
 Red tests cover single-flight start, bounded saturation, slow consumer,
 concurrent generation publication, stale service epoch, cross-generation

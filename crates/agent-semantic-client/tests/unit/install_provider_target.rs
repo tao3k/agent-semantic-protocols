@@ -15,11 +15,11 @@ fn provider_install_target_uses_state_home_runtime_bin() {
     let _state_home = StateHomeEnvGuard::set(&state_home);
 
     let target =
-        resolve_provider_binary_install_target("rust", "rs-harness").expect("install target");
+        resolve_provider_binary_install_target("rust", "asp-rust").expect("install target");
 
     assert_eq!(
         target.path,
-        canonical_state_home(&state_home).join("runtime/bin/rs-harness")
+        canonical_state_home(&state_home).join("runtime/bin/asp-rust")
     );
     assert_eq!(target.source, "state-home-runtime-bin");
 }
@@ -32,12 +32,12 @@ fn provider_install_target_accepts_logical_binary_override_under_state_home() {
     let state_home = temp_state_home("logical-override");
     let _state_home = StateHomeEnvGuard::set(&state_home);
 
-    let target = resolve_provider_binary_install_target("python", "custom-py-harness")
+    let target = resolve_provider_binary_install_target("python", "custom-asp-python")
         .expect("logical provider override");
 
     assert_eq!(
         target.path,
-        canonical_state_home(&state_home).join("runtime/bin/custom-py-harness")
+        canonical_state_home(&state_home).join("runtime/bin/custom-asp-python")
     );
     assert_eq!(target.source, "state-home-runtime-bin");
 }
@@ -50,7 +50,7 @@ fn provider_install_target_rejects_paths_instead_of_creating_a_second_authority(
     let state_home = temp_state_home("reject-paths");
     let _state_home = StateHomeEnvGuard::set(&state_home);
 
-    for binary in [".bin/rs-harness", "../rs-harness", "/tmp/rs-harness"] {
+    for binary in [".bin/asp-rust", "../asp-rust", "/tmp/asp-rust"] {
         let error = resolve_provider_binary_install_target("rust", binary)
             .expect_err("provider path override must fail");
         assert!(

@@ -17,7 +17,7 @@ from asp_python_graphs.artifact_timeline import (
     TimelineParameters,
     evaluate_artifact_events_timeline,
 )
-from unit.asp_python_graphs_timeline_support import write_microburst_repeat_artifacts
+from unit.asp_graph_turbo_timeline_support import write_microburst_repeat_artifacts
 from unit.schema_validation import schema_validator_for
 
 
@@ -32,6 +32,28 @@ _TIMELINE_SCHEMA = (
     / "schemas"
     / "semantic-graph-turbo-artifact-timeline.v1.schema.json"
 )
+_TIMELINE_REQUEST_SCHEMA = (
+    _REPO_ROOT / "schemas" / "asp-client-graphs-timeline-request.v1.schema.json"
+)
+
+
+def test_timeline_request_is_server_owned_and_rejects_resident_alias_fields() -> None:
+    packet = {
+        "schemaId": "agent.semantic-protocols.graph-turbo-artifact-events",
+        "schemaVersion": "1",
+        "artifactDir": "/tmp/artifacts",
+        "source": {"kind": "db-engine", "clientDir": "/tmp/client"},
+        "events": [],
+    }
+    request = {
+        "schemaId": "agent.semantic-protocols.asp-client-graphs-timeline-request",
+        "schemaVersion": "1",
+        "eventPacket": packet,
+        "arguments": ["--recent-sessions"],
+    }
+    assert list(schema_validator_for(_TIMELINE_REQUEST_SCHEMA).iter_errors(request)) == []
+    invalid = {**request, "graphTurboResident": True}
+    assert list(schema_validator_for(_TIMELINE_REQUEST_SCHEMA).iter_errors(invalid))
 
 
 def test_timeline_events_packet_is_schema_owned_db_engine_boundary(tmp_path) -> None:

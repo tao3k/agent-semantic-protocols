@@ -38,7 +38,7 @@
           "reasonKind": "raw-broad-search",
           "languageIds.0": "rust",
           "routes.0.kind": "lexical",
-          "routes.0.providerId": "rs-harness"
+          "routes.0.providerId": "asp-rust"
         },
         "maxElapsedMsWarn": 9000
       }
@@ -88,7 +88,7 @@
           "reasonKind": "direct-source-read",
           "subject.paths.0": "crates/agent-semantic-hook/src/lib.rs",
           "routes.0.kind": "query",
-          "routes.0.providerId": "rs-harness"
+          "routes.0.providerId": "asp-rust"
         },
         "maxElapsedMsWarn": 6000
       }
@@ -190,7 +190,7 @@
           "reasonKind": "raw-broad-search",
           "languageIds.0": "rust",
           "routes.0.kind": "ingest",
-          "routes.0.providerId": "rs-harness"
+          "routes.0.providerId": "asp-rust"
         },
         "maxElapsedMsWarn": 6000
       }

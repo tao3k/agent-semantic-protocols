@@ -35,8 +35,8 @@ class SemanticAgentClientReceiptSchemaTests(unittest.TestCase):
             "providerCommands": [
                 {
                     "languageId": "rust",
-                    "providerId": "rs-harness",
-                    "argv": ["direnv", "exec", ".", "rs-harness", "search", "prime", "."],
+                    "providerId": "asp-rust",
+                    "argv": ["direnv", "exec", ".", "asp-rust", "search", "prime", "."],
                     "exitCode": 0,
                     "stdoutBytes": 300,
                     "stderrBytes": 0,
@@ -57,8 +57,8 @@ class SemanticAgentClientReceiptSchemaTests(unittest.TestCase):
             "nativeProvenance": [
                 {
                     "languageId": "rust",
-                    "providerId": "rs-harness",
-                    "providerBinary": "rs-harness",
+                    "providerId": "asp-rust",
+                    "providerBinary": "asp-rust",
                     "schemaIds": [
                         "agent.semantic-protocols.semantic-search-packet"
                     ],

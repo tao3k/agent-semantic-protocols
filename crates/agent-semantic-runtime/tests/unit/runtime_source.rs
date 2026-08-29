@@ -45,7 +45,7 @@ fn runtime_source_index_context_is_owned_by_runtime() {
             checkout_root.as_path(),
             cache_dir.as_path(),
             "python",
-            "python-harness",
+            "asp-python",
         )
             .into(),
     )
@@ -58,7 +58,7 @@ fn runtime_source_index_context_is_owned_by_runtime() {
             (
                 canonical(&checkout_root).as_path(),
                 "python",
-                "python-harness"
+                "asp-python"
             )
                 .into()
         )
@@ -68,7 +68,7 @@ fn runtime_source_index_context_is_owned_by_runtime() {
     assert!(
         context
             .registry_fingerprint
-            .contains("provider=python-harness")
+            .contains("provider=asp-python")
     );
     let _ = fs::remove_dir_all(root);
 }
@@ -86,7 +86,7 @@ fn runtime_source_index_context_rejects_checkouts_outside_runtime_root() {
             checkout_root.as_path(),
             cache_dir.as_path(),
             "python",
-            "python-harness",
+            "asp-python",
         )
             .into(),
     )
@@ -107,22 +107,22 @@ fn runtime_source_index_files_are_collected_by_runtime() {
     fs::write(root.join(".git/ignored.rs"), "pub fn ignored() {}\n").expect("write vcs file");
 
     let files =
-        collect_runtime_source_index_files((root.as_path(), "rust", "rs-harness", 8).into())
+        collect_runtime_source_index_files((root.as_path(), "rust", "asp-rust", 8).into())
             .expect("collect runtime source index files");
 
     assert_eq!(files.len(), 2);
     assert_eq!(files[0].path, root.join("src/lib.rs"));
     assert_eq!(files[0].language_id, "rust");
-    assert_eq!(files[0].provider_id, "rs-harness");
+    assert_eq!(files[0].provider_id, "asp-rust");
     assert_eq!(files[1].path, root.join("src/nested/mod.rs"));
 
     let limited =
-        collect_runtime_source_index_files((root.as_path(), "rust", "rs-harness", 1).into())
+        collect_runtime_source_index_files((root.as_path(), "rust", "asp-rust", 1).into())
             .expect("collect limited runtime source index files");
     assert_eq!(limited.len(), 1);
 
     let unknown = collect_runtime_source_index_files(
-        (root.as_path(), "unknown", "unknown-harness", 8).into(),
+        (root.as_path(), "unknown", "unknown-provider", 8).into(),
     )
     .expect("collect unknown language runtime source index files");
     assert!(unknown.is_empty());

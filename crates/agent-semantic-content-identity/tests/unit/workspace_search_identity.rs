@@ -8,12 +8,12 @@ use super::{
 fn package_input() -> WorkspaceSearchIdentityInputV1 {
     WorkspaceSearchIdentityInputV1 {
         language_id: "rust".to_string(),
-        provider_id: "rs-harness".to_string(),
+        provider_id: "asp-rust".to_string(),
         scope_kind: WorkspaceSearchScopeKindV1::Package,
         requested_discovery_root: PathBuf::from("/repo/crates/client-db"),
         cargo_workspace_root: PathBuf::from("/repo"),
         selected_package_root: Some(PathBuf::from("/repo/crates/client-db")),
-        provider_tool_root: PathBuf::from("/providers/rs-harness"),
+        provider_tool_root: PathBuf::from("/providers/asp-rust"),
         envelope_root: PathBuf::from("/repo/crates/client-db"),
         root_count: 1,
         owner_count: 84,
@@ -28,7 +28,7 @@ fn package_scope_keeps_provider_tool_root_separate() {
     let identity = WorkspaceSearchIdentityV1::admit(package_input()).expect("admitted");
     assert_eq!(
         identity.provider_tool_root(),
-        Path::new("/providers/rs-harness")
+        Path::new("/providers/asp-rust")
     );
     assert_eq!(
         identity.selected_package_root(),
@@ -70,12 +70,12 @@ fn empty_owner_envelope_is_not_a_frontier() {
 fn workspace_scope_has_no_selected_package() {
     let input = WorkspaceSearchIdentityInputV1 {
         language_id: "rust".to_string(),
-        provider_id: "rs-harness".to_string(),
+        provider_id: "asp-rust".to_string(),
         scope_kind: WorkspaceSearchScopeKindV1::Workspace,
         requested_discovery_root: PathBuf::from("/repo"),
         cargo_workspace_root: PathBuf::from("/repo"),
         selected_package_root: None,
-        provider_tool_root: PathBuf::from("/providers/rs-harness"),
+        provider_tool_root: PathBuf::from("/providers/asp-rust"),
         envelope_root: PathBuf::from("/repo"),
         root_count: 1,
         owner_count: 84,

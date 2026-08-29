@@ -20,7 +20,7 @@ def minimal_graph() -> dict[str, object]:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "projectRoot": ".",
         "packageName": ".",
         "graphKind": "owner-dependency",

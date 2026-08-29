@@ -21,7 +21,7 @@ def test_package_manager_scenario_receipt_is_provider_owned_and_scan_free() -> N
             "schemaId": "agent.semantic-protocols.provider-project-resolution-scenario-receipt",
             "schemaVersion": "1",
             "languageId": "rust",
-            "providerId": "rs-harness",
+            "providerId": "asp-rust",
             "packageManager": "cargo",
             "scenarioId": "workspace-target-manifest-delta",
             "state": "passed",

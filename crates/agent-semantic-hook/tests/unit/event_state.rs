@@ -385,7 +385,7 @@ fn decision(run_id: &str, index: usize) -> HookDecision {
         },
         routes: vec![DecisionRoute {
             language_id: "rust".into(),
-            provider_id: "rs-harness".into(),
+            provider_id: "asp-rust".into(),
             binary: "asp".to_string(),
             kind: DecisionRouteKind::Query,
             argv: vec!["asp".to_string(), "rust".to_string()],
@@ -590,7 +590,7 @@ fn source_access_replay_key_does_not_collapse_distinct_source_owners() {
     let mut python = decision("distinct-source-owner", 1);
     python.language_ids = vec!["python".into()];
     python.routes[0].language_id = "python".into();
-    python.routes[0].provider_id = "py-harness".into();
+    python.routes[0].provider_id = "asp-python".into();
     python.routes[0].argv = vec!["asp".to_string(), "python".to_string()];
     assert!(
         !agent_semantic_hook::apply_repeated_deny_replay(&project_root, &mut python).unwrap(),

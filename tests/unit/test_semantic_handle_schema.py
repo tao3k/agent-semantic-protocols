@@ -48,7 +48,7 @@ def minimal_handle_packet() -> dict[str, object]:
         "protocolId": "agent.semantic-protocols.semantic-language",
         "protocolVersion": "1",
         "languageId": "python",
-        "providerId": "py-harness",
+        "providerId": "asp-python",
         "projectRoot": ".",
         "scope": "policy",
         "query": "PY-PROJ-R001",

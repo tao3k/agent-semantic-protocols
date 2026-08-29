@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/asp-client-graphs-timeline-request.v1.schema.json",
+  "title": "ASP Client Graphs Timeline Request v1",
+  "description": "Server-owned history/timeline request. Graph-Turbo is the algorithm identity; asp-python-graphs is the service owner.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "eventPacket", "arguments"],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.asp-client-graphs-timeline-request"},
+    "schemaVersion": {"const": "1"},
+    "eventPacket": {"$ref": "semantic-graph-turbo-artifact-events.v1.schema.json"},
+    "arguments": {"type": "array", "items": {"type": "string"}}
+  }
+}

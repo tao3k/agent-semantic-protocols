@@ -69,7 +69,7 @@ fn concurrent_publication_commits_one_complete_generation() {
         leaf_count: 1,
         owner_count: 1,
         parser_identity_digest: [8; 32],
-        provider_id: "rs-harness".to_owned(),
+        provider_id: "asp-rust".to_owned(),
         query_pack_digest: [7; 32],
         selector_count: 1,
         workspace_identity_digest: [6; 32],
@@ -151,13 +151,13 @@ fn concurrent_publication_commits_one_complete_generation() {
     assert_eq!(cold_projection.as_bytes(), warm_projection.as_bytes());
     assert!(warm_projection.matches_generation_authority_v1(
         "rust",
-        "rs-harness",
+        "asp-rust",
         &blake3::Hash::from_bytes([8; 32]).to_hex().to_string(),
         &blake3::Hash::from_bytes([7; 32]).to_hex().to_string(),
     ));
     assert!(!warm_projection.matches_generation_authority_v1(
         "rust",
-        "rs-harness",
+        "asp-rust",
         &blake3::Hash::from_bytes([0; 32]).to_hex().to_string(),
         &blake3::Hash::from_bytes([7; 32]).to_hex().to_string(),
     ));

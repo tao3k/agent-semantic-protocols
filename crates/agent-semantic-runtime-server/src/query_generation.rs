@@ -74,7 +74,8 @@ impl RuntimeQueryGenerationAuthority {
             generation.generation_token.load(Ordering::Acquire)
         };
         let mut generations = self.sender.borrow().as_ref().clone();
-        if let Some(RuntimeQueryGenerationState::Ready(current)) = generations.get(&workspace_identity)
+        if let Some(RuntimeQueryGenerationState::Ready(current)) =
+            generations.get(&workspace_identity)
             && generation_token <= current.generation_token()
         {
             return Err(format!(
@@ -96,7 +97,9 @@ impl RuntimeQueryGenerationAuthority {
         publication_token: u64,
         reason: impl Into<Arc<str>>,
     ) {
-        let Ok(_publication_guard) = self.publication_lock.lock() else { return };
+        let Ok(_publication_guard) = self.publication_lock.lock() else {
+            return;
+        };
         if let Some(RuntimeQueryGenerationState::Ready(current)) =
             self.sender.borrow().get(&workspace_identity)
             && current.generation_token() >= publication_token
@@ -112,14 +115,18 @@ impl RuntimeQueryGenerationAuthority {
     }
 
     pub fn clear_workspace(&self, workspace_identity: &str) {
-        let Ok(_publication_guard) = self.publication_lock.lock() else { return };
+        let Ok(_publication_guard) = self.publication_lock.lock() else {
+            return;
+        };
         let mut generations = self.sender.borrow().as_ref().clone();
         generations.remove(workspace_identity);
         self.sender.send_replace(Arc::new(generations));
     }
 
     pub fn clear_all(&self) {
-        let Ok(_publication_guard) = self.publication_lock.lock() else { return };
+        let Ok(_publication_guard) = self.publication_lock.lock() else {
+            return;
+        };
         self.sender.send_replace(Arc::new(HashMap::new()));
     }
 
@@ -171,11 +178,7 @@ impl RuntimeQueryGenerationAuthority {
                 Err(error)
             }
             Err(error) => {
-                self.publish_failed(
-                    workspace_identity.to_owned(),
-                    0,
-                    error.clone(),
-                );
+                self.publish_failed(workspace_identity.to_owned(), 0, error.clone());
                 Err(error)
             }
         }
@@ -240,14 +243,18 @@ mod tests {
             .publish_ready("workspace-test".to_owned(), std::sync::Arc::clone(&newer))
             .expect("newer publication");
         assert!(newer_token > old_token);
-        assert!(authority
-            .publish_ready("workspace-test".to_owned(), old)
-            .is_err());
+        assert!(
+            authority
+                .publish_ready("workspace-test".to_owned(), old)
+                .is_err()
+        );
         let current = authority.subscribe();
         let snapshot = current.borrow().clone();
         let super::RuntimeQueryGenerationState::Ready(current) =
             snapshot.get("workspace-test").expect("current")
-        else { panic!("expected ready generation") };
+        else {
+            panic!("expected ready generation")
+        };
         assert_eq!(current.generation_digest(), "blake3-256:newer");
         assert_eq!(current.generation_token(), newer_token);
     }

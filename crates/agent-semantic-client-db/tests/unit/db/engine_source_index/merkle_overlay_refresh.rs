@@ -28,12 +28,12 @@ fn merkle_selector(
     let structural_selector = format!("rust://{owner_path}#item/function/{symbol}");
     let packet = build_exact_selector_projection_packet_v1(ExactSelectorProjectionPacketV1Input {
         language_id: &ProjectionPacketLanguageIdV1::from("rust"),
-        provider_id: &ProjectionPacketProviderIdV1::from("rs-harness"),
+        provider_id: &ProjectionPacketProviderIdV1::from("asp-rust"),
         canonical_item_selector: CanonicalItemSelector::new(
             CanonicalItemIdentity::new("rust", "function", symbol),
             structural_selector.clone(),
         ),
-        parser_identity_digest: &canonical_content_digest(b"parser", &[b"rs-harness"]),
+        parser_identity_digest: &canonical_content_digest(b"parser", &[b"asp-rust"]),
         query_pack_digest: &canonical_content_digest(b"query-pack", &[b"rust"]),
         owner_path: &ProjectionPacketOwnerPathV1::from(owner_path),
         structural_selector: &ProjectionPacketStructuralSelectorV1::from(
@@ -48,7 +48,7 @@ fn merkle_selector(
     });
     agent_semantic_client_db::ClientDbSourceIndexSelector {
         owner_path: agent_semantic_client_db::ClientDbSourceIndexPath::new(owner_path),
-        provider_id: ProviderId::from("rs-harness"),
+        provider_id: ProviderId::from("asp-rust"),
         selector_id: agent_semantic_client_db::ClientDbSourceIndexSelectorId::from(
             structural_selector,
         ),
@@ -120,7 +120,7 @@ fn merkle_import(
                 relations: Vec::new(),
                 relative_path: (*path).to_string(),
                 language_id: LanguageId::from("rust"),
-                provider_id: ProviderId::from("rs-harness"),
+                provider_id: ProviderId::from("asp-rust"),
                 text: format!("pub fn {symbol}() {{}}\n"),
                 selectors: vec![merkle_selector(
                     path,

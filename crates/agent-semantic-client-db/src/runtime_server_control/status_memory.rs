@@ -23,8 +23,8 @@ pub(crate) struct RuntimeServerStatusMemoryWriter {
     mapping: MmapMut,
     endpoint: RuntimeServerEndpoint,
     generation: u64,
-    graph_turbo_resident:
-        Option<std::sync::Arc<std::sync::RwLock<super::GraphTurboResidentStatus>>>,
+    asp_python_graphs:
+        Option<std::sync::Arc<std::sync::RwLock<super::AspPythonGraphsStatus>>>,
     agent_sessions:
         Option<std::sync::Arc<std::sync::RwLock<Vec<super::RuntimeServerAgentSessionStatus>>>>,
 }
@@ -84,7 +84,7 @@ impl RuntimeServerStatusMemoryWriter {
             mapping,
             endpoint: endpoint.clone(),
             generation: 0,
-            graph_turbo_resident: None,
+            asp_python_graphs: None,
             agent_sessions: None,
         };
         writer.publish(RuntimeServerState::Starting, 0)?;
@@ -104,8 +104,8 @@ impl RuntimeServerStatusMemoryWriter {
             workspace_entry_count,
         );
         let snapshot = RuntimeServerStatusSnapshot {
-            graph_turbo_resident: self
-                .graph_turbo_resident
+            asp_python_graphs: self
+            .asp_python_graphs
                 .as_ref()
                 .and_then(|status| status.read().ok().map(|status| status.clone())),
             agent_sessions: self
@@ -130,11 +130,11 @@ impl RuntimeServerStatusMemoryWriter {
         Ok(())
     }
 
-    pub(crate) fn set_graph_turbo_resident(
+    pub(crate) fn set_asp_python_graphs(
         &mut self,
-        status: std::sync::Arc<std::sync::RwLock<super::GraphTurboResidentStatus>>,
+        status: std::sync::Arc<std::sync::RwLock<super::AspPythonGraphsStatus>>,
     ) {
-        self.graph_turbo_resident = Some(status);
+        self.asp_python_graphs = Some(status);
     }
 
     pub(crate) fn set_agent_sessions(

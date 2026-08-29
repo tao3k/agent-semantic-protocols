@@ -8,11 +8,8 @@ mod core;
 
 pub use core::{
     ReaderProbeAccess, ReaderProbeObservation, bind_reader_probe_observation,
-    classify_open_access_mode, diagnose_reader_probe, diagnose_reader_probe_with_state_home,
+    diagnose_reader_probe, diagnose_reader_probe_with_state_home,
 };
-
-#[cfg(target_os = "macos")]
-pub use core::reader_probe_interposer_bytes;
 
 #[cfg(target_os = "macos")]
 #[doc(hidden)]

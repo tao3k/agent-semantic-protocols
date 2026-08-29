@@ -97,7 +97,7 @@ captured by the synchronous Hook bootstrap.
 For Codex Bash PreTool, the Rust Hook process owns one pre-generation
 command-local guard and Config V1 owns its declarative rule witness. Their
 =processEnvironmentAssignmentAny= predicate consumes only parser-proven direct,
-=env=, or =export; exec= process transfer and then terminates allow before all
+=env=, or exported process transfer and then terminates allow before all
 other policy. It carries no argv, language, profile, or Runtime condition.
 Unbound payload text is not authority.
 

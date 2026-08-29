@@ -11,7 +11,7 @@ use crate::{
     },
 };
 
-use super::GraphTurboResidentStatusHandle;
+use super::AspPythonGraphsStatusHandle;
 
 const CONTROL_REPLAY_EPOCH_CAPACITY: usize = 262_144;
 
@@ -93,7 +93,7 @@ async fn build_control_receipt(
         &Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>,
     >,
     lifecycle: &watch::Receiver<RuntimeServerState>,
-    graph_turbo_resident_status: Option<&GraphTurboResidentStatusHandle>,
+    asp_python_graphs_status: Option<&AspPythonGraphsStatusHandle>,
     replay_guard: &Arc<tokio::sync::Mutex<RuntimeServerControlReplayGuard>>,
 ) -> Result<(RuntimeServerControlReceipt, bool), String> {
     replay_guard.lock().await.admit(&request.request_id)?;
@@ -121,7 +121,7 @@ async fn build_control_receipt(
         generation.as_ref().err(),
     );
     receipt.workspace_generation = generation.ok().flatten();
-    receipt.graph_turbo_resident = graph_turbo_resident_status.map(|status| status.snapshot());
+    receipt.asp_python_graphs = asp_python_graphs_status.map(|status| status.snapshot());
     Ok((receipt, restart))
 }
 
@@ -165,7 +165,7 @@ async fn process_control_requests(
         &Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>,
     >,
     lifecycle: &watch::Receiver<RuntimeServerState>,
-    graph_turbo_resident_status: Option<&GraphTurboResidentStatusHandle>,
+    asp_python_graphs_status: Option<&AspPythonGraphsStatusHandle>,
     replay_guard: &Arc<tokio::sync::Mutex<RuntimeServerControlReplayGuard>>,
 ) -> Result<(Vec<RuntimeServerControlReceipt>, bool), String> {
     use tokio_stream::StreamExt;
@@ -178,7 +178,7 @@ async fn process_control_requests(
                 registry,
                 generation_admission,
                 lifecycle,
-                graph_turbo_resident_status,
+                asp_python_graphs_status,
                 replay_guard,
             )
         })
@@ -201,7 +201,7 @@ pub(super) async fn serve_connection(
         Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>,
     >,
     lifecycle: watch::Receiver<RuntimeServerState>,
-    graph_turbo_resident_status: Option<GraphTurboResidentStatusHandle>,
+    asp_python_graphs_status: Option<AspPythonGraphsStatusHandle>,
     mut drain: watch::Receiver<bool>,
     replay_guard: Arc<tokio::sync::Mutex<RuntimeServerControlReplayGuard>>,
 ) -> Result<bool, String> {
@@ -223,7 +223,7 @@ pub(super) async fn serve_connection(
             &registry,
             generation_admission.as_ref(),
             &lifecycle,
-            graph_turbo_resident_status.as_ref(),
+            asp_python_graphs_status.as_ref(),
             &replay_guard,
         )
         .await?;

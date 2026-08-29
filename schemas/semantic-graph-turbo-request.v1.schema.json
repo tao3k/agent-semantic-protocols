@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.local/schemas/semantic-graph-turbo-request.v1.schema.json",
   "title": "Semantic Graph Turbo Request",
-  "description": "Schema-owned algorithm request packet consumed by asp-graph-turbo before it emits a semantic-graph-turbo-result response.",
+  "description": "Schema-owned graph-turbo algorithm request packet consumed by the asp-python-graphs service before it emits a semantic-graph-turbo-result response.",
   "type": "object",
   "additionalProperties": false,
   "required": [

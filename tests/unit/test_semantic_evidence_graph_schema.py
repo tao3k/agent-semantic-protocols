@@ -29,8 +29,8 @@ def test_semantic_evidence_graph_accepts_review_evidence_graph() -> None:
         "graphId": "rust.evidence.graph",
         "producer": {
             "languageId": "rust",
-            "providerId": "rs-harness",
-            "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+            "providerId": "asp-rust",
+            "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
         },
         "project": {"root": "."},
         "summary": {
@@ -128,8 +128,8 @@ def test_semantic_evidence_graph_rejects_absolute_owner_paths() -> None:
         "graphId": "rust.evidence.graph",
         "producer": {
             "languageId": "rust",
-            "providerId": "rs-harness",
-            "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+            "providerId": "asp-rust",
+            "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
         },
         "project": {"root": "."},
         "summary": {

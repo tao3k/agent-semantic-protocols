@@ -352,7 +352,7 @@ runtime became unavailable:
 #+begin_example
 state=cold-required
 reasonKind=registered-language-runtime-unavailable
-write provider project-resolution request for rs-harness:
+write provider project-resolution request for asp-rust:
 Broken pipe (os error 32)
 #+end_example
 

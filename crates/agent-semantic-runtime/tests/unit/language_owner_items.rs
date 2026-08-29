@@ -71,7 +71,7 @@ fn owner_items_cache_round_trip_is_owned_by_runtime() {
         "--view".to_string(),
         "seeds".to_string(),
     ];
-    let invocation = vec!["rs-harness".to_string(), "query".to_string()];
+    let invocation = vec!["asp-rust".to_string(), "query".to_string()];
     let request = LanguageOwnerItemsCacheRequest {
         language_id: "rust",
         args: &args,
@@ -101,7 +101,7 @@ fn owner_items_runtime_outcome_uses_cache_before_provider_output() {
     fs::create_dir_all(root.join("src")).expect("create source root");
     fs::write(root.join("src/lib.rs"), "pub fn owner() {}\n").expect("write owner");
     let args = vec!["items".to_string()];
-    let invocation = vec!["rs-harness".to_string(), "query".to_string()];
+    let invocation = vec!["asp-rust".to_string(), "query".to_string()];
     let request = LanguageOwnerItemsCacheRequest {
         language_id: "rust",
         args: &args,
@@ -136,7 +136,7 @@ fn owner_items_runtime_outcome_compacts_and_caches_provider_success() {
     fs::create_dir_all(root.join("src")).expect("create source root");
     fs::write(root.join("src/lib.rs"), "pub fn owner() {}\n").expect("write owner");
     let args = vec!["items".to_string()];
-    let invocation = vec!["rs-harness".to_string(), "query".to_string()];
+    let invocation = vec!["asp-rust".to_string(), "query".to_string()];
     let request = LanguageOwnerItemsCacheRequest {
         language_id: "rust",
         args: &args,
@@ -183,7 +183,7 @@ fn owner_items_cache_write_failure_does_not_pollute_provider_stderr() {
     fs::write(&cache_home, "cache root is intentionally not a directory")
         .expect("create invalid cache root");
     let args = vec!["items".to_string()];
-    let invocation = vec!["rs-harness".to_string(), "query".to_string()];
+    let invocation = vec!["asp-rust".to_string(), "query".to_string()];
     let request = LanguageOwnerItemsCacheRequest {
         language_id: "rust",
         args: &args,
@@ -226,7 +226,7 @@ fn owner_items_runtime_ignores_help_shaped_cache_and_rejects_help_success() {
     fs::create_dir_all(root.join("src")).expect("create source root");
     fs::write(root.join("src/lib.rs"), "pub fn owner() {}\n").expect("write owner");
     let args = vec!["items".to_string()];
-    let invocation = vec!["rs-harness".to_string(), "query".to_string()];
+    let invocation = vec!["asp-rust".to_string(), "query".to_string()];
     let request = LanguageOwnerItemsCacheRequest {
         language_id: "rust",
         args: &args,
@@ -237,7 +237,7 @@ fn owner_items_runtime_ignores_help_shaped_cache_and_rejects_help_success() {
     };
     write_language_owner_items_cache(
         &request,
-        b"gslph - Gerbil Scheme semantic search and project harness\nUsage:\n",
+        b"asp-gerbil-scheme - Gerbil Scheme semantic search and project harness\nUsage:\n",
     )
     .expect("write help cache");
 
@@ -246,7 +246,7 @@ fn owner_items_runtime_ignores_help_shaped_cache_and_rejects_help_success() {
         true,
         Some(LanguageOwnerItemsProviderOutput {
             status_success: true,
-            stdout: b"gslph - Gerbil Scheme semantic search and project harness\nUsage:\n",
+            stdout: b"asp-gerbil-scheme - Gerbil Scheme semantic search and project harness\nUsage:\n",
             stderr: b"",
         }),
     )
@@ -271,7 +271,7 @@ fn owner_items_runtime_accepts_python_structural_selector_output() {
     )
     .expect("write owner");
     let args = vec!["items".to_string()];
-    let invocation = vec!["py-harness".to_string(), "query".to_string()];
+    let invocation = vec!["asp-python".to_string(), "query".to_string()];
     let request = LanguageOwnerItemsCacheRequest {
         language_id: "python",
         args: &args,
@@ -315,7 +315,7 @@ fn owner_items_runtime_rejects_dynamic_owner_fallback_output() {
     fs::create_dir_all(root.join("src")).expect("create source root");
     fs::write(root.join("src/lib.rs"), "pub fn owner() {}\n").expect("write owner");
     let args = vec!["items".to_string()];
-    let invocation = vec!["rs-harness".to_string(), "query".to_string()];
+    let invocation = vec!["asp-rust".to_string(), "query".to_string()];
     let request = LanguageOwnerItemsCacheRequest {
         language_id: "rust",
         args: &args,
@@ -384,7 +384,7 @@ fn owner_items_runtime_outcome_unsupported_when_missing_owner_fails() {
     let root = temp_root("owner-items-missing-owner-outcome");
     let cache_home = root.join(".cache");
     let args = vec!["items".to_string()];
-    let invocation = vec!["rs-harness".to_string(), "query".to_string()];
+    let invocation = vec!["asp-rust".to_string(), "query".to_string()];
     let request = LanguageOwnerItemsCacheRequest {
         language_id: "rust",
         args: &args,

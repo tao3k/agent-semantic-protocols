@@ -1,7 +1,7 @@
 {
   "schemaId": "agent.semantic-protocols.provider-runtime-contract-receipt",
   "schemaVersion": "1",
-  "providerId": "rs-harness",
+  "providerId": "asp-rust",
   "languageId": "rust",
   "artifactDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
   "registrationDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",

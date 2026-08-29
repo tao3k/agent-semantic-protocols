@@ -304,7 +304,7 @@ pub struct RuntimeServerStatusSnapshot {
     pub transport_contract_digest: String,
     pub workspace_entry_count: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub graph_turbo_resident: Option<GraphTurboResidentStatus>,
+    pub asp_python_graphs: Option<AspPythonGraphsStatus>,
     #[serde(default)]
     pub agent_sessions: Vec<RuntimeServerAgentSessionStatus>,
     pub owner_epoch: u64,
@@ -362,7 +362,7 @@ impl RuntimeServerStatusSnapshot {
             artifact_catalog_digest: endpoint.artifact_catalog_digest.clone(),
             transport_contract_digest: endpoint.transport_contract_digest.clone(),
             workspace_entry_count,
-            graph_turbo_resident: None,
+            asp_python_graphs: None,
             agent_sessions: Vec::new(),
             owner_epoch: endpoint.owner_epoch,
         }
@@ -404,7 +404,7 @@ impl RuntimeServerStatusSnapshot {
             transport_contract_digest: self.transport_contract_digest.clone(),
             workspace_entry_count: self.workspace_entry_count,
             workspace_generation: None,
-            graph_turbo_resident: self.graph_turbo_resident.clone(),
+            asp_python_graphs: self.asp_python_graphs.clone(),
             resident_transaction: None,
             reason: None,
         })
@@ -422,7 +422,7 @@ impl RuntimeServerStatusSnapshot {
             transport_contract_digest: self.transport_contract_digest.clone(),
             workspace_entry_count: self.workspace_entry_count,
             workspace_generation: None,
-            graph_turbo_resident: self.graph_turbo_resident.clone(),
+            asp_python_graphs: self.asp_python_graphs.clone(),
             resident_transaction: None,
             reason: None,
         }
@@ -497,7 +497,7 @@ pub struct RuntimeServerControlReceipt {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_generation: Option<WorkspaceGenerationControlReceipt>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub graph_turbo_resident: Option<GraphTurboResidentStatus>,
+    pub asp_python_graphs: Option<AspPythonGraphsStatus>,
     pub resident_transaction:
         Option<crate::runtime_server_owner_receipt::RuntimeServerResidentTransactionReceipt>,
     pub reason: Option<String>,
@@ -516,8 +516,8 @@ pub struct WorkspaceGenerationControlReceipt {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GraphTurboResidentStatus {
-    pub state: GraphTurboResidentState,
+pub struct AspPythonGraphsStatus {
+    pub state: AspPythonGraphsState,
     pub process_id: Option<u32>,
     pub runtime_artifact: Option<String>,
     pub execution_command_digest: Option<String>,
@@ -526,7 +526,7 @@ pub struct GraphTurboResidentStatus {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum GraphTurboResidentState {
+pub enum AspPythonGraphsState {
     Unavailable,
     Starting,
     Healthy,
@@ -551,7 +551,7 @@ impl RuntimeServerControlReceipt {
             transport_contract_digest: endpoint.transport_contract_digest.clone(),
             workspace_entry_count,
             workspace_generation: None,
-            graph_turbo_resident: None,
+            asp_python_graphs: None,
             resident_transaction: None,
             reason: None,
         }
@@ -586,7 +586,7 @@ impl RuntimeServerControlReceipt {
             transport_contract_digest: runtime_server_transport_contract_digest(),
             workspace_entry_count: 0,
             workspace_generation: None,
-            graph_turbo_resident: None,
+            asp_python_graphs: None,
             resident_transaction: None,
             reason: Some(reason),
         }

@@ -50,7 +50,7 @@ pub use runtime_server_owner_receipt::{
 };
 pub mod runtime_server_diagnostics;
 mod runtime_server_generation_admission;
-mod runtime_server_graph_turbo_status;
+mod runtime_server_asp_python_graphs_status;
 pub mod runtime_server_health;
 pub mod runtime_server_hook_admission_locator;
 pub mod runtime_server_observability;

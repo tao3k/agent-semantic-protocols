@@ -3,7 +3,7 @@ use std::path::Path;
 use agent_semantic_client_core::state_core::ResolvedState;
 use agent_semantic_client_db::ClientDbEngine;
 
-use crate::search_history::run_search_history;
+use crate::search_history::history_audit::artifact_events_packet;
 use crate::test_support::{CACHE_TEST_LOCK, EnvVarGuard};
 
 #[tokio::test]
@@ -40,13 +40,13 @@ async fn search_history_backfills_artifacts_and_passes_db_engine_events() {
   "providerCommands": [
     {
       "startedAtMs": 222222,
-      "argv": ["rs-harness", "query", "--selector", "src/lib.rs:1-10", "--projection", "source"],
+      "argv": ["asp-rust", "query", "--selector", "src/lib.rs:1-10", "--projection", "source"],
       "languageId": "rust",
       "projectRoot": "__PROJECT_ROOT__"
     },
     {
       "eventTimestampMs": 333333,
-      "argv": ["rs-harness", "query", "--selector", "src/main.rs:20-24", "--workspace", ".", "--projection", "source"],
+      "argv": ["asp-rust", "query", "--selector", "src/main.rs:20-24", "--workspace", ".", "--projection", "source"],
       "languageId": "rust",
       "projectRoot": "__PROJECT_ROOT__"
     }
@@ -74,40 +74,13 @@ async fn search_history_backfills_artifacts_and_passes_db_engine_events() {
         .replace("__PROJECT_ROOT__", &root.display().to_string()),
     )
     .expect("write tree-sitter query artifact");
-    let bin_dir = root.join(".bin");
-    std::fs::create_dir_all(&bin_dir).expect("create bin dir");
-    let stdin_path = root.join("asp-graph-turbo-stdin.json");
-    let args_path = root.join("asp-graph-turbo-args.txt");
-    let graph_turbo = bin_dir.join("asp-graph-turbo");
-    std::fs::write(
-        &graph_turbo,
-        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$ASP_GRAPH_TURBO_ARGS_OUT\"\ncat > \"$ASP_GRAPH_TURBO_STDIN_OUT\"\nprintf '[graph-turbo-test]\\n'\n",
+    let packet_bytes = artifact_events_packet(
+        &agent_semantic_client_core::ProjectContext::resolve(&root).expect("project context"),
+        &artifact_dir,
     )
-    .expect("write asp-graph-turbo");
-    make_executable(&graph_turbo);
-
-    let cache_root = root.join(".cache");
-    let _path = EnvVarGuard::set("PATH", prepend_path(&bin_dir));
-    let _stdin = EnvVarGuard::set("ASP_GRAPH_TURBO_STDIN_OUT", &stdin_path);
-    let _args = EnvVarGuard::set("ASP_GRAPH_TURBO_ARGS_OUT", &args_path);
-    let _ignored_cache_home = EnvVarGuard::set("PRJ_CACHE_HOME", &cache_root);
-
-    let result = run_search_history(
-        &root,
-        &[
-            "history".to_string(),
-            "audit".to_string(),
-            ".".to_string(),
-            "--recent-sessions".to_string(),
-            "1".to_string(),
-        ],
-    )
-    .await;
-
-    result.expect("run search history");
-    let args = std::fs::read_to_string(&args_path).expect("read asp-graph-turbo args");
-    let stdin = std::fs::read_to_string(&stdin_path).expect("read asp-graph-turbo stdin");
-    assert!(args.contains("--events-json"), "{args}");
+    .expect("build event packet")
+    .expect("complete event packet");
+    let stdin = String::from_utf8(packet_bytes.to_vec()).expect("events packet utf8");
     assert!(stdin.contains("\"kind\":\"db-engine\""), "{stdin}");
     let packet: serde_json::Value = serde_json::from_str(&stdin).expect("events packet");
     let client_dir = packet
@@ -155,23 +128,3 @@ async fn search_history_backfills_artifacts_and_passes_db_engine_events() {
 fn temp_root(name: &str) -> std::path::PathBuf {
     crate::test_support::owner_backed_temp_root(name)
 }
-
-fn prepend_path(bin_dir: &Path) -> std::ffi::OsString {
-    let mut paths = vec![bin_dir.to_path_buf()];
-    if let Some(existing) = std::env::var_os("PATH") {
-        paths.extend(std::env::split_paths(&existing));
-    }
-    std::env::join_paths(paths).expect("join PATH")
-}
-
-#[cfg(unix)]
-fn make_executable(path: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-
-    let mut permissions = std::fs::metadata(path).expect("metadata").permissions();
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(path, permissions).expect("chmod");
-}
-
-#[cfg(not(unix))]
-fn make_executable(_path: &Path) {}

@@ -75,7 +75,7 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
     )])
     .evidence(
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-        "rs-harness",
+        "asp-rust",
     );
 
     let report = engine

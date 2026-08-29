@@ -41,7 +41,7 @@ pub(crate) fn asp_dynamic_overlay_search_pipe_warm_path_stays_inside_scenario_ga
         "pub fn dynamic_overlay_ignored() {}\n",
     )
     .expect("write ignored source");
-    write_marker_provider(&bin_dir, "rs-harness", &marker);
+    write_marker_provider(&bin_dir, "asp-rust", &marker);
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let command_args = [
@@ -242,7 +242,7 @@ pub(crate) fn asp_provider_candidate_annotations_cold_functional_path_stays_insi
     let annotations = vec![serde_json::json!({
         "path": "src/generated/lib.rs",
         "attributes": ["generated", "schema-generated"],
-        "source": "rust-harness",
+        "source": "asp-rust",
         "reason": "provider-parser-fact"
     })];
     let provider_nodes = vec![serde_json::json!({
@@ -253,7 +253,7 @@ pub(crate) fn asp_provider_candidate_annotations_cold_functional_path_stays_insi
         "matchText": "Bag.items: list[str]\nfull provider detail"
     })];
     let stdout = br#"[agent-semantic-client] syncing generated activation
-{"nodes":[{"id":"field:src/generated/lib.rs-items","kind":"field","role":"class-field","value":"items: list[str]","action":"code"}],"edges":[],"candidateAnnotations":[{"path":"src/generated/lib.rs","attributes":["generated","schema-generated"],"source":"rust-harness","reason":"provider-parser-fact"}]}
+{"nodes":[{"id":"field:src/generated/lib.rs-items","kind":"field","role":"class-field","value":"items: list[str]","action":"code"}],"edges":[],"candidateAnnotations":[{"path":"src/generated/lib.rs","attributes":["generated","schema-generated"],"source":"asp-rust","reason":"provider-parser-fact"}]}
 "#;
     let started_at = Instant::now();
     let envelope =

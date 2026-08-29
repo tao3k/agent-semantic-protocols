@@ -61,7 +61,7 @@ def test_artifact_evaluation_reports_cache_and_duplicate_metrics(tmp_path) -> No
                 "providerCommands": [
                     {
                         "argv": [
-                            "py-harness",
+                            "asp-python",
                             "search",
                             "owner",
                             "src/" + "types.py",

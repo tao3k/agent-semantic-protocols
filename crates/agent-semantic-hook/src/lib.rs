@@ -127,11 +127,11 @@ mod reader_probe;
 #[cfg(any(feature = "compiler", feature = "evaluator"))]
 pub use reader_probe::{
     ReaderProbeAccess, ReaderProbeObservation, bind_reader_probe_observation,
-    classify_open_access_mode, diagnose_reader_probe, diagnose_reader_probe_with_state_home,
+    diagnose_reader_probe, diagnose_reader_probe_with_state_home,
 };
 #[cfg(all(any(feature = "compiler", feature = "evaluator"), target_os = "macos"))]
 pub use reader_probe::{
-    materialize_reader_probe_fixture, reader_probe_fixture_bytes, reader_probe_interposer_bytes,
+    materialize_reader_probe_fixture, reader_probe_fixture_bytes,
 };
 
 #[cfg(feature = "compiler")]

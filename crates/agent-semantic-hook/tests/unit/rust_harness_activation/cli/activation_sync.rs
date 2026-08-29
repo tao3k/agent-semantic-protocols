@@ -14,7 +14,7 @@ fn cli_doctor_syncs_generated_activation_drift() {
     let state_home = root.join(".agent-semantic-protocols");
     super::super::support::write_default_client_hook_config(&root);
     let activation_path = write_invalid_generated_activation(&root);
-    write_state_home_provider_binary(&state_home, "rust", "asp-rust", "rs-harness");
+    write_state_home_provider_binary(&state_home, "rust", "asp-rust", "asp-rust");
     std::fs::create_dir_all(root.join("src")).expect("create Rust source fixture directory");
     std::fs::write(
         root.join("Cargo.toml"),
@@ -94,19 +94,19 @@ fn write_invalid_generated_activation(root: &std::path::Path) -> std::path::Path
             "generatedBy": {"runtime": "agent-semantic-hook", "version": "test"},
             "activation": [{
                 "languageId": "rust",
-                "providerId": "rs-harness",
-                "binary": "rs-harness",
-                "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+                "providerId": "asp-rust",
+                "binary": "asp-rust",
+                "namespace": "agent.semantic-protocols.languages.rust.asp-rust",
                 "sourceExtensions": [".rs"],
                 "configFiles": ["Cargo.toml", "Cargo.lock"],
                 "sourceRoots": ["src", "tests"],
                 "ignoredPathPrefixes": ["target", ".git"],
                 "commands": {
-                    "prime": {"argv": ["rs-harness", "search", "prime", "."]},
-                    "owner": {"argv": ["rs-harness", "search", "owner", "{path}", "."]},
-                    "text": {"argv": ["rs-harness", "search", "text", "{query}", "."]},
-                    "ingest": {"argv": ["rs-harness", "search", "ingest", "."], "stdinMode": "pipe-candidates"},
-                    "checkChanged": {"argv": ["rs-harness", "check", "--changed", "."]}
+                    "prime": {"argv": ["asp-rust", "search", "prime", "."]},
+                    "owner": {"argv": ["asp-rust", "search", "owner", "{path}", "."]},
+                    "text": {"argv": ["asp-rust", "search", "text", "{query}", "."]},
+                    "ingest": {"argv": ["asp-rust", "search", "ingest", "."], "stdinMode": "pipe-candidates"},
+                    "checkChanged": {"argv": ["asp-rust", "check", "--changed", "."]}
                 }
             }]
         }))

@@ -91,10 +91,10 @@
     },
     "providerId": {
       "enum": [
-        "rs-harness",
+        "asp-rust",
         "asp-typescript",
-        "py-harness",
-        "julia-lang-project-harness"
+        "asp-python",
+        "asp-julia"
       ]
     },
     "activationMode": {

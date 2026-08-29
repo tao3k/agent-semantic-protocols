@@ -340,6 +340,34 @@ pub(super) async fn serve_runtime_search_requests(
                     }
                 });
             }
+            RuntimeSearchServiceRequest::GraphsTimeline {
+                project_root: _project_root,
+                request_id,
+                payload,
+                cancellation,
+                mut response,
+            } => {
+                let permit = match graph_slots.clone().try_acquire_owned() {
+                    Ok(permit) => permit,
+                    Err(_) => {
+                        let _ = response.send(Err(
+                            "state=busy reasonKind=asp-python-graphs-capacity-exhausted".to_owned(),
+                        ));
+                        continue;
+                    }
+                };
+                let graph_server = graph_server.clone();
+                tasks.spawn(async move {
+                    let _permit = permit;
+                    let operation =
+                        graph_server.timeline(request_id, payload, cancellation.clone());
+                    tokio::pin!(operation);
+                    tokio::select! {
+                        result = &mut operation => { let _ = response.send(result); }
+                        _ = response.closed() => { cancellation.cancel(); }
+                    }
+                });
+            }
             RuntimeSearchServiceRequest::ProviderOwner {
                 workspace_identity,
                 project_root,
@@ -460,12 +488,17 @@ fn adapt_graph_evaluate_payload(payload: &serde_json::Value) -> Result<serde_jso
     }))
 }
 
-fn validate_graph_generation(payload: &serde_json::Value, generation_digest: &str) -> Result<(), String> {
+fn validate_graph_generation(
+    payload: &serde_json::Value,
+    generation_digest: &str,
+) -> Result<(), String> {
     let root = payload
         .get("workspaceGeneration")
         .and_then(|generation| generation.get("rootDigest"))
         .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| "asp-python-graphs graph request requires workspaceGeneration.rootDigest".to_owned())?;
+        .ok_or_else(|| {
+            "asp-python-graphs graph request requires workspaceGeneration.rootDigest".to_owned()
+        })?;
     let matches = root == generation_digest
         || generation_digest
             .strip_prefix("blake3-256:")

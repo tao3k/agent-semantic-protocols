@@ -22,9 +22,6 @@ pub async fn install_resident_runtime(
     source: &Path,
     target: &Path,
     artifact_mode: &str,
-    previous_artifact_digest: Option<
-        &agent_semantic_artifacts::blake3_content_digest::Blake3ContentDigest,
-    >,
     qualified_source: Option<
         agent_semantic_artifacts::runtime_artifact_catalog::QualifiedRuntimeArtifactSource,
     >,
@@ -41,7 +38,6 @@ pub async fn install_resident_runtime(
         source,
         target,
         artifact_mode,
-        previous_artifact_digest,
     )
     .await?;
     Ok(ResidentRuntimeInstallReceipt {
@@ -76,7 +72,7 @@ mod tests {
         std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755))
             .expect("candidate permissions");
 
-        let receipt = install_resident_runtime(&state_home, &source, &target, "dev", None, None)
+        let receipt = install_resident_runtime(&state_home, &source, &target, "dev", None)
             .await
             .expect("publication must not depend on candidate readiness");
 

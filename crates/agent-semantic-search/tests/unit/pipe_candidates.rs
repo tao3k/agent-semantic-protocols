@@ -172,7 +172,7 @@ fn source_index_acquisition_quarantines_stale_candidates_and_defers_overlay() {
         candidates: vec![SearchPipeSourceIndexCandidate {
             path: ("crates/agent-semantic-client/src/search_pipe_source.rs".to_string()).into(),
             language_id: Some(("rust".to_string()).into()),
-            provider_id: Some(("rs-harness".to_string()).into()),
+            provider_id: Some(("asp-rust".to_string()).into()),
             source_kind: ("file".to_string()).into(),
             line_count: Some(42),
             query_keys: vec![("source_index_owner".to_string()).into()],
@@ -225,7 +225,7 @@ fn source_index_acquisition_keeps_existing_rows_inventory_only() {
         candidates: vec![SearchPipeSourceIndexCandidate {
             path: ("src/lib.rs".to_string()).into(),
             language_id: Some(("rust".to_string()).into()),
-            provider_id: Some(("rs-harness".to_string()).into()),
+            provider_id: Some(("asp-rust".to_string()).into()),
             source_kind: ("file".to_string()).into(),
             line_count: Some(1),
             query_keys: vec![("current_owner".to_string()).into()],

@@ -14,7 +14,7 @@ fn digest(character: char) -> ContentDigestV1 {
 
 fn packet() -> ExactSelectorProjectionPacketV1 {
     let language_id = "rust".to_owned().into();
-    let provider_id = "asp-rust-harness".to_owned().into();
+    let provider_id = "asp-rust".to_owned().into();
     let owner_path = "crates/example/src/lib.rs".to_owned().into();
     let structural_selector = "rust://crates/example/src/lib.rs#item/function/run"
         .to_owned()
@@ -133,14 +133,14 @@ fn packet_v1_reuses_owner_proof_without_changing_the_record() {
 #[test]
 fn activation_identity_digests_bind_content_not_labels() {
     let parser = derive_parser_identity_digest_v1(
-        &"rs-harness".to_owned().into(),
+        &"asp-rust".to_owned().into(),
         &"exec-a".to_owned().into(),
         &"registry-a".to_owned().into(),
     );
     assert_eq!(
         parser,
         derive_parser_identity_digest_v1(
-            &"rs-harness".to_owned().into(),
+            &"asp-rust".to_owned().into(),
             &"exec-a".to_owned().into(),
             &"registry-a".to_owned().into(),
         )
@@ -148,7 +148,7 @@ fn activation_identity_digests_bind_content_not_labels() {
     assert_ne!(
         parser,
         derive_parser_identity_digest_v1(
-            &"rs-harness".to_owned().into(),
+            &"asp-rust".to_owned().into(),
             &"exec-b".to_owned().into(),
             &"registry-a".to_owned().into(),
         )

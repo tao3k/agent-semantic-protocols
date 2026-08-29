@@ -30,7 +30,7 @@ sample=src/cli/semantic-search/source-text.ts:15 TS-AGENT-R007 control-flow.trav
 sample=src/cli/semantic-search/owners.ts:10 TS-AGENT-R008 native-idiom.manual-transform-loop ownersForHits
 claim=real-project-localization
 
-[software-criterion-real-evidence] language=python provider=py-harness project=languages/python-lang-project-harness
+[software-criterion-real-evidence] language=python provider=asp-python project=languages/python-lang-project-harness
 commands=policy-json-check
 metrics=commandCount=1,providerProcessCount=1,packetBytes=28584406,coldElapsedMs=1768,warmElapsedMs=1467
 metrics=findingCount=1,qualityFindingCount=1,exitCode=0,repeatedTriggerDelta=0
@@ -38,7 +38,7 @@ signals=control-flow.broad-linear-phase:1
 sample=src/python_lang_project_harness/_cli_protocol.py:17 PY-AGENT-R010 control-flow.broad-linear-phase run_protocol_cli
 claim=real-project-localization
 
-[software-criterion-real-evidence] language=rust provider=rs-harness project=languages/rust-lang-project-harness
+[software-criterion-real-evidence] language=rust provider=asp-rust project=languages/rust-lang-project-harness
 commands=policy-json-check
 metrics=commandCount=1,providerProcessCount=1,packetBytes=81837,coldElapsedMs=7735,warmElapsedMs=7450
 metrics=findingCount=7,qualityFindingCount=4,exitCode=1,repeatedTriggerDelta=0
@@ -59,10 +59,10 @@ cd languages/typescript-lang-project-harness
 node dist/src/cli/main.js check --full --json .
 
 cd languages/python-lang-project-harness
-uv run py-harness check --full --json .
+uv run asp-python check --full --json .
 
 cd languages/rust-lang-project-harness
-target/debug/rs-harness check --full --json .
+target/debug/asp-rust check --full --json .
 #+end_example
 
 * Observations

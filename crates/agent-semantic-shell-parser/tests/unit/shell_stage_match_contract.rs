@@ -11,7 +11,9 @@ fn process_environment_assignment_is_parser_owned_and_stage_bounded() {
         "TRACE=1 BUILD_MODE=ci cargo test",
         "env BUILD_MODE=ci cargo test",
         "/usr/bin/env BUILD_MODE=ci cargo test",
+        "export BUILD_MODE=ci; cargo test",
         "export BUILD_MODE=ci; exec cargo test",
+        "export BUILD_MODE=ci; printf warmup; cargo test",
     ] {
         let stages = parse_bash_command_candidates(command).expect("valid Bash command");
         assert!(
@@ -23,8 +25,7 @@ fn process_environment_assignment_is_parser_owned_and_stage_bounded() {
         "NOT_BUILD_MODE=ci cargo test",
         "printf warmup && BUILD_MODE=ci cargo test",
         "bash -lc 'BUILD_MODE=ci cargo test'",
-        "export BUILD_MODE=ci; cargo test",
-        "export BUILD_MODE=ci; printf warmup; exec cargo test",
+        "export NOT_BUILD_MODE=ci; cargo test",
     ] {
         let stages = parse_bash_command_candidates(command).expect("valid Bash command");
         assert!(

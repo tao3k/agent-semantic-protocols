@@ -8,7 +8,7 @@
 * Purpose
 
 This report records a real Python-harness agent trace where the agent followed
-the provider-owned =py-harness= search/query path, but still issued many
+the provider-owned =asp-python= search/query path, but still issued many
 near-duplicate owner queries while investigating schema packets, project layout
 policy, and agent policy rules.
 
@@ -26,10 +26,10 @@ The trace contained four clusters.
 The agent repeatedly queried schema test owners with broad names:
 
 #+begin_src shell
-py-harness search owner tests/unit/test_semantic_search_packet_query_set_schema.py items --query test .
-py-harness search owner tests/unit/test_semantic_search_packet_query_set_schema.py items --query minimal_packet .
-py-harness search owner tests/unit/test_semantic_search_packet_graph_runtime_schema.py items --query test .
-py-harness search owner tests/unit/test_semantic_search_packet_graph_runtime_schema.py items --query minimal_packet .
+asp-python search owner tests/unit/test_semantic_search_packet_query_set_schema.py items --query test .
+asp-python search owner tests/unit/test_semantic_search_packet_query_set_schema.py items --query minimal_packet .
+asp-python search owner tests/unit/test_semantic_search_packet_graph_runtime_schema.py items --query test .
+asp-python search owner tests/unit/test_semantic_search_packet_graph_runtime_schema.py items --query minimal_packet .
 #+end_src
 
 Current reproduced output shows why this fans out:
@@ -52,11 +52,11 @@ The agent searched for =PY-PROJ-R001= and =src layout=, then queried layout
 helpers:
 
 #+begin_src shell
-py-harness search lexical "PY-PROJ-R001" owner tests --view seeds languages/python-lang-project-harness
-py-harness search lexical "src layout" owner tests --view seeds languages/python-lang-project-harness
-py-harness search owner src/python_lang_project_harness/_project_policy_layout.py items --query _uses_src_layout languages/python-lang-project-harness
-py-harness search owner src/python_lang_project_harness/_project_policy_layout.py items --query _is_packaged_project languages/python-lang-project-harness
-py-harness search owner src/python_lang_project_harness/_project_policy_layout.py items --query _src_parent_for_package languages/python-lang-project-harness
+asp-python search lexical "PY-PROJ-R001" owner tests --view seeds languages/python-lang-project-harness
+asp-python search lexical "src layout" owner tests --view seeds languages/python-lang-project-harness
+asp-python search owner src/python_lang_project_harness/_project_policy_layout.py items --query _uses_src_layout languages/python-lang-project-harness
+asp-python search owner src/python_lang_project_harness/_project_policy_layout.py items --query _is_packaged_project languages/python-lang-project-harness
+asp-python search owner src/python_lang_project_harness/_project_policy_layout.py items --query _src_parent_for_package languages/python-lang-project-harness
 #+end_src
 
 The text search correctly selected the catalog or layout owner, but direct
@@ -77,10 +77,10 @@ through owner item query.
 The same pattern happened for =PY-AGENT-R008=:
 
 #+begin_src shell
-py-harness search lexical "PY-AGENT-R008" owner tests --view seeds languages/python-lang-project-harness
-py-harness search lexical "broad mixed surface" owner tests --view seeds languages/python-lang-project-harness
-py-harness search owner src/python_lang_project_harness/_agent_policy_catalog.py items --query PY_AGENT_R008 languages/python-lang-project-harness
-py-harness search owner src/python_lang_project_harness/_agent_reasoning_tree.py items --query _branch_needs_owner_map languages/python-lang-project-harness
+asp-python search lexical "PY-AGENT-R008" owner tests --view seeds languages/python-lang-project-harness
+asp-python search lexical "broad mixed surface" owner tests --view seeds languages/python-lang-project-harness
+asp-python search owner src/python_lang_project_harness/_agent_policy_catalog.py items --query PY_AGENT_R008 languages/python-lang-project-harness
+asp-python search owner src/python_lang_project_harness/_agent_reasoning_tree.py items --query _branch_needs_owner_map languages/python-lang-project-harness
 #+end_src
 
 The catalog query reproduced as:
@@ -102,7 +102,7 @@ The trace also included repeated UI-level entries shaped like:
 Running command
 Running command
 for 2s
-$ py-harness search owner ...
+$ asp-python search owner ...
 #+end_src
 
 That hides whether the agent repeated the same semantic query, retried after a
@@ -133,8 +133,8 @@ exact method.
 The trace alternates between:
 
 #+begin_src shell
-py-harness search owner languages/python-lang-project-harness/src/... languages/python-lang-project-harness
-py-harness search owner src/... .
+asp-python search owner languages/python-lang-project-harness/src/... languages/python-lang-project-harness
+asp-python search owner src/... .
 #+end_src
 
 Both can be valid depending on the working directory, but the provider should
@@ -210,8 +210,8 @@ need first-class query surfaces.
 Add a provider-owned policy lookup view for Python:
 
 #+begin_src shell
-py-harness search policy PY-PROJ-R001 owner tests --workspace . --view seeds
-py-harness search policy PY-AGENT-R008 owner tests --workspace . --view seeds
+asp-python search policy PY-PROJ-R001 owner tests --workspace . --view seeds
+asp-python search policy PY-AGENT-R008 owner tests --workspace . --view seeds
 #+end_src
 
 Compact output should include:
@@ -225,7 +225,7 @@ The same rule fact should be available through owner query when the selected
 owner is a policy catalog:
 
 #+begin_src shell
-py-harness search owner src/python_lang_project_harness/_project_policy_catalog.py policy --query PY-PROJ-R001 .
+asp-python search owner src/python_lang_project_harness/_project_policy_catalog.py policy --query PY-PROJ-R001 .
 #+end_src
 
 This keeps rule ids data-owned instead of pretending they are Python function
@@ -237,7 +237,7 @@ For =items --query test= and =items --query minimal_packet=, the provider should
 prefer names-only/outline output unless the query is exact:
 
 #+begin_src shell
-py-harness query tests/unit/test_semantic_search_packet_query_set_schema.py --term test --names-only .
+asp-python query tests/unit/test_semantic_search_packet_query_set_schema.py --term test --names-only .
 #+end_src
 
 The response should list class/test/helper names with line ranges, no =|code=
@@ -251,7 +251,7 @@ canonical command example:
 
 #+begin_src text
 |owner ... ownerPath=src/python_lang_project_harness/_project_policy_layout.py projectRoot=languages/python-lang-project-harness
-|next-command py-harness search owner src/python_lang_project_harness/_project_policy_layout.py items --query _uses_src_layout languages/python-lang-project-harness
+|next-command asp-python search owner src/python_lang_project_harness/_project_policy_layout.py items --query _uses_src_layout languages/python-lang-project-harness
 #+end_src
 
 This gives the agent one root spelling to reuse and reduces duplicate
@@ -297,7 +297,7 @@ For sandtable and hook research, provider compact output should emit a stable
 receipt line:
 
 #+begin_src text
-|runtime commandId=... dedupKey=py-harness:search-owner:<owner>:<query> elapsedMs=... cache=...
+|runtime commandId=... dedupKey=asp-python:search-owner:<owner>:<query> elapsedMs=... cache=...
 #+end_src
 
 This would let reports distinguish repeated intent from repeated display noise.
@@ -320,10 +320,10 @@ This would let reports distinguish repeated intent from repeated display noise.
 The same investigation should compress to a bounded flow:
 
 #+begin_src shell
-py-harness search policy PY-PROJ-R001 owner tests --view seeds languages/python-lang-project-harness
-py-harness search owner src/python_lang_project_harness/_project_policy_layout.py items --query '_uses_src_layout|_is_packaged_project' languages/python-lang-project-harness
-py-harness search policy PY-AGENT-R008 owner tests --view seeds languages/python-lang-project-harness
-py-harness query tests/unit/test_semantic_search_packet_query_set_schema.py --term test --names-only .
+asp-python search policy PY-PROJ-R001 owner tests --view seeds languages/python-lang-project-harness
+asp-python search owner src/python_lang_project_harness/_project_policy_layout.py items --query '_uses_src_layout|_is_packaged_project' languages/python-lang-project-harness
+asp-python search policy PY-AGENT-R008 owner tests --view seeds languages/python-lang-project-harness
+asp-python query tests/unit/test_semantic_search_packet_query_set_schema.py --term test --names-only .
 #+end_src
 
 Expected properties:

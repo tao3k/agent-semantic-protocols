@@ -35,7 +35,6 @@ jobs:
 
     env:
       ASP_BINARY: asp
-      GRAPH_TURBO_RESIDENT_BINARY: asp-graph-turbo-resident
       RELEASE_BUNDLE: asp-tools
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
 
@@ -82,9 +81,85 @@ jobs:
         shell: bash
         run: git config --global core.longpaths true
 
-      - name: Build atomic ASP and Graph Turbo release bundle
+      - name: Build atomic ASP and asp-python-graphs service bundle
         shell: bash
-        run: just build-asp-release-bundle package
+        run: |
+          set -euo pipefail
+          cargo build --release --manifest-path Cargo.toml --package agent-semantic-client --bin asp
+          mkdir -p package/asp-python-graphs.bundle
+          install -m 755 target/release/asp${{ matrix.exe }} package/asp${{ matrix.exe }}
+          uv build --project packages/python/asp_memory_engine --wheel \
+            --out-dir package/asp-python-graphs.bundle
+          uv build --project packages/python/asp_python_graphs --wheel \
+            --out-dir package/asp-python-graphs.bundle
+          service_dir="$PWD/package/asp-python-graphs.bundle"
+          environment_dir="${service_dir}/environment"
+          python -m venv --copies "${environment_dir}"
+          if [[ -x "${environment_dir}/bin/python" ]]; then
+            service_python="${environment_dir}/bin/python"
+            service_launcher="${service_dir}/asp-python-graphs-service"
+            service_arguments_json='["--socket=${socketPath}"]'
+            cat > "${service_launcher}" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          bundle_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+          exec "${bundle_dir}/environment/bin/python" -m asp_python_graphs.service_cli "$@"
+          EOF
+            chmod 755 "${service_launcher}"
+          else
+            service_python="${environment_dir}/Scripts/python.exe"
+            service_launcher="${service_python}"
+            service_arguments_json='["-m", "asp_python_graphs.service_cli", "--socket=${socketPath}"]'
+          fi
+          uv pip install --python "${service_python}" \
+            packages/python/asp_memory_engine packages/python/asp_python_graphs
+          graphs_wheel_path="$(find package/asp-python-graphs.bundle -type f -name 'asp_python_graphs-*.whl' -print -quit)"
+          memory_wheel_path="$(find package/asp-python-graphs.bundle -type f -name 'asp_memory_engine-*.whl' -print -quit)"
+          test -n "${graphs_wheel_path}"
+          test -n "${memory_wheel_path}"
+          python - "${service_dir}" "${service_launcher}" "${graphs_wheel_path}" "${memory_wheel_path}" "${service_arguments_json}" <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import sys
+
+          service_dir = pathlib.Path(sys.argv[1])
+          launcher = pathlib.Path(sys.argv[2])
+          wheel = pathlib.Path(sys.argv[3])
+          memory_wheel = pathlib.Path(sys.argv[4])
+          entrypoint = json.loads(sys.argv[5])
+          files = []
+          for path in sorted(service_dir.rglob("*")):
+              if not path.is_file() or path.name == "artifact-manifest.v1.json":
+                  continue
+              files.append(
+                  {
+                      "path": path.relative_to(service_dir).as_posix(),
+                      "size": path.stat().st_size,
+                      "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                  }
+              )
+          file_material = json.dumps(files, sort_keys=True, separators=(",", ":"))
+          manifest = {
+              "schemaId": "agent.semantic-protocols.asp-python-graphs-release-artifact",
+              "schemaVersion": "1",
+              "artifactKind": "server-managed-service-environment",
+              "project": "asp-python-graphs",
+              "algorithm": "graph-turbo",
+              "launcher": launcher.relative_to(service_dir).as_posix(),
+              "launcherSha256": hashlib.sha256(launcher.read_bytes()).hexdigest(),
+              "environment": "environment",
+              "files": files,
+              "bundleSha256": hashlib.sha256(file_material.encode()).hexdigest(),
+              "entrypoint": entrypoint,
+              "wheels": [wheel.name, memory_wheel.name],
+              "publicStandaloneCommand": False,
+          }
+          (wheel.parent / "artifact-manifest.v1.json").write_text(
+              json.dumps(manifest, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
 
       - name: Smoke bundle
         shell: bash
@@ -92,10 +167,53 @@ jobs:
           set -euo pipefail
 
           "./package/${ASP_BINARY}${{ matrix.exe }}" guide >/dev/null
+          if [[ -x package/asp-python-graphs.bundle/asp-python-graphs-service ]]; then
+            service_launcher="$PWD/package/asp-python-graphs.bundle/asp-python-graphs-service"
+            service_publication_args=(--argument '--socket=${socketPath}')
+            service_run_args=(--socket)
+          else
+            service_launcher="$PWD/package/asp-python-graphs.bundle/environment/Scripts/python.exe"
+            service_publication_args=(--argument -m --argument asp_python_graphs.service_cli --argument '--socket=${socketPath}')
+            service_run_args=(-m asp_python_graphs.service_cli --socket)
+          fi
+          test -x "${service_launcher}" || test -f "${service_launcher}"
+          service_state="$RUNNER_TEMP/asp-python-graphs-release-state"
+          mkdir -p "${service_state}"
+          ASP_STATE_HOME="${service_state}" \
+            "./package/${ASP_BINARY}${{ matrix.exe }}" graph artifact publish \
+            --executable "${service_launcher}" \
+            "${service_publication_args[@]}" > "${service_state}/publication.json"
+          descriptor="${service_state}/runtime/server/asp-python-graphs-artifact.v2.json"
+          test -f "${descriptor}"
+          python - "${descriptor}" "${service_launcher}" <<'PY'
+          import json
+          import os
+          import pathlib
+          import sys
 
-          env -i PATH="${PATH}" \
-            "./package/${GRAPH_TURBO_RESIDENT_BINARY}.bundle/${GRAPH_TURBO_RESIDENT_BINARY}${{ matrix.exe }}" \
-            </dev/null >/dev/null
+          descriptor = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          launcher = pathlib.Path(sys.argv[2]).resolve()
+          assert pathlib.Path(descriptor["executionArtifactLocator"]).resolve() == launcher
+          assert descriptor["commandArguments"][-1] == "--socket=${socketPath}"
+          assert "asp_python_graphs.service_cli" in descriptor["commandArguments"] or launcher.name == "asp-python-graphs-service"
+          assert os.access(launcher, os.X_OK) or launcher.suffix == ".cmd"
+          PY
+          socket_path="$RUNNER_TEMP/asp-python-graphs-release.sock"
+          "${service_launcher}" "${service_run_args[@]}" "${socket_path}" >/tmp/asp-python-graphs-release.log 2>&1 &
+          service_pid=$!
+          trap 'kill "${service_pid}" 2>/dev/null || true' EXIT
+          python - "${socket_path}" <<'PY'
+          import asyncio
+          import grpc
+          import sys
+
+          async def main() -> None:
+              channel = grpc.aio.insecure_channel(f"unix:{sys.argv[1]}")
+              await channel.channel_ready()
+              await channel.close()
+
+          asyncio.run(main())
+          PY
 
       - name: Package artifact
         shell: bash

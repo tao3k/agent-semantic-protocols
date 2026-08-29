@@ -23,7 +23,7 @@
   },
   "evidence": {
     "source": "handwritten",
-    "intent": "Validate that asp-graph-turbo consumes a schema-owned algorithm request and emits a schema-owned typed frontier ranking response instead of relying on prompt text as the source of truth.",
+    "intent": "Validate that the asp-python-graphs service consumes a schema-owned graph-turbo algorithm request and emits a schema-owned typed frontier ranking response instead of relying on prompt text as the source of truth.",
     "intentKind": "implementation-principle",
     "editBoundary": "none",
     "metrics": {

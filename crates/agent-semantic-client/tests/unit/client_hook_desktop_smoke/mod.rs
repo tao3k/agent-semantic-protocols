@@ -40,7 +40,7 @@ fn codex_desktop_read_aliases_reach_runtime_policy() {
         assert_eq!(decision["decision"], "deny", "{tool_name}");
         assert_eq!(decision["reasonKind"], "direct-source-read", "{tool_name}");
         assert_eq!(
-            decision["routes"][0]["providerId"], "rs-harness",
+            decision["routes"][0]["providerId"], "asp-rust",
             "Read alias must retain the provider-owned recovery route: {decision}"
         );
         assert_route_mentions(&decision, "src/lib.rs");
@@ -70,7 +70,7 @@ fn codex_desktop_shell_read_wrappers_reach_runtime_policy() {
         assert_eq!(decision["decision"], "deny", "{command}");
         assert_eq!(decision["reasonKind"], "bulk-source-dump", "{command}");
         assert_eq!(
-            decision["routes"][0]["providerId"], "rs-harness",
+            decision["routes"][0]["providerId"], "asp-rust",
             "shell Read wrapper must retain the provider-owned recovery route: {decision}"
         );
         assert_route_mentions(&decision, "src/lib.rs");

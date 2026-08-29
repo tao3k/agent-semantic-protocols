@@ -145,7 +145,7 @@ def test_runtime_benchmark_executes_fd_as_an_independent_path_stage(
     corpus = Corpus(
         resource_id="rust.runtime-fd-stage",
         scenario_id="runtime-fd-stage",
-        provider_id="rs-harness",
+        provider_id="asp-rust",
         language="rust",
         repository="example/runtime-fd-stage",
         remote="https://github.com/example/runtime-fd-stage.git",
@@ -181,11 +181,11 @@ def test_runtime_corpus_manifest_has_all_unique_real_library_targets() -> None:
     assert len(corpora) == 17
     assert all(len(entry["git"]["revision"]) == 40 for entry in corpora)
     assert {entry["providerId"] for entry in corpora} == {
-        "julia-lang-project-harness",
-        "gerbil-scheme-harness",
+        "asp-julia",
+        "asp-gerbil-scheme",
         "orgize",
-        "py-harness",
-        "rs-harness",
+        "asp-python",
+        "asp-rust",
         "asp-typescript",
     }
     assert {entry["repository"] for entry in corpora} == {

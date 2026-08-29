@@ -11,6 +11,8 @@ const CLIENT_EXACT_QUERY_RESPONSE: &str =
 const CLIENT_EXACT_QUERY_FAILURE: &str = "agent.semantic-protocols.asp-client-exact-query-failure";
 const CLIENT_OWNER_SEARCH_REQUEST: &str =
     "agent.semantic-protocols.asp-client-owner-search-request";
+const CLIENT_GRAPHS_TIMELINE_REQUEST: &str =
+    "agent.semantic-protocols.asp-client-graphs-timeline-request";
 const EXACT_REQUEST: &str = "agent.semantic-protocols.provider-native-exact-request";
 const EXACT_RESPONSE: &str = "agent.semantic-protocols.provider-native-exact-projection";
 const OWNER_REQUEST: &str = "agent.semantic-protocols.provider-native-owner-search-request";
@@ -32,6 +34,19 @@ pub struct AspClientExactQueryRequest {
     pub schema_version: String,
     pub selector: String,
     pub projection: String,
+}
+
+/// Server-owned graph timeline request used by history/audit clients.
+///
+/// Graph-Turbo is an algorithm identity carried by the event packet; the
+/// transport and lifecycle owner is ASP Server's `asp-python-graphs` service.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspClientGraphsTimelineRequest {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub event_packet: Value,
+    pub arguments: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -231,6 +246,10 @@ validate_schema_identity!(RuntimeProviderSearchRequest, SEARCH_REQUEST);
 validate_schema_identity!(AspClientSearchRequest, CLIENT_SEARCH_REQUEST);
 validate_schema_identity!(AspClientExactQueryRequest, CLIENT_EXACT_QUERY_REQUEST);
 validate_schema_identity!(AspClientOwnerSearchRequest, CLIENT_OWNER_SEARCH_REQUEST);
+validate_schema_identity!(
+    AspClientGraphsTimelineRequest,
+    CLIENT_GRAPHS_TIMELINE_REQUEST
+);
 validate_schema_identity!(ProviderNativeExactRequest, EXACT_REQUEST);
 validate_schema_identity!(ProviderNativeExactProjection, EXACT_RESPONSE);
 validate_schema_identity!(ProviderNativeOwnerSearchRequest, OWNER_REQUEST);

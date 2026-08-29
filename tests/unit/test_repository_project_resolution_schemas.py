@@ -76,7 +76,7 @@ def rust_package_graph() -> dict:
         "schemaId": "agent.semantic-protocols.language-package-graph",
         "schemaVersion": "1",
         "languageId": "rust",
-        "providerId": "rs-harness",
+        "providerId": "asp-rust",
         "projectEntry": "Cargo.toml",
         "parserId": "cargo-project-resolution",
         "manifests": [
@@ -131,7 +131,7 @@ def resolved_project() -> dict:
             "projectInstanceId": "project-rust-root@workspace-1",
             "projectEntry": "Cargo.toml",
             "languageId": "rust",
-            "providerId": "rs-harness",
+            "providerId": "asp-rust",
             "parserIdentityDigest": "parser-1",
         },
         "repositoryCandidates": git_candidates(),

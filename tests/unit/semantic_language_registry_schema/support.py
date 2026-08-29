@@ -23,8 +23,8 @@ def registry_with_descriptor(
         "languages": [
             {
                 "languageId": "rust",
-                "providerId": "rs-harness",
-                "binary": "rs-harness",
+                "providerId": "asp-rust",
+                "binary": "asp-rust",
                 "namespace": "agent.semantic-protocols.rust",
                 "methods": [descriptor["method"]],
                 "methodDescriptors": [descriptor],

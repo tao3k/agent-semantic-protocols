@@ -1,29 +1,7 @@
 use super::{
     ReaderProbeAccess, ReaderProbeObservation, bind_reader_probe_observation,
-    classify_open_access_mode,
 };
 use serde_json::json;
-
-#[test]
-fn open_access_mode_classifies_reader_authority_without_command_names() {
-    assert_eq!(
-        classify_open_access_mode(libc::O_RDONLY),
-        ReaderProbeAccess::Read
-    );
-    assert_eq!(
-        classify_open_access_mode(libc::O_RDWR),
-        ReaderProbeAccess::NotRead
-    );
-    assert_eq!(
-        classify_open_access_mode(libc::O_WRONLY),
-        ReaderProbeAccess::NotRead
-    );
-    #[cfg(target_os = "linux")]
-    assert_eq!(
-        classify_open_access_mode(libc::O_PATH | libc::O_RDONLY),
-        ReaderProbeAccess::NotRead
-    );
-}
 
 #[test]
 fn absent_observation_clears_untrusted_payload_fact() {

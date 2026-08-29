@@ -56,11 +56,11 @@ fn asset_names_are_rev_independent_and_target_selected() {
     let spec = provider_release("julia").expect("julia release spec");
     assert_eq!(
         asset_name(&spec, "aarch64-apple-darwin"),
-        "asp-julia-harness-aarch64-apple-darwin.tar.gz"
+        "asp-julia-aarch64-apple-darwin.tar.gz"
     );
     assert_eq!(
         checksum_name(&spec, "aarch64-apple-darwin"),
-        "asp-julia-harness-aarch64-apple-darwin.tar.gz.sha256"
+        "asp-julia-aarch64-apple-darwin.tar.gz.sha256"
     );
 }
 

@@ -184,7 +184,7 @@ the empty Host success response before reading the action payload, loading
 matcher state, or evaluating policy. The second recovery layer is the Codex
 Bash PreTool Rust process guard mirrored by its Config V1 rule: only
 parser-proven process transfer of
-the exact assignment through direct assignment, =env=, or =export; exec=
+the exact assignment through direct assignment, =env=, or an exported assignment
 terminates allow. It is universal across Hook policy and has no argv/language
 condition. Quoted or unbound payload text and non-=exec= export do not bypass.
 Values other than the exact value =1= and similarly named variables MUST NOT

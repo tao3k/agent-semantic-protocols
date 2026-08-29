@@ -229,7 +229,7 @@ fn lexical_search_frame_trace_skips_overlay_when_source_index_is_selector_ready(
         candidates: vec![SearchPipeSourceIndexCandidate {
             path: "src/lexical_search_frame.rs".to_string(),
             language_id: Some("rust".to_string()),
-            provider_id: Some("rs-harness".to_string()),
+            provider_id: Some("asp-rust".to_string()),
             source_kind: "source".to_string(),
             line_count: Some(120),
             query_keys: vec![
@@ -301,7 +301,7 @@ fn lexical_search_frame_uses_source_index_owner_evidence_before_overlay() {
         candidates: vec![SearchPipeSourceIndexCandidate {
             path: "src/lexical_search_frame.rs".to_string(),
             language_id: Some("rust".to_string()),
-            provider_id: Some("rs-harness".to_string()),
+            provider_id: Some("asp-rust".to_string()),
             source_kind: "source".to_string(),
             line_count: Some(120),
             query_keys: vec![

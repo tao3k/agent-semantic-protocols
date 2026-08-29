@@ -3,8 +3,8 @@
 use std::collections::BTreeSet;
 
 use super::{
-    HookClientActionSubjectKind, HookClientConfigDecision, HookClientConfigFile,
-    HookClientRuleConfig,
+    HookClientActionKind, HookClientActionSubjectKind, HookClientConfigDecision,
+    HookClientConfigFile, HookClientMatcherPolicy, HookClientRuleConfig,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -116,9 +116,9 @@ fn is_shell_registered_read_rule(rule: &HookClientRuleConfig) -> bool {
     rule.enabled
         && matches!(rule.decision, HookClientConfigDecision::Deny)
         && rule
-            .matcher
-            .as_deref()
-            .is_some_and(|matcher| matcher.split('|').any(|native| native == "Bash"))
+            .matcher_policies
+            .contains(&HookClientMatcherPolicy::WrappedCommand)
+        && rule.actions.contains(&HookClientActionKind::Read)
         && !rule.profiles_list.is_empty()
         && (match_config.subject_kind_any.is_empty()
             || match_config

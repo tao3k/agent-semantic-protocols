@@ -73,7 +73,7 @@ def python_semantic_language_descriptors(project: Path) -> list[dict[str, object
     [language] = [
         entry
         for entry in registry["languages"]
-        if entry["languageId"] == "python" and entry["providerId"] == "py-harness"
+        if entry["languageId"] == "python" and entry["providerId"] == "asp-python"
     ]
     return list(language["methodDescriptors"])
 

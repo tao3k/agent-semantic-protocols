@@ -297,7 +297,7 @@ candidateIds             linked P0 InvariantCandidate ids
 The first P2 slice is schema and registry alignment.  It should let adapters
 attach expect-test or golden-output behavior to the same evidence packet family
 without turning the Rust harness into a large behavior simulator.
-Rust exposes this as =rs-harness behavior snapshot --receipt-json PATH= so an
+Rust exposes this as =asp-rust behavior snapshot --receipt-json PATH= so an
 execution receipt from =expect-test= can become a linked behavior snapshot
 without re-running or re-parsing the test output.
 
@@ -335,7 +335,7 @@ owned by parser or graph facts, for example:
 
 The first Rust pilot targets =AGENT-R009= dependency graph acyclicity. The rule
 core is factored into an index-based pure graph function, and
-=rs-harness proof pilot dependency-graph-acyclicity --max-nodes N= runs an
+=asp-rust proof pilot dependency-graph-acyclicity --max-nodes N= runs an
 exhaustive small-model check. The claim is bounded but concrete: for every
 directed graph up to =N= nodes, the AGENT-R009 core reports a cycle iff an
 independent directed-cycle checker finds one. Later Kani, Creusot, or Verus
@@ -453,7 +453,7 @@ gaps                  missing evidence or stale waiver summaries
 The first renderer is:
 
 #+begin_example
-rs-harness evidence assurance --evidence-graph-json PATH [--json]
+asp-rust evidence assurance --evidence-graph-json PATH [--json]
 #+end_example
 
 The compact output is reviewer-first:
@@ -591,7 +591,7 @@ render_rust_project_flow_closeout(...)       // findings + receipts + waivers
 ** Flow artifact format (repo-local)
 
 #+begin_src yaml
-change_id: rust-harness-perf-policy-m1
+change_id: asp-rust-perf-policy-m1
 spec:
   intent: "add parser-native performance candidate facts"
   non_goals:
@@ -726,7 +726,7 @@ Each profile decides:
 
 * Cargo package atoms and explicit workspace composition
 :PROPERTIES:
-:CUSTOM_ID: rust-harness-package-atomicity
+:CUSTOM_ID: asp-rust-package-atomicity
 :CONTRACT_ID: ASP-RFC-10.02-RUST-HARNESS-PACKAGE-ATOMICITY
 :END:
 

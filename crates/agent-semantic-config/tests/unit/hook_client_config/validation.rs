@@ -107,7 +107,7 @@ id = "deny-rust-read"
 decision = "deny"
 
 [[rules.routes]]
-providerId = "rs-harness"
+providerId = "asp-rust"
 kind = "route-text"
 argv = ["asp", "rust"]
 "#,
@@ -153,7 +153,7 @@ decision = "deny"
 obsoleteRuleField = "apply-patch"
 
 [[rules.routes]]
-providerId = "rs-harness"
+providerId = "asp-rust"
 kind = "query"
 argv = ["asp", "rust", "query"]
 "#,
@@ -315,7 +315,7 @@ sourceRootAny = ["{source_root}"]
 }
 
 #[test]
-fn canonical_source_routing_uses_bash_capability_profiles_without_legacy_search() {
+fn canonical_source_routing_uses_wrapped_profiles_without_legacy_search() {
     let config = default_hook_client_config_file().expect("canonical Hook config");
     assert!(
         config
@@ -328,7 +328,11 @@ fn canonical_source_routing_uses_bash_capability_profiles_without_legacy_search(
         .iter()
         .find(|rule| rule.id == "route-read-to-asp-languages")
         .expect("registered source routing rule");
-    assert_eq!(route.matcher.as_deref(), Some("Bash"));
+    assert!(route.matcher.is_none());
+    assert_eq!(
+        route.matcher_policies,
+        [agent_semantic_config::HookClientMatcherPolicy::WrappedCommand]
+    );
     assert_eq!(
         route.actions,
         [agent_semantic_config::HookClientActionKind::Read]

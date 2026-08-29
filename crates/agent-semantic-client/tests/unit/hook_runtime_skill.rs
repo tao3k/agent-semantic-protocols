@@ -74,7 +74,7 @@ fn test_activation() -> HookActivation {
         },
         generated_at: None,
         providers: vec![
-            activation_provider("rust", "rs-harness", "rs-harness"),
+            activation_provider("rust", "asp-rust", "asp-rust"),
             activation_provider("org", "orgize", "asp"),
         ],
     }
@@ -214,7 +214,7 @@ fn install_agent_config_preserves_providers_and_removes_legacy_skill_config() {
     std::fs::write(
         &config_path,
         "[providers.rust]\n\
-bin = \"tools/rs-harness\"\n\
+bin = \"tools/asp-rust\"\n\
 \n\
 [skills.agent-semantic-protocols]\n\
 pluginSkill = \".codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org\"\n\
@@ -237,7 +237,7 @@ entrySkillPath = \"/old/ASP_ORG_SKILL.org\"\n",
     let config = std::fs::read_to_string(&installed_path).expect("read agent config");
 
     assert!(config.contains("[providers.rust]"), "{config}");
-    assert!(config.contains("bin = \"tools/rs-harness\""), "{config}");
+    assert!(config.contains("bin = \"tools/asp-rust\""), "{config}");
     assert!(config.contains("[skills.other]"), "{config}");
     assert!(config.contains("enabled = true"), "{config}");
     assert!(

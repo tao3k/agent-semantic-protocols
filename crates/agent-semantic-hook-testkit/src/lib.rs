@@ -27,6 +27,7 @@ pub struct HookProcessSpec {
     pub current_dir: PathBuf,
     pub args: Vec<String>,
     pub env: Vec<(String, String)>,
+    pub env_remove: Vec<String>,
     pub timeout: Duration,
 }
 
@@ -37,6 +38,7 @@ impl HookProcessSpec {
             current_dir: current_dir.into(),
             args: Vec::new(),
             env: Vec::new(),
+            env_remove: vec!["ASP_NO_AGENT".to_owned()],
             timeout: DEFAULT_HOOK_TIMEOUT,
         }
     }
@@ -181,7 +183,11 @@ pub async fn run_hook_process(
     let mut command = tokio::process::Command::new(&spec.executable);
     command
         .current_dir(&spec.current_dir)
-        .args(&spec.args)
+        .args(&spec.args);
+    for key in &spec.env_remove {
+        command.env_remove(key);
+    }
+    command
         .envs(spec.env.iter().map(|(key, value)| (key, value)))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

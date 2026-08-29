@@ -41,3 +41,26 @@ def test_trace_receipt_summary_counts_semantic_search_query_commands(tmp_path) -
     assert receipt["summary"]["repeatedCommands"] == 1
     assert receipt["summary"]["repeatedSearches"] == 1
     assert receipt["summary"]["compactSearches"] == 2
+
+
+def test_trace_receipt_requires_canonical_provider_binary(tmp_path) -> None:
+    trace_path = tmp_path / "commands.jsonl"
+    trace_path.write_text(
+        "$ asp-python search prime --workspace . --view seeds\n"
+        "$ retired-language-harness search prime --workspace . --view seeds\n"
+        "$ asp-python-graphs search prime --workspace . --view seeds\n"
+    )
+
+    receipt = build_receipt_from_trace_path(
+        trace_path,
+        config=TraceReceiptConfig(
+            scenario_id="python.canonical-provider-binary",
+            language="python",
+            project_name="fixture",
+            intent="Only canonical provider commands are semantic commands; the private graph service is not one.",
+        ),
+    )
+
+    assert receipt["summary"]["commandCount"] == 3
+    assert receipt["summary"]["aspCommands"] == 1
+    assert receipt["summary"]["searchCommands"] == 1

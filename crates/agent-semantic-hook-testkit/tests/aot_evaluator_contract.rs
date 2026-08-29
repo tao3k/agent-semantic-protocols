@@ -1,3 +1,4 @@
+#[cfg(target_os = "macos")]
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -185,6 +186,102 @@ fn canonical_aot_generation_preserves_config_rule_composition_and_dominance() {
 }
 
 #[test]
+fn wrapped_command_profile_uses_dynamic_reader_observation_without_wrapper_vocabulary() {
+    #[cfg(target_os = "macos")]
+    {
+        let generation = canonical_generation();
+        let subject = "crates/agent-semantic-client/src/client_cli.rs";
+        let command = format!(
+            "{}/.devenv/devenv-profile-exec rtk read -n --max-lines 110 {subject}",
+            env!("CARGO_MANIFEST_DIR").trim_end_matches("/crates/agent-semantic-hook-testkit")
+        );
+        let mut payload = serde_json::json!({
+            "session_id": "testkit-wrapped-reader",
+            "cwd": ".",
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": { "command": command }
+        });
+        let request = reader_probe_request(&generation, &payload.to_string(), "Bash")
+            .expect("project wrapped Reader request")
+            .expect("wrapped Reader request");
+        assert!(request.wrapped_command);
+        assert_eq!(request.subject, subject);
+        assert_eq!(request.command_tokens[1..3], ["rtk", "read"]);
+
+        let probe_tokens = request.command_tokens.clone();
+        let probe_subject = request.subject.clone();
+        let probe_wrapped_command = request.wrapped_command;
+        let probe_patterns = request.reader_behavior_patterns.clone();
+
+        let state_home = tempfile::tempdir().expect("isolated Reader State Home");
+        let observation = diagnose_reader_probe_with_state_home(
+            probe_tokens.clone(),
+            probe_subject.clone(),
+            probe_wrapped_command,
+            probe_patterns.clone(),
+            state_home.path(),
+        )
+        .expect("dynamic wrapped Reader observation");
+        assert_eq!(
+            observation.access,
+            ReaderProbeAccess::Read,
+            "observation={observation:?}"
+        );
+        assert_eq!(observation.terminal, "read-permission-observed");
+        assert!(observation.probe_process_launched);
+        assert!(observation.elapsed_micros < 100_000);
+
+        const WORKERS: usize = 32;
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(WORKERS));
+        let workers = (0..WORKERS)
+            .map(|_| {
+                let barrier = barrier.clone();
+                let tokens = probe_tokens.clone();
+                let subject = probe_subject.clone();
+                let patterns = probe_patterns.clone();
+                let state_home = state_home.path().to_owned();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    let started = Instant::now();
+                    let observation = diagnose_reader_probe_with_state_home(
+                        tokens,
+                        subject,
+                        probe_wrapped_command,
+                        patterns,
+                        &state_home,
+                    )
+                    .expect("wrapped Reader cache hit");
+                    (started.elapsed(), observation)
+                })
+            })
+            .collect::<Vec<_>>();
+        let mut cache_hits = workers
+            .into_iter()
+            .map(|worker| worker.join().expect("wrapped Reader cache worker"))
+            .collect::<Vec<_>>();
+        cache_hits.sort_by_key(|(elapsed, _)| *elapsed);
+        assert!(cache_hits.iter().all(|(_, hit)| {
+            hit.access == ReaderProbeAccess::Read && hit.cache_hit && !hit.probe_process_launched
+        }));
+        let p99 = cache_hits[(cache_hits.len() * 99).div_ceil(100) - 1].0;
+        assert!(p99 < Duration::from_millis(1), "wrapped cache p99={p99:?}");
+
+        bind_reader_probe_observation(&mut payload, Some(&observation))
+            .expect("bind wrapped Reader observation");
+        let observed_payload = payload.to_string();
+        let decision = evaluate_pre_tool(&generation, &observed_payload, "Bash")
+            .expect("evaluate wrapped Reader observation")
+            .expect("wrapped Reader deny");
+        assert_eq!(decision.config_rule_id, "route-read-to-asp-languages");
+        assert_eq!(decision.decision, "deny");
+        assert_eq!(decision.profile, Some("rust"));
+        assert_eq!(decision.route, Some("asp_explorer"));
+        assert_eq!(decision.evidence, "reader-probe-read-permission");
+    }
+}
+
+#[test]
 fn canonical_aot_generation_preserves_the_universal_process_bound_escape() {
     let generation = canonical_generation();
     for command in [
@@ -324,7 +421,7 @@ fn every_canonical_config_rule_has_an_aot_decision_witness() {
                 "schemaVersion": 1,
                 "subject": subject,
                 "access": "read",
-                "accessMode": "O_RDONLY",
+                "accessMode": "read-permission",
                 "backend": "state-home-reader-catalog",
                 "terminal": "reader-behavior-cache-hit",
                 "elapsedMicros": 9,
@@ -547,6 +644,7 @@ fn declared_reader_behavior_pattern_routes_without_process_launch() {
     let observation = diagnose_reader_probe(
         request.command_tokens,
         request.subject,
+        request.wrapped_command,
         request.reader_behavior_patterns,
     )
     .expect("static Reader observation");
@@ -561,10 +659,26 @@ fn declared_reader_behavior_pattern_routes_without_process_launch() {
         .expect("static Reader deny");
     assert_eq!(decision.evidence, "reader-behavior-static-catalog");
     assert_eq!(decision.decision, "deny");
+
+    let wrapped = diagnose_reader_probe(
+        vec![
+            "future-wrapper".to_owned(),
+            "BATT".to_owned(),
+            "-s".to_owned(),
+            "src/lib.rs".to_owned(),
+        ],
+        "src/lib.rs".to_owned(),
+        true,
+        vec![vec!["BATT".to_owned(), "-s".to_owned()]],
+    )
+    .expect("wrapped static Reader observation");
+    assert_eq!(wrapped.access, ReaderProbeAccess::Read);
+    assert_eq!(wrapped.terminal, "reader-behavior-catalog-hit");
+    assert!(!wrapped.probe_process_launched);
 }
 
 #[test]
-fn reader_probe_open_flags_authorize_only_read_only_access() {
+fn reader_probe_permission_differential_authorizes_only_read_behavior() {
     let fixture = materialize_reader_probe_fixture().expect("Reader behavior fixture");
     let random_root = tempfile::tempdir().expect("random Reader fixture root");
     let random_fixture = random_root.path().join("BATT-random-7f3");
@@ -579,8 +693,8 @@ fn reader_probe_open_flags_authorize_only_read_only_access() {
     let state_home = tempfile::tempdir().expect("isolated Reader State Home");
     for (mode, expected_access, denied) in [
         ("read", ReaderProbeAccess::Read, true),
-        ("write", ReaderProbeAccess::NotRead, false),
-        ("read-write", ReaderProbeAccess::NotRead, false),
+        ("write", ReaderProbeAccess::Unknown, false),
+        ("read-write", ReaderProbeAccess::Unknown, false),
     ] {
         let mut payload = serde_json::json!({
             "session_id": format!("testkit-reader-{mode}"),
@@ -598,6 +712,7 @@ fn reader_probe_open_flags_authorize_only_read_only_access() {
         let observation = diagnose_reader_probe_with_state_home(
             request.command_tokens,
             request.subject,
+            request.wrapped_command,
             request.reader_behavior_patterns,
             state_home.path(),
         )
@@ -616,8 +731,8 @@ fn reader_probe_open_flags_authorize_only_read_only_access() {
         assert_eq!(decision.is_some(), denied, "{mode}");
         if let Some(decision) = decision {
             assert_eq!(decision.access, "read");
-            assert_eq!(decision.access_mode, "O_RDONLY");
-            assert_eq!(decision.evidence, "reader-probe-open-read-only");
+            assert_eq!(decision.access_mode, "read-permission");
+            assert_eq!(decision.evidence, "reader-probe-read-permission");
             assert!(decision.cleanup_verified);
         }
         if mode == "read" {
@@ -627,6 +742,7 @@ fn reader_probe_open_flags_authorize_only_read_only_access() {
             let cached = diagnose_reader_probe_with_state_home(
                 request.command_tokens,
                 request.subject,
+                request.wrapped_command,
                 request.reader_behavior_patterns,
                 state_home.path(),
             )
@@ -654,6 +770,7 @@ fn concurrent_dynamic_cache_hits_are_submillisecond_and_process_free() {
         let cold = diagnose_reader_probe_with_state_home(
             tokens.clone(),
             "fixture.rs".to_owned(),
+            false,
             Vec::new(),
             state_home.path(),
         )
@@ -673,6 +790,7 @@ fn concurrent_dynamic_cache_hits_are_submillisecond_and_process_free() {
                     let observation = diagnose_reader_probe_with_state_home(
                         tokens,
                         "fixture.rs".to_owned(),
+                        false,
                         Vec::new(),
                         &state_home,
                     )

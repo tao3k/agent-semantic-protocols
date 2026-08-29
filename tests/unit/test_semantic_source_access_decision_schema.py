@@ -35,7 +35,7 @@ def hard_fs_deny() -> dict[str, object]:
         "routes": [
             {
                 "languageId": "rust",
-                "providerId": "rs-harness",
+                "providerId": "asp-rust",
                 "binary": "asp",
                 "kind": "query",
                 "argv": [
@@ -84,7 +84,7 @@ class SemanticSourceAccessDecisionSchemaTests(unittest.TestCase):
                 "routes": [
                     {
                         "languageId": "rust",
-                        "providerId": "rs-harness",
+                        "providerId": "asp-rust",
                         "binary": "asp",
                         "kind": "ingest",
                         "argv": [
@@ -142,7 +142,7 @@ class SemanticSourceAccessDecisionSchemaTests(unittest.TestCase):
                 "sourceBytesReturned": True,
                 "modelVisibleBytesReturned": True,
                 "authorization": "provider-capability",
-                "providerId": "rs-harness",
+                "providerId": "asp-rust",
                 "subject": {
                     "toolName": "asp",
                     "command": "asp rust query --from-hook direct-source-read --selector src/lib.rs --code .",

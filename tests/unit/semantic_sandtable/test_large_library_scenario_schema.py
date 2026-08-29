@@ -86,7 +86,7 @@ def _large_library_scenario() -> dict[str, object]:
             {
                 "id": "intent-query-set",
                 "command": [
-                    "py-harness",
+                    "asp-python",
                     "search",
                     "lexical",
                     "--query-set",

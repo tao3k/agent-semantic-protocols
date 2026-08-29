@@ -317,7 +317,7 @@ def _query_first_stage_nodes() -> list[dict[str, object]]:
             "id": "test:ranking-score",
             "kind": "test",
             "role": "path",
-            "value": "tests/unit/test_asp_python_graphs_ranking_query.py",
+            "value": "tests/unit/test_asp_graph_turbo_ranking_query.py",
         },
     ]
 

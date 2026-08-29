@@ -169,7 +169,7 @@ impl RuntimeServer {
             events: None,
             generation_admission: None,
             runtime_search_service: None,
-            graph_turbo_resident_status: None,
+            asp_python_graphs_status: None,
             agent_session_registry_owner: None,
             agent_session_status: None,
             telemetry_sender: None,

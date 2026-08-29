@@ -5,13 +5,13 @@ pub(crate) fn asp_rust_owner_items_cold_functional_path_stays_inside_scenario_ga
         scenario_dir: "asp_rust_owner_items_cold_functional_path",
         scenario_id: "asp-rust-owner-items-cold-functional-path",
         language_id: "rust",
-        binary: "rs-harness",
+        binary: "asp-rust",
         owner_path: "crate/src/lib.rs",
         package_anchor_path: "Cargo.toml",
         package_anchor_text: "[package]\nname = \"scenario-rust-owner-items-cold-functional\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
         source_text: "pub async fn dynamic_owner_item_index() {}\n",
         query: "dynamic_owner_item_index",
-        alg: "rust-harness-owner-items",
+        alg: "asp-rust-owner-items",
         item_symbol: "dynamic_owner_item_index",
     });
 }
@@ -37,13 +37,13 @@ pub(crate) fn asp_python_owner_items_cold_functional_path_stays_inside_scenario_
         scenario_dir: "asp_python_owner_items_cold_functional_path",
         scenario_id: "asp-python-owner-items-cold-functional-path",
         language_id: "python",
-        binary: "py-harness",
+        binary: "asp-python",
         owner_path: "src/model.py",
         package_anchor_path: "pyproject.toml",
         package_anchor_text: "[project]\nname = \"scenario-python-owner-items-cold-functional\"\nversion = \"0.1.0\"\n",
         source_text: "def dynamic_owner_item_index() -> bool:\n    return True\n",
         query: "dynamic_owner_item_index",
-        alg: "py-harness-owner-items",
+        alg: "asp-python-owner-items",
         item_symbol: "dynamic_owner_item_index",
     });
 }
@@ -53,13 +53,13 @@ pub(crate) fn asp_julia_owner_items_cold_functional_path_stays_inside_scenario_g
         scenario_dir: "asp_julia_owner_items_cold_functional_path",
         scenario_id: "asp-julia-owner-items-cold-functional-path",
         language_id: "julia",
-        binary: "asp-julia-harness",
+        binary: "asp-julia",
         owner_path: "src/Model.jl",
         package_anchor_path: "Project.toml",
         package_anchor_text: "name = \"ScenarioJuliaOwnerItemsColdFunctional\"\nversion = \"0.1.0\"\n",
         source_text: "dynamic_owner_item_index() = true\n",
         query: "dynamic_owner_item_index",
-        alg: "asp-julia-harness-owner-items",
+        alg: "asp-julia-owner-items",
         item_symbol: "dynamic_owner_item_index",
     });
 }

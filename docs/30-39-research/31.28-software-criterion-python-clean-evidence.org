@@ -25,8 +25,8 @@ Sandtable observation helpers:
 
 Graph-turbo and workdir helpers:
 
-- =packages/python/asp_graph_turbo/src/asp_graph_turbo/artifact_timeline_text.py=
-- =packages/python/asp_graph_turbo/src/asp_graph_turbo/ontology.py=
+- =packages/python/asp_python_graphs/src/asp_python_graphs/artifact_timeline_text.py=
+- =packages/python/asp_python_graphs/src/asp_python_graphs/ontology.py=
 - =packages/python/tools/src/tools/semantic_sandtable/utils.py=
 - =packages/python/tools/src/tools/semantic_sandtable/workdir_git.py=
 
@@ -37,7 +37,7 @@ behind configuration.
 * Evidence
 
 #+begin_example
-uv run --project languages/python-lang-project-harness --frozen py-harness check --full .
+uv run --project languages/python-lang-project-harness --frozen asp-python check --full .
 # [ok] . python
 # Files: 616 Parsed: 616
 
@@ -49,8 +49,8 @@ uv run --project languages/python-lang-project-harness --frozen pytest -q \
   tests/unit/semantic_sandtable/test_discovery_and_steps.py
 # 9 passed
 
-PYTHONPATH=packages/python/asp_graph_turbo/src \
-uv run --project packages/python/asp_graph_turbo --frozen pytest -q \
+PYTHONPATH=packages/python/asp_python_graphs/src \
+uv run --project packages/python/asp_python_graphs --frozen pytest -q \
   tests/unit/test_asp_graph_turbo_timeline_text.py \
   tests/unit/test_asp_graph_turbo_ontology.py
 # 3 passed

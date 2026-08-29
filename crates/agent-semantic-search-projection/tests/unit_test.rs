@@ -4,5 +4,7 @@
 mod resident_search_result;
 #[path = "unit/search_projection.rs"]
 mod search_projection;
+#[path = "unit/source.rs"]
+mod source;
 #[path = "unit/storage_route.rs"]
 mod storage_route;

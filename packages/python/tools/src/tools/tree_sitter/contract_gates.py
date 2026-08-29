@@ -115,7 +115,7 @@ def _build_runtime(asp_bin: Path) -> None:
             "--features",
             "cli,search",
             "--bin",
-            "rs-harness",
+            "asp-rust",
         ],
     )
     if not asp_bin.exists():
@@ -148,16 +148,16 @@ class _runtime_env:
             )
             (ROOT / ".agents/asp.toml").write_text(_CORE_FAST_ASP_TOML, encoding="utf-8")
             _write_shim(
-                shim_dir / "rs-harness",
-                f'exec "{ROOT}/languages/rust-lang-project-harness/target/debug/rs-harness" "$@"\n',
+                shim_dir / "asp-rust",
+                f'exec "{ROOT}/languages/rust-lang-project-harness/target/debug/asp-rust" "$@"\n',
             )
             _write_shim(
                 shim_dir / "asp-typescript",
                 f'exec node "{ROOT}/languages/typescript-lang-project-harness/dist/src/cli/main.js" "$@"\n',
             )
             _write_shim(
-                shim_dir / "py-harness",
-                f'exec uv run --project "{ROOT}/languages/python-lang-project-harness" --frozen py-harness "$@"\n',
+                shim_dir / "asp-python",
+                f'exec uv run --project "{ROOT}/languages/python-lang-project-harness" --frozen asp-python "$@"\n',
             )
             env = os.environ.copy()
             env["PATH"] = f"{shim_dir}{os.pathsep}{env.get('PATH', '')}"

@@ -324,25 +324,25 @@ def _sandtable_receipt(scenario_id: object) -> dict[str, object]:
                     {
                         "id": "prime",
                         "status": "pass",
-                        "command": ["rs-harness", "search", "prime"],
+                        "command": ["asp-rust", "search", "prime"],
                         "errors": [],
                     },
                     {
                         "id": "intent-query-set",
                         "status": "pass",
-                        "command": ["rs-harness", "search", "lexical"],
+                        "command": ["asp-rust", "search", "lexical"],
                         "errors": [],
                     },
                     {
                         "id": "selector-query",
                         "status": "pass",
-                        "command": ["rs-harness", "query", "--selector", "src/lib.rs:1"],
+                        "command": ["asp-rust", "query", "--selector", "src/lib.rs:1"],
                         "errors": [],
                     },
                     {
                         "id": "repeat-query",
                         "status": "pass",
-                        "command": ["rs-harness", "query", "--selector", "src/lib.rs:1"],
+                        "command": ["asp-rust", "query", "--selector", "src/lib.rs:1"],
                         "errors": [],
                     },
                 ],
@@ -367,7 +367,7 @@ def _variant_sandtable_receipt(scenario_id: object) -> dict[str, object]:
         {
             "id": "variant-owner",
             "status": "pass",
-            "command": ["rs-harness", "search", "owner"],
+            "command": ["asp-rust", "search", "owner"],
             "errors": [],
         }
     )

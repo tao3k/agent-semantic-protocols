@@ -350,4 +350,4 @@ snapshot/token comparator; language providers own all parser compact
 implementation.  Provider commands may use manifest placeholders such as
 ={repoRoot}= to avoid PATH drift, as the Python variant does with
 =uv run --project {repoRoot}/languages/python-lang-project-harness --frozen
-py-harness=.
+asp-python=.

@@ -10,7 +10,7 @@
 Experimental implementation and proof slice.
 
 This module belongs to the server-first graph SearchLoop architecture. Its executable owner
-is =packages/python/asp_graph_turbo= and its proof owner is =packages/proofs=.
+is =packages/python/asp_python_graphs= and its proof owner is =packages/proofs=.
 
 * Problem
 

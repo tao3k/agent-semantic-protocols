@@ -10,7 +10,7 @@ fn doctor_reports_runtime_profile_health() {
     let activation_path = write_activation(&root);
     write_client_config(&root, "");
     let bin_dir = root.join(".doctor-bin");
-    write_executable(&bin_dir, "rs-harness", "#!/bin/sh\nexit 0\n");
+    write_executable(&bin_dir, "asp-rust", "#!/bin/sh\nexit 0\n");
 
     let output = run_doctor_with_env(&root, &activation_path, &[], &[], Some(&bin_dir));
 
@@ -19,7 +19,7 @@ fn doctor_reports_runtime_profile_health() {
     assert!(!stdout.contains("runtimeProfiles="));
     assert!(stdout.contains("runtimeStatus=available"));
     assert!(stdout.contains("resolvedBinary="));
-    assert!(stdout.contains("/rs-harness"));
+    assert!(stdout.contains("/asp-rust"));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 

@@ -133,7 +133,7 @@ pub(super) fn root_owned_rust_activation_json() -> String {
             .as_nanos()
     ));
     let provider_executable =
-        write_state_home_provider_binary(&state_home, "rust", "asp-rust", "rs-harness");
+        write_state_home_provider_binary(&state_home, "rust", "asp-rust", "asp-rust");
     let resolved_execution_prefix = vec![provider_executable.display().to_string()];
     let state_paths = agent_semantic_runtime::project_state_paths_with_state_home(
         std::path::Path::new("."),
@@ -271,7 +271,7 @@ fn write_state_home_provider_file(
                 "[agent-guide] runtime=agent-semantic-hook language=rust provider=asp-rust"
             }
             "asp-typescript" => "[asp-typescript-guide]",
-            "py-harness" | "custom-py-harness" => "[py-harness-guide]",
+            "asp-python" | "custom-asp-python" => "[asp-python-guide]",
             _ => "[agent-guide]",
         };
         format!(

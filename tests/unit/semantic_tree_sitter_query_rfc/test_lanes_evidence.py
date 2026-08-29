@@ -60,12 +60,12 @@ def test_tree_sitter_query_rfc_records_current_native_projection_lanes() -> None
 
     required_terms = [
         "Current native-projection v1 lane records:",
-        "[syntax-lane] language=rust provider=rs-harness lane=R",
+        "[syntax-lane] language=rust provider=asp-rust lane=R",
         "queryInputForms=selector,code-shaped,catalog-id,s-expression",
         "renderProfile=compact-graph-frontier",
         "[syntax-lane] language=typescript provider=asp-typescript lane=T",
         "renderProfile=corpus-locator",
-        "[syntax-lane] language=python provider=py-harness lane=P",
+        "[syntax-lane] language=python provider=asp-python lane=P",
         "pending=real-project-benchmark",
         "do not claim cache replay speedup",
         "arbitrary S-expression support for TypeScript/Python",

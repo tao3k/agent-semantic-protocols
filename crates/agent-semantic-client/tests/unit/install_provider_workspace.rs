@@ -46,7 +46,7 @@ fn workspace_install_v1_accepts_the_canonical_language_identity() {
           "schemaAuthority":"https://tao3k.github.io/agent-semantic-protocols/schemas/",
           "languageId":"julia",
           "providerId":"asp-julia",
-          "binary":"asp-julia-harness",
+          "binary":"asp-julia",
           "providerRegistration":"asp-provider-registration.json",
           "schemaBundleReceipt":"../schemas/.asp-schema-manager-receipt.json",
           "workspaceArtifact":{"root":"build/provider","entrypoint":"."},
@@ -112,14 +112,14 @@ fn external_launch_runtime_dependency_is_materialized_into_the_immutable_artifac
 
     let source_root = fixture.root.join("venv");
     std::fs::create_dir_all(source_root.join("bin")).expect("create venv bin");
-    write(&source_root.join("bin/py-harness"), b"provider-entrypoint");
+    write(&source_root.join("bin/asp-python"), b"provider-entrypoint");
     symlink(&launch_program, source_root.join("bin/python3")).expect("link venv python");
 
     let dependencies = resolve_runtime_dependencies(
         &source_root,
         Some(&WorkspaceLaunchDescriptor {
             program: "bin/python3".to_owned(),
-            args: vec!["bin/py-harness".to_owned()],
+            args: vec!["bin/asp-python".to_owned()],
             program_relative_to_artifact: true,
             args_relative_to_artifact: true,
         }),

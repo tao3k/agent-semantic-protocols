@@ -97,12 +97,14 @@ supervisor writer lane owns asynchronous construction and reconciliation.  A
 query MUST therefore never turn a missing generation into an implicit repair
 round trip.
 
-Graph Turbo follows the same rule.  Search may consume a lease from an already
-healthy daemon-owned Graph Turbo resident, but it MUST NOT start Python,
-materialize an artifact, wait for resident startup, or reconcile the resident
-from the request path.  A missing Graph Turbo lease produces typed degradation
-or fail-closed evidence according to the requested rank contract; it never
-converts the read into lifecycle work.
+Graph-Turbo remains an algorithm/profile identity, but the only current
+implementation authority is the ASP Server-owned asp-python-graphs service.
+Search may consume a lease from the already-admitted Runtime generation, but it
+MUST NOT start a standalone graph-turbo executable, materialize an independent
+receipt, or reconcile a provider-private resident from the request path.  A
+missing asp-python-graphs service produces typed degradation or fail-closed
+evidence according to the requested rank contract; it never converts the read
+into an independent lifecycle.
 
 Canonical selector relocation is part of the immutable generation segment.
 When an owner path changes, exact lookup MUST resolve the language-provider

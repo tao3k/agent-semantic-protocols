@@ -13,7 +13,7 @@ parser-owned =--code=: compact =|fact= line folding.
 The motivating trace is:
 
 #+begin_src shell
-rs-harness search query 'pub use rules' owner --view seeds languages/rust-lang-project-harness
+asp-rust search query 'pub use rules' owner --view seeds languages/rust-lang-project-harness
 #+end_src
 
 Current output repeats several values per fact:
@@ -100,7 +100,7 @@ self-apply gate.  The second passed the Rust harness lib/unit suites.
 1. Add provider local-window query:
 
    #+begin_src shell
-   rs-harness query --from-hook direct-source-read --selector tests/unit/cli/search_query.rs:20-28 --code languages/rust-lang-project-harness
+   asp-rust query --from-hook direct-source-read --selector tests/unit/cli/search_query.rs:20-28 --code languages/rust-lang-project-harness
    #+end_src
 
    It should return bounded compact source/projection for the selected range,
@@ -132,7 +132,7 @@ core query/code loop.
 Rust now supports the hook route form:
 
 #+begin_src shell
-rs-harness query --from-hook direct-source-read --selector tests/unit/cli/search_query.rs:20-28 --code .
+asp-rust query --from-hook direct-source-read --selector tests/unit/cli/search_query.rs:20-28 --code .
 #+end_src
 
 It returns a bounded compact window, not =search-owner= metadata:
@@ -148,7 +148,7 @@ This unlocks safe assertion repair after a denied =rtk read= / =sed= local
 read.  Positional shorthand remains open:
 
 #+begin_src shell
-rs-harness query tests/unit/cli/search_query.rs:20-28 --code .
+asp-rust query tests/unit/cli/search_query.rs:20-28 --code .
 #+end_src
 
 The current positional parser treats the hyphenated selector as an extra
@@ -159,7 +159,7 @@ project-root argument.  That should be fixed after the hook route is stable.
 The real Python hook recovery case exposed a design defect:
 
 #+begin_src shell
-py-harness query --from-hook direct-source-read --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py:115:240 languages/python-lang-project-harness
+asp-python query --from-hook direct-source-read --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py:115:240 languages/python-lang-project-harness
 #+end_src
 
 The old provider behavior treated the selector as a symbol-overlap request and
@@ -195,7 +195,7 @@ read-plan gate before treating =direct-source-read= as a code window.
 
 ** Rust, TypeScript, Python, and Julia alignment
 
-Rust now applies the same first gate in =rs-harness query --from-hook
+Rust now applies the same first gate in =asp-rust query --from-hook
 direct-source-read --selector <path:range> --code=: selectors over 40 lines
 return =read-plan mode=range-outline code=false= instead of falling through to a
 large local-window source/projection dump.  Its agent guide now documents
@@ -221,7 +221,7 @@ smoke while the Julia package test covers the provider behavior.
 Real hook sandboxing showed another token sink:
 
 #+begin_src shell
-rs-harness search owner crates/semantic-agent-hook/src/tool_action.rs items \
+asp-rust search owner crates/semantic-agent-hook/src/tool_action.rs items \
   --query 'command_intent|ContentDump|sed|awk|head|tail|nl|bat|less' \
   crates/semantic-agent-hook
 #+end_src
@@ -242,7 +242,7 @@ single query summary plus twelve item locators.
 The next real case exposed a different failure mode:
 
 #+begin_src shell
-rs-harness search owner languages/rust-lang-project-harness/src/cli/semantic_query_json.rs items \
+asp-rust search owner languages/rust-lang-project-harness/src/cli/semantic_query_json.rs items \
   --query 'render_semantic_query_json|projection_from_code_line|projection_node|expandActions' \
   languages/rust-lang-project-harness
 #+end_src
@@ -301,7 +301,7 @@ transport.
 Python had the more dangerous fallback form:
 
 #+begin_src shell
-py-harness search owner src/python_lang_project_harness/_semantic_search_item_direct_read.py items \
+asp-python search owner src/python_lang_project_harness/_semantic_search_item_direct_read.py items \
   --query 'render_semantic_query_json|projection_from_code_line|projection_node|expandActions' \
   languages/python-lang-project-harness
 #+end_src
@@ -335,7 +335,7 @@ Cross-language rule:
 The Python catalog query exposed a separate AST compact failure:
 
 #+begin_src shell
-py-harness query src/python_lang_project_harness/_semantic_language_catalog.py \
+asp-python query src/python_lang_project_harness/_semantic_language_catalog.py \
   --term 'python_search_view_descriptors|owner|acceptedPipes|requiresQuery' \
   --code languages/python-lang-project-harness
 #+end_src
@@ -375,7 +375,7 @@ After the fix, the same command produces a denied =bulk-source-dump= decision
 with a provider route that preserves the local range:
 
 #+begin_example
-py-harness query --from-hook direct-source-read \
+asp-python query --from-hook direct-source-read \
   --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py:115:240 \
   --code languages/python-lang-project-harness
 #+end_example
@@ -437,7 +437,7 @@ Read languages/typescript-lang-project-harness/src/cli/protocol.ts
   -> asp-typescript query --selector src/cli/protocol.ts --code languages/typescript-lang-project-harness
 
 Read languages/python-lang-project-harness/src/python_lang_project_harness/_semantic_search_item_direct_read.py
-  -> py-harness query --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py --code languages/python-lang-project-harness
+  -> asp-python query --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py --code languages/python-lang-project-harness
 
 Read languages/typescript-lang-project-harness/src/**/*.ts
   -> asp-typescript search prime --view seeds languages/typescript-lang-project-harness
@@ -455,10 +455,10 @@ awk 'NR>=10 && NR<=30' languages/typescript-lang-project-harness/src/cli/protoco
   -> asp-typescript query --selector src/cli/protocol.ts:10:30 --code languages/typescript-lang-project-harness
 
 tail -n +115 languages/python-lang-project-harness/src/python_lang_project_harness/_semantic_search_item_direct_read.py | head -n 126
-  -> py-harness query --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py:115:240 --code languages/python-lang-project-harness
+  -> asp-python query --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py:115:240 --code languages/python-lang-project-harness
 
 nl -ba languages/python-lang-project-harness/src/python_lang_project_harness/_semantic_search_item_direct_read.py | sed -n '115,240p'
-  -> py-harness query --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py:115:240 --code languages/python-lang-project-harness
+  -> asp-python query --selector src/python_lang_project_harness/_semantic_search_item_direct_read.py:115:240 --code languages/python-lang-project-harness
 #+end_example
 
 Both routed provider commands then return =read-plan code=false= for wide

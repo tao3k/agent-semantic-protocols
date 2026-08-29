@@ -3353,7 +3353,7 @@ For =owner-query=, typed PPR personalization is query-aware:
   from query-token coverage over schema-owned node text.
 - single-token queries keep the previous equal-seed behavior; the weighted prior
   is a deep-query optimization, not a replacement for read-loop guards.
-- package-like query tokens, such as =asp_graph_turbo=, also contribute a
+- package-like query tokens, such as =asp-python-graphs=, also contribute a
   package/path cohesion adjustment: nodes whose path or owner path contains the
   package token are preferred, while same-token matches outside the matching path
   are treated as weaker evidence.
@@ -3436,7 +3436,8 @@ term list.  Provider manifests own language spellings and aliases such as Rust
 forms.  When an activated provider has no descriptor, the router treats
 semantic-facts intent as unavailable rather than guessing from the language ID.
 
-=asp-graph-turbo= is a typed ranking engine for parser-owned graph facts, not a
+=asp-python-graphs= is the ASP Server-owned typed ranking service for the
+=graph-turbo= algorithm over parser-owned graph facts, not a
 compact text protocol.  Its durable output is =semantic-graph-turbo-result.v1=,
 which records the selected profile, seed nodes, ranked node ids, ranking
 budget, frontier actions, relation edges, scores, typed paths, cache trace,
@@ -3460,7 +3461,7 @@ it for an agent.
 
 SciPy-first typed graph intelligence engine.
 
-=asp-graph-turbo= remains a SciPy-first typed sparse ranking engine for the
+=asp-python-graphs= remains a SciPy-first typed sparse ranking service for the
 agent hot path.  The default runtime path should continue to use lightweight
 SciPy sparse matrices, typed relation policy, graph cache fingerprints, and
 schema-owned request/result packets.  PyG, GNN message passing, and
@@ -3773,10 +3774,10 @@ Completed:
   filtered to aliases whose rendered node kinds match the profile contract.
 - [X] =asp graph render --packet - --view seeds= is the
   shared renderer CLI used by language providers under =languages/=.
-- [X] Rust =rs-harness= constructs canonical search packets and shells out to
+- [X] Rust =asp-rust= constructs canonical search packets and shells out to
   =asp graph render= without depending on the renderer
   crate.
-- [X] Python =py-harness= constructs canonical search packets and shells out to
+- [X] Python =asp-python= constructs canonical search packets and shells out to
   =asp graph render=; its previous local graph
   action/template renderer modules were removed rather than kept as fallback.
 - [X] TypeScript =asp-typescript= constructs canonical search packets and shells
@@ -3788,12 +3789,12 @@ Completed:
   hits replay the rendered compact graph without starting the provider or
   renderer.  Julia =search prime --view seeds= is the first focused calibration
   target for this path.
-- [X] =asp-graph-turbo= emits =semantic-graph-turbo-result.v1= ranking
-  packets from typed graph facts, and a Python sandtable validates the package
+- [X] =asp-python-graphs= emits =semantic-graph-turbo-result.v1= ranking
+  packets from typed graph facts through the ASP Server, and a Python sandtable validates the package
   CLI through schema-owned stdout instead of treating compact debug text as the
   source of truth.
 - [X] ASP fast search routes default candidate frontiers through
-  =asp-graph-turbo= ranking and keeps the trusted response in
+  =asp-python-graphs= Graph-Turbo ranking and keeps the trusted response in
   =semantic-graph-turbo-result.v1= or a schema-owned JSON projection.
   =--view seeds= and omitted =--view= may stay prompt-compact, but the explicit
   =--view graph-turbo-request= surface exists only for schema validation and
@@ -3819,8 +3820,8 @@ Completed:
   TypeScript preserves quoted package specifiers such as =node:fs=, so
   graph-turbo receives package-level typed facts rather than depending on a
   fuzzy text hit to land on an import line.
-- [X] =asp-graph-turbo cache status|prune|invalidate= is the supported cache
-  management surface for the Python ranking backend.  Cache entries live under
+- [X] ASP Server graph cache status/prune/invalidate methods are the supported
+  management surface for the =asp-python-graphs= ranking backend.  Cache entries live under
   =$PRJ_CACHE_HOME= when set or the git-toplevel =.cache= fallback, and the
   packet fingerprint remains part of the key so changed graph/source facts do
   not replay stale sparse matrices.
@@ -3972,7 +3973,7 @@ Completed:
   request the full =items= pipe.  The full item inventory remains behind
   =search owner <path> items=, but default owner output now includes =|hot=
   symbol locators plus existing covering tests and owner graph synthesis.
-- [X] Real CLI validation against the refreshed active =.bin/rs-harness= proves
+- [X] Real CLI validation against the refreshed active =.bin/asp-rust= proves
   the repeated-owner target has a prompt-facing runtime path.  Running
   =rust search --receipt-json owner crates/agent-semantic-client/src/command/provider.rs .=
   used =route=local-native= and emitted 2743-byte stdout with =|hot
@@ -4025,7 +4026,7 @@ Completed:
   =.code=, and =avoid=repeat-owner=.
 - [X] Python now implements the executable reasoning entry surface for
   =owner-tests=, =owner-query=, and =query-deps= through
-  =py-harness search reasoning <profile>=.  The guide prints the exact
+  =asp-python search reasoning <profile>=.  The guide prints the exact
   commands with required selectors, the provider registry advertises
   =search/reasoning=, and =--view seeds= renders typed =entries= rows such as
   =owner-query(O,Q=>items+tests+dependency-usage)= and
@@ -4059,8 +4060,8 @@ Completed:
   ~latencyMs=811~, ~repeatedTriggerPatterns=0~, ~missingFacts=0~, and
   ~confusingNextActions=0~.  Request JSON size remains a debugging/schema
   validation metric, not the default agent-facing output.  The packaged
-  =asp-graph-turbo metrics= command owns the stable text/JSON record shape so
-  future live runs can refresh the same evidence without hand-written prose.
+  ASP Server graph metrics owns the stable text/JSON record shape so future live
+  runs can refresh the same evidence without hand-written prose.
 
 * Acceptance criteria
 
@@ -4074,7 +4075,7 @@ Completed:
 - =seed= and =synthesis= are represented through graph aliases, =rank=,
   =frontier=, and =avoid= rather than as independent prompt-facing protocols.
 - Providers produce the same graph meaning across Rust, TypeScript, Python, and
-  Julia.  Julia uses the compiled =asp-julia-harness= plus cacheable search
+  Julia.  Julia uses the compiled =asp-julia= plus cacheable search
   packets, not a workspace-managed exception.
 * Finder-confirmed path precedence
 

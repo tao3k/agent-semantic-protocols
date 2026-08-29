@@ -15,7 +15,7 @@ from typing import Any, Sequence
 def emit_codeql_evidence(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--language-id", default="rust")
-    parser.add_argument("--provider-id", default="rs-harness")
+    parser.add_argument("--provider-id", default="asp-rust")
     parser.add_argument("--project-root", default=".")
     parser.add_argument("--codeql-language", default="rust")
     parser.add_argument("--generated-at")
